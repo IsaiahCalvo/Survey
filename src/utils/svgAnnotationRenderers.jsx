@@ -322,15 +322,37 @@ export const renderLine = (obj, index) => {
   const angle = obj.angle ?? 0;
   let rotateTransform;
   if (angle !== 0) {
-    // UX 2026-04-20: use the RAW endpoint midpoint (pre arrowhead shortening)
-    // as the rotation center so the post-release position exactly matches
-    // the live-preview wrapper, which rotates around the bbox center from
-    // getLineBBox. spec.line.x2 for arrow shapes is shortened to sit at the
-    // arrowhead base — using that midpoint biased the center toward the
-    // tail and caused a subpixel-to-1px jump between drag and commit.
+    // UX 2026-04-20: rotate around the bbox CENTER (endpoints + curve
+    // extrema when the line is bent). Matches getLineBBox exactly so the
+    // live-drag wrapper and the rendered shape pivot around the same point
+    // — no jump on release. For a straight line the bbox center equals the
+    // endpoint midpoint, so this reduces to the prior behavior.
     const rawEp = getLineEndpoints(obj);
-    const cx = (rawEp.x1 + rawEp.x2) / 2;
-    const cy = (rawEp.y1 + rawEp.y2) / 2;
+    const midPt = obj.data?.midpoint;
+    const bxs = [rawEp.x1, rawEp.x2];
+    const bys = [rawEp.y1, rawEp.y2];
+    if (midPt) {
+      const Cx = 2 * midPt.x - 0.5 * rawEp.x1 - 0.5 * rawEp.x2;
+      const Cy = 2 * midPt.y - 0.5 * rawEp.y1 - 0.5 * rawEp.y2;
+      const denomX = rawEp.x1 - 2 * Cx + rawEp.x2;
+      const denomY = rawEp.y1 - 2 * Cy + rawEp.y2;
+      if (Math.abs(denomX) > 1e-9) {
+        const tx = (rawEp.x1 - Cx) / denomX;
+        if (tx > 0 && tx < 1) {
+          const o = 1 - tx;
+          bxs.push(o * o * rawEp.x1 + 2 * o * tx * Cx + tx * tx * rawEp.x2);
+        }
+      }
+      if (Math.abs(denomY) > 1e-9) {
+        const ty = (rawEp.y1 - Cy) / denomY;
+        if (ty > 0 && ty < 1) {
+          const o = 1 - ty;
+          bys.push(o * o * rawEp.y1 + 2 * o * ty * Cy + ty * ty * rawEp.y2);
+        }
+      }
+    }
+    const cx = (Math.min(...bxs) + Math.max(...bxs)) / 2;
+    const cy = (Math.min(...bys) + Math.max(...bys)) / 2;
     rotateTransform = `rotate(${angle}, ${cx}, ${cy})`;
   }
 
@@ -641,7 +663,7 @@ export const renderEllipse = (obj, index) => {
  * @param {number} index - Array index for key fallback
  * @returns {React.ReactElement}
  */
-export const renderText = (obj, index, liveBounds = null) => {
+export const renderText = (obj, index, liveBounds = null, hideText = false) => {
   const scaleX = Math.abs(obj.scaleX ?? 1);
   const scaleY = Math.abs(obj.scaleY ?? 1);
   const objType = String(obj.type || '').toLowerCase();
@@ -723,7 +745,16 @@ export const renderText = (obj, index, liveBounds = null) => {
           vectorEffect={obj.strokeUniform ? 'non-scaling-stroke' : undefined}
         />
       ) : null}
+      {!hideText && (
       <foreignObject
+        // UX 2026-04-20: force remount whenever the logical line count or
+        // the foreignObject's pixel height changes. Chromium's foreignObject
+        // does not reliably re-layout its inner HTML when width/height
+        // attributes change dynamically, so a line typed past the imported
+        // height ended up clipped against the originally-laid-out inner box.
+        // Re-keying makes React mount a fresh foreignObject with the new
+        // dimensions, forcing the browser to lay out from scratch.
+        key={`fo-${Math.round(innerDisplayHeight)}-${(displayedText || '').length}`}
         data-annotation-text-bounds=""
         x={left + pad}
         y={top + pad}
@@ -784,13 +815,21 @@ export const renderText = (obj, index, liveBounds = null) => {
             wordBreak: 'break-all',
             whiteSpace: 'pre-wrap',
             padding: 0,
-            WebkitFontSmoothing: 'antialiased',
-            MozOsxFontSmoothing: 'grayscale',
+            // UX 2026-04-20 — no explicit font-smoothing. Canvas 2D (the Fabric
+            // edit layer) ignores CSS font-smoothing and always rasterizes with
+            // the platform default (macOS = subpixel-antialiased, heavier +
+            // slightly tighter). Setting `antialiased`/`grayscale` here made the
+            // SVG view render lighter + wider than Fabric edit, producing a
+            // visible "pop" in weight and spacing when the user double-clicked
+            // into edit mode. Letting the foreignObject use the browser default
+            // gives both layers the same rasterization path, so view and edit
+            // look identical.
           }}
         >
           {displayedText}
         </div>
       </foreignObject>
+      )}
     </g>
   );
 };
@@ -1003,7 +1042,7 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
           rect + foreignObject share source-of-truth with the Fabric Textbox
           during edit, so the unified textbox-IS-the-box model preserves the
           auto-sized growth the user sees while typing. */}
-      {!hideText && (() => {
+      {(() => {
         // UX: 2026-04-19 — give the visible box a descender buffer so letters
         // like j / g / p / y / q that hang below the baseline stay inside the
         // border instead of clipping against the bottom edge. Mirrors the
@@ -1011,6 +1050,10 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
         // for plain text annotations. Both the border rect and the inner
         // foreignObject grow together so the text anchor stays at the top
         // and the bottom stretches just enough to contain descenders.
+        // UX 2026-04-20: the border rect always renders so the user sees
+        // the growing box while editing. Only the inner text foreignObject
+        // is gated by hideText — Fabric paints the live letters during
+        // edit and the SVG copy would just create a ghost behind them.
         const calloutFs = Number(callout.style?.fontSize || 12);
         const descenderBuffer = calloutFs * 0.35;
         const boxHeightWithDescenders = textBox.height + descenderBuffer;
@@ -1032,6 +1075,7 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
             ry={0}
             vectorEffect="non-scaling-stroke"
           />
+          {!hideText && (
           <foreignObject
             // UX: data-callout-part='text' — double-click edit-mode entry
             // hit-test surface. Phase 14 Area 2c dispatches
@@ -1062,6 +1106,14 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
             // overflow:hidden hides any text that doesn't fit when the user
             // resizes the callout narrower than the content can wrap, or
             // shorter than the wrapped lines — matches Drawboard PDF.
+            // UX 2026-04-20: force remount when the callout box height or
+            // text length changes. Chromium's foreignObject does not reliably
+            // re-layout its inner HTML on dynamic attribute changes, so a
+            // line typed past the imported callout height ended up clipped.
+            // Re-keying makes React drop the stale foreignObject and mount a
+            // fresh one, letting the browser lay out the grown box from
+            // scratch so new lines become visible during live edit.
+            key={`fo-callout-${Math.round(boxHeightWithDescenders)}-${((liveBounds && liveBounds.text) || callout.text || '').length}`}
             x={textBox.x + TEXT_PADDING}
             y={textBox.y}
             width={Math.max(0, textBox.width - 2 * TEXT_PADDING)}
@@ -1126,8 +1178,12 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
                 // CSS line-height here mirrors that: lineHeight * 1.13 so
                 // view and edit show identical line spacing.
                 lineHeight: (callout.style?.lineHeight || 1) * 1.13,
-                WebkitFontSmoothing: 'antialiased',
-                MozOsxFontSmoothing: 'grayscale',
+                // UX 2026-04-20 — no explicit font-smoothing. Canvas 2D (the
+                // Fabric edit layer) ignores CSS font-smoothing, so setting
+                // `antialiased`/`grayscale` here made the SVG callout view
+                // render lighter + wider than the Fabric edit overlay. Browser
+                // default keeps view and edit on the same rasterization path
+                // so the user sees no weight/spacing jump on edit entry/exit.
               }}
             >
               {(liveBounds && typeof liveBounds.text === 'string')
@@ -1135,6 +1191,7 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
                 : (callout.text || '')}
             </div>
           </foreignObject>
+          )}
         </>
         );
       })()}

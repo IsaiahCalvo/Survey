@@ -46,6 +46,7 @@ import RotationInputField from './RotationInputField';
 import { getAnnotationBBox, getGroupBBox, isImportedPath, getLineEndpoints } from '../utils/svgBoundingBox';
 import { resolveMidpointHandlePosition } from '../utils/lineDragMath.js';
 import { buildArrowheadRenderSpec } from '../utils/lineRenderHelpers.js';
+import { getCurvedPath, distanceToLineSegment } from '../utils/lineGeometry.js';
 import { ARROWHEAD_STYLES } from './Callout/types';
 import {
   ANNOTATION_VISIBILITY_SCOPE,
@@ -1640,11 +1641,13 @@ const SVGAnnotationLayer = memo(({
       // overlays the textbox child via the known-good text-edit path; the
       // static parts remain as visual anchors underneath. Replaces the prior
       // full-callout skip which left the edit canvas orphaned visually.
-      // Plan 15-04 Step 2 — Previously the SVG callout's textbox rect + text
-      // hid during edit so the Fabric overlay could render its own. Now that
-      // the Fabric textbox is transparent (fill+stroke rgba 0), the SVG
-      // callout stays visible and serves as the visual truth. No more
-      // "border grows" effect from the overlay's slightly different bounds.
+      // UX 2026-04-20 (revised): SVG callout text stays visible during its
+      // own edit so it's the single source of truth in both view and edit
+      // states. Fabric's letters are transparent during callout edit
+      // (FabricEditCanvas loadCalloutAnnotation sets fill: rgba(0,0,0,0))
+      // so there's no double-ghost — only one rendering, matching view.
+      // The live bounds broadcast below keeps the SVG text width/height
+      // in lockstep with Fabric's wrap as the user types.
       const hideText = false;
       // UX: Phase 15 UAT-2 — pass live textbox bounds only to the currently-
       // editing callout so line1 retracts to the live edge as the textbox
@@ -1702,7 +1705,13 @@ const SVGAnnotationLayer = memo(({
         (selectedIds?.size || 0) + (effectiveSelectedCalloutIds?.size || 0);
       const isMultiSelect = totalSelected > 1;
       const isHovered = hoveredCalloutId === callout.id;
-      const showHandles = isSelected && !isMultiSelect;
+      // UX 2026-04-20: hide the callout's corner/knee/arrow-tip handles
+      // while the user is in text-edit mode for that same callout. Edit is
+      // text-content-only; the user doesn't need resize/knee chrome
+      // competing with the growing text box. Handles re-appear after
+      // commit because editingCalloutId clears.
+      const isEditingThisCallout = editingCalloutId === callout.id;
+      const showHandles = isSelected && !isMultiSelect && !isEditingThisCallout;
       const showGlow = (isSelected && isMultiSelect) || (!isSelected && isHovered);
       const hitTargets = renderCalloutHitTargets(
         callout,
@@ -1961,13 +1970,15 @@ const SVGAnnotationLayer = memo(({
     const isInPlaceEdit = isBeingEdited && EDIT_IN_PLACE_TYPES.includes(objTypeForEdit);
     const hideForEdit = isBeingEdited && !isInPlaceEdit && !isBboxEdit;
 
-    // Plan 15-04 Step 3 — when the currently-edited annotation is text, swap
-    // in a live-rendered version driven by Fabric's per-keystroke bounds+text
-    // payload. The filteredAnnotations useMemo renders from stored obj only;
-    // per-keystroke repaint happens here, so the memo doesn't churn on every
-    // letter typed.
-    if (isBeingEdited && TEXT_EDIT_TYPES.includes(objTypeForEdit) && liveTextEditBounds) {
-      renderElement = renderText(renderObj, i, liveTextEditBounds);
+    // UX 2026-04-20 (revised): SVG paints the text during edit AND view so
+    // the user sees one consistent rendering across both states — no weight
+    // or spacing jump on edit entry/exit. Fabric's glyphs are transparent
+    // in edit mode (FabricEditCanvas existing-text path), so only the caret
+    // and selection highlight come from Fabric. liveTextEditBounds feeds
+    // per-keystroke width/height/text so the SVG box grows with Fabric's
+    // wrap as the user types.
+    if (isBeingEdited && TEXT_EDIT_TYPES.includes(objTypeForEdit)) {
+      renderElement = renderText(renderObj, i, liveTextEditBounds || null, false);
     }
 
     return (
@@ -2018,19 +2029,44 @@ const SVGAnnotationLayer = memo(({
             const lineRotate = lineAngle !== 0
               ? `rotate(${lineAngle}, ${lineCx}, ${lineCy})`
               : undefined;
+            // UX 2026-04-20: curved lines / arrows need the hover glow and
+            // the invisible hit area to trace the bezier, not the straight
+            // chord between endpoints. Detect curve via the same 1-px
+            // hysteresis renderLine uses (distanceToLineSegment > 1) and
+            // fall back to a straight segment when the midpoint is within
+            // the threshold or absent.
+            const lineMidpoint = renderObj.data?.midpoint;
+            const lineIsCurved = !!lineMidpoint
+              && distanceToLineSegment(lineMidpoint, { x: ep.x1, y: ep.y1 }, { x: ep.x2, y: ep.y2 }) > 1;
+            const lineCurveD = lineIsCurved
+              ? getCurvedPath({ x: ep.x1, y: ep.y1 }, { x: ep.x2, y: ep.y2 }, lineMidpoint)
+              : null;
             return (
               <g transform={lineRotate}>
                 {/* Hover highlight along the line */}
                 {annotationIsHovered && (
-                  <line
-                    x1={ep.x1} y1={ep.y1} x2={ep.x2} y2={ep.y2}
-                    stroke="#4a90e2"
-                    strokeOpacity={0.4}
-                    strokeWidth={Math.max(6, (renderObj.strokeWidth || 2) + 4)}
-                    strokeLinecap="round"
-                    vectorEffect="non-scaling-stroke"
-                    style={{ pointerEvents: 'none' }}
-                  />
+                  lineIsCurved ? (
+                    <path
+                      d={lineCurveD}
+                      stroke="#4a90e2"
+                      strokeOpacity={0.4}
+                      strokeWidth={Math.max(6, (renderObj.strokeWidth || 2) + 4)}
+                      strokeLinecap="round"
+                      fill="none"
+                      vectorEffect="non-scaling-stroke"
+                      style={{ pointerEvents: 'none' }}
+                    />
+                  ) : (
+                    <line
+                      x1={ep.x1} y1={ep.y1} x2={ep.x2} y2={ep.y2}
+                      stroke="#4a90e2"
+                      strokeOpacity={0.4}
+                      strokeWidth={Math.max(6, (renderObj.strokeWidth || 2) + 4)}
+                      strokeLinecap="round"
+                      vectorEffect="non-scaling-stroke"
+                      style={{ pointerEvents: 'none' }}
+                    />
+                  )
                 )}
                 {/* UX: Phase 19 follow-up — arrow tool gets a glow that
                     follows the arrowhead's actual shape (triangle / V /
@@ -2095,25 +2131,42 @@ const SVGAnnotationLayer = memo(({
                       return null;
                   }
                 })()}
-                {/* Invisible thick line hit area */}
-                <line
-                  x1={ep.x1} y1={ep.y1} x2={ep.x2} y2={ep.y2}
-                  stroke="transparent"
-                  strokeWidth={Math.max(12, (renderObj.strokeWidth || 2) + 10)}
-                  strokeLinecap="round"
-                  vectorEffect="non-scaling-stroke"
-                  // UX: Plan 14-02 UX-01 — gate on isSelectTool (not
-                  // isInteractive) so click-to-select / hover / double-click
-                  // only fire in Select mode. Line/arrow/callout creation
-                  // tools flow their pointer events to handleSvgPointerDown
-                  // on the SVG root instead of re-selecting this existing
-                  // annotation mid-drag.
-                  pointerEvents={isSelectTool && isObjectInteractive ? 'stroke' : 'none'}
-                  onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
-                  onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
-                  onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
-                  onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
-                />
+                {/* Invisible thick hit area — path when curved so clicks
+                    along the bend register, line otherwise. */}
+                {lineIsCurved ? (
+                  <path
+                    d={lineCurveD}
+                    stroke="transparent"
+                    fill="none"
+                    strokeWidth={Math.max(12, (renderObj.strokeWidth || 2) + 10)}
+                    strokeLinecap="round"
+                    vectorEffect="non-scaling-stroke"
+                    pointerEvents={isSelectTool && isObjectInteractive ? 'stroke' : 'none'}
+                    onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
+                    onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
+                    onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
+                    onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
+                  />
+                ) : (
+                  <line
+                    x1={ep.x1} y1={ep.y1} x2={ep.x2} y2={ep.y2}
+                    stroke="transparent"
+                    strokeWidth={Math.max(12, (renderObj.strokeWidth || 2) + 10)}
+                    strokeLinecap="round"
+                    vectorEffect="non-scaling-stroke"
+                    // UX: Plan 14-02 UX-01 — gate on isSelectTool (not
+                    // isInteractive) so click-to-select / hover / double-click
+                    // only fire in Select mode. Line/arrow/callout creation
+                    // tools flow their pointer events to handleSvgPointerDown
+                    // on the SVG root instead of re-selecting this existing
+                    // annotation mid-drag.
+                    pointerEvents={isSelectTool && isObjectInteractive ? 'stroke' : 'none'}
+                    onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
+                    onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
+                    onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
+                    onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
+                  />
+                )}
               </g>
             );
           }
@@ -2959,6 +3012,75 @@ const SVGAnnotationLayer = memo(({
         // Border-flush types: handles sit directly on the shape's own stroke, no dashed bbox
         const objType = String(obj.type || '').toLowerCase();
         const isBorderFlush = objType === 'text' || objType === 'textbox' || objType === 'i-text' || objType === 'rect';
+
+        // UX 2026-04-20: polygon / polyline single-click shows one grab dot
+        // per vertex (the shape's proprietary handles), NOT the default
+        // dashed-box overlay. Double-click (bbox edit mode) keeps the
+        // uniform resize + rotate chrome per the handoff contract.
+        const isPolyShape = (objType === 'polygon' || objType === 'polyline')
+          && Array.isArray(obj.points) && obj.points.length > 0;
+        const polyInBboxMode = isPolyShape && isBeingEditedNow && editingAnnotationEditType === 'bbox';
+        if (isPolyShape && !polyInBboxMode) {
+          const pLeft = obj.left ?? 0;
+          const pTop = obj.top ?? 0;
+          const pAngle = obj.angle ?? 0;
+          const pScaleX = obj.scaleX ?? 1;
+          const pScaleY = obj.scaleY ?? 1;
+          const pPathOffsetX = obj.pathOffset?.x || 0;
+          const pPathOffsetY = obj.pathOffset?.y || 0;
+          const pxs = obj.points.map((p) => Number(p?.x) || 0);
+          const pys = obj.points.map((p) => Number(p?.y) || 0);
+          const pRawCx = (Math.min(...pxs) + Math.max(...pxs)) / 2;
+          const pRawCy = (Math.min(...pys) + Math.max(...pys)) / 2;
+          const pRotCenterX = pScaleX * (pRawCx - pPathOffsetX);
+          const pRotCenterY = pScaleY * (pRawCy - pPathOffsetY);
+          const radP = (pAngle * Math.PI) / 180;
+          const cosP = Math.cos(radP);
+          const sinP = Math.sin(radP);
+          // Replicate renderPolygon transform chain per-point to get each
+          // vertex's world position: translate → rotate → scale → pathOffset.
+          const worldPoints = obj.points.map((p) => {
+            const lx = (Number(p?.x) || 0) - pPathOffsetX;
+            const ly = (Number(p?.y) || 0) - pPathOffsetY;
+            const sx = lx * pScaleX;
+            const sy = ly * pScaleY;
+            const dx = sx - pRotCenterX;
+            const dy = sy - pRotCenterY;
+            const rx = pRotCenterX + dx * cosP - dy * sinP;
+            const ry = pRotCenterY + dx * sinP + dy * cosP;
+            return { x: pLeft + rx, y: pTop + ry };
+          });
+          // Dampened inverse scale mirrors SVGSelectionOverlay + endpoint
+          // handles so vertex dots feel proportional across zoom levels.
+          const vHandleIs = Math.sqrt(inverseScale);
+          const vHandleR = 6 * vHandleIs;
+          const vHandleStyle = {
+            filter: `drop-shadow(0 ${1 * vHandleIs}px ${3 * vHandleIs}px rgba(0,0,0,0.15))`,
+            cursor: 'grab',
+            pointerEvents: 'auto',
+          };
+          return (
+            <g key={`selection-wrapper-${selectedIndex}`} transform={overlayTransform}>
+              {worldPoints.map((wp, i) => (
+                <circle
+                  key={`vertex-${i}`}
+                  cx={wp.x}
+                  cy={wp.y}
+                  r={vHandleR}
+                  fill="#ffffff"
+                  stroke="#4a90e2"
+                  strokeWidth={1.5}
+                  vectorEffect="non-scaling-stroke"
+                  style={vHandleStyle}
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    handleHandlePointerDown(e, `vertex-${i}`);
+                  }}
+                />
+              ))}
+            </g>
+          );
+        }
 
         return (
           <g key={`selection-wrapper-${selectedIndex}`} transform={overlayTransform}>

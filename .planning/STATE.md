@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
-status: Plans 15-01 + 15-02 + 15-03 all shipped. Plan 15-02 landed 14 passing unit tests against buildLineRenderSpec + buildArrowheadRenderSpec, rewrote renderLine as a thin wrapper, exported renderArrowhead. Straight branch byte-identical to pre-Phase-15. 181/182 npm test baseline preserved.
-stopped_at: Completed 15-03-PLAN.md — Wave 1 interaction layer (midpoint handle + drag mode + endpoint auto-revert); Phase 15 functionally complete (3/3 plans)
-last_updated: "2026-04-17T01:24:01.254Z"
-last_activity: "2026-04-17 — Plan 15-02 executed (3 tasks, 3 commits: bcdcce4d / 8d9fc424 / final-docs-commit)"
+status: Phase 15 closed (reconciliation 2026-04-19). Phase 16 closed as "Editing UX Cleanup" on 2026-04-20 — original curvature pill scope scrapped by user on preview; phase redirected to shipping callout glow, handles-during-edit, cursor/glyph alignment on wrapped lines, auto-delete of blank callouts, border restore on commit, and text-edit paint parity between view and edit (SVG paints both, Fabric transparent during edit, foreignObject re-key to work around a Chromium inner-HTML reflow bug). Ready to move on.
+stopped_at: Phase 16 closed with reconciliation. Next — pick next phase or dip into the feature backlog (prop-flip wins available: print, clickable links, fillable form fields, native Open/Export menu items).
+last_updated: "2026-04-20T18:50:00.000Z"
+last_activity: "2026-04-20 — Phase 16 redirected + closed. SVG-paints-during-edit restored. Chromium foreignObject re-key workaround + font-smoothing removal shipped. Callout live-bounds broadcast wired."
 progress:
   total_phases: 6
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 8
   completed_plans: 8
-  percent: 88
+  percent: 95
 ---
 
 # Project State
@@ -143,8 +143,8 @@ Progress: [█████████░] 88% (v2.3: 7/8 plans complete across 
 
 ## Session Continuity
 
-Last session: 2026-04-17T01:24:01.250Z
-Stopped at: Completed 15-03-PLAN.md — Wave 1 interaction layer (midpoint handle + drag mode + endpoint auto-revert); Phase 15 functionally complete (3/3 plans)
+Last session: 2026-04-17T (resume)
+Stopped at: Session resumed — routing to Phase 15 UAT #1 callout-edit-parity debug. See `.planning/phases/15-line-arrow-curvature-arrowhead-styles/.continue-here.md` for next action (Issues 3b + 4 still broken, diagnostic logging to be added).
 
 ### Resume instructions for the next session (read carefully)
 

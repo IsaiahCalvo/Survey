@@ -939,6 +939,29 @@ const dumpCursorParity = (phase, source, id, fabricObj, svgEl, canvas, container
       // stalled; match means the bug is visual (z-order / opacity / clip).
       svgTextContent: (typeof svgEl.textContent === 'string') ? svgEl.textContent : null,
       svgTextContentLen: (typeof svgEl.textContent === 'string') ? svgEl.textContent.length : null,
+      // UX diag 2026-04-20: stacking-order probe. Sample the DOM at several
+      // vertical points inside the text rect (25%, 50%, 75%, 95%). For each
+      // point report the topmost 3 elements — if any of them is not the SVG
+      // text layer, that's the thing visually hiding the letters.
+      stackAtPoints: (() => {
+        const r = svgEl.getBoundingClientRect();
+        if (!r || r.width === 0 || r.height === 0) return null;
+        const cx = r.left + r.width / 2;
+        const samples = {};
+        for (const frac of [0.05, 0.25, 0.5, 0.75, 0.95]) {
+          const y = r.top + r.height * frac;
+          const els = (typeof document.elementsFromPoint === 'function')
+            ? document.elementsFromPoint(cx, y).slice(0, 4)
+            : [];
+          samples[`f${Math.round(frac * 100)}`] = els.map((e) => ({
+            tag: e.tagName,
+            cls: (e.className && typeof e.className === 'string') ? e.className.slice(0, 40) : '',
+            id: e.id || '',
+            dataPart: e.getAttribute?.('data-callout-part') || e.getAttribute?.('data-annotation-text-bounds') || '',
+          }));
+        }
+        return samples;
+      })(),
     } : null;
     const containerDump = containerEl ? {
       rect: (() => { const r = containerEl.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; })(),
@@ -1143,6 +1166,12 @@ const FabricEditCanvas = memo(({
       const orig = originalAnnotationRef.current;
       if (orig.fill !== undefined) json.fill = orig.fill;
       if (orig.stroke !== undefined) json.stroke = orig.stroke;
+      // UX 2026-04-20: edit-time strokeWidth is pinned to 0 so the Fabric
+      // cursor layout isn't nudged by a fake half-stroke offset. Restore
+      // the stored strokeWidth on commit so the visible border comes back
+      // after the user finishes typing. Without this, committing a plain
+      // text box leaves it borderless even if the import had a border.
+      if (orig.strokeWidth !== undefined) json.strokeWidth = orig.strokeWidth;
     }
     console.log(`[EditCanvas] COMMIT pre-convert — text="${(json.text||'').slice(0,20)}" fontSize=${json.fontSize} width=${json.width} height=${json.height} scaleX=${json.scaleX} scaleY=${json.scaleY} left=${json.left} top=${json.top} isNewText=${isNewText}`);
 
@@ -1747,6 +1776,13 @@ const FabricEditCanvas = memo(({
         c.style.outline = 'none';
         c.style.outlineOffset = '0';
         c.style.backgroundColor = 'transparent';
+        // UX 2026-04-20: mix-blend-mode multiply forces the Fabric canvas to
+        // composite per-pixel with whatever SVG is behind it. Without this,
+        // Chromium treats a resized canvas element as an opaque backdrop in
+        // some GPU paths, covering SVG lines that grew past the canvas's
+        // original height. Multiply keeps transparent pixels transparent and
+        // lets the blue cursor still show through (cursor × white = cursor).
+        c.style.mixBlendMode = 'multiply';
         // Sync React state so future re-renders don't revert visibility
         setContainerStyle(prev => ({
           ...prev,
@@ -1756,6 +1792,7 @@ const FabricEditCanvas = memo(({
           outline: 'none',
           outlineOffset: '0',
           backgroundColor: 'transparent',
+          mixBlendMode: 'multiply',
         }));
         setIsLoading(false);
       });
@@ -1885,21 +1922,22 @@ const FabricEditCanvas = memo(({
             textBackgroundColor: '',
             hasBorders: false,
             hasControls: false,
-            // Plan 15-04 Step 2 — Hide Fabric's rendered glyphs + stroke while
-            // editing so the SVG text underneath is the visible truth. The
-            // caret still paints via renderCursor. Originals are restored in
-            // commitAndClose from originalAnnotationRef before persisting.
+            // UX 2026-04-20 (revised): Fabric's glyphs paint transparent
+            // during edit so the SVG renderer below is the single visible
+            // source of truth in BOTH view and edit states. Canvas 2D and
+            // DOM text rasterize differently on macOS (Canvas is slightly
+            // bolder and tighter than CSS-smoothed DOM text), so when
+            // Fabric's glyphs were visible during edit the user saw a
+            // weight/spacing jump on edit entry/exit. SVG paints every
+            // frame via the liveBounds broadcast below, so letters stay
+            // visible under the caret without the paint mismatch. The
+            // prior invisible-lines-past-imported-height problem that
+            // forced this back to visible-Fabric was caused by a
+            // percentage-height bug on the SVG foreignObject container —
+            // fixed separately this session (the inner div now tracks the
+            // live-growing bounds in explicit pixels).
             fill: 'rgba(0,0,0,0)',
             stroke: 'rgba(0,0,0,0)',
-            // UX 2026-04-20: force strokeWidth to 0 during edit so Fabric's
-            // internal text/cursor layout isn't shifted by half the stroke
-            // thickness. The plain-text annotation edit path uses
-            // strokeWidth: 1; callouts arrive from the adapter with
-            // strokeWidth ≈ 1.4 which offsets the cursor ~0.7 px and drifts
-            // the alignment the user reported. Zero keeps cursor and SVG
-            // glyphs in lockstep; commit restores the visible border via
-            // the SVG layer's rect (adapter-side strokeWidth is preserved
-            // for non-editing paint).
             strokeWidth: 0,
           });
         }
@@ -2025,6 +2063,17 @@ const FabricEditCanvas = memo(({
           c.style.outline = 'none';
           c.style.outlineOffset = '0';
           c.style.backgroundColor = 'transparent';
+          // UX 2026-04-20: Fabric canvas sits on top of the live SVG text
+          // during edit. Even with a transparent Fabric fill/stroke the
+          // canvas element is opaque to color-mixing on some GPU paths,
+          // so the area beyond the imported height occluded the SVG
+          // letters that the renderer had already grown into place.
+          // Collapsing the canvas backdrop with mix-blend-mode 'multiply'
+          // lets anything pure white (what the bare canvas is) dissolve
+          // into the layer beneath, so the SVG text shows through
+          // everywhere while the cursor (painted with a solid color via
+          // renderCursor) still lands on the page.
+          c.style.mixBlendMode = 'multiply';
           setContainerStyle(prev => ({
             ...prev,
             width: neededW,
@@ -2033,6 +2082,7 @@ const FabricEditCanvas = memo(({
             outline: 'none',
             outlineOffset: '0',
             backgroundColor: 'transparent',
+            mixBlendMode: 'multiply',
           }));
           setIsLoading(false);
         });
@@ -2538,9 +2588,21 @@ const FabricEditCanvas = memo(({
           // commitAndClose before persisting.
           const objTypeLc = String(obj.type || '').toLowerCase();
           if (objTypeLc === 'textbox' || objTypeLc === 'i-text' || objTypeLc === 'text') {
+            // UX 2026-04-20 (revised): Fabric's letters paint transparent
+            // during callout edit so the SVG callout renderer is the
+            // single visible source of truth in both view and edit. Canvas
+            // 2D and SVG foreignObject DOM text rasterize differently on
+            // macOS, so showing Fabric's glyphs made the user see a
+            // weight/spacing jump on edit entry/exit. SVG paints live via
+            // liveCalloutEditBounds so letters stay visible as the user
+            // types. The invisible-lines-past-imported-height issue that
+            // forced this back to visible-Fabric was caused by a
+            // percentage-height bug on the foreignObject container; that
+            // bug was fixed separately this session.
             obj.set({
               fill: 'rgba(0,0,0,0)',
               stroke: 'rgba(0,0,0,0)',
+              strokeWidth: 0,
             });
           }
         } else {
@@ -2582,9 +2644,38 @@ const FabricEditCanvas = memo(({
           : null;
         dumpCursorParity('enter', 'callout', reactCalloutId || null, textChild, findSvg(), canvas, containerRef.current);
         if (textChild) {
+          // UX 2026-04-20 (revised): broadcast live textbox bounds on every
+          // keystroke so the SVG callout renderer (which is now the single
+          // visible source of truth during edit) can grow the box and
+          // repaint the typed text in real time. Payload matches
+          // renderCallout's liveBounds contract (page-space left/top/width/
+          // height/text). Without this, the SVG callout would freeze on the
+          // pre-edit text while Fabric's cursor blinks over transparent
+          // glyphs.
+          const broadcastCalloutBounds = () => {
+            if (!onLiveTextGrow) return;
+            const innerW = (textChild.width || 0) * (textChild.scaleX || 1);
+            const innerH = textChild.calcTextHeight
+              ? textChild.calcTextHeight()
+              : (textChild.height || 0) * (textChild.scaleY || 1);
+            onLiveTextGrow({
+              left: textChild.left || 0,
+              top: textChild.top || 0,
+              width: innerW,
+              height: innerH,
+              text: textChild.text || '',
+              textLines: Array.isArray(textChild._textLines)
+                ? textChild._textLines.map(l => Array.isArray(l) ? l.join('') : String(l))
+                : null,
+              fontSize: textChild.fontSize,
+              lineHeight: textChild.lineHeight,
+            });
+          };
+          broadcastCalloutBounds();
           textChild.on('changed', () => {
             if (!mountedRef.current) return;
             dumpCursorParity('keystroke', 'callout', reactCalloutId || null, textChild, findSvg(), canvas, containerRef.current);
+            broadcastCalloutBounds();
           });
           textChild.on('selection:changed', () => {
             if (!mountedRef.current) return;
