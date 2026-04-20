@@ -311,22 +311,22 @@ export const renderLine = (obj, index) => {
   const key = `${isArrow ? 'arrow' : 'line'}-${obj.id || index}`;
   const opacity = obj.opacity ?? 1;
 
-  // UX 2026-04-20: apply obj.angle as a rotation wrapper around the line's
-  // geometric midpoint. Deriving the center from the actual rendered
-  // endpoints (via the spec the renderer is about to draw) handles both
-  // storage conventions — Fabric-constructed lines with left/top/width/
-  // height + offset-from-center x1..y2, AND PDF-imported lines with left/
-  // top/width/height undefined and absolute x1..y2. The prior `obj.left +
-  // obj.width/2` formula collapsed to (0,0) on imported lines, which made
-  // them spin around the page origin and visually disappear on rotate.
+  // UX 2026-04-20: rotate around the CURVE-INCLUSIVE BBOX CENTER. Matches
+  // what the user perceives as "the middle of the selection frame" for
+  // both straight and curved lines, and it is the same pivot the
+  // SVGSelectionOverlay uses by default, the resize math uses for its
+  // rotation-aware anchor projection, and (with compensation) the
+  // endpoint + midpoint drag handlers use to keep the non-dragged
+  // points pinned in world. Curve extrema are included so a bent line
+  // pivots around the visual center of the bent shape instead of the
+  // straight chord midpoint, otherwise the selection frame would
+  // rotate around a point noticeably off-center to the user. Derived
+  // from getLineEndpoints so both Fabric-constructed and PDF-imported
+  // line storage conventions resolve to the correct absolute points.
   const angle = obj.angle ?? 0;
   let rotateTransform;
+  let pivotDiag = null;
   if (angle !== 0) {
-    // UX 2026-04-20: rotate around the bbox CENTER (endpoints + curve
-    // extrema when the line is bent). Matches getLineBBox exactly so the
-    // live-drag wrapper and the rendered shape pivot around the same point
-    // — no jump on release. For a straight line the bbox center equals the
-    // endpoint midpoint, so this reduces to the prior behavior.
     const rawEp = getLineEndpoints(obj);
     const midPt = obj.data?.midpoint;
     const bxs = [rawEp.x1, rawEp.x2];
@@ -354,7 +354,52 @@ export const renderLine = (obj, index) => {
     const cx = (Math.min(...bxs) + Math.max(...bxs)) / 2;
     const cy = (Math.min(...bys) + Math.max(...bys)) / 2;
     rotateTransform = `rotate(${angle}, ${cx}, ${cy})`;
+    pivotDiag = { angle, cx, cy };
   }
+
+  // UX 2026-04-20 diag: emit the renderer's choice of pivot + spec kind
+  // + arrowhead presence per line render, throttled ~6x/sec per object
+  // via the same clock used by getLineBBox. Pairs with [LineBboxDiag]
+  // so the user can hand back one log slice and we can see whether the
+  // render pivot and the selection-bbox pivot agreed at that moment —
+  // the common source of frame-vs-shape drift.
+  try {
+    const nowMs = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    if (!renderLine._lastLog) renderLine._lastLog = new Map();
+    const rid = obj && obj.id != null ? obj.id : (obj ? obj : null);
+    const keyForMap = rid ?? `idx:${index}`;
+    const last = renderLine._lastLog.get(keyForMap) || 0;
+    if (nowMs - last >= 150) {
+      renderLine._lastLog.set(keyForMap, nowMs);
+      const payload = {
+        ts: new Date().toISOString(),
+        objId: obj?.id ?? null,
+        index,
+        objType: obj?.type ?? null,
+        tool: obj?.tool ?? null,
+        isArrow,
+        angle,
+        hasMidpoint: !!obj?.data?.midpoint,
+        dataMidpoint: obj?.data?.midpoint ? { x: obj.data.midpoint.x, y: obj.data.midpoint.y } : null,
+        storageSnapshot: {
+          left: obj?.left ?? null,
+          top: obj?.top ?? null,
+          width: obj?.width ?? null,
+          height: obj?.height ?? null,
+          x1: obj?.x1 ?? null,
+          y1: obj?.y1 ?? null,
+          x2: obj?.x2 ?? null,
+          y2: obj?.y2 ?? null,
+        },
+        specKind: spec?.kind ?? null,
+        specLine: spec?.line ? { x1: spec.line.x1, y1: spec.line.y1, x2: spec.line.x2, y2: spec.line.y2 } : null,
+        specArrowheadKind: spec?.arrowhead?.kind ?? null,
+        rotationApplied: !!rotateTransform,
+        pivotDiag,
+      };
+      console.log('[LineBboxDiag] renderLine ' + JSON.stringify(payload));
+    }
+  } catch (err) { /* swallow diag errors */ }
 
   if (spec.kind === 'curved') {
     // UX: Curved line/arrow — <path> + optional arrowhead inside <g>.

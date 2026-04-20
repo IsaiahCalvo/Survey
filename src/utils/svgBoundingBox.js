@@ -8,6 +8,31 @@
  * Phase 9 Plan 01: Selection foundation utilities.
  */
 
+// UX 2026-04-20 diag: per-object throttle for [LineBboxDiag] console.log
+// emission from getLineBBox. Rendering can call getLineBBox dozens of times
+// per frame (render loop, hover, selection overlay, hit test), so a naive
+// log-on-every-call floods the 5000-line console buffer and pushes the
+// signal off the end. Key by obj.id (falls back to a WeakMap for anon
+// objects) with a 150ms cadence so each distinct line emits ~6x/second.
+const __lineBboxLogState = { idMap: new Map(), refMap: new WeakMap() };
+function __lineBboxShouldLog(obj) {
+  const nowMs = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+  const id = obj && obj.id;
+  if (id != null) {
+    const last = __lineBboxLogState.idMap.get(id) || 0;
+    if (nowMs - last < 150) return false;
+    __lineBboxLogState.idMap.set(id, nowMs);
+    return true;
+  }
+  if (obj) {
+    const last = __lineBboxLogState.refMap.get(obj) || 0;
+    if (nowMs - last < 150) return false;
+    __lineBboxLogState.refMap.set(obj, nowMs);
+    return true;
+  }
+  return false;
+}
+
 /**
  * Compute the bounding box of a single Fabric.js JSON annotation object.
  * Handles all annotation types: path, rect, line, group (arrow),
@@ -186,6 +211,46 @@ export function getLineEndpoints(obj) {
   };
 }
 
+/**
+ * UX 2026-04-20: curve-inclusive bbox center for lines/arrows. This is
+ * the shared rotation pivot used by renderLine's rotation wrapper, the
+ * SVGSelectionOverlay's default rotate transform, the hit area + hover
+ * glow wrapper, the single-click handle wrapper, and the endpoint +
+ * midpoint drag compensation in useSVGInteraction. Pass absolute
+ * endpoint coords (from getLineEndpoints) and the absolute midpoint
+ * from obj.data.midpoint (or null for straight lines). Returns {x, y}.
+ * Matches the min/max logic in getLineBBox exactly — if you edit one,
+ * edit the other.
+ */
+export function computeLineBboxCenter(ep, midpoint) {
+  const xs = [ep.x1, ep.x2];
+  const ys = [ep.y1, ep.y2];
+  if (midpoint) {
+    const Cx = 2 * midpoint.x - 0.5 * ep.x1 - 0.5 * ep.x2;
+    const Cy = 2 * midpoint.y - 0.5 * ep.y1 - 0.5 * ep.y2;
+    const denomX = ep.x1 - 2 * Cx + ep.x2;
+    const denomY = ep.y1 - 2 * Cy + ep.y2;
+    if (Math.abs(denomX) > 1e-9) {
+      const tx = (ep.x1 - Cx) / denomX;
+      if (tx > 0 && tx < 1) {
+        const o = 1 - tx;
+        xs.push(o * o * ep.x1 + 2 * o * tx * Cx + tx * tx * ep.x2);
+      }
+    }
+    if (Math.abs(denomY) > 1e-9) {
+      const ty = (ep.y1 - Cy) / denomY;
+      if (ty > 0 && ty < 1) {
+        const o = 1 - ty;
+        ys.push(o * o * ep.y1 + 2 * o * ty * Cy + ty * ty * ep.y2);
+      }
+    }
+  }
+  return {
+    x: (Math.min(...xs) + Math.max(...xs)) / 2,
+    y: (Math.min(...ys) + Math.max(...ys)) / 2,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Internal bbox helpers per annotation type
 // ---------------------------------------------------------------------------
@@ -279,24 +344,184 @@ function getLineBBox(obj) {
   const x2 = centerX + (obj.x2 ?? 0);
   const y2 = centerY + (obj.y2 ?? 0);
 
-  let width = Math.abs(x2 - x1);
-  let height = Math.abs(y2 - y1);
+  // UX 2026-04-20: include the curve's true extent when the line is bent.
+  // A quadratic bezier through start/midpoint/end has control C =
+  // 2·midpoint - 0.5·start - 0.5·end. The curve's axis-aligned extrema in
+  // X and Y are at t = (S - C) / (S - 2C + E) when that ratio lies in
+  // (0, 1); evaluate B(t) there to get the extremum coordinate. Including
+  // those alongside start/end gives a tight bbox that wraps the arc. Using
+  // the pass-through midpoint alone misses the case where the curve bulges
+  // past it before reaching the end.
+  const mid = obj.data?.midpoint;
+  const xs = [x1, x2];
+  const ys = [y1, y2];
+  // UX 2026-04-20 diag: capture the full curve-extrema derivation so the
+  // user can share a log and we can see exactly which inputs produced the
+  // frame's oversize. Populated only when the line is curved; left null
+  // otherwise so the log payload stays compact for straight-line calls.
+  let curveDiag = null;
+  if (mid) {
+    const Cx = 2 * mid.x - 0.5 * x1 - 0.5 * x2;
+    const Cy = 2 * mid.y - 0.5 * y1 - 0.5 * y2;
+    const denomX = x1 - 2 * Cx + x2;
+    const denomY = y1 - 2 * Cy + y2;
+    let txVal = null, tyVal = null, extremumXVal = null, extremumYVal = null;
+    let txInRange = false, tyInRange = false;
+    if (Math.abs(denomX) > 1e-9) {
+      const tx = (x1 - Cx) / denomX;
+      txVal = tx;
+      if (tx > 0 && tx < 1) {
+        const one = 1 - tx;
+        extremumXVal = one * one * x1 + 2 * one * tx * Cx + tx * tx * x2;
+        xs.push(extremumXVal);
+        txInRange = true;
+      }
+    }
+    if (Math.abs(denomY) > 1e-9) {
+      const ty = (y1 - Cy) / denomY;
+      tyVal = ty;
+      if (ty > 0 && ty < 1) {
+        const one = 1 - ty;
+        extremumYVal = one * one * y1 + 2 * one * ty * Cy + ty * ty * y2;
+        ys.push(extremumYVal);
+        tyInRange = true;
+      }
+    }
+    curveDiag = {
+      midpoint: { x: mid.x, y: mid.y },
+      controlPoint: { Cx, Cy },
+      denomX, denomY,
+      tx: txVal, ty: tyVal,
+      txInRange, tyInRange,
+      extremumX: extremumXVal, extremumY: extremumYVal,
+    };
+  }
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
 
-  // Ensure minimum hittable area for thin lines
-  if (width < 10) width = 10;
-  if (height < 10) height = 10;
+  // UX 2026-04-20: TIGHT min..max bbox that hugs the real geometry (end-
+  // points + curve extrema). The selection frame stays glued to the
+  // visible shape through rotation via a SEPARATE rotation-pivot prop
+  // passed to SVGSelectionOverlay — see SVGAnnotationLayer.overlayMount
+  // where the line overlay receives rotationCenter = endpoint midpoint.
+  // Earlier symmetric-padding revision (2026-04-20 19:15) centered the
+  // bbox on the endpoint midpoint so the overlay's built-in pivot
+  // (bbox.left+bbox.width/2, bbox.top+bbox.height/2) happened to match,
+  // but it produced ~75 px of empty space on the side opposite a curve
+  // bulge (log evidence: hasMidpoint=true case had bottomSideHalfH=27 vs
+  // topSideHalfH=103, adding 75 px of bottom padding). Tight wrap + an
+  // explicit pivot override gives both: frame hugs geometry AND rotates
+  // around the same point as the visible shape.
+  const midX = (x1 + x2) / 2;
+  const midY = (y1 + y2) / 2;
+  // Enforce a 10-px minimum on the tight bounds themselves so near-
+  // horizontal / near-vertical straight lines still have a grabbable
+  // resize handle strip. Symmetric expansion around the endpoint
+  // midpoint keeps the frame centered on its rotation pivot for the
+  // (common) straight-line case; curved cases rely on the external
+  // rotationCenter prop.
+  let resultLeft = minX;
+  let resultTop = minY;
+  let resultWidth = Math.max(maxX - minX, 0);
+  let resultHeight = Math.max(maxY - minY, 0);
+  if (resultWidth < 10) {
+    resultLeft = midX - 5;
+    resultWidth = 10;
+  }
+  if (resultHeight < 10) {
+    resultTop = midY - 5;
+    resultHeight = 10;
+  }
+
+  const result = {
+    left: resultLeft,
+    top: resultTop,
+    width: resultWidth,
+    height: resultHeight,
+    angle: obj.angle ?? 0,
+  };
+
+  // UX 2026-04-20 diag: dump every input and every intermediate that
+  // affects the returned bbox. Use a single JSON.stringify so the Save
+  // Log + grep-one-prefix workflow lands all fields on one line per
+  // event. Emission is throttled per-object (~6x/sec) to keep the 5000-
+  // line buffer from overflowing under live drag. Fields chosen so the
+  // user can paste one log entry back and we can tell (a) whether the
+  // frame is visually oversized because the raw curve extrema push it
+  // out, (b) because the endpoint-midpoint symmetry pad inflates it on
+  // the non-bulge side, or (c) because midpoint storage is unexpected.
+  if (__lineBboxShouldLog(obj)) {
+    try {
+      const tightLeft = minX;
+      const tightTop = minY;
+      const tightWidth = Math.max(1, maxX - minX);
+      const tightHeight = Math.max(1, maxY - minY);
+      const payload = {
+        ts: new Date().toISOString(),
+        objId: obj.id ?? null,
+        objType: obj.type ?? null,
+        tool: obj.tool ?? null,
+        objSnapshot: {
+          left: obj.left ?? null,
+          top: obj.top ?? null,
+          width: obj.width ?? null,
+          height: obj.height ?? null,
+          x1: obj.x1 ?? null,
+          y1: obj.y1 ?? null,
+          x2: obj.x2 ?? null,
+          y2: obj.y2 ?? null,
+          angle: obj.angle ?? 0,
+          hasMidpoint: !!mid,
+          dataMidpoint: mid ? { x: mid.x, y: mid.y } : null,
+        },
+        centerFromStorage: { x: centerX, y: centerY },
+        absoluteEndpoints: { x1, y1, x2, y2 },
+        endpointMidpoint: { x: midX, y: midY },
+        chordLength: Math.hypot(x2 - x1, y2 - y1),
+        curveDiag,
+        extremaPool: { xs: xs.slice(), ys: ys.slice() },
+        tightBounds: { minX, maxX, minY, maxY },
+        tightBBox: { left: tightLeft, top: tightTop, width: tightWidth, height: tightHeight },
+        tightCenter: { x: tightLeft + tightWidth / 2, y: tightTop + tightHeight / 2 },
+        symmetricHalfExtents: { halfW, halfH },
+        symmetricHalfComponents: {
+          leftSideHalfW: midX - minX,
+          rightSideHalfW: maxX - midX,
+          topSideHalfH: midY - minY,
+          bottomSideHalfH: maxY - midY,
+        },
+        returnedBBox: result,
+        returnedCenter: { x: result.left + result.width / 2, y: result.top + result.height / 2 },
+        oversizeVsTight: {
+          extraWidth: result.width - tightWidth,
+          extraHeight: result.height - tightHeight,
+          leftPadAdded: tightLeft - result.left,
+          rightPadAdded: (result.left + result.width) - (tightLeft + tightWidth),
+          topPadAdded: tightTop - result.top,
+          bottomPadAdded: (result.top + result.height) - (tightTop + tightHeight),
+        },
+        pivotsMatch: {
+          tightCenterEqualsEndpointMid:
+            Math.abs(tightLeft + tightWidth / 2 - midX) < 0.01
+            && Math.abs(tightTop + tightHeight / 2 - midY) < 0.01,
+          returnedCenterEqualsEndpointMid:
+            Math.abs(result.left + result.width / 2 - midX) < 0.01
+            && Math.abs(result.top + result.height / 2 - midY) < 0.01,
+        },
+      };
+      console.log('[LineBboxDiag] getLineBBox ' + JSON.stringify(payload));
+    } catch (err) {
+      console.warn('[LineBboxDiag] getLineBBox log failed', err);
+    }
+  }
 
   // UX 2026-04-20: pass through obj.angle so the selection overlay rotates
   // its dashed frame + handles around the line's center. Rotation is stored
   // live on the object (not baked into endpoints) so the tilted frame stays
   // tilted after release — matches polygon/polyline behavior.
-  return {
-    left: Math.min(x1, x2),
-    top: Math.min(y1, y2),
-    width,
-    height,
-    angle: obj.angle ?? 0,
-  };
+  return result;
 }
 
 function getGroupArrowBBox(obj) {

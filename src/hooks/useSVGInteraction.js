@@ -10,7 +10,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { screenToSVG, normalizeAngle, getInverseScale, constrainToPage, snapAngleToNearest45 } from '../utils/svgTransformMath';
-import { getAnnotationBBox, getGroupBBox, getLineEndpoints, isImportedPath, translatePathData, scalePathData } from '../utils/svgBoundingBox';
+import { getAnnotationBBox, getGroupBBox, getLineEndpoints, computeLineBboxCenter, isImportedPath, translatePathData, scalePathData } from '../utils/svgBoundingBox';
 // Phase 15 LINE-01/02/03 + ARROW-01/02/03 — midpoint drag mode + endpoint
 // auto-revert on collinear geometry. Pure-math from lineGeometry, drag
 // helpers from lineDragMath (unit-tested in tests/lineDragMath.test.mjs).
@@ -711,53 +711,212 @@ export function useSVGInteraction({
         affectedIds: new Set(Object.keys(ds.groupOriginals).map(Number)),
       });
       setInteractionState('dragging');
+    } else if (ds.mode === 'vertex') {
+      // UX 2026-04-20: polygon / polyline per-vertex drag. Invert the
+      // polygon's transform chain (translate → rotate → scale → pathOffset)
+      // so the pointer's world position maps back to the local-space point
+      // we store in obj.points. Only the one point being dragged is
+      // rewritten; the others stay frozen at their captured values.
+      const { left, top, angle, scaleX, scaleY, pathOffsetX, pathOffsetY } = ds.originalProps;
+      const pxs = ds.originalPoints.map((p) => p.x);
+      const pys = ds.originalPoints.map((p) => p.y);
+      const oldRawCx = (Math.min(...pxs) + Math.max(...pxs)) / 2;
+      const oldRawCy = (Math.min(...pys) + Math.max(...pys)) / 2;
+      const oldRotCx = scaleX * (oldRawCx - pathOffsetX);
+      const oldRotCy = scaleY * (oldRawCy - pathOffsetY);
+      const rad = (angle * Math.PI) / 180;
+      const cosA = Math.cos(rad);
+      const sinA = Math.sin(rad);
+      // Step 1: subtract translate(left, top)
+      const w1x = svgPoint.x - left;
+      const w1y = svgPoint.y - top;
+      // Step 2: un-rotate around old rotation center by -angle
+      const ox = w1x - oldRotCx;
+      const oy = w1y - oldRotCy;
+      const w2x = oldRotCx + ox * cosA + oy * sinA;
+      const w2y = oldRotCy - ox * sinA + oy * cosA;
+      // Step 3: un-scale
+      const sxSafe = scaleX || 1;
+      const sySafe = scaleY || 1;
+      const w3x = w2x / sxSafe;
+      const w3y = w2y / sySafe;
+      // Step 4: re-apply pathOffset to get local point coord
+      const localX = w3x + pathOffsetX;
+      const localY = w3y + pathOffsetY;
+
+      const newPoints = ds.originalPoints.map((p) => ({ x: p.x, y: p.y }));
+      newPoints[ds.vertexIndex] = { x: localX, y: localY };
+
+      // UX 2026-04-20: keep the world rotation pivot anchored when a vertex
+      // moves on a ROTATED polygon. The renderer re-derives rotCenter from
+      // obj.points on every render, so moving one vertex shifts the shape's
+      // bbox centroid — which pulls the rotation pivot with it and drifts
+      // the un-moved vertices. Compensate obj.left / obj.top so the world
+      // rotation pivot stays fixed: delta_t = R(angle)*delta_rc - delta_rc.
+      // At angle=0 this reduces to no shift (R is identity). For rotated
+      // shapes it cancels out the pivot drift.
+      const nxs = newPoints.map((p) => p.x);
+      const nys = newPoints.map((p) => p.y);
+      const newRawCx = (Math.min(...nxs) + Math.max(...nxs)) / 2;
+      const newRawCy = (Math.min(...nys) + Math.max(...nys)) / 2;
+      const newRotCx = scaleX * (newRawCx - pathOffsetX);
+      const newRotCy = scaleY * (newRawCy - pathOffsetY);
+      const drcX = newRotCx - oldRotCx;
+      const drcY = newRotCy - oldRotCy;
+      const rotatedDrcX = drcX * cosA - drcY * sinA;
+      const rotatedDrcY = drcX * sinA + drcY * cosA;
+      const newLeft = left + rotatedDrcX - drcX;
+      const newTop = top + rotatedDrcY - drcY;
+
+      const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
+      const targetObj = updatedAnnotations.objects[ds.annotationIndex];
+      targetObj.points = newPoints;
+      targetObj.left = newLeft;
+      targetObj.top = newTop;
+      onSaveAnnotations(updatedAnnotations, {
+        source: 'object:modified',
+        action: 'vertex-move',
+        checkpointPolicy: 'skip',
+      });
+      setInteractionState('dragging');
     } else if (ds.mode === 'endpoint') {
-      // Line/arrow endpoint drag — compute new absolute position for the dragged endpoint
+      // UX 2026-04-20: rotation + bbox-center-pivot endpoint drag with
+      // Δ-pivot compensation so the non-dragged endpoint AND the curve
+      // midpoint stay pinned in world even on a rotated curved line.
+      //
+      // Naming convention (every position is 2D):
+      //   L*  = LOCAL (un-rotated) stored coords.
+      //   W*  = WORLD (rendered) coords = rotate(L*, pivot, angle).
+      //   pivotOld = curve-inclusive bbox center of the ORIGINAL shape.
+      //   pivotNaive = same bbox formula applied to the naive new local
+      //                points (before compensation); it drifts off
+      //                pivotOld when endpoints change, and that drift
+      //                is what rotates the un-dragged points off their
+      //                world positions on a rotated curved line.
+      //   shift = (R - I) · (pivotNaive - pivotOld): the in-place
+      //           translation applied to ALL three local control
+      //           points so that, after the bbox recomputes a second
+      //           time and the renderer rotates around THAT new
+      //           pivot, every un-dragged point renders back at its
+      //           pre-drag world position. Formal derivation:
+      //   rotate(p + shift, pivotNaive + shift, angle)
+      //     = (pivotNaive + shift) + R·(p - pivotNaive)
+      //     = pivotOld + R·(p - pivotOld)  [target world]
+      //   solving for shift yields shift = (R - I)·(pivotNaive - pivotOld),
+      //   matching the polygon-vertex compensation pattern.
       const ep = ds.originalEndpoints;
       const movingP1 = ds.handleId === 'p1';
-      const newX = movingP1 ? ep.x1 + (svgPoint.x - ds.startSVGPoint.x) : ep.x2 + (svgPoint.x - ds.startSVGPoint.x);
-      const newY = movingP1 ? ep.y1 + (svgPoint.y - ds.startSVGPoint.y) : ep.y2 + (svgPoint.y - ds.startSVGPoint.y);
-      const fixedX = movingP1 ? ep.x2 : ep.x1;
-      const fixedY = movingP1 ? ep.y2 : ep.y1;
-
-      // Recalculate bounding box from two absolute endpoints
-      const minX = Math.min(newX, fixedX);
-      const minY = Math.min(newY, fixedY);
-      const maxX = Math.max(newX, fixedX);
-      const maxY = Math.max(newY, fixedY);
+      const endpointAngle = ds.originalProps?.angle || 0;
+      const epRad = (endpointAngle * Math.PI) / 180;
+      const epCosA = Math.cos(epRad);
+      const epSinA = Math.sin(epRad);
+      const pivotOld = computeLineBboxCenter(
+        { x1: ep.x1, y1: ep.y1, x2: ep.x2, y2: ep.y2 },
+        ds.originalMidpoint || null,
+      );
+      const rotAround = (px, py, cx, cy, cA, sA) => ({
+        x: cx + (px - cx) * cA - (py - cy) * sA,
+        y: cy + (px - cx) * sA + (py - cy) * cA,
+      });
+      // Old world positions of both endpoints (around pivotOld).
+      const W1old = rotAround(ep.x1, ep.y1, pivotOld.x, pivotOld.y, epCosA, epSinA);
+      const W2old = rotAround(ep.x2, ep.y2, pivotOld.x, pivotOld.y, epCosA, epSinA);
+      const WMold = ds.originalMidpoint
+        ? rotAround(ds.originalMidpoint.x, ds.originalMidpoint.y, pivotOld.x, pivotOld.y, epCosA, epSinA)
+        : null;
+      // Target world positions: dragged endpoint follows pointer; the
+      // other endpoint + the curve midpoint stay exactly where the
+      // user last saw them.
+      const dxW_ep = svgPoint.x - ds.startSVGPoint.x;
+      const dyW_ep = svgPoint.y - ds.startSVGPoint.y;
+      const W1target = movingP1 ? { x: W1old.x + dxW_ep, y: W1old.y + dyW_ep } : W1old;
+      const W2target = movingP1 ? W2old : { x: W2old.x + dxW_ep, y: W2old.y + dyW_ep };
+      // Step 1: un-rotate targets around pivotOld to get NAIVE local
+      // coords (before the pivot has re-landed on the new bbox center).
+      const naiveP1 = rotAround(W1target.x, W1target.y, pivotOld.x, pivotOld.y, epCosA, -epSinA);
+      const naiveP2 = rotAround(W2target.x, W2target.y, pivotOld.x, pivotOld.y, epCosA, -epSinA);
+      const naiveMid = WMold
+        ? rotAround(WMold.x, WMold.y, pivotOld.x, pivotOld.y, epCosA, -epSinA)
+        : null;
+      // Step 2: compute the new bbox center of the naive shape (this
+      // is where the RENDERER will actually rotate around after the
+      // live-save).
+      const pivotNaive = computeLineBboxCenter(
+        { x1: naiveP1.x, y1: naiveP1.y, x2: naiveP2.x, y2: naiveP2.y },
+        naiveMid,
+      );
+      // Step 3: compensation shift = (R - I) · Δ where Δ = pivotNaive - pivotOld.
+      const dX = pivotNaive.x - pivotOld.x;
+      const dY = pivotNaive.y - pivotOld.y;
+      const shiftX = (epCosA - 1) * dX - epSinA * dY;
+      const shiftY = epSinA * dX + (epCosA - 1) * dY;
+      // Step 4: apply shift to all three local control points.
+      const finalP1 = { x: naiveP1.x + shiftX, y: naiveP1.y + shiftY };
+      const finalP2 = { x: naiveP2.x + shiftX, y: naiveP2.y + shiftY };
+      const finalMid = naiveMid ? { x: naiveMid.x + shiftX, y: naiveMid.y + shiftY } : null;
+      // Step 5: pack new endpoints into Fabric convention (bbox of the
+      // straight chord, x1..y2 as offsets from bbox center). Curve
+      // extrema are NOT baked into obj.width/height here — the
+      // renderer uses obj.data.midpoint alongside endpoints; getLineBBox
+      // re-derives the curve-inclusive bbox from the stored midpoint on
+      // every read. Keeping obj.width/height as the chord bbox matches
+      // the storage shape for a straight line.
+      const minX = Math.min(finalP1.x, finalP2.x);
+      const minY = Math.min(finalP1.y, finalP2.y);
+      const maxX = Math.max(finalP1.x, finalP2.x);
+      const maxY = Math.max(finalP1.y, finalP2.y);
       const newWidth = maxX - minX;
       const newHeight = maxY - minY;
       const newCenterX = minX + newWidth / 2;
       const newCenterY = minY + newHeight / 2;
-
-      // LINE-03 / ARROW-03: data.midpoint stays at its absolute page coords
-      // during endpoint drag. Do NOT translate it with the pointer delta —
-      // the curve reshapes around the fixed midpoint (15-RESEARCH.md Pitfall 2).
-      // The explicit applyMidpointToAnnotation call below the commit guarantees
-      // preservation even if a future refactor to this branch rebuilds
-      // targetObj.data wholesale.
       const endpointData = {
         left: minX,
         top: minY,
         width: newWidth,
         height: newHeight,
-        x1: (movingP1 ? newX : fixedX) - newCenterX,
-        y1: (movingP1 ? newY : fixedY) - newCenterY,
-        x2: (movingP1 ? fixedX : newX) - newCenterX,
-        y2: (movingP1 ? fixedY : newY) - newCenterY,
+        x1: finalP1.x - newCenterX,
+        y1: finalP1.y - newCenterY,
+        x2: finalP2.x - newCenterX,
+        y2: finalP2.y - newCenterY,
       };
       ds.currentEndpoint = endpointData;
+
+      // UX 2026-04-20 diag: throttled endpoint-move log so the user can
+      // share a log when the non-moving endpoint looks like it drifts.
+      const epNowMs = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+      const epLastLog = dragStateRef.current.lastEndpointLogAt || 0;
+      if (!epLastLog || epNowMs - epLastLog >= 120) {
+        dragStateRef.current.lastEndpointLogAt = epNowMs;
+        try {
+          const payload = {
+            ts: new Date().toISOString(),
+            handleId: ds.handleId,
+            annotationIndex: ds.annotationIndex,
+            angleDeg: endpointAngle,
+            startPointerSVG: ds.startSVGPoint,
+            pointerSVG: { x: svgPoint.x, y: svgPoint.y },
+            pointerDelta: { dx: dxW_ep, dy: dyW_ep },
+            oldLocalEndpoints: { x1: ep.x1, y1: ep.y1, x2: ep.x2, y2: ep.y2 },
+            oldWorldEndpoints: { W1: W1old, W2: W2old, WM: WMold },
+            targetWorld: { W1: W1target, W2: W2target, WM: WMold },
+            pivotOld,
+            naivePoints: { p1: naiveP1, p2: naiveP2, mid: naiveMid },
+            pivotNaive,
+            pivotDelta: { dx: dX, dy: dY },
+            compensationShift: { sx: shiftX, sy: shiftY },
+            finalLocalPoints: { p1: finalP1, p2: finalP2, mid: finalMid },
+            committedEndpointData: endpointData,
+          };
+          console.log('[BboxScaleDiag] endpoint-move ' + JSON.stringify(payload));
+        } catch (err) { console.warn('[BboxScaleDiag] endpoint-move log failed', err); }
+      }
 
       // Live commit: update annotation data on every move for immediate visual feedback
       const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
       const targetObj = updatedAnnotations.objects[ds.annotationIndex];
       Object.assign(targetObj, endpointData);
-      // Phase 15 LINE-03 / ARROW-03 — belt-and-suspenders: re-apply the original
-      // midpoint from ds.originalMidpoint onto the cloned targetObj so it
-      // survives any data-object reassignment earlier in this branch. No-op
-      // when the line was straight at drag-start (ds.originalMidpoint is null).
-      if (ds.originalMidpoint) {
-        applyMidpointToAnnotation(targetObj, ds.originalMidpoint);
+      if (finalMid) {
+        applyMidpointToAnnotation(targetObj, finalMid);
       }
       onSaveAnnotations(updatedAnnotations, {
         source: 'object:modified',
@@ -772,28 +931,98 @@ export function useSVGInteraction({
       // threshold zone. Dragging back out re-curves it instantly.
       // Endpoint drags keep their snap-on-release-only behavior since the user
       // may be passing through collinear on the way to a new position.
-      const newMidpoint = deriveMidpointFromPointer(
-        ds.startSVGPoint,
-        svgPoint,
-        ds.originalMidpoint,
-      );
+      //
+      // UX 2026-04-20: bbox-center pivot + Δ-compensation. Moving only
+      // the midpoint changes the curve extrema → changes the bbox
+      // center → moves the renderer's rotation pivot → would drag the
+      // endpoints off their world positions on a rotated curved line.
+      // Apply the same (R - I) · (pivotNaive - pivotOld) shift used
+      // by the endpoint-drag branch so the endpoints stay pinned in
+      // world while only the midpoint's visible position tracks the
+      // pointer. Snap-to-straight still fires when the naive new
+      // midpoint is within 10 px of the chord.
+      const mpAngle = ds.originalProps?.angle || 0;
+      const mpRad = (mpAngle * Math.PI) / 180;
+      const mpCosA = Math.cos(mpRad);
+      const mpSinA = Math.sin(mpRad);
       const ep = ds.originalEndpoints;
-      const start = { x: ep.x1, y: ep.y1 };
-      const end = { x: ep.x2, y: ep.y2 };
+      const pivotOldM = computeLineBboxCenter(
+        { x1: ep.x1, y1: ep.y1, x2: ep.x2, y2: ep.y2 },
+        ds.originalMidpoint || null,
+      );
+      const rotAroundM = (px, py, cx, cy, cA, sA) => ({
+        x: cx + (px - cx) * cA - (py - cy) * sA,
+        y: cy + (px - cx) * sA + (py - cy) * cA,
+      });
+      // Old world positions of both endpoints + the midpoint (around pivotOldM).
+      const W1oldM = rotAroundM(ep.x1, ep.y1, pivotOldM.x, pivotOldM.y, mpCosA, mpSinA);
+      const W2oldM = rotAroundM(ep.x2, ep.y2, pivotOldM.x, pivotOldM.y, mpCosA, mpSinA);
+      const WMoldM = ds.originalMidpoint
+        ? rotAroundM(ds.originalMidpoint.x, ds.originalMidpoint.y, pivotOldM.x, pivotOldM.y, mpCosA, mpSinA)
+        // Straight-line drag: the "midpoint" handle visually sits on
+        // the chord midpoint, so treat the chord midpoint as the old
+        // world midpoint when obj.data.midpoint hasn't been set yet.
+        : { x: (W1oldM.x + W2oldM.x) / 2, y: (W1oldM.y + W2oldM.y) / 2 };
+      // Target world midpoint: pointer delta applied; endpoints stay put.
+      const mpDxW = svgPoint.x - ds.startSVGPoint.x;
+      const mpDyW = svgPoint.y - ds.startSVGPoint.y;
+      const WMtarget = { x: WMoldM.x + mpDxW, y: WMoldM.y + mpDyW };
+      // Step 1: un-rotate around pivotOldM to get naive local points.
+      const naiveP1M = rotAroundM(W1oldM.x, W1oldM.y, pivotOldM.x, pivotOldM.y, mpCosA, -mpSinA);
+      const naiveP2M = rotAroundM(W2oldM.x, W2oldM.y, pivotOldM.x, pivotOldM.y, mpCosA, -mpSinA);
+      const naiveMidM = rotAroundM(WMtarget.x, WMtarget.y, pivotOldM.x, pivotOldM.y, mpCosA, -mpSinA);
+      // Step 2: naive new bbox center.
+      const pivotNaiveM = computeLineBboxCenter(
+        { x1: naiveP1M.x, y1: naiveP1M.y, x2: naiveP2M.x, y2: naiveP2M.y },
+        naiveMidM,
+      );
+      // Step 3: compensation shift.
+      const dXm = pivotNaiveM.x - pivotOldM.x;
+      const dYm = pivotNaiveM.y - pivotOldM.y;
+      const shiftXm = (mpCosA - 1) * dXm - mpSinA * dYm;
+      const shiftYm = mpSinA * dXm + (mpCosA - 1) * dYm;
+      // Step 4: apply shift to all three local points.
+      const finalP1M = { x: naiveP1M.x + shiftXm, y: naiveP1M.y + shiftYm };
+      const finalP2M = { x: naiveP2M.x + shiftXm, y: naiveP2M.y + shiftYm };
+      const finalMidM = { x: naiveMidM.x + shiftXm, y: naiveMidM.y + shiftYm };
+      // Pack endpoints into Fabric convention.
+      const minXm = Math.min(finalP1M.x, finalP2M.x);
+      const minYm = Math.min(finalP1M.y, finalP2M.y);
+      const maxXm = Math.max(finalP1M.x, finalP2M.x);
+      const maxYm = Math.max(finalP1M.y, finalP2M.y);
+      const newWm = maxXm - minXm;
+      const newHm = maxYm - minYm;
+      const newCxM = minXm + newWm / 2;
+      const newCyM = minYm + newHm / 2;
+      const midpointData = {
+        left: minXm,
+        top: minYm,
+        width: newWm,
+        height: newHm,
+        x1: finalP1M.x - newCxM,
+        y1: finalP1M.y - newCyM,
+        x2: finalP2M.x - newCxM,
+        y2: finalP2M.y - newCyM,
+      };
       const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
       const targetObj = updatedAnnotations.objects[ds.annotationIndex];
-      // Live snap: clear midpoint when within threshold, re-apply when outside
-      if (shouldSnapToLinear(newMidpoint, start, end, 10)) {
+      Object.assign(targetObj, midpointData);
+      // Live snap: clear midpoint when within threshold, re-apply when outside.
+      // Use the SHIFTED final midpoint + endpoints so the snap threshold
+      // is evaluated in the same frame the renderer will consume.
+      const startPM = { x: finalP1M.x, y: finalP1M.y };
+      const endPM = { x: finalP2M.x, y: finalP2M.y };
+      if (shouldSnapToLinear(finalMidM, startPM, endPM, 10)) {
         clearMidpointFromAnnotation(targetObj);
       } else {
-        applyMidpointToAnnotation(targetObj, newMidpoint);
+        applyMidpointToAnnotation(targetObj, finalMidM);
       }
       onSaveAnnotations(updatedAnnotations, {
         source: 'object:modified',
         action: 'midpoint-move',
         checkpointPolicy: 'skip',
       });
-      ds.currentMidpoint = newMidpoint;
+      ds.currentMidpoint = finalMidM;
       setInteractionState('dragging');
     } else if (ds.mode === 'resize') {
       // Determine which axes this handle affects
@@ -1392,6 +1621,25 @@ export function useSVGInteraction({
             // bbox.left === obj.left for rect/circle/ellipse/line/text.
             targetObj.left = ds.originalProps.left + actualDx;
             targetObj.top = ds.originalProps.top + actualDy;
+            // UX 2026-04-20: the line's curve midpoint (obj.data.midpoint)
+            // is stored in ABSOLUTE page coords, not as an offset from
+            // obj.left/top like the endpoints are. A plain-move drag
+            // translates obj.left/top (moving the endpoints with them)
+            // but leaves an absolute-coord midpoint anchored to its
+            // original world position — the curve reshapes on release
+            // because the midpoint's offset from the new endpoint
+            // midpoint is now different from what the user saw mid-drag.
+            // Translate the midpoint by the same delta to keep the
+            // bezier rigid.
+            if (String(targetObj.type || '').toLowerCase() === 'line' && targetObj.data?.midpoint) {
+              targetObj.data = {
+                ...targetObj.data,
+                midpoint: {
+                  x: targetObj.data.midpoint.x + actualDx,
+                  y: targetObj.data.midpoint.y + actualDy,
+                },
+              };
+            }
           }
 
           // Save through existing pipeline
@@ -1410,39 +1658,38 @@ export function useSVGInteraction({
           justDraggedAtRef.current = Date.now();
         }
       }
+    } else if (ds.mode === 'vertex') {
+      // UX 2026-04-20: commit vertex drag. The pointermove branch has been
+      // live-saving each point update with checkpointPolicy:'skip', so the
+      // annotation JSON already carries the final points. Re-save once with
+      // checkpointPolicy:'normal' to land a single undo entry for the entire
+      // drag. No further mutation needed.
+      if (annotations?.objects?.[ds.annotationIndex]) {
+        onSaveAnnotations(annotations, {
+          source: 'object:modified',
+          action: 'vertex-move',
+          checkpointPolicy: 'normal',
+        });
+      }
     } else if (ds.mode === 'endpoint' && ds.currentEndpoint) {
-      // Commit line/arrow endpoint drag
+      // UX 2026-04-20: the pointermove branch already live-saved the
+      // compensated endpoints + midpoint via applyMidpointToAnnotation,
+      // so the annotation JSON is already correct. Re-save once with
+      // normal checkpoint policy so the whole drag produces a single
+      // undo entry. Also check the auto-revert threshold on release:
+      // if the shifted midpoint ended up on the chord within 10 px,
+      // snap it straight (matches the legacy behavior for endpoint
+      // drags that cross collinear).
       const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
       const targetObj = updatedAnnotations.objects[ds.annotationIndex];
-      const ep = ds.currentEndpoint;
-      targetObj.left = ep.left;
-      targetObj.top = ep.top;
-      targetObj.width = ep.width;
-      targetObj.height = ep.height;
-      targetObj.x1 = ep.x1;
-      targetObj.y1 = ep.y1;
-      targetObj.x2 = ep.x2;
-      targetObj.y2 = ep.y2;
-
-      // Phase 15 LINE-03 / ARROW-03 — preserve + maybe-auto-revert the midpoint.
-      // During the drag, data.midpoint was re-applied on every pointermove
-      // (Pitfall-2 defensive write above), but the live-paint clones didn't
-      // carry it here. Re-apply from ds.originalMidpoint, then check whether
-      // the new endpoint geometry is naturally collinear within 10px — if so,
-      // clear it silently so the line re-enters the straight <line> render
-      // branch. Use getLineEndpoints(targetObj) for the canonical endpoint
-      // derivation — do NOT re-derive from left/top/width/x1/x2 inline
-      // (bbox reads may be stale right after mutation).
-      if (ds.originalMidpoint) {
-        applyMidpointToAnnotation(targetObj, ds.originalMidpoint);
-        const { x1, y1, x2, y2 } = getLineEndpoints(targetObj);
-        const newStart = { x: x1, y: y1 };
-        const newEnd = { x: x2, y: y2 };
-        if (shouldRevertEndpointCurve(targetObj.data?.midpoint, newStart, newEnd, 10)) {
+      const newEpC = getLineEndpoints(targetObj);
+      if (targetObj.data?.midpoint) {
+        const newStart = { x: newEpC.x1, y: newEpC.y1 };
+        const newEnd = { x: newEpC.x2, y: newEpC.y2 };
+        if (shouldRevertEndpointCurve(targetObj.data.midpoint, newStart, newEnd, 10)) {
           clearMidpointFromAnnotation(targetObj);
         }
       }
-
       onSaveAnnotations(updatedAnnotations, {
         source: 'object:modified',
         action: 'endpoint-move',
@@ -1514,6 +1761,19 @@ export function useSVGInteraction({
           } else {
             obj.left = orig.left + actualDx;
             obj.top = orig.top + actualDy;
+            // UX 2026-04-20: mirror the single-move branch — a
+            // multi-select drag of a curved line/arrow must translate
+            // its absolute-coord midpoint alongside the endpoints so
+            // the bezier stays rigid on release.
+            if (String(obj.type || '').toLowerCase() === 'line' && obj.data?.midpoint) {
+              obj.data = {
+                ...obj.data,
+                midpoint: {
+                  x: obj.data.midpoint.x + actualDx,
+                  y: obj.data.midpoint.y + actualDy,
+                },
+              };
+            }
           }
         }
 
@@ -1539,38 +1799,71 @@ export function useSVGInteraction({
       } else {
         const objType = String(obj.type || '').toLowerCase();
         if (objType === 'line') {
-          // UX 2026-04-19: line / arrow resize commit. Works for both
-          // Fabric-native lines (x1/x2 = offsets from bbox center) and
-          // PDF-imported lines (x1/x2 = absolute page coords, obj.left/width
-          // both zero). getLineEndpoints resolves to absolute endpoints for
-          // either convention. Scale the endpoints around the drag anchor,
-          // then rewrite the annotation in Fabric convention so subsequent
-          // drags see consistent data and the renderer picks up the new
-          // geometry without falling back on the stale obj.width the generic
-          // resize path would have left in place.
+          // UX 2026-04-19 / 20: line / arrow resize commit with
+          // bbox-center-pivot Δ-compensation. Works for both
+          // Fabric-native lines (x1/x2 = offsets from bbox center)
+          // and PDF-imported lines (x1/x2 = absolute page coords,
+          // obj.left/width both zero). getLineEndpoints resolves to
+          // absolute endpoints for either convention. Three steps:
+          //   1. Scale endpoints + stored midpoint around the LOCAL
+          //      anchor in pre-rotation frame → naive new points.
+          //   2. Compute Δ = naive curve-inclusive bbox center -
+          //      original, and derive (R - I)·Δ shift. At angle=0
+          //      this collapses to zero; at any other angle it
+          //      compensates for the pivot drift so the WORLD
+          //      anchor (the edge the user pulled AGAINST) stays
+          //      pinned — matches the rectangle-style anchor pin.
+          //   3. Shift all three points by the compensation, pack
+          //      back into Fabric convention (bbox of chord +
+          //      offset-from-center endpoints + absolute midpoint).
           const ep = getLineEndpoints(obj);
           const sx = Math.max(0.01, Math.abs(newScaleX));
           const sy = Math.max(0.01, Math.abs(newScaleY));
-          const newAbsX1 = ds.anchorX + (ep.x1 - ds.anchorX) * sx;
-          const newAbsY1 = ds.anchorY + (ep.y1 - ds.anchorY) * sy;
-          const newAbsX2 = ds.anchorX + (ep.x2 - ds.anchorX) * sx;
-          const newAbsY2 = ds.anchorY + (ep.y2 - ds.anchorY) * sy;
-          const newBoxLeft = Math.min(newAbsX1, newAbsX2);
-          const newBoxTop = Math.min(newAbsY1, newAbsY2);
-          const newBoxW = Math.max(1, Math.abs(newAbsX2 - newAbsX1));
-          const newBoxH = Math.max(1, Math.abs(newAbsY2 - newAbsY1));
+          const naiveP1 = { x: ds.anchorX + (ep.x1 - ds.anchorX) * sx, y: ds.anchorY + (ep.y1 - ds.anchorY) * sy };
+          const naiveP2 = { x: ds.anchorX + (ep.x2 - ds.anchorX) * sx, y: ds.anchorY + (ep.y2 - ds.anchorY) * sy };
+          const oldMidR = obj?.data?.midpoint || null;
+          const naiveMidR = oldMidR
+            ? { x: ds.anchorX + (oldMidR.x - ds.anchorX) * sx, y: ds.anchorY + (oldMidR.y - ds.anchorY) * sy }
+            : null;
+          const pivotOldR = computeLineBboxCenter(
+            { x1: ep.x1, y1: ep.y1, x2: ep.x2, y2: ep.y2 },
+            oldMidR,
+          );
+          const pivotNaiveR = computeLineBboxCenter(
+            { x1: naiveP1.x, y1: naiveP1.y, x2: naiveP2.x, y2: naiveP2.y },
+            naiveMidR,
+          );
+          const angleRadR = ((obj.angle ?? 0) * Math.PI) / 180;
+          const cosR = Math.cos(angleRadR);
+          const sinR = Math.sin(angleRadR);
+          const dXR = pivotNaiveR.x - pivotOldR.x;
+          const dYR = pivotNaiveR.y - pivotOldR.y;
+          const shiftXR = (cosR - 1) * dXR - sinR * dYR;
+          const shiftYR = sinR * dXR + (cosR - 1) * dYR;
+          const finalP1R = { x: naiveP1.x + shiftXR, y: naiveP1.y + shiftYR };
+          const finalP2R = { x: naiveP2.x + shiftXR, y: naiveP2.y + shiftYR };
+          const finalMidR = naiveMidR
+            ? { x: naiveMidR.x + shiftXR, y: naiveMidR.y + shiftYR }
+            : null;
+          const newBoxLeft = Math.min(finalP1R.x, finalP2R.x);
+          const newBoxTop = Math.min(finalP1R.y, finalP2R.y);
+          const newBoxW = Math.max(1, Math.abs(finalP2R.x - finalP1R.x));
+          const newBoxH = Math.max(1, Math.abs(finalP2R.y - finalP1R.y));
           const newCx = newBoxLeft + newBoxW / 2;
           const newCy = newBoxTop + newBoxH / 2;
           obj.left = newBoxLeft;
           obj.top = newBoxTop;
           obj.width = newBoxW;
           obj.height = newBoxH;
-          obj.x1 = newAbsX1 - newCx;
-          obj.y1 = newAbsY1 - newCy;
-          obj.x2 = newAbsX2 - newCx;
-          obj.y2 = newAbsY2 - newCy;
+          obj.x1 = finalP1R.x - newCx;
+          obj.y1 = finalP1R.y - newCy;
+          obj.x2 = finalP2R.x - newCx;
+          obj.y2 = finalP2R.y - newCy;
           obj.scaleX = 1;
           obj.scaleY = 1;
+          if (finalMidR) {
+            obj.data = { ...obj.data, midpoint: finalMidR };
+          }
         } else if (objType === 'textbox' || objType === 'i-text' || objType === 'text') {
           // Text: absorb scale into width/height so text reflows instead of stretching.
           // Honor the user's chosen size — do NOT re-tighten to fit current text.
@@ -1861,6 +2154,9 @@ export function useSVGInteraction({
       // pointerup (both modes), and RESET here. Miss this reset and a
       // subsequent straight-line drag would re-apply a stale midpoint.
       originalMidpoint: null, currentMidpoint: null,
+      // UX 2026-04-20: vertex-drag fields (polygon/polyline per-point drag).
+      // Reset alongside the rest so the next drag starts clean.
+      originalPoints: null, vertexIndex: null,
     };
     setVisualTransform(null);
     setInteractionState('idle');
@@ -1907,6 +2203,10 @@ export function useSVGInteraction({
         currentMidpoint: null,
         annotationIndex: selectedIndex,
         ctmInverse,
+        // UX 2026-04-20: capture rotation so pointermove can un-rotate the
+        // world drag delta into local frame before adding it to the local-
+        // coord midpoint (stored in obj.data.midpoint).
+        originalProps: { angle: obj.angle || 0 },
       };
       try {
         console.log('[BboxScaleDiag] start ' + JSON.stringify({
@@ -1916,6 +2216,39 @@ export function useSVGInteraction({
           objSnapshot: { left: obj.left, top: obj.top, width: obj.width, height: obj.height, x1: obj.x1, y1: obj.y1, x2: obj.x2, y2: obj.y2, angle: obj.angle, data: obj.data },
         }));
       } catch (err) { console.warn('[BboxScaleDiag] midpoint start log failed', err); }
+      return;
+    }
+
+    // Polygon / polyline per-vertex drag: handleId is `vertex-N`. Captures
+    // the shape's full transform chain so pointermove can map world pointer
+    // coords back into the shape's local-points frame and rewrite just the
+    // one point being dragged. All other points stay where they were.
+    if (typeof handleId === 'string' && handleId.startsWith('vertex-')) {
+      const vertexIndex = parseInt(handleId.slice('vertex-'.length), 10);
+      if (Number.isFinite(vertexIndex) && Array.isArray(obj.points) && obj.points[vertexIndex]) {
+        dragStateRef.current = {
+          active: true,
+          mode: 'vertex',
+          handleId,
+          startSVGPoint: svgPoint,
+          annotationIndex: selectedIndex,
+          ctmInverse,
+          vertexIndex,
+          // Snapshot the full transform chain so the move handler can invert
+          // it on each tick. We copy obj.points so we don't mutate the real
+          // annotation until pointerup.
+          originalPoints: obj.points.map((p) => ({ x: Number(p?.x) || 0, y: Number(p?.y) || 0 })),
+          originalProps: {
+            left: obj.left ?? 0,
+            top: obj.top ?? 0,
+            angle: obj.angle ?? 0,
+            scaleX: obj.scaleX ?? 1,
+            scaleY: obj.scaleY ?? 1,
+            pathOffsetX: obj.pathOffset?.x || 0,
+            pathOffsetY: obj.pathOffset?.y || 0,
+          },
+        };
+      }
       return;
     }
 
@@ -1944,6 +2277,12 @@ export function useSVGInteraction({
           y1: obj.y1 ?? 0,
           x2: obj.x2 ?? 0,
           y2: obj.y2 ?? 0,
+          // UX 2026-04-20: capture obj.angle so the pointermove branch can
+          // rotate the endpoints forward to world, apply the drag delta
+          // there, then un-rotate back. Without this, rotated-line endpoint
+          // drags fell back to straight-line math and drifted the non-
+          // moving endpoint.
+          angle: obj.angle || 0,
         },
         originalEndpoints: ep,
         // Phase 15 LINE-03 / ARROW-03 — capture the current data.midpoint at
@@ -1963,6 +2302,14 @@ export function useSVGInteraction({
     }
 
     const mode = handleId === 'mtr' ? 'rotate' : 'resize';
+    // UX 2026-04-20: bbox center is the universal rotation pivot for
+    // every shape type — rect/ellipse/textbox/line alike. For lines the
+    // bbox is curve-inclusive (getLineBBox wraps endpoints + bezier
+    // extrema with a 10-px minimum), so this center equals the
+    // renderer's pivot + the overlay's pivot. Match = no jump on
+    // rotation commit, handles stay flush with the visible shape, and
+    // the rotation-aware resize math projects anchors to the correct
+    // world positions.
     const cx = bbox.left + bbox.width / 2;
     const cy = bbox.top + bbox.height / 2;
 

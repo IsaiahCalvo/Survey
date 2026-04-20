@@ -25,6 +25,13 @@ const SVGSelectionOverlay = memo(({
   strokeOpacity = 1.0, // number -- opacity for bounding box stroke (Plan 03: group union box uses 0.6)
   hideBoundingBox = false, // boolean -- hide the blue dashed rect (border-flush types)
   padding = 2,      // number -- padding around bbox; 0 places handles directly on stroke
+  // UX 2026-04-20: optional external rotation pivot for shapes whose
+  // visual rotation center differs from their tight-wrap bbox center.
+  // Used for curved lines/arrows where the shape rotates around the
+  // endpoint midpoint (matching the renderer + drag-math pivot) while
+  // the bbox hugs the asymmetric curve. Undefined = fall back to
+  // bbox center, which is correct for every other shape type.
+  rotationCenter = null, // { x, y } | null
 }) => {
   if (!bbox) return null;
 
@@ -34,9 +41,13 @@ const SVGSelectionOverlay = memo(({
   // so handles don't balloon at low zoom or vanish at high zoom.
   const is = Math.sqrt(inverseScale);
 
-  // Center of the bounding box for rotation transform
-  const cx = left + width / 2;
-  const cy = top + height / 2;
+  // Center of the bounding box for rotation transform. `rotationCenter`
+  // (when supplied) overrides the geometric center so the rotation
+  // pivot can live outside the bbox's own midpoint without having to
+  // pad the bbox asymmetrically. Curved rotated lines are the prime
+  // use case: tight frame + pivot-at-endpoint-midpoint.
+  const cx = rotationCenter?.x ?? (left + width / 2);
+  const cy = rotationCenter?.y ?? (top + height / 2);
 
   // Bounding box rect dimensions (with padding)
   const boxX = left - padding;

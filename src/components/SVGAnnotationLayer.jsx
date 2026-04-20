@@ -43,7 +43,7 @@ import { createCallout } from './Callout/types';
 import { screenToSVG } from '../utils/svgTransformMath';
 import SVGSelectionOverlay from './SVGSelectionOverlay';
 import RotationInputField from './RotationInputField';
-import { getAnnotationBBox, getGroupBBox, isImportedPath, getLineEndpoints } from '../utils/svgBoundingBox';
+import { getAnnotationBBox, getGroupBBox, isImportedPath, getLineEndpoints, computeLineBboxCenter } from '../utils/svgBoundingBox';
 import { resolveMidpointHandlePosition } from '../utils/lineDragMath.js';
 import { buildArrowheadRenderSpec } from '../utils/lineRenderHelpers.js';
 import { getCurvedPath, distanceToLineSegment } from '../utils/lineGeometry.js';
@@ -1858,16 +1858,55 @@ const SVGAnnotationLayer = memo(({
         const absY2 = cy + (obj.y2 ?? 0);
         const sx = Math.max(0.01, Math.abs(vr.scaleX));
         const sy = Math.max(0.01, Math.abs(vr.scaleY));
-        const newAbsX1 = vr.anchorX + (absX1 - vr.anchorX) * sx;
-        const newAbsY1 = vr.anchorY + (absY1 - vr.anchorY) * sy;
-        const newAbsX2 = vr.anchorX + (absX2 - vr.anchorX) * sx;
-        const newAbsY2 = vr.anchorY + (absY2 - vr.anchorY) * sy;
+        // Step 1: scale endpoints + stored midpoint around the LOCAL
+        // anchor in pre-rotation frame. This produces a naive new
+        // shape whose local anchor stayed put but whose curve-
+        // inclusive bbox center (the rotation pivot) has drifted.
+        const naiveX1 = vr.anchorX + (absX1 - vr.anchorX) * sx;
+        const naiveY1 = vr.anchorY + (absY1 - vr.anchorY) * sy;
+        const naiveX2 = vr.anchorX + (absX2 - vr.anchorX) * sx;
+        const naiveY2 = vr.anchorY + (absY2 - vr.anchorY) * sy;
+        const storedMid = obj?.data?.midpoint;
+        const naiveMid = storedMid
+          ? { x: vr.anchorX + (storedMid.x - vr.anchorX) * sx, y: vr.anchorY + (storedMid.y - vr.anchorY) * sy }
+          : null;
+        // Step 2: Δ-compensation so the WORLD anchor (the visible
+        // handle edge the user is pulling AGAINST) stays pinned at
+        // any angle. Same (R - I)·Δ shift used by endpoint/midpoint
+        // drag. Without this, a rotated line grows in both directions
+        // as the pivot drifts — which is the exact symptom reported
+        // 2026-04-20.
+        const pivotOld = computeLineBboxCenter(
+          { x1: absX1, y1: absY1, x2: absX2, y2: absY2 },
+          storedMid || null,
+        );
+        const pivotNaive = computeLineBboxCenter(
+          { x1: naiveX1, y1: naiveY1, x2: naiveX2, y2: naiveY2 },
+          naiveMid,
+        );
+        const angleRadR = ((obj.angle ?? 0) * Math.PI) / 180;
+        const cosR = Math.cos(angleRadR);
+        const sinR = Math.sin(angleRadR);
+        const dXr = pivotNaive.x - pivotOld.x;
+        const dYr = pivotNaive.y - pivotOld.y;
+        const shiftXr = (cosR - 1) * dXr - sinR * dYr;
+        const shiftYr = sinR * dXr + (cosR - 1) * dYr;
+        const newAbsX1 = naiveX1 + shiftXr;
+        const newAbsY1 = naiveY1 + shiftYr;
+        const newAbsX2 = naiveX2 + shiftXr;
+        const newAbsY2 = naiveY2 + shiftYr;
+        const shiftedMid = naiveMid
+          ? { x: naiveMid.x + shiftXr, y: naiveMid.y + shiftYr }
+          : null;
         const newBoxLeft = Math.min(newAbsX1, newAbsX2);
         const newBoxTop = Math.min(newAbsY1, newAbsY2);
         const newBoxW = Math.max(1, Math.abs(newAbsX2 - newAbsX1));
         const newBoxH = Math.max(1, Math.abs(newAbsY2 - newAbsY1));
         const newCx = newBoxLeft + newBoxW / 2;
         const newCy = newBoxTop + newBoxH / 2;
+        const newData = shiftedMid
+          ? { ...obj.data, midpoint: shiftedMid }
+          : obj.data;
         renderObj = {
           ...obj,
           left: newBoxLeft,
@@ -1880,6 +1919,7 @@ const SVGAnnotationLayer = memo(({
           y2: newAbsY2 - newCy,
           scaleX: 1,
           scaleY: 1,
+          data: newData,
         };
       }
       // Re-render the element with modified props
@@ -2016,16 +2056,19 @@ const SVGAnnotationLayer = memo(({
               * 180 / Math.PI
             );
             // UX 2026-04-20: mirror renderLine's rotation wrapper so the
-            // hover glow + hit area rotate with the line. Center comes from
-            // the actual endpoint midpoint so both Fabric-constructed and
-            // PDF-imported lines rotate around the correct pivot — the
-            // `obj.left + obj.width/2` shortcut collapsed to (0,0) on
-            // imported lines (no left/top/width stored) which pushed the hit
-            // zone to the page origin and made rotated lines look like they
-            // disappeared.
+            // hover glow + hit area rotate with the line. Pivot is the
+            // curve-inclusive bbox center (same as renderLine, the bbox-
+            // edit overlay, and the single-click handle wrapper) so every
+            // surface that reacts to the user's pointer lines up with
+            // the visible rotated shape instead of sitting at a stale
+            // pre-rotation position.
             const lineAngle = renderObj.angle ?? 0;
-            const lineCx = (ep.x1 + ep.x2) / 2;
-            const lineCy = (ep.y1 + ep.y2) / 2;
+            const lineBC = computeLineBboxCenter(
+              { x1: ep.x1, y1: ep.y1, x2: ep.x2, y2: ep.y2 },
+              renderObj.data?.midpoint || null,
+            );
+            const lineCx = lineBC.x;
+            const lineCy = lineBC.y;
             const lineRotate = lineAngle !== 0
               ? `rotate(${lineAngle}, ${lineCx}, ${lineCy})`
               : undefined;
@@ -2866,12 +2909,19 @@ const SVGAnnotationLayer = memo(({
             // instead of being scaled along with the stored bbox height.
             const resizeObjType = String(obj.type || '').toLowerCase();
             if (resizeObjType === 'line') {
-              // UX 2026-04-19: line selection bbox during drag mirrors the
-              // render path — scale absolute endpoints around the anchor,
-              // then derive the new bbox from them. Without this the dashed
-              // box + handles stay anchored to the old line size while the
-              // line itself visually resizes, breaking the "handles follow
-              // the shape" invariant that every other resize honors.
+              // UX 2026-04-19 / 20: live-resize bbox for lines.
+              // Mirrors the shifted-final-points math used by the
+              // visible shape render above so the dashed frame
+              // traces the exact same new shape. Three steps:
+              //   1. Scale endpoints + midpoint in LOCAL frame
+              //      around the local anchor → naive new points.
+              //   2. Compute Δ between the naive curve-inclusive
+              //      bbox center and the original, and derive the
+              //      (R - I)·Δ shift that pins the world anchor at
+              //      any rotation angle.
+              //   3. Shift all three points by that vector, then
+              //      derive the curve-inclusive bbox that the
+              //      SVGSelectionOverlay should render.
               const vr = visualTransform.resize;
               const cx = (obj.left ?? 0) + (obj.width ?? 0) / 2;
               const cy = (obj.top ?? 0) + (obj.height ?? 0) / 2;
@@ -2881,16 +2931,72 @@ const SVGAnnotationLayer = memo(({
               const absY2 = cy + (obj.y2 ?? 0);
               const sx = Math.max(0.01, Math.abs(vr.scaleX));
               const sy = Math.max(0.01, Math.abs(vr.scaleY));
-              const newAbsX1 = vr.anchorX + (absX1 - vr.anchorX) * sx;
-              const newAbsY1 = vr.anchorY + (absY1 - vr.anchorY) * sy;
-              const newAbsX2 = vr.anchorX + (absX2 - vr.anchorX) * sx;
-              const newAbsY2 = vr.anchorY + (absY2 - vr.anchorY) * sy;
+              const naiveX1 = vr.anchorX + (absX1 - vr.anchorX) * sx;
+              const naiveY1 = vr.anchorY + (absY1 - vr.anchorY) * sy;
+              const naiveX2 = vr.anchorX + (absX2 - vr.anchorX) * sx;
+              const naiveY2 = vr.anchorY + (absY2 - vr.anchorY) * sy;
+              const storedMid = obj?.data?.midpoint;
+              const naiveMid = storedMid
+                ? {
+                    x: vr.anchorX + (storedMid.x - vr.anchorX) * sx,
+                    y: vr.anchorY + (storedMid.y - vr.anchorY) * sy,
+                  }
+                : null;
+              const pivotOldL = computeLineBboxCenter(
+                { x1: absX1, y1: absY1, x2: absX2, y2: absY2 },
+                storedMid || null,
+              );
+              const pivotNaiveL = computeLineBboxCenter(
+                { x1: naiveX1, y1: naiveY1, x2: naiveX2, y2: naiveY2 },
+                naiveMid,
+              );
+              const angleRadL = ((obj.angle ?? 0) * Math.PI) / 180;
+              const cosL = Math.cos(angleRadL);
+              const sinL = Math.sin(angleRadL);
+              const dXL = pivotNaiveL.x - pivotOldL.x;
+              const dYL = pivotNaiveL.y - pivotOldL.y;
+              const shiftXL = (cosL - 1) * dXL - sinL * dYL;
+              const shiftYL = sinL * dXL + (cosL - 1) * dYL;
+              const finalX1 = naiveX1 + shiftXL;
+              const finalY1 = naiveY1 + shiftYL;
+              const finalX2 = naiveX2 + shiftXL;
+              const finalY2 = naiveY2 + shiftYL;
+              const finalMid = naiveMid
+                ? { x: naiveMid.x + shiftXL, y: naiveMid.y + shiftYL }
+                : null;
+              // Curve-inclusive bbox of the shifted shape.
+              const xsLive = [finalX1, finalX2];
+              const ysLive = [finalY1, finalY2];
+              if (finalMid) {
+                const Cxc = 2 * finalMid.x - 0.5 * finalX1 - 0.5 * finalX2;
+                const Cyc = 2 * finalMid.y - 0.5 * finalY1 - 0.5 * finalY2;
+                const denomX = finalX1 - 2 * Cxc + finalX2;
+                const denomY = finalY1 - 2 * Cyc + finalY2;
+                if (Math.abs(denomX) > 1e-9) {
+                  const tx = (finalX1 - Cxc) / denomX;
+                  if (tx > 0 && tx < 1) {
+                    const o = 1 - tx;
+                    xsLive.push(o * o * finalX1 + 2 * o * tx * Cxc + tx * tx * finalX2);
+                  }
+                }
+                if (Math.abs(denomY) > 1e-9) {
+                  const ty = (finalY1 - Cyc) / denomY;
+                  if (ty > 0 && ty < 1) {
+                    const o = 1 - ty;
+                    ysLive.push(o * o * finalY1 + 2 * o * ty * Cyc + ty * ty * finalY2);
+                  }
+                }
+              }
+              const minXL = Math.min(...xsLive);
+              const maxXL = Math.max(...xsLive);
+              const minYL = Math.min(...ysLive);
+              const maxYL = Math.max(...ysLive);
               bbox = {
-                left: Math.min(newAbsX1, newAbsX2),
-                top: Math.min(newAbsY1, newAbsY2),
-                width: Math.max(1, Math.abs(newAbsX2 - newAbsX1)),
-                height: Math.max(1, Math.abs(newAbsY2 - newAbsY1)),
-                angle: 0,
+                left: minXL,
+                top: minYL,
+                width: Math.max(1, maxXL - minXL),
+                height: Math.max(1, maxYL - minYL),
+                angle: obj.angle ?? 0,
               };
             } else {
               const transformedObj = {
@@ -2952,11 +3058,16 @@ const SVGAnnotationLayer = memo(({
           const midpointR = 5 * handleIs;
           // UX 2026-04-20: rotate the endpoint + midpoint handles with the
           // line so single-click selection chrome tracks the rotated shape
-          // instead of sitting at the pre-rotation endpoints. Center is the
-          // endpoint midpoint to match renderLine's rotation center.
+          // instead of sitting at the pre-rotation endpoints. Pivot is
+          // the curve-inclusive bbox center — same one renderLine, the
+          // bbox-edit frame, and the hit-area wrapper all use.
           const lineSelAngle = obj.angle ?? 0;
-          const lineSelCx = (ep.x1 + ep.x2) / 2 + dx;
-          const lineSelCy = (ep.y1 + ep.y2) / 2 + dy;
+          const lineSelBC = computeLineBboxCenter(
+            { x1: ep.x1, y1: ep.y1, x2: ep.x2, y2: ep.y2 },
+            obj.data?.midpoint || null,
+          );
+          const lineSelCx = lineSelBC.x + dx;
+          const lineSelCy = lineSelBC.y + dy;
           const lineSelRotate = lineSelAngle !== 0
             ? `rotate(${lineSelAngle}, ${lineSelCx}, ${lineSelCy})`
             : undefined;
@@ -3082,6 +3193,72 @@ const SVGAnnotationLayer = memo(({
           );
         }
 
+        // UX 2026-04-20: lines now pivot around the curve-inclusive
+        // bbox center everywhere — renderLine, the hit area, single-
+        // click handles, drag math, and resize math all resolve to the
+        // same point. SVGSelectionOverlay's default rotate transform
+        // uses bbox.left + bbox.width/2 which IS that same center
+        // (because getLineBBox emits the curve-inclusive tight bbox
+        // whose geometric middle equals computeLineBboxCenter). No
+        // rotationCenter override needed — keep it null so the default
+        // wins for both lines and every other shape type.
+        const overlayRotationCenter = null;
+
+        // UX 2026-04-20 diag: log the bbox that the default
+        // SVGSelectionOverlay is about to render for a line/arrow, along
+        // with the overlay's own rotation-pivot choice (bbox center) and
+        // the endpoint midpoint for comparison. Scoped to line-family
+        // objects so the log stream stays focused. Throttled per object
+        // via the same 150ms per-id clock used by getLineBBox /
+        // renderLine. Drop this side-by-side next to [LineBboxDiag]
+        // getLineBBox entries to see exactly what the overlay pivot was
+        // when the user clicked/rotated/released.
+        try {
+          const objTypeLower = String(obj.type || '').toLowerCase();
+          if (objTypeLower === 'line' || objTypeLower === 'group') {
+            const nowMs = (typeof performance !== 'undefined' && performance.now)
+              ? performance.now()
+              : Date.now();
+            if (!window.__lineOverlayLastLog) window.__lineOverlayLastLog = new Map();
+            const key = obj?.id ?? `idx:${selectedIndex}`;
+            const last = window.__lineOverlayLastLog.get(key) || 0;
+            if (nowMs - last >= 150) {
+              window.__lineOverlayLastLog.set(key, nowMs);
+              const bboxCx = bbox.left + bbox.width / 2;
+              const bboxCy = bbox.top + bbox.height / 2;
+              const effCx = overlayRotationCenter?.x ?? bboxCx;
+              const effCy = overlayRotationCenter?.y ?? bboxCy;
+              const payload = {
+                ts: new Date().toISOString(),
+                selectedIndex,
+                objId: obj?.id ?? null,
+                objType: obj?.type ?? null,
+                tool: obj?.tool ?? null,
+                isBeingEditedNow,
+                editType: editingAnnotationEditType ?? null,
+                lineInBboxMode,
+                hasVisualTransform: !!(visualTransform && visualTransform.id === selectedIndex),
+                visualTransformKind: visualTransform?.resize
+                  ? 'resize'
+                  : visualTransform?.rotate
+                    ? 'rotate'
+                    : (visualTransform?.dx || visualTransform?.dy) ? 'move' : null,
+                bboxPassedToOverlay: bbox,
+                bboxGeometricCenter: { x: bboxCx, y: bboxCy },
+                explicitRotationCenter: overlayRotationCenter,
+                effectiveRotationPivot: { x: effCx, y: effCy },
+                pivotDeltaFromBboxCenter: {
+                  dx: effCx - bboxCx,
+                  dy: effCy - bboxCy,
+                },
+                isBorderFlush,
+                padding: isBorderFlush ? 0 : 2,
+              };
+              console.log('[LineBboxDiag] overlayMount ' + JSON.stringify(payload));
+            }
+          }
+        } catch (_) { /* swallow diag errors */ }
+
         return (
           <g key={`selection-wrapper-${selectedIndex}`} transform={overlayTransform}>
             <SVGSelectionOverlay
@@ -3097,6 +3274,7 @@ const SVGAnnotationLayer = memo(({
               isGroupSelection={isBeingEditedNow && editingAnnotationEditType !== 'bbox'}
               hideBoundingBox={isBorderFlush}
               padding={isBorderFlush ? 0 : 2}
+              rotationCenter={overlayRotationCenter}
             />
           </g>
         );
