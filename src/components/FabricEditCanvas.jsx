@@ -852,6 +852,118 @@ const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onProperty
 MiniToolbar.displayName = 'MiniToolbar';
 
 // ---------------------------------------------------------------------------
+// UX diag 2026-04-19: exhaustive cursor-parity dump helper. Produces one
+// comprehensive snapshot of a Fabric text object + its matching SVG element
+// + all relevant parent wrappers + canvas/viewport state. Both the text-edit
+// path and the callout-edit path call this at edit entry and on every
+// keystroke so the saved console log contains apples-to-apples records that
+// can be diffed field-by-field to isolate the cursor drift source.
+// ---------------------------------------------------------------------------
+const dumpCursorParity = (phase, source, id, fabricObj, svgEl, canvas, containerEl) => {
+  try {
+    const pickComputed = (el) => {
+      if (!el) return null;
+      const cs = window.getComputedStyle(el);
+      const fields = [
+        'fontSize', 'fontFamily', 'fontWeight', 'fontStyle', 'fontVariant',
+        'fontStretch', 'lineHeight', 'letterSpacing', 'wordSpacing',
+        'wordBreak', 'wordWrap', 'whiteSpace', 'overflowWrap',
+        'fontKerning', 'textRendering', 'fontVariantLigatures',
+        'fontFeatureSettings', 'fontSynthesis', 'fontOpticalSizing',
+        'textAlign', 'textIndent', 'textTransform', 'direction',
+        'writingMode', 'unicodeBidi',
+        'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+        'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
+        'border', 'boxSizing', 'display', 'position',
+        'width', 'height', 'minWidth', 'maxWidth', 'minHeight', 'maxHeight',
+        'overflow', 'overflowX', 'overflowY',
+        'opacity', 'visibility', 'color',
+        'webkitFontSmoothing', 'MozOsxFontSmoothing',
+        'transform', 'transformOrigin',
+      ];
+      const out = {};
+      for (const f of fields) {
+        try { out[f] = cs[f]; } catch (_) {}
+      }
+      const r = el.getBoundingClientRect();
+      out.rect = { x: r.x, y: r.y, w: r.width, h: r.height };
+      return out;
+    };
+    const fabricJson = fabricObj && typeof fabricObj.toJSON === 'function'
+      ? (() => { try { return fabricObj.toJSON(); } catch (_) { return null; } })()
+      : null;
+    const fabricExtras = fabricObj ? {
+      cursorOffsetCache: fabricObj.cursorOffsetCache,
+      __charBounds_firstLineLen: Array.isArray(fabricObj.__charBounds)
+        ? (Array.isArray(fabricObj.__charBounds[0]) ? fabricObj.__charBounds[0].length : null)
+        : null,
+      _textLines_count: Array.isArray(fabricObj._textLines) ? fabricObj._textLines.length : null,
+      _textLines_first: Array.isArray(fabricObj._textLines) && fabricObj._textLines[0]
+        ? (Array.isArray(fabricObj._textLines[0]) ? fabricObj._textLines[0].join('') : String(fabricObj._textLines[0]))
+        : null,
+      _unwrappedTextLines_count: Array.isArray(fabricObj._unwrappedTextLines) ? fabricObj._unwrappedTextLines.length : null,
+      textWidth: (typeof fabricObj.calcTextWidth === 'function') ? fabricObj.calcTextWidth() : null,
+      textHeight: (typeof fabricObj.calcTextHeight === 'function') ? fabricObj.calcTextHeight() : null,
+      isEditing: !!fabricObj.isEditing,
+      selectionStart: fabricObj.selectionStart,
+      selectionEnd: fabricObj.selectionEnd,
+      text: fabricObj.text,
+    } : null;
+    const svgDump = pickComputed(svgEl);
+    const svgForeignObject = svgEl && svgEl.parentElement && svgEl.parentElement.tagName.toLowerCase() === 'foreignobject'
+      ? svgEl.parentElement
+      : null;
+    const svgForeignDump = svgForeignObject ? {
+      rect: (() => { const r = svgForeignObject.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; })(),
+      x: svgForeignObject.getAttribute('x'),
+      y: svgForeignObject.getAttribute('y'),
+      width: svgForeignObject.getAttribute('width'),
+      height: svgForeignObject.getAttribute('height'),
+      overflow: svgForeignObject.getAttribute('overflow'),
+    } : null;
+    // UX diag 2026-04-19 — overflow check. Compares the actual rendered
+    // text content height/width against the visible foreignObject box so
+    // the console log surfaces when resize-clipping kicks in. Mirrors the
+    // behavior a user sees in Drawboard PDF: shrink the box past the
+    // wrapped content, letters start disappearing behind the border.
+    const overflowDump = svgEl ? {
+      scrollHeight: svgEl.scrollHeight,
+      clientHeight: svgEl.clientHeight,
+      scrollWidth: svgEl.scrollWidth,
+      clientWidth: svgEl.clientWidth,
+      verticalClip: svgEl.scrollHeight > svgEl.clientHeight + 0.5,
+      horizontalClip: svgEl.scrollWidth > svgEl.clientWidth + 0.5,
+    } : null;
+    const containerDump = containerEl ? {
+      rect: (() => { const r = containerEl.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; })(),
+      styleWidth: containerEl.style.width,
+      styleHeight: containerEl.style.height,
+      styleLeft: containerEl.style.left,
+      styleTop: containerEl.style.top,
+      styleTransform: containerEl.style.transform,
+      styleVisibility: containerEl.style.visibility,
+    } : null;
+    const canvasDump = canvas ? {
+      zoom: canvas.getZoom ? canvas.getZoom() : null,
+      viewportTransform: canvas.viewportTransform ? canvas.viewportTransform.slice() : null,
+      width: canvas.getWidth ? canvas.getWidth() : null,
+      height: canvas.getHeight ? canvas.getHeight() : null,
+    } : null;
+    console.log('[TextCursorParity]', {
+      phase,
+      source,
+      id,
+      fabric: { ...(fabricJson || {}), __extras: fabricExtras },
+      svg: svgDump,
+      svgForeignObject: svgForeignDump,
+      overflow: overflowDump,
+      container: containerDump,
+      canvas: canvasDump,
+    });
+  } catch (_e) {}
+};
+
+// ---------------------------------------------------------------------------
 // FabricEditCanvas
 // ---------------------------------------------------------------------------
 const FabricEditCanvas = memo(({
@@ -859,6 +971,7 @@ const FabricEditCanvas = memo(({
   pageWidth,
   pageHeight,
   editType,            // 'text' | 'shape' | 'callout'
+  reactCalloutId,      // sentinel that the edit is actually a callout text edit (routed through the 'text' branch)
   annotationData,      // Fabric.js JSON object for the annotation being edited (null for new text)
   annotationIndex,     // index in annotations.objects array (-1 for new text)
   annotations,         // full page annotations JSON
@@ -917,6 +1030,11 @@ const FabricEditCanvas = memo(({
   const cursorPositionRef = useRef(null);
   const originalAnnotationRef = useRef(null);
   const bboxOriginRef = useRef(null);
+  // UX 2026-04-19 — tracks the vertical shift applied to the callout
+  // textbox so its cursor lines up with the SVG callout's flex-centered
+  // text. Applied on load, unwound on commit so the stored top stays
+  // pure.
+  const calloutCenterShiftYRef = useRef(0);
   const lastContainerSizeRef = useRef({ width: 0, height: 0 });
   const lastParentWidthRef = useRef(0); // Tracks parent width to detect spurious ResizeObserver fires (see Bug A in Phase 11 .continue-here.md)
   const initialZoomGenRef = useRef(zoomGeneration);
@@ -1055,13 +1173,17 @@ const FabricEditCanvas = memo(({
       // Plan 15-04 Issue 4 — activeObj.width/calcTextHeight are INNER; origW/H
       // are OUTER (stored). Convert inner→outer via +2*commitPad before the
       // max() so growth + stored compare in the same coordinate space.
+      // 2026-04-19: callouts use padY=0 (no vertical gutter), so height
+      // commit skips the +2*pad addition to keep Fabric's natural height
+      // equal to stored height on round-trip.
+      const commitPadY = reactCalloutId ? 0 : commitPad;
       const naturalH = activeObj.calcTextHeight
         ? activeObj.calcTextHeight()
         : (activeObj.height || 0);
       const origH = originalAnnotationRef.current.height || 0;
       const origW = originalAnnotationRef.current.width || 0;
       json.width = Math.max((activeObj.width || 0) + 2 * commitPad, origW);
-      json.height = Math.max(naturalH + 2 * commitPad, origH);
+      json.height = Math.max(naturalH + 2 * commitPadY, origH);
     }
 
     // For new text in page-space: offset from bbox origin (same as existing text)
@@ -1083,9 +1205,19 @@ const FabricEditCanvas = memo(({
       // Issue 4 — textboxes additionally carry a TEXT_PADDING shift inside
       // the canvas (so caret sits at the first inner column), so we subtract
       // commitPad only for textboxes. Shapes stay unaffected (padForCommit=0).
-      const padForCommit = activeObj.type === 'textbox' ? commitPad : 0;
-      json.left = bboxOriginRef.current.left + (json.left - BBOX_PADDING - padForCommit);
-      json.top = bboxOriginRef.current.top + (json.top - BBOX_PADDING - padForCommit);
+      // 2026-04-19: split into X/Y to match the load path — callouts use
+      // padY=0 so commit unwind must agree (otherwise top drifts up on save).
+      // Callouts also carry calloutCenterShiftYRef.current (vertical center
+      // offset applied on load so the cursor matches the SVG's flex-centered
+      // glyphs). Subtract it so the stored top stays pure.
+      const isTextbox = activeObj.type === 'textbox';
+      const padForCommitX = isTextbox ? commitPad : 0;
+      const padForCommitY = isTextbox ? (reactCalloutId ? 0 : commitPad) : 0;
+      const calloutCenterUnwind = (isTextbox && reactCalloutId)
+        ? calloutCenterShiftYRef.current
+        : 0;
+      json.left = bboxOriginRef.current.left + (json.left - BBOX_PADDING - padForCommitX);
+      json.top = bboxOriginRef.current.top + (json.top - BBOX_PADDING - padForCommitY - calloutCenterUnwind);
       // Restore the original rotation angle (stripped during edit for easier interaction)
       if (bboxOriginRef.current.angle) {
         json.angle = bboxOriginRef.current.angle;
@@ -1217,6 +1349,14 @@ const FabricEditCanvas = memo(({
     if (!parentEl || parentEl.offsetWidth <= 0 || pageWidth <= 0) return;
 
     const effectiveScale = parentEl.offsetWidth / pageWidth;
+    // Non-uniform stretch for any edit so the container matches the
+    // preview layer's preserveAspectRatio="none" behavior. Only kicks
+    // in when the container aspect drifts from the page aspect; in the
+    // usual uniform case, hScale === effectiveScale and nothing changes.
+    const effectiveScaleYInit = pageHeight > 0 ? parentEl.offsetHeight / pageHeight : effectiveScale;
+    const useNonUniformInit = Number.isFinite(effectiveScaleYInit)
+      && Math.abs(effectiveScaleYInit - effectiveScale) > 0.0005;
+    const hScale = useNonUniformInit ? effectiveScaleYInit : effectiveScale;
 
     let style;
     if (editType === 'callout') {
@@ -1286,9 +1426,9 @@ const FabricEditCanvas = memo(({
         style = {
           position: 'absolute',
           left: (annLeft - BBOX_PADDING) * effectiveScale,
-          top: (annTop - BBOX_PADDING) * effectiveScale,
+          top: (annTop - BBOX_PADDING) * hScale,
           width: (annWidth + BBOX_PADDING * 2) * effectiveScale,
-          height: (annHeight + BBOX_PADDING * 2) * effectiveScale,
+          height: (annHeight + BBOX_PADDING * 2) * hScale,
           zIndex: 101,
           pointerEvents: 'auto',
           overflow: editType === 'shape' ? 'visible' : undefined,
@@ -1344,6 +1484,19 @@ const FabricEditCanvas = memo(({
     if (!parentEl || parentEl.offsetWidth <= 0 || pageWidth <= 0) return;
 
     const effectiveScale = parentEl.offsetWidth / pageWidth;
+    // UX: 2026-04-19 — the SVG preview layer stretches content with
+    // preserveAspectRatio="none", so horizontal and vertical scale can
+    // differ when the container's aspect ratio drifts from the PDF
+    // page's. Apply the same per-axis stretch to the edit canvas so
+    // the edit box matches the preview exactly for callouts AND plain
+    // text annotations AND shapes. The guard below only engages when
+    // there's an actual aspect mismatch, so the uniform case is a
+    // no-op and falls through to setZoom unchanged.
+    const effectiveScaleY = pageHeight > 0 ? parentEl.offsetHeight / pageHeight : effectiveScale;
+    const isCalloutTextEdit = !!reactCalloutId;
+    const useNonUniform = Number.isFinite(effectiveScaleY)
+      && Math.abs(effectiveScaleY - effectiveScale) > 0.0005
+      && !pageSpaceModeRef.current;
 
     // Calculate canvas dimensions
     let canvasWidth, canvasHeight;
@@ -1374,13 +1527,42 @@ const FabricEditCanvas = memo(({
         canvasHeight = Math.ceil(annHeight + BBOX_PADDING * 2);
       } else {
         canvasWidth = Math.floor((annWidth + BBOX_PADDING * 2) * effectiveScale);
-        canvasHeight = Math.floor((annHeight + BBOX_PADDING * 2) * effectiveScale);
+        // For callout text edits under non-uniform aspect, use the
+        // vertical scale so the canvas height matches the preview.
+        const hScale = useNonUniform ? effectiveScaleY : effectiveScale;
+        canvasHeight = Math.floor((annHeight + BBOX_PADDING * 2) * hScale);
       }
     }
 
     // Container-aware sizing (CLAUDE.md rule)
-    canvas.setZoom(pageSpaceModeRef.current ? 1 : effectiveScale);
+    if (useNonUniform) {
+      canvas.setViewportTransform([effectiveScale, 0, 0, effectiveScaleY, 0, 0]);
+    } else {
+      canvas.setZoom(pageSpaceModeRef.current ? 1 : effectiveScale);
+    }
     canvas.setDimensions({ width: canvasWidth, height: canvasHeight });
+
+    // UX diag (2026-04-19): log what we actually set so we can see
+    // whether the non-uniform branch engaged and what the resulting
+    // canvas dimensions + viewport transform ended up as. Paired with
+    // the CalloutEditEntryDiag note from App.jsx — together they tell
+    // us whether view and edit end up at the same screen size.
+    if (isCalloutTextEdit) {
+      try {
+        const vpt = canvas.viewportTransform;
+        console.log('[CalloutEditCanvasDiag]', {
+          effectiveScale,
+          effectiveScaleY,
+          useNonUniform,
+          canvasWidth,
+          canvasHeight,
+          parentOffset: { w: parentEl.offsetWidth, h: parentEl.offsetHeight },
+          pageSize: { w: pageWidth, h: pageHeight },
+          vpt: vpt ? vpt.slice() : null,
+          zoom: canvas.getZoom(),
+        });
+      } catch (_e) {}
+    }
 
     // DO NOT seed lastContainerSizeRef here. The ResizeObserver callback at
     // ~line 1330 compares lastSize.width against parentEl.offsetWidth (parent-space),
@@ -1632,20 +1814,24 @@ const FabricEditCanvas = memo(({
         // before being repositioned to BBOX_PADDING.
         {
           const json = textObj.toJSON(CUSTOM_PROPS);
-          // Plan 15-04 Issue 4 — all textboxes (including PDF imports) carry
-          // a TEXT_PADDING gutter so view + edit share one contract. stored
-          // json.width = OUTER visible width, Fabric wrap target = inner =
-          // outer - 2*pad.
-          const pad = TEXT_PADDING;
+          // Plan 15-04 Issue 4 — both plain text and callouts carry a
+          // TEXT_PADDING gutter on the LEFT/RIGHT so view + edit share one
+          // contract. 2026-04-19: callouts don't use a vertical gutter (the
+          // SVG callout's foreignObject starts flush at the top of the
+          // textbox and grows downward for descenders). Splitting the pad
+          // into X/Y lets Fabric and SVG align pixel-for-pixel on both axes
+          // (horizontal gutter matches; vertical anchor matches during edit).
+          const padX = TEXT_PADDING;
+          const padY = reactCalloutId ? 0 : TEXT_PADDING;
           const outerW = json.width || 160;
           const { styles: _s, left: _l, top: _t, angle: _a, ...rest } = json;
           textObj = new fabric.Textbox(json.text || '', {
             ...rest,
             type: 'textbox',
-            left: BBOX_PADDING + pad,
-            top: BBOX_PADDING + pad,
+            left: BBOX_PADDING + padX,
+            top: BBOX_PADDING + padY,
             angle: 0,
-            width: Math.max(8, outerW - 2 * pad),
+            width: Math.max(8, outerW - 2 * padX),
             splitByGrapheme: true,
             fontWeight: json.fontWeight || 'normal',
             styles: {},
@@ -1681,17 +1867,37 @@ const FabricEditCanvas = memo(({
         // Plan 15-04 Issue 4 — actualW/H are Fabric's INNER dims. storedH is
         // OUTER; for compare we convert inner-natural to outer by +2*pad. Then
         // outer max() covers both the stored size and content growth, and
-        // canvas = outer + 2*BBOX_PADDING. pad is applied uniformly (imports
-        // included) per user UAT feedback.
-        const pad = TEXT_PADDING;
+        // canvas = outer + 2*BBOX_PADDING.
+        // 2026-04-19: callouts use padY=0 (no vertical gutter); plain text
+        // uses padY=TEXT_PADDING. padX is TEXT_PADDING for both.
+        const padX = TEXT_PADDING;
+        const padY = reactCalloutId ? 0 : TEXT_PADDING;
         const actualW = textObj.width * (textObj.scaleX || 1);
         const naturalInnerH = textObj.calcTextHeight
           ? textObj.calcTextHeight()
           : textObj.height * (textObj.scaleY || 1);
         const storedOuterH = originalAnnotationRef.current?.height || 0;
-        const outerW = actualW + 2 * pad;
-        const outerH = Math.max(naturalInnerH + 2 * pad, storedOuterH);
+        const outerW = actualW + 2 * padX;
+        const outerH = Math.max(naturalInnerH + 2 * padY, storedOuterH);
         const es = canvas.getZoom();
+
+        // UX 2026-04-19 — for callouts, vertically center the Fabric textbox
+        // so the blinking cursor lines up with the SVG callout's
+        // flex-centered text. Visible SVG box height = stored height +
+        // descenderBuffer (fontSize * 0.35). The center offset is half the
+        // spare room between the visible box and the current natural text
+        // height. Plain text keeps Fabric at BBOX_PADDING + padY.
+        let centerShiftY = 0;
+        if (reactCalloutId) {
+          const descenderBuffer = (textObj.fontSize || 12) * 0.35;
+          const visibleBoxH = storedOuterH + descenderBuffer;
+          centerShiftY = Math.max(0, (visibleBoxH - naturalInnerH) / 2);
+          if (centerShiftY > 0) {
+            textObj.set({ top: BBOX_PADDING + padY + centerShiftY });
+          }
+        }
+        calloutCenterShiftYRef.current = centerShiftY;
+
         // Add to canvas WITHOUT rendering yet (renderOnAddRemove: false)
         canvas.add(textObj);
         canvas.setActiveObject(textObj);
@@ -1708,6 +1914,52 @@ const FabricEditCanvas = memo(({
         // Suppress native caret on Fabric's hidden textarea (Electron can flash it)
         if (textObj.hiddenTextarea) {
           textObj.hiddenTextarea.style.caretColor = 'transparent';
+        }
+
+        // UX diag 2026-04-19: comprehensive cursor-parity dump (see
+        // dumpCursorParity at module scope). One entry at edit entry; more on
+        // every keystroke via the 'changed' listener below.
+        //
+        // 2026-04-19 follow-up: the first pass returned svg=null because
+        // callouts route through this branch (text-edit path) and the
+        // annotation's id field often isn't in the serialized textbox. Prefer
+        // the reactCalloutId prop first (callout edit), then the annotation id,
+        // then fall back to page+index lookup against the page wrapper so
+        // the visible element is found in every scenario.
+        {
+          const annData = annotationDataRef.current;
+          const source = reactCalloutId ? 'callout' : 'text';
+          const resolvedId = reactCalloutId || annData?.id || null;
+          const findSvgDiv = () => {
+            if (reactCalloutId) {
+              const el = document.querySelector(
+                `[data-callout-id="${reactCalloutId}"] [data-callout-part="text"] > div`
+              );
+              if (el) return el;
+            }
+            if (annData?.id) {
+              const el = document.querySelector(
+                `[data-annotation-id="${annData.id}"] foreignObject > div`
+              );
+              if (el) return el;
+            }
+            const pageWrapper = document.querySelector(
+              `[data-syncfusion-page-number="${pageNumber}"]`
+            ) || document;
+            const byIndex = pageWrapper.querySelector(
+              `[data-annotation-index="${annotationIndex}"] foreignObject > div`
+            );
+            return byIndex || null;
+          };
+          dumpCursorParity('enter', source, resolvedId, textObj, findSvgDiv(), canvas, containerRef.current);
+          textObj.on('changed', () => {
+            if (!mountedRef.current) return;
+            dumpCursorParity('keystroke', source, resolvedId, textObj, findSvgDiv(), canvas, containerRef.current);
+          });
+          textObj.on('selection:changed', () => {
+            if (!mountedRef.current) return;
+            dumpCursorParity('selection', source, resolvedId, textObj, findSvgDiv(), canvas, containerRef.current);
+          });
         }
 
         // Reveal via rAF: wait one frame for browser to finish compositing Fabric canvas layers
@@ -1742,11 +1994,13 @@ const FabricEditCanvas = memo(({
         textObj.on('changed', () => {
           if (!mountedRef.current || !containerRef.current) return;
           // Plan 15-04 Issue 4 — naturalH is INNER; storedOuterH is OUTER.
-          // effectiveOuterH = max(innerGrowth + 2*pad, storedOuter). Canvas
+          // effectiveOuterH = max(innerGrowth + 2*padY, storedOuter). Canvas
           // height = effectiveOuterH + 2*BBOX_PADDING. Broadcast OUTER.
+          // 2026-04-19: callouts use padY=0 so the vertical gutter doesn't
+          // fight the SVG callout's flush top anchor during edit.
           const naturalInnerH = textObj.calcTextHeight();
           const storedOuterH2 = originalAnnotationRef.current?.height || 0;
-          const effectiveOuterH = Math.max(naturalInnerH + 2 * pad, storedOuterH2);
+          const effectiveOuterH = Math.max(naturalInnerH + 2 * padY, storedOuterH2);
           // UX: edit box must stay the same size on first keystroke as on
           // edit-enter — the sibling formula above (line ~1534) has no +8 buffer,
           // so adding one here made the box visibly jump on the first letter and
@@ -1769,9 +2023,9 @@ const FabricEditCanvas = memo(({
           // Canvas 2D until commit).
           if (onLiveTextGrow && bboxOriginRef.current) {
             // Plan 15-04 Issue 4 — broadcast OUTER visible dims. Inner Fabric
-            // width + 2*pad = outer border width seen by renderText.
+            // width + 2*padX = outer border width seen by renderText.
             const innerW = (textObj.width || 0) * (textObj.scaleX || 1);
-            const outerW = innerW + 2 * pad;
+            const outerW = innerW + 2 * padX;
             const lines = Array.isArray(textObj._textLines)
               ? textObj._textLines.map(l => Array.isArray(l) ? l.join('') : String(l))
               : null;
@@ -2244,9 +2498,35 @@ const FabricEditCanvas = memo(({
       }
 
       canvas.renderAll();
+
+      // UX diag 2026-04-19: comprehensive cursor-parity dump — callout side.
+      // Paired with the text-side dumpCursorParity entries so the two sources
+      // can be diffed field-by-field in the saved console log.
+      {
+        const textChild =
+          (enlivenedObjects || []).find((o) => {
+            const t = String(o?.type || '').toLowerCase();
+            return t === 'textbox' || t === 'i-text' || t === 'text';
+          }) || null;
+        const findSvg = () => reactCalloutId
+          ? document.querySelector(`[data-callout-id="${reactCalloutId}"] [data-callout-part="text"] > div`)
+          : null;
+        dumpCursorParity('enter', 'callout', reactCalloutId || null, textChild, findSvg(), canvas, containerRef.current);
+        if (textChild) {
+          textChild.on('changed', () => {
+            if (!mountedRef.current) return;
+            dumpCursorParity('keystroke', 'callout', reactCalloutId || null, textChild, findSvg(), canvas, containerRef.current);
+          });
+          textChild.on('selection:changed', () => {
+            if (!mountedRef.current) return;
+            dumpCursorParity('selection', 'callout', reactCalloutId || null, textChild, findSvg(), canvas, containerRef.current);
+          });
+        }
+      }
+
       setIsLoading(false);
     });
-  }, [annotationIndex]);
+  }, [annotationIndex, reactCalloutId]);
 
   // -------------------------------------------------------------------------
   // Sync refs to avoid stale closures
@@ -2528,6 +2808,11 @@ const FabricEditCanvas = memo(({
         if (!canvas || !mountedRef.current) return;
 
         const effectiveScale = parentEl.offsetWidth / pageWidth;
+        const effectiveScaleY = pageHeight > 0 ? parentEl.offsetHeight / pageHeight : effectiveScale;
+        const isCalloutTextEditSettle = !!reactCalloutId;
+        const useNonUniformSettle = Number.isFinite(effectiveScaleY)
+          && Math.abs(effectiveScaleY - effectiveScale) > 0.0005
+          && !pageSpaceModeRef.current;
 
         // Recalculate container dimensions
         let newWidth, newHeight;
@@ -2539,7 +2824,8 @@ const FabricEditCanvas = memo(({
           const bboxW = settleDims.width + BBOX_PADDING * 2;
           const bboxH = settleDims.height + BBOX_PADDING * 2;
           newWidth = Math.floor(bboxW * effectiveScale);
-          newHeight = Math.floor(bboxH * effectiveScale);
+          const hScaleSettle = useNonUniformSettle ? effectiveScaleY : effectiveScale;
+          newHeight = Math.floor(bboxH * hScaleSettle);
         }
 
         // Clear CSS transform bridge and reposition/resize via direct DOM
@@ -2559,10 +2845,11 @@ const FabricEditCanvas = memo(({
               const settleDims2 = getAnnotationDims(annData);
               const annWidth2 = settleDims2.width;
               const annHeight2 = settleDims2.height;
+              const hScaleSettle2 = useNonUniformSettle ? effectiveScaleY : effectiveScale;
               containerEl.style.left = ((annLeft - BBOX_PADDING) * effectiveScale) + 'px';
-              containerEl.style.top = ((annTop - BBOX_PADDING) * effectiveScale) + 'px';
+              containerEl.style.top = ((annTop - BBOX_PADDING) * hScaleSettle2) + 'px';
               containerEl.style.width = ((annWidth2 + BBOX_PADDING * 2) * effectiveScale) + 'px';
-              containerEl.style.height = ((annHeight2 + BBOX_PADDING * 2) * effectiveScale) + 'px';
+              containerEl.style.height = ((annHeight2 + BBOX_PADDING * 2) * hScaleSettle2) + 'px';
               // Keep the inset outline aligned with SVG rect position when zoom changes
               if (editTypeRef.current === 'text') {
                 containerEl.style.outlineOffset = `-${BBOX_PADDING * effectiveScale}px`;
@@ -2571,7 +2858,11 @@ const FabricEditCanvas = memo(({
           }
         }
 
-        canvas.setZoom(effectiveScale);
+        if (useNonUniformSettle) {
+          canvas.setViewportTransform([effectiveScale, 0, 0, effectiveScaleY, 0, 0]);
+        } else {
+          canvas.setZoom(effectiveScale);
+        }
         canvas.setWidth(newWidth);
         canvas.setHeight(newHeight);
         canvas.renderAll();

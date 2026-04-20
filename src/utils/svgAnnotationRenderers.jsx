@@ -22,6 +22,7 @@ import { buildCalloutRenderSpec, sanitizeFontFamily } from './calloutEditAdapter
 import {
   buildLineRenderSpec,
   buildArrowheadRenderSpec,
+  ARROWHEAD_STYLES,
 } from './lineRenderHelpers.js';
 // Fill-bleed diagnostics (2026-04-16). Off by default; the wrapper calls are
 // cheap no-ops when disabled. Toggle in DevTools console:
@@ -674,11 +675,17 @@ export const renderText = (obj, index, liveBounds = null) => {
         />
       ) : null}
       <foreignObject
+        data-annotation-text-bounds=""
         x={left + pad}
         y={top + pad}
         width={innerWidth}
         height={innerDisplayHeight}
-        overflow="visible"
+        // UX 2026-04-19 — overflow:hidden so text that doesn't fit inside
+        // the resized textbox gets clipped at the border (matches Drawboard
+        // PDF). Live wrap still happens via word-break:break-all inside the
+        // flex width; this setting only hides the lines that spill past the
+        // visible box height when the user drags the bottom up.
+        overflow="hidden"
       >
         <div
           xmlns="http://www.w3.org/1999/xhtml"
@@ -701,7 +708,10 @@ export const renderText = (obj, index, liveBounds = null) => {
             // caret stays glued to the rendered letters no matter how many
             // lines wrap. (Plan 15-04 Issue 1, verified 2026-04-17.)
             lineHeight: (obj.lineHeight || 1.16) * 1.13,
-            overflow: 'visible',
+            // UX 2026-04-19 — hidden on the inner div too so if the box is
+            // resized narrower than a single character can fit, nothing
+            // leaks out the side.
+            overflow: 'hidden',
             wordWrap: 'break-word',
             // UX: Fabric Textbox wraps with `splitByGrapheme: true` — break at
             // any character regardless of word boundaries. CSS `word-wrap:
@@ -754,7 +764,7 @@ export const renderText = (obj, index, liveBounds = null) => {
  * @param {Function} calculateConnection - calculateCalloutConnection function
  * @returns {React.ReactElement|null}
  */
-export const renderCallout = (callout, index, pageSize, calculateConnection, hideText = false, liveBounds = null) => {
+export const renderCallout = (callout, index, pageSize, calculateConnection, hideText = false, liveBounds = null, rawKnee = false) => {
   if (!callout || !callout.arrowTip || !callout.knee) return null;
   const { width: pageWidth = 0, height: pageHeight = 0 } = pageSize || {};
 
@@ -800,11 +810,80 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
   // 2026-04-08 gotcha). sanitizeFontFamily strips CSS fallback stacks.
   const safeFontFamily = sanitizeFontFamily(callout.style?.fontFamily);
 
-  // Calculate connection geometry
-  const connection = calculateConnection(
-    textBox.x, textBox.y, textBox.width, textBox.height,
-    knee, arrowTip, lineThickness
+  // UX: borderWidth passed as 0 — stored textBox x/y/w/h already represent
+  // the OUTER visible border rect (the <rect> below paints at the same dims).
+  // Passing lineThickness here would nudge the line's box-end inward by that
+  // amount, leaving a visible bleed inside the textbox (Phase 15 UAT-3 Issue 2).
+  // The connection math still uses lineThickness for its internal stroke-safe
+  // calculations elsewhere — it doesn't need it as a geometric offset here.
+  //
+  // Phase 15 UAT-3 (2026-04-18) — rawKnee mode: during an active knee drag
+  // the user wants to see the line bending at THEIR cursor, not at an
+  // auto-routed midpoint. Compute a raw connection that skips the
+  // bad-geometry branch entirely: line1 starts at the closest textbox edge
+  // to the raw knee, line2 goes straight from raw knee to arrow. If the
+  // user drops here on release the rollback logic handles "knee inside
+  // textbox" separately.
+  let connection;
+  if (rawKnee) {
+    const boxRight = textBox.x + textBox.width;
+    const boxBottom = textBox.y + textBox.height;
+    const clampedX = Math.max(textBox.x, Math.min(knee.x, boxRight));
+    const clampedY = Math.max(textBox.y, Math.min(knee.y, boxBottom));
+    connection = {
+      line1Start: { x: clampedX, y: clampedY },
+      line2Start: { x: knee.x, y: knee.y },
+      effectiveKnee: { x: knee.x, y: knee.y },
+      shouldHideLine1: false,
+    };
+  } else {
+    connection = calculateConnection(
+      textBox.x, textBox.y, textBox.width, textBox.height,
+      knee, arrowTip, 0
+    );
+  }
+
+  // UX: arrowhead style resolution — explicit style wins, else default to
+  // solid triangle so callouts share the arrow tool's default look. Callers
+  // can force 'none' via an explicit style override.
+  const arrowheadStyle = callout.style?.arrowheadStyle ?? ARROWHEAD_STYLES.SOLID_TRIANGLE;
+  // UX: arrowhead rotates to the tangent of line2 (knee → arrowTip), same
+  // convention the straight-branch arrow tool uses. line2Start is the
+  // constrained / effective knee so the arrowhead aligns with the visible
+  // segment even after knee clamping.
+  const arrowAngleDeg = (
+    Math.atan2(arrowTip.y - connection.line2Start.y, arrowTip.x - connection.line2Start.x)
+    * 180 / Math.PI
   );
+  const arrowheadSpec = buildArrowheadRenderSpec(
+    arrowheadStyle, arrowTip.x, arrowTip.y, arrowAngleDeg, lineColor, lineThickness
+  );
+  // UX: shorten line2 into the back of the arrowhead for SOLID_TRIANGLE /
+  // OPEN_TRIANGLE so the line tail doesn't poke through — same formula the
+  // arrow tool uses (lineEndX/Y offset by headSize/3).
+  let line2EndX = arrowTip.x;
+  let line2EndY = arrowTip.y;
+  if (arrowheadStyle === ARROWHEAD_STYLES.SOLID_TRIANGLE
+      || arrowheadStyle === ARROWHEAD_STYLES.OPEN_TRIANGLE) {
+    const headSize = Math.max(8, lineThickness * 3);
+    const angleRad = arrowAngleDeg * Math.PI / 180;
+    line2EndX = arrowTip.x - (headSize / 3) * Math.cos(angleRad);
+    line2EndY = arrowTip.y - (headSize / 3) * Math.sin(angleRad);
+  }
+  // UX: render the arrowhead spec via the same primitive mapping the arrow
+  // tool uses. Keeps callout and arrow tool visually identical when styles
+  // match.
+  const renderArrowheadEl = () => {
+    switch (arrowheadSpec.kind) {
+      case 'none': return null;
+      case 'solidTriangle': return <polygon {...arrowheadSpec.polygon} />;
+      case 'openTriangle': return <polygon {...arrowheadSpec.polygon} />;
+      case 'openCircle': return <circle {...arrowheadSpec.circle} />;
+      case 'vShape': return <polyline {...arrowheadSpec.polyline} />;
+      case 'horizontalLine': return <line {...arrowheadSpec.line} />;
+      default: return null;
+    }
+  };
 
   const key = `callout-${callout.id || index}`;
 
@@ -841,27 +920,23 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
           {...lineStyle}
         />
       )}
-      {/* Line 2: knee to arrowTip */}
+      {/* Line 2: knee to arrowTip (shortened into back of arrowhead for
+          triangle styles so the line tail doesn't poke through the point). */}
       <line
         // UX: data-callout-part='line2' — Phase 18 Liang-Barsky auto-routing
         // identifies the tip-direction segment via this marker. (CALL-10)
         data-callout-part="line2"
         x1={connection.line2Start.x}
         y1={connection.line2Start.y}
-        x2={arrowTip.x}
-        y2={arrowTip.y}
+        x2={line2EndX}
+        y2={line2EndY}
         {...lineStyle}
       />
-      {/* ArrowTip circle — Phase 15 ARROW-04 will replace with picker output */}
-      <circle
-        // UX: data-callout-part='arrowTip' — Phase 17 CALL-01 30px collision
-        // clamp hit-test surface. (CALL-10)
-        data-callout-part="arrowTip"
-        cx={arrowTip.x}
-        cy={arrowTip.y}
-        r={Math.max(2, lineThickness + 0.4)}
-        fill={lineColor}
-      />
+      {/* UX: real arrowhead via the same arrow-tool renderer path
+          (buildArrowheadRenderSpec) — solid triangle by default, or whichever
+          of the 6 styles the callout style specifies. Replaces the earlier
+          placeholder dot (Phase 15 UAT-3 Issue 1). (CALL-10) */}
+      {renderArrowheadEl()}
       {/* Text box rect + text foreignObject — rendered as a pair when
           hideText=false. Both hide together when the callout is being edited
           (hideText=true): FabricEditCanvas mounts a Fabric.Textbox over the
@@ -871,7 +946,18 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
           rect + foreignObject share source-of-truth with the Fabric Textbox
           during edit, so the unified textbox-IS-the-box model preserves the
           auto-sized growth the user sees while typing. */}
-      {!hideText && (
+      {!hideText && (() => {
+        // UX: 2026-04-19 — give the visible box a descender buffer so letters
+        // like j / g / p / y / q that hang below the baseline stay inside the
+        // border instead of clipping against the bottom edge. Mirrors the
+        // `descenderBuffer = fontSize * 0.35` approach used by renderText
+        // for plain text annotations. Both the border rect and the inner
+        // foreignObject grow together so the text anchor stays at the top
+        // and the bottom stretches just enough to contain descenders.
+        const calloutFs = Number(callout.style?.fontSize || 12);
+        const descenderBuffer = calloutFs * 0.35;
+        const boxHeightWithDescenders = textBox.height + descenderBuffer;
+        return (
         <>
           <rect
             // UX: data-callout-part='textBox' — Phase 14 drag target + Phase 17
@@ -880,7 +966,7 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
             x={textBox.x}
             y={textBox.y}
             width={textBox.width}
-            height={textBox.height}
+            height={boxHeightWithDescenders}
             fill={fillColor}
             fillOpacity={fillOpacity}
             stroke={lineColor}
@@ -903,11 +989,27 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
             // width must also subtract 2*TEXT_PADDING to stay in lockstep
             // (see calloutEditAdapter / FabricEditCanvas callout edit path).
             data-callout-part="text"
+            // UX: 2026-04-19 — clamp the 6px text inset down for tight
+            // imported boxes. Acrobat/Drawboard store FreeTextCallouts
+            // with the border fit snug to the text (sometimes only a
+            // couple of px above/below the glyphs). A flat 6px inset
+            // crushes the text to the bottom on those. Scale the inset
+            // so text never gets less than one line-box worth of room,
+            // and always let the foreign object cover the full height
+            // for tight boxes so the flex-centered child lays out
+            // properly.
+            // UX: 2026-04-19 — add the same TEXT_PADDING gutter renderText
+            // uses for plain text annotations so callout letters don't hug
+            // the left border. Fabric's callout edit path applies the same
+            // inset, so cursor and glyphs stay pixel-aligned side-to-side.
+            // overflow:hidden hides any text that doesn't fit when the user
+            // resizes the callout narrower than the content can wrap, or
+            // shorter than the wrapped lines — matches Drawboard PDF.
             x={textBox.x + TEXT_PADDING}
-            y={textBox.y + TEXT_PADDING}
+            y={textBox.y}
             width={Math.max(0, textBox.width - 2 * TEXT_PADDING)}
-            height={Math.max(0, textBox.height - 2 * TEXT_PADDING)}
-            overflow="visible"
+            height={Math.max(0, boxHeightWithDescenders)}
+            overflow="hidden"
           >
             <div
               xmlns="http://www.w3.org/1999/xhtml"
@@ -923,10 +1025,26 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
               style={{
                 width: '100%',
                 height: '100%',
+                // UX: 2026-04-19 — vertically center the text inside the
+                // (descender-padded) box in every state. Fabric's edit-mode
+                // cursor is shifted down by the same center offset so the
+                // blinking caret lines up with the visible glyphs whether
+                // the user is typing or not. Multi-line content that
+                // overflows the box top-aligns naturally (`justify-content:
+                // center` only uses free space).
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                textAlign: callout.style?.textAlign || 'left',
+                fontKerning: 'none',
+                textRendering: 'geometricPrecision',
+                fontVariantLigatures: 'none',
                 fontSize: `${callout.style?.fontSize || 12}px`,
                 fontFamily: safeFontFamily,
                 color: callout.style?.fontColor || callout.style?.textColor || '#000',
-                overflow: 'visible',
+                // UX 2026-04-19 — hidden on the inner div as well so tight
+                // boxes clip cleanly at the border.
+                overflow: 'hidden',
                 wordWrap: 'break-word',
                 // UX: match renderText — Fabric's `splitByGrapheme: true`
                 // breaks at any character, CSS default prefers word
@@ -955,7 +1073,8 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
             </div>
           </foreignObject>
         </>
-      )}
+        );
+      })()}
     </g>
   );
 };

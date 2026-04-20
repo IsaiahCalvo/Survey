@@ -75,6 +75,7 @@ import SVGAnnotationLayer from './components/SVGAnnotationLayer';
 import FabricDrawingCanvas from './components/FabricDrawingCanvas';
 import FabricEraserCanvas from './components/FabricEraserCanvas';
 import FabricEditCanvas from './components/FabricEditCanvas';
+import AnnotationPropertiesPanel from './components/AnnotationPropertiesPanel';
 // FabricTextCanvas removed — text tool now creates text-only callouts via CalloutCanvas
 import CalloutOverlay from './components/Callout';
 // Plan 14-03 Task 3 (CALL-10): callout edit-mode adapter. Converts React
@@ -11088,6 +11089,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Opened by document-level contextmenu dispatcher in src/utils/contextMenuDiagnostics.js
   // via window.__onAnnotationContextMenu. Dismissed by click-outside or Escape.
   const [annotationContextMenu, setAnnotationContextMenu] = useState(null);
+  // UX: right-click → context menu → Properties opens AnnotationPropertiesPanel
+  // at the same (x, y) the context menu was anchored to. Shape mirrors
+  // annotationContextMenu (kind, pageNumber, annotationIndex, calloutId, x, y)
+  // so the panel can read the targeted annotation + commit live edits back
+  // through handleSaveAnnotations without needing a separate resolver.
+  const [annotationPropertiesPanel, setAnnotationPropertiesPanel] = useState(null);
   // UX: pan-mode quick-click selection command. Set by the document-level
   // mousedown/mouseup listeners below when a short click lands on an
   // annotation while activeTool === 'pan'. Each SVGAnnotationLayer instance
@@ -13078,7 +13085,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, [bindSyncfusionViewerRefs, queueSyncfusionPageContainerRefresh]);
 
   const handleSyncfusionDocumentLoadFailed = useCallback((args) => {
-    console.error('Syncfusion documentLoadFailed:', args);
+    // UX: Phase 15 UAT-3 (2026-04-18) — Syncfusion's event args serialise
+    // to `{}` because fields are defined as non-enumerable getters. Pull
+    // out the useful fields explicitly so the console actually shows the
+    // reason the document failed to load.
+    const detail = args ? {
+      documentName: args.documentName,
+      errorCode: args.errorCode,
+      errorStatusCode: args.errorStatusCode,
+      statusCode: args.statusCode,
+      fileName: args.fileName,
+      message: args.message,
+      name: args.name,
+    } : null;
+    console.error('Syncfusion documentLoadFailed:', detail, args);
     setLastDebugError('SYNCFUSION_DOCUMENT_LOAD_FAILED', args);
     emitPdfDebugEvent('app_syncfusion_document_load_failed');
     setSyncfusionPageContainers({});
@@ -14629,10 +14649,43 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // main.js that lacks auto-mkdir). Uses only the original fs:writeFile IPC
     // so it works regardless of whether Electron main has been restarted.
     const BASE = '/Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/TestLogs/testlog';
+    const DIR = '/Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/TestLogs';
     const api = window.electronAPI;
+    // UX 2026-04-19: loud status so the user knows the click registered
+    // even when Electron's IPC path is missing. Previously a missing
+    // electronAPI produced a silent console.warn — in a browser window
+    // (not the packaged Electron shell) the button appeared dead.
+    console.log('[SaveLog] click received — starting export');
     if (!api?.writeFile) {
-      console.warn('[SaveLog] electronAPI.writeFile unavailable');
+      console.warn('[SaveLog] electronAPI.writeFile unavailable — falling back to browser download');
+      try {
+        const buf = window.__consoleLogBuffer;
+        const text = Array.isArray(buf) && buf.length > 0 ? buf.join('\n') : '(no console output captured)';
+        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `1-${new Date().toISOString().replace(/[:.]/g, '-')}.log`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        console.log('[SaveLog] browser download triggered');
+      } catch (dlErr) {
+        console.error('[SaveLog] browser download failed', dlErr);
+      }
       return null;
+    }
+
+    // UX: 2026-04-19 — clear the TestLogs folder first so each click
+    // gives a clean snapshot of the current investigation instead of
+    // accreting stale files from prior test runs.
+    if (typeof api.clearDir === 'function') {
+      try {
+        await api.clearDir(DIR);
+      } catch (clearErr) {
+        console.warn('[SaveLog] clearDir failed, continuing:', clearErr?.message || clearErr);
+      }
     }
 
     const written = [];
@@ -14651,6 +14704,23 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       ? consoleBuffer.join('\n')
       : '(no console output captured)';
     await writeSafe('console.log', consoleText);
+
+    // UX: 2026-04-19 (updated) — OVERWRITE 1.log at the project root with the
+    // current session's console dump. User explicitly asked to wipe each time
+    // so only the latest run's logs are in the file.
+    try {
+      const ts = new Date().toISOString();
+      const header = `===== SaveLog @ ${ts} =====\n`;
+      await api.writeFile(
+        '/Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/1.log',
+        header + consoleText + '\n'
+      );
+      const lines = Array.isArray(window.__consoleLogBuffer)
+        ? window.__consoleLogBuffer.length : 0;
+      console.log(`[SaveLog] wrote ${lines} lines to 1.log at ${ts}`);
+    } catch (wErr) {
+      console.warn('[SaveLog] write to 1.log failed:', wErr?.message || wErr);
+    }
 
     const diag = window.__diagBuffer || { eraser: null, select: null };
 
@@ -16182,6 +16252,35 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       calloutChildren: nonTextChildren,
       pageSize: pageSizeObj,
     });
+
+    // UX diag (2026-04-19): compare SVG text rect vs Fabric textbox
+    // position at edit entry. Logs the screen-space bounding box of the
+    // SVG foreignObject (what the user sees) and the Fabric textbox page
+    // coords (what Fabric will render), so we can see any offset that
+    // causes the double-click selection highlight to look misaligned.
+    try {
+      const svgEl = document.querySelector(`[data-callout-id="${calloutId}"] [data-callout-part="text"]`);
+      const svgRect = svgEl ? svgEl.getBoundingClientRect() : null;
+      console.log('[CalloutEditEntryDiag]', {
+        calloutId,
+        isPdfImported: !!reactCallout.isPdfImported,
+        text: reactCallout.text,
+        textAlign: reactCallout.style?.textAlign,
+        fontSize: reactCallout.style?.fontSize,
+        fabricTextbox: {
+          left: textboxChild.left,
+          top: textboxChild.top,
+          width: textboxChild.width,
+          height: textboxChild.height,
+          fontSize: textboxChild.fontSize,
+          textAlign: textboxChild.textAlign,
+        },
+        svgTextBoxClientRect: svgRect
+          ? { x: svgRect.x, y: svgRect.y, w: svgRect.width, h: svgRect.height }
+          : null,
+        pageSize: pageSizeObj,
+      });
+    } catch (_e) {}
   }, [callouts, pageSizes]);
 
   // UX: auto-open newly-created callout in edit mode. handleCreateCallout
@@ -22411,13 +22510,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const loadPDF = async () => {
       const docName = pdfFile.name || 'unknown';
       perfLoad.start(docName);
+      // Hoisted so the outer catch's rewrite-and-retry path can reuse
+      // bytes we've already fetched instead of re-downloading.
+      let arrayBuffer;
       try {
         // Note: verbosity cannot be set directly on imports in ES modules
         // PDF.js will use default verbosity level
 
         setIsLoadingPDF(true);
 
-        let arrayBuffer;
         if (typeof pdfFile.arrayBuffer === 'function') {
           // Local file
           arrayBuffer = await pdfFile.arrayBuffer();
@@ -22476,8 +22577,33 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             pdf = await recoveryTask.promise;
             perfLoad.mark(docName, 'PDF.js document parsed (recovery mode)');
           } catch (recoveryError) {
-            // If recovery also fails, throw the original error
-            throw firstError;
+            // UX: 2026-04-19 — some Acrobat-saved PDFs use compressed
+            // object streams that pdf.js trips on ("bad ObjStm stream").
+            // Re-save via pdf-lib with useObjectStreams: false to
+            // rewrite the file in a plain xref layout, then retry.
+            try {
+              console.warn('Recovery mode failed, rewriting PDF via pdf-lib and retrying:', recoveryError?.message);
+              const pdfLib = await import('pdf-lib');
+              const rewriteDoc = await pdfLib.PDFDocument.load(arrayBuffer.slice(0), {
+                updateMetadata: false,
+                ignoreEncryption: true,
+              });
+              const rewritten = await rewriteDoc.save({ useObjectStreams: false });
+              const rewriteTask = pdfjsLib.getDocument({
+                data: rewritten.buffer.slice(0),
+                verbosity: pdfjsLib.VerbosityLevel.ERRORS,
+                stopAtErrors: false,
+              });
+              pdf = await rewriteTask.promise;
+              // Update the buffer downstream consumers see so Syncfusion and
+              // the annotation importer also read the rewritten bytes.
+              arrayBuffer = rewritten.buffer;
+              setSyncfusionDocumentBytes(new Uint8Array(rewritten));
+              perfLoad.mark(docName, 'PDF.js document parsed (rewrite mode)');
+            } catch (rewriteError) {
+              console.error('Rewrite-and-retry PDF load also failed:', rewriteError?.message);
+              throw firstError;
+            }
           }
         }
         if (isCancelled) return;
@@ -22670,6 +22796,51 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       } catch (error) {
         perfLoad.end(docName);
         if (isCancelled) return;
+        // UX: 2026-04-19 — some Acrobat-saved PDFs use compressed object
+        // streams that pdf.js trips on at parse or page-load time ("bad
+        // ObjStm stream"). Re-save via pdf-lib with plain xref and retry
+        // the whole load once. Only trigger on the signature errors to
+        // avoid paying the rewrite cost for normal failures.
+        // UX: 2026-04-19 — some Acrobat-saved PDFs use compressed object
+        // streams or non-standard xref layouts that pdf.js trips on at
+        // parse or page-load time ("bad ObjStm stream", xref errors,
+        // "Invalid stream/object"). Re-save once via pdf-lib with a
+        // plain xref and retry the whole load. Guarded by a flag on the
+        // input file itself so the retry can't loop infinitely if the
+        // rewrite output is also broken. Reuses arrayBuffer captured
+        // earlier in this effect invocation so we don't re-download on
+        // the Supabase path.
+        const msg = String(error?.message || '');
+        const details = String(error?.details || '');
+        const rewritable = /ObjStm|xref|Invalid stream|Invalid object/i.test(msg + ' ' + details);
+        const alreadyRewritten = pdfFile?.__rewrittenForParse === true;
+        if (rewritable && !alreadyRewritten && typeof onUpdatePDFFile === 'function') {
+          try {
+            console.warn('PDF load failed with rewritable error, rewriting via pdf-lib:', msg || details);
+            const pdfLib = await import('pdf-lib');
+            const srcBytes = arrayBuffer
+              || (await (pdfFile.arrayBuffer
+                ? pdfFile.arrayBuffer()
+                : downloadFromStorage(pdfFile.filePath).then((b) => b.arrayBuffer())));
+            const rewriteDoc = await pdfLib.PDFDocument.load(srcBytes, {
+              updateMetadata: false,
+              ignoreEncryption: true,
+            });
+            const rewritten = await rewriteDoc.save({ useObjectStreams: false });
+            const rewrittenBlob = new Blob([rewritten], { type: 'application/pdf' });
+            const rewrittenFile = Object.assign(rewrittenBlob, {
+              name: pdfFile.name,
+              projectId: pdfFile.projectId,
+              filePath: pdfFile.filePath,
+              id: pdfFile.id,
+              __rewrittenForParse: true,
+            });
+            onUpdatePDFFile(rewrittenFile);
+            return;
+          } catch (rewriteError) {
+            console.error('Rewrite-and-retry PDF load also failed:', rewriteError?.message);
+          }
+        }
         console.error('Error loading PDF:', error);
         console.error('Error stack:', error.stack);
         setIsLoadingPDF(false);
@@ -26439,6 +26610,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         // Keeps this render closure small.
         const doPasteAnnotation = () => pasteAnnotationAt(ctx.pageNumber, ctx.x, ctx.y);
 
+        // UX: right-click → Properties. Replaces the deprecated floating
+        // mini-toolbar that used to appear in edit mode. Opens
+        // AnnotationPropertiesPanel at the same anchor (x, y) as the
+        // context menu so the panel visually "takes over" the menu slot.
+        // ctx is snapshotted (not re-read) so the panel keeps working even
+        // after the context menu state resets on item click.
+        const doOpenProperties = () => setAnnotationPropertiesPanel({ ...ctx });
+
         let items;
         if (ctx.kind === 'callout') {
           items = [
@@ -26450,13 +26629,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             item('Group', 'group'),
             item('Ungroup', 'ungroup'),
             sep(),
-            item('Properties', 'properties'),
+            item('Properties', 'properties', doOpenProperties),
           ];
         } else if (ctx.kind === 'counter') {
           items = [
             item('Continue Pin', 'continuePin'),
             sep(),
-            item('Properties', 'properties'),
+            item('Properties', 'properties', doOpenProperties),
           ];
         } else if (ctx.kind === 'annotation') {
           items = [
@@ -26568,7 +26747,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             item('Group', 'group'),
             item('Ungroup', 'ungroup'),
             sep(),
-            item('Properties', 'properties'),
+            item('Properties', 'properties', doOpenProperties),
           ];
         } else if (ctx.kind === 'group' && Array.isArray(ctx.groupIndices) && ctx.groupIndices.length >= 2) {
           // UX: Phase 19 follow-up — right-click inside the outer dashed
@@ -26679,7 +26858,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             item('Group', 'group'),
             item('Ungroup', 'ungroup'),
             sep(),
-            item('Properties', 'properties'),
+            item('Properties', 'properties', doOpenProperties),
           ];
         } else {
           // Empty canvas / page — only Paste lives here (for annotation paste).
@@ -26803,6 +26982,59 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           </div>
         );
       })(), document.body)}
+
+      {/* Annotation Properties Panel — live-edit controls for the
+          right-clicked annotation. Replaces the deprecated floating
+          mini-toolbar. Opens in place of the context menu when the user
+          picks Properties. Edits apply through handleSaveAnnotations so
+          undo + cloud sync behave identically to any other in-app edit. */}
+      {annotationPropertiesPanel && (() => {
+        const p = annotationPropertiesPanel;
+        const page = annotationsByPageRef.current?.[p.pageNumber];
+        const annotation = p.annotationIndex != null
+          ? page?.objects?.[p.annotationIndex]
+          : null;
+        const callout = p.kind === 'callout' && p.calloutId
+          ? (calloutsRef.current || []).find((c) => c?.id === p.calloutId) || null
+          : null;
+
+        // UX: onUpdate patches the targeted annotation in place and commits
+        // via handleSaveAnnotations. Deep-clones so React sees a new
+        // reference + undo checkpoints are one-per-action. Merges `data`
+        // shallowly so nested fields (e.g. counter number) don't wipe
+        // sibling keys like pointerAngle.
+        const applyAnnotationPatch = (patch) => {
+          const freshPage = annotationsByPageRef.current?.[p.pageNumber];
+          if (!freshPage?.objects) return;
+          if (p.annotationIndex == null || p.annotationIndex < 0) return;
+          if (p.annotationIndex >= freshPage.objects.length) return;
+          const next = JSON.parse(JSON.stringify(freshPage));
+          const target = next.objects[p.annotationIndex];
+          if (!target) return;
+          for (const k of Object.keys(patch)) {
+            if (k === 'data' && patch.data && typeof patch.data === 'object') {
+              target.data = { ...(target.data || {}), ...patch.data };
+            } else {
+              target[k] = patch[k];
+            }
+          }
+          handleSaveAnnotations(p.pageNumber, next, {
+            source: 'properties-panel',
+            action: 'properties-update',
+            checkpointPolicy: 'normal',
+          });
+        };
+
+        return (
+          <AnnotationPropertiesPanel
+            ctx={p}
+            annotation={annotation}
+            callout={callout}
+            onUpdate={applyAnnotationPatch}
+            onClose={() => setAnnotationPropertiesPanel(null)}
+          />
+        );
+      })()}
 
       {/* Unsupported Annotations Notice */}
       {showUnsupportedNotice && unsupportedAnnotationTypes.length > 0 && (
@@ -27607,6 +27839,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow';
                             const isEraserTool = activeTool === 'eraser';
                             const isEditMode = editingAnnotation?.pageNumber === pageNumber;
+                            // UX 2026-04-19: bbox edit mode (uniform resize + rotate chrome
+                            // for counter / line / arrow / polygon / polyline) is served by
+                            // the SVG layer itself — there is no Fabric edit canvas mount.
+                            // So the SVG layer must stay interactive and shapes must stay
+                            // visible when bbox mode is active. This flag is what guards the
+                            // "block SVG interaction" code paths; plain isEditMode continues
+                            // to drive state that still applies (like passing the edit
+                            // annotation index to the selection overlay).
+                            const isFabricEditMode = isEditMode && editingAnnotation?.editType !== 'bbox';
 
                             return (
                             <>
@@ -27697,7 +27938,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   left: 0,
                                   width: '100%',
                                   height: '100%',
-                                  pointerEvents: (svgInteractive && !isEditMode) ? 'auto' : 'none',
+                                  pointerEvents: (svgInteractive && !isFabricEditMode) ? 'auto' : 'none',
                                   zIndex: 100,
                                   // UX: Fix 3 (2026-04-16) — SVG layer stays visible during
                                   // callout edit. Previously `visibility: hidden` blanked the
@@ -27707,10 +27948,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   // the single callout being edited via `editingCalloutId`
                                   // (mirrors the text-annotation `hideForEdit` pattern at
                                   // SVGAnnotationLayer.jsx:~1332).
-                                  cursor: (svgInteractive && !isEditMode) ? 'default' : undefined,
+                                  cursor: (svgInteractive && !isFabricEditMode) ? 'default' : undefined,
                                 }}
-                                onPointerDown={(svgInteractive && !isEditMode) ? (e) => e.stopPropagation() : undefined}
-                                onMouseDown={(svgInteractive && !isEditMode) ? (e) => e.stopPropagation() : undefined}
+                                onPointerDown={(svgInteractive && !isFabricEditMode) ? (e) => e.stopPropagation() : undefined}
+                                onMouseDown={(svgInteractive && !isFabricEditMode) ? (e) => e.stopPropagation() : undefined}
                               >
                                 <SVGAnnotationLayer
                                   pageNumber={pageNumber}
@@ -27751,23 +27992,36 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       console.warn(`[App p${pageNumber}] edit BLOCKED — no annotation data at idx=${annotationIndex}`);
                                       return;
                                     }
-                                    // Non-editable types: pen strokes, highlights, lines, polygons, polylines, imported paths
-                                    // (polygon/polyline edit-mode support is a future phase; for now they route
-                                    // through the select tool's move/vertex-handle UX instead — preventing the
-                                    // else-branch editType='callout' fallback that caused the "drag → enter
-                                    // edit mode → everything vanishes" bug.)
-                                    if (annotationType === 'path' || annotationType === 'line' || annotationType === 'polygon' || annotationType === 'polyline') {
-                                      console.log(`[App p${pageNumber}] edit SKIPPED — non-editable type=${annotationType}, idx=${annotationIndex}`, {
-                                        NOTE: 'Lines/arrows are blocked from edit mode — need line/arrow edit support',
-                                        annotationData: { type: annotationData.type, left: annotationData.left, top: annotationData.top, x1: annotationData.x1, y1: annotationData.y1, x2: annotationData.x2, y2: annotationData.y2 },
-                                      });
+                                    // UX 2026-04-19 — new double-click rule:
+                                    //   - pen/highlighter (path) → no-op (handles are the
+                                    //     single-click chrome; nothing else to edit).
+                                    //   - rect / circle / ellipse / triangle (non-counter)
+                                    //     → no-op (their single-click border handles already
+                                    //     cover resize + rotate; no separate edit mode).
+                                    //   - counter → bbox edit mode (swap the rotation-only
+                                    //     chrome for the uniform resize + rotate bbox).
+                                    //   - line / arrow → bbox edit mode (swap endpoint
+                                    //     handles for the uniform resize + rotate bbox).
+                                    //   - polygon / polyline → bbox edit mode (uniform
+                                    //     resize + rotate bbox; vertex handles are the new
+                                    //     single-click chrome per task 4).
+                                    //   - text / textbox / i-text → text edit mode
+                                    //     (cursor input), unchanged.
+                                    //   - callout → callout edit mode, unchanged.
+                                    const isCounter = annotationData?.data?.type === 'counter';
+                                    if (annotationType === 'path') {
+                                      console.log(`[App p${pageNumber}] edit SKIPPED — stroke type=${annotationType}, idx=${annotationIndex}`);
+                                      return;
+                                    }
+                                    if (!isCounter && (annotationType === 'rect' || annotationType === 'circle' || annotationType === 'ellipse' || annotationType === 'triangle')) {
+                                      console.log(`[App p${pageNumber}] edit SKIPPED — non-counter shape, type=${annotationType}, idx=${annotationIndex}`);
                                       return;
                                     }
                                     let editType;
                                     if (annotationType === 'textbox' || annotationType === 'i-text' || annotationType === 'text') {
                                       editType = 'text';
-                                    } else if (annotationType === 'rect' || annotationType === 'circle' || annotationType === 'ellipse' || annotationType === 'triangle') {
-                                      editType = 'shape';
+                                    } else if (isCounter || annotationType === 'line' || annotationType === 'polygon' || annotationType === 'polyline') {
+                                      editType = 'bbox';
                                     } else {
                                       editType = 'callout';
                                     }
@@ -27782,6 +28036,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   }}
                                   activeTool={activeTool}
                                   editingAnnotationIndex={isEditMode ? editingAnnotation.index : null}
+                                  editingAnnotationEditType={isEditMode ? editingAnnotation.editType : null}
+                                  onRequestExitEdit={() => setEditingAnnotation(null)}
                                   // UX: Phase 14 CALL-10 + KBD-01 + CREATE-01 — new props
                                   // for the unified callout render + selection + delete +
                                   // create pipeline. Wave 2 Plan 14-03 wires these so the
@@ -27880,9 +28136,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   style={{
                                     position: 'absolute',
                                     top: 0, left: 0, right: 0, bottom: 0,
-                                    cursor: editingAnnotation?.pageNumber === pageNumber ? undefined : 'text',
-                                    zIndex: editingAnnotation?.pageNumber === pageNumber ? 100 : 102, // Below canvas (101) during editing
-                                    pointerEvents: editingAnnotation?.pageNumber === pageNumber ? 'none' : 'auto',
+                                    // UX 2026-04-19: only hand off pointer events to the
+                                    // Fabric edit surface when it's actually mounted (not
+                                    // bbox mode, which keeps the SVG layer interactive).
+                                    cursor: (editingAnnotation?.pageNumber === pageNumber && editingAnnotation?.editType !== 'bbox') ? undefined : 'text',
+                                    zIndex: (editingAnnotation?.pageNumber === pageNumber && editingAnnotation?.editType !== 'bbox') ? 100 : 102,
+                                    pointerEvents: (editingAnnotation?.pageNumber === pageNumber && editingAnnotation?.editType !== 'bbox') ? 'none' : 'auto',
                                   }}
                                   onPointerDown={(e) => {
                                     if (Date.now() - editModeCooldownRef.current < 300) return;
@@ -28182,13 +28441,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                               )}
 
                               {/* Edit Canvas -- targeted overlay for text/shape/callout editing */}
-                              {isEditMode && (
+                              {isEditMode && editingAnnotation?.editType !== 'bbox' && (
                                 <FabricEditCanvas
                                   key={`edit-${pageNumber}-${editingAnnotation?.index ?? 'new'}-${editingAnnotation?.editType || ''}`}
                                   pageNumber={pageNumber}
                                   pageWidth={resolvedPageSize.width}
                                   pageHeight={resolvedPageSize.height}
                                   editType={editingAnnotation.editType}
+                                  reactCalloutId={editingAnnotation.reactCalloutId || null}
                                   annotationData={editingAnnotation.data}
                                   annotationIndex={editingAnnotation.index}
                                   // UX: Phase 15 UAT-1 restructure (2026-04-17) — callout
@@ -28443,6 +28703,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow';
                                   const isEraserTool = activeTool === 'eraser';
                                   const isEditMode = editingAnnotation?.pageNumber === pageNumber;
+                                  // UX 2026-04-19: see first mount site — bbox edit mode
+                                  // must NOT block SVG pointer events, since the SVG layer
+                                  // renders the uniform overlay itself (no Fabric canvas).
+                                  const isFabricEditMode = isEditMode && editingAnnotation?.editType !== 'bbox';
                                   const pageAnnotationsCS = annotationsByPage[pageNumber];
 
                                   return (
@@ -28456,9 +28720,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       // UX: Fix 3 (2026-04-16) — see first SVGAnnotationLayer
                                       // mount site. No layer-wide visibility hide; per-callout
                                       // skip happens inside SVGAnnotationLayer via editingCalloutId.
-                                      style={{ position: 'relative', width: '100%', height: '100%', pointerEvents: (svgInteractive && !isEditMode) ? 'auto' : 'none', zIndex: 100, cursor: (svgInteractive && !isEditMode) ? 'default' : undefined }}
-                                      onPointerDown={(svgInteractive && !isEditMode) ? (e) => e.stopPropagation() : undefined}
-                                      onMouseDown={(svgInteractive && !isEditMode) ? (e) => e.stopPropagation() : undefined}
+                                      style={{ position: 'relative', width: '100%', height: '100%', pointerEvents: (svgInteractive && !isFabricEditMode) ? 'auto' : 'none', zIndex: 100, cursor: (svgInteractive && !isFabricEditMode) ? 'default' : undefined }}
+                                      onPointerDown={(svgInteractive && !isFabricEditMode) ? (e) => e.stopPropagation() : undefined}
+                                      onMouseDown={(svgInteractive && !isFabricEditMode) ? (e) => e.stopPropagation() : undefined}
                                     >
                                     <SVGAnnotationLayer
                                       pageNumber={pageNumber}
@@ -28495,23 +28759,22 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                           console.warn(`[App p${pageNumber}] edit BLOCKED — no annotation data at idx=${annotationIndex}`);
                                           return;
                                         }
-                                        // Non-editable types: pen strokes, highlights, lines, polygons, polylines, imported paths
-                                    // (polygon/polyline edit-mode support is a future phase; for now they route
-                                    // through the select tool's move/vertex-handle UX instead — preventing the
-                                    // else-branch editType='callout' fallback that caused the "drag → enter
-                                    // edit mode → everything vanishes" bug.)
-                                        if (annotationType === 'path' || annotationType === 'line' || annotationType === 'polygon' || annotationType === 'polyline') {
-                                          console.log(`[App p${pageNumber}] edit SKIPPED — non-editable type=${annotationType}, idx=${annotationIndex}`, {
-                                            NOTE: 'Lines/arrows are blocked from edit mode — need line/arrow edit support',
-                                            annotationData: { type: annotationData.type, left: annotationData.left, top: annotationData.top, x1: annotationData.x1, y1: annotationData.y1, x2: annotationData.x2, y2: annotationData.y2 },
-                                          });
+                                        // UX 2026-04-19 — new double-click rule (mirrors the
+                                        // first mount site; see that comment for rationale).
+                                        const isCounter = annotationData?.data?.type === 'counter';
+                                        if (annotationType === 'path') {
+                                          console.log(`[App p${pageNumber}] edit SKIPPED — stroke type=${annotationType}, idx=${annotationIndex}`);
+                                          return;
+                                        }
+                                        if (!isCounter && (annotationType === 'rect' || annotationType === 'circle' || annotationType === 'ellipse' || annotationType === 'triangle')) {
+                                          console.log(`[App p${pageNumber}] edit SKIPPED — non-counter shape, type=${annotationType}, idx=${annotationIndex}`);
                                           return;
                                         }
                                         let editType;
                                         if (annotationType === 'textbox' || annotationType === 'i-text' || annotationType === 'text') {
                                           editType = 'text';
-                                        } else if (annotationType === 'rect' || annotationType === 'circle' || annotationType === 'ellipse' || annotationType === 'triangle') {
-                                          editType = 'shape';
+                                        } else if (isCounter || annotationType === 'line' || annotationType === 'polygon' || annotationType === 'polyline') {
+                                          editType = 'bbox';
                                         } else {
                                           editType = 'callout';
                                         }
@@ -28526,6 +28789,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       }}
                                       activeTool={activeTool}
                                       editingAnnotationIndex={isEditMode ? editingAnnotation.index : null}
+                                      editingAnnotationEditType={isEditMode ? editingAnnotation.editType : null}
+                                      onRequestExitEdit={() => setEditingAnnotation(null)}
                                       // UX: Phase 14 CALL-10 + KBD-01 + CREATE-01 —
                                       // unified callout render + selection + delete +
                                       // create pipeline props. See the first
@@ -28692,7 +28957,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     )}
 
                                     {/* Edit Canvas -- targeted overlay for text/shape/callout editing */}
-                                    {isEditMode && (
+                                    {isEditMode && editingAnnotation?.editType !== 'bbox' && (
                                       <FabricEditCanvas
                                         key={`edit-${pageNumber}-${editingAnnotation?.index ?? 'new'}-${editingAnnotation?.editType || ''}`}
                                         pageNumber={pageNumber}
@@ -29004,15 +29269,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       position: 'relative',
                                       width: '100%',
                                       height: '100%',
-                                      pointerEvents: (svgInteractive && !isEditMode) ? 'auto' : 'none',
+                                      pointerEvents: (svgInteractive && !isFabricEditMode) ? 'auto' : 'none',
                                       zIndex: 100,
                                       // UX: Fix 3 (2026-04-16) — see first SVGAnnotationLayer
                                       // mount site. No layer-wide visibility hide; per-callout
                                       // skip via editingCalloutId prop.
-                                      cursor: (svgInteractive && !isEditMode) ? 'default' : undefined,
+                                      cursor: (svgInteractive && !isFabricEditMode) ? 'default' : undefined,
                                     }}
-                                    onPointerDown={(svgInteractive && !isEditMode) ? (e) => e.stopPropagation() : undefined}
-                                    onMouseDown={(svgInteractive && !isEditMode) ? (e) => e.stopPropagation() : undefined}
+                                    onPointerDown={(svgInteractive && !isFabricEditMode) ? (e) => e.stopPropagation() : undefined}
+                                    onMouseDown={(svgInteractive && !isFabricEditMode) ? (e) => e.stopPropagation() : undefined}
                                   >
                                     <SVGAnnotationLayer
                                       pageNumber={pageNum}
@@ -29075,6 +29340,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       }}
                                       activeTool={activeTool}
                                       editingAnnotationIndex={isEditMode ? editingAnnotation.index : null}
+                                      editingAnnotationEditType={isEditMode ? editingAnnotation.editType : null}
+                                      onRequestExitEdit={() => setEditingAnnotation(null)}
                                       // UX: Phase 14 CALL-10 + KBD-01 + CREATE-01 —
                                       // unified callout render + selection + delete +
                                       // create pipeline props. See the first
@@ -29421,7 +29688,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                     />
                                   )}
 
-                                  {isEditMode && (
+                                  {isEditMode && editingAnnotation?.editType !== 'bbox' && (
                                     <FabricEditCanvas
                                       key={`edit-${pageNum}-${editingAnnotation?.index ?? 'new'}-${editingAnnotation?.editType || ''}`}
                                       pageNumber={pageNum}

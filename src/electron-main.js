@@ -336,12 +336,60 @@ ipcMain.handle('fs:readFile', async (event, path) => {
   }
 });
 
-ipcMain.handle('fs:writeFile', async (event, { path, data }) => {
+ipcMain.handle('fs:writeFile', async (event, { path: filePath, data }) => {
   try {
-    fs.writeFileSync(path, Buffer.from(data));
+    const dir = path.dirname(filePath);
+    if (dir && !fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(filePath, Buffer.from(data));
     return { success: true };
   } catch (error) {
     console.error('Failed to write file:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('fs:appendFile', async (event, { path: filePath, data }) => {
+  try {
+    const dir = path.dirname(filePath);
+    if (dir && !fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.appendFileSync(filePath, Buffer.from(data));
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to append file:', error);
+    throw error;
+  }
+});
+
+// Diagnostics: clear a folder's contents (files + subfolders), recreating the folder.
+// Guarded to paths containing "Testing Logs" so we can't accidentally nuke anything else.
+ipcMain.handle('fs:clearDir', async (event, dirPath) => {
+  try {
+    if (!dirPath || typeof dirPath !== 'string' || !dirPath.includes('TestLogs')) {
+      throw new Error(`fs:clearDir refused path (must contain "TestLogs"): ${dirPath}`);
+    }
+    if (fs.existsSync(dirPath)) {
+      fs.rmSync(dirPath, { recursive: true, force: true });
+    }
+    fs.mkdirSync(dirPath, { recursive: true });
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to clear directory:', error);
+    throw error;
+  }
+});
+
+// Diagnostics: full-window screenshot via Electron's native webContents.capturePage().
+// Returns a Node Buffer (PNG bytes) — IPC deserializes it as Uint8Array on the renderer side.
+ipcMain.handle('screenshot:capturePage', async (event) => {
+  try {
+    const image = await event.sender.capturePage();
+    return image.toPNG();
+  } catch (error) {
+    console.error('Failed to capture page:', error);
     throw error;
   }
 });
