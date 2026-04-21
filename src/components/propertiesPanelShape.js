@@ -38,3 +38,35 @@ export function resolvePropertiesPanelShape(annotation) {
     ? { kind, strokeColor, strokeWidth, borderStyle, cloudIntensity }
     : { kind, strokeColor, strokeWidth, borderStyle };
 }
+
+/**
+ * Given a current annotation and a next border-style choice, return the
+ * partial patch to merge onto the annotation via onUpdate.
+ * Handles the three transitions:
+ *   → solid: clear strokeDashArray, clear data.pdfCloudIntensity
+ *   → dashed: set strokeDashArray=[6,4], clear data.pdfCloudIntensity
+ *   → cloud: clear strokeDashArray, set data.pdfCloudIntensity (default 2)
+ * Callers downstream pass the result directly to onUpdate().
+ */
+export function computeBorderStylePatch(annotation, nextStyle) {
+  const prevData = (annotation && annotation.data) || {};
+  // Strip cloud intensity for non-cloud styles; keep everything else.
+  const { pdfCloudIntensity: _drop, ...restData } = prevData;
+
+  if (nextStyle === 'solid') {
+    return { strokeDashArray: null, data: restData };
+  }
+  if (nextStyle === 'dashed') {
+    return { strokeDashArray: [6, 4], data: restData };
+  }
+  if (nextStyle === 'cloud') {
+    return {
+      strokeDashArray: null,
+      data: {
+        ...restData,
+        pdfCloudIntensity: prevData.pdfCloudIntensity ?? 2,
+      },
+    };
+  }
+  return {};
+}

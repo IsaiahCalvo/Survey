@@ -225,6 +225,15 @@ export const renderRect = (obj, index) => {
   const inset = !isHighlight && shouldInsetStroke(obj);
   const clipId = inset ? `clip-${shapeId}` : undefined;
 
+  // UX 2026-04-21: honor the Border Style picker's "dashed" choice by
+  // mapping Fabric's strokeDashArray onto the SVG strokeDasharray attr.
+  // Cloud rects skip this path entirely (cloud + dashed are mutually
+  // exclusive in the picker), so we only need to emit it here on the
+  // straight-stroke outline. Empty/missing arrays render solid.
+  const dashArrayAttr = Array.isArray(obj.strokeDashArray) && obj.strokeDashArray.length > 0
+    ? obj.strokeDashArray.join(' ')
+    : undefined;
+
   const rectEl = (
     <rect
       x={obj.left}
@@ -235,6 +244,7 @@ export const renderRect = (obj, index) => {
       fill={obj.fill || 'transparent'}
       stroke={obj.stroke || 'transparent'}
       strokeWidth={obj.strokeWidth || 0}
+      strokeDasharray={dashArrayAttr}
       opacity={obj.opacity ?? 1}
       style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
       clipPath={clipId ? `url(#${clipId})` : undefined}
@@ -271,6 +281,7 @@ export const renderRect = (obj, index) => {
       fill={obj.fill || 'transparent'}
       stroke={obj.stroke || 'transparent'}
       strokeWidth={sw}
+      strokeDasharray={dashArrayAttr}
       opacity={obj.opacity ?? 1}
       data-shape-id={shapeId}
       data-shape-kind="rect"
@@ -450,6 +461,16 @@ export const renderLine = (obj, index) => {
     }
   } catch (err) { /* swallow diag errors */ }
 
+  // UX 2026-04-21: Border Style picker dashed support. Apply strokeDasharray
+  // only to the main line/curve outline — arrowheads (filled or open
+  // triangles, v-shapes, etc.) must stay solid so the tip still reads as a
+  // crisp arrow even when the shaft is dashed. React merges this prop
+  // AFTER {...spec.line}/{...spec.path} so it doesn't clobber anything
+  // else in the spec.
+  const lineDashArrayAttr = Array.isArray(obj.strokeDashArray) && obj.strokeDashArray.length > 0
+    ? obj.strokeDashArray.join(' ')
+    : undefined;
+
   if (spec.kind === 'curved') {
     // UX: Curved line/arrow — <path> + optional arrowhead inside <g>.
     // fill='none' on <path> is CRITICAL (Pitfall 5) — otherwise the bezier
@@ -457,7 +478,7 @@ export const renderLine = (obj, index) => {
     // explicitly by buildLineRenderSpec.
     return (
       <g key={key} opacity={opacity} transform={rotateTransform}>
-        <path {...spec.path} />
+        <path {...spec.path} strokeDasharray={lineDashArrayAttr} />
         {renderArrowheadFromSpec(spec.arrowhead)}
       </g>
     );
@@ -468,7 +489,7 @@ export const renderLine = (obj, index) => {
   if (spec.arrowhead.kind !== 'none') {
     return (
       <g key={key} opacity={opacity} transform={rotateTransform}>
-        <line {...spec.line} />
+        <line {...spec.line} strokeDasharray={lineDashArrayAttr} />
         {renderArrowheadFromSpec(spec.arrowhead)}
       </g>
     );
@@ -476,11 +497,11 @@ export const renderLine = (obj, index) => {
   if (rotateTransform) {
     return (
       <g key={key} transform={rotateTransform}>
-        <line {...spec.line} opacity={opacity} />
+        <line {...spec.line} strokeDasharray={lineDashArrayAttr} opacity={opacity} />
       </g>
     );
   }
-  return <line key={key} {...spec.line} opacity={opacity} />;
+  return <line key={key} {...spec.line} strokeDasharray={lineDashArrayAttr} opacity={opacity} />;
 };
 
 /**
@@ -520,6 +541,13 @@ export const renderArrow = (obj, index) => {
 
   const key = `arrow-${obj.id || index}`;
 
+  // UX 2026-04-21: dashed support on the arrow's shaft only — the polygon
+  // arrowhead below is a filled tip and must stay solid regardless of
+  // strokeDashArray so the arrow still reads as a crisp pointer.
+  const arrowDashArrayAttr = Array.isArray(obj.strokeDashArray) && obj.strokeDashArray.length > 0
+    ? obj.strokeDashArray.join(' ')
+    : undefined;
+
   return (
     <g key={key} opacity={obj.opacity ?? 1}>
       <line
@@ -529,6 +557,7 @@ export const renderArrow = (obj, index) => {
         y2={lineEndY}
         stroke={obj.stroke || '#000'}
         strokeWidth={obj.strokeWidth || 2}
+        strokeDasharray={arrowDashArrayAttr}
         strokeLinecap="round"
       />
       {arrowHead && (
@@ -626,6 +655,13 @@ export const renderPolygon = (obj, index) => {
   // visible. Re-apply a stroke-inset fix for polygons via a different
   // mechanism (e.g. pre-transformed absolute points, or paint-order + fill
   // + transparent stroke) once a non-clipPath approach is proven.
+  // UX 2026-04-21: Border Style picker dashed support. Cloud polygons go
+  // through the path branch above (cloud + dashed mutually exclusive), so
+  // we only emit strokeDasharray on the plain polygon outline here.
+  const polyDashArrayAttr = Array.isArray(obj.strokeDashArray) && obj.strokeDashArray.length > 0
+    ? obj.strokeDashArray.join(' ')
+    : undefined;
+
   return (
     <polygon
       key={key}
@@ -634,6 +670,7 @@ export const renderPolygon = (obj, index) => {
       fill={obj.fill || 'transparent'}
       stroke={obj.stroke || 'transparent'}
       strokeWidth={obj.strokeWidth || 1}
+      strokeDasharray={polyDashArrayAttr}
       opacity={obj.opacity ?? 1}
       strokeLinejoin="round"
       style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
@@ -692,6 +729,11 @@ export const renderPolyline = (obj, index) => {
   const shapeId = obj.id || obj.pdfAnnotationId || key;
   __logShapeRender(obj, 'polyline');
 
+  // UX 2026-04-21: Border Style picker dashed support for open polylines.
+  const plDashArrayAttr = Array.isArray(obj.strokeDashArray) && obj.strokeDashArray.length > 0
+    ? obj.strokeDashArray.join(' ')
+    : undefined;
+
   return (
     <polyline
       key={key}
@@ -700,6 +742,7 @@ export const renderPolyline = (obj, index) => {
       fill={fill}
       stroke={obj.stroke || '#000'}
       strokeWidth={obj.strokeWidth || 1}
+      strokeDasharray={plDashArrayAttr}
       opacity={obj.opacity ?? 1}
       strokeLinecap="round"
       strokeLinejoin="round"

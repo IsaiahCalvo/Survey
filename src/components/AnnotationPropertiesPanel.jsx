@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import CompactColorPicker from './CompactColorPicker';
-import { resolvePropertiesPanelShape } from './propertiesPanelShape';
+import { resolvePropertiesPanelShape, computeBorderStylePatch } from './propertiesPanelShape';
 
 // UX: right-click → context menu → Properties opens this panel in place of
 // the context menu. Replaces the deprecated floating mini-toolbar that used
@@ -147,6 +147,14 @@ const AnnotationPropertiesPanel = ({
     try { e.currentTarget.releasePointerCapture(drag.pointerId); } catch {}
   }, []);
 
+  // Pure resolver output for border-style + cloud-intensity detection. The
+  // `kind` field on this result is the RAW annotation.type and must not be
+  // used for render branching — the `targetKind` useMemo below still owns
+  // the normalization (circle→ellipse, textbox→text, line-via-tool→arrow,
+  // callout-via-ctx, counter-via-data). `resolvedShape` supplies
+  // borderStyle + cloudIntensity only.
+  const resolvedShape = useMemo(() => resolvePropertiesPanelShape(annotation), [annotation]);
+
   // Resolve the target "kind" for per-type content. Covers annotations
   // (rect / circle / ellipse / triangle / line / arrow / path / textbox /
   // polygon / polyline / counter) and callouts.
@@ -196,6 +204,23 @@ const AnnotationPropertiesPanel = ({
   const handleStrokeWidthDelta = (delta) => {
     const next = Math.max(1, Math.min(40, currentStrokeWidth + delta));
     onUpdate({ strokeWidth: next });
+  };
+  // UX 2026-04-21: border-style picker handler. Delegates the transition
+  // math to computeBorderStylePatch (pure + unit-tested) so the component
+  // only owns glue code. Clearing pdfCloudIntensity when leaving cloud mode
+  // is load-bearing — otherwise the renderer's `Number.isFinite(intensity)`
+  // cloud branch stays active even after the user picks solid / dashed.
+  const handleBorderStyleChange = (nextStyle) => {
+    onUpdate(computeBorderStylePatch(annotation, nextStyle));
+  };
+  // UX 2026-04-21: bump size stepper for cloud shapes. Clamps to 1..4 to
+  // match the renderer's bump-count heuristic (see buildCloudPathCommands).
+  // Re-reads the live annotation.data each click so rapid clicks accumulate
+  // correctly instead of collapsing onto a stale closure value.
+  const handleCloudIntensityDelta = (delta) => {
+    const current = annotation?.data?.pdfCloudIntensity ?? 2;
+    const next = Math.max(1, Math.min(4, current + delta));
+    onUpdate({ data: { ...(annotation?.data ?? {}), pdfCloudIntensity: next } });
   };
   const handleCounterRadiusDelta = (delta) => {
     const next = Math.max(6, Math.min(80, counterRadius + delta));
@@ -251,6 +276,38 @@ const AnnotationPropertiesPanel = ({
           />
         </div>
       )}
+    </div>
+  );
+
+  // UX 2026-04-21: three-button segmented picker for the Border Style row.
+  // `options` is an array of { value, label }. The active option renders
+  // with a darker bg + darker border so the user sees the live style at a
+  // glance. Buttons flex to 1 so the three segments share the row evenly.
+  const renderSegmentedRow = (options, currentValue, onSelect) => (
+    <div style={{ display: 'flex', gap: 4 }}>
+      {options.map((opt) => {
+        const isActive = opt.value === currentValue;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onSelect(opt.value)}
+            style={{
+              flex: 1,
+              height: 26,
+              borderRadius: 4,
+              border: '1px solid ' + (isActive ? '#6b7280' : '#d1d5db'),
+              background: isActive ? '#e5e7eb' : '#fff',
+              color: '#374151',
+              fontSize: 12,
+              cursor: 'pointer',
+              padding: 0,
+            }}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
     </div>
   );
 
@@ -347,6 +404,21 @@ const AnnotationPropertiesPanel = ({
     }
 
     if (targetKind === 'rect' || targetKind === 'ellipse' || targetKind === 'triangle' || targetKind === 'polygon') {
+      // UX 2026-04-21: only rect + polygon get the `cloud` option. Ellipse
+      // and triangle don't support revision-cloud rendering (no
+      // buildCloudPathCommands branch for them), so they show the
+      // two-option picker. Rect + polygon get solid / dashed / cloud.
+      const borderOptions = (targetKind === 'rect' || targetKind === 'polygon')
+        ? [
+            { value: 'solid', label: 'Solid' },
+            { value: 'dashed', label: 'Dashed' },
+            { value: 'cloud', label: 'Cloud' },
+          ]
+        : [
+            { value: 'solid', label: 'Solid' },
+            { value: 'dashed', label: 'Dashed' },
+          ];
+
       return (
         <>
           <section style={{ marginBottom: 14 }}>
@@ -367,7 +439,7 @@ const AnnotationPropertiesPanel = ({
               () => { setShowStrokePicker((v) => !v); setShowFillPicker(false); },
             )}
           </section>
-          <section style={{ marginBottom: 4 }}>
+          <section style={{ marginBottom: 14 }}>
             {renderLabel('Width')}
             {renderStepperRow(
               `${currentStrokeWidth}px`,
@@ -375,6 +447,25 @@ const AnnotationPropertiesPanel = ({
               () => handleStrokeWidthDelta(1),
             )}
           </section>
+          {/* UX 2026-04-21: Border Style row sits after Width so the visual
+              hierarchy reads top-to-bottom (color → weight → pattern). */}
+          <section style={{ marginBottom: 14 }}>
+            {renderLabel('Border Style')}
+            {renderSegmentedRow(borderOptions, resolvedShape.borderStyle, handleBorderStyleChange)}
+          </section>
+          {/* UX 2026-04-21: Bump Size only appears when the user has
+              selected the Cloud style — keeps the panel compact for
+              solid / dashed shapes. Range 1..4 matches the renderer. */}
+          {resolvedShape.borderStyle === 'cloud' && (
+            <section style={{ marginBottom: 4 }}>
+              {renderLabel('Bump Size')}
+              {renderStepperRow(
+                String(resolvedShape.cloudIntensity ?? 2),
+                () => handleCloudIntensityDelta(-1),
+                () => handleCloudIntensityDelta(1),
+              )}
+            </section>
+          )}
         </>
       );
     }
@@ -391,12 +482,26 @@ const AnnotationPropertiesPanel = ({
               () => { setShowStrokePicker((v) => !v); setShowFillPicker(false); },
             )}
           </section>
-          <section style={{ marginBottom: 4 }}>
+          <section style={{ marginBottom: 14 }}>
             {renderLabel('Width')}
             {renderStepperRow(
               `${currentStrokeWidth}px`,
               () => handleStrokeWidthDelta(-1),
               () => handleStrokeWidthDelta(1),
+            )}
+          </section>
+          {/* UX 2026-04-21: open shapes (line / arrow / polyline) get the
+              two-option picker only. Cloud style is reserved for closed
+              boundary shapes (rect / polygon) per PDF /BE semantics. */}
+          <section style={{ marginBottom: 4 }}>
+            {renderLabel('Border Style')}
+            {renderSegmentedRow(
+              [
+                { value: 'solid', label: 'Solid' },
+                { value: 'dashed', label: 'Dashed' },
+              ],
+              resolvedShape.borderStyle,
+              handleBorderStyleChange,
             )}
           </section>
         </>

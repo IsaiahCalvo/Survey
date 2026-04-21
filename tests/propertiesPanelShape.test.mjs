@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolvePropertiesPanelShape } from '../src/components/propertiesPanelShape.js';
+import { resolvePropertiesPanelShape, computeBorderStylePatch } from '../src/components/propertiesPanelShape.js';
 
 test('plain rect resolves to kind=rect, borderStyle=solid', () => {
   const r = resolvePropertiesPanelShape({ type: 'rect', stroke: '#000', strokeWidth: 1, data: {} });
@@ -69,4 +69,42 @@ test('line resolves to kind=line, borderStyle=solid when no dash array', () => {
 test('null/undefined annotation returns kind=unknown', () => {
   assert.equal(resolvePropertiesPanelShape(null).kind, 'unknown');
   assert.equal(resolvePropertiesPanelShape(undefined).kind, 'unknown');
+});
+
+test('solid→dashed sets strokeDashArray [6,4], clears cloud intensity', () => {
+  const patch = computeBorderStylePatch({ data: {} }, 'dashed');
+  assert.deepEqual(patch.strokeDashArray, [6, 4]);
+  assert.equal(patch.data.pdfCloudIntensity, undefined);
+});
+
+test('dashed→solid clears strokeDashArray (sets null) and clears cloud intensity', () => {
+  const patch = computeBorderStylePatch({ strokeDashArray: [6, 4], data: {} }, 'solid');
+  assert.equal(patch.strokeDashArray, null);
+  assert.equal(patch.data.pdfCloudIntensity, undefined);
+});
+
+test('solid→cloud sets pdfCloudIntensity=2 by default and clears strokeDashArray', () => {
+  const patch = computeBorderStylePatch({ data: {} }, 'cloud');
+  assert.equal(patch.strokeDashArray, null);
+  assert.equal(patch.data.pdfCloudIntensity, 2);
+});
+
+test('existing cloud intensity is preserved when re-entering cloud mode', () => {
+  const patch = computeBorderStylePatch({ data: { pdfCloudIntensity: 4 } }, 'cloud');
+  assert.equal(patch.data.pdfCloudIntensity, 4);
+});
+
+test('cloud→dashed clears both cloud and sets dash array', () => {
+  const patch = computeBorderStylePatch({ data: { pdfCloudIntensity: 3 } }, 'dashed');
+  assert.deepEqual(patch.strokeDashArray, [6, 4]);
+  assert.equal(patch.data.pdfCloudIntensity, undefined);
+});
+
+test('other data fields are preserved across transitions', () => {
+  const patch = computeBorderStylePatch(
+    { data: { number: '42', pdfCloudIntensity: 2 } },
+    'solid',
+  );
+  assert.equal(patch.data.number, '42');
+  assert.equal(patch.data.pdfCloudIntensity, undefined);
 });
