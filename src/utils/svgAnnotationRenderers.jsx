@@ -24,6 +24,10 @@ import {
   buildArrowheadRenderSpec,
   ARROWHEAD_STYLES,
 } from './lineRenderHelpers.js';
+// UX 2026-04-21: Imported revision-clouds rebuild their scalloped geometry
+// from the live effective box/points on every render so the number of humps
+// grows/shrinks with the shape instead of staying baked at import size.
+import { buildCloudPathCommands } from './pdfAnnotationImporter';
 // Fill-bleed diagnostics (2026-04-16). Off by default; the wrapper calls are
 // cheap no-ops when disabled. Toggle in DevTools console:
 //   __shapeSpyOn()  __shapeSpyOff()  __captureAllShapes()
@@ -173,6 +177,47 @@ export const renderRect = (obj, index) => {
   const rotateTransform = obj.angle
     ? `rotate(${obj.angle}, ${obj.left + effectiveWidth / 2}, ${obj.top + effectiveHeight / 2})`
     : undefined;
+
+  // UX 2026-04-21: Revision-cloud rectangles rebuild their scalloped path
+  // from the current effective box size on every render. That way when the
+  // user resizes the cloud, more humps appear as the box grows and fewer as
+  // it shrinks — matching how Bluebeam, Acrobat, and similar pro tools
+  // behave. The data.pdfCloudIntensity signal (set at import) is what
+  // flags a box as a cloud; the original baked path is ignored.
+  const cloudIntensity = obj.data?.pdfCloudIntensity;
+  if (Number.isFinite(cloudIntensity) && effectiveWidth > 0 && effectiveHeight > 0) {
+    const liveCloud = buildCloudPathCommands(
+      [
+        { x: 0, y: 0 },
+        { x: effectiveWidth, y: 0 },
+        { x: effectiveWidth, y: effectiveHeight },
+        { x: 0, y: effectiveHeight },
+      ],
+      cloudIntensity
+    );
+    if (Array.isArray(liveCloud) && liveCloud.length > 0) {
+      const d = liveCloud.map((seg) => seg.join(' ')).join(' ');
+      const cloudTransform = `translate(${obj.left}, ${obj.top})${
+        obj.angle ? ` rotate(${obj.angle}, ${effectiveWidth / 2}, ${effectiveHeight / 2})` : ''
+      }`;
+      return (
+        <path
+          key={key}
+          d={d}
+          transform={cloudTransform}
+          fill={obj.fill || 'transparent'}
+          stroke={obj.stroke || 'transparent'}
+          strokeWidth={obj.strokeWidth || 0}
+          strokeLinejoin="round"
+          opacity={obj.opacity ?? 1}
+          data-shape-id={shapeId}
+          data-shape-kind="cloud-rect"
+          onClick={__shapeClick}
+        />
+      );
+    }
+  }
+
   const inset = !isHighlight && shouldInsetStroke(obj);
   const clipId = inset ? `clip-${shapeId}` : undefined;
 
@@ -541,6 +586,34 @@ export const renderPolygon = (obj, index) => {
   const key = `polygon-${obj.id || obj.pdfAnnotationId || index}`;
   const shapeId = obj.id || obj.pdfAnnotationId || key;
   __logShapeRender(obj, 'polygon');
+
+  // UX 2026-04-21: Cloud-polygons rebuild scalloped geometry from the live
+  // points on every render, same pattern as cloud-rects. The polygon's own
+  // transform chain (with scale) is applied to the <path>, so the bump
+  // count scales with the shape.
+  const cloudIntensity = obj.data?.pdfCloudIntensity;
+  if (Number.isFinite(cloudIntensity) && Array.isArray(obj.points) && obj.points.length >= 3) {
+    const livePoints = obj.points.map((p) => ({ x: toNumber(p?.x), y: toNumber(p?.y) }));
+    const liveCloud = buildCloudPathCommands(livePoints, cloudIntensity);
+    if (Array.isArray(liveCloud) && liveCloud.length > 0) {
+      const d = liveCloud.map((seg) => seg.join(' ')).join(' ');
+      return (
+        <path
+          key={key}
+          d={d}
+          transform={transform}
+          fill={obj.fill || 'transparent'}
+          stroke={obj.stroke || 'transparent'}
+          strokeWidth={obj.strokeWidth || 1}
+          strokeLinejoin="round"
+          opacity={obj.opacity ?? 1}
+          data-shape-id={shapeId}
+          data-shape-kind="cloud-polygon"
+          onClick={__shapeClick}
+        />
+      );
+    }
+  }
 
   // 2026-04-17: inset-clip disabled for polygon — the clipPath + polygon +
   // nested-translate transform combination renders as invisible in Chromium

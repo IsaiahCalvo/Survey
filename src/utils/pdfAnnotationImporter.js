@@ -452,6 +452,71 @@ function normalizePdfLineEndings(lineEndings) {
   return [normalized[0], normalized[1]];
 }
 
+// UX 2026-04-21: Cloud-edge path builder for revision-cloud shapes imported
+// via PDF /BE border-effect flag. Takes an array of {x,y} points in the
+// shape's own local coordinate system (so rects pass [(0,0),(w,0),(w,h),(0,h)]
+// and polygons pass their already-relative vertices), and emits a closed
+// Fabric.js path-command array where each edge is replaced by a scalloped
+// series of outward-bumping quadratic arcs. Detects winding automatically
+// so polygons whose vertices run CCW still get bumps on the correct side.
+//
+// Exported so the SVG renderer can rebuild the scalloped geometry live as
+// the user resizes a cloud — adding more humps when the shape grows and
+// fewer when it shrinks, matching Bluebeam/Acrobat behavior.
+export function buildCloudPathCommands(points, intensity = 2) {
+  if (!Array.isArray(points) || points.length < 3) return null;
+
+  const bumpSize = Math.max(6, 5 + intensity * 3); // target edge-length per bump in local units
+  // UX 2026-04-21: trapezoid-form shoelace in screen coords (Y-down). A
+  // NEGATIVE accumulated sum means the points wind clockwise as drawn on
+  // screen (Y-down inverts the standard math-coord convention). A CW
+  // screen-space traversal places "outside" 90° clockwise from the edge
+  // direction = (dy, -dx); CCW flips to (-dy, dx). The previous check
+  // had the sign inverted, which pushed the cloud bumps inward.
+  let area = 0;
+  for (let i = 0; i < points.length; i++) {
+    const p0 = points[i];
+    const p1 = points[(i + 1) % points.length];
+    area += (p1.x - p0.x) * (p1.y + p0.y);
+  }
+  const clockwise = area < 0;
+  const perp = clockwise
+    ? (ux, uy) => ({ x: uy, y: -ux })
+    : (ux, uy) => ({ x: -uy, y: ux });
+
+  const cmds = [];
+  let first = null;
+  for (let i = 0; i < points.length; i++) {
+    const p0 = points[i];
+    const p1 = points[(i + 1) % points.length];
+    const dx = p1.x - p0.x;
+    const dy = p1.y - p0.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 0.1) continue;
+    const ux = dx / len;
+    const uy = dy / len;
+    const numBumps = Math.max(1, Math.round(len / bumpSize));
+    const segLen = len / numBumps;
+    const outward = perp(ux, uy);
+    const bumpHeight = segLen * 0.55; // ≈ semicircle bulge
+    for (let j = 0; j < numBumps; j++) {
+      const sx = p0.x + ux * segLen * j;
+      const sy = p0.y + uy * segLen * j;
+      const ex = p0.x + ux * segLen * (j + 1);
+      const ey = p0.y + uy * segLen * (j + 1);
+      if (i === 0 && j === 0) {
+        cmds.push(['M', sx, sy]);
+        first = { x: sx, y: sy };
+      }
+      const mx = (sx + ex) / 2 + outward.x * bumpHeight;
+      const my = (sy + ey) / 2 + outward.y * bumpHeight;
+      cmds.push(['Q', mx, my, ex, ey]);
+    }
+  }
+  if (first) cmds.push(['Z']);
+  return cmds.length > 0 ? cmds : null;
+}
+
 function isNearWhiteHexColor(hex) {
   if (typeof hex !== 'string' || !hex.startsWith('#') || hex.length !== 7) {
     return false;
@@ -1149,6 +1214,25 @@ async function buildRawAnnotationMetadataById(rawPdfBytes) {
           borderStyleType = normalizePdfNameToken(readPdfLibText(borderStyle.get(PDFName.of('S'))));
           borderDashArray = readPdfLibDashArray(borderStyle.get(PDFName.of('D')));
         }
+        // UX 2026-04-21: /BE (Border Effect) carries the "cloudy border" flag
+        // used by Drawboard, Bluebeam, Acrobat, and others for revision-cloud
+        // rectangles/polygons. /BE/S = /C means cloudy edges; /BE/I is the
+        // intensity (0-2, default 0 when the cloud is intended but no bump size
+        // specified). Without this parse, cloud shapes imported as plain boxes.
+        let borderEffect = null;
+        const borderEffectRef = dict.get(PDFName.of('BE'));
+        const borderEffectDict = borderEffectRef ? rawPdfDoc.context.lookup(borderEffectRef) : null;
+        if (borderEffectDict && typeof borderEffectDict.get === 'function') {
+          const beStyle = normalizePdfNameToken(readPdfLibText(borderEffectDict.get(PDFName.of('S'))));
+          const beIntensity = readPdfLibNumber(borderEffectDict.get(PDFName.of('I')));
+          if (beStyle) {
+            borderEffect = {
+              style: beStyle,
+              intensity: Number.isFinite(beIntensity) ? beIntensity : (beStyle === 'C' ? 2 : 0),
+            };
+          }
+        }
+
         const borderArrayRef = dict.get(PDFName.of('Border'));
         if (borderArrayRef && typeof borderArrayRef.asArray === 'function') {
           const borderArrayEntries = borderArrayRef.asArray();
@@ -1179,6 +1263,7 @@ async function buildRawAnnotationMetadataById(rawPdfBytes) {
           ...(Number.isFinite(borderWidth) ? { borderWidth } : {}),
           ...(borderStyleType ? { borderStyleType } : {}),
           ...(borderDashArray ? { borderDashArray } : {}),
+          ...(borderEffect ? { borderEffect } : {}),
           ...(intent ? { intent } : {}),
           ...(lineEndings ? { lineEndings } : {}),
           ...(lineCoordinates ? { lineCoordinates } : {}),
@@ -1263,6 +1348,7 @@ function applyRawMetadataToAnnotation(annotation, rawMetadata) {
     fillOpacity: annotation.fillOpacity ?? rawMetadata.fillOpacity,
     borderDashArray: annotation.borderDashArray || rawMetadata.borderDashArray || annotation.borderDashArray,
     borderStyleType: annotation.borderStyleType || rawMetadata.borderStyleType || annotation.borderStyleType,
+    borderEffect: annotation.borderEffect || rawMetadata.borderEffect || null,
     lineEndings: normalizedLineEndings || annotation.lineEndings,
     lineCoordinates: annotation.lineCoordinates || rawMetadata.lineCoordinates || annotation.lineCoordinates,
     vertices: annotation.vertices || rawMetadata.vertices || annotation.vertices,
@@ -1365,13 +1451,18 @@ function convertPdfRectToViewportRect(rect, viewport, scale = 1) {
 
 function convertInkToFabricPath(annotation, viewport, scale = 1) {
   const appearance = annotation?._appearance || null;
-  let pathData = convertAppearancePathToFabricPath(appearance?.path, viewport, scale);
+  // UX 2026-04-21: Prefer /InkList pen points over the /AP appearance path.
+  // Drawboard (and some other editors) emit /AP as a closed, filled polygon
+  // that traces the OUTLINE of the stroked ink — so using the appearance
+  // path gave us a thin outlined shape with a hollow interior instead of a
+  // single stroked line. /InkList holds the raw centerline points the user
+  // actually drew; stroking those with /BS width matches spec and restores
+  // the expected look. Fall back to the appearance path only when inkList
+  // is missing or empty.
+  const hasInkList = Array.isArray(annotation.inkLists) && annotation.inkLists.length > 0;
+  let pathData = null;
 
-  if (!pathData) {
-    if (!annotation.inkLists || annotation.inkLists.length === 0) {
-      return null;
-    }
-
+  if (hasInkList) {
     pathData = [];
     annotation.inkLists.forEach((inkList) => {
       if (!inkList || inkList.length < 2) return;
@@ -1420,12 +1511,16 @@ function convertInkToFabricPath(annotation, viewport, scale = 1) {
   }
 
   if (!pathData || pathData.length === 0) {
+    // Fall back to the /AP appearance path only when we truly have no raw
+    // pen points — e.g. an Ink annotation that shipped without /InkList.
+    pathData = convertAppearancePathToFabricPath(appearance?.path, viewport, scale);
+  }
+
+  if (!pathData || pathData.length === 0) {
     return null;
   }
 
   const strokeColorHex = pdfColorToHex(annotation.color, annotation);
-  const fillSource = appearance?.fillColor ?? annotation.interiorColor ?? null;
-  const fillColorHex = fillSource ? pdfColorToHex(fillSource, annotation) : null;
   const strokeOpacity = extractAnnotationOpacity(annotation, 1);
 
   const borderWidth = getBorderWidth(annotation, 0);
@@ -1435,22 +1530,23 @@ function convertInkToFabricPath(annotation, viewport, scale = 1) {
     strokeWidth = Math.max(0.75, borderWidth * 0.82) * scale;
   } else if (Number.isFinite(appearance?.strokeWidth) && appearance.strokeWidth > 0) {
     strokeWidth = appearance.strokeWidth * scale;
-  } else if (!appearance || !appearance.hasFill) {
+  } else {
     // Zero-width strokes with no fill fallback need a visible width for editability.
     strokeWidth = 0.9 * scale;
   }
 
-  const hasFill = Boolean(appearance?.hasFill);
-  const hasStroke = appearance
-    ? (appearance.hasStroke && strokeWidth > 0)
-    : strokeWidth > 0;
-
+  // UX 2026-04-21: Ink is by PDF spec a stroked freeform scribble — never
+  // filled. Drawboard (and other editors) sometimes emit an /AP appearance
+  // stream whose content our basic parser misreads as "filled shape, no
+  // stroke," which previously produced the hollow-black-outline symptom when
+  // importing red pen strokes. Ignore appearance.hasFill/hasStroke entirely
+  // for ink, trust the raw /C color + /BS width from the dictionary.
   return {
     type: 'path',
     path: pathData,
-    stroke: hasStroke ? hexToRgba(strokeColorHex, strokeOpacity) : null,
+    stroke: hexToRgba(strokeColorHex, strokeOpacity),
     strokeWidth,
-    fill: hasFill ? hexToRgba(fillColorHex || strokeColorHex, strokeOpacity) : null,
+    fill: null,
     strokeLineCap: appearance?.lineCap || 'round',
     strokeLineJoin: appearance?.lineJoin || 'round',
     strokeUniform: true,
@@ -1605,11 +1701,15 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
   const strokeWidth = getBorderWidth(annotation, 0, { allowExplicitZero: true });
   const fillHex = getShapeFillHex(annotation);
   const fillOpacity = extractAnnotationOpacity(annotation, 1);
+  // UX 2026-04-21: PDF spec — callout/textbox fill comes from /IC
+  // (interior color) only. /C is the border/line color. The prior fallback
+  // that painted /C as the textbox fill when /IC was missing was wrong and
+  // caused Drawboard imports to get a red box because PDF.js was surfacing
+  // the text's red color as annotation.color. When /IC is absent, the
+  // textbox must stay clear — matching what Adobe Acrobat renders.
   const backgroundColor = fillHex
     ? hexToRgba(fillHex, fillOpacity)
-    : (isCalloutIntent && annotationColorHex
-      ? hexToRgba(annotationColorHex, fillOpacity)
-      : 'transparent');
+    : 'transparent';
 
   const data = {
     ...(isCalloutIntent ? { pdfIntent: intent || 'FreeTextCallout' } : {}),
@@ -1797,6 +1897,23 @@ function convertPolygonToFabricPolygon(annotation, viewport, scale = 1) {
     return null;
   }
 
+  // UX 2026-04-21: Cloud-polygon revision clouds arrive as /Subtype /Polygon
+  // with /BE /S = /C. Reuse the same scalloped-edge builder as rectangles,
+  // feeding it the already-relative polygon vertices.
+  const cloudEffect = annotation.borderEffect?.style === 'C'
+    ? (annotation.borderEffect || { style: 'C', intensity: 2 })
+    : null;
+  const cloudPathD = cloudEffect
+    ? buildCloudPathCommands(relative.points, (cloudEffect.intensity || 2) * scale)
+    : null;
+
+  const data = {
+    ...(intent ? { pdfIntent: intent } : {}),
+    ...(cloudPathD
+      ? { pdfCloudPathD: cloudPathD, pdfCloudIntensity: cloudEffect.intensity }
+      : {}),
+  };
+
   return {
     type: 'polygon',
     left: relative.left,
@@ -1813,7 +1930,7 @@ function convertPolygonToFabricPolygon(annotation, viewport, scale = 1) {
     evented: true,
     hasControls: true,
     hasBorders: true,
-    ...(intent ? { data: { pdfIntent: intent } } : {}),
+    ...(Object.keys(data).length > 0 ? { data } : {}),
     isPdfImported: true,
     pdfAnnotationId: annotation.id,
     pdfAnnotationType: 'Polygon',
@@ -1885,6 +2002,25 @@ function convertSquareToFabricRect(annotation, viewport, scale = 1) {
     return null;
   }
 
+  // UX 2026-04-21: If the source PDF marked this rectangle with the cloudy
+  // border effect (/BE /S = /C), build a scalloped edge path so it renders
+  // as a revision cloud instead of a plain box. Path is in local coords
+  // (0,0 origin) so normal rect positioning/scaling works unchanged.
+  const cloudEffect = annotation.borderEffect?.style === 'C'
+    ? (annotation.borderEffect || { style: 'C', intensity: 2 })
+    : null;
+  const cloudPathD = cloudEffect
+    ? buildCloudPathCommands(
+        [
+          { x: 0, y: 0 },
+          { x: viewportRect.width, y: 0 },
+          { x: viewportRect.width, y: viewportRect.height },
+          { x: 0, y: viewportRect.height },
+        ],
+        (cloudEffect.intensity || 2) * scale
+      )
+    : null;
+
   return {
     type: 'rect',
     left: viewportRect.left,
@@ -1900,6 +2036,9 @@ function convertSquareToFabricRect(annotation, viewport, scale = 1) {
     evented: true,
     hasControls: true,
     hasBorders: true,
+    ...(cloudPathD
+      ? { data: { pdfCloudPathD: cloudPathD, pdfCloudIntensity: cloudEffect.intensity } }
+      : {}),
     // Mark as imported from PDF
     isPdfImported: true,
     pdfAnnotationId: annotation.id,
@@ -2265,13 +2404,35 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
       const viewport = page.getViewport({ scale: 1 });
 
       const annotations = await extractAnnotationsFromPage(page);
-      const { supported, unsupported } = categorizeAnnotations(annotations);
+      const { supported: supportedRaw, unsupported } = categorizeAnnotations(annotations);
 
       // Track unsupported types
       unsupported.forEach(ann => {
         if (ann.subtype) {
           unsupportedTypes.add(ann.subtype);
         }
+      });
+
+      // UX 2026-04-21: Cross-editor defense — Mac Preview (Quartz
+      // PDFContext) writes a brand-new copy of every annotation on every
+      // save via incremental updates, so a PDF opened / saved twice in
+      // Preview arrives with each markup duplicated. PDF.js surfaces all
+      // copies with identical /NM (unique-name) tags. Dedupe by /NM,
+      // keeping the LAST occurrence (Preview's most recent revision comes
+      // last in the page's /Annots array). Annotations without /NM (older
+      // / hand-edited PDFs) always pass through — we can't safely match.
+      const seenNM = new Map();
+      supportedRaw.forEach((ann, idx) => {
+        const nm = typeof ann?.annotationFlags === 'number' ? null : null;
+        // PDF.js surfaces the /NM string as annotation.id in the standard
+        // shape, but some versions expose annotation.name — check both.
+        const key = ann?.id || ann?.name || null;
+        if (key) seenNM.set(key, idx);
+      });
+      const supported = supportedRaw.filter((ann, idx) => {
+        const key = ann?.id || ann?.name || null;
+        if (!key) return true;
+        return seenNM.get(key) === idx;
       });
 
       // Convert supported annotations to Fabric.js objects
