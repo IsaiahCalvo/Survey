@@ -37,6 +37,12 @@ import {
   logShapeRender as __logShapeRender,
   captureShape as __captureShape,
 } from './shapeBleedDiagnostics';
+// UX 2026-04-21 (import-normalization Chunk 2): pure attr derivation for
+// path-type Fabric objects lives in svgPathAttrs.js so node-test suites
+// can import it without the JSX loader. The renderer uses it too to
+// guarantee import vs internal paths produce byte-identical SVG output
+// when their Fabric input fields match.
+import { renderPathToSvgAttrs } from './svgPathAttrs.js';
 
 const __shapeClick = (e) => __captureShape(e.currentTarget, e);
 
@@ -139,19 +145,56 @@ export const renderPath = (obj, index) => {
 
   const key = `path-${obj.id || obj.highlightId || obj.pdfAnnotationId || index}`;
 
+  // UX 2026-04-21 (import-normalization Chunk 2): derive the visual attrs
+  // via renderPathToSvgAttrs so imported Ink and internal pen strokes
+  // produce byte-identical <path> output given identical Fabric inputs.
+  // No branch on isPdfImported/pdfAnnotationType — those are metadata only.
+  const attrs = renderPathToSvgAttrs(obj);
+
+  // UX 2026-04-21: diagnostic log gated behind window.__INK_NORM_DIAG = true.
+  // Dumps the actual render attrs per draw call alongside the import-time
+  // log in convertInkToFabricPath — together they give the user a full
+  // audit trail for one yes/no artifact. Zero-cost when the flag is off.
+  if (typeof window !== 'undefined' && window.__INK_NORM_DIAG && obj.type === 'path') {
+    try {
+      console.log(
+        '[InkNormDiag render]',
+        JSON.stringify(
+          {
+            pdfAnnotationId: obj.pdfAnnotationId,
+            isPdfImported: obj.isPdfImported === true,
+            attrs: {
+              stroke: obj.stroke,
+              strokeWidth: obj.strokeWidth,
+              fill: obj.fill,
+              strokeUniform: obj.strokeUniform,
+              strokeLineCap: obj.strokeLineCap,
+              strokeLineJoin: obj.strokeLineJoin,
+              vectorEffect: attrs.vectorEffect ?? 'none',
+            },
+          },
+          null,
+          0
+        )
+      );
+    } catch (err) {
+      console.warn('[InkNormDiag render] log failed:', err);
+    }
+  }
+
   return (
     <path
       key={key}
       d={d}
       transform={transform}
-      stroke={erased ? 'none' : (obj.stroke || '#000')}
-      strokeWidth={erased ? 0 : (obj.strokeWidth || 1)}
+      stroke={erased ? 'none' : attrs.stroke}
+      strokeWidth={erased ? 0 : attrs.strokeWidth}
       fill={erased ? obj.fill : 'none'}
       fillRule={erased ? 'evenodd' : undefined}
-      opacity={obj.opacity ?? 1}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      vectorEffect={obj.strokeUniform ? 'non-scaling-stroke' : undefined}
+      opacity={attrs.opacity}
+      strokeLinecap={attrs.strokeLinecap}
+      strokeLinejoin={attrs.strokeLinejoin}
+      vectorEffect={attrs.vectorEffect}
       style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
     />
   );

@@ -1,3 +1,5 @@
+import { makeInternalPenPathSpec } from './nativeShapeFactory.js';
+
 /**
  * PDF Annotation Importer
  * Parses existing PDF annotations and converts them to Fabric.js objects
@@ -1470,7 +1472,7 @@ function convertPdfRectToViewportRect(rect, viewport, scale = 1) {
   };
 }
 
-function convertInkToFabricPath(annotation, viewport, scale = 1) {
+export function convertInkToFabricPath(annotation, viewport, scale = 1) {
   const appearance = annotation?._appearance || null;
   // UX 2026-04-21: Prefer /InkList pen points over the /AP appearance path.
   // Drawboard (and some other editors) emit /AP as a closed, filled polygon
@@ -1562,7 +1564,21 @@ function convertInkToFabricPath(annotation, viewport, scale = 1) {
   // stroke," which previously produced the hollow-black-outline symptom when
   // importing red pen strokes. Ignore appearance.hasFill/hasStroke entirely
   // for ink, trust the raw /C color + /BS width from the dictionary.
-  return {
+  //
+  // UX 2026-04-21 (import-normalization Chunk 2): the imported Ink Fabric
+  // spec must be field-for-field identical to an internally-drawn pen
+  // stroke — see src/utils/nativeShapeFactory.js#makeInternalPenPathSpec —
+  // for every BEHAVIOR-gating field. Previously imported Ink set
+  // strokeUniform:true while internal pen strokes left it undefined, which
+  // the SVG renderer translated into vectorEffect="non-scaling-stroke" on
+  // imports only. At 200% zoom that mismatch shows as a visible hairline
+  // split on imports. We drop strokeUniform here (matching internal
+  // behavior: scaled strokes). `isPdfImported` / `pdfAnnotationId` /
+  // `pdfAnnotationType` are kept as provenance-only metadata — they must
+  // never gate behavior in renderers, editors, or erasers. See
+  // docs/superpowers/plans/2026-04-21-import-normalization-and-cloud-properties.md
+  // for cross-chunk invariants.
+  const result = {
     type: 'path',
     path: pathData,
     stroke: hexToRgba(strokeColorHex, strokeOpacity),
@@ -1570,7 +1586,10 @@ function convertInkToFabricPath(annotation, viewport, scale = 1) {
     fill: null,
     strokeLineCap: appearance?.lineCap || 'round',
     strokeLineJoin: appearance?.lineJoin || 'round',
-    strokeUniform: true,
+    // strokeUniform intentionally omitted — matches internal pen-stroke
+    // behavior (undefined). Do NOT reintroduce without removing the
+    // matching field from makeInternalPenPathSpec + updating the parity
+    // test in tests/pdfAnnotationNormalization.test.mjs.
     // Required Fabric.js properties for proper interaction
     selectable: true,
     evented: true,
@@ -1580,12 +1599,52 @@ function convertInkToFabricPath(annotation, viewport, scale = 1) {
     lockMovementY: false,
     perPixelTargetFind: true,
     targetFindTolerance: 5,
-    // Mark as imported from PDF
+    // Mark as imported from PDF — PROVENANCE ONLY. No code path may branch
+    // on these. Exporter + debug tools read them; renderers/editors ignore.
     isPdfImported: true,
     pdfAnnotationId: annotation.id,
     pdfAnnotationType: 'Ink',
     layer: 'pdf-annotations'
   };
+
+  // UX 2026-04-21: diagnostic log gated behind window.__INK_NORM_DIAG = true.
+  // Dumps full import-vs-internal field parity at import time so the user
+  // can reproduce a bug once, save the console log, and hand it back as a
+  // single yes/no artifact. Zero-cost when the flag is off (default).
+  if (typeof window !== 'undefined' && window.__INK_NORM_DIAG) {
+    try {
+      const internal = makeInternalPenPathSpec({
+        stroke: result.stroke,
+        strokeWidth: result.strokeWidth,
+      });
+      const behaviorKeys = ['type', 'fill', 'strokeUniform', 'strokeLineCap', 'strokeLineJoin'];
+      const drift = behaviorKeys.filter((k) => result[k] !== internal[k]);
+      const provenance = {
+        isPdfImported: result.isPdfImported,
+        pdfAnnotationId: result.pdfAnnotationId,
+        pdfAnnotationType: result.pdfAnnotationType,
+      };
+      console.log(
+        '[InkNormDiag import]',
+        JSON.stringify(
+          {
+            pdfAnnotationId: result.pdfAnnotationId,
+            drift,
+            imported: behaviorKeys.reduce((o, k) => ((o[k] = result[k]), o), {}),
+            internal: behaviorKeys.reduce((o, k) => ((o[k] = internal[k]), o), {}),
+            provenance,
+          },
+          null,
+          0
+        )
+      );
+    } catch (err) {
+      // Diagnostic path — never break import on logging failure.
+      console.warn('[InkNormDiag import] log failed:', err);
+    }
+  }
+
+  return result;
 }
 
 /**
