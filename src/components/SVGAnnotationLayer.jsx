@@ -214,6 +214,15 @@ const SVGAnnotationLayer = memo(({
   // Same handler backs the right-click menu's Bring to Front / Forward /
   // Send Backward / to Back items.
   onReorderAnnotation,
+  // UX: 2026-04-20 — Group / Ungroup handlers. Signature:
+  //   onGroupSelected(pageNumber, annotationIndices[], calloutIds[])
+  //   onUngroupSelected(pageNumber, annotationIndices[], calloutIds[])
+  // Fired by Cmd+G / Cmd+Shift+G in the keydown useEffect below using the
+  // current selectedIds + selectedCalloutIds. Right-click menu items in
+  // App.jsx call the same App-level handlers directly. Defensively defaulted
+  // so the layer stays mountable from older sites that haven't wired it.
+  onGroupSelected,
+  onUngroupSelected,
 }) => {
   // ---------------------------------------------------------------------------
   // Refs
@@ -236,6 +245,13 @@ const SVGAnnotationLayer = memo(({
     handleSvgPointerDown, handleHandlePointerDown,
     handlePointerMove, handlePointerUp,
     isSelected, deleteSelected,
+    // UX: 2026-04-20 — multi-index selection setter, used by the Ungroup
+    // restore path so freed group members stay selected as a multi-set.
+    selectAnnotations,
+    // UX: 2026-04-21 — persisted group rotation. Renderer reads this so
+    // the multi-select bbox stays tilted after group-rotate pointerup,
+    // matching single-shape rotate behavior.
+    persistedGroupTransform,
     // EDIT-12 Gap 1 fix (Plan 12-03): optimistic rotation paint
     applyOptimisticRotation, clearOptimisticRotation,
     // Pan-mode quick-click: App.jsx drives selection via pendingSelection.
@@ -292,13 +308,23 @@ const SVGAnnotationLayer = memo(({
   useLayoutEffect(() => {
     if (!pendingSelection) return;
     if (pendingSelection.pageNumber !== pageNumber) return;
+    // UX: 2026-04-20 — multi-index restore (Ungroup). When App broadcasts
+    // an `annotationIndices` array (instead of the singular index), replace
+    // the entire selection with that set so the freed group members stay
+    // selected as a multi-selection. Single-index path below remains the
+    // default for the older single-shape consumers (right-click delete /
+    // pan-mode click).
+    if (Array.isArray(pendingSelection.annotationIndices)) {
+      selectAnnotations(pendingSelection.annotationIndices);
+      return;
+    }
     if (pendingSelection.annotationIndex === null) {
       deselectAll();
       return;
     }
     if (typeof pendingSelection.annotationIndex !== 'number') return;
     selectAnnotation(pendingSelection.annotationIndex, false);
-  }, [pendingSelection, pageNumber, selectAnnotation, deselectAll]);
+  }, [pendingSelection, pageNumber, selectAnnotation, selectAnnotations, deselectAll]);
 
   // UX: apply a pan-mode hover target from App.jsx. If pendingHover is null
   // OR targets a different page, clear this layer's hoveredId (a previously
@@ -580,6 +606,68 @@ const SVGAnnotationLayer = memo(({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedIds, editingAnnotationIndex, pageNumber, onCopyAnnotation, onCutAnnotation, onReorderAnnotation]);
+
+  // UX: 2026-04-21 — Group / Ungroup feature is HIDDEN app-wide. The
+  // Cmd+G and Cmd+Shift+G shortcuts are short-circuited below. Wiring
+  // and handlers are preserved so the matrix-per-shape rewrite can turn
+  // them back on without re-plumbing. Do NOT re-enable without an explicit
+  // user waiver — see handoff 2026-04-21.
+  useEffect(() => {
+    return;
+    // eslint-disable-next-line no-unreachable
+    if (editingAnnotationIndex != null && editingAnnotationEditType !== 'bbox') return;
+    const totalSelected = (selectedIds?.size || 0) + calloutSelectionSize;
+    if (totalSelected === 0) return;
+
+    const handleKeyDown = (e) => {
+      const isMeta = e.metaKey || e.ctrlKey;
+      if (!isMeta || e.altKey) return;
+      const k = typeof e.key === 'string' ? e.key.toLowerCase() : '';
+      if (k !== 'g') return;
+
+      // UX: focus guard — same shape as the other hotkey handlers above.
+      const el = document.activeElement;
+      if (el) {
+        if (el.tagName === 'INPUT') return;
+        if (el.tagName === 'TEXTAREA') return;
+        if (el.isContentEditable === true) return;
+        if (el.contentEditable === 'true') return;
+        if (typeof el.closest === 'function' && el.closest('.fabric-hidden-textarea')) return;
+      }
+
+      const annoIndices = Array.from(selectedIds || []);
+      const calIds = effectiveSelectedCalloutIds instanceof Set
+        ? Array.from(effectiveSelectedCalloutIds)
+        : Array.isArray(effectiveSelectedCalloutIds) ? effectiveSelectedCalloutIds.slice() : [];
+
+      if (e.shiftKey) {
+        // Cmd+Shift+G — Ungroup. Allowed for any selection size; the App
+        // handler no-ops if no selected member actually has a groupId.
+        if (typeof onUngroupSelected !== 'function') return;
+        e.preventDefault();
+        onUngroupSelected(pageNumber, annoIndices, calIds);
+        return;
+      }
+
+      // Cmd+G — Group. Requires at least 2 items total (single-item group
+      // is a UX no-op). App handler also re-checks defensively.
+      if (annoIndices.length + calIds.length < 2) return;
+      if (typeof onGroupSelected !== 'function') return;
+      e.preventDefault();
+      onGroupSelected(pageNumber, annoIndices, calIds);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [
+    selectedIds,
+    effectiveSelectedCalloutIds,
+    calloutSelectionSize,
+    editingAnnotationIndex,
+    editingAnnotationEditType,
+    pageNumber,
+    onGroupSelected,
+    onUngroupSelected,
+  ]);
 
   // UX 2026-04-19: bbox edit mode auto-exit. When the user deselects (empty
   // click, clicks another shape, presses Delete, etc.), the edit session
@@ -1750,6 +1838,21 @@ const SVGAnnotationLayer = memo(({
         { showHandles, showGlow },
       );
 
+      // UX: 2026-04-20 v2 — group-move callout ride-along. When this
+      // callout is part of an active group-move drag, wrap it in a live
+      // translate transform so it tracks the cursor in lockstep with the
+      // group's annotations. Replaces the prior setCallouts-per-frame
+      // approach which caused visible lag (callout trailed behind shapes
+      // because state had to round-trip through App.jsx every frame).
+      // The actual position write happens once at pointerup.
+      const groupMoveTransform = (
+        visualTransform?.id === 'group'
+        && visualTransform?.affectedCalloutIds
+        && visualTransform.affectedCalloutIds.has?.(callout.id)
+      )
+        ? `translate(${visualTransform.dx || 0}, ${visualTransform.dy || 0})`
+        : undefined;
+
       elements.push(
         // UX: wrap visible element + invisible hit targets in a shared
         // fragment via an outer <g> so the hit targets render AFTER the
@@ -1757,6 +1860,7 @@ const SVGAnnotationLayer = memo(({
         // eslint-disable-next-line react/jsx-key
         <g
           key={`callout-wrap-${callout.id || i}`}
+          transform={groupMoveTransform}
           onPointerEnter={() => handleCalloutPointerEnter(callout.id)}
           onPointerLeave={() => handleCalloutPointerLeave(callout.id)}
         >
@@ -1772,8 +1876,11 @@ const SVGAnnotationLayer = memo(({
     // interaction). renderCallout and calculateCalloutConnection are
     // module-scope imports — stable. renderCalloutHitTargets is a stable
     // useCallback derived from calculateCalloutConnection (module import).
+    // visualTransform added 2026-04-20 v2 — drives the group-move callout
+    // ride-along translate so callouts stay in lockstep with annotations
+    // during group drag.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [callouts, pageNumber, showSurveyPanel, selectedModuleId, width, height, editingCalloutId, liveCalloutEditBounds, effectiveSelectedCalloutIds, activeCalloutDrag]);
+  }, [callouts, pageNumber, showSurveyPanel, selectedModuleId, width, height, editingCalloutId, liveCalloutEditBounds, effectiveSelectedCalloutIds, activeCalloutDrag, visualTransform]);
 
   // Diagnostic: after the SVG callouts are laid out, walk the DOM and record
   // the source data + every rendered element's screen rect per callout id.
@@ -3361,6 +3468,26 @@ const SVGAnnotationLayer = memo(({
               a multi-selection. */}
           {/* Group union bounding box with handles */}
           {(() => {
+            // UX: 2026-04-20 v2 — during a group-rotate drag the outer
+            // dashed bbox should rotate as a rigid frame WITH the shapes.
+            // Without this, the per-render world-AABB recomputation makes
+            // the bbox grow / shrink to wrap the rotated shapes' axis-
+            // aligned silhouettes, which looks wrong (resize during
+            // rotate). When visualTransform.groupRotate is present, use
+            // the snapshot bbox captured at drag start and apply a rotate
+            // transform around the original pivot — same trick as
+            // single-shape rotate via SVGSelectionOverlay's transform.
+            const groupRotateLive = visualTransform?.id === 'group'
+              ? visualTransform?.groupRotate
+              : null;
+            // UX: 2026-04-21 v7 — while a group-resize is in flight on a
+            // rotated group, the hook broadcasts the new (tilted) frame
+            // dims + center so we can redraw the dashed box to match the
+            // live pointer drag. This keeps the tilt AND hugs the shapes.
+            const groupResizeLive = visualTransform?.id === 'group'
+              ? visualTransform?.groupResize
+              : null;
+
             // UX 2026-04-20: use the rotation-aware world AABB so a rotated
             // line / arrow / shape in the selection contributes its true
             // on-screen silhouette to the outer dashed frame. Passing the
@@ -3406,11 +3533,121 @@ const SVGAnnotationLayer = memo(({
               }
             }
             if (bboxes.length === 0) return null;
-            const groupBBox = getGroupBBox(bboxes);
-            // Apply group drag transform to union box
-            const groupDragTransform = (visualTransform?.id === 'group')
-              ? `translate(${visualTransform.dx}, ${visualTransform.dy})`
-              : undefined;
+            // UX: 2026-04-21 — three sources of bbox geometry, in priority:
+            //   1. Live group-rotate drag → snapshot bbox + live angle.
+            //   2. Persisted group rotation (from a prior group-rotate
+            //      commit on this same selection) → persisted snapshot
+            //      bbox + persisted angle + accumulated dx/dy. Keeps the
+            //      frame tilted past pointerup, matching single-shape
+            //      rotate behavior.
+            //   3. Default → live union of member world AABBs.
+            const persistedSig = persistedGroupTransform
+              ? persistedGroupTransform.selectionSig
+              : null;
+            const liveSig = (() => {
+              const a = Array.from(selectedIds || []).slice().sort((x, y) => x - y).join(',');
+              const cArr = (effectiveSelectedCalloutIds instanceof Set)
+                ? Array.from(effectiveSelectedCalloutIds).slice().sort()
+                : [];
+              return `${a}|${cArr.join(',')}`;
+            })();
+            const persistedActive = persistedGroupTransform
+              && persistedSig === liveSig;
+
+            // UX: 2026-04-21 v5 — the frame center must sit on the actual
+            // rotation pivot, NOT the live AABB centroid. Rigid rotation
+            // around a fixed pivot moves each shape's CENTER but keeps the
+            // frame's center at the pivot (a point rotated around itself
+            // stays put). Earlier v4 used the live AABB centroid, which
+            // drifts off the pivot whenever shapes are asymmetric around
+            // it: a rotated shape's axis-aligned box grows, so the union
+            // midpoint slides relative to the true pivot and the frame
+            // visibly detaches from the shapes. The snapshot bbox's center
+            // IS the pivot (that's where we captured it at drag start), so
+            // use that as the frame center. Accumulated post-rotate moves
+            // are tracked in the persisted dx/dy (pivot shifts with the
+            // group), and any in-progress move is handled by a translate
+            // on the wrapping group.
+            const liveUnion = (bboxes.length > 0) ? getGroupBBox(bboxes) : null;
+
+            // Choose the bbox dimensions. Priority: live resize (scaled
+            // snapshot dims), persisted snapshot (tilted frame post-rotate),
+            // live rotate snapshot, fall back to live union.
+            let bboxW;
+            let bboxH;
+            if (groupResizeLive) {
+              bboxW = groupResizeLive.width;
+              bboxH = groupResizeLive.height;
+            } else if (persistedActive) {
+              bboxW = persistedGroupTransform.snapshotBbox.width;
+              bboxH = persistedGroupTransform.snapshotBbox.height;
+            } else if (groupRotateLive) {
+              bboxW = groupRotateLive.snapshotBbox.width;
+              bboxH = groupRotateLive.snapshotBbox.height;
+            } else {
+              bboxW = liveUnion?.width || 0;
+              bboxH = liveUnion?.height || 0;
+            }
+
+            // Frame center: live resize's computed new center when active,
+            // else snapshot pivot + accumulated moves for persisted/active
+            // rotation, else live union centroid.
+            let centerX;
+            let centerY;
+            if (groupResizeLive) {
+              centerX = groupResizeLive.centerX;
+              centerY = groupResizeLive.centerY;
+            } else if (persistedActive) {
+              const src = persistedGroupTransform.snapshotBbox;
+              centerX = src.left + src.width / 2 + (persistedGroupTransform.dx || 0);
+              centerY = src.top + src.height / 2 + (persistedGroupTransform.dy || 0);
+            } else if (groupRotateLive) {
+              const src = groupRotateLive.snapshotBbox;
+              centerX = src.left + src.width / 2;
+              centerY = src.top + src.height / 2;
+            } else if (liveUnion) {
+              centerX = liveUnion.left + liveUnion.width / 2;
+              centerY = liveUnion.top + liveUnion.height / 2;
+            } else {
+              centerX = 0;
+              centerY = 0;
+            }
+
+            const groupBBox = {
+              left: centerX - bboxW / 2,
+              top: centerY - bboxH / 2,
+              width: bboxW,
+              height: bboxH,
+            };
+
+            // Rotation transform: spin the frame around its own center
+            // (which IS the rotation pivot). That keeps the dashed box
+            // perfectly aligned with the rigid shape rotation.
+            const persAngle = persistedActive ? (persistedGroupTransform.angle || 0) : 0;
+            const liveAngle = groupRotateLive
+              ? (groupRotateLive.angle || 0)
+              : (groupResizeLive ? 0 : 0);
+            // During a live resize on a rotated group, the frame must keep
+            // the persisted tilt. persAngle already carries that; the
+            // liveAngle stays 0 because there's no in-flight rotation.
+            const liveDx = (visualTransform?.id === 'group' && !groupRotateLive)
+              ? (visualTransform.dx || 0)
+              : 0;
+            const liveDy = (visualTransform?.id === 'group' && !groupRotateLive)
+              ? (visualTransform.dy || 0)
+              : 0;
+            const totalAngle = persAngle + liveAngle;
+
+            let groupDragTransform;
+            if (totalAngle && (liveDx || liveDy)) {
+              groupDragTransform = `translate(${liveDx} ${liveDy}) rotate(${totalAngle}, ${centerX}, ${centerY})`;
+            } else if (totalAngle) {
+              groupDragTransform = `rotate(${totalAngle}, ${centerX}, ${centerY})`;
+            } else if (liveDx || liveDy) {
+              groupDragTransform = `translate(${liveDx} ${liveDy})`;
+            } else {
+              groupDragTransform = undefined;
+            }
             // UX: Phase 19 follow-up — right-click inside the outer
             // dashed box should open a group context menu (cut/copy/
             // paste/delete/z-order all at once). The hit-test resolver
@@ -3434,6 +3671,15 @@ const SVGAnnotationLayer = memo(({
                   onHandleDrag={(e, handleId) => handleHandlePointerDown(e, handleId)}
                   isGroupSelection={false}
                   strokeOpacity={0.6}
+                  // UX: 2026-04-21 — multi-selection frame is ALWAYS move-
+                  // only. Group rotate / group resize handles are hidden
+                  // app-wide until the matrix-per-shape rewrite ships. The
+                  // dashed frame remains visible so the user still sees what
+                  // is selected, and drag-to-move still works because that
+                  // initiates from a member-shape pointerdown (not from the
+                  // overlay's handles). Do NOT re-enable without an explicit
+                  // user waiver — see handoff 2026-04-21.
+                  moveOnly={true}
                 />
                 {/* Invisible hit-test rect so the resolver's
                     getBoundingClientRect fallback has a concrete

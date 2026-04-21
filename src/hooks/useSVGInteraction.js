@@ -15,6 +15,11 @@ import { getAnnotationBBox, getGroupBBox, getLineEndpoints, computeLineBboxCente
 // auto-revert on collinear geometry. Pure-math from lineGeometry, drag
 // helpers from lineDragMath (unit-tested in tests/lineDragMath.test.mjs).
 import { shouldSnapToLinear, getMidpoint } from '../utils/lineGeometry.js';
+// UX: 2026-04-20 — Group / Ungroup. Auto-expand-on-click reads each clicked
+// annotation's / callout's groupId and, if present, expands selection to
+// every member of that group on the page. Same helper module powers App's
+// Group / Ungroup actions; storage model documented at the top of the file.
+import { getAnnotationGroupId, getCalloutGroupId, findGroupMembers } from '../utils/annotationGroups.js';
 import {
   deriveMidpointFromPointer,
   shouldRevertEndpointCurve,
@@ -109,7 +114,7 @@ export function useSVGInteraction({
   // Mutable refs for drag state
   const dragStateRef = useRef({
     active: false,
-    mode: null,      // 'move' | 'resize' | 'rotate' | 'group-move' | 'callout-part'
+    mode: null,      // 'move' | 'resize' | 'rotate' | 'group-move' | 'group-rotate' | 'group-resize' | 'callout-part'
     handleId: null,
     startSVGPoint: null,  // { x, y } in viewBox coords at drag start
     originalProps: null,  // { left, top, scaleX, scaleY, angle, width, height } snapshot
@@ -122,6 +127,19 @@ export function useSVGInteraction({
     currentResize: null,  // resize: { newScaleX, newScaleY, newLeft, newTop } during drag
     currentAngle: undefined, // rotate: current angle during drag
     groupOriginals: null, // group-move: { [idx]: { left, top } } for all selected annotations
+    // UX: 2026-04-20 — callout originals captured alongside annotation
+    // originals when the multi-selection includes callouts. Live-painted
+    // each frame via onUpdateCalloutLive so callouts ride the group-move
+    // drag with the shapes; committed once on pointerup via
+    // onUpdateCallout for a single undo entry per callout.
+    groupCalloutOriginals: null,
+    // UX: 2026-04-20 — Group rotate/resize state (set on group handle
+    // pointerdown, read in pointermove + pointerup, reset on pointerup).
+    groupMemberOriginals: null, // { [idx]: { objType, dataType, left, top, ... } }
+    groupUnionOriginal: null,   // { left, top, right, bottom, cx, cy, width, height }
+    groupStartAngle: 0,         // angle (deg) from union center to start pointer (rotate)
+    lastGroupRotLogAt: 0,       // diag throttle timestamps (ms)
+    lastGroupResLogAt: 0,
     // UX: Phase 14 CALL-10 — callout-part drag state. Populated only when
     // mode === 'callout-part'. See 14-CONTEXT.md Area 3 (Phase 14 drag MVP).
     // Four-place invariant: these fields are initialized here, SET at
@@ -169,6 +187,27 @@ export function useSVGInteraction({
     interactionStateRef.current = interactionState;
   }, [interactionState]);
 
+  // UX: 2026-04-21 — Persisted group rotation. After a group-rotate
+  // commit, the multi-selection's outer dashed bbox should KEEP the
+  // tilted angle (matching single-shape behavior — single shapes store
+  // angle on obj.angle and the bbox renders tilted). Without this,
+  // releasing the rotate handle made the bbox snap back to axis-aligned
+  // because the renderer recomputes the bbox from the union of each
+  // member's rotated world AABB.
+  // Shape:
+  //   {
+  //     selectionSig: string,        // hash of selected ann + callout ids
+  //     snapshotBbox: { left, top, width, height },  // un-rotated frame
+  //     angle: number,               // accumulated rotation (deg)
+  //     dx: number, dy: number,      // accumulated translation since snapshot
+  //   }
+  // Cleared whenever the selection set changes. Resize commits also
+  // clear it (resize fundamentally re-shapes the frame; persisted
+  // rotation no longer applies).
+  const [persistedGroupTransform, setPersistedGroupTransform] = useState(null);
+  const persistedGroupTransformRef = useRef(null);
+  useEffect(() => { persistedGroupTransformRef.current = persistedGroupTransform; }, [persistedGroupTransform]);
+
   // UX: Phase 19 — Escape cancels an in-progress marquee without
   // changing the existing selection. Mirrors AutoCAD's behavior where
   // Esc mid-drag drops the rubber-band box silently. Listener is only
@@ -205,6 +244,37 @@ export function useSVGInteraction({
       observer.disconnect();
     };
   }, [svgRef, pageWidth]);
+
+  // UX: 2026-04-21 — Helper: stable string signature of the current multi-
+  // selection. Used to detect when the user has changed selection so the
+  // persisted group rotation can be cleared automatically. Sorting both
+  // sides keeps the signature deterministic regardless of insertion order.
+  const computeSelectionSig = useCallback((annIds, calIds) => {
+    const a = (annIds instanceof Set ? Array.from(annIds) : Array.isArray(annIds) ? annIds : [])
+      .slice().sort((x, y) => x - y).join(',');
+    const c = (calIds instanceof Set ? Array.from(calIds) : Array.isArray(calIds) ? calIds : [])
+      .slice().sort().join(',');
+    return `${a}|${c}`;
+  }, []);
+
+  // UX: 2026-04-21 v2 — Keep persisted group rotation alive across empty
+  // deselects so the user can click empty space, then click any group
+  // member, and see the tilted bbox restored. Only clear when the new
+  // selection is NON-EMPTY and DIFFERENT from the persisted one (a true
+  // selection change to a different group). Empty selection is treated as
+  // a transient state — don't drop the rotation just because the user
+  // momentarily clicked the page background.
+  useEffect(() => {
+    const sig = computeSelectionSig(selectedIds, selectedCalloutIds);
+    const persisted = persistedGroupTransformRef.current;
+    if (!persisted) return;
+    // Empty new selection — keep persisted (transient deselect).
+    if (sig === '|') return;
+    // Non-empty + matches persisted — keep (restored selection).
+    if (persisted.selectionSig === sig) return;
+    // Non-empty + differs from persisted — true selection change → clear.
+    setPersistedGroupTransform(null);
+  }, [selectedIds, selectedCalloutIds, computeSelectionSig]);
 
   // ---------------------------------------------------------------------------
   // Clear selection when annotations prop identity changes
@@ -244,6 +314,18 @@ export function useSVGInteraction({
   const deselectAll = useCallback(() => {
     setSelectedIds(new Set());
     setHoveredId(null);
+  }, []);
+
+  // UX: 2026-04-20 — multi-index selection setter. Used by App.jsx via the
+  // pendingSvgSelection.annotationIndices broadcast after Ungroup so the
+  // freed members stay selected as a multi-selection. Replaces the entire
+  // selection (not additive) to match the post-ungroup contract.
+  const selectAnnotations = useCallback((indices) => {
+    if (!Array.isArray(indices) && !(indices instanceof Set)) {
+      setSelectedIds(new Set());
+      return;
+    }
+    setSelectedIds(new Set(indices));
   }, []);
 
   const isSelected = useCallback((index) => {
@@ -334,6 +416,29 @@ export function useSVGInteraction({
 
     const wasAlreadySelected = selectedIds.has(index);
 
+    // UX: 2026-04-20 — Group auto-expand-on-click (Stage 1 of the Group /
+    // Ungroup design). When a plain (non-Shift) click lands on an
+    // annotation that carries data.groupId AND it isn't already part of
+    // the current selection, replace the selection with EVERY member of
+    // that group on this page (annotations + callouts). The existing
+    // multi-select chrome (outer dashed blue box with handles + per-member
+    // hover-glow) then paints automatically without any new render path.
+    // Skipped when the clicked annotation is already in selectedIds —
+    // that path is reserved for group-move drag (handled below).
+    const _clickedObj = annotations?.objects?.[index];
+    const _clickedGid = getAnnotationGroupId(_clickedObj);
+    if (!wasAlreadySelected && _clickedGid) {
+      const pageCallouts = (callouts || []); // already page-scoped per layer mount
+      const members = findGroupMembers(annotations, pageCallouts, [_clickedGid]);
+      if (members.annotationIndices.length > 0 || members.calloutIds.length > 0) {
+        setSelectedIds(new Set(members.annotationIndices));
+        if (typeof onSelectedCalloutIdsChange === 'function') {
+          onSelectedCalloutIdsChange(new Set(members.calloutIds));
+        }
+        return; // group selected — no drag, no further per-shape branches.
+      }
+    }
+
     // Select if not already selected
     if (!wasAlreadySelected) {
       selectAnnotation(index, false);
@@ -367,7 +472,15 @@ export function useSVGInteraction({
       // CRITICAL per RESEARCH.md Pitfall 6: record ALL selected annotations'
       // original positions so we compute position as original + totalDelta
       // (not current + frameDelta) to prevent floating-point drift.
-      if (selectedIds.size > 1 && selectedIds.has(index)) {
+      // UX: 2026-04-20 v2 — also count callouts in the multi-selection so
+      // the group-move trigger fires when the user has shape+callout
+      // selected (previously the gate ignored callouts and shape-only
+      // selections of size 1 would fall through to single-shape drag).
+      const calSize = (selectedCalloutIds instanceof Set)
+        ? selectedCalloutIds.size
+        : (Array.isArray(selectedCalloutIds) ? selectedCalloutIds.length : 0);
+      const totalSel = selectedIds.size + calSize;
+      if (totalSel > 1 && selectedIds.has(index)) {
         const originals = {};
         for (const selIdx of selectedIds) {
           const selObj = annotations?.objects?.[selIdx];
@@ -380,6 +493,25 @@ export function useSVGInteraction({
               originals[selIdx] = { left: selObj.left ?? 0, top: selObj.top ?? 0 };
             }
           }
+        }
+        // UX: 2026-04-20 — callouts in the multi-selection ride the same
+        // group-move drag. Capture their normalized {arrowTip, knee,
+        // textBoxPosition} at start, then live-paint + commit per-callout
+        // in pointermove + pointerup (callouts use the existing
+        // onUpdateCalloutLive / onUpdateCallout pipeline rather than the
+        // annotation save path).
+        const calloutOriginals = {};
+        const calIdsArr = (selectedCalloutIds instanceof Set)
+          ? Array.from(selectedCalloutIds)
+          : (Array.isArray(selectedCalloutIds) ? selectedCalloutIds : []);
+        for (const cid of calIdsArr) {
+          const c = (callouts || []).find((cc) => cc && cc.id === cid);
+          if (!c) continue;
+          calloutOriginals[cid] = {
+            arrowTip: { x: c.arrowTip?.x ?? 0, y: c.arrowTip?.y ?? 0 },
+            knee: { x: c.knee?.x ?? 0, y: c.knee?.y ?? 0 },
+            textBoxPosition: { x: c.textBoxPosition?.x ?? 0, y: c.textBoxPosition?.y ?? 0 },
+          };
         }
         dragStateRef.current = {
           active: true,
@@ -396,6 +528,8 @@ export function useSVGInteraction({
           currentResize: null,
           currentAngle: undefined,
           groupOriginals: originals,
+          // UX: 2026-04-20 — callout originals for group-move ride-along.
+          groupCalloutOriginals: calloutOriginals,
         };
       } else {
         // Single annotation drag
@@ -559,6 +693,81 @@ export function useSVGInteraction({
         return;
       }
 
+      // UX: 2026-04-20 — Group-move precedence check (FIRST inside the
+      // callout branch, BEFORE any selection mutation). When the clicked
+      // callout is already part of a multi-selection of size ≥ 2 and Shift
+      // isn't held, route the click into group-move so every member rides
+      // along. This must run BEFORE the Shift / non-Shift selection
+      // branches below — otherwise the non-Shift else-branch's deselectAll
+      // + onSelectedCalloutIdsChange(new Set([calloutId])) wipes the
+      // multi-selection's other members and the outer dashed bbox vanishes
+      // mid-drag (visible symptom: shapes appear to move but the callout
+      // stays put because the chrome thinks it's a solo callout drag now).
+      const _calCount = (selectedCalloutIds instanceof Set)
+        ? selectedCalloutIds.size
+        : (Array.isArray(selectedCalloutIds) ? selectedCalloutIds.length : 0);
+      const _calAlreadyIn = (selectedCalloutIds instanceof Set)
+        ? selectedCalloutIds.has(calloutId)
+        : (Array.isArray(selectedCalloutIds) && selectedCalloutIds.indexOf(calloutId) >= 0);
+      if (!e.shiftKey && _calAlreadyIn && (selectedIds.size + _calCount) > 1) {
+        const ctmA = svgRef.current?.getScreenCTM();
+        const ctmInverseA = ctmA ? ctmA.inverse() : null;
+        const svgPointA = screenToSVG(svgRef.current, e.clientX, e.clientY);
+
+        const annotationOriginalsCO = {};
+        for (const selIdx of selectedIds) {
+          const selObj = annotations?.objects?.[selIdx];
+          if (!selObj) continue;
+          if (isImportedPath(selObj)) {
+            const selBBox = getAnnotationBBox(selObj);
+            annotationOriginalsCO[selIdx] = { left: selBBox.left, top: selBBox.top };
+          } else {
+            annotationOriginalsCO[selIdx] = { left: selObj.left ?? 0, top: selObj.top ?? 0 };
+          }
+        }
+        const calloutOriginalsCO = {};
+        const calIdsArrCO = (selectedCalloutIds instanceof Set)
+          ? Array.from(selectedCalloutIds)
+          : (Array.isArray(selectedCalloutIds) ? selectedCalloutIds : []);
+        for (const cid of calIdsArrCO) {
+          const c = (callouts || []).find((cc) => cc && cc.id === cid);
+          if (!c) continue;
+          calloutOriginalsCO[cid] = {
+            arrowTip: { x: c.arrowTip?.x ?? 0, y: c.arrowTip?.y ?? 0 },
+            knee: { x: c.knee?.x ?? 0, y: c.knee?.y ?? 0 },
+            textBoxPosition: { x: c.textBoxPosition?.x ?? 0, y: c.textBoxPosition?.y ?? 0 },
+          };
+        }
+        dragStateRef.current = {
+          ...dragStateRef.current,
+          active: true,
+          mode: 'group-move',
+          handleId: null,
+          startSVGPoint: svgPointA,
+          originalProps: null,
+          annotationIndex: null,
+          ctmInverse: ctmInverseA,
+          anchorX: null, anchorY: null, centerX: null, centerY: null,
+          currentResize: null, currentAngle: undefined,
+          groupOriginals: annotationOriginalsCO,
+          groupCalloutOriginals: calloutOriginalsCO,
+        };
+        try {
+          console.log('[GroupTransformDiag] callout-pointerdown-group-move ' + JSON.stringify({
+            ts: new Date().toISOString(),
+            calloutId,
+            selectedAnnotationIds: Array.from(selectedIds || []),
+            selectedCalloutIds: calIdsArrCO,
+            startPointerSVG: { x: svgPointA?.x, y: svgPointA?.y },
+            calloutOriginalsKeys: Object.keys(calloutOriginalsCO),
+          }));
+        } catch (_) {}
+        try { e.target.setPointerCapture?.(e.pointerId); } catch (_) {}
+        e.stopPropagation();
+        setInteractionState('dragging');
+        return;
+      }
+
       // UX 2026-04-20: respect Shift-click so shape + callout can be
       // multi-selected in EITHER order. Previously clicking any callout
       // wiped the shape selection and replaced the callout set with just
@@ -574,10 +783,40 @@ export function useSVGInteraction({
           onSelectedCalloutIdsChange(nextCallouts);
         }
       } else {
-        if (onSelectedCalloutIdsChange) {
-          onSelectedCalloutIdsChange(new Set([calloutId]));
+        // UX: 2026-04-20 — Group auto-expand-on-click for callouts (callout
+        // half of the same Stage 1 behavior wired into the annotation
+        // pointerdown handler above). Plain (non-Shift) click on a callout
+        // that already has a groupId AND is not already in the current
+        // callout selection replaces both selections with every member of
+        // that group on this page (annotations + callouts). This is what
+        // makes clicking any one member of a group light up the whole group
+        // automatically — the existing multi-select chrome paints the rest.
+        const _calGid = getCalloutGroupId(callout);
+        const _alreadySel = (selectedCalloutIds instanceof Set)
+          ? selectedCalloutIds.has(calloutId)
+          : Array.isArray(selectedCalloutIds) && selectedCalloutIds.indexOf(calloutId) >= 0;
+        if (_calGid && !_alreadySel) {
+          const members = findGroupMembers(annotations, callouts || [], [_calGid]);
+          if (members.annotationIndices.length > 0 || members.calloutIds.length > 0) {
+            setSelectedIds(new Set(members.annotationIndices));
+            if (onSelectedCalloutIdsChange) {
+              onSelectedCalloutIdsChange(new Set(members.calloutIds));
+            }
+            // Skip the normal single-callout select path below; group is
+            // already selected. Drag still arms because the rest of this
+            // branch executes (callout-part dragstate, etc.).
+          } else if (onSelectedCalloutIdsChange) {
+            // Defensive: groupId set but no other members found (orphan).
+            // Fall through to normal single-callout select.
+            onSelectedCalloutIdsChange(new Set([calloutId]));
+            deselectAll();
+          }
+        } else {
+          if (onSelectedCalloutIdsChange) {
+            onSelectedCalloutIdsChange(new Set([calloutId]));
+          }
+          deselectAll();
         }
-        deselectAll();
       }
 
       // UX: cache ctm inverse + start pointer for the pointermove branch.
@@ -861,12 +1100,482 @@ export function useSVGInteraction({
       // Group drag: compute totalDelta from start (not frameDelta) to prevent drift
       const dx = svgPoint.x - ds.startSVGPoint.x;
       const dy = svgPoint.y - ds.startSVGPoint.y;
+      // UX: 2026-04-20 v2 — callouts now ride the same render-time
+      // translate as annotations via affectedCalloutIds. This kills the
+      // visible lag where callouts trailed behind shapes because their
+      // setCallouts-driven live updates had to round-trip through App.jsx
+      // every frame. Now the renderer wraps each affected callout in a
+      // translate transform synchronously, identical to annotations.
+      // Commit happens once on pointerup.
+      const affectedCalloutIdsSet = ds.groupCalloutOriginals
+        ? new Set(Object.keys(ds.groupCalloutOriginals))
+        : null;
       setVisualTransform({
         id: 'group', // special sentinel for group drag
         dx, dy,
         affectedIds: new Set(Object.keys(ds.groupOriginals).map(Number)),
+        affectedCalloutIds: affectedCalloutIdsSet,
       });
+      // Throttled diag — same 120ms cadence as group rotate/resize.
+      const nowMs3 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+      const lastLog3 = ds.lastGroupMoveLogAt || 0;
+      if (!lastLog3 || nowMs3 - lastLog3 >= 120) {
+        ds.lastGroupMoveLogAt = nowMs3;
+        try {
+          console.log('[GroupTransformDiag] move ' + JSON.stringify({
+            ts: new Date().toISOString(),
+            pointerSVG: { x: svgPoint.x, y: svgPoint.y },
+            pageDelta: { x: dx, y: dy },
+            annotationIds: Object.keys(ds.groupOriginals || {}),
+            calloutIds: ds.groupCalloutOriginals ? Object.keys(ds.groupCalloutOriginals) : [],
+          }));
+        } catch (_) {}
+      }
       setInteractionState('dragging');
+    } else if (ds.mode === 'group-rotate' && ds.groupMemberOriginals && ds.groupUnionOriginal) {
+      // UX: 2026-04-20 — Group rotation. Each member's CENTER orbits around
+      // the union bbox center by the live deltaAngle, AND each member's own
+      // angle picks up the same delta so the whole group rotates as a rigid
+      // frame. Counter pin: data.pointerAngle also picks up the delta so
+      // the nub rotates with the group exactly like a regular shape (per
+      // user spec 2026-04-20). Lines: endpoints + curvature midpoint
+      // rotated around the same pivot.
+      const cur = normalizeAngle(Math.atan2(svgPoint.y - ds.centerY, svgPoint.x - ds.centerX));
+      let delta = cur - (ds.groupStartAngle || 0);
+      // Soft Shift snap to nearest 15° within 3° threshold (gentler than
+      // single-shape's 45° because group rotations are usually finer).
+      if (e.shiftKey) {
+        const snapped = Math.round(delta / 15) * 15;
+        if (Math.abs(delta - snapped) <= 3) delta = snapped;
+      }
+      const rad = (delta * Math.PI) / 180;
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
+      const pivotX = ds.centerX;
+      const pivotY = ds.centerY;
+
+      const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
+      for (const idxStr of Object.keys(ds.groupMemberOriginals)) {
+        const idx = Number(idxStr);
+        const orig = ds.groupMemberOriginals[idxStr];
+        const target = updatedAnnotations.objects?.[idx];
+        if (!target || !orig) continue;
+        const objType = orig.objType;
+
+        // Helper: rotate a single point around (pivotX, pivotY) by delta.
+        const rotPt = (x, y) => {
+          const dx_ = x - pivotX;
+          const dy_ = y - pivotY;
+          return { x: pivotX + dx_ * cos - dy_ * sin, y: pivotY + dx_ * sin + dy_ * cos };
+        };
+
+        if (objType === 'line') {
+          // UX: 2026-04-21 — Line rotation needs WORLD endpoints, not the
+          // raw stored values. The line renderer paints at
+          // (obj.x1 + obj.left, obj.y1 + obj.top), so after a prior group-
+          // move bumps obj.left/top, the raw x1/y1 numbers no longer match
+          // the visible world position. Rotating the raw values around the
+          // group pivot would land the line in a wrong spot (visible bug:
+          // after rotate-then-move, the second rotate flings the line out
+          // of alignment with the rest of the group).
+          // Fix: convert to world before rotating, then bake the rotated
+          // world endpoints back as raw values with obj.left/top reset to
+          // zero. The line's curvature midpoint is already absolute world
+          // coords, so it rotates directly.
+          if (orig.x1 != null && orig.y1 != null && orig.x2 != null && orig.y2 != null) {
+            const wx1 = orig.x1 + (orig.left || 0);
+            const wy1 = orig.y1 + (orig.top || 0);
+            const wx2 = orig.x2 + (orig.left || 0);
+            const wy2 = orig.y2 + (orig.top || 0);
+            const p1 = rotPt(wx1, wy1);
+            const p2 = rotPt(wx2, wy2);
+            target.left = 0;
+            target.top = 0;
+            target.x1 = p1.x; target.y1 = p1.y;
+            target.x2 = p2.x; target.y2 = p2.y;
+          }
+          if (orig.midpoint) {
+            const m = rotPt(orig.midpoint.x, orig.midpoint.y);
+            target.data = { ...(target.data || {}), midpoint: { x: m.x, y: m.y } };
+          }
+          // For arrows + curved lines the rendered tangent reads from the
+          // endpoints, so no separate angle update needed for line/arrow.
+        } else if (orig.dataType === 'counter') {
+          // Counter pin: bubble center is at (left + radius, top + radius).
+          const r = (orig.radius || 14) * Math.abs(orig.scaleX || 1);
+          const ctrX = orig.left + r;
+          const ctrY = orig.top + r;
+          const newCtr = rotPt(ctrX, ctrY);
+          target.left = newCtr.x - r;
+          target.top = newCtr.y - r;
+          // Nub rotates with the group — add delta to data.pointerAngle.
+          // pointerAngle is in 3-o'clock-based degrees (0 = right, 90 = down).
+          // Group delta is in same units, just add and normalize.
+          const basePa = orig.pointerAngle != null ? orig.pointerAngle : 225;
+          target.data = { ...(target.data || {}), pointerAngle: ((basePa + delta) % 360 + 360) % 360 };
+        } else {
+          // Generic shape (rect, ellipse, circle, text, image, polygon,
+          // imported path, etc.): orbit each shape's RENDERER rotation
+          // pivot around the union center by delta, then translate the
+          // shape by (newPivot - origPivot). The renderer rotation pivot
+          // (captured as rotPivotX/Y) is what the shape spins around when
+          // obj.angle changes, so making the orbit math use that exact
+          // point keeps the rigid-frame motion clean for already-rotated
+          // shapes (where the visible AABB center and the renderer pivot
+          // differ). obj.angle picks up the delta the same way a single-
+          // shape rotate would.
+          const newPiv = rotPt(orig.rotPivotX, orig.rotPivotY);
+          const dx = newPiv.x - orig.rotPivotX;
+          const dy = newPiv.y - orig.rotPivotY;
+          target.left = orig.left + dx;
+          target.top = orig.top + dy;
+          target.angle = ((orig.angle || 0) + delta);
+        }
+      }
+
+      onSaveAnnotations(updatedAnnotations, {
+        source: 'object:modified',
+        action: 'group-rotate',
+        checkpointPolicy: 'skip',
+      });
+      ds.currentAngle = delta;
+      // UX: 2026-04-20 v2 — broadcast group-rotate state so the multi-
+      // select chrome can render its outer dashed bbox as a RIGID FRAME
+      // rotating with the shapes. Without this, the bbox kept being
+      // recomputed each render from the union of member world AABBs —
+      // which grows as shapes rotate — making the bbox stretch instead
+      // of rotate. Now the renderer reads visualTransform.groupRotate
+      // and applies a single rotate transform to the snapshot bbox
+      // (same trick as single-shape rotate via SVGSelectionOverlay).
+      setVisualTransform({
+        id: 'group',
+        dx: 0, dy: 0,
+        groupRotate: {
+          angle: delta,
+          pivotX,
+          pivotY,
+          snapshotBbox: ds.groupUnionOriginal,
+        },
+      });
+      setInteractionState('rotating');
+
+      // Throttled diag — 120ms cadence so user gets a few snapshots per drag
+      // without flooding the log buffer.
+      const nowMs = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+      const lastLog = ds.lastGroupRotLogAt || 0;
+      if (!lastLog || nowMs - lastLog >= 120) {
+        ds.lastGroupRotLogAt = nowMs;
+        try {
+          console.log('[GroupTransformDiag] rotate-move ' + JSON.stringify({
+            ts: new Date().toISOString(),
+            pointerSVG: { x: svgPoint.x, y: svgPoint.y },
+            currentAngleDeg: cur,
+            startAngleDeg: ds.groupStartAngle,
+            deltaDeg: delta,
+            pivot: { x: pivotX, y: pivotY },
+            shiftSnap: !!e.shiftKey,
+            memberSnapshots: Object.keys(ds.groupMemberOriginals).reduce((acc, idxStr) => {
+              const idx = Number(idxStr);
+              const t = updatedAnnotations.objects?.[idx];
+              if (!t) return acc;
+              acc[idx] = {
+                left: t.left, top: t.top, angle: t.angle,
+                x1: t.x1, y1: t.y1, x2: t.x2, y2: t.y2,
+                pointerAngle: t.data?.pointerAngle,
+              };
+              return acc;
+            }, {}),
+          }));
+        } catch (_) {}
+      }
+    } else if (ds.mode === 'group-resize' && ds.groupMemberOriginals && ds.groupUnionOriginal) {
+      // UX: 2026-04-20 — Group resize. Anchor at the opposite corner/edge
+      // from the dragged handle. Compute (sx, sy) by comparing the live
+      // pointer-to-anchor distance against the original handle-to-anchor
+      // distance along each axis. Each member's center scales relative to
+      // the anchor, and each member's geometry (width/height/scale) scales
+      // by the same factor so the layout stays consistent — exactly like
+      // each shape had its own bbox getting the same stretch.
+      //
+      // UX: 2026-04-21 v7 — When the group has a persisted rotation, do
+      // all scale math in the ROTATED FRAME'S LOCAL axes, not the world
+      // axes. Otherwise dragging the tilted "middle-right" handle would
+      // scale the shapes along world X, which visually looks like the
+      // group gets dragged sideways while stretching. We rotate the
+      // pointer + anchor + each shape's captured center into the frame's
+      // local (un-rotated) space, compute the scale there, then rotate
+      // the resulting center back to world. Shape scaleX/Y multipliers
+      // ride along as before — correct when each shape rotated with the
+      // group, imperfect but tolerable when a member had its own pre-
+      // rotation relative to the group.
+      const persist = ds.groupResizePersist || null;
+      const hasPersistRot = !!(persist && persist.angle);
+      const rad = hasPersistRot ? (persist.angle * Math.PI) / 180 : 0;
+      const cosR = Math.cos(rad);
+      const sinR = Math.sin(rad);
+      const toLocal = (px, py) => {
+        if (!hasPersistRot) return { x: px, y: py };
+        const dx = px - persist.pivotX;
+        const dy = py - persist.pivotY;
+        return {
+          x: persist.pivotX + dx * cosR + dy * sinR,
+          y: persist.pivotY - dx * sinR + dy * cosR,
+        };
+      };
+      const toWorld = (lx, ly) => {
+        if (!hasPersistRot) return { x: lx, y: ly };
+        const dx = lx - persist.pivotX;
+        const dy = ly - persist.pivotY;
+        return {
+          x: persist.pivotX + dx * cosR - dy * sinR,
+          y: persist.pivotY + dx * sinR + dy * cosR,
+        };
+      };
+
+      const ax = ds.anchorX;
+      const ay = ds.anchorY;
+      const u = ds.groupUnionOriginal;
+
+      // Reference frame for computing sx/sy. When a persisted rotation
+      // exists, the "original handle" + "anchor" live on the tilted frame
+      // in world coords; their LOCAL positions are the un-rotated frame's
+      // edges. Compute in local so the ratio is axis-aligned in that
+      // frame.
+      const anchorLocal = toLocal(ax, ay);
+      const pointerLocal = toLocal(svgPoint.x, svgPoint.y);
+
+      // Original handle position relative to anchor along each local axis.
+      // For a persisted-rotation resize, rebuild the un-rotated frame's
+      // edges from the captured snapshot (centered on pivot, snap dims).
+      let origHx;
+      let origHy;
+      if (hasPersistRot) {
+        const halfW = persist.snapW / 2;
+        const halfH = persist.snapH / 2;
+        const handleOffset = {
+          tl: { x: -halfW, y: -halfH }, tr: { x: halfW, y: -halfH },
+          bl: { x: -halfW, y: halfH },  br: { x: halfW, y: halfH },
+          ml: { x: -halfW, y: 0 },      mr: { x: halfW, y: 0 },
+          mt: { x: 0, y: -halfH },      mb: { x: 0, y: halfH },
+        }[ds.handleId] || { x: halfW, y: 0 };
+        origHx = persist.pivotX + handleOffset.x;
+        origHy = persist.pivotY + handleOffset.y;
+      } else {
+        // Un-rotated path: original handle lives at the world-axis edge.
+        const handleWorld = {
+          tl: { x: u.left, y: u.top },     tr: { x: u.right, y: u.top },
+          bl: { x: u.left, y: u.bottom },  br: { x: u.right, y: u.bottom },
+          ml: { x: u.left, y: (u.top + u.bottom) / 2 },
+          mr: { x: u.right, y: (u.top + u.bottom) / 2 },
+          mt: { x: (u.left + u.right) / 2, y: u.top },
+          mb: { x: (u.left + u.right) / 2, y: u.bottom },
+        }[ds.handleId] || { x: u.right, y: (u.top + u.bottom) / 2 };
+        origHx = handleWorld.x;
+        origHy = handleWorld.y;
+      }
+      const origDx = (origHx - anchorLocal.x) || 1;
+      const origDy = (origHy - anchorLocal.y) || 1;
+      // Affected axes per handle ID.
+      const affectsX = !['mt', 'mb'].includes(ds.handleId);
+      const affectsY = !['ml', 'mr'].includes(ds.handleId);
+      // Live pointer offsets in LOCAL coords (sign preserves drag direction).
+      const liveDx = pointerLocal.x - anchorLocal.x;
+      const liveDy = pointerLocal.y - anchorLocal.y;
+      // Compute scale factors. For uniform corners, optionally Shift-lock
+      // to uniform scale by averaging |sx| and |sy|.
+      let sx = affectsX ? (origDx === 0 ? 1 : liveDx / origDx) : 1;
+      let sy = affectsY ? (origDy === 0 ? 1 : liveDy / origDy) : 1;
+      // Clamp away from zero so a flip doesn't collapse shapes.
+      if (Math.abs(sx) < 0.05) sx = (sx < 0 ? -0.05 : 0.05);
+      if (Math.abs(sy) < 0.05) sy = (sy < 0 ? -0.05 : 0.05);
+      // Shift = uniform scale on corner handles.
+      if (e.shiftKey && affectsX && affectsY) {
+        const avg = (Math.abs(sx) + Math.abs(sy)) / 2;
+        sx = avg * (sx < 0 ? -1 : 1);
+        sy = avg * (sy < 0 ? -1 : 1);
+      }
+
+      // Helper: take a WORLD point (wx, wy), rotate into local frame, scale
+      // around the LOCAL anchor by (sx, sy), then rotate back to world.
+      // For un-rotated groups this collapses to the pre-v7 world-axis math.
+      const scalePoint = (wx, wy) => {
+        const loc = toLocal(wx, wy);
+        const scaledX = anchorLocal.x + (loc.x - anchorLocal.x) * sx;
+        const scaledY = anchorLocal.y + (loc.y - anchorLocal.y) * sy;
+        return toWorld(scaledX, scaledY);
+      };
+
+      const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
+      for (const idxStr of Object.keys(ds.groupMemberOriginals)) {
+        const idx = Number(idxStr);
+        const orig = ds.groupMemberOriginals[idxStr];
+        const target = updatedAnnotations.objects?.[idx];
+        if (!target || !orig) continue;
+        const objType = orig.objType;
+
+        if (objType === 'line') {
+          // UX: 2026-04-21 — Same world-vs-local-endpoint fix as group-
+          // rotate. Lines render at (x1 + left, y1 + top); rescaling the
+          // raw values around the anchor breaks if obj.left/top is non-
+          // zero. Convert to world, scale (in local rotated frame when a
+          // persisted rotation exists), then write back with left/top
+          // reset to zero.
+          if (orig.x1 != null && orig.y1 != null && orig.x2 != null && orig.y2 != null) {
+            const wx1 = orig.x1 + (orig.left || 0);
+            const wy1 = orig.y1 + (orig.top || 0);
+            const wx2 = orig.x2 + (orig.left || 0);
+            const wy2 = orig.y2 + (orig.top || 0);
+            const p1 = scalePoint(wx1, wy1);
+            const p2 = scalePoint(wx2, wy2);
+            target.left = 0;
+            target.top = 0;
+            target.x1 = p1.x; target.y1 = p1.y;
+            target.x2 = p2.x; target.y2 = p2.y;
+          }
+          if (orig.midpoint) {
+            const mp = scalePoint(orig.midpoint.x, orig.midpoint.y);
+            target.data = { ...(target.data || {}), midpoint: { x: mp.x, y: mp.y } };
+          }
+        } else if (orig.dataType === 'counter') {
+          // Counter pin: scale center position; scale radius by uniform avg
+          // (counter is circular, so non-uniform scale would break the
+          // bubble). Nub direction unchanged.
+          const r = (orig.radius || 14) * Math.abs(orig.scaleX || 1);
+          const ctrX = orig.left + r;
+          const ctrY = orig.top + r;
+          const newCtr = scalePoint(ctrX, ctrY);
+          const radScale = Math.max(0.05, (Math.abs(sx) + Math.abs(sy)) / 2);
+          const newR = (orig.radius || 14) * Math.abs(orig.scaleX || 1) * radScale;
+          target.left = newCtr.x - newR;
+          target.top = newCtr.y - newR;
+          target.scaleX = 1;
+          target.scaleY = 1;
+          target.radius = newR;
+        } else {
+          // UX: 2026-04-21 v9 — scale the shape's VISIBLE CENTER in world
+          // (not its origin directly). Then back out the new origin so
+          // that `origin + rotate(offset) = visible_center_new`. This
+          // handles rotated individual shapes: simply scaling the origin
+          // in world leaves a residue equal to the rotation-scale
+          // commutator, which the user saw as "shapes colliding at
+          // intermediate angles" — the residue is zero at 0°/180° but
+          // grows as the shape's angle moves off those. For un-rotated
+          // shapes this reduces to the v8 origin-scale formula.
+          const orig_offset_x = orig.aabbCenterX - orig.left;
+          const orig_offset_y = orig.aabbCenterY - orig.top;
+          const angleRad = ((orig.angle || 0) * Math.PI) / 180;
+          const cA = Math.cos(angleRad);
+          const sA = Math.sin(angleRad);
+          // Un-rotate offset into shape's local bbox frame.
+          const localOffX = cA * orig_offset_x + sA * orig_offset_y;
+          const localOffY = -sA * orig_offset_x + cA * orig_offset_y;
+          // Scale local offset by (sx, sy) — this matches the
+          // scaleX/scaleY multipliers we're about to apply to the shape.
+          const scaledLocalOffX = localOffX * sx;
+          const scaledLocalOffY = localOffY * sy;
+          // Rotate scaled local offset back to world.
+          const newOffsetX = cA * scaledLocalOffX - sA * scaledLocalOffY;
+          const newOffsetY = sA * scaledLocalOffX + cA * scaledLocalOffY;
+          // Scale the visible center in world, then derive the new
+          // origin so the shape's `origin + rotated(offset)` formula
+          // reproduces the expected new visible center.
+          const newVisible = scalePoint(orig.aabbCenterX, orig.aabbCenterY);
+          target.left = newVisible.x - newOffsetX;
+          target.top = newVisible.y - newOffsetY;
+          target.scaleX = (orig.scaleX || 1) * Math.abs(sx);
+          target.scaleY = (orig.scaleY || 1) * Math.abs(sy);
+        }
+      }
+
+      onSaveAnnotations(updatedAnnotations, {
+        source: 'object:modified',
+        action: 'group-resize',
+        checkpointPolicy: 'skip',
+      });
+      ds.currentResize = { sx, sy, ax, ay };
+
+      // UX: 2026-04-21 v7 — broadcast groupResize so the renderer can
+      // redraw the outer dashed frame (a) with the current scaled
+      // dimensions and (b) at the correct new center, while keeping the
+      // persisted rotation angle applied. Without this, during a resize
+      // on a rotated group the frame would stay stuck at the pre-resize
+      // snapshot (because we deliberately DON'T clear persisted rotation
+      // on resize start — the user wants the tilt to hold).
+      if (hasPersistRot) {
+        const newCenterLocalX = anchorLocal.x + (persist.pivotX - anchorLocal.x) * sx;
+        const newCenterLocalY = anchorLocal.y + (persist.pivotY - anchorLocal.y) * sy;
+        const newCenterWorld = toWorld(newCenterLocalX, newCenterLocalY);
+        setVisualTransform({
+          id: 'group',
+          dx: 0, dy: 0,
+          groupResize: {
+            angle: persist.angle,
+            pivotX: persist.pivotX,
+            pivotY: persist.pivotY,
+            centerX: newCenterWorld.x,
+            centerY: newCenterWorld.y,
+            width: Math.abs(persist.snapW * sx),
+            height: Math.abs(persist.snapH * sy),
+          },
+        });
+      } else {
+        // Un-rotated resize: the renderer falls back to live union AABB
+        // for the frame; clear any stale live transform.
+        setVisualTransform(null);
+      }
+
+      setInteractionState('resizing');
+
+      const nowMs2 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+      const lastLog2 = ds.lastGroupResLogAt || 0;
+      if (!lastLog2 || nowMs2 - lastLog2 >= 120) {
+        ds.lastGroupResLogAt = nowMs2;
+        try {
+          // Compute live frame corners (where the outer dashed box is
+          // drawing) and live shape visible centers (where Fabric will
+          // paint each shape) so a post-mortem log can tell us whether
+          // shape and frame drift apart mid-drag or only at commit.
+          const frameCenter = hasPersistRot ? (() => {
+            const ncLX = anchorLocal.x + (persist.pivotX - anchorLocal.x) * sx;
+            const ncLY = anchorLocal.y + (persist.pivotY - anchorLocal.y) * sy;
+            return toWorld(ncLX, ncLY);
+          })() : null;
+          console.log('[GroupTransformDiag] resize-move ' + JSON.stringify({
+            ts: new Date().toISOString(),
+            handleId: ds.handleId,
+            hasPersistRot,
+            persistAngle: hasPersistRot ? persist.angle : null,
+            persistPivot: hasPersistRot ? { x: persist.pivotX, y: persist.pivotY } : null,
+            anchor: { x: ax, y: ay },
+            anchorLocal: hasPersistRot ? anchorLocal : null,
+            pointerSVG: { x: svgPoint.x, y: svgPoint.y },
+            pointerLocal: hasPersistRot ? pointerLocal : null,
+            scaleFactors: { sx, sy },
+            shiftUniform: !!(e.shiftKey && affectsX && affectsY),
+            frameCenter,
+            frameDims: hasPersistRot ? { w: Math.abs(persist.snapW * sx), h: Math.abs(persist.snapH * sy) } : null,
+            memberSnapshots: Object.keys(ds.groupMemberOriginals).reduce((acc, idxStr) => {
+              const idx = Number(idxStr);
+              const orig = ds.groupMemberOriginals[idxStr];
+              const t = updatedAnnotations.objects?.[idx];
+              if (!t) return acc;
+              const visCx = t.left + ((orig?.aabbWidth || 0) * (t.scaleX || 1)) / 2;
+              const visCy = t.top + ((orig?.aabbHeight || 0) * (t.scaleY || 1)) / 2;
+              acc[idx] = {
+                type: t.type, angle: t.angle,
+                left: t.left, top: t.top,
+                scaleX: t.scaleX, scaleY: t.scaleY,
+                x1: t.x1, y1: t.y1, x2: t.x2, y2: t.y2,
+                radius: t.radius,
+                estVisibleCenter: { x: visCx, y: visCy },
+                origLeft: orig?.left, origTop: orig?.top,
+                origAabbCenterX: orig?.aabbCenterX, origAabbCenterY: orig?.aabbCenterY,
+              };
+              return acc;
+            }, {}),
+          }));
+        } catch (_) {}
+      }
     } else if (ds.mode === 'vertex') {
       // UX 2026-04-20: polygon / polyline per-vertex drag. Invert the
       // polygon's transform chain (translate → rotate → scale → pathOffset)
@@ -1926,6 +2635,61 @@ export function useSVGInteraction({
         action: 'midpoint-move',
         checkpointPolicy: 'normal',
       });
+    } else if ((ds.mode === 'group-rotate' || ds.mode === 'group-resize')
+               && ds.groupMemberOriginals) {
+      // UX: 2026-04-20 — Group transform commit. The pointermove branch has
+      // already written each frame's geometry with checkpointPolicy: 'skip',
+      // so the source-of-truth annotations array IS the final geometry. We
+      // just need to fire one more save with checkpointPolicy: 'normal' to
+      // capture the entire drag as a single undo entry. Same pattern as the
+      // counter-orbit + rotation-handle commits.
+      onSaveAnnotations(annotations, {
+        source: 'object:modified',
+        action: ds.mode,
+        checkpointPolicy: 'normal',
+      });
+      // UX: 2026-04-21 v11 — PowerPoint approach for rotate too: the
+      // tilted frame is a live-preview during the drag, but on pointerup
+      // the outer dashed box snaps back to axis-aligned around the (now
+      // individually rotated) shapes. Shapes keep their own `angle`
+      // values; only the group-level tilt state is cleared. This matches
+      // the resize behavior — the group bbox is always axis-aligned at
+      // rest.
+      if (ds.mode === 'group-rotate') {
+        setPersistedGroupTransform(null);
+        setVisualTransform(null);
+      } else if (ds.mode === 'group-resize') {
+        // UX: 2026-04-21 v11 — PowerPoint approach: after resize, the
+        // group stays axis-aligned. Shapes keep their individual angles
+        // intact. If the user wants a tilt back, they rotate again.
+        setPersistedGroupTransform(null);
+        setVisualTransform(null);
+      }
+      try {
+        console.log('[GroupTransformDiag] commit ' + JSON.stringify({
+          ts: new Date().toISOString(),
+          mode: ds.mode,
+          handleId: ds.handleId,
+          finalAngleDeg: ds.currentAngle,
+          finalScale: ds.currentResize,
+          memberFinal: Object.keys(ds.groupMemberOriginals).reduce((acc, idxStr) => {
+            const idx = Number(idxStr);
+            const t = annotations.objects?.[idx];
+            if (!t) return acc;
+            acc[idx] = {
+              type: t.type, dataType: t.data?.type,
+              left: t.left, top: t.top, angle: t.angle,
+              scaleX: t.scaleX, scaleY: t.scaleY, radius: t.radius,
+              x1: t.x1, y1: t.y1, x2: t.x2, y2: t.y2,
+              pointerAngle: t.data?.pointerAngle,
+              midpoint: t.data?.midpoint,
+            };
+            return acc;
+          }, {}),
+        }));
+      } catch (_) {}
+      // UX: see move-branch comment — same spurious-dblclick guard.
+      justDraggedAtRef.current = Date.now();
     } else if (ds.mode === 'group-move' && ds.groupOriginals) {
       // Group drag commit: apply totalDelta from ORIGINAL positions (prevents drift)
       const pt = new DOMPoint(e.clientX, e.clientY);
@@ -1995,6 +2759,48 @@ export function useSVGInteraction({
 
         // UX: see move-branch comment — same spurious-dblclick guard.
         justDraggedAtRef.current = Date.now();
+        // UX: 2026-04-21 — if persisted group rotation is active for this
+        // selection, accumulate the move delta into its dx/dy so the
+        // tilted bbox shifts along with the shapes instead of staying
+        // anchored at its original spot.
+        const sigMove = computeSelectionSig(selectedIds, selectedCalloutIds);
+        const prevMove = persistedGroupTransformRef.current;
+        if (prevMove && prevMove.selectionSig === sigMove) {
+          setPersistedGroupTransform({
+            ...prevMove,
+            dx: (prevMove.dx || 0) + dx,
+            dy: (prevMove.dy || 0) + dy,
+          });
+        }
+      }
+      // UX: 2026-04-20 v2 — callout commit for group-move. Live drag now
+      // uses render-time translate via affectedCalloutIds (no setCallouts
+      // round-trip per frame). On pointerup we compute the final delta
+      // and call onUpdateCalloutLive to write each callout's actual new
+      // position, then onUpdateCallout for the undo checkpoint.
+      if (ds.groupCalloutOriginals) {
+        const ptUp = new DOMPoint(e.clientX, e.clientY);
+        const svgPtUp = ds.ctmInverse
+          ? ptUp.matrixTransform(ds.ctmInverse)
+          : screenToSVG(svgRef.current, e.clientX, e.clientY);
+        const dxUp = svgPtUp.x - ds.startSVGPoint.x;
+        const dyUp = svgPtUp.y - ds.startSVGPoint.y;
+        const W = pageWidth || 1;
+        const H = pageHeight || 1;
+        const dxNorm = dxUp / W;
+        const dyNorm = dyUp / H;
+        for (const [cid, orig] of Object.entries(ds.groupCalloutOriginals)) {
+          if (typeof onUpdateCalloutLive === 'function') {
+            onUpdateCalloutLive(cid, {
+              arrowTip: { x: orig.arrowTip.x + dxNorm, y: orig.arrowTip.y + dyNorm },
+              knee: { x: orig.knee.x + dxNorm, y: orig.knee.y + dyNorm },
+              textBoxPosition: { x: orig.textBoxPosition.x + dxNorm, y: orig.textBoxPosition.y + dyNorm },
+            });
+          }
+          if (typeof onUpdateCallout === 'function') {
+            onUpdateCallout(cid, {});
+          }
+        }
       }
     } else if (ds.mode === 'resize' && ds.currentResize) {
       const { newScaleX, newScaleY, newLeft, newTop } = ds.currentResize;
@@ -2370,6 +3176,12 @@ export function useSVGInteraction({
       anchorX: null, anchorY: null, centerX: null, centerY: null,
       currentResize: null, currentAngle: undefined, groupOriginals: null,
       originalEndpoints: null, currentEndpoint: null,
+      // UX: 2026-04-20 — Group transform fields. Same four-place invariant:
+      // declared at top, set on group handle pointerdown, read in
+      // pointermove + pointerup, reset here for clean next-drag.
+      groupMemberOriginals: null, groupUnionOriginal: null,
+      groupStartAngle: 0, lastGroupRotLogAt: 0, lastGroupResLogAt: 0,
+      groupCalloutOriginals: null,
       // UX: Phase 14 CALL-10 — four-place invariant: reset callout-part
       // fields alongside the rest of the drag state so the next drag
       // starts with a clean slate. Miss one and the drag gets stuck.
@@ -2396,6 +3208,264 @@ export function useSVGInteraction({
   const handleHandlePointerDown = useCallback((e, handleId) => {
     e.stopPropagation();
     e.target.setPointerCapture(e.pointerId);
+
+    // UX: 2026-04-20 — Group transform branch. When 2+ items are selected
+    // (annotations + callouts combined), the multi-selection's outer dashed
+    // bbox owns the rotate handle ('mtr') and the 8 resize handles. Drag
+    // here = transform the WHOLE group as one rigid frame:
+    //   - Rotation pivots every member around the union bbox center.
+    //   - Resize anchors at the opposite corner/edge and scales every
+    //     member's position + size by the same factor.
+    //   - Per-shape special cases:
+    //       Counter pin  — bubble center orbits AND data.pointerAngle
+    //                      rotates with the group, so the nub follows like
+    //                      a regular shape (per user spec 2026-04-20).
+    //       Line/arrow   — endpoints + curvature midpoint rotate or scale
+    //                      around the same pivot/anchor as everything else.
+    //       Callout      — should NEVER reach here because the moveOnly
+    //                      branch in SVGSelectionOverlay hides every handle
+    //                      whenever a callout is in the multi-selection.
+    //                      Defensive guard below short-circuits anyway.
+    // Live commits use checkpointPolicy: 'skip' so each frame writes to the
+    // store without spamming the undo stack; pointerup commits with 'normal'
+    // for one undo entry per drag (matches counter-orbit pattern).
+    const selSize = (selectedIds?.size || 0) + (
+      selectedCalloutIds instanceof Set ? selectedCalloutIds.size :
+      Array.isArray(selectedCalloutIds) ? selectedCalloutIds.length : 0
+    );
+    if (selSize > 1 && (handleId === 'mtr' || ['tl','tr','bl','br','mt','mb','ml','mr'].includes(handleId))) {
+      // Defensive: callouts in selection → handles should be hidden, but if
+      // a stale render somehow let one through, bail out so the user can't
+      // accidentally scale/rotate a callout in a group.
+      const hasCallout = (() => {
+        const set = selectedCalloutIds;
+        if (!set) return false;
+        const arr = set instanceof Set ? Array.from(set) : (Array.isArray(set) ? set : []);
+        return arr.length > 0;
+      })();
+      if (hasCallout) {
+        try {
+          console.log('[GroupTransformDiag] blocked-by-callout ' + JSON.stringify({
+            ts: new Date().toISOString(), handleId,
+            selectedIds: Array.from(selectedIds || []),
+            selectedCalloutIds: (selectedCalloutIds instanceof Set ? Array.from(selectedCalloutIds) : selectedCalloutIds || []),
+          }));
+        } catch (_) {}
+        return;
+      }
+
+      const ctm = svgRef.current?.getScreenCTM();
+      const ctmInverse = ctm ? ctm.inverse() : null;
+      const svgPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
+
+      // Snapshot every selected annotation's geometry. We capture LOTS so
+      // the move handler can replay deterministic transforms from a known
+      // baseline (matches Pitfall 6 from the original group-move research).
+      //
+      // UX: 2026-04-20 v3 — for each member capture BOTH:
+      //   (a) `worldAABB` — axis-aligned wrap that already includes the
+      //       member's existing rotation. Sum these to get the union outer
+      //       frame center, which is the orbit pivot for every member.
+      //   (b) `rotPivotX/Y` — the member's OWN rotation center. This is
+      //       what the renderer spins the shape around when obj.angle
+      //       changes, so it must be the point we orbit AND the point we
+      //       translate the shape by. Computed via getAnnotationBBox (per-
+      //       shape-aware local bbox) for most types, with a counter-pin
+      //       override to the bubble center.
+      //
+      // Earlier v2 used the worldAABB center as the per-member rotation
+      // pivot — that was wrong for already-rotated polygons because the
+      // worldAABB center sits where the polygon LOOKS centered visually,
+      // not where the renderer actually rotates around. Using the local
+      // bbox center now fixes the "shape spins around its own center while
+      // also orbiting" visual: orbit point = renderer's actual pivot.
+      const memberOriginals = {};
+      const memberWorldAABBs = [];
+      for (const idx of selectedIds) {
+        const obj = annotations?.objects?.[idx];
+        if (!obj) continue;
+        let aabb = null;
+        try { aabb = getAnnotationWorldAABB(obj); } catch { aabb = null; }
+        if (!aabb) {
+          try { aabb = getAnnotationBBox(obj); } catch { aabb = null; }
+        }
+        // Local bbox center = renderer's rotation pivot for this shape.
+        let localBBox = null;
+        try { localBBox = getAnnotationBBox(obj); } catch { localBBox = null; }
+        let rotPivotX = localBBox ? localBBox.left + localBBox.width / 2 : (obj.left || 0);
+        let rotPivotY = localBBox ? localBBox.top + localBBox.height / 2 : (obj.top || 0);
+        // Counter pin: renderer rotates around the bubble center, not the
+        // local bbox center (which sits offset toward the nub side).
+        if (obj?.data?.type === 'counter') {
+          const cr = (obj.radius || 14) * Math.abs(obj.scaleX || 1);
+          rotPivotX = (obj.left || 0) + cr;
+          rotPivotY = (obj.top || 0) + cr;
+        }
+        memberOriginals[idx] = {
+          objType: String(obj.type || '').toLowerCase(),
+          dataType: obj?.data?.type || null,
+          left: typeof obj.left === 'number' ? obj.left : 0,
+          top: typeof obj.top === 'number' ? obj.top : 0,
+          width: typeof obj.width === 'number' ? obj.width : 0,
+          height: typeof obj.height === 'number' ? obj.height : 0,
+          scaleX: typeof obj.scaleX === 'number' ? obj.scaleX : 1,
+          scaleY: typeof obj.scaleY === 'number' ? obj.scaleY : 1,
+          angle: typeof obj.angle === 'number' ? obj.angle : 0,
+          radius: typeof obj.radius === 'number' ? obj.radius : null,
+          rx: typeof obj.rx === 'number' ? obj.rx : null,
+          ry: typeof obj.ry === 'number' ? obj.ry : null,
+          x1: typeof obj.x1 === 'number' ? obj.x1 : null,
+          y1: typeof obj.y1 === 'number' ? obj.y1 : null,
+          x2: typeof obj.x2 === 'number' ? obj.x2 : null,
+          y2: typeof obj.y2 === 'number' ? obj.y2 : null,
+          midpoint: obj?.data?.midpoint ? { x: obj.data.midpoint.x, y: obj.data.midpoint.y } : null,
+          pointerAngle: typeof obj?.data?.pointerAngle === 'number' ? obj.data.pointerAngle : null,
+          // Member's renderer rotation pivot — used by group-rotate as
+          // both the orbit point (orbit it around union center by delta)
+          // AND the translation reference (move shape so its pivot lands
+          // at the orbited location). For non-rotated shapes this equals
+          // the worldAABB center; for already-rotated shapes they differ
+          // and the local-bbox version is the correct one.
+          rotPivotX, rotPivotY,
+          // World AABB center — used by group-resize as the orbit-around
+          // point for the visible bbox center (resize translates the
+          // visible center, not the rotation pivot).
+          aabbCenterX: aabb ? aabb.left + aabb.width / 2 : rotPivotX,
+          aabbCenterY: aabb ? aabb.top + aabb.height / 2 : rotPivotY,
+          aabbLeft: aabb ? aabb.left : (obj.left || 0),
+          aabbTop: aabb ? aabb.top : (obj.top || 0),
+          aabbWidth: aabb ? aabb.width : (obj.width || 0),
+          aabbHeight: aabb ? aabb.height : (obj.height || 0),
+        };
+        if (aabb) memberWorldAABBs.push(aabb);
+      }
+
+      if (memberWorldAABBs.length === 0) return;
+      const unionLeft = Math.min(...memberWorldAABBs.map((b) => b.left));
+      const unionTop = Math.min(...memberWorldAABBs.map((b) => b.top));
+      const unionRight = Math.max(...memberWorldAABBs.map((b) => b.left + b.width));
+      const unionBottom = Math.max(...memberWorldAABBs.map((b) => b.top + b.height));
+      const unionCx = (unionLeft + unionRight) / 2;
+      const unionCy = (unionTop + unionBottom) / 2;
+      const unionW = Math.max(1, unionRight - unionLeft);
+      const unionH = Math.max(1, unionBottom - unionTop);
+
+      // For resize: anchor = opposite corner/edge from the dragged handle.
+      const anchorMap = {
+        tl: { x: unionRight, y: unionBottom },
+        tr: { x: unionLeft,  y: unionBottom },
+        bl: { x: unionRight, y: unionTop    },
+        br: { x: unionLeft,  y: unionTop    },
+        mt: { x: unionCx,    y: unionBottom },
+        mb: { x: unionCx,    y: unionTop    },
+        ml: { x: unionRight, y: unionCy     },
+        mr: { x: unionLeft,  y: unionCy     },
+        mtr:{ x: unionCx,    y: unionCy     },
+      };
+
+      const isRotate = handleId === 'mtr';
+
+      // UX: 2026-04-21 v6 — SECOND-ROTATION pivot lock. On subsequent
+      // rotations of the same group, re-use the persisted frame center as
+      // the rotation pivot instead of recomputing from the current world
+      // AABB union. Rotated shapes have bigger axis-aligned boxes, so the
+      // union center drifts away from the original group pivot after the
+      // first rotation — spinning the shapes around that drifted point
+      // breaks the rigid-frame illusion (shapes walk off the bbox on every
+      // subsequent rotation). Lock to the original pivot (shifted by any
+      // persisted group-moves) so every rotation of the same group uses
+      // the same axis, just like a single-shape rotate keeps the same
+      // pivot no matter how many times you spin it.
+      let pivotCx = unionCx;
+      let pivotCy = unionCy;
+      let lockedFrameW = unionW;
+      let lockedFrameH = unionH;
+      let pivotSource = 'unionAABB';
+      const selSig = computeSelectionSig(selectedIds, selectedCalloutIds);
+      const persPrev = persistedGroupTransformRef.current;
+      if (isRotate && persPrev && persPrev.selectionSig === selSig && persPrev.snapshotBbox) {
+        const s = persPrev.snapshotBbox;
+        pivotCx = s.left + s.width / 2 + (persPrev.dx || 0);
+        pivotCy = s.top + s.height / 2 + (persPrev.dy || 0);
+        lockedFrameW = s.width;
+        lockedFrameH = s.height;
+        pivotSource = 'persistedSnapshotCenter';
+      }
+
+      const startAngle = isRotate
+        ? normalizeAngle(Math.atan2(svgPoint.y - pivotCy, svgPoint.x - pivotCx))
+        : 0;
+
+      dragStateRef.current = {
+        active: true,
+        mode: isRotate ? 'group-rotate' : 'group-resize',
+        handleId,
+        startSVGPoint: svgPoint,
+        annotationIndex: null,
+        ctmInverse,
+        anchorX: anchorMap[handleId]?.x ?? unionCx,
+        anchorY: anchorMap[handleId]?.y ?? unionCy,
+        centerX: isRotate ? pivotCx : unionCx,
+        centerY: isRotate ? pivotCy : unionCy,
+        currentResize: null,
+        currentAngle: undefined,
+        groupOriginals: null,
+        // Group-specific snapshot. For rotation we broadcast the persisted
+        // frozen frame so the outer dashed box stays the same un-rotated
+        // frame across N rotations; resize uses the actual current union
+        // AABB since it reshapes the frame anyway.
+        groupMemberOriginals: memberOriginals,
+        groupUnionOriginal: isRotate
+          ? {
+              left: pivotCx - lockedFrameW / 2,
+              top: pivotCy - lockedFrameH / 2,
+              right: pivotCx + lockedFrameW / 2,
+              bottom: pivotCy + lockedFrameH / 2,
+              cx: pivotCx, cy: pivotCy,
+              width: lockedFrameW, height: lockedFrameH,
+            }
+          : {
+              left: unionLeft, top: unionTop, right: unionRight, bottom: unionBottom,
+              cx: unionCx, cy: unionCy, width: unionW, height: unionH,
+            },
+        groupStartAngle: startAngle,
+        pivotSource,
+      };
+
+      try {
+        console.log('[GroupTransformDiag] start ' + JSON.stringify({
+          ts: new Date().toISOString(),
+          mode: isRotate ? 'group-rotate' : 'group-resize',
+          handleId,
+          startPointerSVG: { x: svgPoint?.x, y: svgPoint?.y },
+          unionBbox: { left: unionLeft, top: unionTop, right: unionRight, bottom: unionBottom, width: unionW, height: unionH, cx: unionCx, cy: unionCy },
+          pivotUsed: { x: dragStateRef.current.centerX, y: dragStateRef.current.centerY, source: pivotSource },
+          lockedFrame: isRotate ? { w: lockedFrameW, h: lockedFrameH, left: pivotCx - lockedFrameW / 2, top: pivotCy - lockedFrameH / 2 } : null,
+          persistedPrev: persPrev ? {
+            selectionSig: persPrev.selectionSig, matches: persPrev.selectionSig === selSig,
+            angle: persPrev.angle, dx: persPrev.dx, dy: persPrev.dy,
+            snapshotBbox: persPrev.snapshotBbox,
+          } : null,
+          anchor: { x: anchorMap[handleId]?.x, y: anchorMap[handleId]?.y },
+          startAngleDeg: isRotate ? startAngle : null,
+          memberCount: Object.keys(memberOriginals).length,
+          memberOriginals,
+        }));
+      } catch (err) { console.warn('[GroupTransformDiag] start log failed', err); }
+      // UX: 2026-04-21 v11 — PowerPoint approach: when resize starts on
+      // any group (tilted or not), drop the persisted group tilt so the
+      // outer frame snaps to a clean axis-aligned rectangle for the
+      // whole drag. World-axis scaling is unambiguous — no shear in
+      // spacing, no weird tilted handle math. Shapes keep their own
+      // individual rotations intact (those live on each shape's own
+      // `angle` and aren't touched). After release, the frame stays
+      // axis-aligned; if the user wants a tilt back, they rotate again.
+      if (!isRotate) {
+        setPersistedGroupTransform(null);
+      }
+      setInteractionState(isRotate ? 'rotating' : 'resizing');
+      return;
+    }
 
     const selectedIndex = Array.from(selectedIds)[0]; // Single-select resize only
     if (selectedIndex === undefined) return;
@@ -2849,11 +3919,15 @@ export function useSVGInteraction({
 
     // Selection manipulation
     selectAnnotation,
+    selectAnnotations,
     deselectAll,
     isSelected,
 
     // Group operations (Plan 03)
     deleteSelected,
+    // UX: 2026-04-21 — persisted group rotation. Renderer reads this to
+    // keep the multi-select bbox tilted after a group-rotate commit.
+    persistedGroupTransform,
 
     // UX: Phase 19 — AutoCAD marquee render state consumed by
     // SVGAnnotationLayer. Both are null when no marquee is active or

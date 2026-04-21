@@ -32,6 +32,17 @@ const SVGSelectionOverlay = memo(({
   // the bbox hugs the asymmetric curve. Undefined = fall back to
   // bbox center, which is correct for every other shape type.
   rotationCenter = null, // { x, y } | null
+  // UX 2026-04-20: when true, drop the 8 resize handles AND the rotation
+  // handle, leaving just the dashed bbox. Used for the multi-selection
+  // outer frame whenever a callout is part of the group — matches Drawboard
+  // PDF's "grouped callouts can only be moved" behavior. Move drag itself
+  // is a separate code path (member shape pointerdown initiates group-move),
+  // so the bbox staying visible is enough for the user to see the group.
+  moveOnly = false,
+  // UX 2026-04-20: independently hide the 8 resize handles while keeping
+  // the rotation handle visible. Reserved for future per-shape policies;
+  // currently unused. moveOnly takes precedence (hides everything).
+  hideResizeHandles = false,
 }) => {
   if (!bbox) return null;
 
@@ -94,10 +105,10 @@ const SVGSelectionOverlay = memo(({
       )}
 
       {/* --- Handles (hidden for group selection -- Plan 03 renders group handles) --- */}
-      {!isGroupSelection && (
+      {!isGroupSelection && !moveOnly && (
         <>
           {/* Corner handles (tl, tr, bl, br) - circles */}
-          {cornerHandles.map((id) => {
+          {!hideResizeHandles && cornerHandles.map((id) => {
             const pos = handles[id];
             return (
               <circle
@@ -122,7 +133,7 @@ const SVGSelectionOverlay = memo(({
           })}
 
           {/* Horizontal pills (mt, mb) */}
-          {['mt', 'mb'].map((id) => {
+          {!hideResizeHandles && ['mt', 'mb'].map((id) => {
             const pos = handles[id];
             return (
               <rect
@@ -149,7 +160,7 @@ const SVGSelectionOverlay = memo(({
           })}
 
           {/* Vertical pills (ml, mr) */}
-          {['ml', 'mr'].map((id) => {
+          {!hideResizeHandles && ['ml', 'mr'].map((id) => {
             const pos = handles[id];
             return (
               <rect

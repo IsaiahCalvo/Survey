@@ -26,6 +26,13 @@ import { importAnnotationsFromPdf } from './utils/pdfAnnotationImporter';
 import { resolveAnnotationAt } from './utils/annotationHitTest';
 import { splitImportedCalloutsFromPage } from './utils/calloutImportAdapter';
 import {
+  generateGroupId,
+  getAnnotationGroupId,
+  getCalloutGroupId,
+  findGroupMembers,
+  applyAnnotationGroupId,
+} from './utils/annotationGroups';
+import {
   renumberCounters,
   getCounterSeriesList,
   pickNextSeriesColor,
@@ -24884,6 +24891,122 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     });
   }, [handleSaveAnnotations]);
 
+  // ---------------------------------------------------------------------------
+  // Group / Ungroup — persistent grouping (2026-04-20)
+  // ---------------------------------------------------------------------------
+  // UX: Group stamps a fresh groupId onto every selected annotation + callout
+  // on the page so future clicks on any one member auto-select all members.
+  // Ungroup walks the touched members back to whichever group(s) they belong
+  // to, gathers EVERY member of those groups (so right-clicking one shape in
+  // a 5-shape group dissolves the whole group), and clears the groupId
+  // field. After Ungroup, the freed members stay selected as a multi-
+  // selection so the user can immediately re-group, move, or delete them.
+  //
+  // Storage model lives in src/utils/annotationGroups.js. Annotation groupId
+  // is stored at obj.data.groupId; callout groupId at the top level. v1 is
+  // flat — no nested groups.
+  //
+  // Wired to:
+  //   - Right-click menu items in 3 spots below (callout / annotation /
+  //     multi-select group kinds), all currently no-ops.
+  //   - Cmd+G / Cmd+Shift+G keyboard shortcuts in SVGAnnotationLayer.
+  const handleGroupSelected = useCallback((pageNumber, annotationIndices, calloutIds) => {
+    if (pageNumber == null) return;
+    const annotIdx = Array.isArray(annotationIndices) ? annotationIndices.filter((n) => typeof n === 'number') : [];
+    const calIds = Array.isArray(calloutIds) ? calloutIds.filter((s) => typeof s === 'string') : [];
+    const total = annotIdx.length + calIds.length;
+    if (total < 2) return; // UX: grouping a single item is a no-op.
+
+    const newId = generateGroupId();
+
+    // Annotation side: stamp data.groupId on every selected index, save once.
+    const page = annotationsByPageRef.current?.[pageNumber];
+    if (page && annotIdx.length > 0) {
+      const next = applyAnnotationGroupId(page, annotIdx, newId);
+      handleSaveAnnotations(pageNumber, next, {
+        source: 'object:modified',
+        action: 'group',
+        checkpointPolicy: 'normal',
+      });
+    }
+
+    // Callout side: top-level groupId field, mutate via setCallouts.
+    if (calIds.length > 0) {
+      const calIdSet = new Set(calIds);
+      setCallouts((prev) => prev.map((c) => (
+        c && calIdSet.has(c.id) && c.pageNumber === pageNumber
+          ? { ...c, groupId: newId }
+          : c
+      )));
+    }
+  }, [handleSaveAnnotations]);
+
+  const handleUngroupSelected = useCallback((pageNumber, annotationIndices, calloutIds) => {
+    if (pageNumber == null) return;
+    const annotIdx = Array.isArray(annotationIndices) ? annotationIndices.filter((n) => typeof n === 'number') : [];
+    const calIds = Array.isArray(calloutIds) ? calloutIds.filter((s) => typeof s === 'string') : [];
+
+    const page = annotationsByPageRef.current?.[pageNumber];
+    if (!page) return;
+
+    // Step 1: collect every distinct groupId touched by the supplied members.
+    const groupIds = new Set();
+    if (Array.isArray(page.objects)) {
+      for (const i of annotIdx) {
+        const gid = getAnnotationGroupId(page.objects[i]);
+        if (gid) groupIds.add(gid);
+      }
+    }
+    if (calIds.length > 0) {
+      const calIdSet = new Set(calIds);
+      for (const c of (callouts || [])) {
+        if (!c || c.pageNumber !== pageNumber) continue;
+        if (!calIdSet.has(c.id)) continue;
+        const gid = getCalloutGroupId(c);
+        if (gid) groupIds.add(gid);
+      }
+    }
+    if (groupIds.size === 0) return; // UX: nothing to ungroup.
+
+    // Step 2: expand to every member of those groups on this page so the
+    // entire group dissolves, even if the user only right-clicked one shape.
+    const pageCallouts = (callouts || []).filter((c) => c && c.pageNumber === pageNumber);
+    const members = findGroupMembers(page, pageCallouts, groupIds);
+
+    // Step 3: clear groupId on annotations + save.
+    if (members.annotationIndices.length > 0) {
+      const next = applyAnnotationGroupId(page, members.annotationIndices, null);
+      handleSaveAnnotations(pageNumber, next, {
+        source: 'object:modified',
+        action: 'ungroup',
+        checkpointPolicy: 'normal',
+      });
+    }
+
+    // Step 4: clear groupId on callouts.
+    if (members.calloutIds.length > 0) {
+      const calIdSet = new Set(members.calloutIds);
+      setCallouts((prev) => prev.map((c) => {
+        if (!c || !calIdSet.has(c.id) || c.pageNumber !== pageNumber) return c;
+        const { groupId: _drop, ...rest } = c;
+        return rest;
+      }));
+    }
+
+    // UX: 2026-04-20 — Ungroup clears selection entirely so the user can SEE
+    // the group dissolved (the multi-selection chrome looks identical to a
+    // grouped chrome, so leaving members selected made ungroup feel like a
+    // no-op). The user re-clicks any one of the freed shapes and only that
+    // shape selects, proving the group is gone. Reverses our earlier
+    // "stay selected" decision after first-pass UX testing on 2026-04-20.
+    setPendingSvgSelection({
+      pageNumber,
+      annotationIndex: null,
+      tick: Date.now(),
+    });
+    setSelectedCalloutIds(new Set());
+  }, [handleSaveAnnotations, callouts]);
+
   // [COUNTER WIP — DO NOT TOUCH] Counter drag-to-place helpers.
   // Shared by the inline pointer handlers in the counter overlays and by the
   // window-level Shift/Escape keyboard listener defined below. The pointer
@@ -26620,14 +26743,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
         let items;
         if (ctx.kind === 'callout') {
+          // UX: 2026-04-21 — Group / Ungroup items intentionally omitted
+          // from the right-click menu. The feature is hidden app-wide until
+          // the matrix-per-shape rewrite ships. Handlers above
+          // (handleGroupSelected / handleUngroupSelected) stay intact.
           items = [
             item('Cut', 'cut', () => ctx.calloutId && handleCutCallout(ctx.calloutId)),
             item('Copy', 'copy', () => ctx.calloutId && handleCopyCallout(ctx.calloutId)),
             item('Paste', 'paste', () => handlePasteCallout(ctx.pageNumber)),
             item('Delete', 'delete'),
-            sep(),
-            item('Group', 'group'),
-            item('Ungroup', 'ungroup'),
             sep(),
             item('Properties', 'properties', doOpenProperties),
           ];
@@ -26744,9 +26868,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, 'back');
             }),
             sep(),
-            item('Group', 'group'),
-            item('Ungroup', 'ungroup'),
-            sep(),
+            // UX: 2026-04-21 — Group / Ungroup items intentionally omitted
+            // from the right-click menu. The feature is hidden app-wide
+            // until the matrix-per-shape rewrite ships.
             item('Properties', 'properties', doOpenProperties),
           ];
         } else if (ctx.kind === 'group' && Array.isArray(ctx.groupIndices) && ctx.groupIndices.length >= 2) {
@@ -26855,9 +26979,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               }
             }),
             sep(),
-            item('Group', 'group'),
-            item('Ungroup', 'ungroup'),
-            sep(),
+            // UX: 2026-04-21 — Group / Ungroup items intentionally omitted
+            // from the multi-selection right-click menu. The feature is
+            // hidden app-wide until the matrix-per-shape rewrite ships.
             item('Properties', 'properties', doOpenProperties),
           ];
         } else {
@@ -28063,6 +28187,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   // right-click menu's Bring to Front / Forward / Send
                                   // Backward / to Back items — same handler, same commit path.
                                   onReorderAnnotation={handleReorderAnnotation}
+                                  // UX: 2026-04-20 — Group / Ungroup. Cmd+G / Cmd+Shift+G
+                                  // hotkeys in SVGAnnotationLayer fire these with the
+                                  // current annotation + callout selection. Right-click
+                                  // menu items above wire to the same App handlers.
+                                  onGroupSelected={handleGroupSelected}
+                                  onUngroupSelected={handleUngroupSelected}
                                   // UX: Fix 3 (2026-04-16) — id of the callout currently in
                                   // Fabric edit mode, or null. SVGAnnotationLayer skips this
                                   // one callout in filteredCallouts so the live Fabric edit
@@ -28823,6 +28953,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       onCutAnnotation={handleCutAnnotation}
                                       // UX: z-order hotkeys — see first mount site.
                                       onReorderAnnotation={handleReorderAnnotation}
+                                      // UX: 2026-04-20 Group / Ungroup — see first mount site.
+                                      onGroupSelected={handleGroupSelected}
+                                      onUngroupSelected={handleUngroupSelected}
                                       // UX: Fix 3 (2026-04-16) — see first mount site.
                                       editingCalloutId={editingAnnotation?.reactCalloutId || null}
                                       // UX: Phase 15 UAT-2 — see first mount site.
@@ -29374,6 +29507,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       onCutAnnotation={handleCutAnnotation}
                                       // UX: z-order hotkeys — see first mount site.
                                       onReorderAnnotation={handleReorderAnnotation}
+                                      // UX: 2026-04-20 Group / Ungroup — see first mount site.
+                                      onGroupSelected={handleGroupSelected}
+                                      onUngroupSelected={handleUngroupSelected}
                                       // UX: Fix 3 (2026-04-16) — see first mount site.
                                       editingCalloutId={editingAnnotation?.reactCalloutId || null}
                                       // UX: Phase 15 UAT-2 — see first mount site.
