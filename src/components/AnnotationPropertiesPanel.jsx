@@ -564,6 +564,13 @@ const AnnotationPropertiesPanel = ({
     <div
       ref={panelRef}
       data-annotation-properties-panel="true"
+      // UX 2026-04-21: swallow contextmenu inside the panel so right-click
+      // never falls through to the canvas's paste menu (or the browser's
+      // native Paste on text inputs). The panel is a tool surface — right-
+      // click on it should do nothing, matching the rest of the app's
+      // tool-surface UX. preventDefault suppresses the native menu,
+      // stopPropagation keeps it from reaching App's bubble-phase listener.
+      onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); }}
       style={{
         position: 'fixed',
         left: position.x,
