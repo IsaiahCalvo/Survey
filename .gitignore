@@ -33,3 +33,6 @@ scripts/backup-daemon.pid
 
 # Debug session output
 debug/debug-sessions/
+
+# git worktrees (sandboxes)
+.worktrees/
