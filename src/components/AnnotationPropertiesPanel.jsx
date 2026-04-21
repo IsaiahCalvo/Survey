@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import CompactColorPicker from './CompactColorPicker';
+import { resolvePropertiesPanelShape } from './propertiesPanelShape';
 
 // UX: right-click → context menu → Properties opens this panel in place of
 // the context menu. Replaces the deprecated floating mini-toolbar that used
