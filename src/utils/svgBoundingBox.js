@@ -336,23 +336,13 @@ function getPathBBox(obj) {
   if (hasPathOffset && left != null && top != null && w != null && h != null) {
     const sw = w * Math.abs(obj.scaleX ?? 1);
     const sh = h * Math.abs(obj.scaleY ?? 1);
-    const result = {
+    return {
       left: left - sw / 2,
       top: top - sh / 2,
       width: sw,
       height: sh,
       angle: obj.angle ?? 0,
     };
-    if (__lineBboxShouldLog(obj)) {
-      console.log('[PathBBoxDiag case1 center-origin]',
-        JSON.stringify({
-          pdfAnnotationId: obj.pdfAnnotationId,
-          isPdfImported: obj.isPdfImported === true,
-          inputs: { left, top, width: w, height: h, scaleX: obj.scaleX, scaleY: obj.scaleY, angle: obj.angle, pathOffset: obj.pathOffset, strokeWidth: obj.strokeWidth, strokeUniform: obj.strokeUniform },
-          result,
-        }, null, 0));
-    }
-    return result;
   }
 
   // Case 2 — absolute-coord path (user-drawn pen strokes + imported PDF paths).
@@ -377,34 +367,13 @@ function getPathBBox(obj) {
       const sy = Math.abs(obj.scaleY ?? 1);
       const offsetX = left ?? 0;
       const offsetY = top ?? 0;
-      const result = {
+      return {
         left: offsetX + minX * sx,
         top: offsetY + minY * sy,
         width: (maxX - minX) * sx,
         height: (maxY - minY) * sy,
         angle: obj.angle ?? 0,
       };
-      if (__lineBboxShouldLog(obj)) {
-        console.log('[PathBBoxDiag case2 absolute-coord]',
-          JSON.stringify({
-            pdfAnnotationId: obj.pdfAnnotationId,
-            isPdfImported: obj.isPdfImported === true,
-            hasPathOffset,
-            inputs: {
-              left, top,
-              width: obj.width, height: obj.height,
-              scaleX: obj.scaleX, scaleY: obj.scaleY,
-              angle: obj.angle,
-              pathOffset: obj.pathOffset,
-              strokeWidth: obj.strokeWidth,
-              strokeUniform: obj.strokeUniform,
-              pathSegCount: obj.path.length,
-            },
-            pathScan: { minX, minY, maxX, maxY, rawW: maxX - minX, rawH: maxY - minY },
-            result,
-          }, null, 0));
-      }
-      return result;
     }
   }
 
@@ -695,24 +664,13 @@ function getPointsBBox(obj) {
     return { left: 0, top: 0, width: 0, height: 0, angle: 0 };
   }
 
-  const result = {
+  return {
     left: left + sx * (minX - pathOffsetX),
     top: top + sy * (minY - pathOffsetY),
     width: (maxX - minX) * sx,
     height: (maxY - minY) * sy,
     angle: obj.angle ?? 0,
   };
-  if (__lineBboxShouldLog(obj)) {
-    console.log('[PathBBoxDiag ' + (obj.type || 'points') + ']',
-      JSON.stringify({
-        pdfAnnotationId: obj.pdfAnnotationId,
-        isPdfImported: obj.isPdfImported === true,
-        inputs: { left, top, width: obj.width, height: obj.height, scaleX: obj.scaleX, scaleY: obj.scaleY, angle: obj.angle, pathOffset: obj.pathOffset, strokeWidth: obj.strokeWidth, strokeUniform: obj.strokeUniform, pointCount: obj.points.length },
-        pointScan: { minX, minY, maxX, maxY, rawW: maxX - minX, rawH: maxY - minY },
-        result,
-      }, null, 0));
-  }
-  return result;
 }
 
 function getCircleBBox(obj) {

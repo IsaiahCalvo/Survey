@@ -134,9 +134,41 @@ export const renderPath = (obj, index) => {
   const pathOffsetX = obj.pathOffset?.x || 0;
   const pathOffsetY = obj.pathOffset?.y || 0;
 
-  // Build transform: position -> rotate -> scale -> pathOffset
+  // UX 2026-04-21: rotate around the path's OWN bbox center — matches the
+  // convention used by polygon/polyline (renderPolygon below). Prior to
+  // this, path rotation used SVG's default pivot (the local origin at
+  // translate(left, top) → world corner), so an imported pen stroke at
+  // world coords (left=worldMinX, pathMinX=0) and an internal pen stroke
+  // at local coords (left=0, pathMinX=worldX) both rotated around the
+  // WRONG point — the selection overlay and bbox helpers rotate around
+  // the bbox center, but this <path> rotated around the corner, producing
+  // visible drift during any rotate. Scan the path commands for raw
+  // min/max, compute the center in the object's own coord space after
+  // pathOffset + scale are applied (mirroring the polygon formula).
+  let rawMinX = Infinity, rawMinY = Infinity, rawMaxX = -Infinity, rawMaxY = -Infinity;
+  for (const seg of obj.path) {
+    for (let j = 1; j + 1 < seg.length; j += 2) {
+      const x = seg[j];
+      const y = seg[j + 1];
+      if (typeof x === 'number' && typeof y === 'number') {
+        if (x < rawMinX) rawMinX = x;
+        if (x > rawMaxX) rawMaxX = x;
+        if (y < rawMinY) rawMinY = y;
+        if (y > rawMaxY) rawMaxY = y;
+      }
+    }
+  }
+  const hasPathBounds = Number.isFinite(rawMinX) && Number.isFinite(rawMinY);
+  const rotCenterX = hasPathBounds
+    ? scaleX * ((rawMinX + rawMaxX) / 2 - pathOffsetX)
+    : 0;
+  const rotCenterY = hasPathBounds
+    ? scaleY * ((rawMinY + rawMaxY) / 2 - pathOffsetY)
+    : 0;
+
+  // Build transform: position -> rotate-around-bbox-center -> scale -> pathOffset
   let transform = `translate(${left}, ${top})`;
-  if (angle !== 0) transform += ` rotate(${angle})`;
+  if (angle !== 0) transform += ` rotate(${angle}, ${rotCenterX}, ${rotCenterY})`;
   if (scaleX !== 1 || scaleY !== 1) transform += ` scale(${scaleX}, ${scaleY})`;
   transform += ` translate(${-pathOffsetX}, ${-pathOffsetY})`;
 
