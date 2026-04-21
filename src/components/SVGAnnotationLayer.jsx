@@ -43,10 +43,10 @@ import { createCallout } from './Callout/types';
 import { screenToSVG } from '../utils/svgTransformMath';
 import SVGSelectionOverlay from './SVGSelectionOverlay';
 import RotationInputField from './RotationInputField';
-import { getAnnotationBBox, getGroupBBox, isImportedPath, getLineEndpoints, computeLineBboxCenter } from '../utils/svgBoundingBox';
+import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, isImportedPath, getLineEndpoints, computeLineBboxCenter } from '../utils/svgBoundingBox';
 import { resolveMidpointHandlePosition } from '../utils/lineDragMath.js';
 import { buildArrowheadRenderSpec } from '../utils/lineRenderHelpers.js';
-import { getCurvedPath, distanceToLineSegment } from '../utils/lineGeometry.js';
+import { getCurvedPath, distanceToLineSegment, getCurveEndAngle } from '../utils/lineGeometry.js';
 import { ARROWHEAD_STYLES } from './Callout/types';
 import {
   ANNOTATION_VISIBILITY_SCOPE,
@@ -264,6 +264,11 @@ const SVGAnnotationLayer = memo(({
     // the Phase 12 optimistic-paint pattern).
     callouts,
     onSelectedCalloutIdsChange,
+    // UX 2026-04-20: pass the current callout selection set so the hook
+    // can implement Shift-click toggle for callouts symmetric with the
+    // shape-side toggle. Without this, shift-clicking a callout always
+    // replaced the selection — asymmetric with shape shift-click.
+    selectedCalloutIds,
     onUpdateCalloutLive,
     onUpdateCallout,
     // UX: Phase 19 — marquee only activates when tool === 'select'.
@@ -815,10 +820,17 @@ const SVGAnnotationLayer = memo(({
   const selectedAnnotationIndex = (selectedIds && selectedIds.size === 1)
     ? Array.from(selectedIds)[0]
     : null;
-  // Live angle source: read from visualTransform during drag (single source
-  // of truth — Pitfall 9), otherwise from the persisted obj.angle.
+  // UX 2026-04-20: counter pill reads data.pointerAngle + 90 so 0°
+  // corresponds to "nub pointing straight up" (matches the mental model
+  // the user described). Non-counter shapes read obj.angle as before.
+  const _selectedObjForAngle = (selectedAnnotationIndex !== null)
+    ? annotations?.objects?.[selectedAnnotationIndex]
+    : null;
+  const _selectedIsCounter = _selectedObjForAngle?.data?.type === 'counter';
   const persistedAngle = (selectedAnnotationIndex !== null)
-    ? (annotations?.objects?.[selectedAnnotationIndex]?.angle || 0)
+    ? (_selectedIsCounter
+        ? (((_selectedObjForAngle?.data?.pointerAngle ?? 225) + 90 + 360) % 360)
+        : (_selectedObjForAngle?.angle || 0))
     : 0;
   const liveRotationAngle = isRotating ? visualTransform.rotate.angle : persistedAngle;
 
@@ -865,8 +877,16 @@ const SVGAnnotationLayer = memo(({
     // Typed-commit lag (UAT Gap 1) came from skipping this step and going
     // straight to onSaveAnnotations, which runs history fingerprinting +
     // JSON.stringify + deep-compare before React can re-render.
-    applyOptimisticRotation(annotationIndex, newAngle);
-    pendingOptimisticRotationRef.current = { annotationIndex, angle: newAngle };
+    // UX 2026-04-20: counters don't rotate via obj.angle — their pill value
+    // maps to data.pointerAngle (with a -90° offset so the pill reads 0
+    // when the nub points up). Skip the optimistic visual paint for
+    // counters since there's no rotation transform to mirror; just commit.
+    const targetObj = annotations?.objects?.[annotationIndex];
+    const isCounterTarget = targetObj?.data?.type === 'counter';
+    if (!isCounterTarget) {
+      applyOptimisticRotation(annotationIndex, newAngle);
+      pendingOptimisticRotationRef.current = { annotationIndex, angle: newAngle };
+    }
 
     // Existing heavy save path — unchanged. Runs in parallel with the optimistic
     // paint; when the persisted annotation eventually reflects the new angle,
@@ -877,7 +897,16 @@ const SVGAnnotationLayer = memo(({
       clearOptimisticRotation();
       return;
     }
-    updatedAnnotations.objects[annotationIndex].angle = newAngle;
+    if (isCounterTarget) {
+      const newPointerAngle = ((newAngle - 90) % 360 + 360) % 360;
+      const prevData = updatedAnnotations.objects[annotationIndex].data || {};
+      updatedAnnotations.objects[annotationIndex].data = {
+        ...prevData,
+        pointerAngle: newPointerAngle,
+      };
+    } else {
+      updatedAnnotations.objects[annotationIndex].angle = newAngle;
+    }
     onSaveAnnotations(updatedAnnotations, {
       source: 'rotation-input',
       action: 'rotate',
@@ -1923,7 +1952,13 @@ const SVGAnnotationLayer = memo(({
         };
       }
       // Re-render the element with modified props
-      if (objectType === 'path' && Array.isArray(renderObj.path) && renderObj.path.length > 0) {
+      // UX 2026-04-20: counter pins must re-dispatch to renderCounter during
+      // resize, not to renderEllipse — otherwise the live drag preview loses
+      // the nub tip and the number and the user sees a plain circle until
+      // they release. Mirror the initial dispatch's counter-first ordering.
+      if (renderObj?.data?.type === 'counter') {
+        renderElement = renderCounter(renderObj, i);
+      } else if (objectType === 'path' && Array.isArray(renderObj.path) && renderObj.path.length > 0) {
         renderElement = renderPath(renderObj, i);
       } else if (objectType === 'rect') {
         renderElement = renderRect(renderObj, i);
@@ -2051,10 +2086,18 @@ const SVGAnnotationLayer = memo(({
             const ep = getLineEndpoints(renderObj);
             const isArrow = renderObj.tool === 'arrow';
             const arrowStyle = renderObj.data?.arrowheadStyle ?? (isArrow ? ARROWHEAD_STYLES.SOLID_TRIANGLE : ARROWHEAD_STYLES.NONE);
-            const arrowAngleDeg = (
-              Math.atan2(ep.y2 - ep.y1, ep.x2 - ep.x1)
-              * 180 / Math.PI
-            );
+            // UX 2026-04-20: the hover-glow arrowhead must point along the
+            // same direction as the SVG arrowhead. For curved lines/arrows
+            // the SVG arrowhead rotates to the bezier's tangent at t=1 (via
+            // getCurveEndAngle) — the straight chord angle used previously
+            // made the glow triangle face a different direction than the
+            // visible one once the line was bent.
+            const __mp = renderObj.data?.midpoint;
+            const __isCurved = !!__mp
+              && distanceToLineSegment(__mp, { x: ep.x1, y: ep.y1 }, { x: ep.x2, y: ep.y2 }) > 1;
+            const arrowAngleDeg = __isCurved
+              ? getCurveEndAngle({ x: ep.x1, y: ep.y1 }, { x: ep.x2, y: ep.y2 }, __mp)
+              : (Math.atan2(ep.y2 - ep.y1, ep.x2 - ep.x1) * 180 / Math.PI);
             // UX 2026-04-20: mirror renderLine's rotation wrapper so the
             // hover glow + hit area rotate with the line. Pivot is the
             // curve-inclusive bbox center (same as renderLine, the bbox-
@@ -3202,7 +3245,35 @@ const SVGAnnotationLayer = memo(({
         // whose geometric middle equals computeLineBboxCenter). No
         // rotationCenter override needed — keep it null so the default
         // wins for both lines and every other shape type.
-        const overlayRotationCenter = null;
+        let overlayRotationCenter = null;
+
+        // UX 2026-04-20: counter in bbox edit mode uses a CANONICAL (nub-
+        // up) bbox that spans the bubble + nub extension, rotated as a
+        // whole by (pointerAngle + 90) around the bubble center. This
+        // places the rotation handle / pill directly in front of the
+        // nub tip at any angle (at 0° / nub up → above the bbox) and
+        // keeps the bbox hugging the whole pin as it swings. The counter
+        // bubble + number stay upright because the renderer never reads
+        // obj.angle for counters.
+        if (counterInBboxMode) {
+          const rawRadius = obj.radius || 14;
+          const r = rawRadius * Math.abs(obj.scaleX || 1);
+          const bodyX = (obj.left || 0) + r;
+          const bodyY = (obj.top || 0) + r;
+          const tipExt = Math.max(5, r * 0.5);
+          const pointerAngleDeg = obj.data?.pointerAngle != null
+            ? obj.data.pointerAngle
+            : 225;
+          const overlayAngleDeg = ((pointerAngleDeg + 90) % 360 + 360) % 360;
+          bbox = {
+            left: bodyX - r,
+            top: bodyY - r - tipExt,
+            width: 2 * r,
+            height: 2 * r + tipExt,
+            angle: overlayAngleDeg,
+          };
+          overlayRotationCenter = { x: bodyX, y: bodyY };
+        }
 
         // UX 2026-04-20 diag: log the bbox that the default
         // SVGSelectionOverlay is about to render for a line/arrow, along
@@ -3290,10 +3361,16 @@ const SVGAnnotationLayer = memo(({
               a multi-selection. */}
           {/* Group union bounding box with handles */}
           {(() => {
+            // UX 2026-04-20: use the rotation-aware world AABB so a rotated
+            // line / arrow / shape in the selection contributes its true
+            // on-screen silhouette to the outer dashed frame. Passing the
+            // LOCAL bbox here caused the group frame to clip the visible
+            // arc of a rotated curved line or arrow when combined with a
+            // non-rotated shape.
             const bboxes = Array.from(selectedIds)
               .map(idx => annotations?.objects?.[idx])
               .filter(Boolean)
-              .map(obj => getAnnotationBBox(obj));
+              .map(obj => getAnnotationWorldAABB(obj));
             // UX: Phase 19 follow-up — callouts participate in the group
             // union bbox too. Without this, a selection mixing annotations
             // and callouts drew an outer box that only covered the

@@ -73,6 +73,12 @@ export function useSVGInteraction({
   onRequestEditMode,
   callouts,
   onSelectedCalloutIdsChange,
+  // UX 2026-04-20: current callout selection set (Set<string> or array).
+  // Read at callout pointerdown so Shift-click can toggle this callout
+  // in / out without wiping the rest. Previously the hook only called
+  // onSelectedCalloutIdsChange with the new full Set, which meant
+  // shift-click had no way to preserve existing callouts.
+  selectedCalloutIds,
   onUpdateCalloutLive,
   onUpdateCallout,
   // Phase 19 — current tool. Marquee only activates when tool === 'select'.
@@ -265,6 +271,53 @@ export function useSVGInteraction({
       }));
     } catch (err) { /* swallow log errors */ }
 
+    // UX 2026-04-20: Shift + pointerdown on a single-selected committed
+    // counter enters orbit mode BEFORE the multi-select Shift-click toggle
+    // branch below. Without this, Shift-click always took the toggle path
+    // and the orbit drag never fired. A tiny-movement threshold in the
+    // pointerup branch still lets a pure Shift-click act as a multi-select
+    // toggle; anything past ~3 px commits as an orbit rotation.
+    const _obj_precheck = annotations?.objects?.[index];
+    if (
+      e.shiftKey
+      && _obj_precheck?.data?.type === 'counter'
+      && !(selectedIds.size > 1 && selectedIds.has(index))
+    ) {
+      const ctm = svgRef.current?.getScreenCTM();
+      const ctmInverse = ctm ? ctm.inverse() : null;
+      const svgPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
+      const radius = (_obj_precheck.radius || 14) * Math.abs(_obj_precheck.scaleX || 1);
+      const bodyX = (_obj_precheck.left || 0) + radius;
+      const bodyY = (_obj_precheck.top || 0) + radius;
+      const pointerAngleDeg = _obj_precheck.data.pointerAngle != null ? _obj_precheck.data.pointerAngle : 225;
+      const rad = (pointerAngleDeg * Math.PI) / 180;
+      const tipExtension = Math.max(5, radius * 0.5);
+      const tipDistance = radius + tipExtension;
+      const tipX = bodyX + Math.cos(rad) * tipDistance;
+      const tipY = bodyY + Math.sin(rad) * tipDistance;
+      try { e.target.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
+      dragStateRef.current = {
+        active: true,
+        mode: 'counter-orbit',
+        handleId: null,
+        startSVGPoint: svgPoint,
+        originalProps: null,
+        annotationIndex: index,
+        ctmInverse,
+        anchorX: tipX,
+        anchorY: tipY,
+        centerX: null,
+        centerY: null,
+        currentResize: null,
+        currentAngle: undefined,
+        groupOriginals: null,
+        counterRadius: radius,
+        counterTipDistance: tipDistance,
+      };
+      e.preventDefault();
+      return;
+    }
+
     if (e.shiftKey) {
       // Toggle in selection set (multi-select, Plan 03)
       setSelectedIds((prev) => {
@@ -305,6 +358,9 @@ export function useSVGInteraction({
       const ctm = svgRef.current?.getScreenCTM();
       const ctmInverse = ctm ? ctm.inverse() : null;
       const svgPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
+
+      // (Counter Shift-drag orbit branch is handled at the top of this
+      // callback, before the multi-select toggle early-return.)
 
       // Group drag: when multiple annotations are selected and clicking
       // on one that's already selected, initiate group-move (Plan 03).
@@ -503,13 +559,26 @@ export function useSVGInteraction({
         return;
       }
 
-      // UX: mutual exclusivity — selecting a callout clears annotation
-      // selection so the existing selection machinery (delete, edit pill,
-      // etc.) doesn't fire on a stale annotation id.
-      if (onSelectedCalloutIdsChange) {
-        onSelectedCalloutIdsChange(new Set([calloutId]));
+      // UX 2026-04-20: respect Shift-click so shape + callout can be
+      // multi-selected in EITHER order. Previously clicking any callout
+      // wiped the shape selection and replaced the callout set with just
+      // this one, making it impossible to start with a shape and add a
+      // callout via Shift-click — you always had to start with the
+      // callout. Shift held now: toggle this callout into the existing
+      // callout set, keep shapes. No Shift: replace (previous behavior).
+      if (e.shiftKey) {
+        if (onSelectedCalloutIdsChange) {
+          const nextCallouts = new Set(selectedCalloutIds || []);
+          if (nextCallouts.has(calloutId)) nextCallouts.delete(calloutId);
+          else nextCallouts.add(calloutId);
+          onSelectedCalloutIdsChange(nextCallouts);
+        }
+      } else {
+        if (onSelectedCalloutIdsChange) {
+          onSelectedCalloutIdsChange(new Set([calloutId]));
+        }
+        deselectAll();
       }
-      deselectAll();
 
       // UX: cache ctm inverse + start pointer for the pointermove branch.
       // Mirrors handleAnnotationPointerDown's pattern.
@@ -658,7 +727,7 @@ export function useSVGInteraction({
     if (e.target === svgRef.current) {
       deselectAll();
     }
-  }, [svgRef, deselectAll, callouts, onSelectedCalloutIdsChange, activeTool, applyMarqueeState, selectedIds, annotations]);
+  }, [svgRef, deselectAll, callouts, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, applyMarqueeState, selectedIds, annotations]);
 
   /**
    * Pointer move on root SVG: update visual transform during drag.
@@ -698,9 +767,96 @@ export function useSVGInteraction({
     if (ds.mode === 'move') {
       const dx = svgPoint.x - ds.startSVGPoint.x;
       const dy = svgPoint.y - ds.startSVGPoint.y;
+      // UX 2026-04-20: mid-drag Shift on a counter swaps to orbit mode,
+      // matching the creation-time "slide → Shift-twist → slide" pattern.
+      // Commit the accumulated move as a 'skip' checkpoint so the counter
+      // snaps to the dragged-to spot (no visible jump) and compute the tip
+      // from the new body center as the orbit anchor.
+      const mvObj = annotations?.objects?.[ds.annotationIndex];
+      if (e.shiftKey && mvObj?.data?.type === 'counter') {
+        const radius = (mvObj.radius || 14) * Math.abs(mvObj.scaleX || 1);
+        const newLeft = (ds.originalProps?.left ?? mvObj.left ?? 0) + dx;
+        const newTop = (ds.originalProps?.top ?? mvObj.top ?? 0) + dy;
+        const bodyX = newLeft + radius;
+        const bodyY = newTop + radius;
+        const pointerAngleDeg = mvObj.data.pointerAngle != null ? mvObj.data.pointerAngle : 225;
+        const rad = (pointerAngleDeg * Math.PI) / 180;
+        const tipExtension = Math.max(5, radius * 0.5);
+        const tipDistance = radius + tipExtension;
+        const tipX = bodyX + Math.cos(rad) * tipDistance;
+        const tipY = bodyY + Math.sin(rad) * tipDistance;
+        const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
+        const targetObj = updatedAnnotations.objects?.[ds.annotationIndex];
+        if (targetObj) {
+          targetObj.left = newLeft;
+          targetObj.top = newTop;
+          onSaveAnnotations(updatedAnnotations, {
+            source: 'counter:move-to-orbit',
+            action: 'counter-move',
+            checkpointPolicy: 'skip',
+          });
+        }
+        ds.mode = 'counter-orbit';
+        ds.anchorX = tipX;
+        ds.anchorY = tipY;
+        ds.counterRadius = radius;
+        ds.counterTipDistance = tipDistance;
+        setVisualTransform(null);
+        setInteractionState('rotating');
+        return;
+      }
       // Visual-only update via state (no annotation data mutation during drag)
       setVisualTransform({ id: ds.annotationIndex, dx, dy });
       setInteractionState('dragging');
+    } else if (ds.mode === 'counter-orbit') {
+      // UX 2026-04-20: releasing Shift mid-orbit swaps back to move mode.
+      // Commit the current orbit pose as 'skip' so obj.left/top reflect
+      // the swung body, then start a fresh move drag from here — no jump.
+      if (!e.shiftKey) {
+        const orbObj = annotations?.objects?.[ds.annotationIndex];
+        if (orbObj?.data?.type === 'counter') {
+          ds.mode = 'move';
+          ds.startSVGPoint = { x: svgPoint.x, y: svgPoint.y };
+          ds.originalProps = {
+            left: orbObj.left ?? 0,
+            top: orbObj.top ?? 0,
+            scaleX: orbObj.scaleX ?? 1,
+            scaleY: orbObj.scaleY ?? 1,
+            angle: orbObj.angle ?? 0,
+            width: orbObj.width ?? 0,
+            height: orbObj.height ?? 0,
+          };
+          setVisualTransform({ id: ds.annotationIndex, dx: 0, dy: 0 });
+          setInteractionState('dragging');
+          return;
+        }
+      }
+      // Shift is still held — run the orbit math.
+      const odx = svgPoint.x - ds.anchorX;
+      const ody = svgPoint.y - ds.anchorY;
+      const odist = Math.hypot(odx, ody);
+      if (odist < 0.001) {
+        setInteractionState('rotating');
+        return;
+      }
+      const dirX = odx / odist;
+      const dirY = ody / odist;
+      const newBodyX = ds.anchorX + ds.counterTipDistance * dirX;
+      const newBodyY = ds.anchorY + ds.counterTipDistance * dirY;
+      const newAngleDeg = ((Math.atan2(-dirY, -dirX) * 180 / Math.PI) + 360) % 360;
+      const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
+      const targetObj = updatedAnnotations.objects?.[ds.annotationIndex];
+      if (targetObj) {
+        targetObj.left = newBodyX - ds.counterRadius;
+        targetObj.top = newBodyY - ds.counterRadius;
+        targetObj.data = { ...(targetObj.data || {}), pointerAngle: newAngleDeg };
+        onSaveAnnotations(updatedAnnotations, {
+          source: 'counter:orbit-live',
+          action: 'counter-rotate',
+          checkpointPolicy: 'skip',
+        });
+      }
+      setInteractionState('rotating');
     } else if (ds.mode === 'group-move') {
       // Group drag: compute totalDelta from start (not frameDelta) to prevent drift
       const dx = svgPoint.x - ds.startSVGPoint.x;
@@ -1210,6 +1366,30 @@ export function useSVGInteraction({
         newAngle = snapAngleToNearest45(newAngle, 3);
       }
 
+      // UX 2026-04-20: counters don't rotate their bubble or number — the
+      // rotation handle and angle pill drive the nub direction only. Map
+      // the handle's Fabric-convention angle (0 = up, 90 = right) to the
+      // nub's 3-o'clock-based pointerAngle (0 = right, 90 = down). The
+      // -90° offset ties "handle at top" → "nub points up" so the first
+      // pointermove doesn't snap the pin 90° away from the cursor.
+      const rotObj = annotations?.objects?.[ds.annotationIndex];
+      if (rotObj?.data?.type === 'counter') {
+        const counterPointerAngle = ((newAngle - 90) % 360 + 360) % 360;
+        const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
+        const targetObj = updatedAnnotations.objects?.[ds.annotationIndex];
+        if (targetObj) {
+          targetObj.data = { ...(targetObj.data || {}), pointerAngle: counterPointerAngle };
+          onSaveAnnotations(updatedAnnotations, {
+            source: 'counter:handle-rotate-live',
+            action: 'counter-rotate',
+            checkpointPolicy: 'skip',
+          });
+        }
+        dragStateRef.current.currentAngle = counterPointerAngle;
+        setInteractionState('rotating');
+        return;
+      }
+
       // Delta from original angle — the wrapper <g> already renders the committed angle,
       // so the visual transform must only apply the change to avoid double-rotation.
       const deltaAngle = newAngle - (ds.originalProps.angle || 0);
@@ -1658,6 +1838,36 @@ export function useSVGInteraction({
           justDraggedAtRef.current = Date.now();
         }
       }
+    } else if (ds.mode === 'counter-orbit') {
+      // UX 2026-04-20: if the pointer barely moved, treat this as a plain
+      // Shift-click (multi-select toggle), not a rotation. Pointermove has
+      // only been live-saving with 'skip' checkpoints so no undo entry
+      // exists yet — bailing out here leaves the annotation state pristine.
+      const pt = new DOMPoint(e.clientX, e.clientY);
+      const endPoint = ds.ctmInverse
+        ? pt.matrixTransform(ds.ctmInverse)
+        : screenToSVG(svgRef.current, e.clientX, e.clientY);
+      const moveDx = endPoint.x - ds.startSVGPoint.x;
+      const moveDy = endPoint.y - ds.startSVGPoint.y;
+      const movedFar = (moveDx * moveDx + moveDy * moveDy) > 9; // ~3px threshold
+      if (movedFar) {
+        if (annotations?.objects?.[ds.annotationIndex]) {
+          onSaveAnnotations(annotations, {
+            source: 'counter:orbit-commit',
+            action: 'counter-rotate',
+            checkpointPolicy: 'normal',
+          });
+        }
+        justDraggedAtRef.current = Date.now();
+      } else {
+        // Treat as Shift-click selection toggle.
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          if (next.has(ds.annotationIndex)) next.delete(ds.annotationIndex);
+          else next.add(ds.annotationIndex);
+          return next;
+        });
+      }
     } else if (ds.mode === 'vertex') {
       // UX 2026-04-20: commit vertex drag. The pointermove branch has been
       // live-saving each point update with checkpointPolicy:'skip', so the
@@ -1948,6 +2158,23 @@ export function useSVGInteraction({
       const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
       const rotObj = updatedAnnotations.objects[ds.annotationIndex];
       const rotObjType = String(rotObj?.type || '').toLowerCase();
+      // UX 2026-04-20: counter rotation wrote directly to data.pointerAngle
+      // each pointermove tick with 'skip' checkpoints. Re-save now with a
+      // normal checkpoint so the whole handle drag collapses to one undo.
+      if (rotObj?.data?.type === 'counter') {
+        rotObj.data = { ...(rotObj.data || {}), pointerAngle: ds.currentAngle };
+        onSaveAnnotations(updatedAnnotations, {
+          source: 'counter:handle-rotate-commit',
+          action: 'counter-rotate',
+          checkpointPolicy: 'normal',
+        });
+        justDraggedAtRef.current = Date.now();
+        dragStateRef.current.active = false;
+        dragStateRef.current.mode = null;
+        setVisualTransform(null);
+        setInteractionState('idle');
+        return;
+      }
       // UX 2026-04-20: every rotatable shape keeps its tilted frame after
       // release, matching the polygon/polyline behavior the user asked for.
       // That means we must NOT bake rotation into the shape's geometry on
@@ -2310,8 +2537,17 @@ export function useSVGInteraction({
     // rotation commit, handles stay flush with the visible shape, and
     // the rotation-aware resize math projects anchors to the correct
     // world positions.
-    const cx = bbox.left + bbox.width / 2;
-    const cy = bbox.top + bbox.height / 2;
+    let cx = bbox.left + bbox.width / 2;
+    let cy = bbox.top + bbox.height / 2;
+
+    // UX 2026-04-20: counters rotate around the bubble center (not the
+    // bbox center, which is offset toward the nub side). The visible pin
+    // pivots in place while the nub swings.
+    if (obj?.data?.type === 'counter') {
+      const cr = (obj.radius || 14) * Math.abs(obj.scaleX || 1);
+      cx = (obj.left || 0) + cr;
+      cy = (obj.top || 0) + cr;
+    }
 
     // Anchor: opposite corner/edge from the dragged handle
     const anchorMap = {

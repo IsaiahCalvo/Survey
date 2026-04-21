@@ -73,6 +73,64 @@ export function getAnnotationBBox(obj) {
 }
 
 /**
+ * Compute the on-screen axis-aligned bounding box of an annotation,
+ * accounting for rotation stored on the object. getAnnotationBBox returns
+ * a LOCAL (pre-rotation) tight bbox + the angle separately — correct for
+ * the single-select overlay, which applies rotation via SVG transform.
+ * But the multi-select GROUP union needs world-space AABBs so a rotated
+ * member's on-screen silhouette actually fits inside the outer dashed
+ * frame. Rotating the 4 corners of the local bbox around its geometric
+ * center and taking min/max gives the tight world AABB.
+ *
+ * For lines / arrows with curvature the local bbox returned by
+ * getLineBBox already includes curve extrema, so this function works
+ * without needing to re-derive them.
+ *
+ * UX 2026-04-20: added after the multi-select group box visibly missed
+ * the visible arc of a rotated curved line/arrow when combined with a
+ * non-rotated shape in the same selection.
+ *
+ * @param {object} obj - Fabric.js JSON annotation object
+ * @returns {{ left: number, top: number, width: number, height: number, angle: number }}
+ */
+export function getAnnotationWorldAABB(obj) {
+  const bbox = getAnnotationBBox(obj);
+  const angle = Number(bbox.angle) || 0;
+  if (!angle) {
+    return { left: bbox.left, top: bbox.top, width: bbox.width, height: bbox.height, angle: 0 };
+  }
+  const cx = bbox.left + bbox.width / 2;
+  const cy = bbox.top + bbox.height / 2;
+  const rad = (angle * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const corners = [
+    { x: bbox.left, y: bbox.top },
+    { x: bbox.left + bbox.width, y: bbox.top },
+    { x: bbox.left + bbox.width, y: bbox.top + bbox.height },
+    { x: bbox.left, y: bbox.top + bbox.height },
+  ];
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of corners) {
+    const dx = p.x - cx;
+    const dy = p.y - cy;
+    const rx = cx + dx * cos - dy * sin;
+    const ry = cy + dx * sin + dy * cos;
+    if (rx < minX) minX = rx;
+    if (ry < minY) minY = ry;
+    if (rx > maxX) maxX = rx;
+    if (ry > maxY) maxY = ry;
+  }
+  return {
+    left: minX,
+    top: minY,
+    width: maxX - minX,
+    height: maxY - minY,
+    angle: 0,
+  };
+}
+
+/**
  * Compute the union bounding box of multiple bounding boxes.
  * Used for multi-select group bounding box (Plan 03).
  *
@@ -617,13 +675,51 @@ function getPointsBBox(obj) {
 
 function getCircleBBox(obj) {
   const radius = obj.radius ?? 0;
-  return {
+  const scaleX = Math.abs(obj.scaleX ?? 1);
+  const scaleY = Math.abs(obj.scaleY ?? 1);
+  const base = {
     left: obj.left ?? 0,
     top: obj.top ?? 0,
-    width: radius * 2 * Math.abs(obj.scaleX ?? 1),
-    height: radius * 2 * Math.abs(obj.scaleY ?? 1),
+    width: radius * 2 * scaleX,
+    height: radius * 2 * scaleY,
     angle: obj.angle ?? 0,
   };
+
+  // UX 2026-04-20: counter pins render a nub that sticks out past the
+  // circle body by tipExtension = max(5, radius * 0.5) in the direction
+  // of data.pointerAngle. The plain circle bbox cut off the nub tip, so
+  // the dashed selection frame visibly clipped the pointer on the side
+  // opposite the bubble. Counter body stays circular (renderCounter uses
+  // scaleX only for radius) — match that here so the bbox doesn't become
+  // an ellipse under free-resize. Extend the bbox toward the tip so the
+  // whole pin, including the nub, sits inside the frame.
+  if (obj?.data?.type === 'counter') {
+    const r = radius * scaleX;
+    const centerX = (obj.left ?? 0) + r;
+    const centerY = (obj.top ?? 0) + r;
+    const bodyLeft = centerX - r;
+    const bodyTop = centerY - r;
+    const bodyRight = centerX + r;
+    const bodyBottom = centerY + r;
+    const tipExtension = Math.max(5, r * 0.5);
+    const tipDistance = r + tipExtension;
+    const pointerAngleDeg = (obj.data.pointerAngle != null) ? obj.data.pointerAngle : 225;
+    const rad = (pointerAngleDeg * Math.PI) / 180;
+    const tipX = centerX + Math.cos(rad) * tipDistance;
+    const tipY = centerY + Math.sin(rad) * tipDistance;
+    const minX = Math.min(bodyLeft, tipX);
+    const maxX = Math.max(bodyRight, tipX);
+    const minY = Math.min(bodyTop, tipY);
+    const maxY = Math.max(bodyBottom, tipY);
+    return {
+      left: minX,
+      top: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+      angle: base.angle,
+    };
+  }
+  return base;
 }
 
 function getEllipseBBox(obj) {

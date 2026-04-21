@@ -1964,6 +1964,20 @@ function convertLineToFabricLine(annotation, viewport, scale = 1) {
   const dashArray = extractAnnotationDashArray(annotation);
   const intent = normalizePdfNameToken(annotation.intent || '');
   const calloutPoints = convertPdfPointListToViewportPoints(annotation.calloutLine, viewport, scale);
+  // UX 2026-04-20: PDF Line annotations with a triangular line-ending
+  // (OpenArrow / ClosedArrow and the R-prefixed reversed variants)
+  // should import as the app's Arrow tool, not a plain line — otherwise
+  // the imported shape loses its arrowhead on screen. Detection looks
+  // at both LE slots (start, end); if only the START ending is the arrow
+  // we swap endpoints so the rendered arrowhead lands where the PDF
+  // author placed it. Non-arrow endings (Circle / Diamond / Butt / etc.)
+  // still import as plain lines — those would need more work to
+  // preserve fidelity and are out of scope.
+  const ARROW_LE = new Set(['OpenArrow', 'ClosedArrow', 'ROpenArrow', 'RClosedArrow']);
+  const startArrow = !!(lineEndings && ARROW_LE.has(lineEndings[0]));
+  const endArrow = !!(lineEndings && ARROW_LE.has(lineEndings[1]));
+  const detectedArrow = startArrow || endArrow;
+  const swapEndpoints = startArrow && !endArrow;
   const data = {
     ...(lineEndings ? { pdfLineEndings: lineEndings } : {}),
     ...(intent ? { pdfIntent: intent } : {}),
@@ -1981,11 +1995,14 @@ function convertLineToFabricLine(annotation, viewport, scale = 1) {
     const rect = annotation.rect;
     if (!rect || rect.length < 4) return null;
 
-    const start = convertPdfPointToViewport(rect[0], rect[1], viewport, scale);
-    const end = convertPdfPointToViewport(rect[2], rect[3], viewport, scale);
+    const startRaw = convertPdfPointToViewport(rect[0], rect[1], viewport, scale);
+    const endRaw = convertPdfPointToViewport(rect[2], rect[3], viewport, scale);
+    const start = swapEndpoints ? endRaw : startRaw;
+    const end = swapEndpoints ? startRaw : endRaw;
 
     return {
       type: 'line',
+      ...(detectedArrow ? { tool: 'arrow' } : {}),
       x1: start.x,
       y1: start.y,
       x2: end.x,
@@ -2006,11 +2023,14 @@ function convertLineToFabricLine(annotation, viewport, scale = 1) {
     };
   }
 
-  const start = convertPdfPointToViewport(lineCoords[0], lineCoords[1], viewport, scale);
-  const end = convertPdfPointToViewport(lineCoords[2], lineCoords[3], viewport, scale);
+  const startRaw = convertPdfPointToViewport(lineCoords[0], lineCoords[1], viewport, scale);
+  const endRaw = convertPdfPointToViewport(lineCoords[2], lineCoords[3], viewport, scale);
+  const start = swapEndpoints ? endRaw : startRaw;
+  const end = swapEndpoints ? startRaw : endRaw;
 
   return {
     type: 'line',
+    ...(detectedArrow ? { tool: 'arrow' } : {}),
     x1: start.x,
     y1: start.y,
     x2: end.x,
