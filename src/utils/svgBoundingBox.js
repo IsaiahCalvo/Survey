@@ -41,6 +41,15 @@ function __lineBboxShouldLog(obj) {
  * @param {object} obj - Fabric.js JSON object
  * @returns {{ left: number, top: number, width: number, height: number, angle: number }}
  */
+// UX 2026-04-21: one-shot module-load log so the user can confirm the
+// diagnostic build is actually loaded after reload. If this line is
+// missing from the exported log, the browser is serving a stale bundle
+// and no other bbox-diag lines will appear no matter what they do.
+if (typeof window !== 'undefined' && !window.__BBOX_DIAG_MODULE_LOADED) {
+  window.__BBOX_DIAG_MODULE_LOADED = true;
+  console.log('[PathBBoxDiag MODULE_LOADED] svgBoundingBox.js instrumentation active @ 2026-04-21');
+}
+
 export function getAnnotationBBox(obj) {
   if (!obj) return { left: 0, top: 0, width: 0, height: 0, angle: 0 };
 
@@ -343,15 +352,13 @@ function getPathBBox(obj) {
       height: sh,
       angle: obj.angle ?? 0,
     };
-    if (typeof window !== 'undefined' && window.__PATH_BBOX_DIAG) {
-      console.log('[PathBBoxDiag case1 center-origin]',
-        JSON.stringify({
-          pdfAnnotationId: obj.pdfAnnotationId,
-          isPdfImported: obj.isPdfImported === true,
-          inputs: { left, top, width: w, height: h, scaleX: obj.scaleX, scaleY: obj.scaleY, angle: obj.angle, pathOffset: obj.pathOffset, strokeWidth: obj.strokeWidth, strokeUniform: obj.strokeUniform },
-          result,
-        }, null, 0));
-    }
+    console.log('[PathBBoxDiag case1 center-origin]',
+      JSON.stringify({
+        pdfAnnotationId: obj.pdfAnnotationId,
+        isPdfImported: obj.isPdfImported === true,
+        inputs: { left, top, width: w, height: h, scaleX: obj.scaleX, scaleY: obj.scaleY, angle: obj.angle, pathOffset: obj.pathOffset, strokeWidth: obj.strokeWidth, strokeUniform: obj.strokeUniform },
+        result,
+      }, null, 0));
     return result;
   }
 
@@ -384,30 +391,27 @@ function getPathBBox(obj) {
         height: (maxY - minY) * sy,
         angle: obj.angle ?? 0,
       };
-      // UX 2026-04-21: gated diagnostic (window.__PATH_BBOX_DIAG = true) so
-      // the user can reproduce a pen-stroke resize drift bug once, save the
-      // console log, and hand it back as a single artifact. Logs every
-      // input field that affects the math plus the computed result. Zero
-      // cost when flag is off.
-      if (typeof window !== 'undefined' && window.__PATH_BBOX_DIAG) {
-        console.log('[PathBBoxDiag case2 absolute-coord]',
-          JSON.stringify({
-            pdfAnnotationId: obj.pdfAnnotationId,
-            isPdfImported: obj.isPdfImported === true,
-            inputs: {
-              left, top,
-              width: obj.width, height: obj.height,
-              scaleX: obj.scaleX, scaleY: obj.scaleY,
-              angle: obj.angle,
-              pathOffset: obj.pathOffset,
-              strokeWidth: obj.strokeWidth,
-              strokeUniform: obj.strokeUniform,
-              pathSegCount: obj.path.length,
-            },
-            pathScan: { minX, minY, maxX, maxY, rawW: maxX - minX, rawH: maxY - minY },
-            result,
-          }, null, 0));
-      }
+      // UX 2026-04-21: UNGATED diagnostic for pen-stroke-resize-drift bug
+      // investigation. Logs every path bbox computation with full input
+      // state + result. Noisy by design — user explicitly asked to
+      // capture "every single little thing." Remove after root-causing.
+      console.log('[PathBBoxDiag case2 absolute-coord]',
+        JSON.stringify({
+          pdfAnnotationId: obj.pdfAnnotationId,
+          isPdfImported: obj.isPdfImported === true,
+          inputs: {
+            left, top,
+            width: obj.width, height: obj.height,
+            scaleX: obj.scaleX, scaleY: obj.scaleY,
+            angle: obj.angle,
+            pathOffset: obj.pathOffset,
+            strokeWidth: obj.strokeWidth,
+            strokeUniform: obj.strokeUniform,
+            pathSegCount: obj.path.length,
+          },
+          pathScan: { minX, minY, maxX, maxY, rawW: maxX - minX, rawH: maxY - minY },
+          result,
+        }, null, 0));
       return result;
     }
   }
@@ -423,18 +427,14 @@ function getRectBBox(obj) {
     height: Math.abs((obj.height ?? 0) * (obj.scaleY ?? 1)),
     angle: obj.angle ?? 0,
   };
-  // UX 2026-04-21: mirror of the pen-stroke diagnostic so the user can
-  // capture BOTH a rect-resize and a pen-stroke-resize in the same session
-  // and we can diff the math side-by-side when asking "why do rects work?"
-  if (typeof window !== 'undefined' && window.__PATH_BBOX_DIAG) {
-    console.log('[PathBBoxDiag rect]',
-      JSON.stringify({
-        pdfAnnotationId: obj.pdfAnnotationId,
-        isPdfImported: obj.isPdfImported === true,
-        inputs: { left: obj.left, top: obj.top, width: obj.width, height: obj.height, scaleX: obj.scaleX, scaleY: obj.scaleY, angle: obj.angle, strokeWidth: obj.strokeWidth, strokeUniform: obj.strokeUniform },
-        result,
-      }, null, 0));
-  }
+  // UX 2026-04-21: ungated for the bbox-drift investigation.
+  console.log('[PathBBoxDiag rect]',
+    JSON.stringify({
+      pdfAnnotationId: obj.pdfAnnotationId,
+      isPdfImported: obj.isPdfImported === true,
+      inputs: { left: obj.left, top: obj.top, width: obj.width, height: obj.height, scaleX: obj.scaleX, scaleY: obj.scaleY, angle: obj.angle, strokeWidth: obj.strokeWidth, strokeUniform: obj.strokeUniform },
+      result,
+    }, null, 0));
   return result;
 }
 
@@ -712,13 +712,22 @@ function getPointsBBox(obj) {
     return { left: 0, top: 0, width: 0, height: 0, angle: 0 };
   }
 
-  return {
+  const result = {
     left: left + sx * (minX - pathOffsetX),
     top: top + sy * (minY - pathOffsetY),
     width: (maxX - minX) * sx,
     height: (maxY - minY) * sy,
     angle: obj.angle ?? 0,
   };
+  console.log('[PathBBoxDiag ' + (obj.type || 'points') + ']',
+    JSON.stringify({
+      pdfAnnotationId: obj.pdfAnnotationId,
+      isPdfImported: obj.isPdfImported === true,
+      inputs: { left, top, width: obj.width, height: obj.height, scaleX: obj.scaleX, scaleY: obj.scaleY, angle: obj.angle, pathOffset: obj.pathOffset, strokeWidth: obj.strokeWidth, strokeUniform: obj.strokeUniform, pointCount: obj.points.length },
+      pointScan: { minX, minY, maxX, maxY, rawW: maxX - minX, rawH: maxY - minY },
+      result,
+    }, null, 0));
+  return result;
 }
 
 function getCircleBBox(obj) {
