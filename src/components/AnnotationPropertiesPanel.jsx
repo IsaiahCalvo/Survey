@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import CompactColorPicker from './CompactColorPicker';
 import { resolvePropertiesPanelShape } from './propertiesPanelShape';
@@ -71,6 +71,19 @@ const AnnotationPropertiesPanel = ({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctx.pageNumber]);
+
+  // UX: run the edge-clamp exactly once, after the panel is mounted and laid
+  // out. Before 2026-04-21 the clamp was invoked from an inline ref callback
+  // on every render, which — combined with clampIntoBounds's useCallback
+  // closure over a stale `position` — produced a "Maximum update depth
+  // exceeded" infinite loop whenever the panel opened near a page edge
+  // (e.g. right-clicking a cloud, polygon, or polyline that happened to sit
+  // near the page margins). useLayoutEffect with `[]` deps runs post-mount,
+  // reads live DOM geometry via panelRef, and fires setPosition at most once.
+  useLayoutEffect(() => {
+    clampIntoBounds(panelRef.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Dismiss on click-outside, escape.
   // UX: the SVG selection layer + Syncfusion viewer aggressively call
@@ -450,7 +463,7 @@ const AnnotationPropertiesPanel = ({
 
   return createPortal(
     <div
-      ref={(el) => { panelRef.current = el; clampIntoBounds(el); }}
+      ref={panelRef}
       data-annotation-properties-panel="true"
       style={{
         position: 'fixed',
