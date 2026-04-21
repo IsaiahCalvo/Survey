@@ -83,6 +83,21 @@ import { resolveAnnotationAt } from './annotationHitTest.js';
   document.addEventListener('contextmenu', (e) => {
     logEvent('capture', e);
 
+    // UX 2026-04-21: the properties panel is a tool surface — right-click
+    // on it should never fall through to the canvas's paste menu OR the
+    // annotation context menu for whatever happens to be behind it. The
+    // event target is checked here (in the document-level capture phase)
+    // because the pan-mode fallback in resolveAnnotationAt uses pure
+    // bounding-rect tests inside the page wrapper, which would otherwise
+    // find a shape underneath the panel regardless of visual stacking.
+    // Fully swallow the event: no annotation menu, no native menu.
+    if (e.target && typeof e.target.closest === 'function'
+        && e.target.closest('[data-annotation-properties-panel]')) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+
     const { pageNumber, annotationIndex, calloutId, kind, groupIndices } = resolveAnnotationAt(e);
     const globalHandler = typeof window.__onAnnotationContextMenu === 'function'
       ? window.__onAnnotationContextMenu
