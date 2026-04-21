@@ -193,7 +193,11 @@ export const renderRect = (obj, index) => {
         { x: effectiveWidth, y: effectiveHeight },
         { x: 0, y: effectiveHeight },
       ],
-      cloudIntensity
+      cloudIntensity,
+      // UX 2026-04-21: pass stroke width so the renderer can keep the
+      // bump radius ≥ 2×stroke — prevents thick strokes from swallowing
+      // adjacent humps (Acrobat-style clamp, no Drawboard bloat).
+      obj.strokeWidth ?? 1
     );
     if (Array.isArray(liveCloud) && liveCloud.length > 0) {
       const d = liveCloud.map((seg) => seg.join(' ')).join(' ');
@@ -594,7 +598,7 @@ export const renderPolygon = (obj, index) => {
   const cloudIntensity = obj.data?.pdfCloudIntensity;
   if (Number.isFinite(cloudIntensity) && Array.isArray(obj.points) && obj.points.length >= 3) {
     const livePoints = obj.points.map((p) => ({ x: toNumber(p?.x), y: toNumber(p?.y) }));
-    const liveCloud = buildCloudPathCommands(livePoints, cloudIntensity);
+    const liveCloud = buildCloudPathCommands(livePoints, cloudIntensity, obj.strokeWidth ?? 1);
     if (Array.isArray(liveCloud) && liveCloud.length > 0) {
       const d = liveCloud.map((seg) => seg.join(' ')).join(' ');
       return (

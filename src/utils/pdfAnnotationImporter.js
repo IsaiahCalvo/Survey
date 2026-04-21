@@ -463,10 +463,28 @@ function normalizePdfLineEndings(lineEndings) {
 // Exported so the SVG renderer can rebuild the scalloped geometry live as
 // the user resizes a cloud — adding more humps when the shape grows and
 // fewer when it shrinks, matching Bluebeam/Acrobat behavior.
-export function buildCloudPathCommands(points, intensity = 2) {
+//
+// UX 2026-04-21: strokeWidth param lets the renderer apply Acrobat's
+// "bumps stay taller than the stroke" rule — the intensity slider still
+// controls the base bump size the user picked, but we silently raise the
+// effective radius to at least ~2×strokeWidth so a thick stroke never
+// fills the gap between tiny humps and turns the cloud into a blob.
+// Count per edge drops automatically to keep hump centers on the edge,
+// so the overall shape footprint stays put (Acrobat feel, not Drawboard
+// bloat). See session-moments 2026-04-21 for vendor research.
+export function buildCloudPathCommands(points, intensity = 2, strokeWidth = 1) {
   if (!Array.isArray(points) || points.length < 3) return null;
 
-  const bumpSize = Math.max(6, 5 + intensity * 3); // target edge-length per bump in local units
+  // User-picked intensity maps to a base bump radius in local units
+  // (matches the prior behavior at default strokeWidth=1).
+  const userRadius = Math.max(6, 5 + intensity * 3);
+  // Acrobat clamp: effective bump radius is never less than ~2×stroke
+  // so a fat stroke can't swallow adjacent humps.
+  const effectiveRadius = Math.max(userRadius, 2 * Math.max(1, strokeWidth));
+  // Center-to-center spacing along each edge — 1.6×radius leaves a
+  // visible notch between humps even at the thick-stroke clamp.
+  const targetSpacing = 1.6 * effectiveRadius;
+
   // UX 2026-04-21: trapezoid-form shoelace in screen coords (Y-down). A
   // NEGATIVE accumulated sum means the points wind clockwise as drawn on
   // screen (Y-down inverts the standard math-coord convention). A CW
@@ -495,10 +513,13 @@ export function buildCloudPathCommands(points, intensity = 2) {
     if (len < 0.1) continue;
     const ux = dx / len;
     const uy = dy / len;
-    const numBumps = Math.max(1, Math.round(len / bumpSize));
+    const numBumps = Math.max(1, Math.round(len / targetSpacing));
     const segLen = len / numBumps;
     const outward = perp(ux, uy);
-    const bumpHeight = segLen * 0.55; // ≈ semicircle bulge
+    // Bump height tracks the effective radius (so thick strokes grow the
+    // arc), but never exceeds half the segment length — that keeps
+    // adjacent humps from overlapping on short edges.
+    const bumpHeight = Math.min(effectiveRadius, segLen * 0.55);
     for (let j = 0; j < numBumps; j++) {
       const sx = p0.x + ux * segLen * j;
       const sy = p0.y + uy * segLen * j;
