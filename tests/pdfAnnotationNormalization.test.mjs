@@ -52,6 +52,56 @@ test('imported Ink preserves isPdfImported flag and pdfAnnotationType as metadat
   assert.equal(imported.pdfAnnotationId, 'ink-norm-1');
 });
 
+test('imported Ink path is normalized to local coords with left/top carrying world position', () => {
+  // UX 2026-04-21 (bbox-drift fix): regression test for the pen-stroke
+  // resize drift bug. Imported Ink used to carry its path commands in
+  // absolute viewport coords with no left/top, which caused
+  // svgBoundingBox.getPathBBox Case 2 to double-count the world
+  // translation after Fabric set `left` during resize (offsetX + minX*sx
+  // instead of just offsetX). Fix: translate path data to local coords
+  // at import time and carry the world placement on left/top.
+  const ink = {
+    id: 'ink-norm-local-1',
+    subtype: 'Ink',
+    // Two points in PDF coords: (10, 20) and (30, 40).
+    inkLists: [[10, 20, 30, 40]],
+    color: [0, 0, 0],
+    borderWidth: 2,
+    rect: [0, 0, 100, 100],
+  };
+  const vp = { height: 100, convertToViewportPoint: (x, y) => [x, 100 - y] };
+  const r = convertInkToFabricPath(ink, vp, 1);
+  assert.ok(r);
+
+  // After PDF → viewport flip: point 1 (10, 80), point 2 (30, 60).
+  // minX=10, minY=60, maxX=30, maxY=80 → width=20, height=20.
+  assert.equal(r.left, 10);
+  assert.equal(r.top, 60);
+  assert.equal(r.width, 20);
+  assert.equal(r.height, 20);
+
+  // Path data should now start at (0, 0) in local coords.
+  assert.ok(Array.isArray(r.path) && r.path.length > 0, 'path should be non-empty');
+  const firstCmd = r.path[0];
+  // First command is ['M', x, y]; verify local coords fit inside [0..width]×[0..height].
+  assert.ok(firstCmd[1] >= 0 && firstCmd[1] <= 20, `firstCmd[1]=${firstCmd[1]} out of [0,20]`);
+  assert.ok(firstCmd[2] >= 0 && firstCmd[2] <= 20, `firstCmd[2]=${firstCmd[2]} out of [0,20]`);
+
+  // Every subsequent coord pair should also be local (inside the bbox).
+  for (const cmd of r.path) {
+    for (let j = 1; j + 1 < cmd.length; j += 2) {
+      assert.ok(
+        cmd[j] >= 0 && cmd[j] <= 20,
+        `local x out of [0,20]: cmd=${JSON.stringify(cmd)}`
+      );
+      assert.ok(
+        cmd[j + 1] >= 0 && cmd[j + 1] <= 20,
+        `local y out of [0,20]: cmd=${JSON.stringify(cmd)}`
+      );
+    }
+  }
+});
+
 test('renderPathToSvgAttrs produces identical attrs for imported vs internal paths with same inputs', () => {
   const base = {
     type: 'path',

@@ -1543,6 +1543,50 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
     return null;
   }
 
+  // UX 2026-04-21 (import-normalization bbox-drift fix): normalize the
+  // just-assembled `pathData` from world/viewport coords to LOCAL coords
+  // starting at (0, 0), and carry the world placement on left/top instead.
+  //
+  // Root cause: previously we returned path commands in absolute viewport
+  // coords with no `left`/`top`. Fabric's resize handler then set `left`
+  // to roughly pathMinX to keep the visual centered under the anchor,
+  // which meant svgBoundingBox.getPathBBox Case 2 (absolute-coord path)
+  // computed `offsetX + minX * scaleX` — double-counting the world
+  // translation once in `left` and again in `minX`. Result: the selection
+  // overlay drifted far from the visible stroke on resize. See the
+  // 2026-04-21 diagnostic session (1.log) for the confirmed numbers:
+  // left=423.35, minX=423.35, scaleX≈1.007 → bbox.left=849.80 WRONG.
+  //
+  // Matching how FabricDrawingCanvas stores internally-drawn pen strokes
+  // (path:created handler zeroes left/top and Fabric normalizes path data
+  // to start at 0,0 with pathOffset) lets Case 2 become `offsetX + 0 * sx
+  // = offsetX` — the bbox tracks the visible geometry through resize.
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const cmd of pathData) {
+    for (let j = 1; j + 1 < cmd.length; j += 2) {
+      const x = cmd[j];
+      const y = cmd[j + 1];
+      if (typeof x === 'number' && typeof y === 'number') {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (Number.isFinite(minX) && Number.isFinite(minY)) {
+    for (const cmd of pathData) {
+      for (let j = 1; j + 1 < cmd.length; j += 2) {
+        if (typeof cmd[j] === 'number') cmd[j] -= minX;
+        if (typeof cmd[j + 1] === 'number') cmd[j + 1] -= minY;
+      }
+    }
+  }
+  const importedLeft = Number.isFinite(minX) ? minX : 0;
+  const importedTop = Number.isFinite(minY) ? minY : 0;
+  const importedWidth = Number.isFinite(maxX) && Number.isFinite(minX) ? maxX - minX : 0;
+  const importedHeight = Number.isFinite(maxY) && Number.isFinite(minY) ? maxY - minY : 0;
+
   const strokeColorHex = pdfColorToHex(annotation.color, annotation);
   const strokeOpacity = extractAnnotationOpacity(annotation, 1);
 
@@ -1581,6 +1625,15 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
   const result = {
     type: 'path',
     path: pathData,
+    // UX 2026-04-21 (bbox-drift fix): left/top/width/height carry the
+    // world placement after `pathData` is translated to local coords
+    // (see normalization pass above). Without these, Fabric's resize
+    // handler would re-derive left from path bounds and the selection
+    // overlay would compute offsetX + minX*sx twice over.
+    left: importedLeft,
+    top: importedTop,
+    width: importedWidth,
+    height: importedHeight,
     stroke: hexToRgba(strokeColorHex, strokeOpacity),
     strokeWidth,
     fill: null,
