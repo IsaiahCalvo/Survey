@@ -71,16 +71,21 @@ test('null/undefined annotation returns kind=unknown', () => {
   assert.equal(resolvePropertiesPanelShape(undefined).kind, 'unknown');
 });
 
-test('solid→dashed sets strokeDashArray [6,4], clears cloud intensity', () => {
+// IMPORTANT: applyAnnotationPatch in App.jsx shallow-merges `data`, so the
+// patch must emit pdfCloudIntensity: null EXPLICITLY to clear it. Omitting
+// the key would leave the old value in place after the merge — which was
+// the exact "stuck on cloud" bug users reported 2026-04-21.
+
+test('solid→dashed sets strokeDashArray [6,4], clears cloud intensity via explicit null', () => {
   const patch = computeBorderStylePatch({ data: {} }, 'dashed');
   assert.deepEqual(patch.strokeDashArray, [6, 4]);
-  assert.equal(patch.data.pdfCloudIntensity, undefined);
+  assert.equal(patch.data.pdfCloudIntensity, null);
 });
 
-test('dashed→solid clears strokeDashArray (sets null) and clears cloud intensity', () => {
+test('dashed→solid clears strokeDashArray (null) and clears cloud intensity via explicit null', () => {
   const patch = computeBorderStylePatch({ strokeDashArray: [6, 4], data: {} }, 'solid');
   assert.equal(patch.strokeDashArray, null);
-  assert.equal(patch.data.pdfCloudIntensity, undefined);
+  assert.equal(patch.data.pdfCloudIntensity, null);
 });
 
 test('solid→cloud sets pdfCloudIntensity=2 by default and clears strokeDashArray', () => {
@@ -94,17 +99,20 @@ test('existing cloud intensity is preserved when re-entering cloud mode', () => 
   assert.equal(patch.data.pdfCloudIntensity, 4);
 });
 
-test('cloud→dashed clears both cloud and sets dash array', () => {
+test('cloud→dashed clears cloud intensity (explicit null) and sets dash array', () => {
   const patch = computeBorderStylePatch({ data: { pdfCloudIntensity: 3 } }, 'dashed');
   assert.deepEqual(patch.strokeDashArray, [6, 4]);
-  assert.equal(patch.data.pdfCloudIntensity, undefined);
+  assert.equal(patch.data.pdfCloudIntensity, null);
 });
 
-test('other data fields are preserved across transitions', () => {
+test('patch.data only carries the pdfCloudIntensity key — sibling data keys are preserved by applyAnnotationPatch shallow-merge', () => {
+  // sanity: the patch.data object should only contain the key we need to
+  // change. Sibling keys like `number` are intentionally NOT spread in —
+  // the downstream merge preserves them from the existing annotation.data.
   const patch = computeBorderStylePatch(
     { data: { number: '42', pdfCloudIntensity: 2 } },
     'solid',
   );
-  assert.equal(patch.data.number, '42');
-  assert.equal(patch.data.pdfCloudIntensity, undefined);
+  assert.deepEqual(Object.keys(patch.data), ['pdfCloudIntensity']);
+  assert.equal(patch.data.pdfCloudIntensity, null);
 });

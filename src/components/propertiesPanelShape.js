@@ -47,25 +47,27 @@ export function resolvePropertiesPanelShape(annotation) {
  *   → dashed: set strokeDashArray=[6,4], clear data.pdfCloudIntensity
  *   → cloud: clear strokeDashArray, set data.pdfCloudIntensity (default 2)
  * Callers downstream pass the result directly to onUpdate().
+ *
+ * IMPORTANT: the downstream applyAnnotationPatch in App.jsx shallow-merges
+ * `data`, so omitting pdfCloudIntensity does NOT clear it — the merged
+ * result would keep whatever was previously set. We emit the key EXPLICITLY
+ * with `null` when clearing so the merge overwrites the old value. Both the
+ * resolver above and the cloud-render branch in svgAnnotationRenderers
+ * treat `null`/`undefined` equivalently (they gate on `!= null` / isFinite).
  */
 export function computeBorderStylePatch(annotation, nextStyle) {
   const prevData = (annotation && annotation.data) || {};
-  // Strip cloud intensity for non-cloud styles; keep everything else.
-  const { pdfCloudIntensity: _drop, ...restData } = prevData;
 
   if (nextStyle === 'solid') {
-    return { strokeDashArray: null, data: restData };
+    return { strokeDashArray: null, data: { pdfCloudIntensity: null } };
   }
   if (nextStyle === 'dashed') {
-    return { strokeDashArray: [6, 4], data: restData };
+    return { strokeDashArray: [6, 4], data: { pdfCloudIntensity: null } };
   }
   if (nextStyle === 'cloud') {
     return {
       strokeDashArray: null,
-      data: {
-        ...restData,
-        pdfCloudIntensity: prevData.pdfCloudIntensity ?? 2,
-      },
+      data: { pdfCloudIntensity: prevData.pdfCloudIntensity ?? 2 },
     };
   }
   return {};

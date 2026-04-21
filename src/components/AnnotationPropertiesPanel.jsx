@@ -280,35 +280,29 @@ const AnnotationPropertiesPanel = ({
   );
 
   // UX 2026-04-21: three-button segmented picker for the Border Style row.
-  // `options` is an array of { value, label }. The active option renders
-  // with a darker bg + darker border so the user sees the live style at a
-  // glance. Buttons flex to 1 so the three segments share the row evenly.
-  const renderSegmentedRow = (options, currentValue, onSelect) => (
-    <div style={{ display: 'flex', gap: 4 }}>
-      {options.map((opt) => {
-        const isActive = opt.value === currentValue;
-        return (
-          <button
-            key={opt.value}
-            type="button"
-            onClick={() => onSelect(opt.value)}
-            style={{
-              flex: 1,
-              height: 26,
-              borderRadius: 4,
-              border: '1px solid ' + (isActive ? '#6b7280' : '#d1d5db'),
-              background: isActive ? '#e5e7eb' : '#fff',
-              color: '#374151',
-              fontSize: 12,
-              cursor: 'pointer',
-              padding: 0,
-            }}
-          >
-            {opt.label}
-          </button>
-        );
-      })}
-    </div>
+  // `options` is an array of { value, label }. Rendered as a native <select>
+  // so the user gets a familiar OS dropdown — matches user request 2026-04-21
+  // (preferred over a three-button segmented row).
+  const renderDropdownRow = (options, currentValue, onSelect) => (
+    <select
+      value={currentValue ?? ''}
+      onChange={(e) => onSelect(e.target.value)}
+      style={{
+        width: '100%',
+        height: 28,
+        borderRadius: 4,
+        border: '1px solid #d1d5db',
+        background: '#fff',
+        color: '#374151',
+        fontSize: 12,
+        padding: '0 8px',
+        cursor: 'pointer',
+      }}
+    >
+      {options.map((opt) => (
+        <option key={opt.value} value={opt.value}>{opt.label}</option>
+      ))}
+    </select>
   );
 
   const renderStepperRow = (valueLabel, onDecrement, onIncrement) => (
@@ -451,7 +445,7 @@ const AnnotationPropertiesPanel = ({
               hierarchy reads top-to-bottom (color → weight → pattern). */}
           <section style={{ marginBottom: 14 }}>
             {renderLabel('Border Style')}
-            {renderSegmentedRow(borderOptions, resolvedShape.borderStyle, handleBorderStyleChange)}
+            {renderDropdownRow(borderOptions, resolvedShape.borderStyle, handleBorderStyleChange)}
           </section>
           {/* UX 2026-04-21: Bump Size only appears when the user has
               selected the Cloud style — keeps the panel compact for
@@ -495,7 +489,7 @@ const AnnotationPropertiesPanel = ({
               boundary shapes (rect / polygon) per PDF /BE semantics. */}
           <section style={{ marginBottom: 4 }}>
             {renderLabel('Border Style')}
-            {renderSegmentedRow(
+            {renderDropdownRow(
               [
                 { value: 'solid', label: 'Solid' },
                 { value: 'dashed', label: 'Dashed' },
