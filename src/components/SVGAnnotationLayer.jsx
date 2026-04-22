@@ -147,6 +147,10 @@ const SVGAnnotationLayer = memo(({
   //                             pattern (Phase 9 decision).
   selectedCalloutIds,
   onDeleteSelectedCallouts,
+  // UX 2026-04-21: called with (suppressCount) at the START of a multi-delete
+  // (shape+callout) so App.jsx captures a single pre-mutation checkpoint and
+  // suppresses the next N downstream checkpoints. Single undo covers both.
+  onBeginBatchDelete,
   // Plan 14-03 Task 1: App.jsx state setter for callout selection. Called
   // by useSVGInteraction's 'callout-part' drag mode to update the selection
   // on pointerdown. Defensively defaulted to a no-op so the component stays
@@ -499,20 +503,25 @@ const SVGAnnotationLayer = memo(({
 
       e.preventDefault();
 
-      // UX: annotations take precedence — if both are somehow selected,
-      // delete the annotation first. Plan 14-03's selection state
-      // management guarantees mutual exclusivity, but this ordering is
-      // defensive in case a race leaves both populated.
-      if (selectedIds.size > 0) {
-        deleteSelected();
-        return;
+      // UX 2026-04-21: marquee multi-select can populate BOTH selections at
+      // once (shape + callout). Delete both when both are populated so the
+      // user's single Delete press clears the entire selection they just
+      // boxed. When both sides are present we route through a single
+      // batch-checkpoint opener so one Cmd+Z brings everything back in
+      // one step (previously the two downstream saves produced two
+      // separate undo entries).
+      const hasShapes = selectedIds.size > 0;
+      const hasCallouts = calloutSelectionSize > 0;
+
+      if (hasShapes && hasCallouts && typeof onBeginBatchDelete === 'function') {
+        onBeginBatchDelete(2);
       }
 
-      // UX: callout branch — convert Set or Array to a plain Array for
-      // the callback. App.jsx's wrapper (Plan 14-03) calls setCallouts
-      // and saveAnnotationCheckpoint for per-action undo (Phase 9
-      // pattern).
-      if (calloutSelectionSize > 0) {
+      if (hasShapes) {
+        deleteSelected();
+      }
+
+      if (hasCallouts) {
         const idsArray = effectiveSelectedCalloutIds instanceof Set
           ? Array.from(effectiveSelectedCalloutIds)
           : Array.isArray(effectiveSelectedCalloutIds)
@@ -529,6 +538,7 @@ const SVGAnnotationLayer = memo(({
     calloutSelectionSize,
     deleteSelected,
     effectiveDeleteCalloutsCallback,
+    onBeginBatchDelete,
   ]);
 
   // UX: KBD-02 — single-shape annotation hotkeys: Cmd+C (copy), Cmd+X (cut),

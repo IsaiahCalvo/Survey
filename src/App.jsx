@@ -15565,6 +15565,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [undoHistory, setUndoHistory] = useState([]); // Array of { annotationsByPage, highlightAnnotations, spaces }
   const [redoHistory, setRedoHistory] = useState([]); // Array of { annotationsByPage, highlightAnnotations, spaces }
   const isUndoingRef = useRef(false); // Flag to prevent saving history during undo/redo
+  // UX 2026-04-21: short-window suppression counter used by batch operations
+  // (e.g. marquee-delete of shape+callout) that must produce exactly ONE undo
+  // checkpoint instead of one per underlying state-slice mutation. The batch
+  // caller takes a single pre-mutation checkpoint, sets this to the number of
+  // downstream checkpoints to ignore, then runs the individual mutations.
+  const suppressBatchCheckpointsRef = useRef(0);
   const annotationsByPageRef = useRef(annotationsByPage);
   const highlightAnnotationsRef = useRef(highlightAnnotations);
   const spacesRef = useRef(spaces);
@@ -15988,7 +15994,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const getHistorySnapshot = useCallback(() => ({
     annotationsByPage: JSON.parse(JSON.stringify(annotationsByPageRef.current || {})),
     highlightAnnotations: JSON.parse(JSON.stringify(highlightAnnotationsRef.current || {})),
-    spaces: JSON.parse(JSON.stringify(spacesRef.current || []))
+    spaces: JSON.parse(JSON.stringify(spacesRef.current || [])),
+    // UX 2026-04-21: callouts were previously left out of the undo snapshot,
+    // so deleting a callout checkpointed only the shape/highlight/space
+    // slice and Cmd+Z brought back shapes but not the callout. Include the
+    // full callout list in every checkpoint + restore so marquee
+    // delete → undo resurrects both halves of the selection.
+    callouts: JSON.parse(JSON.stringify(calloutsRef.current || []))
   }), []);
 
   const migrateHistorySpaces = useCallback((historySpaces = []) => (
@@ -16007,14 +16019,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const restoredAnnotationsByPage = stateToRestore.annotationsByPage || {};
     const restoredHighlights = stateToRestore.highlightAnnotations || {};
     const restoredSpaces = migrateHistorySpaces(stateToRestore.spaces || []);
+    const restoredCallouts = Array.isArray(stateToRestore.callouts)
+      ? stateToRestore.callouts
+      : [];
 
     annotationsByPageRef.current = restoredAnnotationsByPage;
     highlightAnnotationsRef.current = restoredHighlights;
     spacesRef.current = restoredSpaces;
+    calloutsRef.current = restoredCallouts;
 
     setAnnotationsByPage(restoredAnnotationsByPage);
     setHighlightAnnotations(restoredHighlights);
     setSpaces(restoredSpaces);
+    setCallouts(restoredCallouts);
   }, [migrateHistorySpaces]);
 
   const createHistoryMeta = useCallback((snapshot, reason, context = null, previousSnapshot = null) => {
@@ -16042,6 +16059,21 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         redoDepth: redoHistoryRef.current.length
       });
       return; // Don't save during undo/redo operations
+    }
+    // UX 2026-04-21: batch-operation suppression — if a batch caller
+    // (e.g. multi-delete) opened a single pre-mutation checkpoint and
+    // marked the next N downstream checkpoints to skip, no-op here so
+    // the user experiences one undo step for the whole batch.
+    if (suppressBatchCheckpointsRef.current > 0) {
+      suppressBatchCheckpointsRef.current -= 1;
+      pushHistoryDebugEvent('checkpoint_suppressed_by_batch', {
+        reason: normalizedReason,
+        context: context || null,
+        remainingSuppressions: suppressBatchCheckpointsRef.current,
+        undoDepth: undoHistoryRef.current.length,
+        redoDepth: redoHistoryRef.current.length
+      });
+      return;
     }
 
     const currentState = getHistorySnapshot();
@@ -16140,6 +16172,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     });
     setCallouts((prev) => prev.filter((c) => !idsSet.has(c.id)));
     setSelectedCalloutIds(new Set());
+  }, [addHistoryCheckpoint]);
+
+  // UX 2026-04-21: single-checkpoint opener for marquee delete of a mixed
+  // shape+callout selection. The SVGAnnotationLayer delete handler calls
+  // this FIRST when both selections are populated so one pre-mutation
+  // snapshot captures both halves. It then suppresses the next two
+  // downstream checkpoints (annotations:save from deleteSelected + the
+  // callouts:delete from handleDeleteSelectedCallouts), so the user
+  // experiences a single undo that brings back everything deleted.
+  const handleBeginBatchDelete = useCallback((suppressCount = 2) => {
+    addHistoryCheckpoint('delete:batch', {
+      suppressCount,
+    });
+    suppressBatchCheckpointsRef.current = suppressCount;
   }, [addHistoryCheckpoint]);
 
   // UX: when a freshly-created callout lands in state, auto-open its text
@@ -28171,6 +28217,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   selectedCalloutIds={selectedCalloutIds}
                                   onSelectedCalloutIdsChange={setSelectedCalloutIds}
                                   onDeleteSelectedCallouts={handleDeleteSelectedCallouts}
+                                  onBeginBatchDelete={handleBeginBatchDelete}
                                   onCreateCallout={handleCreateCallout}
                                   onUpdateCallout={handleUpdateCallout}
                                   onUpdateCalloutLive={handleUpdateCalloutLive}
@@ -28945,6 +28992,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       selectedCalloutIds={selectedCalloutIds}
                                       onSelectedCalloutIdsChange={setSelectedCalloutIds}
                                       onDeleteSelectedCallouts={handleDeleteSelectedCallouts}
+                                  onBeginBatchDelete={handleBeginBatchDelete}
                                       onCreateCallout={handleCreateCallout}
                                       onUpdateCallout={handleUpdateCallout}
                                       onUpdateCalloutLive={handleUpdateCalloutLive}
@@ -29499,6 +29547,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       selectedCalloutIds={selectedCalloutIds}
                                       onSelectedCalloutIdsChange={setSelectedCalloutIds}
                                       onDeleteSelectedCallouts={handleDeleteSelectedCallouts}
+                                  onBeginBatchDelete={handleBeginBatchDelete}
                                       onCreateCallout={handleCreateCallout}
                                       onUpdateCallout={handleUpdateCallout}
                                       onUpdateCalloutLive={handleUpdateCalloutLive}

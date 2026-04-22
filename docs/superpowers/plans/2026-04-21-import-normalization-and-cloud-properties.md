@@ -49,116 +49,198 @@
 
 ---
 
-## Chunk 1: Cloud Properties Crash + Controls
+## Chunk 1: Properties-Panel Crash Fix + Unified Border-Style Picker
 
-**Scope:** Fix the crash when right-clicking an imported cloud rectangle → Properties, and add three **independent** cloud controls: stroke color, stroke width, and bump intensity. Applies to both cloud rectangles (imported `Square` with `/BE`) and cloud polygons (imported `Polygon` with `/BE`).
+**Scope (expanded 2026-04-21 mid-execution):** Fix the crash on right-click → Properties for THREE shape types that currently crash: imported cloud rectangles, imported polygons (with or without cloud border), and imported polylines. Add a unified "border style" picker with three options: **solid**, **dashed**, **cloud**. Cloud shows an additional bump-size stepper (intensity 1–4) that only appears when cloud is selected. Stroke color and stroke width are always visible. All four controls are independent.
 
-**Decision (2026-04-21):** Stroke width and bump intensity are orthogonal. Do not couple them. Rationale: Bluebeam Revu, Adobe Acrobat, PSPDFKit/Apryse, Foxit, ISO 32000-1 `/BE` spec, and AIA/architectural drafting convention all treat them as independent. The user adjusts thickness (pen weight) and bump size (drawing-scale arcs) separately.
+**Border-style picker behavior:**
+- **Closed shapes (rectangle, polygon):** picker shows all three options — solid, dashed, cloud.
+- **Open shapes (polyline, line):** picker shows two options — solid, dashed. Cloud is not applicable per ISO 32000-1 `/BE` (cloudy border is defined only for closed shapes).
+- Switching to solid clears any dash array and cloud metadata.
+- Switching to dashed sets a Fabric `strokeDashArray` default of `[6, 4]` and clears cloud metadata.
+- Switching to cloud clears any dash array and sets `data.pdfCloudIntensity = 2` if not already set.
 
-**Why this chunk is first:** It's fully independent of the normalization work and the highest user-facing impact from the handoff. Gets a clean win committed before the bigger architectural change.
+**Decision (2026-04-21):** Stroke width, bump intensity, and border style are all orthogonal. Do not couple them. Rationale: Bluebeam Revu, Adobe Acrobat, PSPDFKit/Apryse, Foxit, ISO 32000-1 `/BE` spec, and AIA/architectural drafting convention all treat them as independent. Other patterns (dot-dash, dotted, double) are deferred — easy to add later since the picker is extensible.
 
-### Task 1.1: Reproduce the crash in a unit test (TDD entry point)
+**Decision (2026-04-21):** New polygon/polyline DRAWING tools are out of scope for this chunk. Only the properties-panel path is affected here. Drawing tools are tracked as a future project.
+
+**Why this chunk is first:** Three user-reported crashes are resolved in one pass, and the properties panel gains a feature that applies to both internally-drawn and imported shapes. Fully independent of the normalization work in later chunks.
+
+### Task 1.1: Extract shape resolver with unified border-style classification
 
 **Files:**
-- Create: `tests/propertiesPanelCloud.test.mjs`
+- Create: `tests/propertiesPanelShape.test.mjs` (supersedes the earlier `propertiesPanelCloud.test.mjs` name — broader scope, broader file name)
+- Create: `src/components/propertiesPanelShape.js` — NEW plain-JS helper module holding the pure resolver (must be plain `.js`, not `.jsx`, so `node --test` can import it directly without a JSX loader hook — see 2026-04-21 session-moments INSIGHT)
+- Modify: `src/components/AnnotationPropertiesPanel.jsx` — ADD ONE IMPORT LINE for the helper. Do NOT modify the existing `targetKind` useMemo in this task; the resolver is purely additive here and will be consumed in Task 1.2.
+
+**Return shape:** `{ kind, strokeColor, strokeWidth, borderStyle, cloudIntensity? }` where:
+- `kind` = `'rect' | 'polygon' | 'polyline' | 'line' | 'ellipse' | 'triangle' | 'path' | 'text' | 'unknown'`
+- `borderStyle` = `'solid' | 'dashed' | 'cloud'` — derived from annotation metadata (see classifier rules below)
+- `cloudIntensity` present only when `borderStyle === 'cloud'`
+
+**Classifier rules:**
+- `data.pdfCloudIntensity != null` on a rect or polygon → `borderStyle: 'cloud'`, `cloudIntensity: <int>`.
+- Non-cloud shape with `strokeDashArray` that is a non-empty array → `borderStyle: 'dashed'`.
+- Otherwise → `borderStyle: 'solid'`.
 
 - [ ] **Step 1: Write the failing test**
 
 ```javascript
-// tests/propertiesPanelCloud.test.mjs
+// tests/propertiesPanelShape.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolvePropertiesPanelShape } from '../src/components/AnnotationPropertiesPanel.jsx';
+import { resolvePropertiesPanelShape } from '../src/components/propertiesPanelShape.js';
 
-test('resolvePropertiesPanelShape returns a cloud variant when annotation has pdfCloudIntensity', () => {
-  const cloudRect = {
-    type: 'rect',
-    stroke: '#ff0000',
-    strokeWidth: 2,
-    data: { pdfCloudIntensity: 2 }
-  };
-  const resolved = resolvePropertiesPanelShape(cloudRect);
-  assert.equal(resolved.kind, 'cloud-rect');
-  assert.equal(resolved.strokeWidth, 2);
-  assert.equal(resolved.strokeColor, '#ff0000');
-  assert.equal(resolved.cloudIntensity, 2);
+test('plain rect resolves to kind=rect, borderStyle=solid', () => {
+  const r = resolvePropertiesPanelShape({ type: 'rect', stroke: '#000', strokeWidth: 1, data: {} });
+  assert.equal(r.kind, 'rect');
+  assert.equal(r.borderStyle, 'solid');
+  assert.equal(r.cloudIntensity, undefined);
 });
 
-test('resolvePropertiesPanelShape returns a cloud-polygon variant when polygon has pdfCloudIntensity', () => {
-  const cloudPoly = {
-    type: 'polygon',
-    stroke: '#000000',
-    strokeWidth: 1,
+test('plain polygon resolves to kind=polygon, borderStyle=solid (no crash on missing cloud metadata)', () => {
+  const p = resolvePropertiesPanelShape({
+    type: 'polygon', stroke: '#000', strokeWidth: 1,
     points: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 5, y: 10 }],
-    data: { pdfCloudIntensity: 1 }
-  };
-  const resolved = resolvePropertiesPanelShape(cloudPoly);
-  assert.equal(resolved.kind, 'cloud-polygon');
-  assert.equal(resolved.cloudIntensity, 1);
+    data: {}
+  });
+  assert.equal(p.kind, 'polygon');
+  assert.equal(p.borderStyle, 'solid');
 });
 
-test('resolvePropertiesPanelShape falls back to plain rect for non-cloud rectangles', () => {
-  const plainRect = { type: 'rect', stroke: '#000', strokeWidth: 1, data: {} };
-  const resolved = resolvePropertiesPanelShape(plainRect);
-  assert.equal(resolved.kind, 'rect');
+test('plain polyline resolves to kind=polyline, borderStyle=solid (no crash on missing cloud metadata)', () => {
+  const pl = resolvePropertiesPanelShape({
+    type: 'polyline', stroke: '#000', strokeWidth: 1,
+    points: [{ x: 0, y: 0 }, { x: 10, y: 0 }],
+    data: {}
+  });
+  assert.equal(pl.kind, 'polyline');
+  assert.equal(pl.borderStyle, 'solid');
+});
+
+test('cloud rectangle resolves to kind=rect, borderStyle=cloud, cloudIntensity preserved', () => {
+  const cr = resolvePropertiesPanelShape({
+    type: 'rect', stroke: '#ff0000', strokeWidth: 2,
+    data: { pdfCloudIntensity: 2 }
+  });
+  assert.equal(cr.kind, 'rect');
+  assert.equal(cr.borderStyle, 'cloud');
+  assert.equal(cr.cloudIntensity, 2);
+});
+
+test('cloud polygon resolves to kind=polygon, borderStyle=cloud', () => {
+  const cp = resolvePropertiesPanelShape({
+    type: 'polygon', stroke: '#000', strokeWidth: 1,
+    points: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 5, y: 10 }],
+    data: { pdfCloudIntensity: 3 }
+  });
+  assert.equal(cp.kind, 'polygon');
+  assert.equal(cp.borderStyle, 'cloud');
+  assert.equal(cp.cloudIntensity, 3);
+});
+
+test('dashed rect (strokeDashArray non-empty) resolves to borderStyle=dashed', () => {
+  const dr = resolvePropertiesPanelShape({
+    type: 'rect', stroke: '#000', strokeWidth: 1,
+    strokeDashArray: [6, 4],
+    data: {}
+  });
+  assert.equal(dr.kind, 'rect');
+  assert.equal(dr.borderStyle, 'dashed');
+});
+
+test('line resolves to kind=line, borderStyle=solid when no dash array', () => {
+  const ln = resolvePropertiesPanelShape({ type: 'line', stroke: '#000', strokeWidth: 1, data: {} });
+  assert.equal(ln.kind, 'line');
+  assert.equal(ln.borderStyle, 'solid');
+});
+
+test('null/undefined annotation returns kind=unknown', () => {
+  assert.equal(resolvePropertiesPanelShape(null).kind, 'unknown');
+  assert.equal(resolvePropertiesPanelShape(undefined).kind, 'unknown');
 });
 ```
 
 - [ ] **Step 2: Run test to confirm it fails**
 
-Run: `node --test tests/propertiesPanelCloud.test.mjs`
+Run: `node --test tests/propertiesPanelShape.test.mjs`
 Expected: FAIL — `resolvePropertiesPanelShape` is not exported.
 
-- [ ] **Step 3: Extract the resolver as a pure function and export it**
+- [ ] **Step 3: Create the pure helper module**
 
-Open `src/components/AnnotationPropertiesPanel.jsx`. Find the block around line 139-152 that computes `targetKind` from an annotation.
-
-Extract the logic into a pure exported function:
+Create `src/components/propertiesPanelShape.js` (NEW plain-JS file). Contents:
 
 ```javascript
-// src/components/AnnotationPropertiesPanel.jsx — near top of file
+/**
+ * Pure shape resolver for the properties panel.
+ * Returns { kind, strokeColor, strokeWidth, borderStyle, cloudIntensity? }
+ * where `kind` is the RAW annotation.type (not normalized). The React
+ * component continues to compute its own normalized `targetKind` for
+ * render branching — this helper only contributes borderStyle + cloud
+ * intensity detection, which Task 1.2 will consume alongside targetKind.
+ *
+ * Lives in a plain .js file so node --test can import it without a
+ * JSX loader — the panel itself (.jsx) re-imports from here.
+ */
 export function resolvePropertiesPanelShape(annotation) {
   if (!annotation || typeof annotation !== 'object') {
     return { kind: 'unknown' };
   }
   const data = annotation.data || {};
-  const stroke = annotation.stroke ?? '#000000';
+  const strokeColor = annotation.stroke ?? '#000000';
   const strokeWidth = annotation.strokeWidth ?? 1;
+  const type = annotation.type;
 
-  if (annotation.type === 'rect' && data.pdfCloudIntensity != null) {
-    return {
-      kind: 'cloud-rect',
-      strokeColor: stroke,
-      strokeWidth,
-      cloudIntensity: data.pdfCloudIntensity
-    };
+  // Border style derivation — the three supported options:
+  //   cloud   : data.pdfCloudIntensity is present (imported from /BE /S /C or set via the panel)
+  //   dashed  : strokeDashArray is a non-empty array (imported from /BS /D or set via the panel)
+  //   solid   : neither of the above
+  // See ISO 32000-1 §12.5.4 for /BE (border effect) and /BS (border style) semantics.
+  let borderStyle = 'solid';
+  let cloudIntensity;
+  if ((type === 'rect' || type === 'polygon') && data.pdfCloudIntensity != null) {
+    borderStyle = 'cloud';
+    cloudIntensity = data.pdfCloudIntensity;
+  } else if (Array.isArray(annotation.strokeDashArray) && annotation.strokeDashArray.length > 0) {
+    borderStyle = 'dashed';
   }
-  if (annotation.type === 'polygon' && data.pdfCloudIntensity != null) {
-    return {
-      kind: 'cloud-polygon',
-      strokeColor: stroke,
-      strokeWidth,
-      cloudIntensity: data.pdfCloudIntensity
-    };
-  }
-  // Preserve existing kind resolution for all other annotation types;
-  // mirror existing behavior verbatim when extending this function.
-  return { kind: annotation.type, strokeColor: stroke, strokeWidth };
+
+  // `kind` here is the RAW annotation.type — callers that need normalized
+  // type (e.g. circle→ellipse, textbox/text/i-text→text, arrow detection)
+  // must continue to use the panel component's existing targetKind useMemo.
+  const kind = typeof type === 'string' ? type : 'unknown';
+
+  return cloudIntensity != null
+    ? { kind, strokeColor, strokeWidth, borderStyle, cloudIntensity }
+    : { kind, strokeColor, strokeWidth, borderStyle };
 }
 ```
 
-Replace the existing inline resolution site in the component body with `const resolved = resolvePropertiesPanelShape(annotation)` and use `resolved.kind`.
+Then add one import line near the top of `src/components/AnnotationPropertiesPanel.jsx`:
+
+```javascript
+import { resolvePropertiesPanelShape } from './propertiesPanelShape';
+```
+
+Do NOT modify the existing `targetKind` useMemo. Do NOT otherwise modify the panel in this task — the panel will consume the resolver's `borderStyle` output in Task 1.2 as a separate render input, alongside the existing normalized `targetKind`.
+
+Update the test file `tests/propertiesPanelShape.test.mjs` import path from `'../src/components/AnnotationPropertiesPanel.jsx'` (what Step 1 showed) to `'../src/components/propertiesPanelShape.js'`. All 8 test assertions stay the same.
 
 - [ ] **Step 4: Run test to confirm it passes**
 
-Run: `node --test tests/propertiesPanelCloud.test.mjs`
-Expected: PASS — all three tests green.
+Run: `node --test tests/propertiesPanelShape.test.mjs`
+Expected: PASS — all eight tests green.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Run the full suite to confirm no regressions**
+
+Run: `npm test`
+Expected: no NEW failures. (The two pre-existing failures in `pdfAnnotationImporter.test.mjs` around imported line/callout metadata predate this task and are tracked to be fixed in Chunks 2–4.)
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add tests/propertiesPanelCloud.test.mjs src/components/AnnotationPropertiesPanel.jsx
-git commit -m "refactor: extract properties-panel shape resolver; classify cloud rect and polygon"
+git add tests/propertiesPanelShape.test.mjs src/components/propertiesPanelShape.js src/components/AnnotationPropertiesPanel.jsx
+git commit -m "refactor: extract propertiesPanelShape resolver as pure .js helper (unified borderStyle)"
 ```
 
 ### Task 1.2: Render the cloud controls branch in the panel body
