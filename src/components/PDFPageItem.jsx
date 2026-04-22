@@ -11,11 +11,15 @@ const PDFPageItem = ({
     height,
     transform,
     isMounted,
+    isVisible = true,
+    priority = 2,
     activeTool,
     debugLayout,
     regions,
     onTextSelected,
-    onFinishRender
+    onFinishRender,
+    highlightsToRemove,
+    onHighlightDeleted
 }) => {
     if (!isMounted) return null;
 
@@ -28,6 +32,9 @@ const PDFPageItem = ({
             <PDFPageCanvas
                 page={page}
                 scale={scale}
+                pageNum={pageNumber}
+                isVisible={isVisible}
+                priority={priority}
                 onFinishRender={onFinishRender}
             />
             {width && height && page && (
@@ -49,6 +56,8 @@ const PDFPageItem = ({
                     width={width}
                     height={height}
                     regions={regions}
+                    highlightsToRemove={highlightsToRemove}
+                    onHighlightDeleted={onHighlightDeleted}
                 />
             )}
         </div>

@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import Icon from './Icons';
 import { diff, union, intersection } from 'martinez-polygon-clipping';
 import { REGION_OPERATIONS, simplifyPolygon, mergeOverlappingRegions, subtractRegionFromRegion } from './utils/regionMath';
+import { calculateViewportSafePosition } from './utils/menuPositioning';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const MIN_REGION_SIZE = 5;
@@ -17,9 +18,12 @@ const RegionSelectionTool = ({
   currentSpaceId,
   currentPageId,
   scale = 1,
+  pageWidth = 0,
+  pageHeight = 0,
   onSetFullPage,
   canSetFullPage = false,
-  initialRegions = []
+  initialRegions = [],
+  activeTool = null // Active tool from parent (e.g., 'pan' when space is held)
 }) => {
   const [toolType, setToolType] = useState('rectangular'); // 'rectangular' | 'freehand' | 'move'
   const [selectionMode, setSelectionMode] = useState(REGION_OPERATIONS.ADD); // 'add' | 'subtract'
@@ -38,9 +42,98 @@ const RegionSelectionTool = ({
   const [isShiftPressed, setIsShiftPressed] = useState(false);
   const [isOptionAltPressed, setIsOptionAltPressed] = useState(false);
   const [isCmdCtrlPressed, setIsCmdCtrlPressed] = useState(false);
+  const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [lastDrawingTool, setLastDrawingTool] = useState('rectangular');
   const [isToolDropdownOpen, setIsToolDropdownOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState(null); // { x, y, regionId, type: 'merge' | 'separate' }
+  const canvasRectRef = useRef(null);
+  const lastTargetDebugKeyRef = useRef(null);
+  const lastCanvasRectDebugRef = useRef(null);
+  const lastTargetQueryDebugRef = useRef(null);
+  const regionsRef = useRef([]);
+  const documentDragFallbackRef = useRef(false);
+
+  const resolvedPageWidth = useMemo(() => {
+    if (Number.isFinite(pageWidth) && pageWidth > 0) {
+      return pageWidth;
+    }
+    if (canvasRectRef.current?.width && Number.isFinite(scale) && scale > 0) {
+      return canvasRectRef.current.width / scale;
+    }
+    return 1;
+  }, [pageWidth, scale, canvasRect]);
+
+  const resolvedPageHeight = useMemo(() => {
+    if (Number.isFinite(pageHeight) && pageHeight > 0) {
+      return pageHeight;
+    }
+    if (canvasRectRef.current?.height && Number.isFinite(scale) && scale > 0) {
+      return canvasRectRef.current.height / scale;
+    }
+    return 1;
+  }, [pageHeight, scale, canvasRect]);
+
+  const displayScaleX = useMemo(() => {
+    if (canvasRect?.width && resolvedPageWidth > 0) {
+      return canvasRect.width / resolvedPageWidth;
+    }
+    return Number.isFinite(scale) && scale > 0 ? scale : 1;
+  }, [canvasRect, resolvedPageWidth, scale]);
+
+  const displayScaleY = useMemo(() => {
+    if (canvasRect?.height && resolvedPageHeight > 0) {
+      return canvasRect.height / resolvedPageHeight;
+    }
+    return Number.isFinite(scale) && scale > 0 ? scale : 1;
+  }, [canvasRect, resolvedPageHeight, scale]);
+
+  const pageToScreenX = useCallback((value) => value * displayScaleX, [displayScaleX]);
+  const pageToScreenY = useCallback((value) => value * displayScaleY, [displayScaleY]);
+
+  const getTargetRect = useCallback(() => {
+    if (targetElement?.getBoundingClientRect) {
+      return targetElement.getBoundingClientRect();
+    }
+    if (canvasRectRef.current) {
+      const { left, top, width, height } = canvasRectRef.current;
+      return {
+        left,
+        top,
+        width,
+        height,
+        right: left + width,
+        bottom: top + height
+      };
+    }
+    return null;
+  }, [targetElement]);
+
+  const isPointWithinTargetRect = useCallback((clientX, clientY, rectOverride = null) => {
+    const rect = rectOverride || getTargetRect();
+    if (!rect) {
+      return false;
+    }
+
+    return (
+      clientX >= rect.left &&
+      clientX <= rect.right &&
+      clientY >= rect.top &&
+      clientY <= rect.bottom
+    );
+  }, [getTargetRect]);
+
+  const clientPointToPage = useCallback((clientX, clientY, rectOverride = null) => {
+    const rect = rectOverride || getTargetRect();
+    if (!rect) {
+      return null;
+    }
+
+    return {
+      x: (clientX - rect.left) / displayScaleX,
+      y: (clientY - rect.top) / displayScaleY
+    };
+  }, [displayScaleX, displayScaleY, getTargetRect]);
+
 
   // Calculate effective tool type (override with Cmd/Ctrl for quick select)
   const effectiveToolType = useMemo(() => {
@@ -68,56 +161,190 @@ const RegionSelectionTool = ({
   }, [isShiftPressed, isOptionAltPressed, selectionMode]);
 
   useEffect(() => {
-    const target = document.getElementById('region-selection-target');
-    setTargetElement(target);
-  }, [active]);
+    regionsRef.current = Array.isArray(regions) ? regions : [];
+  }, [regions]);
+
+  useEffect(() => {
+    if (!active) {
+      setTargetElement(null);
+      return;
+    }
+
+    let frameId = null;
+
+    const updateTarget = () => {
+      const selector = currentPageId
+        ? `[data-region-selection-target="${String(currentPageId)}"]`
+        : '[data-region-selection-target]';
+      const candidates = Array.from(document.querySelectorAll(selector))
+        .filter((node) => node instanceof HTMLElement && node.isConnected);
+      const nextTarget = candidates
+        .sort((left, right) => {
+          const leftRect = left.getBoundingClientRect();
+          const rightRect = right.getBoundingClientRect();
+          const leftArea = leftRect.width * leftRect.height;
+          const rightArea = rightRect.width * rightRect.height;
+          return rightArea - leftArea;
+        })[0] || document.getElementById('region-selection-target');
+      if (!nextTarget) {
+        const queryDebugKey = `${selector}:0:${activeTool ?? 'none'}`;
+        if (lastTargetQueryDebugRef.current !== queryDebugKey) {
+          lastTargetQueryDebugRef.current = queryDebugKey;
+          console.warn(
+            `[RegionSelectionTool p${currentPageId ?? 'unknown'}] target query miss — ` +
+            `selector=${selector}, candidates=0, tool=${activeTool ?? 'none'}`
+          );
+        }
+      } else {
+        const renderer = nextTarget.dataset?.regionSelectionRenderer || 'unspecified';
+        const queryDebugKey = `${selector}:${renderer}`;
+        if (lastTargetQueryDebugRef.current !== queryDebugKey) {
+          lastTargetQueryDebugRef.current = queryDebugKey;
+          console.log(
+            `[RegionSelectionTool p${currentPageId ?? 'unknown'}] target query hit — ` +
+            `selector=${selector}, renderer=${renderer}`
+          );
+        }
+      }
+      setTargetElement((prevTarget) => (prevTarget === nextTarget ? prevTarget : nextTarget));
+      frameId = window.requestAnimationFrame(updateTarget);
+    };
+
+    updateTarget();
+
+    return () => {
+      if (frameId) {
+        window.cancelAnimationFrame(frameId);
+      }
+    };
+  }, [active, currentPageId, activeTool]);
+
+  useEffect(() => {
+    if (!active) {
+      lastTargetDebugKeyRef.current = null;
+      return;
+    }
+
+    const targetRect = targetElement?.getBoundingClientRect?.() || null;
+    const nextKey = targetRect
+      ? `${Math.round(targetRect.left)}:${Math.round(targetRect.top)}:${Math.round(targetRect.width)}:${Math.round(targetRect.height)}`
+      : 'missing';
+
+    if (lastTargetDebugKeyRef.current === nextKey) {
+      return;
+    }
+
+    lastTargetDebugKeyRef.current = nextKey;
+    console.log(
+      `[RegionSelectionTool p${currentPageId ?? 'unknown'}] target ${targetRect ? 'mounted' : 'missing'} — ` +
+      `space=${currentSpaceId ?? 'none'}, tool=${activeTool ?? 'none'}, ` +
+      `rect=${targetRect ? `${Math.round(targetRect.left)},${Math.round(targetRect.top)},${Math.round(targetRect.width)}x${Math.round(targetRect.height)}` : 'none'}`
+    );
+  }, [active, targetElement, currentPageId, currentSpaceId, activeTool]);
 
   useEffect(() => {
     if (!active || !targetElement) {
       setCanvasRect(null);
+      canvasRectRef.current = null;
       return;
     }
 
-    const updateRect = () => {
+    let frameId = null;
+    const rectsMatch = (left, right) => (
+      !!left &&
+      !!right &&
+      Math.abs(left.left - right.left) < 0.25 &&
+      Math.abs(left.top - right.top) < 0.25 &&
+      Math.abs(left.width - right.width) < 0.25 &&
+      Math.abs(left.height - right.height) < 0.25
+    );
+
+    const measureRect = () => {
       const rect = targetElement.getBoundingClientRect();
-      setCanvasRect({
+      const nextRect = {
         left: rect.left,
         top: rect.top,
         width: rect.width,
         height: rect.height
-      });
+      };
+
+      if (!rectsMatch(canvasRectRef.current, nextRect)) {
+        canvasRectRef.current = nextRect;
+        setCanvasRect(nextRect);
+        const debugKey = `${Math.round(nextRect.left)}:${Math.round(nextRect.top)}:${Math.round(nextRect.width)}:${Math.round(nextRect.height)}`;
+        if (lastCanvasRectDebugRef.current !== debugKey) {
+          lastCanvasRectDebugRef.current = debugKey;
+          console.log(
+            `[RegionSelectionTool p${currentPageId ?? 'unknown'}] canvasRect — ` +
+            `left=${Math.round(nextRect.left)}, top=${Math.round(nextRect.top)}, ` +
+            `width=${Math.round(nextRect.width)}, height=${Math.round(nextRect.height)}, ` +
+            `scale=${Number.isFinite(scale) ? scale.toFixed(5) : scale}`
+          );
+        }
+      }
+    };
+
+    const updateRect = () => {
+      measureRect();
+      frameId = window.requestAnimationFrame(updateRect);
     };
 
     updateRect();
 
     let resizeObserver = null;
     if (typeof ResizeObserver === 'function') {
-      resizeObserver = new ResizeObserver(updateRect);
+      resizeObserver = new ResizeObserver(measureRect);
       resizeObserver.observe(targetElement);
     }
 
-    window.addEventListener('scroll', updateRect, true);
-    window.addEventListener('resize', updateRect);
+    window.addEventListener('scroll', measureRect, true);
+    window.addEventListener('resize', measureRect);
 
     return () => {
       setCanvasRect(null);
+      canvasRectRef.current = null;
+      if (frameId) {
+        window.cancelAnimationFrame(frameId);
+      }
       if (resizeObserver) {
         resizeObserver.disconnect();
       }
-      window.removeEventListener('scroll', updateRect, true);
-      window.removeEventListener('resize', updateRect);
+      window.removeEventListener('scroll', measureRect, true);
+      window.removeEventListener('resize', measureRect);
     };
-  }, [active, targetElement, scale]);
+  }, [active, targetElement, currentPageId, scale]);
+
+  // No wheel listener needed - allow all wheel events to pass through to underlying canvas
+  // The App.jsx document-level listener will handle zoom/scroll
+
+  // Track if we've initialized regions from initialRegions to avoid overwriting user-drawn regions
+  const hasInitializedRegionsRef = useRef(false);
 
   useEffect(() => {
     if (active) {
-      const clonedRegions = (initialRegions || []).map(region => ({
-        ...region,
-        coordinates: Array.isArray(region.coordinates) ? [...region.coordinates] : []
-      }));
-      setRegions(clonedRegions);
+      // Only initialize from initialRegions on first activation, not on every initialRegions change
+      // This prevents overwriting user-drawn regions when activeTool changes
+      if (!hasInitializedRegionsRef.current) {
+        // Deep clone regions preserving all metadata including sourceRegions and originCenter
+        const clonedRegions = (initialRegions || []).map(region => ({
+          ...region,
+          coordinates: Array.isArray(region.coordinates) ? [...region.coordinates] : [],
+          // Preserve sourceRegions for unmerge capability
+          sourceRegions: Array.isArray(region.sourceRegions)
+            ? region.sourceRegions.map(sourceRegion => ({
+                ...sourceRegion,
+                coordinates: Array.isArray(sourceRegion.coordinates) ? [...sourceRegion.coordinates] : []
+              }))
+            : undefined,
+          // Preserve originCenter for unmerge offset calculation
+          originCenter: region.originCenter ? { ...region.originCenter } : undefined
+        }));
+        setRegions(clonedRegions);
+        hasInitializedRegionsRef.current = true;
+      }
     } else {
       setRegions([]);
+      hasInitializedRegionsRef.current = false;
     }
     setSelectedRegionIds(new Set());
     setInteractionState(null);
@@ -232,8 +459,8 @@ const RegionSelectionTool = ({
         continue;
       }
       points.push({
-        x: x * scale,
-        y: y * scale
+        x: pageToScreenX(x),
+        y: pageToScreenY(y)
       });
     }
 
@@ -250,7 +477,7 @@ const RegionSelectionTool = ({
     }
 
     return path;
-  }, [scale]);
+  }, [pageToScreenX, pageToScreenY]);
 
   const polygonPreviewPath = useMemo(() => {
     if (toolType !== 'freehand' || polygonPoints.length < 2) {
@@ -258,8 +485,8 @@ const RegionSelectionTool = ({
     }
 
     const scaledPoints = polygonPoints.map(point => ({
-      x: point.x * scale,
-      y: point.y * scale
+      x: pageToScreenX(point.x),
+      y: pageToScreenY(point.y)
     }));
 
     let path = `M ${scaledPoints[0].x} ${scaledPoints[0].y}`;
@@ -272,7 +499,7 @@ const RegionSelectionTool = ({
     }
 
     return path;
-  }, [polygonPoints, toolType, scale]);
+  }, [pageToScreenX, pageToScreenY, polygonPoints, toolType]);
 
 
 
@@ -344,7 +571,7 @@ const RegionSelectionTool = ({
   }, []);
 
   // Helper to convert polygon back to path string
-  const polygonToPath = useCallback((polygon, scale) => {
+  const polygonToPath = useCallback((polygon) => {
     if (!polygon || !Array.isArray(polygon) || polygon.length === 0) return '';
 
     const rings = polygon;
@@ -353,15 +580,15 @@ const RegionSelectionTool = ({
     rings.forEach(ring => {
       if (!Array.isArray(ring) || ring.length < 2) return;
 
-      path += `M ${ring[0][0] * scale} ${ring[0][1] * scale}`;
+      path += `M ${pageToScreenX(ring[0][0])} ${pageToScreenY(ring[0][1])}`;
       for (let i = 1; i < ring.length; i++) {
-        path += ` L ${ring[i][0] * scale} ${ring[i][1] * scale}`;
+        path += ` L ${pageToScreenX(ring[i][0])} ${pageToScreenY(ring[i][1])}`;
       }
       path += ' Z ';
     });
 
     return path;
-  }, []);
+  }, [pageToScreenX, pageToScreenY]);
 
   const checkRegionsOverlap = useCallback((region1, region2) => {
     if (!region1 || !region2 || !Array.isArray(region1.coordinates) || !Array.isArray(region2.coordinates)) {
@@ -559,27 +786,77 @@ const RegionSelectionTool = ({
   }, [regionToPolygon, polygonToRegionCoords]);
 
   const handleMouseDown = useCallback((event) => {
-    if (!active || !targetElement) return;
+    if (!active || !targetElement) {
+      console.log(
+        `[RegionSelectionTool p${currentPageId ?? 'unknown'}] mouseDown ignored — ` +
+        `active=${active}, target=${!!targetElement}, tool=${activeTool ?? 'none'}`
+      );
+      return;
+    }
+
+    // Allow pan to work: if pan tool is active (space is held), don't handle the event
+    // This allows the event to bubble to the container's pan handler
+    if (activeTool === 'pan') {
+      console.log(
+        `[RegionSelectionTool p${currentPageId ?? 'unknown'}] mouseDown passed through for pan — ` +
+        `client=${Math.round(event.clientX)},${Math.round(event.clientY)}`
+      );
+      // Don't handle the event - let it bubble to container's pan handler
+      // Don't call preventDefault or stopPropagation
+      return;
+    }
 
     const rect = targetElement.getBoundingClientRect();
-    const isWithinCanvas =
-      event.clientX >= rect.left &&
-      event.clientX <= rect.right &&
-      event.clientY >= rect.top &&
-      event.clientY <= rect.bottom;
+    const isWithinCanvas = isPointWithinTargetRect(event.clientX, event.clientY, rect);
+
+    console.log(
+      `[RegionSelectionTool p${currentPageId ?? 'unknown'}] mouseDown — ` +
+      `tool=${effectiveToolType}, activeTool=${activeTool ?? 'none'}, within=${isWithinCanvas}, ` +
+      `client=${Math.round(event.clientX)},${Math.round(event.clientY)}, ` +
+      `rect=${Math.round(rect.left)},${Math.round(rect.top)},${Math.round(rect.width)}x${Math.round(rect.height)}`
+    );
 
     if (!isWithinCanvas) {
       return;
     }
 
+    event.preventDefault();
+    event.stopPropagation();
+
     setIsCursorOverCanvas(true);
 
     if (effectiveToolType === 'move') {
+      // In move mode, check if click is inside any selected region's boundary box
+      const pointer = clientPointToPage(event.clientX, event.clientY, rect);
+      if (!pointer) return;
+      const { x, y } = pointer;
+      
+      // Check if click is inside any selected region's bounds
+      let clickedInsideBoundary = false;
+      for (const regionId of selectedRegionIds) {
+        const region = regions.find(r => r.regionId === regionId);
+        if (region) {
+          const bounds = getRegionBounds(region);
+          if (bounds && 
+              x >= bounds.minX && x <= bounds.maxX &&
+              y >= bounds.minY && y <= bounds.maxY) {
+            clickedInsideBoundary = true;
+            break;
+          }
+        }
+      }
+      
+      // If clicked outside all boundary boxes, deselect
+      if (!clickedInsideBoundary && selectedRegionIds.size > 0) {
+        setSelectedRegionIds(new Set());
+        setInteractionState(null);
+      }
       return;
     }
 
-    const x = (event.clientX - rect.left) / scale;
-    const y = (event.clientY - rect.top) / scale;
+    const pointer = clientPointToPage(event.clientX, event.clientY, rect);
+    if (!pointer) return;
+    const { x, y } = pointer;
 
     if (effectiveToolType === 'rectangular') {
       setIsDrawing(true);
@@ -589,10 +866,15 @@ const RegionSelectionTool = ({
       setIsDrawing(true);
       setPolygonPoints([{ x, y }]);
     }
-  }, [active, targetElement, effectiveToolType, scale]);
+  }, [active, targetElement, effectiveToolType, clientPointToPage, selectedRegionIds, regions, getRegionBounds, activeTool, isPointWithinTargetRect]);
 
   const handleMouseMove = useCallback((event) => {
     if (!active || !targetElement) return;
+
+    // Allow pan to work: if pan tool is active and not drawing/interacting, don't handle the event
+    if (activeTool === 'pan' && !isDrawing && !interactionState) {
+      return; // Let the event pass through for pan
+    }
 
     const rect = targetElement.getBoundingClientRect();
     const isWithinCanvas =
@@ -615,15 +897,16 @@ const RegionSelectionTool = ({
       return;
     }
 
-    const x = (event.clientX - rect.left) / scale;
-    const y = (event.clientY - rect.top) / scale;
+    const pointer = clientPointToPage(event.clientX, event.clientY, rect);
+    if (!pointer) return;
+    const { x, y } = pointer;
 
     if (interactionState) {
       if (interactionState.type === 'move') {
         // Use raw client coordinates for delta to avoid scale/offset mismatch issues
         // interactionState.startPoint is in client coordinates (from handleRegionPointerDown)
-        const dx = (event.clientX - interactionState.startPoint.x) / scale;
-        const dy = (event.clientY - interactionState.startPoint.y) / scale;
+        const dx = (event.clientX - interactionState.startPoint.x) / displayScaleX;
+        const dy = (event.clientY - interactionState.startPoint.y) / displayScaleY;
 
         // Move all selected regions
         const updatedRegions = regions.map(r => {
@@ -762,7 +1045,7 @@ const RegionSelectionTool = ({
     } else if (effectiveToolType === 'freehand') {
       setPolygonPoints(prev => [...prev, { x, y }]);
     }
-  }, [active, targetElement, scale, interactionState, ensureBoundsMinSize, isDrawing, effectiveToolType, startPoint, regions]);
+  }, [active, targetElement, clientPointToPage, displayScaleX, displayScaleY, interactionState, ensureBoundsMinSize, isDrawing, effectiveToolType, startPoint, regions, activeTool]);
 
   const handleMouseUp = useCallback(() => {
     if (!active) return;
@@ -777,6 +1060,11 @@ const RegionSelectionTool = ({
     if (!isDrawing) return;
 
     if (effectiveToolType === 'rectangular' && currentRect && currentRect.width > MIN_REGION_SIZE && currentRect.height > MIN_REGION_SIZE) {
+      console.log(
+        `[RegionSelectionTool p${currentPageId ?? 'unknown'}] mouseUp commit rectangular — ` +
+        `x=${currentRect.x.toFixed(2)}, y=${currentRect.y.toFixed(2)}, ` +
+        `w=${currentRect.width.toFixed(2)}, h=${currentRect.height.toFixed(2)}, mode=${effectiveSelectionMode}`
+      );
       const newRegion = {
         regionId: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         pageId: currentPageId,
@@ -815,6 +1103,10 @@ const RegionSelectionTool = ({
         });
       }
     } else if (effectiveToolType === 'freehand' && polygonPoints.length > 2) {
+      console.log(
+        `[RegionSelectionTool p${currentPageId ?? 'unknown'}] mouseUp commit freehand — ` +
+        `points=${polygonPoints.length}, mode=${effectiveSelectionMode}`
+      );
       const newRegion = {
         regionId: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         pageId: currentPageId,
@@ -852,24 +1144,43 @@ const RegionSelectionTool = ({
   }, [active, interactionState, isDrawing, effectiveToolType, currentRect, polygonPoints, currentPageId, effectiveSelectionMode, mergeRegionWithOverlapping, subtractRegionFromRegions]);
 
   const handleConfirm = useCallback(() => {
-    if (!onRegionComplete) return;
+    if (!onRegionComplete) {
+      return;
+    }
+
+    const currentRegions = Array.isArray(regionsRef.current) ? regionsRef.current : [];
 
     // Consolidate regions before confirming
     // This ensures that any overlapping regions are merged into single polygons
     // and any subtractions are applied permanently.
-    const consolidatedRegions = mergeOverlappingRegions(regions);
+    const consolidatedRegions = mergeOverlappingRegions(currentRegions);
 
+    // Preserve all metadata including sourceRegions and originCenter for unmerge capability
     const payload = consolidatedRegions.map(region => ({
       ...region,
-      coordinates: Array.isArray(region.coordinates) ? [...region.coordinates] : []
+      coordinates: Array.isArray(region.coordinates) ? [...region.coordinates] : [],
+      // Deep copy sourceRegions array to ensure it's preserved
+      sourceRegions: Array.isArray(region.sourceRegions) 
+        ? region.sourceRegions.map(sourceRegion => ({
+            ...sourceRegion,
+            coordinates: Array.isArray(sourceRegion.coordinates) ? [...sourceRegion.coordinates] : []
+          }))
+        : undefined,
+      // Preserve originCenter if it exists
+      originCenter: region.originCenter ? { ...region.originCenter } : undefined
     }));
+    console.log(
+      `[RegionSelectionTool p${currentPageId ?? 'unknown'}] confirm — ` +
+      `input=${currentRegions.length}, consolidated=${consolidatedRegions.length}, payload=${payload.length}, ` +
+      `valid=${payload.filter(region => Array.isArray(region.coordinates) && region.coordinates.length >= 6).length}`
+    );
     onRegionComplete(payload);
     setRegions([]);
     setCurrentRect(null);
     setPolygonPoints([]);
     setSelectedRegionIds(new Set());
     setInteractionState(null);
-  }, [regions, onRegionComplete]);
+  }, [currentPageId, onRegionComplete]);
 
   const handleCancel = useCallback(() => {
     if (typeof document !== 'undefined' && document.activeElement && typeof document.activeElement.blur === 'function') {
@@ -902,7 +1213,9 @@ const RegionSelectionTool = ({
   }, [onSetFullPage, handleCancel, regions.length]);
 
   const handleRegionPointerDown = useCallback((region, event) => {
-    if (!active || effectiveToolType !== 'move' || !targetElement) return;
+    if (!active || effectiveToolType !== 'move' || !targetElement) {
+      return;
+    }
     event.stopPropagation();
 
     // If not in move mode, ignore
@@ -999,11 +1312,14 @@ const RegionSelectionTool = ({
   const handleContextMenu = useCallback((event) => {
     event.preventDefault();
     // Allow context menu in all modes (Draw or Move)
+    const constraintRect = getTargetRect();
 
     // Check if we clicked on a region
-    const rect = targetElement.getBoundingClientRect();
-    const x = (event.clientX - rect.left) / scale;
-    const y = (event.clientY - rect.top) / scale;
+    const pointer = clientPointToPage(event.clientX, event.clientY, constraintRect);
+    if (!pointer) {
+      return;
+    }
+    const { x, y } = pointer;
 
     const clickedRegion = regions.find(r => {
       const bounds = getRegionBounds(r);
@@ -1039,9 +1355,15 @@ const RegionSelectionTool = ({
           console.error('Error checking merge capability', e);
         }
 
+        const safePosition = calculateViewportSafePosition(event.clientX, event.clientY, {
+          estimatedWidth: 200,
+          estimatedHeight: 250,
+          preferAbove: false,
+          constraintRect
+        });
         setContextMenu({
-          x: event.clientX,
-          y: event.clientY,
+          x: safePosition.x,
+          y: safePosition.y,
           type: 'merge',
           canMerge
         });
@@ -1049,22 +1371,34 @@ const RegionSelectionTool = ({
       // If single region is selected (or clicked), and it has sourceRegions, show "Separate" option
       else if (clickedRegion.sourceRegions && clickedRegion.sourceRegions.length > 0) {
         setSelectedRegionIds(new Set([clickedRegion.regionId]));
+        const safePosition = calculateViewportSafePosition(event.clientX, event.clientY, {
+          estimatedWidth: 200,
+          estimatedHeight: 250,
+          preferAbove: false,
+          constraintRect
+        });
         setContextMenu({
-          x: event.clientX,
-          y: event.clientY,
+          x: safePosition.x,
+          y: safePosition.y,
           type: 'separate',
           regionId: clickedRegion.regionId
         });
       }
     } else {
       // Clicked on background/canvas
+      const safePosition = calculateViewportSafePosition(event.clientX, event.clientY, {
+        estimatedWidth: 200,
+        estimatedHeight: 250,
+        preferAbove: false,
+        constraintRect
+      });
       setContextMenu({
-        x: event.clientX,
-        y: event.clientY,
+        x: safePosition.x,
+        y: safePosition.y,
         type: 'canvas'
       });
     }
-  }, [active, effectiveToolType, regions, selectedRegionIds, targetElement, scale, getRegionBounds]);
+  }, [active, effectiveToolType, regions, selectedRegionIds, clientPointToPage, getRegionBounds, getTargetRect]);
 
   const handleCopy = useCallback(async () => {
     if (selectedRegionIds.size === 0) return;
@@ -1110,9 +1444,10 @@ const RegionSelectionTool = ({
       const centerX = (minX + maxX) / 2;
       const centerY = (minY + maxY) / 2;
 
-      const rect = targetElement.getBoundingClientRect();
-      const targetX = (contextMenu.x - rect.left) / scale;
-      const targetY = (contextMenu.y - rect.top) / scale;
+      const rect = getTargetRect();
+      const targetPoint = clientPointToPage(contextMenu.x, contextMenu.y, rect);
+      if (!targetPoint) return;
+      const { x: targetX, y: targetY } = targetPoint;
 
       const dx = targetX - centerX;
       const dy = targetY - centerY;
@@ -1140,7 +1475,7 @@ const RegionSelectionTool = ({
     } catch (err) {
       console.error('Failed to paste regions:', err);
     }
-  }, [contextMenu, targetElement, scale, currentPageId, getRegionBounds]);
+  }, [contextMenu, clientPointToPage, currentPageId, getRegionBounds, getTargetRect]);
 
   const handleMergeSelected = useCallback(() => {
     if (selectedRegionIds.size < 2) return;
@@ -1222,25 +1557,70 @@ const RegionSelectionTool = ({
 
     if (!region || !region.sourceRegions || region.sourceRegions.length === 0) return;
 
-    // Calculate current center to determine offset
+    // Calculate current bounds and center
     const currentBounds = getRegionBounds(region);
+    if (!currentBounds) return;
+    
     const currentCenter = {
       x: (currentBounds.minX + currentBounds.maxX) / 2,
       y: (currentBounds.minY + currentBounds.maxY) / 2
     };
 
-    const dx = currentCenter.x - region.originCenter.x;
-    const dy = currentCenter.y - region.originCenter.y;
+    // Calculate original bounds from sourceRegions (the bounds they had when merged)
+    // We need to find the bounding box of all source regions at merge time
+    let originMinX = Infinity, originMinY = Infinity, originMaxX = -Infinity, originMaxY = -Infinity;
+    region.sourceRegions.forEach(sourceRegion => {
+      const bounds = getRegionBounds(sourceRegion);
+      if (bounds) {
+        originMinX = Math.min(originMinX, bounds.minX);
+        originMinY = Math.min(originMinY, bounds.minY);
+        originMaxX = Math.max(originMaxX, bounds.maxX);
+        originMaxY = Math.max(originMaxY, bounds.maxY);
+      }
+    });
 
-    // Restore source regions with offset
+    // If we have originCenter, use it to calculate the original center
+    // Otherwise, calculate from the source regions' bounds
+    const originCenter = region.originCenter || {
+      x: (originMinX + originMaxX) / 2,
+      y: (originMinY + originMaxY) / 2
+    };
+
+    // Calculate original bounds dimensions
+    const originWidth = originMaxX - originMinX;
+    const originHeight = originMaxY - originMinY;
+    
+    // Calculate current bounds dimensions
+    const currentWidth = currentBounds.maxX - currentBounds.minX;
+    const currentHeight = currentBounds.maxY - currentBounds.minY;
+
+    // Calculate scale factors (avoid division by zero)
+    const scaleX = originWidth > 0 ? currentWidth / originWidth : 1;
+    const scaleY = originHeight > 0 ? currentHeight / originHeight : 1;
+
+    // Calculate translation (center movement)
+    const dx = currentCenter.x - originCenter.x;
+    const dy = currentCenter.y - originCenter.y;
+
+    // Restore source regions with full transformation (scale + translation)
     const restoredRegions = region.sourceRegions.map(sourceRegion => {
+      // Apply transformation: scale around origin center, then translate
       const newCoords = sourceRegion.coordinates.map((val, idx) => {
-        return idx % 2 === 0 ? val + dx : val + dy;
+        if (idx % 2 === 0) {
+          // X coordinate
+          const relativeX = val - originCenter.x;
+          return originCenter.x + relativeX * scaleX + dx;
+        } else {
+          // Y coordinate
+          const relativeY = val - originCenter.y;
+          return originCenter.y + relativeY * scaleY + dy;
+        }
       });
+
       return {
         ...sourceRegion,
         coordinates: newCoords,
-        regionId: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${Math.random().toString(36).substr(2, 5)}` // New IDs to avoid conflicts
+        regionId: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${Math.random().toString(36).substr(2, 5)}`
       };
     });
 
@@ -1260,7 +1640,7 @@ const RegionSelectionTool = ({
     return () => window.removeEventListener('click', handleClick);
   }, []);
 
-  // Track keyboard modifiers (Shift, Option/Alt) for mode override
+  // Track keyboard modifiers (Shift, Option/Alt, Space) for mode override
   useEffect(() => {
     if (!active) return;
 
@@ -1277,6 +1657,10 @@ const RegionSelectionTool = ({
       if (event.metaKey || event.ctrlKey) {
         setIsCmdCtrlPressed(true);
       }
+      // Space for pan - allow mouse events to pass through
+      if (event.key === ' ' || event.code === 'Space') {
+        setIsSpacePressed(true);
+      }
     };
 
     const handleKeyUp = (event) => {
@@ -1292,6 +1676,10 @@ const RegionSelectionTool = ({
       if (!event.metaKey && !event.ctrlKey) {
         setIsCmdCtrlPressed(false);
       }
+      // Release Space
+      if (event.key === ' ' || event.code === 'Space') {
+        setIsSpacePressed(false);
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -1302,6 +1690,8 @@ const RegionSelectionTool = ({
       window.removeEventListener('keyup', handleKeyUp);
       setIsShiftPressed(false);
       setIsOptionAltPressed(false);
+      setIsCmdCtrlPressed(false);
+      setIsSpacePressed(false);
     };
   }, [active]);
 
@@ -1327,6 +1717,47 @@ const RegionSelectionTool = ({
     };
   }, [active, targetElement, handleCancel]);
 
+  useEffect(() => {
+    if (!active || !targetElement) return;
+
+    const handleDocumentMouseDownCapture = (event) => {
+      if (activeTool === 'pan') return;
+      if (documentDragFallbackRef.current) return;
+      if (containerRef.current && containerRef.current.contains(event.target)) return;
+      if (event.target?.closest?.('[data-region-selection-ui="true"]')) return;
+      if (!isPointWithinTargetRect(event.clientX, event.clientY)) return;
+
+      documentDragFallbackRef.current = true;
+      handleMouseDown(event);
+    };
+
+    const handleDocumentMouseMoveCapture = (event) => {
+      if (!documentDragFallbackRef.current) return;
+      handleMouseMove(event);
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    const handleDocumentMouseUpCapture = (event) => {
+      if (!documentDragFallbackRef.current) return;
+      documentDragFallbackRef.current = false;
+      handleMouseUp(event);
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    document.addEventListener('mousedown', handleDocumentMouseDownCapture, true);
+    document.addEventListener('mousemove', handleDocumentMouseMoveCapture, true);
+    document.addEventListener('mouseup', handleDocumentMouseUpCapture, true);
+
+    return () => {
+      documentDragFallbackRef.current = false;
+      document.removeEventListener('mousedown', handleDocumentMouseDownCapture, true);
+      document.removeEventListener('mousemove', handleDocumentMouseMoveCapture, true);
+      document.removeEventListener('mouseup', handleDocumentMouseUpCapture, true);
+    };
+  }, [active, targetElement, activeTool, handleMouseDown, handleMouseMove, handleMouseUp, isPointWithinTargetRect]);
+
   if (!active) return null;
 
   return (
@@ -1346,7 +1777,7 @@ const RegionSelectionTool = ({
           display: 'flex',
           gap: '6px',
           alignItems: 'center',
-          zIndex: 1001,
+          zIndex: 100001,
           boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
           fontFamily: FONT_FAMILY
         }}
@@ -1460,7 +1891,7 @@ const RegionSelectionTool = ({
                   left: 0,
                   right: 0,
                   bottom: 0,
-                  zIndex: 1000
+                  zIndex: 100000
                 }}
                 onClick={() => setIsToolDropdownOpen(false)}
               />
@@ -1474,7 +1905,7 @@ const RegionSelectionTool = ({
                   border: '1px solid #555',
                   borderRadius: '4px',
                   minWidth: '110px',
-                  zIndex: 1001,
+                  zIndex: 100001,
                   boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
                   overflow: 'hidden'
                 }}
@@ -1627,23 +2058,26 @@ const RegionSelectionTool = ({
 
       {/* Canvas Interaction Layer */}
       {canvasRect && (
-        <div
-          ref={containerRef}
-          onContextMenu={handleContextMenu}
-          style={{
-            position: 'fixed',
-            left: `${canvasRect.left}px`,
-            top: `${canvasRect.top}px`,
-            width: `${canvasRect.width}px`,
-            height: `${canvasRect.height}px`,
-            zIndex: 1000,
-            cursor: effectiveToolType === 'move' ? 'default' : (isCursorOverCanvas ? 'crosshair' : 'default')
-          }}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-        >
+          <div
+            ref={containerRef}
+            onContextMenu={handleContextMenu}
+            style={{
+              position: 'fixed',
+              left: `${canvasRect.left}px`,
+              top: `${canvasRect.top}px`,
+              width: `${canvasRect.width}px`,
+              height: `${canvasRect.height}px`,
+              zIndex: 100000,
+              cursor: effectiveToolType === 'move' ? 'default' : (isCursorOverCanvas ? 'crosshair' : 'default'),
+              pointerEvents: activeTool === 'pan' ? 'none' : 'auto' // Allow events to pass through when pan is active
+            }}
+            {...(activeTool === 'pan' ? {} : {
+              onMouseDown: handleMouseDown,
+              onMouseMove: handleMouseMove,
+              onMouseUp: handleMouseUp,
+              onMouseLeave: handleMouseUp
+            })}
+          >
           <svg
             width={canvasRect.width}
             height={canvasRect.height}
@@ -1656,10 +2090,10 @@ const RegionSelectionTool = ({
           >
             {toolType === 'rectangular' && currentRect && (
               <rect
-                x={currentRect.x * scale}
-                y={currentRect.y * scale}
-                width={currentRect.width * scale}
-                height={currentRect.height * scale}
+                x={pageToScreenX(currentRect.x)}
+                y={pageToScreenY(currentRect.y)}
+                width={currentRect.width * displayScaleX}
+                height={currentRect.height * displayScaleY}
                 fill={effectiveSelectionMode === REGION_OPERATIONS.SUBTRACT ? "rgba(226, 74, 74, 0.12)" : "rgba(74, 144, 226, 0.12)"}
                 stroke={effectiveSelectionMode === REGION_OPERATIONS.SUBTRACT ? "#E24A4A" : "#4A90E2"}
                 strokeWidth="2"
@@ -1720,7 +2154,7 @@ const RegionSelectionTool = ({
                 let unifiedPath = '';
                 if (mergedPolygons.length > 0) {
                   mergedPolygons.forEach(polygon => {
-                    unifiedPath += polygonToPath(polygon, scale);
+                    unifiedPath += polygonToPath(polygon);
                   });
                 }
 
@@ -1794,9 +2228,10 @@ const RegionSelectionTool = ({
                 border: '1px solid #ccc',
                 borderRadius: '4px',
                 boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
-                zIndex: 1000,
+                zIndex: 100004,
                 padding: '4px 0',
-                minWidth: '120px'
+                minWidth: '120px',
+                pointerEvents: 'auto' // Ensure context menu is always interactive
               }}
               onClick={(e) => e.stopPropagation()}
             >
@@ -1884,10 +2319,51 @@ const RegionSelectionTool = ({
 
             if (useVertexHandles) {
               // Render handles for each vertex
+              const bounds = getRegionBounds(selectedRegion);
               const handles = [];
+              
+              // Add boundary box for vertex handles case
+              let boundaryBox = null;
+              if (bounds) {
+                const left = pageToScreenX(bounds.minX);
+                const top = pageToScreenY(bounds.minY);
+                const width = (bounds.maxX - bounds.minX) * displayScaleX;
+                const height = (bounds.maxY - bounds.minY) * displayScaleY;
+                
+                boundaryBox = (
+                  <div
+                    key="boundary-box"
+                    onMouseDown={(event) => {
+                      // Keep selection when clicking inside boundary box
+                      // Allow dragging by not stopping propagation if region is already selected
+                      // The handleMouseDown will check if click is inside bounds and keep selection
+                      if (selectedRegionIds.has(selectedRegion.regionId)) {
+                        // If clicking on an already selected region's boundary box,
+                        // trigger the same behavior as clicking on the region path
+                        handleRegionPointerDown(selectedRegion, event);
+                      }
+                    }}
+                    style={{
+                      position: 'absolute',
+                      left: `${left}px`,
+                      top: `${top}px`,
+                      width: `${width}px`,
+                      height: `${height}px`,
+                      background: 'transparent',
+                      border: '1px solid #87CEEB',
+                      borderRadius: '0px',
+                      pointerEvents: 'auto',
+                      zIndex: 100002,
+                      boxSizing: 'border-box',
+                      cursor: 'move'
+                    }}
+                  />
+                );
+              }
+              
               for (let i = 0; i < vertexCount; i++) {
-                const x = selectedRegion.coordinates[i * 2] * scale;
-                const y = selectedRegion.coordinates[i * 2 + 1] * scale;
+                const x = pageToScreenX(selectedRegion.coordinates[i * 2]);
+                const y = pageToScreenY(selectedRegion.coordinates[i * 2 + 1]);
 
                 handles.push(
                   <div
@@ -1898,64 +2374,81 @@ const RegionSelectionTool = ({
                       left: `${x}px`,
                       top: `${y}px`,
                       transform: 'translate(-50%, -50%)',
-                      width: '12px',
-                      height: '12px',
-                      borderRadius: '50%',
-                      background: '#F5A623',
-                      border: '2px solid #fff',
+                      width: '10px',
+                      height: '10px',
+                      borderRadius: '0px',
+                      background: 'transparent',
+                      border: '1px solid #87CEEB',
                       cursor: 'crosshair',
                       pointerEvents: 'auto',
-                      zIndex: 1003
+                      zIndex: 100003
                     }}
                   />
                 );
               }
-              return <>{handles}</>;
+              return <>{boundaryBox}{handles}</>;
             } else {
               // Render bounding box handles for complex shapes
               const bounds = getRegionBounds(selectedRegion);
               if (!bounds) return null;
-              const left = bounds.minX * scale;
-              const top = bounds.minY * scale;
-              const width = (bounds.maxX - bounds.minX) * scale;
-              const height = (bounds.maxY - bounds.minY) * scale;
+              const left = pageToScreenX(bounds.minX);
+              const top = pageToScreenY(bounds.minY);
+              const width = (bounds.maxX - bounds.minX) * displayScaleX;
+              const height = (bounds.maxY - bounds.minY) * displayScaleY;
 
               return (
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: `${left}px`,
-                    top: `${top}px`,
-                    width: `${width}px`,
-                    height: `${height}px`,
-                    pointerEvents: 'none', // Allow clicks to pass through the bounding box frame
-                    zIndex: 1002
-                  }}
-                >
-                  {resizeHandles.map(handle => (
-                    <div
-                      key={handle.key}
-                      onMouseDown={(event) => handleResizePointerDown(selectedRegion, handle.key, event)}
-                      style={{
-                        position: 'absolute',
-                        left: `${handle.offsetX * 100}%`,
-                        top: `${handle.offsetY * 100}%`,
-                        transform: 'translate(-50%, -50%)',
-                        width: '12px',
-                        height: '12px',
-                        borderRadius: '50%',
-                        background: '#F5A623',
-                        border: '2px solid #fff',
-                        cursor: handle.cursor,
-                        pointerEvents: 'auto' // Re-enable pointer events for handles
-                      }}
-                    />
-                  ))}
-                </div>
+                <>
+                  {/* Selection boundary box - Drawboard style */}
+                  <div
+                    onMouseDown={(event) => {
+                      // Keep selection when clicking inside boundary box
+                      // Allow dragging by triggering the same behavior as clicking on the region path
+                      if (selectedRegionIds.has(selectedRegion.regionId)) {
+                        handleRegionPointerDown(selectedRegion, event);
+                      }
+                    }}
+                    style={{
+                      position: 'absolute',
+                      left: `${left}px`,
+                      top: `${top}px`,
+                      width: `${width}px`,
+                      height: `${height}px`,
+                      background: 'transparent',
+                      border: '1px solid #87CEEB',
+                      borderRadius: '0px',
+                      pointerEvents: 'auto',
+                      zIndex: 100002,
+                      boxSizing: 'border-box',
+                      cursor: 'move'
+                    }}
+                  />
+                  {resizeHandles.map(handle => {
+                    return (
+                      <div
+                        key={handle.key}
+                        onMouseDown={(event) => handleResizePointerDown(selectedRegion, handle.key, event)}
+                        style={{
+                          position: 'absolute',
+                          left: `${left + (handle.offsetX * width)}px`,
+                          top: `${top + (handle.offsetY * height)}px`,
+                          transform: 'translate(-50%, -50%)',
+                          width: '10px',
+                          height: '10px',
+                          borderRadius: '0px',
+                          background: 'transparent',
+                          border: '1px solid #87CEEB',
+                          cursor: handle.cursor,
+                          pointerEvents: 'auto',
+                          zIndex: 100003
+                        }}
+                      />
+                    );
+                  })}
+                </>
               );
             }
           })()}
-        </div>
+          </div>
       )}
 
       {/* Floating Plus Sign Indicator for Additive Mode */}
@@ -1966,7 +2459,7 @@ const RegionSelectionTool = ({
             left: `${cursorPosition.x + 8}px`,
             top: `${cursorPosition.y - 20}px`,
             pointerEvents: 'none',
-            zIndex: 1002
+            zIndex: 100002
           }}
         >
           <span
@@ -1992,7 +2485,7 @@ const RegionSelectionTool = ({
             left: `${cursorPosition.x + 8}px`,
             top: `${cursorPosition.y - 20}px`,
             pointerEvents: 'none',
-            zIndex: 1002
+            zIndex: 100002
           }}
         >
           <span

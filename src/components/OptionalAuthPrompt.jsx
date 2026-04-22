@@ -113,6 +113,8 @@ export const useOptionalAuth = () => {
 
   useEffect(() => {
     if (!loading && !isAuthenticated && !authPromptDismissed && !showAuthModal) {
+      // Skip auth modal in dev test mode (eliminated from production builds)
+      if (import.meta.env.DEV && window.__devTestPdf) return;
       // Show modal immediately for non-authenticated users
       setShowAuthModal(true);
     }

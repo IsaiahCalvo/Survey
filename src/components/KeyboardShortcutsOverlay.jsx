@@ -9,6 +9,7 @@ import { useKeyPress } from '../utils/hooks';
  */
 const KeyboardShortcutsOverlay = () => {
   const [isOpen, setIsOpen] = React.useState(false);
+  const modalContentRef = React.useRef(null);
 
   useKeyPress('?', () => {
     setIsOpen((prev) => !prev);
@@ -59,6 +60,9 @@ const KeyboardShortcutsOverlay = () => {
     );
   }
 
+  const isMac = typeof navigator !== 'undefined' && /(Mac|iPhone|iPod|iPad)/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);
+  const findShortcutModifier = isMac ? '⌘' : 'Ctrl';
+
   const shortcuts = [
     { category: 'Navigation', items: [
       { keys: ['←', '→'], description: 'Previous/Next page' },
@@ -73,7 +77,7 @@ const KeyboardShortcutsOverlay = () => {
       { keys: ['Ctrl', 'W'], description: 'Close tab' },
       { keys: ['Ctrl', 'Tab'], description: 'Next tab' },
       { keys: ['Ctrl', 'Shift', 'Tab'], description: 'Previous tab' },
-      { keys: ['Ctrl', 'F'], description: 'Search text' },
+      { keys: [findShortcutModifier, 'F'], description: 'Search text' },
     ]},
     { category: 'Interface', items: [
       { keys: ['?'], description: 'Toggle shortcuts' },
@@ -84,6 +88,7 @@ const KeyboardShortcutsOverlay = () => {
 
   return (
     <div
+      data-keyboard-shortcuts-modal="true"
       style={{
         position: 'fixed',
         top: 0,
@@ -100,18 +105,28 @@ const KeyboardShortcutsOverlay = () => {
       onClick={() => setIsOpen(false)}
     >
       <div
+        ref={modalContentRef}
         style={{
           background: COLORS.background.secondary,
           borderRadius: BORDERS.radius.xl,
           padding: '32px',
           maxWidth: '700px',
-          width: '90%',
+          width: '420px',
           maxHeight: '80vh',
           overflow: 'auto',
           boxShadow: SHADOWS.xl,
           border: `1px solid ${COLORS.border.default}`,
+          scrollBehavior: 'smooth',
+          WebkitOverflowScrolling: 'touch',
         }}
         onClick={(e) => e.stopPropagation()}
+        onWheel={(e) => {
+          // Stop event from bubbling to PDF handler, but allow native smooth scrolling
+          e.stopPropagation();
+          // Don't preventDefault - let native browser scrolling work smoothly
+          // The PDF handler already checks for modal and returns early, so this is safe
+        }}
+        onTouchMove={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div

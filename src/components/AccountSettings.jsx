@@ -3,16 +3,19 @@ import { useAuth } from '../contexts/AuthContext';
 import { useMSGraph } from '../contexts/MSGraphContext';
 import { supabase } from '../supabaseClient';
 import Icon from '../Icons';
+import StripeCheckout from './StripeCheckout';
+import UsageIndicator from './UsageIndicator';
 import './AccountSettings.css';
 
 export const AccountSettings = ({ isOpen, onClose }) => {
-  const { user, updateProfile, updatePassword, signOut, signInWithGoogle } = useAuth();
+  const { user, updateProfile, updatePassword, signOut, signInWithGoogle, refreshSubscriptionTier } = useAuth();
   const { isAuthenticated: isMSAuthenticated, login: msLogin, logout: msLogout, account: msAccount, needsReconnect: msNeedsReconnect } = useMSGraph();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [activeTab, setActiveTab] = useState('general');
+  const [subscriptionViewTab, setSubscriptionViewTab] = useState('manage'); // 'manage' or 'usage'
 
   // Form state
   const [firstName, setFirstName] = useState('');
@@ -23,10 +26,16 @@ export const AccountSettings = ({ isOpen, onClose }) => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+  // Subscription state
+  const [subscription, setSubscription] = useState(null);
+  const [loadingSubscription, setLoadingSubscription] = useState(true);
+  const [billingPeriod, setBillingPeriod] = useState('monthly');
+
   // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
       setActiveTab('general');
+      setSubscriptionViewTab('manage');
       setIsEditing(false);
       setCurrentPassword('');
       setNewPassword('');
@@ -44,6 +53,52 @@ export const AccountSettings = ({ isOpen, onClose }) => {
       setEmail(user?.email || '');
     }
   }, [user]);
+
+  // Fetch subscription data
+  const fetchSubscription = async () => {
+    if (!user) return;
+
+    setLoadingSubscription(true);
+    try {
+      const { data, error } = await supabase
+        .from('user_subscriptions')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      if (error) {
+        console.error('Error fetching subscription:', error);
+        // User might not have a subscription row yet (shouldn't happen after migration)
+        setSubscription({ tier: 'free', status: 'active' });
+      } else {
+        setSubscription(data);
+      }
+    } catch (err) {
+      console.error('Error:', err);
+      setSubscription({ tier: 'free', status: 'active' });
+    } finally {
+      setLoadingSubscription(false);
+    }
+  };
+
+  // Fetch subscription when modal opens
+  useEffect(() => {
+    if (isOpen && user) {
+      fetchSubscription();
+    }
+  }, [isOpen, user]);
+
+  // Refetch subscription when window regains focus (user returns from Stripe checkout)
+  useEffect(() => {
+    const handleFocus = () => {
+      if (isOpen && user) {
+        fetchSubscription();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [isOpen, user]);
 
   // Sync Microsoft account data if user profile is incomplete
   // Note: Microsoft connection persistence is now handled by MSGraphContext using the connected_services table
@@ -225,78 +280,48 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
   return (
     <div className="account-settings-overlay" onClick={onClose}>
-      <div className="account-settings-modal" onClick={(e) => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', maxWidth: '800px', width: '90%', height: '80vh', maxHeight: '700px', padding: 0 }}>
+      <div className="account-settings-modal" onClick={(e) => e.stopPropagation()}>
 
         {/* Header */}
-        <div className="account-settings-header" style={{ padding: '20px 24px', borderBottom: '1px solid #333' }}>
-          <h2 style={{ margin: 0 }}>Settings</h2>
+        <div className="account-settings-header">
+          <h2>Settings</h2>
           <button className="account-settings-close" onClick={onClose} aria-label="Close">
             ×
           </button>
         </div>
 
-        <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        <div className="account-settings-body">
           {/* Sidebar */}
-          <div style={{ width: '200px', borderRight: '1px solid #333', background: '#252525', display: 'flex', flexDirection: 'column' }}>
+          <div className="account-settings-sidebar">
             <button
               onClick={() => setActiveTab('general')}
-              style={{
-                padding: '12px 20px',
-                textAlign: 'left',
-                background: activeTab === 'general' ? 'rgba(255,255,255,0.05)' : 'transparent',
-                border: 'none',
-                borderLeft: activeTab === 'general' ? '3px solid #4A90E2' : '3px solid transparent',
-                color: activeTab === 'general' ? '#fff' : '#aaa',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '500'
-              }}
+              className={`account-sidebar-btn ${activeTab === 'general' ? 'active' : ''}`}
             >
               General
             </button>
             <button
               onClick={() => setActiveTab('connected-services')}
-              style={{
-                padding: '12px 20px',
-                textAlign: 'left',
-                background: activeTab === 'connected-services' ? 'rgba(255,255,255,0.05)' : 'transparent',
-                border: 'none',
-                borderLeft: activeTab === 'connected-services' ? '3px solid #4A90E2' : '3px solid transparent',
-                color: activeTab === 'connected-services' ? '#fff' : '#aaa',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '500'
-              }}
+              className={`account-sidebar-btn ${activeTab === 'connected-services' ? 'active' : ''}`}
             >
               Connected Services
             </button>
             <button
               onClick={() => setActiveTab('subscription')}
-              style={{
-                padding: '12px 20px',
-                textAlign: 'left',
-                background: activeTab === 'subscription' ? 'rgba(255,255,255,0.05)' : 'transparent',
-                border: 'none',
-                borderLeft: activeTab === 'subscription' ? '3px solid #4A90E2' : '3px solid transparent',
-                color: activeTab === 'subscription' ? '#fff' : '#aaa',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '500'
-              }}
+              className={`account-sidebar-btn ${activeTab === 'subscription' ? 'active' : ''}`}
             >
               Manage Subscription
             </button>
           </div>
 
           {/* Content */}
-          <div className="account-settings-content" style={{ flex: 1, padding: '24px', overflowY: 'auto' }}>
+          <div className="account-settings-content">
             {error && <div className="account-error">{error}</div>}
             {message && <div className="account-message">{message}</div>}
 
             {activeTab === 'general' && (
               <>
                 {/* Profile Section */}
-                <section className="account-section">
+                <section className="account-section" style={{ height: '308px' }}>
                   <h3>Profile Information</h3>
 
                   {!isEditing ? (
@@ -502,61 +527,338 @@ export const AccountSettings = ({ isOpen, onClose }) => {
             )}
 
             {activeTab === 'subscription' && (
-              <section className="account-section">
-                <h3>Manage Subscription</h3>
-
-                <div className="account-subscription-grid">
-                  {/* Free Plan */}
-                  <div className="account-subscription-card">
-                    <div className="account-subscription-header">
-                      <div className="account-plan-name">Free Plan</div>
-                      <div className="account-subscription-price">
-                        <span className="price-amount">$0</span>
-                        <span className="price-period">/month</span>
-                      </div>
-                    </div>
-                    <div className="account-subscription-features">
-                      <ul>
-                        <li>Basic survey features</li>
-                        <li>Export to Excel</li>
-                        <li>5 Projects limit</li>
-                      </ul>
-                    </div>
-                    <div className="account-subscription-actions">
-                      <button className="account-btn-outline-green" disabled>
-                        Current Plan
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Pro Plan */}
-                  <div className="account-subscription-card">
-                    <div className="account-subscription-header">
-                      <div className="account-plan-info-row">
-                        <span className="account-plan-name">Pro Plan</span>
-                        <span className="account-plan-badge-text">(Recommended)</span>
-                      </div>
-                      <div className="account-subscription-price">
-                        <span className="price-amount">$29</span>
-                        <span className="price-period">/month</span>
-                      </div>
-                    </div>
-                    <div className="account-subscription-features">
-                      <ul>
-                        <li>Unlimited Projects</li>
-                        <li>Advanced Analytics</li>
-                        <li>Priority Support</li>
-                        <li>Custom Branding</li>
-                      </ul>
-                    </div>
-                    <div className="account-subscription-actions">
-                      <button className="account-btn-purple">
-                        Upgrade to Pro
-                      </button>
-                    </div>
-                  </div>
+              <>
+                {/* Subscription View Tabs - Always visible when subscription tab is active */}
+                <div className="account-subscription-tabs" style={{ marginBottom: '16px' }}>
+                  <button
+                    onClick={() => setSubscriptionViewTab('manage')}
+                    className={`account-subscription-tab ${subscriptionViewTab === 'manage' ? 'active' : ''}`}
+                  >
+                    Manage Subscription
+                  </button>
+                  <button
+                    onClick={() => setSubscriptionViewTab('usage')}
+                    className={`account-subscription-tab ${subscriptionViewTab === 'usage' ? 'active' : ''}`}
+                  >
+                    Usage
+                  </button>
                 </div>
-              </section>
+
+                <section className="account-section" style={{ display: subscriptionViewTab === 'manage' ? 'block' : 'none' }}>
+                    {loadingSubscription ? (
+                  <div style={{ textAlign: 'center', padding: '20px', color: '#888', fontSize: '13px' }}>
+                    Loading subscription...
+                  </div>
+                ) : (
+                  <>
+                    {/* Canceled Subscription Banner */}
+                    {subscription && subscription.tier === 'free' && subscription.status === 'canceled' && (
+                      <div style={{
+                        background: 'rgba(239, 68, 68, 0.08)',
+                        border: '1px solid rgba(239, 68, 68, 0.2)',
+                        borderRadius: '6px',
+                        padding: '10px 14px',
+                        marginBottom: '16px',
+                        fontSize: '12px',
+                        lineHeight: '1.5'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '13px', fontWeight: '600', color: '#ef4444' }}>
+                            ❌ Subscription Canceled
+                          </span>
+                          <span style={{ color: '#888', fontSize: '12px' }}>
+                            Your subscription has been canceled and you've been moved to the Free plan
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Consolidated Subscription Status Banner */}
+                    {subscription && subscription.tier !== 'free' && (
+                      <div style={{
+                        background: subscription.tier === 'developer' ? 'rgba(147, 51, 234, 0.08)' : subscription.status === 'trialing' ? 'rgba(59, 130, 246, 0.08)' : 'rgba(34, 197, 94, 0.08)',
+                        border: `1px solid ${subscription.tier === 'developer' ? 'rgba(147, 51, 234, 0.2)' : subscription.status === 'trialing' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(34, 197, 94, 0.2)'}`,
+                        borderRadius: '6px',
+                        padding: '10px 14px',
+                        marginBottom: '16px',
+                        fontSize: '12px',
+                        lineHeight: '1.5'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: subscription.status === 'trialing' && subscription.trial_ends_at ? '4px' : '0' }}>
+                          <span style={{ fontSize: '13px', fontWeight: '600', color: subscription.tier === 'developer' ? '#a855f7' : subscription.status === 'trialing' ? '#3b82f6' : '#22c55e' }}>
+                            {subscription.tier === 'developer' ? '🔧 Developer Account' : subscription.status === 'trialing' ? '🎉 Trial Active' : '✅ Active Subscription'}
+                          </span>
+                          <span style={{ color: '#888', fontSize: '12px' }}>
+                            {subscription.tier === 'developer' ? (
+                              'Unlimited access for testing and development'
+                            ) : subscription.status === 'trialing' && subscription.trial_ends_at ? (
+                              `Trial ends ${(() => {
+                                const daysLeft = Math.ceil((new Date(subscription.trial_ends_at) - new Date()) / (1000 * 60 * 60 * 24));
+                                return daysLeft > 0 ? `in ${daysLeft} ${daysLeft === 1 ? 'day' : 'days'}` : 'today';
+                              })()}`
+                            ) : (
+                              `${subscription.tier.charAt(0).toUpperCase() + subscription.tier.slice(1)} Plan${subscription.status === 'past_due' ? ' • Payment Failed' : ''}`
+                            )}
+                          </span>
+                        </div>
+                        {subscription.status === 'trialing' && subscription.trial_ends_at && (
+                          <div style={{ fontSize: '11px', color: '#888', marginTop: '4px' }}>
+                            No payment required yet. You'll only be charged if you don't cancel before {new Date(subscription.trial_ends_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Manage Billing Button (for users with active subscriptions) */}
+                    {subscription && subscription.tier !== 'free' && subscription.stripe_customer_id && (
+                      <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+                        <button
+                          onClick={async () => {
+                            try {
+                              const { data, error } = await supabase.functions.invoke('create-portal-session');
+                              if (error) throw error;
+                              if (data?.url) {
+                                if (window.electronAPI?.openExternal) {
+                                  await window.electronAPI.openExternal(data.url);
+                                } else {
+                                  window.open(data.url, '_blank');
+                                }
+                              }
+                            } catch (err) {
+                              console.error('Error opening billing portal:', err);
+                              setError('Failed to open billing portal. Please try again.');
+                            }
+                          }}
+                          style={{
+                            padding: '10px 20px',
+                            background: 'transparent',
+                            border: '1px solid #4A90E2',
+                            borderRadius: '6px',
+                            color: '#4A90E2',
+                            cursor: 'pointer',
+                            fontSize: '13px',
+                            fontWeight: '500',
+                            transition: 'all 0.2s'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.target.style.background = 'rgba(74, 144, 226, 0.1)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.target.style.background = 'transparent';
+                          }}
+                        >
+                          Manage Billing & Payments
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Billing Period Toggle (only show for paid users selecting new plan) */}
+                    {subscription?.tier === 'free' && (
+                      <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '16px', background: '#222', padding: '4px', borderRadius: '8px', width: 'fit-content', margin: '0 auto 16px auto' }}>
+                        <button
+                          onClick={() => setBillingPeriod('monthly')}
+                          style={{
+                            padding: '8px 24px',
+                            border: 'none',
+                            borderRadius: '6px',
+                            background: billingPeriod === 'monthly' ? '#4A90E2' : 'transparent',
+                            color: billingPeriod === 'monthly' ? '#fff' : '#aaa',
+                            cursor: 'pointer',
+                            fontSize: '14px',
+                            fontWeight: '500',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          Monthly
+                        </button>
+                        <button
+                          onClick={() => setBillingPeriod('annual')}
+                          style={{
+                            padding: '8px 24px',
+                            border: 'none',
+                            borderRadius: '6px',
+                            background: billingPeriod === 'annual' ? '#4A90E2' : 'transparent',
+                            color: billingPeriod === 'annual' ? '#fff' : '#aaa',
+                            cursor: 'pointer',
+                            fontSize: '14px',
+                            fontWeight: '500',
+                            transition: 'all 0.2s',
+                            position: 'relative'
+                          }}
+                        >
+                          Annual
+                          <span style={{
+                            fontSize: '11px',
+                            marginLeft: '6px',
+                            padding: '2px 6px',
+                            background: 'rgba(34, 197, 94, 0.2)',
+                            color: '#22c55e',
+                            borderRadius: '4px',
+                            fontWeight: '600'
+                          }}>
+                            Save 17%
+                          </span>
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="account-subscription-grid">
+                      {/* Free Plan */}
+                      <div className="account-subscription-card" style={{
+                        border: subscription?.tier === 'free' ? '2px solid #22c55e' : '1px solid #333',
+                        opacity: subscription?.tier === 'free' ? 1 : 0.7
+                      }}>
+                        <div className="account-subscription-header">
+                          <div className="account-plan-name">Free</div>
+                          <div className="account-subscription-price">
+                            <span className="price-amount">$0</span>
+                            <span className="price-period">/month</span>
+                          </div>
+                        </div>
+                        <div className="account-subscription-features">
+                          <ul>
+                            <li>1 Project</li>
+                            <li>5 Documents</li>
+                            <li>100MB Storage</li>
+                            <li>Basic Annotations</li>
+                            <li>PDF Viewer</li>
+                          </ul>
+                        </div>
+                        <div className="account-subscription-actions">
+                          {subscription?.tier === 'free' ? (
+                            <button className="account-btn-outline-green" disabled>
+                              Current Plan
+                            </button>
+                          ) : subscription?.tier === 'developer' ? (
+                            <button className="account-btn-secondary" disabled style={{ opacity: 0.5 }}>
+                              Developer Account
+                            </button>
+                          ) : (
+                            <button className="account-btn-secondary" disabled style={{ opacity: 0.5 }}>
+                              Downgrade Available
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Pro Plan */}
+                      <div className="account-subscription-card" style={{
+                        border: (subscription?.tier === 'pro' || subscription?.status === 'trialing') ? '2px solid #4A90E2' : '1px solid #333',
+                        opacity: (subscription?.tier === 'free' || subscription?.tier === 'enterprise' || subscription?.tier === 'developer') ? (subscription?.tier === 'free' ? 1 : 0.7) : 1
+                      }}>
+                        <div className="account-subscription-header">
+                          <div className="account-plan-info-row">
+                            <span className="account-plan-name">Pro</span>
+                            {subscription?.tier !== 'pro' && subscription?.tier !== 'enterprise' && subscription?.tier !== 'developer' && (
+                              <span className="account-plan-badge-text">(Recommended)</span>
+                            )}
+                          </div>
+                          <div className="account-subscription-price">
+                            {billingPeriod === 'annual' && subscription?.tier === 'free' ? (
+                              <>
+                                <span className="price-amount">$99</span>
+                                <span className="price-period">/year</span>
+                                <div style={{ fontSize: '12px', color: '#888', marginTop: '4px', whiteSpace: 'nowrap' }}>
+                                  <span style={{ textDecoration: 'line-through' }}>$119.88</span> Save $20
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <span className="price-amount">$9.99</span>
+                                <span className="price-period">/month</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        <div className="account-subscription-features">
+                          <ul>
+                            <li>Unlimited Projects</li>
+                            <li>Unlimited Documents</li>
+                            <li>10GB Storage</li>
+                            <li>Survey Tools</li>
+                            <li>Templates & Regions</li>
+                            <li>Excel Export</li>
+                            <li>OneDrive Integration</li>
+                          </ul>
+                        </div>
+                        <div className="account-subscription-actions">
+                          {subscription?.tier === 'pro' ? (
+                            <button className="account-btn-outline-green" disabled>
+                              Current Plan
+                            </button>
+                          ) : subscription?.tier === 'developer' ? (
+                            <button className="account-btn-secondary" disabled style={{ opacity: 0.5 }}>
+                              Developer Account
+                            </button>
+                          ) : subscription?.tier === 'enterprise' ? (
+                            <button className="account-btn-secondary" disabled style={{ opacity: 0.5 }}>
+                              On Higher Plan
+                            </button>
+                          ) : (
+                            <StripeCheckout
+                              tier="pro"
+                              billingPeriod={billingPeriod}
+                              className="account-btn-purple"
+                            >
+                              {billingPeriod === 'annual' ? 'Start Annual Trial' : 'Start 7-Day Trial'}
+                            </StripeCheckout>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Enterprise Plan */}
+                      <div className="account-subscription-card" style={{
+                        opacity: subscription?.tier === 'enterprise' ? 1 : subscription?.tier === 'developer' ? 0.7 : 1
+                      }}>
+                        <div className="account-subscription-header">
+                          <div className="account-plan-name">Enterprise</div>
+                          <div className="account-subscription-price">
+                            <span className="price-amount">$20</span>
+                            <span className="price-period">/user/mo</span>
+                            <div style={{ fontSize: '12px', color: '#888', marginTop: '4px', whiteSpace: 'nowrap' }}>
+                              Minimum 3 users
+                            </div>
+                          </div>
+                        </div>
+                        <div className="account-subscription-features">
+                          <ul>
+                            <li>Everything in Pro</li>
+                            <li>Team Collaboration</li>
+                            <li>Real-time Editing</li>
+                            <li>1TB Team Storage</li>
+                            <li>SSO & Admin Tools</li>
+                            <li>Priority Support</li>
+                            <li>Custom Integrations</li>
+                          </ul>
+                        </div>
+                        <div className="account-subscription-actions">
+                          {subscription?.tier === 'enterprise' ? (
+                            <button className="account-btn-outline-green" disabled>
+                              Current Plan
+                            </button>
+                          ) : subscription?.tier === 'developer' ? (
+                            <button className="account-btn-secondary" disabled style={{ opacity: 0.5 }}>
+                              Developer Account
+                            </button>
+                          ) : (
+                            <button
+                              className="account-btn-secondary"
+                              onClick={() => window.open('mailto:support@yourcompany.com?subject=Enterprise Plan Inquiry', '_blank')}
+                            >
+                              Contact Sales
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    </>
+                  )}
+                </section>
+
+                <section className="account-section" style={{ display: subscriptionViewTab === 'usage' ? 'block' : 'none' }}>
+                  <UsageIndicator />
+                </section>
+              </>
             )}
 
             {activeTab === 'connected-services' && (

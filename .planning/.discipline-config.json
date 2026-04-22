@@ -1,0 +1,4 @@
+{
+  "enforce_from": "2026-04-10",
+  "_note": "Phases whose CONTEXT.md was created before enforce_from are grandfathered. Only Phase 11 has been retroactively reconciled (closing entry for milestone v2.0). All earlier phases are accepted as historical. Any new phase created on or after 2026-04-10 must follow the full PAUL-style discipline: Acceptance Criteria (Given/When/Then), DO NOT CHANGE boundaries, and a RECONCILIATION.md at phase close."
+}

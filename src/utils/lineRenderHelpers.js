@@ -1,0 +1,272 @@
+/**
+ * Line/arrow render-spec helpers.
+ *
+ * Pure-JS (no React, no JSX) — Node test runner can import directly.
+ * The .jsx renderer (svgAnnotationRenderers.jsx) wraps these specs 1:1
+ * via React.createElement, so visual output is locked here.
+ *
+ * Phase 15 contract:
+ *   - LINE-01 / LINE-02: curved path branch + 1px render hysteresis.
+ *   - ARROW-01 / ARROW-02: curved-arrow tangent via getCurveEndAngle at t=1.
+ *   - ARROW-04: 6-style arrowhead dispatch with fallback + style override.
+ *
+ * Public API (consumed by tests/svgLineRenderer.test.mjs +
+ * tests/renderArrowhead.test.mjs + src/utils/svgAnnotationRenderers.jsx):
+ *   export function buildLineRenderSpec(obj): Spec
+ *   export function buildArrowheadRenderSpec(style, tipX, tipY, angleDeg, color, sw): ArrowheadSpec
+ *   export { ARROWHEAD_STYLES }  // re-exported from the Callout types module
+ */
+
+import {
+  getCurvedPath,
+  getCurveEndAngle,
+  distanceToLineSegment,
+} from './lineGeometry.js';
+import { ARROWHEAD_STYLES } from '../components/Callout/types.js';
+
+export { ARROWHEAD_STYLES };
+
+/**
+ * Resolve absolute endpoint coords from a Fabric.Line toJSON shape.
+ * Fabric stores x1/y1/x2/y2 as offsets from the bounding box CENTER, and
+ * left/top as the bounding box TOP-LEFT. This matches renderLine's existing
+ * coordinate derivation (svgAnnotationRenderers.jsx:145-150) exactly so the
+ * straight branch remains byte-identical pre-vs-post Phase 15.
+ *
+ * @param {object} obj - Fabric.Line toJSON output
+ * @returns {{ start: {x:number, y:number}, end: {x:number, y:number} }}
+ */
+function getAbsoluteEndpoints(obj) {
+  const centerX = (obj.left || 0) + (obj.width || 0) / 2;
+  const centerY = (obj.top || 0) + (obj.height || 0) / 2;
+  return {
+    start: { x: centerX + (obj.x1 || 0), y: centerY + (obj.y1 || 0) },
+    end: { x: centerX + (obj.x2 || 0), y: centerY + (obj.y2 || 0) },
+  };
+}
+
+/**
+ * Build an arrowhead render spec for one of 6 styles.
+ *
+ * Geometry locked per 15-UI-SPEC §"Section C.1-C.6". Head-size formula
+ * max(8, sw*3) per UI-SPEC §"Section D" — preserves pre-Phase-15 arrow visuals
+ * (legacy PAL createArrowhead used max(12, sw*3); we intentionally DO NOT
+ * inherit that 12-floor — Phase 15 standardizes on the 8-floor used at
+ * svgAnnotationRenderers.jsx:163 pre-Phase-15).
+ *
+ * Stroke-width floor of 2 on the 5 non-SOLID_TRIANGLE styles ensures visibility
+ * on 1px base lines (lifted from legacy PAL createArrowhead). SOLID_TRIANGLE
+ * is a filled polygon so it needs no stroke floor.
+ *
+ * @param {string} style - One of ARROWHEAD_STYLES values (or null/NONE)
+ * @param {number} tipX - Absolute X of the arrowhead tip (line endpoint 2)
+ * @param {number} tipY - Absolute Y of the arrowhead tip
+ * @param {number} angleDeg - Rotation angle in degrees (tangent at t=1 for curved)
+ * @param {string} color - Stroke/fill color
+ * @param {number} sw - Base line strokeWidth
+ * @returns {object} - Spec with `.kind` ∈ {none, solidTriangle, openTriangle,
+ *                     openCircle, vShape, horizontalLine} + primitive attrs
+ */
+export function buildArrowheadRenderSpec(style, tipX, tipY, angleDeg, color, sw) {
+  if (style === ARROWHEAD_STYLES.NONE || style == null) {
+    return { kind: 'none' };
+  }
+  // UX: Head-size formula floors at 8 (not 12) to preserve pre-Phase-15 arrow
+  // visuals per UI-SPEC §D. Stroke-width floor of 2 on the 5 non-SOLID_TRIANGLE
+  // styles ensures visibility on 1px lines (lifted from legacy PAL createArrowhead).
+  const headSize = Math.max(8, sw * 3);
+  const strokeWidth = Math.max(2, sw);
+  const angleRad = (angleDeg * Math.PI) / 180;
+  const transform = `translate(${tipX},${tipY}) rotate(${angleDeg})`;
+
+  // Shared imperative args embedded on every spec — useful for tests that want
+  // to re-derive geometry without duplicating the inputs.
+  const shared = { tipX, tipY, angleDeg, color, sw };
+
+  switch (style) {
+    case ARROWHEAD_STYLES.SOLID_TRIANGLE:
+      return {
+        kind: 'solidTriangle',
+        ...shared,
+        polygon: {
+          points: `${-headSize / 3},${-headSize / 2} ${headSize * 2 / 3},0 ${-headSize / 3},${headSize / 2}`,
+          fill: color,
+          transform,
+        },
+      };
+    case ARROWHEAD_STYLES.OPEN_TRIANGLE:
+      return {
+        kind: 'openTriangle',
+        ...shared,
+        polygon: {
+          points: `${-headSize / 3},${-headSize / 2} ${headSize * 2 / 3},0 ${-headSize / 3},${headSize / 2}`,
+          fill: 'none',
+          stroke: color,
+          strokeWidth,
+          strokeLinejoin: 'round',
+          transform,
+        },
+      };
+    case ARROWHEAD_STYLES.OPEN_CIRCLE:
+      return {
+        kind: 'openCircle',
+        ...shared,
+        circle: {
+          cx: tipX,
+          cy: tipY,
+          r: headSize / 2,
+          fill: 'none',
+          stroke: color,
+          strokeWidth,
+        },
+      };
+    case ARROWHEAD_STYLES.V_SHAPE: {
+      // UX: V-shape has 30° half-spread off the line axis — reads as a lighter,
+      // sharper arrowhead. Lifted from legacy PAL createArrowhead V_SHAPE branch.
+      const armLength = headSize;
+      const armSpread = Math.PI / 6; // 30°
+      const arm1X = tipX - armLength * Math.cos(angleRad - armSpread);
+      const arm1Y = tipY - armLength * Math.sin(angleRad - armSpread);
+      const arm2X = tipX - armLength * Math.cos(angleRad + armSpread);
+      const arm2Y = tipY - armLength * Math.sin(angleRad + armSpread);
+      return {
+        kind: 'vShape',
+        ...shared,
+        polyline: {
+          points: `${arm1X},${arm1Y} ${tipX},${tipY} ${arm2X},${arm2Y}`,
+          fill: 'none',
+          stroke: color,
+          strokeWidth,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+        },
+      };
+    }
+    case ARROWHEAD_STYLES.HORIZONTAL_LINE: {
+      // UX: Perpendicular tick at the tip — reads as a "stop" or
+      // "measurement end" marker. Half-length = headSize/2 on each side of the
+      // tip along the +90° perpendicular direction.
+      const halfL = headSize / 2;
+      const perp = angleRad + Math.PI / 2;
+      return {
+        kind: 'horizontalLine',
+        ...shared,
+        line: {
+          x1: tipX + halfL * Math.cos(perp),
+          y1: tipY + halfL * Math.sin(perp),
+          x2: tipX - halfL * Math.cos(perp),
+          y2: tipY - halfL * Math.sin(perp),
+          stroke: color,
+          strokeWidth,
+          strokeLinecap: 'round',
+        },
+      };
+    }
+    default:
+      return { kind: 'none' };
+  }
+}
+
+/**
+ * Build a full line/arrow render spec from a Fabric.Line toJSON shape.
+ *
+ * Branches:
+ *   - 'straight': obj.data.midpoint absent OR midpoint distance ≤ 1px from
+ *     the straight baseline (render hysteresis — prevents visible "1-pixel
+ *     curve" artifacts from floating-point noise in the midpoint handle).
+ *   - 'curved': obj.data.midpoint present AND distance > 1px from baseline.
+ *     Emits <path d="M sx,sy Q cx,cy ex,ey"> per getCurvedPath.
+ *
+ * Arrowhead style resolution priority:
+ *   1. obj.data.arrowheadStyle (explicit override, including 'none')
+ *   2. Fallback: tool === 'arrow' ? SOLID_TRIANGLE : NONE
+ *
+ * Straight-branch output is byte-identical to the pre-Phase-15 renderLine
+ * (svgAnnotationRenderers.jsx:141-199) when no data.midpoint is set.
+ *
+ * @param {object} obj - Fabric.Line toJSON output with optional
+ *   `data: { midpoint, arrowheadStyle }` (Fabric CUSTOM_PROPS-persisted).
+ * @returns {object} - Spec with `.kind` ∈ {straight, curved}, `.line` or
+ *   `.path`, and `.arrowhead` (always present, may be { kind: 'none' }).
+ */
+export function buildLineRenderSpec(obj) {
+  const { start, end } = getAbsoluteEndpoints(obj);
+  const { x: x1, y: y1 } = start;
+  const { x: x2, y: y2 } = end;
+  const isArrow = obj.tool === 'arrow';
+  const strokeColor = obj.stroke || '#000';
+  const sw = obj.strokeWidth || 2;
+
+  // Arrowhead style resolution — explicit override wins, else tool-based
+  // fallback per UI-SPEC §"Section C". `??` honors 'none' as an explicit
+  // override (callers can force-disable the arrowhead on a `tool: 'arrow'`).
+  const explicitStyle = obj.data?.arrowheadStyle;
+  const effectiveStyle = explicitStyle
+    ?? (isArrow ? ARROWHEAD_STYLES.SOLID_TRIANGLE : ARROWHEAD_STYLES.NONE);
+
+  // Curved branch activation — 1px render hysteresis per UI-SPEC §"Section B".
+  // Clamp to straight when data.midpoint sits within 1px of the straight
+  // baseline to prevent visible "1-pixel curve" artifacts from floating-point
+  // noise introduced by drag handles.
+  const midpoint = obj.data?.midpoint;
+  const isCurved = !!midpoint
+    && distanceToLineSegment(midpoint, start, end) > 1;
+
+  if (isCurved) {
+    // UX: Curved arrow arrowhead rotates to the curve's tangent at t=1
+    // (ARROW-01/02) — use getCurveEndAngle, NOT Math.atan2(dy, dx).
+    const angleDeg = getCurveEndAngle(start, end, midpoint);
+    return {
+      kind: 'curved',
+      path: {
+        d: getCurvedPath(start, end, midpoint),
+        stroke: strokeColor,
+        strokeWidth: sw,
+        strokeLinecap: 'round',
+        // CRITICAL (Pitfall 5): <path> must have fill='none' or the quadratic
+        // bezier fills solid black between the curve and the start-to-end
+        // chord. Always emit this explicitly.
+        fill: 'none',
+      },
+      arrowhead: buildArrowheadRenderSpec(
+        effectiveStyle, x2, y2, angleDeg, strokeColor, sw
+      ),
+    };
+  }
+
+  // Straight branch — byte-identical to pre-Phase-15 renderLine when no
+  // data.midpoint is set. Line-shortening when the arrowhead is a filled
+  // triangle (polygon) prevents the line tail poking through the arrowhead —
+  // see svgAnnotationRenderers.jsx:165-167 pre-Phase-15.
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const angleRad = Math.atan2(dy, dx);
+  const angleDeg = angleRad * (180 / Math.PI);
+
+  let lineEndX = x2;
+  let lineEndY = y2;
+  if (
+    effectiveStyle === ARROWHEAD_STYLES.SOLID_TRIANGLE
+    || effectiveStyle === ARROWHEAD_STYLES.OPEN_TRIANGLE
+  ) {
+    const headSize = Math.max(8, sw * 3);
+    lineEndX = x2 - (headSize / 3) * Math.cos(angleRad);
+    lineEndY = y2 - (headSize / 3) * Math.sin(angleRad);
+  }
+
+  return {
+    kind: 'straight',
+    line: {
+      x1,
+      y1,
+      x2: lineEndX,
+      y2: lineEndY,
+      stroke: strokeColor,
+      strokeWidth: sw,
+      strokeLinecap: 'round',
+    },
+    arrowhead: buildArrowheadRenderSpec(
+      effectiveStyle, x2, y2, angleDeg, strokeColor, sw
+    ),
+  };
+}

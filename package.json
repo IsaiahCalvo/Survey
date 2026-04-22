@@ -6,9 +6,14 @@
   "scripts": {
     "dev:ui": "vite",
     "dev:electron": "wait-on -t 30000 http://localhost:5173 && NODE_ENV=development electron .",
-    "dev": "concurrently -k \"npm:dev:ui\" \"npm:dev:electron\"",
+    "dev:legacy": "concurrently -k \"npm:dev:ui\" \"npm:dev:electron\"",
+    "dev": "node find-port.js",
     "build": "vite build",
-    "dist": "npm run build && electron-builder"
+    "dist": "npm run build && electron-builder",
+    "test": "node --test tests/*.test.mjs",
+    "test:debug": "npx playwright test --config debug/playwright.config.mjs",
+    "debug:scenario": "npx playwright test --config debug/playwright.config.mjs --grep",
+    "debug:process": "node debug/lib/post-process.mjs"
   },
   "dependencies": {
     "@azure/msal-browser": "^4.26.2",
@@ -18,13 +23,46 @@
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "@stripe/stripe-js": "^8.5.3",
     "@supabase/supabase-js": "^2.81.1",
+    "@syncfusion/ej2-angular-base": "file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/ej2-angular-base",
+    "@syncfusion/ej2-angular-pdfviewer": "file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/ej2-angular-pdfviewer",
+    "@syncfusion/ej2-base": "file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/ej2-base",
+    "@syncfusion/ej2-buttons": "file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/ej2-buttons",
+    "@syncfusion/ej2-calendars": "file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/ej2-calendars",
+    "@syncfusion/ej2-compression": "file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/ej2-compression",
+    "@syncfusion/ej2-data": "file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/ej2-data",
+    "@syncfusion/ej2-drawings": "file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/ej2-drawings",
+    "@syncfusion/ej2-dropdowns": "file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/ej2-dropdowns",
+    "@syncfusion/ej2-excel-export": "file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/ej2-excel-export",
+    "@syncfusion/ej2-file-utils": "file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/ej2-file-utils",
+    "@syncfusion/ej2-filemanager": "file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/ej2-filemanager",
+    "@syncfusion/ej2-grids": "file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/ej2-grids",
+    "@syncfusion/ej2-icons": "file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/ej2-icons",
+    "@syncfusion/ej2-inplace-editor": "file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/ej2-inplace-editor",
+    "@syncfusion/ej2-inputs": "file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/ej2-inputs",
+    "@syncfusion/ej2-layouts": "file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/ej2-layouts",
+    "@syncfusion/ej2-lists": "file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/ej2-lists",
+    "@syncfusion/ej2-navigations": "file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/ej2-navigations",
+    "@syncfusion/ej2-notifications": "file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/ej2-notifications",
+    "@syncfusion/ej2-pdf": "file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/ej2-pdf",
+    "@syncfusion/ej2-pdf-data-extract": "file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/ej2-pdf-data-extract",
+    "@syncfusion/ej2-pdf-export": "file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/ej2-pdf-export",
+    "@syncfusion/ej2-pdfviewer": "file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/ej2-pdfviewer",
+    "@syncfusion/ej2-popups": "file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/ej2-popups",
+    "@syncfusion/ej2-react-base": "file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/ej2-react-base",
+    "@syncfusion/ej2-react-pdfviewer": "file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/ej2-react-pdfviewer",
+    "@syncfusion/ej2-richtexteditor": "file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/ej2-richtexteditor",
+    "@syncfusion/ej2-splitbuttons": "file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/ej2-splitbuttons",
+    "@syncfusion/ej2-vue-base": "file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/ej2-vue-base",
+    "@syncfusion/ej2-vue-pdfviewer": "file:../Syncfusion/32.1.19/PDF Viewer SDK/JavaScript/Packages/ej2-vue-pdfviewer",
     "annotpdf": "^1.0.15",
     "chokidar": "^5.0.0",
     "exceljs": "^4.4.0",
+    "fabric": "^5.5.2",
     "isomorphic-fetch": "^3.0.0",
     "martinez-polygon-clipping": "^0.7.4",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^3.11.174",
+    "polygon-clipping": "^0.15.7",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-window": "^2.2.1",
@@ -32,6 +70,7 @@
     "xlsx-js-style": "^1.2.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@vitejs/plugin-react": "^4.2.1",
     "buffer": "^6.0.3",
     "concurrently": "^8.2.0",
@@ -39,25 +78,40 @@
     "electron": "^25.2.1",
     "electron-builder": "^24.8.0",
     "events": "^3.3.0",
+    "sharp": "^0.34.5",
     "stream-browserify": "^3.0.0",
+    "to-ico": "^1.1.5",
     "util": "^0.12.5",
     "vite": "^5.2.0",
     "vite-plugin-node-polyfills": "^0.24.0",
-    "wait-on": "^7.0.1"
+    "wait-on": "^7.0.1",
+    "ws": "^8.18.3"
   },
   "build": {
     "appId": "com.example.survey",
+    "icon": "build/icon.png",
+    "extraMetadata": {
+      "main": "src/electron-main.js"
+    },
     "files": [
       "dist/**/*",
-      "electron-main.js",
-      "preload.js",
-      "package.json"
+      "src/electron-main.js",
+      "src/preload.js",
+      "package.json",
+      "build/icon.icns",
+      "build/icon.png"
     ],
+    "asar": true,
     "mac": {
-      "target": "dmg"
+      "target": "dmg",
+      "icon": "build/icon.icns"
     },
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "build/icon.png"
+    },
+    "linux": {
+      "icon": "build/icon.png"
     }
   }
 }

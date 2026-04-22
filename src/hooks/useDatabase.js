@@ -1,6 +1,20 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase, isSupabaseAvailable } from '../supabaseClient';
+import { supabase, isSupabaseAvailable, isSchemaError, isConnectedServicesAvailable, setConnectedServicesAvailable } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
+
+const isSupabaseNotFoundError = (error) => {
+  if (!error) return false;
+
+  const code = String(error.code || '').toUpperCase();
+  if (code === 'PGRST116') return true;
+
+  if (error.status === 404 || error.statusCode === 404) return true;
+
+  const message = String(error.message || '').toLowerCase();
+  if (message.includes('no rows') || message.includes('not found')) return true;
+
+  return false;
+};
 
 // ============================================
 // USER SETTINGS HOOKS
@@ -171,7 +185,6 @@ export const useDocuments = (projectId = null) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // console.log('useDocuments render. projectId:', projectId, 'documents count:', documents.length);
 
   useEffect(() => {
     if (!user || !isSupabaseAvailable()) {
@@ -217,7 +230,6 @@ export const useDocuments = (projectId = null) => {
         .single();
 
       if (error) throw error;
-      console.log('createDocument success, updating state with:', data);
       setDocuments([data, ...documents]);
       return data;
     } catch (err) {
@@ -248,7 +260,7 @@ export const useDocuments = (projectId = null) => {
     try {
       const { error } = await supabase.from('documents').delete().eq('id', id);
 
-      if (error) throw error;
+      if (error && !isSupabaseNotFoundError(error)) throw error;
       setDocuments(documents.filter((d) => d.id !== id));
     } catch (err) {
       setError(err.message);
@@ -377,6 +389,59 @@ export const useTemplates = () => {
 };
 
 // ============================================
+// TEMPLATE UTILITY FUNCTIONS
+// ============================================
+
+/**
+ * Get all documents (surveys) using a specific template, excluding the current survey
+ * Used to check if a template can be modified or if it's shared with other surveys
+ * @param {string} templateId - The template ID to check
+ * @param {string} currentSurveyId - The current survey/document ID to exclude
+ * @returns {Promise<Array<{id: string, name: string}>>} - Array of other surveys using this template
+ */
+export async function getOtherSurveysUsingTemplate(templateId, currentSurveyId) {
+  if (!isSupabaseAvailable()) {
+    return [];
+  }
+
+  if (!templateId) {
+    return [];
+  }
+
+  // Validate that templateId is a valid UUID format (Supabase requires UUID)
+  // Skip local template IDs like "tpl-xxx" which aren't synced to Supabase
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(templateId)) {
+    // Not a UUID - this is a local-only template, no other surveys can be using it
+    return [];
+  }
+
+  try {
+    let query = supabase
+      .from('documents')
+      .select('id, name')
+      .eq('template_id', templateId);
+
+    // Exclude current survey if provided
+    if (currentSurveyId) {
+      query = query.neq('id', currentSurveyId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Error checking template usage:', error);
+      throw error;
+    }
+
+    return data || [];
+  } catch (err) {
+    console.error('Error in getOtherSurveysUsingTemplate:', err);
+    return [];
+  }
+}
+
+// ============================================
 // SPACES HOOKS
 // ============================================
 
@@ -479,7 +544,7 @@ export const useSpaces = (documentId) => {
 export const useStorage = () => {
   const { user } = useAuth();
 
-  const uploadDocument = async (file, projectId, onProgress) => {
+  const uploadDocument = useCallback(async (file, projectId, onProgress) => {
     if (!user || !isSupabaseAvailable()) {
       throw new Error('User not authenticated or Supabase not available');
     }
@@ -496,9 +561,9 @@ export const useStorage = () => {
 
     if (error) throw error;
     return filePath;
-  };
+  }, [user]);
 
-  const uploadDataFile = async (data, filePath, onProgress) => {
+  const uploadDataFile = useCallback(async (data, filePath, onProgress) => {
     if (!user || !isSupabaseAvailable()) {
       throw new Error('User not authenticated or Supabase not available');
     }
@@ -513,9 +578,9 @@ export const useStorage = () => {
 
     if (error) throw error;
     return filePath;
-  };
+  }, [user]);
 
-  const downloadDocument = async (filePath) => {
+  const downloadDocument = useCallback(async (filePath) => {
     if (!isSupabaseAvailable()) {
       throw new Error('Supabase not available');
     }
@@ -526,9 +591,9 @@ export const useStorage = () => {
 
     if (error) throw error;
     return data;
-  };
+  }, []);
 
-  const deleteDocumentFile = async (filePath) => {
+  const deleteDocumentFile = useCallback(async (filePath) => {
     if (!isSupabaseAvailable()) {
       throw new Error('Supabase not available');
     }
@@ -538,15 +603,15 @@ export const useStorage = () => {
       .remove([filePath]);
 
     if (error) throw error;
-  };
+  }, []);
 
-  const getDocumentUrl = (filePath) => {
+  const getDocumentUrl = useCallback((filePath) => {
     if (!isSupabaseAvailable()) return null;
 
     const { data } = supabase.storage.from('documents').getPublicUrl(filePath);
 
     return data.publicUrl;
-  };
+  }, []);
 
   return {
     uploadDocument,
@@ -583,6 +648,12 @@ export const useConnectedServices = () => {
   const fetchServices = async () => {
     if (!user || !isSupabaseAvailable()) return;
 
+    // Skip if we already know the table isn't available
+    if (isConnectedServicesAvailable() === false) {
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       const { data, error } = await supabase
@@ -590,7 +661,21 @@ export const useConnectedServices = () => {
         .select('*')
         .eq('user_id', user.id);
 
-      if (error) throw error;
+      // Silently handle 406 errors (schema cache not ready)
+      if (error) {
+        console.error('[useConnectedServices] Error fetching:', error);
+        if (isSchemaError(error)) {
+          // Mark table as unavailable to prevent repeated requests
+          setConnectedServicesAvailable(false);
+          setLoading(false);
+          return;
+        }
+        throw error;
+      }
+
+      // Table is available
+      setConnectedServicesAvailable(true);
+
 
       // Convert array to object keyed by service_name for easier access
       const servicesMap = {};
@@ -599,7 +684,7 @@ export const useConnectedServices = () => {
       });
       setServices(servicesMap);
     } catch (err) {
-      console.error('Error fetching connected services:', err);
+      console.error('[useConnectedServices] Error fetching connected services:', err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -715,6 +800,11 @@ export const DEFAULT_TOOL_PREFERENCES = {
   ellipse: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 0, strokeOpacity: 100 },
   line: { strokeColor: '#ff0000', strokeWidth: 2, strokeOpacity: 100 },
   arrow: { strokeColor: '#ff0000', strokeWidth: 2, strokeOpacity: 100 },
+  callout: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 90, strokeOpacity: 100 },
+  // Counter (Shottr-style numbered badge) — strokeColor is the circle fill;
+  // strokeWidth is repurposed as the badge radius (px in page-space) so it shares
+  // the bottom toolbar Size input wiring with all other shape tools.
+  counter: { strokeColor: '#ef4444', strokeWidth: 14, strokeOpacity: 100 },
   text: { strokeColor: '#000000', strokeOpacity: 100 },
   note: { strokeColor: '#ffff00', fillColor: '#ffff00', strokeOpacity: 100, fillOpacity: 100 },
   underline: { strokeColor: '#ff0000', strokeOpacity: 100 },
@@ -724,10 +814,12 @@ export const DEFAULT_TOOL_PREFERENCES = {
 };
 
 // Tools that support stroke width
-export const TOOLS_WITH_STROKE_WIDTH = ['pen', 'highlighter', 'eraser', 'rect', 'ellipse', 'line', 'arrow'];
+// Counter included so the Size input slot is treated as a real width source for
+// per-tool persistence (counter repurposes the value as its radius).
+export const TOOLS_WITH_STROKE_WIDTH = ['pen', 'highlighter', 'eraser', 'rect', 'ellipse', 'line', 'arrow', 'callout', 'counter'];
 
 // Tools that support fill
-export const TOOLS_WITH_FILL = ['rect', 'ellipse', 'note'];
+export const TOOLS_WITH_FILL = ['rect', 'ellipse', 'note', 'callout'];
 
 /**
  * Hook for managing per-document, per-tool preferences

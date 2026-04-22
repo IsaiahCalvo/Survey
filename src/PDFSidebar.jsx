@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useImperativeHandle } from 'react';
 import Icon from './Icons';
 import PagesPanel from './sidebar/PagesPanel';
 import SearchTextPanel from './sidebar/SearchTextPanel';
@@ -7,7 +7,7 @@ import SpacesPanel from './sidebar/SpacesPanel';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
-const PDFSidebar = ({
+const PDFSidebar = React.forwardRef(({
   pdfDoc,
   numPages,
   pageNum,
@@ -29,6 +29,7 @@ const PDFSidebar = ({
   onResetPage,
   onReorderPages,
   pageTransformations,
+  getThumbnail,
   bookmarks,
   onBookmarkCreate,
   onBookmarkUpdate,
@@ -53,11 +54,24 @@ const PDFSidebar = ({
   scale,
   tabId,
   onPageDrop,
-  onToggleCollapse
-}) => {
+  onToggleCollapse,
+  features,
+  getCanvasAnnotationVisibilityState = null,
+  onToggleCanvasAnnotations = null,
+  getSurveyAnnotationVisibilityState = null,
+  onToggleSurveyAnnotations = null,
+  selectedSpaceId = null,
+  onToggleRegionOverlay = null,
+  getRegionOverlayEnabled = null,
+  isRegionOverlayToggleEnabled = null,
+  showSurveyPanel = false,
+  selectedModuleId = null
+}, ref) => {
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [activeTab, setActiveTab] = useState('pages'); // 'pages' | 'search' | 'bookmarks' | 'spaces'
   const [hoveredTabId, setHoveredTabId] = useState(null);
+  const [searchFocusRequestToken, setSearchFocusRequestToken] = useState(0);
+  const [searchSelectOnFocus, setSearchSelectOnFocus] = useState(true);
 
   const toggleCollapse = useCallback(() => {
     setIsCollapsed(prev => {
@@ -69,6 +83,22 @@ const PDFSidebar = ({
     });
   }, [onToggleCollapse]);
 
+  useImperativeHandle(ref, () => ({
+    openSearchPanel: ({ focus = true, select = true } = {}) => {
+      setIsCollapsed((prev) => {
+        if (prev && typeof onToggleCollapse === 'function') {
+          onToggleCollapse(false);
+        }
+        return false;
+      });
+      setActiveTab('search');
+      if (focus) {
+        setSearchSelectOnFocus(Boolean(select));
+        setSearchFocusRequestToken((prev) => prev + 1);
+      }
+    }
+  }), [onToggleCollapse]);
+
   const tabs = [
     { id: 'pages', label: 'Pages', icon: 'pages' },
     { id: 'search', label: 'Search Text', icon: 'search' },
@@ -78,7 +108,7 @@ const PDFSidebar = ({
 
   return (
     <div style={{
-      width: isCollapsed ? '48px' : '280px',
+      width: isCollapsed ? '48px' : '272px',
       height: '100%',
       background: '#252525',
       borderRight: '1px solid #3a3a3a',
@@ -166,10 +196,11 @@ const PDFSidebar = ({
                   }
                 }}
               >
-                <Icon 
-                  name={tab.icon} 
-                  size={16} 
+                <Icon
+                  name={tab.icon}
+                  size={16}
                   color={activeTab === tab.id ? '#4A90E2' : '#999'}
+                  style={tab.icon === 'pages' ? { boxSizing: 'content-box', marginTop: '3px' } : undefined}
                 />
                 <span>{tab.label}</span>
               </button>
@@ -184,7 +215,10 @@ const PDFSidebar = ({
             flexDirection: 'column',
             background: '#252525'
           }}>
-            {activeTab === 'pages' && (
+            {/* Persistence: Keep all panels mounted but hide inactive ones using display: none */}
+
+            {/* Pages Panel */}
+            <div style={{ display: activeTab === 'pages' ? 'flex' : 'none', flex: 1, flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
               <PagesPanel
                 pdfDoc={pdfDoc}
                 numPages={numPages}
@@ -202,14 +236,17 @@ const PDFSidebar = ({
                 onResetPage={onResetPage}
                 onReorderPages={onReorderPages}
                 pageTransformations={pageTransformations}
+                getThumbnail={getThumbnail}
                 shouldShowPage={shouldShowPage}
                 activeSpacePages={activeSpacePages}
                 scale={scale}
                 tabId={tabId}
-                onPageDragStart={onPageDrop ? () => {} : undefined}
+                onPageDragStart={onPageDrop ? () => { } : undefined}
               />
-            )}
-            {activeTab === 'search' && (
+            </div>
+
+            {/* Search Panel */}
+            <div style={{ display: activeTab === 'search' ? 'flex' : 'none', flex: 1, flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
               <SearchTextPanel
                 pdfDoc={pdfDoc}
                 numPages={numPages}
@@ -219,9 +256,14 @@ const PDFSidebar = ({
                 currentMatchIndex={currentMatchIndex}
                 onSearchResultsChange={onSearchResultsChange}
                 onCurrentMatchIndexChange={onCurrentMatchIndexChange}
+                isActive={activeTab === 'search'}
+                focusRequestToken={searchFocusRequestToken}
+                selectOnFocus={searchSelectOnFocus}
               />
-            )}
-            {activeTab === 'bookmarks' && (
+            </div>
+
+            {/* Bookmarks Panel */}
+            <div style={{ display: activeTab === 'bookmarks' ? 'flex' : 'none', flex: 1, flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
               <BookmarksPanel
                 bookmarks={bookmarks}
                 onBookmarkCreate={onBookmarkCreate}
@@ -231,8 +273,10 @@ const PDFSidebar = ({
                 pageNum={pageNum}
                 numPages={numPages}
               />
-            )}
-            {activeTab === 'spaces' && (
+            </div>
+
+            {/* Spaces Panel */}
+            <div style={{ display: activeTab === 'spaces' ? 'flex' : 'none', flex: 1, flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
               <SpacesPanel
                 spaces={spaces}
                 activeSpaceId={activeSpaceId}
@@ -250,8 +294,19 @@ const PDFSidebar = ({
                 onExportSpacePDF={onExportSpacePDF}
                 isRegionSelectionActive={isRegionSelectionActive}
                 numPages={numPages}
+                features={features}
+                getCanvasAnnotationVisibilityState={getCanvasAnnotationVisibilityState}
+                onToggleCanvasAnnotations={onToggleCanvasAnnotations}
+                getSurveyAnnotationVisibilityState={getSurveyAnnotationVisibilityState}
+                onToggleSurveyAnnotations={onToggleSurveyAnnotations}
+                externalSelectedSpaceId={selectedSpaceId}
+                onToggleRegionOverlay={onToggleRegionOverlay}
+                getRegionOverlayEnabled={getRegionOverlayEnabled}
+                isRegionOverlayToggleEnabled={isRegionOverlayToggleEnabled}
+                showSurveyPanel={showSurveyPanel}
+                selectedModuleId={selectedModuleId}
               />
-            )}
+            </div>
           </div>
         </>
       )}
@@ -304,9 +359,9 @@ const PDFSidebar = ({
                   e.currentTarget.style.background = 'transparent';
                 }}
               >
-                <Icon 
-                  name={tab.icon} 
-                  size={20} 
+                <Icon
+                  name={tab.icon}
+                  size={20}
                   color="#999"
                   style={{ width: '20px', height: '20px', flexShrink: 0 }}
                 />
@@ -341,6 +396,8 @@ const PDFSidebar = ({
       )}
     </div>
   );
-};
+});
+
+PDFSidebar.displayName = 'PDFSidebar';
 
 export default PDFSidebar;

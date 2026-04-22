@@ -1,0 +1,16 @@
+{
+  "scenario": "zoom-flicker",
+  "result": "pass",
+  "captureStartMs": 900,
+  "startTime": "2026-03-13T04:07:42.432Z",
+  "endTime": "2026-03-13T04:07:46.901Z",
+  "criteriaResults": {
+    "canvasContainersPresent": { "pass": true, "value": 7 },
+    "noConsoleErrors": { "pass": true, "errorCount": 0 }
+  },
+  "artifacts": [
+    { "type": "screenshot", "filename": "step-00_1000ms_baseline-initial-state.png" },
+    { "type": "screenshot", "filename": "step-01_2000ms_before-zoom-100pct.png" },
+    { "type": "screenshot", "filename": "step-01_3000ms_after-zoom-100pct.png" }
+  ]
+}

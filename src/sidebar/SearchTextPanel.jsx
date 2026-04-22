@@ -110,7 +110,10 @@ const SearchTextPanel = ({
   searchResults: externalSearchResults,
   currentMatchIndex: externalCurrentMatchIndex,
   onSearchResultsChange,
-  onCurrentMatchIndexChange
+  onCurrentMatchIndexChange,
+  isActive = true,
+  focusRequestToken = 0,
+  selectOnFocus = false
 }) => {
   // Internal state for standalone use
   const [internalSearchQuery, setInternalSearchQuery] = useState('');
@@ -122,6 +125,7 @@ const SearchTextPanel = ({
   const resultsContainerRef = useRef(null);
   const pageDataCacheRef = useRef(new Map());
   const searchIdRef = useRef(0);
+  const lastHandledFocusTokenRef = useRef(null);
 
   // Use external state if provided, otherwise use internal state
   const searchResults = externalSearchResults !== undefined ? externalSearchResults : internalSearchResults;
@@ -150,6 +154,55 @@ const SearchTextPanel = ({
     setCurrentMatchIndex(-1);
     setInternalSearchQuery('');
   }, [pdfDoc, setSearchResults, setCurrentMatchIndex]);
+
+  useEffect(() => {
+    if (!isActive || !searchInputRef.current) {
+      return undefined;
+    }
+    if (!Number.isFinite(focusRequestToken) || focusRequestToken <= 0) {
+      return undefined;
+    }
+    if (focusRequestToken === lastHandledFocusTokenRef.current) {
+      return undefined;
+    }
+
+    lastHandledFocusTokenRef.current = focusRequestToken;
+    let retryTimer = null;
+
+    const focusInput = () => {
+      const input = searchInputRef.current;
+      if (!input) return;
+      input.focus({ preventScroll: true });
+      if (selectOnFocus) {
+        input.select();
+      }
+    };
+
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      const frame = window.requestAnimationFrame(() => {
+        focusInput();
+        // Retry after sidebar expansion/layout in case initial focus lands too early.
+        retryTimer = window.setTimeout(focusInput, 140);
+      });
+      return () => {
+        window.cancelAnimationFrame(frame);
+        if (retryTimer !== null) {
+          window.clearTimeout(retryTimer);
+        }
+      };
+    }
+
+    const timer = setTimeout(() => {
+      focusInput();
+      retryTimer = setTimeout(focusInput, 140);
+    }, 0);
+    return () => {
+      clearTimeout(timer);
+      if (retryTimer !== null) {
+        clearTimeout(retryTimer);
+      }
+    };
+  }, [focusRequestToken, isActive, selectOnFocus]);
 
   // Load page text data with caching
   const loadPageData = useCallback(async (pageNumber) => {
@@ -370,8 +423,9 @@ const SearchTextPanel = ({
         }
       }
 
-      // F3 or Ctrl+G for next/prev (common search shortcuts)
-      if (e.key === 'F3' || (e.ctrlKey && e.key === 'g')) {
+      // F3 or Cmd/Ctrl+G for next/prev (common search shortcuts)
+      const isCmdOrCtrlG = (e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'g';
+      if (e.key === 'F3' || isCmdOrCtrlG) {
         e.preventDefault();
         if (e.shiftKey) {
           goToPrevMatch();

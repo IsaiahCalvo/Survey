@@ -17,12 +17,19 @@ export const msalConfig = {
         // TODO: Replace with your actual Tenant ID (or "common" for multi-tenant)
         authority: "https://login.microsoftonline.com/common",
         redirectUri: "http://localhost:5173", // Must match the one registered in Azure
+        postLogoutRedirectUri: "http://localhost:5173", // Redirect after logout
+        navigateToLoginRequestUrl: true, // Return to original page after login
     },
     cache: {
         cacheLocation: "localStorage", // This configures where your cache will be stored
         storeAuthStateInCookie: false, // Set this to "true" if you are having issues on IE11 or Edge
     },
     system: {
+        allowNativeBroker: false, // Disable native broker to prevent COOP issues
+        windowHashTimeout: 60000, // Increase timeout for popup hash response
+        iframeHashTimeout: 10000, // Timeout for iframe hash response
+        loadFrameTimeout: 6000, // Timeout for loading iframes
+        asyncPopups: true, // Use async popup handling for better COOP compatibility
         loggerOptions: {
             loggerCallback: (level, message, containsPii) => {
                 if (containsPii) {
@@ -32,15 +39,18 @@ export const msalConfig = {
                     case LogLevel.Error:
                         console.error(message);
                         return;
-                    case LogLevel.Info:
-                        console.info(message);
-                        return;
-                    case LogLevel.Verbose:
-                        console.debug(message);
-                        return;
                     case LogLevel.Warning:
+                        // Suppress common MSAL warnings about COOP and iframes
+                        if (message.includes('Cross-Origin-Opener-Policy') ||
+                            message.includes('iframe') ||
+                            message.includes('sandbox')) {
+                            return;
+                        }
                         console.warn(message);
                         return;
+                    // Suppress Info and Verbose logs
+                    case LogLevel.Info:
+                    case LogLevel.Verbose:
                     default:
                         return;
                 }

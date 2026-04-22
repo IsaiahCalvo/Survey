@@ -1,0 +1,1542 @@
+/**
+ * SVG Annotation Renderers
+ *
+ * Pure render functions that convert Fabric.js JSON annotation objects
+ * into React SVG elements. Used by SVGAnnotationLayer for display-only
+ * rendering with viewBox-based auto-scaling.
+ *
+ * Each function takes a Fabric.js JSON object and returns a React SVG element.
+ */
+import React from 'react';
+import { measureTextBounds, getLineEndpoints } from './svgBoundingBox';
+// Phase 14 CALL-10: renderCallout delegates to a pure data-spec builder in
+// calloutEditAdapter.js so the contract can be unit-tested without loading
+// .jsx from Node --test. sanitizeFontFamily strips CSS fallback stacks at
+// the render surface (CLAUDE.md 2026-04-08 gotcha) — kept imported here for
+// any future direct use at this layer.
+import { buildCalloutRenderSpec, sanitizeFontFamily } from './calloutEditAdapter';
+// Phase 15 LINE-01/02/ARROW-01/02/04: pure-JS spec builders for line/arrow
+// rendering. Same .jsx-vs-Node-test strategy as calloutEditAdapter — tests
+// import the spec shape from a .js module; this .jsx wraps the spec 1:1 via
+// React.createElement so the SVG output is locked by the unit tests.
+import {
+  buildLineRenderSpec,
+  buildArrowheadRenderSpec,
+  ARROWHEAD_STYLES,
+} from './lineRenderHelpers.js';
+// UX 2026-04-21: Imported revision-clouds rebuild their scalloped geometry
+// from the live effective box/points on every render so the number of humps
+// grows/shrinks with the shape instead of staying baked at import size.
+import { buildCloudPathCommands } from './pdfAnnotationImporter';
+// Fill-bleed diagnostics (2026-04-16). Off by default; the wrapper calls are
+// cheap no-ops when disabled. Toggle in DevTools console:
+//   __shapeSpyOn()  __shapeSpyOff()  __captureAllShapes()
+// Cmd/Ctrl+Shift+click on a shape (with spy on) captures it to disk.
+// See src/utils/shapeBleedDiagnostics.js for details.
+import {
+  logShapeRender as __logShapeRender,
+  captureShape as __captureShape,
+} from './shapeBleedDiagnostics';
+// UX 2026-04-21 (import-normalization Chunk 2): pure attr derivation for
+// path-type Fabric objects lives in svgPathAttrs.js so node-test suites
+// can import it without the JSX loader. The renderer uses it too to
+// guarantee import vs internal paths produce byte-identical SVG output
+// when their Fabric input fields match.
+import { renderPathToSvgAttrs } from './svgPathAttrs.js';
+
+const __shapeClick = (e) => __captureShape(e.currentTarget, e);
+
+// UX (Plan 15-04 Issue 4, 2026-04-17): text gutter inside the textbox / callout
+// border. Chosen value 6 — breathier than the pre-fix 0 (text hugged border,
+// descenders cut through bottom edge) without becoming a visually large margin.
+// PDF imports are exempt (obj.isPdfImported) so authored PDFs render
+// edge-to-edge as intended. Kept as module-level constant so FabricEditCanvas
+// imports it and the edit-side Fabric wrap width stays in lockstep with the
+// renderer's CSS wrap width.
+export const TEXT_PADDING = 6;
+
+/**
+ * UX fix (2026-04-16): "fill bleeds past border" on Square/Circle/Polygon
+ * annotations.
+ *
+ * SVG strokes are centered on the shape edge by default — half paints inside
+ * the shape, half paints outside. The outside half is a strokeWidth/2-wide
+ * ring that extends past the shape's geometric edge. When the border color
+ * has the same tone as the fill (e.g. PDF /C and /IC both set with /CA
+ * opacity baked in, so both colors are rgba(..., 0.3)), that outer ring is
+ * visually indistinguishable from the fill — the user perceives the fill as
+ * "bleeding" past where the border sits.
+ *
+ * Fix: clip the shape to its own geometric outline. The clip path mirrors the
+ * shape exactly (same coords + transform). The fill is unaffected (fill is
+ * already inside the shape). The inner half of the stroke is kept. The outer
+ * half of the stroke is removed by the clip.
+ *
+ * Side effect: visible stroke width is effectively halved (inner half only).
+ * Acceptable trade — the user's original complaint was the bleed, not the
+ * thickness. If thickness becomes a problem we can compensate by doubling
+ * strokeWidth before rendering.
+ *
+ * Only called when strokeWidth > 0 — no point clipping a shape without a
+ * border, and skipping the clip keeps the DOM smaller for the common case.
+ */
+const shouldInsetStroke = (obj) => Number(obj?.strokeWidth) > 0;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Safe numeric coercion with fallback.
+ * @param {*} value - Value to coerce
+ * @param {number} fallback - Fallback if not finite
+ * @returns {number}
+ */
+export const toNumber = (value, fallback = 0) => {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+};
+
+/**
+ * Detect erased outline paths. After boolean eraser subtraction, the path is
+ * converted from stroke to fill (strokeWidth: 0, fill: originalColor).
+ * @param {object} obj - Fabric.js JSON object
+ * @returns {boolean}
+ */
+export const isErasedOutline = (obj) =>
+  obj.strokeWidth === 0 && obj.fill && obj.fill !== 'transparent';
+
+// ---------------------------------------------------------------------------
+// Render Functions
+// ---------------------------------------------------------------------------
+
+/**
+ * Render a Fabric.js path object (pen strokes, highlighter strokes, erased paths)
+ * as an SVG <path> element.
+ *
+ * CRITICAL: Includes pathOffset handling to prevent 50-200px positioning errors.
+ * Transform chain: translate(left, top) rotate(angle) scale(scaleX, scaleY) translate(-pathOffset.x, -pathOffset.y)
+ *
+ * @param {object} obj - Fabric.js path JSON object
+ * @param {number} index - Array index for key fallback
+ * @returns {React.ReactElement|null}
+ */
+export const renderPath = (obj, index) => {
+  if (!Array.isArray(obj.path) || obj.path.length === 0) return null;
+
+  const d = obj.path.map((seg) => seg.join(' ')).join(' ');
+
+  const left = obj.left ?? 0;
+  const top = obj.top ?? 0;
+  const angle = obj.angle ?? 0;
+  const scaleX = obj.scaleX ?? 1;
+  const scaleY = obj.scaleY ?? 1;
+  const pathOffsetX = obj.pathOffset?.x || 0;
+  const pathOffsetY = obj.pathOffset?.y || 0;
+
+  // UX 2026-04-21: rotate around the path's OWN bbox center — matches the
+  // convention used by polygon/polyline (renderPolygon below). Prior to
+  // this, path rotation used SVG's default pivot (the local origin at
+  // translate(left, top) → world corner), so an imported pen stroke at
+  // world coords (left=worldMinX, pathMinX=0) and an internal pen stroke
+  // at local coords (left=0, pathMinX=worldX) both rotated around the
+  // WRONG point — the selection overlay and bbox helpers rotate around
+  // the bbox center, but this <path> rotated around the corner, producing
+  // visible drift during any rotate. Scan the path commands for raw
+  // min/max, compute the center in the object's own coord space after
+  // pathOffset + scale are applied (mirroring the polygon formula).
+  let rawMinX = Infinity, rawMinY = Infinity, rawMaxX = -Infinity, rawMaxY = -Infinity;
+  for (const seg of obj.path) {
+    for (let j = 1; j + 1 < seg.length; j += 2) {
+      const x = seg[j];
+      const y = seg[j + 1];
+      if (typeof x === 'number' && typeof y === 'number') {
+        if (x < rawMinX) rawMinX = x;
+        if (x > rawMaxX) rawMaxX = x;
+        if (y < rawMinY) rawMinY = y;
+        if (y > rawMaxY) rawMaxY = y;
+      }
+    }
+  }
+  const hasPathBounds = Number.isFinite(rawMinX) && Number.isFinite(rawMinY);
+  const rotCenterX = hasPathBounds
+    ? scaleX * ((rawMinX + rawMaxX) / 2 - pathOffsetX)
+    : 0;
+  const rotCenterY = hasPathBounds
+    ? scaleY * ((rawMinY + rawMaxY) / 2 - pathOffsetY)
+    : 0;
+
+  // Build transform: position -> rotate-around-bbox-center -> scale -> pathOffset
+  let transform = `translate(${left}, ${top})`;
+  if (angle !== 0) transform += ` rotate(${angle}, ${rotCenterX}, ${rotCenterY})`;
+  if (scaleX !== 1 || scaleY !== 1) transform += ` scale(${scaleX}, ${scaleY})`;
+  transform += ` translate(${-pathOffsetX}, ${-pathOffsetY})`;
+
+  const isHighlight = obj.globalCompositeOperation === 'multiply';
+  const erased = isErasedOutline(obj);
+
+  const key = `path-${obj.id || obj.highlightId || obj.pdfAnnotationId || index}`;
+
+  // UX 2026-04-21 (import-normalization Chunk 2): derive the visual attrs
+  // via renderPathToSvgAttrs so imported Ink and internal pen strokes
+  // produce byte-identical <path> output given identical Fabric inputs.
+  // No branch on isPdfImported/pdfAnnotationType — those are metadata only.
+  const attrs = renderPathToSvgAttrs(obj);
+
+  // UX 2026-04-21: diagnostic log gated behind window.__INK_NORM_DIAG = true.
+  // Dumps the actual render attrs per draw call alongside the import-time
+  // log in convertInkToFabricPath — together they give the user a full
+  // audit trail for one yes/no artifact. Zero-cost when the flag is off.
+  if (typeof window !== 'undefined' && window.__INK_NORM_DIAG && obj.type === 'path') {
+    try {
+      console.log(
+        '[InkNormDiag render]',
+        JSON.stringify(
+          {
+            pdfAnnotationId: obj.pdfAnnotationId,
+            isPdfImported: obj.isPdfImported === true,
+            attrs: {
+              stroke: obj.stroke,
+              strokeWidth: obj.strokeWidth,
+              fill: obj.fill,
+              strokeUniform: obj.strokeUniform,
+              strokeLineCap: obj.strokeLineCap,
+              strokeLineJoin: obj.strokeLineJoin,
+              vectorEffect: attrs.vectorEffect ?? 'none',
+            },
+          },
+          null,
+          0
+        )
+      );
+    } catch (err) {
+      console.warn('[InkNormDiag render] log failed:', err);
+    }
+  }
+
+  return (
+    <path
+      key={key}
+      d={d}
+      transform={transform}
+      stroke={erased ? 'none' : attrs.stroke}
+      strokeWidth={erased ? 0 : attrs.strokeWidth}
+      fill={erased ? obj.fill : 'none'}
+      fillRule={erased ? 'evenodd' : undefined}
+      opacity={attrs.opacity}
+      strokeLinecap={attrs.strokeLinecap}
+      strokeLinejoin={attrs.strokeLinejoin}
+      vectorEffect={attrs.vectorEffect}
+      style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
+    />
+  );
+};
+
+/**
+ * Render a Fabric.js rect object as an SVG <rect> element.
+ * Handles highlights (mix-blend-mode: multiply) and shape borders.
+ *
+ * @param {object} obj - Fabric.js rect JSON object
+ * @param {number} index - Array index for key fallback
+ * @returns {React.ReactElement}
+ */
+export const renderRect = (obj, index) => {
+  const effectiveWidth = Math.abs((obj.width || 0) * (obj.scaleX || 1));
+  const effectiveHeight = Math.abs((obj.height || 0) * (obj.scaleY || 1));
+  const isHighlight = obj.globalCompositeOperation === 'multiply';
+
+  const key = `rect-${obj.id || obj.highlightId || index}`;
+  const shapeId = obj.id || obj.pdfAnnotationId || obj.highlightId || key;
+  __logShapeRender(obj, 'rect');
+
+  const rotateTransform = obj.angle
+    ? `rotate(${obj.angle}, ${obj.left + effectiveWidth / 2}, ${obj.top + effectiveHeight / 2})`
+    : undefined;
+
+  // UX 2026-04-21: Revision-cloud rectangles rebuild their scalloped path
+  // from the current effective box size on every render. That way when the
+  // user resizes the cloud, more humps appear as the box grows and fewer as
+  // it shrinks — matching how Bluebeam, Acrobat, and similar pro tools
+  // behave. The data.pdfCloudIntensity signal (set at import) is what
+  // flags a box as a cloud; the original baked path is ignored.
+  const cloudIntensity = obj.data?.pdfCloudIntensity;
+  if (Number.isFinite(cloudIntensity) && effectiveWidth > 0 && effectiveHeight > 0) {
+    const liveCloud = buildCloudPathCommands(
+      [
+        { x: 0, y: 0 },
+        { x: effectiveWidth, y: 0 },
+        { x: effectiveWidth, y: effectiveHeight },
+        { x: 0, y: effectiveHeight },
+      ],
+      cloudIntensity,
+      // UX 2026-04-21: pass stroke width so the renderer can keep the
+      // bump radius ≥ 2×stroke — prevents thick strokes from swallowing
+      // adjacent humps (Acrobat-style clamp, no Drawboard bloat).
+      obj.strokeWidth ?? 1
+    );
+    if (Array.isArray(liveCloud) && liveCloud.length > 0) {
+      const d = liveCloud.map((seg) => seg.join(' ')).join(' ');
+      const cloudTransform = `translate(${obj.left}, ${obj.top})${
+        obj.angle ? ` rotate(${obj.angle}, ${effectiveWidth / 2}, ${effectiveHeight / 2})` : ''
+      }`;
+      return (
+        <path
+          key={key}
+          d={d}
+          transform={cloudTransform}
+          fill={obj.fill || 'transparent'}
+          stroke={obj.stroke || 'transparent'}
+          strokeWidth={obj.strokeWidth || 0}
+          strokeLinejoin="round"
+          opacity={obj.opacity ?? 1}
+          data-shape-id={shapeId}
+          data-shape-kind="cloud-rect"
+          onClick={__shapeClick}
+        />
+      );
+    }
+  }
+
+  const inset = !isHighlight && shouldInsetStroke(obj);
+  const clipId = inset ? `clip-${shapeId}` : undefined;
+
+  // UX 2026-04-21: honor the Border Style picker's "dashed" choice by
+  // mapping Fabric's strokeDashArray onto the SVG strokeDasharray attr.
+  // Cloud rects skip this path entirely (cloud + dashed are mutually
+  // exclusive in the picker), so we only need to emit it here on the
+  // straight-stroke outline. Empty/missing arrays render solid.
+  const dashArrayAttr = Array.isArray(obj.strokeDashArray) && obj.strokeDashArray.length > 0
+    ? obj.strokeDashArray.join(' ')
+    : undefined;
+
+  const rectEl = (
+    <rect
+      x={obj.left}
+      y={obj.top}
+      width={effectiveWidth}
+      height={effectiveHeight}
+      transform={rotateTransform}
+      fill={obj.fill || 'transparent'}
+      stroke={obj.stroke || 'transparent'}
+      strokeWidth={obj.strokeWidth || 0}
+      strokeDasharray={dashArrayAttr}
+      opacity={obj.opacity ?? 1}
+      style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
+      clipPath={clipId ? `url(#${clipId})` : undefined}
+      data-shape-id={shapeId}
+      data-shape-kind="rect"
+      onClick={__shapeClick}
+    />
+  );
+
+  if (!inset) return React.cloneElement(rectEl, { key });
+
+  // UX 2026-04-20: draw the inset-stroke rect as a shrunken path with a
+  // centered stroke so the outer edge of the stroke lands exactly at the
+  // original (left, top, effectiveWidth, effectiveHeight) box. The prior
+  // approach clipped a full-size rect against a matching clipPath, which
+  // worked at 0° but shaved miter joins at the corners once rotated
+  // (clipPath + transform composition trimmed the 0.41·sw overhang at each
+  // 90° corner). Shrinking the path by sw/2 per side keeps the mitered
+  // corners inside the visible area, so the full corner paints at every
+  // angle AND the border still sits flush with the shape's edge.
+  const sw = Math.max(0, Number(obj.strokeWidth) || 0);
+  const shrunkL = (obj.left ?? 0) + sw / 2;
+  const shrunkT = (obj.top ?? 0) + sw / 2;
+  const shrunkW = Math.max(0, effectiveWidth - sw);
+  const shrunkH = Math.max(0, effectiveHeight - sw);
+  return (
+    <rect
+      key={key}
+      x={shrunkL}
+      y={shrunkT}
+      width={shrunkW}
+      height={shrunkH}
+      transform={rotateTransform}
+      fill={obj.fill || 'transparent'}
+      stroke={obj.stroke || 'transparent'}
+      strokeWidth={sw}
+      strokeDasharray={dashArrayAttr}
+      opacity={obj.opacity ?? 1}
+      data-shape-id={shapeId}
+      data-shape-kind="rect"
+      onClick={__shapeClick}
+    />
+  );
+};
+
+/**
+ * Dispatch a pre-built arrowhead spec to its SVG primitive.
+ *
+ * Module-scoped (not exported). Used by both renderArrowhead (external,
+ * spec-builder wrapper) and renderLine (internal, spec already built via
+ * buildLineRenderSpec). Single source of truth for kind → React element
+ * mapping — adding a new arrowhead style means adding one case here + one
+ * branch in buildArrowheadRenderSpec.
+ *
+ * @param {object} spec - buildArrowheadRenderSpec output (has `.kind` + one
+ *   of `.polygon`/`.polyline`/`.circle`/`.line`)
+ * @returns {React.ReactElement|null}
+ */
+const renderArrowheadFromSpec = (spec) => {
+  switch (spec.kind) {
+    case 'none': return null;
+    case 'solidTriangle': return <polygon {...spec.polygon} />;
+    case 'openTriangle': return <polygon {...spec.polygon} />;
+    case 'openCircle': return <circle {...spec.circle} />;
+    case 'vShape': return <polyline {...spec.polyline} />;
+    case 'horizontalLine': return <line {...spec.line} />;
+    default: return null;
+  }
+};
+
+/**
+ * Render one of 6 arrowhead styles (ARROW-04) as a standalone SVG element.
+ *
+ * UX: Head-size uses max(8, sw*3) to preserve pre-Phase-15 arrow visuals per
+ * 15-UI-SPEC §D. Stroke-width floor of 2 on non-SOLID_TRIANGLE styles ensures
+ * visibility on 1px base lines.
+ *
+ * Exported for external callers (e.g. future mini-toolbar style-picker
+ * previews, selection overlays) that don't already hold a buildLineRenderSpec
+ * result. The internal renderLine path uses renderArrowheadFromSpec directly
+ * because buildLineRenderSpec has already produced the arrowhead spec — this
+ * avoids double-building the spec and keeps kind→element mapping DRY.
+ *
+ * @param {string} style - ARROWHEAD_STYLES value
+ * @param {number} tipX - Absolute X of the arrowhead tip
+ * @param {number} tipY - Absolute Y of the arrowhead tip
+ * @param {number} angleDeg - Rotation angle in degrees
+ * @param {string} color - Stroke/fill color
+ * @param {number} sw - Base line strokeWidth
+ * @returns {React.ReactElement|null}
+ */
+export const renderArrowhead = (style, tipX, tipY, angleDeg, color, sw) => {
+  const spec = buildArrowheadRenderSpec(style, tipX, tipY, angleDeg, color, sw);
+  return renderArrowheadFromSpec(spec);
+};
+
+/**
+ * Render a Fabric.js line/arrow as SVG primitives.
+ *
+ * Branches:
+ *   - Straight (<line>): when obj.data.midpoint is absent or within 1px of
+ *     the straight baseline (render hysteresis per 15-UI-SPEC §B).
+ *   - Curved (<path d="M sx,sy Q cx,cy ex,ey">): when obj.data.midpoint is
+ *     set AND distance > 1px from baseline.
+ *
+ * Arrowhead dispatched via renderArrowheadFromSpec (unified for all 6 styles
+ * across straight and curved branches — ARROW-04). Curved-arrow arrowhead
+ * rotates to the curve tangent at t=1 via getCurveEndAngle (ARROW-01/02),
+ * NOT Math.atan2(dy, dx).
+ *
+ * Preserves pre-Phase-15 byte-identical rendering when obj.data.midpoint is
+ * absent: the straight branch emits the same line.x1/y1/x2=lineEndX/y2=lineEndY
+ * coords and the same <polygon> at the same <transform> as the pre-Phase-15
+ * implementation (svgLineRenderer.test.mjs #1 + #2 lock this).
+ *
+ * @param {object} obj - Fabric.js Line toJSON (tool: 'line' | 'arrow',
+ *   optional data: { midpoint, arrowheadStyle })
+ * @param {number} index - Array index for key fallback
+ * @returns {React.ReactElement}
+ */
+export const renderLine = (obj, index) => {
+  const spec = buildLineRenderSpec(obj);
+  const isArrow = obj.tool === 'arrow';
+  const key = `${isArrow ? 'arrow' : 'line'}-${obj.id || index}`;
+  const opacity = obj.opacity ?? 1;
+
+  // UX 2026-04-20: rotate around the CURVE-INCLUSIVE BBOX CENTER. Matches
+  // what the user perceives as "the middle of the selection frame" for
+  // both straight and curved lines, and it is the same pivot the
+  // SVGSelectionOverlay uses by default, the resize math uses for its
+  // rotation-aware anchor projection, and (with compensation) the
+  // endpoint + midpoint drag handlers use to keep the non-dragged
+  // points pinned in world. Curve extrema are included so a bent line
+  // pivots around the visual center of the bent shape instead of the
+  // straight chord midpoint, otherwise the selection frame would
+  // rotate around a point noticeably off-center to the user. Derived
+  // from getLineEndpoints so both Fabric-constructed and PDF-imported
+  // line storage conventions resolve to the correct absolute points.
+  const angle = obj.angle ?? 0;
+  let rotateTransform;
+  let pivotDiag = null;
+  if (angle !== 0) {
+    const rawEp = getLineEndpoints(obj);
+    const midPt = obj.data?.midpoint;
+    const bxs = [rawEp.x1, rawEp.x2];
+    const bys = [rawEp.y1, rawEp.y2];
+    if (midPt) {
+      const Cx = 2 * midPt.x - 0.5 * rawEp.x1 - 0.5 * rawEp.x2;
+      const Cy = 2 * midPt.y - 0.5 * rawEp.y1 - 0.5 * rawEp.y2;
+      const denomX = rawEp.x1 - 2 * Cx + rawEp.x2;
+      const denomY = rawEp.y1 - 2 * Cy + rawEp.y2;
+      if (Math.abs(denomX) > 1e-9) {
+        const tx = (rawEp.x1 - Cx) / denomX;
+        if (tx > 0 && tx < 1) {
+          const o = 1 - tx;
+          bxs.push(o * o * rawEp.x1 + 2 * o * tx * Cx + tx * tx * rawEp.x2);
+        }
+      }
+      if (Math.abs(denomY) > 1e-9) {
+        const ty = (rawEp.y1 - Cy) / denomY;
+        if (ty > 0 && ty < 1) {
+          const o = 1 - ty;
+          bys.push(o * o * rawEp.y1 + 2 * o * ty * Cy + ty * ty * rawEp.y2);
+        }
+      }
+    }
+    const cx = (Math.min(...bxs) + Math.max(...bxs)) / 2;
+    const cy = (Math.min(...bys) + Math.max(...bys)) / 2;
+    rotateTransform = `rotate(${angle}, ${cx}, ${cy})`;
+    pivotDiag = { angle, cx, cy };
+  }
+
+  // UX 2026-04-20 diag: emit the renderer's choice of pivot + spec kind
+  // + arrowhead presence per line render, throttled ~6x/sec per object
+  // via the same clock used by getLineBBox. Pairs with [LineBboxDiag]
+  // so the user can hand back one log slice and we can see whether the
+  // render pivot and the selection-bbox pivot agreed at that moment —
+  // the common source of frame-vs-shape drift.
+  try {
+    const nowMs = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    if (!renderLine._lastLog) renderLine._lastLog = new Map();
+    const rid = obj && obj.id != null ? obj.id : (obj ? obj : null);
+    const keyForMap = rid ?? `idx:${index}`;
+    const last = renderLine._lastLog.get(keyForMap) || 0;
+    if (nowMs - last >= 150) {
+      renderLine._lastLog.set(keyForMap, nowMs);
+      const payload = {
+        ts: new Date().toISOString(),
+        objId: obj?.id ?? null,
+        index,
+        objType: obj?.type ?? null,
+        tool: obj?.tool ?? null,
+        isArrow,
+        angle,
+        hasMidpoint: !!obj?.data?.midpoint,
+        dataMidpoint: obj?.data?.midpoint ? { x: obj.data.midpoint.x, y: obj.data.midpoint.y } : null,
+        storageSnapshot: {
+          left: obj?.left ?? null,
+          top: obj?.top ?? null,
+          width: obj?.width ?? null,
+          height: obj?.height ?? null,
+          x1: obj?.x1 ?? null,
+          y1: obj?.y1 ?? null,
+          x2: obj?.x2 ?? null,
+          y2: obj?.y2 ?? null,
+        },
+        specKind: spec?.kind ?? null,
+        specLine: spec?.line ? { x1: spec.line.x1, y1: spec.line.y1, x2: spec.line.x2, y2: spec.line.y2 } : null,
+        specArrowheadKind: spec?.arrowhead?.kind ?? null,
+        rotationApplied: !!rotateTransform,
+        pivotDiag,
+      };
+      console.log('[LineBboxDiag] renderLine ' + JSON.stringify(payload));
+    }
+  } catch (err) { /* swallow diag errors */ }
+
+  // UX 2026-04-21: Border Style picker dashed support. Apply strokeDasharray
+  // only to the main line/curve outline — arrowheads (filled or open
+  // triangles, v-shapes, etc.) must stay solid so the tip still reads as a
+  // crisp arrow even when the shaft is dashed. React merges this prop
+  // AFTER {...spec.line}/{...spec.path} so it doesn't clobber anything
+  // else in the spec.
+  const lineDashArrayAttr = Array.isArray(obj.strokeDashArray) && obj.strokeDashArray.length > 0
+    ? obj.strokeDashArray.join(' ')
+    : undefined;
+
+  if (spec.kind === 'curved') {
+    // UX: Curved line/arrow — <path> + optional arrowhead inside <g>.
+    // fill='none' on <path> is CRITICAL (Pitfall 5) — otherwise the bezier
+    // fills black between the curve and the start-to-end chord. Emitted
+    // explicitly by buildLineRenderSpec.
+    return (
+      <g key={key} opacity={opacity} transform={rotateTransform}>
+        <path {...spec.path} strokeDasharray={lineDashArrayAttr} />
+        {renderArrowheadFromSpec(spec.arrowhead)}
+      </g>
+    );
+  }
+
+  // Straight branch — byte-identical to pre-Phase-15 when no data.midpoint
+  // and no rotation. A rotation wrapper is added whenever obj.angle !== 0.
+  if (spec.arrowhead.kind !== 'none') {
+    return (
+      <g key={key} opacity={opacity} transform={rotateTransform}>
+        <line {...spec.line} strokeDasharray={lineDashArrayAttr} />
+        {renderArrowheadFromSpec(spec.arrowhead)}
+      </g>
+    );
+  }
+  if (rotateTransform) {
+    return (
+      <g key={key} transform={rotateTransform}>
+        <line {...spec.line} strokeDasharray={lineDashArrayAttr} opacity={opacity} />
+      </g>
+    );
+  }
+  return <line key={key} {...spec.line} strokeDasharray={lineDashArrayAttr} opacity={opacity} />;
+};
+
+/**
+ * Render a Fabric.js arrow group (line + triangle arrowhead) as SVG elements.
+ * The group contains a line child and an optional triangle arrowhead child.
+ *
+ * @param {object} obj - Fabric.js group JSON object containing line + arrowhead
+ * @param {number} index - Array index for key fallback
+ * @returns {React.ReactElement|null}
+ */
+export const renderArrow = (obj, index) => {
+  if (!Array.isArray(obj.objects) || obj.objects.length === 0) return null;
+
+  const lineChild = obj.objects.find(
+    (o) => o && (o.type === 'line' || o.type === 'polyline' || o.type === 'path')
+  );
+  const arrowHead = obj.objects.find(
+    (o) => o && (o.name === 'arrowHead' || o.type === 'triangle')
+  );
+
+  if (!lineChild) return null;
+
+  const x1 = (obj.left || 0) + (lineChild.x1 || 0);
+  const y1 = (obj.top || 0) + (lineChild.y1 || 0);
+  const x2 = (obj.left || 0) + (lineChild.x2 || 0);
+  const y2 = (obj.top || 0) + (lineChild.y2 || 0);
+
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const angleRad = Math.atan2(dy, dx);
+  const angleDeg = angleRad * (180 / Math.PI);
+  const headSize = Math.max(6, (obj.strokeWidth || 2) * 3);
+
+  // Shorten line so it ends at the back of the centered arrowhead
+  const lineEndX = arrowHead ? x2 - (headSize / 3) * Math.cos(angleRad) : x2;
+  const lineEndY = arrowHead ? y2 - (headSize / 3) * Math.sin(angleRad) : y2;
+
+  const key = `arrow-${obj.id || index}`;
+
+  // UX 2026-04-21: dashed support on the arrow's shaft only — the polygon
+  // arrowhead below is a filled tip and must stay solid regardless of
+  // strokeDashArray so the arrow still reads as a crisp pointer.
+  const arrowDashArrayAttr = Array.isArray(obj.strokeDashArray) && obj.strokeDashArray.length > 0
+    ? obj.strokeDashArray.join(' ')
+    : undefined;
+
+  return (
+    <g key={key} opacity={obj.opacity ?? 1}>
+      <line
+        x1={x1}
+        y1={y1}
+        x2={lineEndX}
+        y2={lineEndY}
+        stroke={obj.stroke || '#000'}
+        strokeWidth={obj.strokeWidth || 2}
+        strokeDasharray={arrowDashArrayAttr}
+        strokeLinecap="round"
+      />
+      {arrowHead && (
+        <polygon
+          points={`${-headSize / 3},${-headSize / 2} ${headSize * 2 / 3},0 ${-headSize / 3},${headSize / 2}`}
+          fill={obj.stroke || '#000'}
+          transform={`translate(${x2},${y2}) rotate(${angleDeg})`}
+        />
+      )}
+    </g>
+  );
+};
+
+/**
+ * Render a Fabric.js polygon object as an SVG <polygon> element.
+ *
+ * Fabric.js Polygon stores `points[]` in local unscaled space and uses the
+ * same transform chain as Path: translate(left, top) → rotate → scale →
+ * translate(-pathOffset). PDF-imported polygons arrive here with a populated
+ * `points` array but no `path`/`objects`, which is why the main dispatch
+ * previously couldn't draw them (causing the eraser↔selector mismatch).
+ *
+ * @param {object} obj - Fabric.js polygon JSON object
+ * @param {number} index - Array index for key fallback
+ * @returns {React.ReactElement|null}
+ */
+export const renderPolygon = (obj, index) => {
+  if (!Array.isArray(obj.points) || obj.points.length === 0) return null;
+
+  const pointsStr = obj.points
+    .map((p) => `${toNumber(p?.x)},${toNumber(p?.y)}`)
+    .join(' ');
+
+  const left = obj.left ?? 0;
+  const top = obj.top ?? 0;
+  const angle = obj.angle ?? 0;
+  const scaleX = obj.scaleX ?? 1;
+  const scaleY = obj.scaleY ?? 1;
+  const pathOffsetX = obj.pathOffset?.x || 0;
+  const pathOffsetY = obj.pathOffset?.y || 0;
+
+  // UX: rotation must happen around the visual center of the shape, not the
+  // top-left corner. Compute the center in pre-rotation local space (after
+  // scale + pathOffset, before rotate) so it matches the rotation center
+  // used by useSVGInteraction's drag preview.
+  const pointXs = obj.points.map(p => toNumber(p?.x));
+  const pointYs = obj.points.map(p => toNumber(p?.y));
+  const rawCenterX = (Math.min(...pointXs) + Math.max(...pointXs)) / 2;
+  const rawCenterY = (Math.min(...pointYs) + Math.max(...pointYs)) / 2;
+  const rotCenterX = scaleX * (rawCenterX - pathOffsetX);
+  const rotCenterY = scaleY * (rawCenterY - pathOffsetY);
+
+  let transform = `translate(${left}, ${top})`;
+  if (angle !== 0) transform += ` rotate(${angle}, ${rotCenterX}, ${rotCenterY})`;
+  if (scaleX !== 1 || scaleY !== 1) transform += ` scale(${scaleX}, ${scaleY})`;
+  transform += ` translate(${-pathOffsetX}, ${-pathOffsetY})`;
+
+  const isHighlight = obj.globalCompositeOperation === 'multiply';
+  const key = `polygon-${obj.id || obj.pdfAnnotationId || index}`;
+  const shapeId = obj.id || obj.pdfAnnotationId || key;
+  __logShapeRender(obj, 'polygon');
+
+  // UX 2026-04-21: Cloud-polygons rebuild scalloped geometry from the live
+  // points on every render, same pattern as cloud-rects. The polygon's own
+  // transform chain (with scale) is applied to the <path>, so the bump
+  // count scales with the shape.
+  const cloudIntensity = obj.data?.pdfCloudIntensity;
+  if (Number.isFinite(cloudIntensity) && Array.isArray(obj.points) && obj.points.length >= 3) {
+    const livePoints = obj.points.map((p) => ({ x: toNumber(p?.x), y: toNumber(p?.y) }));
+    const liveCloud = buildCloudPathCommands(livePoints, cloudIntensity, obj.strokeWidth ?? 1);
+    if (Array.isArray(liveCloud) && liveCloud.length > 0) {
+      const d = liveCloud.map((seg) => seg.join(' ')).join(' ');
+      return (
+        <path
+          key={key}
+          d={d}
+          transform={transform}
+          fill={obj.fill || 'transparent'}
+          stroke={obj.stroke || 'transparent'}
+          strokeWidth={obj.strokeWidth || 1}
+          strokeLinejoin="round"
+          opacity={obj.opacity ?? 1}
+          data-shape-id={shapeId}
+          data-shape-kind="cloud-polygon"
+          onClick={__shapeClick}
+        />
+      );
+    }
+  }
+
+  // 2026-04-17: inset-clip disabled for polygon — the clipPath + polygon +
+  // nested-translate transform combination renders as invisible in Chromium
+  // even when wrapped in <g transform>. The fill-bleed fix (2026-04-16) is
+  // restored here to the pre-clip state so PDF-imported polygons remain
+  // visible. Re-apply a stroke-inset fix for polygons via a different
+  // mechanism (e.g. pre-transformed absolute points, or paint-order + fill
+  // + transparent stroke) once a non-clipPath approach is proven.
+  // UX 2026-04-21: Border Style picker dashed support. Cloud polygons go
+  // through the path branch above (cloud + dashed mutually exclusive), so
+  // we only emit strokeDasharray on the plain polygon outline here.
+  const polyDashArrayAttr = Array.isArray(obj.strokeDashArray) && obj.strokeDashArray.length > 0
+    ? obj.strokeDashArray.join(' ')
+    : undefined;
+
+  return (
+    <polygon
+      key={key}
+      points={pointsStr}
+      transform={transform}
+      fill={obj.fill || 'transparent'}
+      stroke={obj.stroke || 'transparent'}
+      strokeWidth={obj.strokeWidth || 1}
+      strokeDasharray={polyDashArrayAttr}
+      opacity={obj.opacity ?? 1}
+      strokeLinejoin="round"
+      style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
+      data-shape-id={shapeId}
+      data-shape-kind="polygon"
+      onClick={__shapeClick}
+    />
+  );
+};
+
+/**
+ * Render a Fabric.js polyline object as an SVG <polyline> element.
+ *
+ * Same transform chain as renderPolygon; fill defaults to "none" for polylines
+ * since they represent open paths (e.g. PDF PolyLine annotations).
+ *
+ * @param {object} obj - Fabric.js polyline JSON object
+ * @param {number} index - Array index for key fallback
+ * @returns {React.ReactElement|null}
+ */
+export const renderPolyline = (obj, index) => {
+  if (!Array.isArray(obj.points) || obj.points.length === 0) return null;
+
+  const pointsStr = obj.points
+    .map((p) => `${toNumber(p?.x)},${toNumber(p?.y)}`)
+    .join(' ');
+
+  const left = obj.left ?? 0;
+  const top = obj.top ?? 0;
+  const angle = obj.angle ?? 0;
+  const scaleX = obj.scaleX ?? 1;
+  const scaleY = obj.scaleY ?? 1;
+  const pathOffsetX = obj.pathOffset?.x || 0;
+  const pathOffsetY = obj.pathOffset?.y || 0;
+
+  // UX: same rotation-center fix as renderPolygon — rotate around visual
+  // center, not the top-left corner.
+  const pointXs = obj.points.map(p => toNumber(p?.x));
+  const pointYs = obj.points.map(p => toNumber(p?.y));
+  const rawCenterX = (Math.min(...pointXs) + Math.max(...pointXs)) / 2;
+  const rawCenterY = (Math.min(...pointYs) + Math.max(...pointYs)) / 2;
+  const rotCenterX = scaleX * (rawCenterX - pathOffsetX);
+  const rotCenterY = scaleY * (rawCenterY - pathOffsetY);
+
+  let transform = `translate(${left}, ${top})`;
+  if (angle !== 0) transform += ` rotate(${angle}, ${rotCenterX}, ${rotCenterY})`;
+  if (scaleX !== 1 || scaleY !== 1) transform += ` scale(${scaleX}, ${scaleY})`;
+  transform += ` translate(${-pathOffsetX}, ${-pathOffsetY})`;
+
+  // Polylines are open paths — treat fill="transparent" (from Fabric JSON) and
+  // missing fill as "none" so the SVG renderer doesn't close and fill the shape.
+  const rawFill = obj.fill;
+  const fill = !rawFill || rawFill === 'transparent' ? 'none' : rawFill;
+
+  const key = `polyline-${obj.id || obj.pdfAnnotationId || index}`;
+  const shapeId = obj.id || obj.pdfAnnotationId || key;
+  __logShapeRender(obj, 'polyline');
+
+  // UX 2026-04-21: Border Style picker dashed support for open polylines.
+  const plDashArrayAttr = Array.isArray(obj.strokeDashArray) && obj.strokeDashArray.length > 0
+    ? obj.strokeDashArray.join(' ')
+    : undefined;
+
+  return (
+    <polyline
+      key={key}
+      points={pointsStr}
+      transform={transform}
+      fill={fill}
+      stroke={obj.stroke || '#000'}
+      strokeWidth={obj.strokeWidth || 1}
+      strokeDasharray={plDashArrayAttr}
+      opacity={obj.opacity ?? 1}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      data-shape-id={shapeId}
+      data-shape-kind="polyline"
+      onClick={__shapeClick}
+    />
+  );
+};
+
+/**
+ * Render a Fabric.js circle or ellipse object as an SVG <ellipse> element.
+ * Handles both circle (radius) and ellipse (rx/ry) JSON types.
+ *
+ * @param {object} obj - Fabric.js circle/ellipse JSON object
+ * @param {number} index - Array index for key fallback
+ * @returns {React.ReactElement}
+ */
+export const renderEllipse = (obj, index) => {
+  let rx, ry;
+
+  if (obj.type === 'circle' || obj.radius != null) {
+    // Circle type: radius with scaleX/scaleY
+    rx = (obj.radius || 0) * Math.abs(obj.scaleX || 1);
+    ry = (obj.radius || 0) * Math.abs(obj.scaleY || 1);
+  } else {
+    // Ellipse type: rx/ry with scaleX/scaleY
+    rx = (obj.rx || 0) * Math.abs(obj.scaleX || 1);
+    ry = (obj.ry || 0) * Math.abs(obj.scaleY || 1);
+  }
+
+  const cx = (obj.left || 0) + rx;
+  const cy = (obj.top || 0) + ry;
+
+  const key = `ellipse-${obj.id || index}`;
+  const isHighlight = obj.globalCompositeOperation === 'multiply';
+  const shapeId = obj.id || obj.pdfAnnotationId || key;
+  __logShapeRender(obj, 'ellipse');
+
+  const rotateTransform = obj.angle ? `rotate(${obj.angle}, ${cx}, ${cy})` : undefined;
+  const inset = !isHighlight && shouldInsetStroke(obj);
+  const clipId = inset ? `clip-${shapeId}` : undefined;
+
+  const ellEl = (
+    <ellipse
+      cx={cx}
+      cy={cy}
+      rx={rx}
+      ry={ry}
+      transform={rotateTransform}
+      fill={obj.fill || 'transparent'}
+      stroke={obj.stroke || 'transparent'}
+      strokeWidth={obj.strokeWidth || 0}
+      opacity={obj.opacity ?? 1}
+      style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
+      data-shape-id={shapeId}
+      data-shape-kind="ellipse"
+      onClick={__shapeClick}
+    />
+  );
+
+  if (!inset) return React.cloneElement(ellEl, { key });
+
+  // UX 2026-04-22: shrink rx/ry by strokeWidth/2 so the outer edge of the
+  // centered stroke lands at the original (cx, cy, rx, ry) bounds. Matches
+  // the rect inset approach (renderRect :334-365). The prior clipPath +
+  // transform composition worked at 0° but visibly clipped the tilted
+  // ellipse's fill once obj.angle was non-zero — the clipPath's own rotate
+  // transform doesn't compose with the clipped element's transform the way
+  // Safari / Chromium paint rotated content, so the visible ellipse got
+  // cropped by an axis-aligned bbox mask. Shrink-instead-of-clip sidesteps
+  // the issue entirely and works at every angle, matching how rect behaves.
+  const sw = Math.max(0, Number(obj.strokeWidth) || 0);
+  const shrunkRx = Math.max(0, rx - sw / 2);
+  const shrunkRy = Math.max(0, ry - sw / 2);
+  return (
+    <ellipse
+      key={key}
+      cx={cx}
+      cy={cy}
+      rx={shrunkRx}
+      ry={shrunkRy}
+      transform={rotateTransform}
+      fill={obj.fill || 'transparent'}
+      stroke={obj.stroke || 'transparent'}
+      strokeWidth={sw}
+      opacity={obj.opacity ?? 1}
+      data-shape-id={shapeId}
+      data-shape-kind="ellipse"
+      onClick={__shapeClick}
+    />
+  );
+};
+
+/**
+ * Render a Fabric.js text object as an SVG <foreignObject> element.
+ * Uses foreignObject with an inner HTML div to support full CSS text layout
+ * including word-wrap, font properties, and text alignment.
+ *
+ * @param {object} obj - Fabric.js textbox/i-text/text JSON object
+ * @param {number} index - Array index for key fallback
+ * @returns {React.ReactElement}
+ */
+export const renderText = (obj, index, liveBounds = null, hideText = false) => {
+  const scaleX = Math.abs(obj.scaleX ?? 1);
+  const scaleY = Math.abs(obj.scaleY ?? 1);
+  const objType = String(obj.type || '').toLowerCase();
+
+  // Textbox sizing: trust stored width/height for all textboxes. PDF imports
+  // now carry Fabric-measured dims (see pdfAnnotationImporter.js
+  // convertFreeTextToFabricTextbox) and user-edited textboxes carry committed
+  // dims, so both are authoritative. i-text / text without stored bounds fall
+  // through to measureTextBounds.
+  //
+  // Plan 15-04 Step 3 — during edit, liveBounds overrides stored dims + text.
+  // The Fabric textbox is painted transparently so only the SVG is visible;
+  // feeding Fabric-measured width/height and the live text string here keeps
+  // the SVG in lockstep with the caret per keystroke without a background
+  // Fabric overlay doubling the glyphs.
+  let effectiveWidth, effectiveHeight;
+  if (liveBounds && liveBounds.width > 0 && liveBounds.height > 0) {
+    effectiveWidth = liveBounds.width;
+    effectiveHeight = liveBounds.height;
+  } else if (objType === 'textbox' && obj.width && obj.height) {
+    effectiveWidth = obj.width * scaleX;
+    effectiveHeight = obj.height * scaleY;
+  } else {
+    const measured = measureTextBounds(obj);
+    effectiveWidth = measured.width;
+    effectiveHeight = measured.height;
+  }
+  const left = (liveBounds && typeof liveBounds.left === 'number') ? liveBounds.left : (obj.left || 0);
+  const top = (liveBounds && typeof liveBounds.top === 'number') ? liveBounds.top : (obj.top || 0);
+  const angle = obj.angle || 0;
+  // Live text string wins during edit; stored text is used for non-edit paint
+  // and also as the fallback when liveBounds omits text (e.g. initial frame).
+  const displayedText = (liveBounds && typeof liveBounds.text === 'string')
+    ? liveBounds.text
+    : (obj.text || '');
+
+  const key = `text-${obj.id || index}`;
+  // Add buffer for descenders (j,p,g,q,y) + bottom breathing room
+  const fontSize = obj.fontSize || 16;
+  const descenderBuffer = fontSize * 0.35;
+  const displayHeight = effectiveHeight + descenderBuffer;
+  // UX (Plan 15-04 Issue 4, 2026-04-17): gutter between the border and text
+  // content so text doesn't hug the border and descenders don't cut the
+  // bottom edge. Applied uniformly — PDF imports included — so all textboxes
+  // share one visual contract. (Earlier draft exempted `obj.isPdfImported`;
+  // removed after user UAT confirmed imports look better with the padding too.)
+  const pad = TEXT_PADDING;
+  const innerWidth = Math.max(0, effectiveWidth - 2 * pad);
+  const innerHeight = Math.max(0, effectiveHeight - 2 * pad);
+  const innerDisplayHeight = innerHeight + descenderBuffer;
+  // UX 2026-04-20: rotate around the textbox's logical center, NOT the
+  // displayHeight center (which adds descenderBuffer / 2 below the logical
+  // center). The live-preview wrapper + selection overlay both pivot around
+  // bbox center (left + width/2, top + height/2), so renderText must too,
+  // otherwise the text snaps vertically/horizontally on release when the
+  // commit angle swaps the outer wrapper rotation for renderText's own.
+  const rotateTransform = angle !== 0
+    ? `rotate(${angle}, ${left + effectiveWidth / 2}, ${top + effectiveHeight / 2})`
+    : undefined;
+
+  return (
+    <g key={key} opacity={obj.opacity ?? 1} transform={rotateTransform}>
+      {/* Border rect: drawn only when the textbox carries a positive strokeWidth.
+          PDF-imported FreeText annotations with BS.W>0 (see
+          pdfAnnotationImporter.convertFreeTextToFabricTextbox) and user-created
+          textboxes (FabricTextCanvas/FabricEditCanvas default: 1px black) both
+          land here. Textboxes with strokeWidth=0 render borderless. Uses
+          effectiveHeight (not displayHeight with descenderBuffer) so the border
+          hugs Fabric's logical bounds and matches the eraser-canvas render. */}
+      {obj.strokeWidth > 0 && obj.stroke ? (
+        <rect
+          x={left}
+          y={top}
+          width={effectiveWidth}
+          height={effectiveHeight}
+          fill="none"
+          stroke={obj.stroke}
+          strokeWidth={obj.strokeWidth}
+          vectorEffect={obj.strokeUniform ? 'non-scaling-stroke' : undefined}
+        />
+      ) : null}
+      {!hideText && (
+      <foreignObject
+        // UX 2026-04-20: force remount whenever the logical line count or
+        // the foreignObject's pixel height changes. Chromium's foreignObject
+        // does not reliably re-layout its inner HTML when width/height
+        // attributes change dynamically, so a line typed past the imported
+        // height ended up clipped against the originally-laid-out inner box.
+        // Re-keying makes React mount a fresh foreignObject with the new
+        // dimensions, forcing the browser to lay out from scratch.
+        key={`fo-${Math.round(innerDisplayHeight)}-${(displayedText || '').length}`}
+        data-annotation-text-bounds=""
+        x={left + pad}
+        y={top + pad}
+        width={innerWidth}
+        height={innerDisplayHeight}
+        // UX 2026-04-19 — overflow:hidden so text that doesn't fit inside
+        // the resized textbox gets clipped at the border (matches Drawboard
+        // PDF). Live wrap still happens via word-break:break-all inside the
+        // flex width; this setting only hides the lines that spill past the
+        // visible box height when the user drags the bottom up.
+        overflow="hidden"
+      >
+        <div
+          xmlns="http://www.w3.org/1999/xhtml"
+          style={{
+            // UX 2026-04-20: explicit px sizes instead of 100%. SVG
+            // foreignObject does not reliably establish a containing
+            // block for percentage heights across Chromium versions, so
+            // the inner div stayed pinned at its first-render size while
+            // the foreignObject attribute grew during typing. Pinning
+            // the div to innerWidth/innerDisplayHeight keeps CSS layout
+            // in lockstep with the live-broadcast text bounds so newly
+            // typed lines stop disappearing behind the border.
+            width: innerWidth,
+            height: innerDisplayHeight,
+            fontSize: `${fontSize}px`,
+            fontFamily: obj.fontFamily || 'sans-serif',
+            fontWeight: obj.fontWeight || 'normal',
+            fontStyle: obj.fontStyle || 'normal',
+            color: obj.fill || '#000',
+            textAlign: obj.textAlign || 'left',
+            // UX: Fabric 5.x textbox per-line pixel step =
+            // `fontSize × lineHeight × _fontSizeMult` where `_fontSizeMult` is
+            // the hard-coded 1.13 on Fabric.Text.prototype. CSS unitless
+            // line-height on the SVG foreignObject skips that multiplier, so
+            // without compensation the SVG stepped shorter than Fabric and
+            // the caret drifted ~2.88 px further down per wrapped line during
+            // edit. Multiplying by 1.13 here aligns the two rulers so the
+            // caret stays glued to the rendered letters no matter how many
+            // lines wrap. (Plan 15-04 Issue 1, verified 2026-04-17.)
+            lineHeight: (obj.lineHeight || 1.16) * 1.13,
+            // UX 2026-04-19 — hidden on the inner div too so if the box is
+            // resized narrower than a single character can fit, nothing
+            // leaks out the side.
+            overflow: 'hidden',
+            wordWrap: 'break-word',
+            // UX: Fabric Textbox wraps with `splitByGrapheme: true` — break at
+            // any character regardless of word boundaries. CSS `word-wrap:
+            // break-word` alone prefers word boundaries and only breaks inside
+            // a word when the word itself overflows, so dense punctuation like
+            // `.` `;` `'` creates extra break opportunities the browser
+            // exploits and Fabric does not. The count diverges (23 Fabric
+            // lines ↔ 30 SVG lines in the worst case), visual lines spill past
+            // the foreignObject border, and Option+Arrow cursor jumps land on
+            // word boundaries Fabric sees but the user does not. `break-all`
+            // forces CSS to break per-character so wrap points line up 1:1.
+            // (Plan 15-04 Issue 1 follow-up, 2026-04-17.)
+            wordBreak: 'break-all',
+            whiteSpace: 'pre-wrap',
+            padding: 0,
+            // UX 2026-04-20 — no explicit font-smoothing. Canvas 2D (the Fabric
+            // edit layer) ignores CSS font-smoothing and always rasterizes with
+            // the platform default (macOS = subpixel-antialiased, heavier +
+            // slightly tighter). Setting `antialiased`/`grayscale` here made the
+            // SVG view render lighter + wider than Fabric edit, producing a
+            // visible "pop" in weight and spacing when the user double-clicked
+            // into edit mode. Letting the foreignObject use the browser default
+            // gives both layers the same rasterization path, so view and edit
+            // look identical.
+          }}
+        >
+          {displayedText}
+        </div>
+      </foreignObject>
+      )}
+    </g>
+  );
+};
+
+/**
+ * Render a callout annotation as SVG elements (lines + circle + rect + text).
+ *
+ * Phase 14 CALL-10 revision: signature takes a `pageSize` object instead of
+ * separate pageWidth/pageHeight numbers. This lets callers pre-compute the
+ * conversion boundary without a signature churn across later phases.
+ *
+ * Emits data-callout-id on the outer <g> and data-callout-part on every child
+ * (arrowTip, knee overlay via Plan 14-03, textBox, line1, line2, text) so
+ * Phases 17-18 can event-delegate hit-testing via e.target.closest() — same
+ * pattern as v2.2 EDIT-13 `data-rotation-handle="mtr"` delegation at
+ * SVGAnnotationLayer.jsx:215-312.
+ *
+ * FontFamily is sanitized to a single font name via sanitizeFontFamily(). A
+ * CSS fallback stack like 'Inter, Arial, sans-serif' is reduced to the first
+ * token ('Inter'). Required because Fabric.js Textbox measures characters at
+ * CACHE_FONT_SIZE=400px and the browser may resolve different fonts at 400px
+ * than at display size, producing cursor drift. See CLAUDE.md 2026-04-08
+ * gotcha and Phase 14-RESEARCH.md Pitfall 2.
+ *
+ * @param {object} callout - Callout data object with normalized coordinates
+ * @param {number} index - Array index for key fallback
+ * @param {{width:number, height:number}} pageSize - Unscaled PDF page dims
+ * @param {Function} calculateConnection - calculateCalloutConnection function
+ * @returns {React.ReactElement|null}
+ */
+export const renderCallout = (callout, index, pageSize, calculateConnection, hideText = false, liveBounds = null, rawKnee = false) => {
+  if (!callout || !callout.arrowTip || !callout.knee) return null;
+  const { width: pageWidth = 0, height: pageHeight = 0 } = pageSize || {};
+
+  // Convert normalized (0-1) coordinates to page coordinates
+  const arrowTip = {
+    x: callout.arrowTip.x * pageWidth,
+    y: callout.arrowTip.y * pageHeight,
+  };
+  const knee = {
+    x: callout.knee.x * pageWidth,
+    y: callout.knee.y * pageHeight,
+  };
+  // UX: Phase 15 UAT-2 — when editing this callout, liveBounds carries the
+  // page-space textbox bounds from Fabric.Textbox (updated on every 'changed'
+  // event). Using live bounds for calculateConnection makes line1 retract to
+  // the live edge as the textbox auto-grows, preventing the visible
+  // disconnect users saw while typing. liveBounds is null when not editing,
+  // or when App.jsx hasn't yet received the first changed event. Falls back
+  // to the stored normalized dims so initial paint before any edit still works.
+  const textBox = liveBounds ? {
+    x: liveBounds.left,
+    y: liveBounds.top,
+    width: Math.max(18, liveBounds.width),
+    height: Math.max(18, liveBounds.height),
+  } : {
+    x: (callout.textBoxPosition?.x ?? callout.textBox?.x ?? 0) * pageWidth,
+    y: (callout.textBoxPosition?.y ?? callout.textBox?.y ?? 0) * pageHeight,
+    width: Math.max(18, (callout.textBoxWidth ?? callout.textBox?.width ?? 0.1) * pageWidth),
+    height: Math.max(18, (callout.textBoxHeight ?? callout.textBox?.height ?? 0.05) * pageHeight),
+  };
+
+  // Style extraction. Phase 15 UAT-2 (2026-04-17): defaults aligned with
+  // Fabric edit overlay so view and edit render identically without a user
+  // style override. lineColor default '#1e293b' matches defaultCalloutStyle
+  // (types.js :116) + calloutEditAdapter toFabricGroup stroke (:92). fillColor
+  // default 'transparent' matches Fabric textbox backgroundColor: '' (:171).
+  const lineColor = callout.style?.borderColor || callout.style?.lineColor || '#1e293b';
+  const lineThickness = Math.max(1, callout.style?.lineThickness || 2);
+  const fillColor = callout.style?.fillColor || 'transparent';
+  const fillOpacity = Math.max(0.08, Math.min(1, callout.style?.fillOpacity ?? 0.4));
+  const borderOpacity = Math.max(0.2, Math.min(1, callout.style?.borderOpacity ?? 1));
+  // UX: single-name fontFamily prevents Fabric.js cursor drift (see CLAUDE.md
+  // 2026-04-08 gotcha). sanitizeFontFamily strips CSS fallback stacks.
+  const safeFontFamily = sanitizeFontFamily(callout.style?.fontFamily);
+
+  // UX: borderWidth passed as 0 — stored textBox x/y/w/h already represent
+  // the OUTER visible border rect (the <rect> below paints at the same dims).
+  // Passing lineThickness here would nudge the line's box-end inward by that
+  // amount, leaving a visible bleed inside the textbox (Phase 15 UAT-3 Issue 2).
+  // The connection math still uses lineThickness for its internal stroke-safe
+  // calculations elsewhere — it doesn't need it as a geometric offset here.
+  //
+  // Phase 15 UAT-3 (2026-04-18) — rawKnee mode: during an active knee drag
+  // the user wants to see the line bending at THEIR cursor, not at an
+  // auto-routed midpoint. Compute a raw connection that skips the
+  // bad-geometry branch entirely: line1 starts at the closest textbox edge
+  // to the raw knee, line2 goes straight from raw knee to arrow. If the
+  // user drops here on release the rollback logic handles "knee inside
+  // textbox" separately.
+  let connection;
+  if (rawKnee) {
+    const boxRight = textBox.x + textBox.width;
+    const boxBottom = textBox.y + textBox.height;
+    const clampedX = Math.max(textBox.x, Math.min(knee.x, boxRight));
+    const clampedY = Math.max(textBox.y, Math.min(knee.y, boxBottom));
+    connection = {
+      line1Start: { x: clampedX, y: clampedY },
+      line2Start: { x: knee.x, y: knee.y },
+      effectiveKnee: { x: knee.x, y: knee.y },
+      shouldHideLine1: false,
+    };
+  } else {
+    connection = calculateConnection(
+      textBox.x, textBox.y, textBox.width, textBox.height,
+      knee, arrowTip, 0
+    );
+  }
+
+  // UX: arrowhead style resolution — explicit style wins, else default to
+  // solid triangle so callouts share the arrow tool's default look. Callers
+  // can force 'none' via an explicit style override.
+  const arrowheadStyle = callout.style?.arrowheadStyle ?? ARROWHEAD_STYLES.SOLID_TRIANGLE;
+  // UX: arrowhead rotates to the tangent of line2 (knee → arrowTip), same
+  // convention the straight-branch arrow tool uses. line2Start is the
+  // constrained / effective knee so the arrowhead aligns with the visible
+  // segment even after knee clamping.
+  const arrowAngleDeg = (
+    Math.atan2(arrowTip.y - connection.line2Start.y, arrowTip.x - connection.line2Start.x)
+    * 180 / Math.PI
+  );
+  const arrowheadSpec = buildArrowheadRenderSpec(
+    arrowheadStyle, arrowTip.x, arrowTip.y, arrowAngleDeg, lineColor, lineThickness
+  );
+  // UX: shorten line2 into the back of the arrowhead for SOLID_TRIANGLE /
+  // OPEN_TRIANGLE so the line tail doesn't poke through — same formula the
+  // arrow tool uses (lineEndX/Y offset by headSize/3).
+  let line2EndX = arrowTip.x;
+  let line2EndY = arrowTip.y;
+  if (arrowheadStyle === ARROWHEAD_STYLES.SOLID_TRIANGLE
+      || arrowheadStyle === ARROWHEAD_STYLES.OPEN_TRIANGLE) {
+    const headSize = Math.max(8, lineThickness * 3);
+    const angleRad = arrowAngleDeg * Math.PI / 180;
+    line2EndX = arrowTip.x - (headSize / 3) * Math.cos(angleRad);
+    line2EndY = arrowTip.y - (headSize / 3) * Math.sin(angleRad);
+  }
+  // UX: render the arrowhead spec via the same primitive mapping the arrow
+  // tool uses. Keeps callout and arrow tool visually identical when styles
+  // match.
+  const renderArrowheadEl = () => {
+    switch (arrowheadSpec.kind) {
+      case 'none': return null;
+      case 'solidTriangle': return <polygon {...arrowheadSpec.polygon} />;
+      case 'openTriangle': return <polygon {...arrowheadSpec.polygon} />;
+      case 'openCircle': return <circle {...arrowheadSpec.circle} />;
+      case 'vShape': return <polyline {...arrowheadSpec.polyline} />;
+      case 'horizontalLine': return <line {...arrowheadSpec.line} />;
+      default: return null;
+    }
+  };
+
+  const key = `callout-${callout.id || index}`;
+
+  // Shared stroke attributes for both connector line segments. vectorEffect
+  // non-scaling-stroke keeps the line visually consistent across zoom levels.
+  const lineStyle = {
+    stroke: lineColor,
+    strokeWidth: lineThickness,
+    strokeLinecap: 'round',
+    vectorEffect: 'non-scaling-stroke',
+  };
+
+  // Reference the pure spec builder so any future inline-JSX drift against
+  // the testable contract is detectable. (The unit tests target the spec
+  // directly; this call is a noop placeholder kept for code-parity.)
+  // eslint-disable-next-line no-unused-vars
+  const _specPreview = buildCalloutRenderSpec(callout, index, pageSize, calculateConnection);
+
+  return (
+    // UX: data-callout-id enables Phase 17/18 event delegation for hit-testing
+    // (same pattern as v2.2 EDIT-13 data-rotation-handle='mtr' delegation).
+    // (CALL-10)
+    <g key={key} data-callout-id={callout.id} opacity={borderOpacity}>
+      {/* Line 1: textbox-edge to knee (skip if shouldHideLine1) */}
+      {!connection.shouldHideLine1 && (
+        <line
+          // UX: data-callout-part='line1' — Phase 17 collision math hit-tests
+          // the first connector segment for clamp logic. (CALL-10)
+          data-callout-part="line1"
+          x1={connection.line1Start.x}
+          y1={connection.line1Start.y}
+          x2={connection.effectiveKnee.x}
+          y2={connection.effectiveKnee.y}
+          {...lineStyle}
+        />
+      )}
+      {/* Line 2: knee to arrowTip (shortened into back of arrowhead for
+          triangle styles so the line tail doesn't poke through the point). */}
+      <line
+        // UX: data-callout-part='line2' — Phase 18 Liang-Barsky auto-routing
+        // identifies the tip-direction segment via this marker. (CALL-10)
+        data-callout-part="line2"
+        x1={connection.line2Start.x}
+        y1={connection.line2Start.y}
+        x2={line2EndX}
+        y2={line2EndY}
+        {...lineStyle}
+      />
+      {/* UX: real arrowhead via the same arrow-tool renderer path
+          (buildArrowheadRenderSpec) — solid triangle by default, or whichever
+          of the 6 styles the callout style specifies. Replaces the earlier
+          placeholder dot (Phase 15 UAT-3 Issue 1). (CALL-10) */}
+      {renderArrowheadEl()}
+      {/* Text box rect + text foreignObject — rendered as a pair when
+          hideText=false. Both hide together when the callout is being edited
+          (hideText=true): FabricEditCanvas mounts a Fabric.Textbox over the
+          bbox that carries its own stroke/rx/ry (see calloutEditAdapter.js
+          toFabricGroup post-Phase-15-UAT-2), so a static SVG rect below would
+          double up with the edit overlay's border. Phase 15 UAT-2 (2026-04-17):
+          rect + foreignObject share source-of-truth with the Fabric Textbox
+          during edit, so the unified textbox-IS-the-box model preserves the
+          auto-sized growth the user sees while typing. */}
+      {(() => {
+        // UX: 2026-04-19 — give the visible box a descender buffer so letters
+        // like j / g / p / y / q that hang below the baseline stay inside the
+        // border instead of clipping against the bottom edge. Mirrors the
+        // `descenderBuffer = fontSize * 0.35` approach used by renderText
+        // for plain text annotations. Both the border rect and the inner
+        // foreignObject grow together so the text anchor stays at the top
+        // and the bottom stretches just enough to contain descenders.
+        // UX 2026-04-20: the border rect always renders so the user sees
+        // the growing box while editing. Only the inner text foreignObject
+        // is gated by hideText — Fabric paints the live letters during
+        // edit and the SVG copy would just create a ghost behind them.
+        const calloutFs = Number(callout.style?.fontSize || 12);
+        const descenderBuffer = calloutFs * 0.35;
+        const boxHeightWithDescenders = textBox.height + descenderBuffer;
+        return (
+        <>
+          <rect
+            // UX: data-callout-part='textBox' — Phase 14 drag target + Phase 17
+            // collision clamp hit-test surface. (CALL-10)
+            data-callout-part="textBox"
+            x={textBox.x}
+            y={textBox.y}
+            width={textBox.width}
+            height={boxHeightWithDescenders}
+            fill={fillColor}
+            fillOpacity={fillOpacity}
+            stroke={lineColor}
+            strokeWidth={Math.max(1, lineThickness * 0.7)}
+            rx={0}
+            ry={0}
+            vectorEffect="non-scaling-stroke"
+          />
+          {!hideText && (
+          <foreignObject
+            // UX: data-callout-part='text' — double-click edit-mode entry
+            // hit-test surface. Phase 14 Area 2c dispatches
+            // onRequestEditMode(id, 'callout') when this is double-clicked.
+            // (CALL-10)
+            //
+            // Plan 15-04 Issue 4 (2026-04-17): inset by TEXT_PADDING so text
+            // doesn't hug the callout border and descenders don't cut the
+            // bottom edge. Border rect above stays at the full textBox dims;
+            // only the foreignObject shrinks. CSS word-break: break-all wraps
+            // at this narrower inner width, so Fabric edit-mode Textbox wrap
+            // width must also subtract 2*TEXT_PADDING to stay in lockstep
+            // (see calloutEditAdapter / FabricEditCanvas callout edit path).
+            data-callout-part="text"
+            // UX: 2026-04-19 — clamp the 6px text inset down for tight
+            // imported boxes. Acrobat/Drawboard store FreeTextCallouts
+            // with the border fit snug to the text (sometimes only a
+            // couple of px above/below the glyphs). A flat 6px inset
+            // crushes the text to the bottom on those. Scale the inset
+            // so text never gets less than one line-box worth of room,
+            // and always let the foreign object cover the full height
+            // for tight boxes so the flex-centered child lays out
+            // properly.
+            // UX: 2026-04-19 — add the same TEXT_PADDING gutter renderText
+            // uses for plain text annotations so callout letters don't hug
+            // the left border. Fabric's callout edit path applies the same
+            // inset, so cursor and glyphs stay pixel-aligned side-to-side.
+            // overflow:hidden hides any text that doesn't fit when the user
+            // resizes the callout narrower than the content can wrap, or
+            // shorter than the wrapped lines — matches Drawboard PDF.
+            // UX 2026-04-20: force remount when the callout box height or
+            // text length changes. Chromium's foreignObject does not reliably
+            // re-layout its inner HTML on dynamic attribute changes, so a
+            // line typed past the imported callout height ended up clipped.
+            // Re-keying makes React drop the stale foreignObject and mount a
+            // fresh one, letting the browser lay out the grown box from
+            // scratch so new lines become visible during live edit.
+            key={`fo-callout-${Math.round(boxHeightWithDescenders)}-${((liveBounds && liveBounds.text) || callout.text || '').length}`}
+            x={textBox.x + TEXT_PADDING}
+            y={textBox.y}
+            width={Math.max(0, textBox.width - 2 * TEXT_PADDING)}
+            height={Math.max(0, boxHeightWithDescenders)}
+            overflow="hidden"
+          >
+            <div
+              xmlns="http://www.w3.org/1999/xhtml"
+              // UX: inner div style mirrors renderText at :457. Single-name
+              // fontFamily prevents Fabric.js cursor drift (CLAUDE.md 2026-04-08
+              // gotcha). antialiased + grayscale smoothing matches renderText
+              // visual parity. (CALL-10)
+              //
+              // Phase 15 UAT-2 (2026-04-17): padding dropped to 0 so SVG view
+              // text position matches the Fabric edit overlay's flush-left
+              // default — prevents the "text jump" a user saw when entering
+              // edit mode under the old +8/+4 offset model.
+              style={{
+                // UX 2026-04-20: explicit px sizes so the inner div
+                // tracks the live-growing foreignObject. SVG
+                // foreignObject doesn't reliably resolve percentage
+                // heights during auto-grow, which left new lines
+                // invisible past the imported height.
+                width: Math.max(0, textBox.width - 2 * TEXT_PADDING),
+                height: Math.max(0, boxHeightWithDescenders),
+                // UX: 2026-04-19 — vertically center the text inside the
+                // (descender-padded) box in every state. Fabric's edit-mode
+                // cursor is shifted down by the same center offset so the
+                // blinking caret lines up with the visible glyphs whether
+                // the user is typing or not. Multi-line content that
+                // overflows the box top-aligns naturally (`justify-content:
+                // center` only uses free space).
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                textAlign: callout.style?.textAlign || 'left',
+                fontKerning: 'none',
+                textRendering: 'geometricPrecision',
+                fontVariantLigatures: 'none',
+                fontSize: `${callout.style?.fontSize || 12}px`,
+                fontFamily: safeFontFamily,
+                color: callout.style?.fontColor || callout.style?.textColor || '#000',
+                // UX 2026-04-19 — hidden on the inner div as well so tight
+                // boxes clip cleanly at the border.
+                overflow: 'hidden',
+                wordWrap: 'break-word',
+                // UX: match renderText — Fabric's `splitByGrapheme: true`
+                // breaks at any character, CSS default prefers word
+                // boundaries + only breaks inside a word on overflow.
+                // `break-all` keeps SVG wrap points aligned with Fabric's,
+                // preventing visual-line-count drift (and the resulting
+                // border overflow) during callout edit.
+                wordBreak: 'break-all',
+                whiteSpace: 'pre-wrap',
+                boxSizing: 'border-box',
+                padding: 0,
+                // UX: match renderText's line-height fix (Plan 15-04 Issue 1).
+                // Fabric textbox per-line step = fontSize * lineHeight *
+                // _fontSizeMult (1.13). The callout edit adapter now pins
+                // Fabric lineHeight = 1 so cursor and glyphs use the same
+                // per-line step (fixes 2026-04-20 drift report). Browser
+                // CSS line-height here mirrors that: lineHeight * 1.13 so
+                // view and edit show identical line spacing.
+                lineHeight: (callout.style?.lineHeight || 1) * 1.13,
+                // UX 2026-04-20 — no explicit font-smoothing. Canvas 2D (the
+                // Fabric edit layer) ignores CSS font-smoothing, so setting
+                // `antialiased`/`grayscale` here made the SVG callout view
+                // render lighter + wider than the Fabric edit overlay. Browser
+                // default keeps view and edit on the same rasterization path
+                // so the user sees no weight/spacing jump on edit entry/exit.
+              }}
+            >
+              {(liveBounds && typeof liveBounds.text === 'string')
+                ? liveBounds.text
+                : (callout.text || '')}
+            </div>
+          </foreignObject>
+          )}
+        </>
+        );
+      })()}
+    </g>
+  );
+};
+
+/**
+ * [COUNTER WIP — DO NOT TOUCH] Counter feature is mid-debug as of 2026-04-14.
+ * Another session: leave renderCounter and all counter-related code alone
+ * until the human owner gives explicit say-so. Coordinate via the user.
+ *
+ * Render a counter annotation (Shottr-style numbered badge): filled circle
+ * with a small triangular nubbin pointing in the configured direction, and
+ * a centered number derived from `data.displayNumber` (set by renumberCounters).
+ *
+ * Storage shape: Fabric Circle with `data: { type: 'counter', createdAt,
+ * pointerAngle, displayNumber }`. The Circle's own `fill` is the visual color,
+ * which the FabricEditCanvas color picker can change directly.
+ *
+ * @param {object} obj - Fabric.js circle JSON object with counter data
+ * @param {number} index - Array index for key fallback
+ * @returns {React.ReactElement|null}
+ */
+export const renderCounter = (obj, index) => {
+  const radius = (obj.radius || 14) * Math.abs(obj.scaleX || 1);
+  // Default Fabric Circle origin is left/top, so center = left+radius, top+radius.
+  const centerX = (obj.left || 0) + radius;
+  const centerY = (obj.top || 0) + radius;
+
+  const color = obj.fill || (obj.data && obj.data.color) || '#ef4444';
+  const displayNumber =
+    (obj.data && obj.data.displayNumber != null) ? obj.data.displayNumber : 1;
+  const pointerAngleDeg =
+    (obj.data && obj.data.pointerAngle != null) ? obj.data.pointerAngle : 225;
+
+  // UX (Shottr cohesion): render the pin as a SINGLE filled SVG path that combines
+  // the bubble body and the nub via two tangent lines from the nub tip to the
+  // circle. One filled path = no AA seam, no z-order tricks, and a smooth tangent
+  // transition (no visible kink) where the nub meets the bubble — which matches
+  // Shottr's counter pin. Previous polygon+circle composite left a visible
+  // separation no matter how the two shapes were overlapped.
+  const angleRad = (pointerAngleDeg * Math.PI) / 180;
+  const dirX = Math.cos(angleRad);
+  const dirY = Math.sin(angleRad);
+  const tipExtension = Math.max(5, radius * 0.5);
+  const tipDistance = radius + tipExtension;
+  const tipX = centerX + dirX * tipDistance;
+  const tipY = centerY + dirY * tipDistance;
+
+  // Tangent points on the circle from the tip: the tangent lines from an external
+  // point P touch a circle at the two points where CT ⟂ PT. Half-angle at center
+  // between CP and CT is acos(r/d) where d = |CP|.
+  const tangentHalfAngle = Math.acos(radius / tipDistance);
+  const t1Angle = angleRad + tangentHalfAngle;
+  const t2Angle = angleRad - tangentHalfAngle;
+  const t1x = centerX + Math.cos(t1Angle) * radius;
+  const t1y = centerY + Math.sin(t1Angle) * radius;
+  const t2x = centerX + Math.cos(t2Angle) * radius;
+  const t2y = centerY + Math.sin(t2Angle) * radius;
+
+  // Path: tip → T1 (tangent line) → arc the LONG way around the circle through the
+  // back (opposite the nub) → T2 → close back to tip. large-arc-flag=1 picks the
+  // >180° arc; sweep-flag=1 sweeps through increasing SVG angles, which in y-down
+  // screen space traces the bubble body away from the nub side.
+  const pathD = `M ${tipX},${tipY} L ${t1x},${t1y} A ${radius},${radius} 0 1 1 ${t2x},${t2y} Z`;
+
+  const fontSize = Math.max(11, radius * 1.05);
+  const key = `counter-${obj.id || index}`;
+
+  return (
+    <g key={key} opacity={obj.opacity ?? 1}>
+      <path d={pathD} fill={color} stroke="none" />
+      <text
+        x={centerX}
+        y={centerY}
+        fill={obj.data?.numberColor || '#ffffff'}
+        fontSize={fontSize}
+        fontWeight={700}
+        fontFamily="-apple-system, system-ui, sans-serif"
+        textAnchor="middle"
+        dominantBaseline="central"
+        pointerEvents="none"
+        style={{ userSelect: 'none' }}
+      >
+        {displayNumber}
+      </text>
+    </g>
+  );
+};

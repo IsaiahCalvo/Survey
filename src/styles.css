@@ -112,8 +112,9 @@
 }
 
 .btn-default:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(74, 144, 226, 0.14);
+  border-color: #4A90E2;
+  box-shadow: 0 0 0 1px rgba(74, 144, 226, 0.35);
 }
 
 .btn-primary {
@@ -134,8 +135,9 @@
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: #363636;
-  border-color: #444;
+  background: rgba(74, 144, 226, 0.14);
+  border-color: #4A90E2;
+  box-shadow: 0 0 0 1px rgba(74, 144, 226, 0.35);
 }
 
 .btn-success {
@@ -172,7 +174,7 @@
 }
 
 .btn-icon {
-  padding: 6px;
+  padding: 0px;
   min-width: 28px;
   min-height: 28px;
   background: transparent;
@@ -182,7 +184,9 @@
 }
 
 .btn-icon:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(74, 144, 226, 0.14);
+  border-color: #4A90E2;
+  box-shadow: 0 0 0 1px rgba(74, 144, 226, 0.35);
 }
 
 .btn-icon-sm {
@@ -262,4 +266,25 @@
 
 .no-spin-buttons[type=number] {
   -moz-appearance: textfield;
+}
+
+/* Syncfusion renderer-only mode: keep rendering engine, remove built-in chrome. */
+.syncfusion-renderer-only .e-pv-toolbar,
+.syncfusion-renderer-only .e-pv-sidebar-toolbar,
+.syncfusion-renderer-only .e-pv-navigation-pane,
+.syncfusion-renderer-only .e-pv-comments-panel-container,
+.syncfusion-renderer-only .e-pv-mobile-toolbar,
+.syncfusion-renderer-only .e-pv-mobile-annotation-toolbar {
+  display: none !important;
+}
+
+.syncfusion-renderer-only .e-pv-main-container,
+.syncfusion-renderer-only .e-pv-viewer-container {
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.syncfusion-renderer-only .e-pv-viewer-container {
+  background: #2b2b2b !important;
 }

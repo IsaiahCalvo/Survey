@@ -131,7 +131,8 @@ const CompactColorPicker = ({ color, opacity = 1, onChange, onClose }) => {
             display: 'flex',
             flexDirection: 'column',
             gap: '12px',
-            userSelect: 'none'
+            userSelect: 'none',
+            marginRight: '53px'
         }}
             onClick={(e) => e.stopPropagation()}
         >

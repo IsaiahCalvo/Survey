@@ -40,7 +40,7 @@ const LocateModal = ({
       zIndex: 10000,
       padding: '16px',
       background: '#2b2b2b',
-      border: '1px solid #4A90E2',
+      border: '1px solid #3a3a3a',
       borderRadius: '8px',
       boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
       fontFamily: FONT_FAMILY,
@@ -249,7 +249,7 @@ const LocateModal = ({
                     }
                   }}
                 >
-                  <div style={{ color: '#4A90E2', fontWeight: '600', marginBottom: '2px' }}>
+                  <div style={{ color: isActive ? '#4A90E2' : '#ddd', fontWeight: '600', marginBottom: '2px' }}>
                     Page {result.pageNumber}
                   </div>
                   {result.snippet && (
@@ -269,7 +269,7 @@ const LocateModal = ({
             style={{
               width: '100%',
               padding: '10px 16px',
-              background: (isDrawing || isSearching) ? '#555' : '#4A90E2',
+              background: (isDrawing || isSearching) ? '#555' : '#3a3a3a',
               border: 'none',
               borderRadius: '6px',
               color: '#fff',
@@ -280,12 +280,12 @@ const LocateModal = ({
             }}
             onMouseEnter={(e) => {
               if (!isDrawing && !isSearching) {
-                e.currentTarget.style.background = '#5AA0F2';
+                e.currentTarget.style.background = '#4A90E2';
               }
             }}
             onMouseLeave={(e) => {
               if (!isDrawing && !isSearching) {
-                e.currentTarget.style.background = '#4A90E2';
+                e.currentTarget.style.background = '#3a3a3a';
               }
             }}
           >

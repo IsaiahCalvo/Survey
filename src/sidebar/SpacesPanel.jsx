@@ -2,6 +2,10 @@ import React, { useState, useCallback, useMemo, useRef } from 'react';
 import Icon from '../Icons';
 import { parsePageRangeInput, formatPageList } from '../utils/pageRangeParser';
 import {
+  getPageVisibilityControlMode,
+  PAGE_VISIBILITY_CONTROL_MODE
+} from '../utils/annotationVisibilityRules';
+import {
   DndContext,
   PointerSensor,
   closestCenter,
@@ -72,9 +76,22 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   onAssignPages,
   onRenameRegion,
   onRequestRegionEdit,
+  onCancelRegionEdit,
   onRemovePage,
   onExitSpace,
-  isRegionSelectionActive = false
+  onToggleSpace,
+  isRegionSelectionActive = false,
+  features,
+  getCanvasAnnotationVisibilityState = null,
+  onToggleCanvasAnnotations = null,
+  getSurveyAnnotationVisibilityState = null,
+  onToggleSurveyAnnotations = null,
+  activeSpaceId = null,
+  onToggleRegionOverlay = null,
+  getRegionOverlayEnabled = null,
+  isRegionOverlayToggleEnabled = null,
+  showSurveyPanel = false,
+  selectedModuleId = null
 }) {
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [isExportHovered, setIsExportHovered] = useState(false);
@@ -112,24 +129,20 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
     setEditingRegionValue('');
   }, [space.id]);
 
-  React.useEffect(() => {
-    if (editingRegionId !== null) {
-      requestAnimationFrame(() => {
-        editingRegionInputRef.current?.focus();
-        editingRegionInputRef.current?.select();
-      });
-    }
-  }, [editingRegionId]);
   const isExportActive = isExportHovered || isExportMenuOpen;
 
   const commitRegionRename = useCallback((pageId, triggerRegionEdit = false) => {
+
     if (editingRegionId !== pageId) {
+
       return;
     }
     const labelToSave = editingRegionValue.trim();
+
     onRenameRegion?.(space.id, pageId, labelToSave);
     setEditingRegionId(null);
     setEditingRegionValue('');
+
     if (triggerRegionEdit) {
       onRequestRegionEdit?.(space.id, pageId);
     }
@@ -141,10 +154,18 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
     setEditingRegionValue('');
   }, []);
 
+  React.useEffect(() => {
+    // When edit mode is dismissed, save any active rename
+    if (!isRegionSelectionActive && editingRegionId !== null) {
+      commitRegionRename(editingRegionId, false);
+    }
+  }, [isRegionSelectionActive, editingRegionId, commitRegionRename]);
+
   const handleRegionEditClick = useCallback((pageId, currentLabel) => {
     setEditingRegionId(pageId);
     setEditingRegionValue(currentLabel);
-  }, []);
+    // Note: Rename mode should NOT automatically select the space
+  }, [space.id]);
 
 
   const {
@@ -183,11 +204,10 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
         }}
       >
         <div
-          onClick={() => onSpaceClick(space.id)}
           onDoubleClick={() => onToggleExpand(space.id)}
           style={{
             padding: '10px 10px 10px 6px',
-            cursor: 'pointer',
+            cursor: 'default',
             background: headerBackground,
             transition: 'background 0.15s ease',
             display: 'flex',
@@ -229,6 +249,30 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
           >
             ☰
           </div>
+
+          {!isEditing && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onRenameClick(space.id, space.name);
+              }}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                padding: '4px',
+                cursor: 'pointer',
+                borderRadius: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = '#f0f0f0'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              title="Rename"
+            >
+              <Icon name="edit" size={12} color="#666" />
+            </button>
+          )}
 
           <button
             onClick={(e) => {
@@ -304,56 +348,52 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                 alignItems: 'center',
                 marginLeft: 'auto'
               }}>
-                {isSelected && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onExitSpace?.(space.id);
-                    }}
-                    style={{
-                      background: '#4A90E2',
-                      border: 'none',
-                      color: '#ffffff',
-                      padding: '4px 10px',
-                      borderRadius: '6px',
-                      fontSize: '12px',
-                      fontWeight: 500,
-                      cursor: 'pointer',
-                      fontFamily: FONT_FAMILY,
-                      transition: 'background 0.15s ease'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = '#357abd';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = '#4A90E2';
-                    }}
-                    title="Exit Space"
-                  >
-                    Exit
-                  </button>
-                )}
-                <button
+                {/* Toggle Switch - Always visible */}
+                <div
                   onClick={(e) => {
                     e.stopPropagation();
-                    onRenameClick(space.id, space.name);
+                    onToggleSpace?.(space.id, !isActive);
                   }}
                   style={{
-                    background: 'transparent',
-                    border: 'none',
-                    padding: '4px',
+                    position: 'relative',
+                    width: '36px',
+                    height: '20px',
+                    borderRadius: '10px',
+                    background: isActive ? '#4A90E2' : '#3a3a3a',
                     cursor: 'pointer',
-                    borderRadius: '4px',
+                    transition: 'background 0.2s ease',
+                    border: isActive ? '1px solid #357abd' : '1px solid #4a4a4a',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center'
+                    padding: '2px',
+                    flexShrink: 0
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#f0f0f0'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                  title="Rename"
+                  onMouseEnter={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.background = '#4a4a4a';
+                    } else {
+                      e.currentTarget.style.background = '#357abd';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = isActive ? '#4A90E2' : '#3a3a3a';
+                  }}
+                  title={isActive ? 'Turn off space' : 'Turn on space'}
                 >
-                  <Icon name="edit" size={12} color="#666" />
-                </button>
+                  <div
+                    style={{
+                      position: 'absolute',
+                      width: '16px',
+                      height: '16px',
+                      borderRadius: '50%',
+                      background: '#ffffff',
+                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
+                      transition: 'transform 0.2s ease',
+                      transform: isActive ? 'translateX(16px)' : 'translateX(0px)',
+                      left: '2px'
+                    }}
+                  />
+                </div>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -424,7 +464,13 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                 onClick={(e) => e.stopPropagation()}
               >
                 <button
-                  onClick={() => setIsExportMenuOpen((open) => !open)}
+                  onClick={() => {
+                    if (!features?.excelExport) {
+                      alert('Exporting Spaces is a Pro feature.');
+                      return;
+                    }
+                    setIsExportMenuOpen((open) => !open);
+                  }}
                   onMouseEnter={() => setIsExportHovered(true)}
                   onMouseLeave={() => setIsExportHovered(false)}
                   style={{
@@ -628,6 +674,75 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                             borderRadius: '6px'
                           }}
                         >
+                          {/* Region Overlay Toggle Switch - Always visible, dimmed when disabled */}
+                          {(() => {
+                            const hasProps = onToggleRegionOverlay && getRegionOverlayEnabled && isRegionOverlayToggleEnabled;
+                            const isOverlayEnabled = hasProps && getRegionOverlayEnabled ? getRegionOverlayEnabled(space.id, page.pageId, page) : false;
+                            const isToggleEnabled = hasProps && isRegionOverlayToggleEnabled ? isRegionOverlayToggleEnabled(space.id, page.pageId, page) : false;
+                            const isSpaceActive = isActive;
+
+                            return (
+                              <div
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!isToggleEnabled || !onToggleRegionOverlay) {
+                                    return;
+                                  }
+                                  onToggleRegionOverlay(space.id, page.pageId);
+                                }}
+                                style={{
+                                  position: 'relative',
+                                  width: '28px',  // Smaller than space switch (36px)
+                                  height: '16px', // Smaller than space switch (20px)
+                                  borderRadius: '8px',
+                                  background: isToggleEnabled && isOverlayEnabled ? '#4A90E2' : '#3a3a3a',
+                                  cursor: isToggleEnabled ? 'pointer' : 'not-allowed',
+                                  transition: 'background 0.2s ease',
+                                  border: isToggleEnabled && isOverlayEnabled ? '1px solid #357abd' : '1px solid #4a4a4a',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  padding: '1px',
+                                  flexShrink: 0,
+                                  opacity: isToggleEnabled ? 1 : 0.5
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (!isToggleEnabled) return;
+                                  if (!isOverlayEnabled) {
+                                    e.currentTarget.style.background = '#4a4a4a';
+                                  } else {
+                                    e.currentTarget.style.background = '#357abd';
+                                  }
+                                }}
+                                onMouseLeave={(e) => {
+                                  if (!isToggleEnabled) return;
+                                  e.currentTarget.style.background = isOverlayEnabled ? '#4A90E2' : '#3a3a3a';
+                                }}
+                                title={
+                                  !hasProps
+                                    ? 'Overlay toggle'
+                                    : !isSpaceActive
+                                      ? 'Enable space to toggle overlay'
+                                      : !isToggleEnabled
+                                        ? 'Define regions first to enable overlay'
+                                        : (isOverlayEnabled ? 'Hide overlay for this region' : 'Show overlay for this region')
+                                }
+                              >
+                                <div
+                                  style={{
+                                    position: 'absolute',
+                                    width: '14px',
+                                    height: '14px',
+                                    borderRadius: '50%',
+                                    background: '#ffffff',
+                                    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.2)',
+                                    transition: 'transform 0.2s ease',
+                                    transform: isToggleEnabled && isOverlayEnabled ? 'translateX(12px)' : 'translateX(0px)',
+                                    left: '1px'
+                                  }}
+                                />
+                              </div>
+                            );
+                          })()}
                           <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
                             {isEditingRegion ? (
                               <input
@@ -635,6 +750,15 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                 type="text"
                                 value={editingRegionValue}
                                 onChange={(e) => setEditingRegionValue(e.target.value)}
+                                onMouseDown={(e) => {
+                                  e.stopPropagation();
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                }}
+                                onFocus={(e) => {
+                                  e.stopPropagation();
+                                }}
                                 onBlur={() => {
                                   if (isRegionSelectionActive) {
                                     return;
@@ -642,11 +766,13 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                   commitRegionRename(page.pageId, false);
                                 }}
                                 onKeyDown={(e) => {
+
                                   if (e.key === 'Enter') {
                                     e.preventDefault();
                                     commitRegionRename(page.pageId, true);
                                   } else if (e.key === 'Escape') {
                                     e.preventDefault();
+                                    e.stopPropagation();
                                     cancelRegionRename();
                                   }
                                 }}
@@ -664,70 +790,147 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                 }}
                               />
                             ) : (
-                              <>
+                              <div style={{ color: '#ddd', fontWeight: 500 }}>
+                                {regionLabel}
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ display: 'flex', gap: '4px' }}>
+                            {/* One visible control on screen, but separate canvas/survey features in code. */}
+                            {isExpanded && (() => {
+                              const controlMode = getPageVisibilityControlMode({ showSurveyPanel, selectedModuleId });
+                              const isSurveyContext =
+                                activeSpaceId !== null &&
+                                controlMode === PAGE_VISIBILITY_CONTROL_MODE.SURVEY;
+                              const getVisibilityState = isSurveyContext
+                                ? getSurveyAnnotationVisibilityState
+                                : getCanvasAnnotationVisibilityState;
+                              const onToggleVisibility = isSurveyContext
+                                ? onToggleSurveyAnnotations
+                                : onToggleCanvasAnnotations;
+
+                              if (!getVisibilityState || !onToggleVisibility) {
+                                return null;
+                              }
+
+                              const visibilityState = getVisibilityState(space.id, page.pageId);
+                              const isDisabled = !isActive || activeSpaceId === null;
+                              const title = !isDisabled
+                                ? (isSurveyContext
+                                  ? (visibilityState ? 'Hide Survey Annotations' : 'Show Survey Annotations')
+                                  : (visibilityState ? 'Hide Canvas Annotations' : 'Show Canvas Annotations'))
+                                : 'Toggle is only available when a space is active';
+
+                              return (
                                 <button
                                   onClick={(e) => {
+                                    const now = Date.now();
+                                    const lastClick = parseInt(e.currentTarget.dataset.lastClick || '0', 10);
+                                    if (now - lastClick < 300) {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      return;
+                                    }
+                                    e.currentTarget.dataset.lastClick = now.toString();
+
+                                    if (isDisabled) {
+                                      return;
+                                    }
+
                                     e.stopPropagation();
-                                    handleRegionEditClick(page.pageId, regionLabel);
+                                    onToggleVisibility(space.id, page.pageId, !visibilityState);
                                   }}
                                   style={{
-                                    background: 'transparent',
-                                    border: 'none',
-                                    padding: '4px',
-                                    cursor: 'pointer',
+                                    background: visibilityState ? 'rgba(74, 144, 226, 0.15)' : 'rgba(153, 153, 153, 0.1)',
+                                    border: `1px solid ${visibilityState ? 'rgba(74, 144, 226, 0.4)' : 'rgba(153, 153, 153, 0.3)'}`,
+                                    padding: '4px 8px',
+                                    cursor: isDisabled ? 'not-allowed' : 'pointer',
                                     borderRadius: '4px',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    color: '#666'
+                                    fontSize: '10px',
+                                    color: isDisabled ? '#666' : (visibilityState ? '#4A90E2' : '#999'),
+                                    opacity: isDisabled ? 0.5 : 1,
+                                    fontFamily: FONT_FAMILY,
+                                    transition: 'all 0.15s ease',
+                                    width: '24px',
+                                    height: '24px',
+                                    minWidth: '24px',
+                                    minHeight: '24px',
+                                    pointerEvents: isDisabled ? 'none' : 'auto'
                                   }}
                                   onMouseEnter={(e) => {
-                                    e.currentTarget.style.background = '#333';
-                                    e.currentTarget.style.color = '#ddd';
+                                    if (!isDisabled) {
+                                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                                    }
                                   }}
                                   onMouseLeave={(e) => {
                                     e.currentTarget.style.background = 'transparent';
-                                    e.currentTarget.style.color = '#666';
                                   }}
-                                  title="Rename Region"
+                                  title={title}
                                 >
-                                  <Icon name="edit" size={12} />
+                                  {isSurveyContext ? (
+                                    <Icon
+                                      name="survey"
+                                      size={12}
+                                      style={{ width: '15px', height: '15px', flexShrink: 0 }}
+                                    />
+                                  ) : visibilityState ? (
+                                    <svg
+                                      width="14"
+                                      height="14"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      style={{ width: '14px', height: '14px', flexShrink: 0 }}
+                                    >
+                                      <path d="M14.5 19.5H9.5M14.5 19.5C14.5 18.7865 14.5 18.4297 14.5381 18.193C14.6609 17.4296 14.6824 17.3815 15.1692 16.7807C15.3201 16.5945 15.8805 16.0927 17.0012 15.0892C18.5349 13.7159 19.5 11.7206 19.5 9.5C19.5 5.35786 16.1421 2 12 2C7.85786 2 4.5 5.35786 4.5 9.5C4.5 11.7206 5.4651 13.7159 6.99876 15.0892C8.11945 16.0927 8.67987 16.5945 8.83082 16.7807C9.31762 17.3815 9.3391 17.4296 9.46192 18.193C9.5 18.4297 9.5 18.7865 9.5 19.5M14.5 19.5C14.5 20.4346 14.5 20.9019 14.299 21.25C14.1674 21.478 13.978 21.6674 13.75 21.799C13.4019 22 12.9346 22 12 22C11.0654 22 10.5981 22 10.25 21.799C10.022 21.6674 9.83261 21.478 9.70096 21.25C9.5 20.9019 9.5 20.4346 9.5 19.5" stroke="currentColor" strokeWidth="1.5" />
+                                      <path d="M12.7857 8.5L10.6429 11.5H13.6429L11.5 14.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                    </svg>
+                                  ) : (
+                                    <svg
+                                      width="14"
+                                      height="14"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      style={{ width: '14px', height: '14px', flexShrink: 0 }}
+                                    >
+                                      <path d="M14.5 19.5H9.5M14.5 19.5C14.5 18.7865 14.5 18.4297 14.5381 18.193C14.6609 17.4296 14.6824 17.3815 15.1692 16.7807C15.3201 16.5945 15.8805 16.0927 17.0012 15.0892C18.5349 13.7159 19.5 11.7206 19.5 9.5C19.5 5.35786 16.1421 2 12 2C7.85786 2 4.5 5.35786 4.5 9.5C4.5 11.7206 5.4651 13.7159 6.99876 15.0892C8.11945 16.0927 8.67987 16.5945 8.83082 16.7807C9.31762 17.3815 9.3391 17.4296 9.46192 18.193C9.5 18.4297 9.5 18.7865 9.5 19.5M14.5 19.5C14.5 20.4346 14.5 20.9019 14.299 21.25C14.1674 21.478 13.978 21.6674 13.75 21.799C13.4019 22 12.9346 22 12 22C11.0654 22 10.5981 22 10.25 21.799C10.022 21.6674 9.83261 21.478 9.70096 21.25C9.5 20.9019 9.5 20.4346 9.5 19.5" stroke="currentColor" strokeWidth="1.5" />
+                                    </svg>
+                                  )}
                                 </button>
-                                <div style={{ color: '#ddd', fontWeight: 500 }}>
-                                  {regionLabel}
-                                </div>
-                              </>
-                            )}
-                          </div>
-                          <div style={{ display: 'flex', gap: '4px' }}>
+                              );
+                            })()}
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (isEditingRegion) {
-                                  commitRegionRename(page.pageId, true);
-                                } else {
-                                  // Only trigger geometry edit, NOT rename
-                                  onRequestRegionEdit?.(space.id, page.pageId);
-                                }
-                              }}
-                              onMouseDown={(e) => {
-                                if (isEditingRegion) {
-                                  e.preventDefault();
-                                }
+                                handleRegionEditClick(page.pageId, regionLabel);
+                                onRequestRegionEdit?.(space.id, page.pageId);
                               }}
                               style={{
-                                padding: '6px 10px',
-                                background: '#3a3a3a',
-                                color: '#fff',
-                                border: isEditingRegion ? '1px solid #4A90E2' : '1px solid transparent',
-                                borderRadius: '4px',
-                                fontSize: '11px',
+                                background: '#333333',
+                                border: 'none',
+                                padding: '4px',
                                 cursor: 'pointer',
-                                fontFamily: FONT_FAMILY,
-                                boxShadow: isEditingRegion ? '0 0 0 1px rgba(74, 144, 226, 0.35)' : 'none'
+                                borderRadius: '4px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: '#dddddd'
                               }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = '#3a3a3a';
+                                e.currentTarget.style.color = '#fff';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = '#333333';
+                                e.currentTarget.style.color = '#dddddd';
+                              }}
+                              title="Rename Region"
                             >
-                              Edit
+                              <Icon name="edit" size={12} />
                             </button>
                             <button
                               title="Delete"
@@ -770,6 +973,7 @@ const SpacesPanel = ({
   onSetActiveSpace,
   onExitSpaceMode,
   onRequestRegionEdit,
+  onCancelRegionEdit,
   onSpaceAssignPages,
   onSpaceRenamePage,
   onSpaceRemovePage,
@@ -777,13 +981,44 @@ const SpacesPanel = ({
   onExportSpaceCSV,
   onExportSpacePDF,
   isRegionSelectionActive = false,
-  numPages
+  numPages,
+  features,
+  getCanvasAnnotationVisibilityState = null,
+  onToggleCanvasAnnotations = null,
+  getSurveyAnnotationVisibilityState = null,
+  onToggleSurveyAnnotations = null,
+  externalSelectedSpaceId = null,
+  onToggleRegionOverlay = null,
+  getRegionOverlayEnabled = null,
+  isRegionOverlayToggleEnabled = null,
+  showSurveyPanel = false,
+  selectedModuleId = null
 }) => {
   const [newSpaceName, setNewSpaceName] = useState('');
   const [editingSpace, setEditingSpace] = useState(null);
   const [editingName, setEditingName] = useState('');
   const [expandedSpaces, setExpandedSpaces] = useState(new Set());
   const [selectedSpaceId, setSelectedSpaceId] = useState(null);
+
+  // Sync external selectedSpaceId prop with internal state
+  React.useEffect(() => {
+    // Always sync when external changes, even if it's the same value (handles re-renders)
+    if (externalSelectedSpaceId !== null) {
+      if (externalSelectedSpaceId !== selectedSpaceId) {
+        setSelectedSpaceId(externalSelectedSpaceId);
+      }
+    }
+    // Don't clear internal state when external becomes null - user might have manually selected
+    // This ensures the exit button stays visible during region editing even if external state is cleared
+  }, [externalSelectedSpaceId]); // Only depend on externalSelectedSpaceId to avoid infinite loop
+
+  // Additional effect to restore state if it gets cleared but external is still set
+  // This handles cases where internal state is cleared by other means (e.g., space updates)
+  React.useEffect(() => {
+    if (externalSelectedSpaceId !== null && selectedSpaceId === null) {
+      setSelectedSpaceId(externalSelectedSpaceId);
+    }
+  }, [selectedSpaceId, externalSelectedSpaceId]);
   const [pageInputs, setPageInputs] = useState({});
   const [pageErrors, setPageErrors] = useState({});
   const [activeDragSpaceId, setActiveDragSpaceId] = useState(null);
@@ -860,7 +1095,7 @@ const SpacesPanel = ({
     if (onSetActiveSpace) {
       onSetActiveSpace(spaceId);
     }
-  }, [onSetActiveSpace]);
+  }, [onSetActiveSpace, selectedSpaceId]);
 
   const handleExitSpace = useCallback((spaceId) => {
     if (selectedSpaceId === spaceId) {
@@ -870,6 +1105,24 @@ const SpacesPanel = ({
       onExitSpaceMode();
     }
   }, [selectedSpaceId, activeSpaceId, onExitSpaceMode]);
+
+  const handleToggleSpace = useCallback((spaceId, shouldActivate) => {
+    if (shouldActivate) {
+      // Turn on: activate the space
+      setSelectedSpaceId(spaceId);
+      if (onSetActiveSpace) {
+        onSetActiveSpace(spaceId);
+      }
+    } else {
+      // Turn off: deactivate the space
+      if (selectedSpaceId === spaceId) {
+        setSelectedSpaceId(null);
+      }
+      if (activeSpaceId === spaceId && onExitSpaceMode) {
+        onExitSpaceMode();
+      }
+    }
+  }, [selectedSpaceId, activeSpaceId, onSetActiveSpace, onExitSpaceMode]);
 
   const handlePageInputChange = useCallback((spaceId, value) => {
     setPageInputs(prev => ({
@@ -992,56 +1245,74 @@ const SpacesPanel = ({
         </h3>
 
         {/* Create Space Input */}
-        <div style={{
-          display: 'flex',
-          gap: '8px'
-        }}>
-          <input
-            type="text"
-            placeholder="New space name"
-            value={newSpaceName}
-            onChange={(e) => setNewSpaceName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                handleCreateSpace();
-              }
-            }}
-            style={{
-              flex: 1,
-              padding: '8px 10px',
-              background: '#2b2b2b',
-              color: '#ddd',
-              border: '1px solid #3a3a3a',
-              borderRadius: '6px',
-              fontSize: '13px',
-              fontFamily: FONT_FAMILY,
-              outline: 'none'
-            }}
-            onFocus={(e) => e.currentTarget.style.borderColor = '#4A90E2'}
-            onBlur={(e) => e.currentTarget.style.borderColor = '#d0d0d0'}
-          />
-          <button
-            onClick={handleCreateSpace}
-            style={{
-              padding: '8px 12px',
-              background: '#4A90E2',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '6px',
-              fontSize: '13px',
-              fontWeight: '500',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontFamily: FONT_FAMILY
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#357abd'}
-            onMouseLeave={(e) => e.currentTarget.style.background = '#4A90E2'}
-          >
-            <Icon name="plus" size={14} color="#ffffff" />
-          </button>
-        </div>
+        {/* Create Space Input - Gated */}
+        {features?.advancedSurvey ? (
+          <div style={{
+            display: 'flex',
+            gap: '8px'
+          }}>
+            <input
+              type="text"
+              placeholder="New space name"
+              value={newSpaceName}
+              onChange={(e) => setNewSpaceName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleCreateSpace();
+                }
+              }}
+              style={{
+                flex: 1,
+                padding: '8px 10px',
+                background: '#2b2b2b',
+                color: '#ddd',
+                border: '1px solid #3a3a3a',
+                borderRadius: '6px',
+                fontSize: '13px',
+                fontFamily: FONT_FAMILY,
+                outline: 'none'
+              }}
+              onFocus={(e) => e.currentTarget.style.borderColor = '#4A90E2'}
+              onBlur={(e) => e.currentTarget.style.borderColor = '#d0d0d0'}
+            />
+            <button
+              onClick={handleCreateSpace}
+              style={{
+                padding: '8px 12px',
+                background: '#4A90E2',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '13px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontFamily: FONT_FAMILY
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = '#357abd'}
+              onMouseLeave={(e) => e.currentTarget.style.background = '#4A90E2'}
+            >
+              <Icon name="plus" size={14} color="#ffffff" />
+            </button>
+          </div>
+        ) : (
+          <div style={{
+            padding: '10px',
+            background: '#2b2b2b',
+            border: '1px solid #3a3a3a',
+            borderRadius: '6px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            color: '#aaa',
+            fontSize: '12px'
+          }}>
+            <Icon name="lock" size={14} color="#aaa" />
+            <span>Upgrade to Pro to create Spaces</span>
+          </div>
+        )}
       </div>
 
       {/* Spaces List */}
@@ -1099,14 +1370,27 @@ const SpacesPanel = ({
                     onCancelRename={handleRenameCancel}
                     onDelete={handleDelete}
                     onExitSpace={handleExitSpace}
+                    onToggleSpace={handleToggleSpace}
                     onExportSpaceCSV={(spaceId) => onExportSpaceCSV?.(spaceId)}
                     onExportSpacePDF={(spaceId) => onExportSpacePDF?.(spaceId)}
                     onPageInputChange={handlePageInputChange}
                     onAssignPages={handleAssignPages}
                     onRenameRegion={onSpaceRenamePage}
                     onRequestRegionEdit={(spaceId, pageId) => onRequestRegionEdit?.(spaceId, pageId)}
+                    onCancelRegionEdit={(spaceId, pageId) => onCancelRegionEdit?.(spaceId, pageId)}
                     onRemovePage={handleRemovePage}
                     isRegionSelectionActive={isRegionSelectionActive}
+                    features={features}
+                    getCanvasAnnotationVisibilityState={getCanvasAnnotationVisibilityState}
+                    onToggleCanvasAnnotations={onToggleCanvasAnnotations}
+                    getSurveyAnnotationVisibilityState={getSurveyAnnotationVisibilityState}
+                    onToggleSurveyAnnotations={onToggleSurveyAnnotations}
+                    activeSpaceId={activeSpaceId}
+                    onToggleRegionOverlay={onToggleRegionOverlay}
+                    getRegionOverlayEnabled={getRegionOverlayEnabled}
+                    isRegionOverlayToggleEnabled={isRegionOverlayToggleEnabled}
+                    showSurveyPanel={showSurveyPanel}
+                    selectedModuleId={selectedModuleId}
                   />
                 );
               })}

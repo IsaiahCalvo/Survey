@@ -559,9 +559,138 @@ const BookmarksPanel = ({
     });
   }, []);
 
-  const handleNavigate = useCallback((pageIds) => {
-    if (pageIds && pageIds.length > 0) {
-      onNavigateToPage(pageIds[0]);
+  const handleNavigate = useCallback((pageRef) => {
+    const parseOneBasedPage = (value) => {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) return null;
+      const page = Math.trunc(numeric);
+      if (page > 0) return page;
+      // Some imported bookmark payloads may store zero-based page values.
+      if (page === 0) return 1;
+      return null;
+    };
+
+    const parseFromIndex = (value) => {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) return null;
+      const index = Math.trunc(numeric);
+      return index >= 0 ? index + 1 : null;
+    };
+
+    const resolvePage = (value) => {
+      if (value === null || value === undefined) return null;
+
+      if (Array.isArray(value)) {
+        for (const entry of value) {
+          const nextPage = resolvePage(entry);
+          if (nextPage) return nextPage;
+        }
+        return null;
+      }
+
+      if (typeof value === 'object') {
+        const directCandidates = [
+          value.pageIds,
+          value.pageId,
+          value.page,
+          value.Page,
+          value.pageNumber,
+          value.PageNumber,
+          value.targetPage,
+          value.destination,
+          value.destinationPage,
+          value.destinations,
+          value.target?.page,
+          value.target?.pageId,
+          value.target?.pageNumber,
+          value.destination?.page,
+          value.destination?.pageId,
+          value.destination?.pageNumber,
+          value.dest?.pageNumber,
+          value.dest?.PageNumber,
+          value.dest?.page
+        ];
+        for (const candidate of directCandidates) {
+          const nextPage = resolvePage(candidate);
+          if (nextPage) return nextPage;
+        }
+
+        const indexCandidates = [
+          value.pageIndex,
+          value.PageIndex,
+          value.pageIdx,
+          value.destination?.pageIndex,
+          value.destination?.PageIndex,
+          value.dest?.pageIndex,
+          value.dest?.PageIndex,
+          value.dest?.index,
+          value.destination?.index
+        ];
+        for (const candidate of indexCandidates) {
+          const nextPage = parseFromIndex(candidate);
+          if (nextPage) return nextPage;
+        }
+
+        if (Array.isArray(value.children)) {
+          for (const child of value.children) {
+            const nextPage = resolvePage(child);
+            if (nextPage) return nextPage;
+          }
+        }
+
+        return null;
+      }
+
+      return parseOneBasedPage(value);
+    };
+
+    const page = resolvePage(pageRef);
+    if (typeof onNavigateToPage !== 'function') return;
+
+    const bookmarkSourceId =
+      pageRef && typeof pageRef === 'object' && typeof pageRef.sourceId === 'string'
+        ? pageRef.sourceId
+        : null;
+    const bookmarkDest =
+      pageRef && typeof pageRef === 'object'
+        ? (pageRef.dest ?? null)
+        : null;
+    const manualPageOverride = Boolean(
+      pageRef &&
+      typeof pageRef === 'object' &&
+      pageRef.manualPageOverride === true
+    );
+    const disableSourceNavigation = Boolean(
+      pageRef &&
+      typeof pageRef === 'object' &&
+      pageRef.disableSourceNavigation === true
+    );
+    const canUseSourceNavigation = Boolean(
+      (bookmarkSourceId || bookmarkDest) &&
+      !manualPageOverride &&
+      !disableSourceNavigation
+    );
+
+    const navigationOptions = {
+      bypassActiveSpace: true,
+      fromBookmark: true,
+      preferBookmarkSource: canUseSourceNavigation,
+      ...(canUseSourceNavigation
+        ? { bookmarkSourceId, bookmarkDest }
+        : {})
+    };
+
+    if (canUseSourceNavigation) {
+      onNavigateToPage(null, {
+        ...navigationOptions,
+        bookmarkFallbackPage: page || null
+      });
+      return;
+    }
+
+    if (page) {
+      onNavigateToPage(page, navigationOptions);
+      return;
     }
   }, [onNavigateToPage]);
 
@@ -878,102 +1007,74 @@ const BookmarksPanel = ({
     }
   }, [showCreateMenu]);
 
-  // Render bookmark tree item
-  const renderBookmarkItem = (item, rootIndex) => {
+  const renderBookmarkNode = (item, parentId = null, depth = 0) => {
     const isFolder = item.type === 'folder';
     const isExpanded = expandedFolders.has(item.id);
 
-    if (isFolder) {
+    if (!isFolder) {
       return (
-        <div key={item.id} style={{ marginBottom: '0.5px' }}>
-          <DropSlot
-            id={createSlotId(null, rootIndex)}
-            parentId={null}
-            index={rootIndex}
-          />
-
-          <DraggableBookmarkFolder
-            item={item}
-            isExpanded={isExpanded}
-            onToggle={toggleExpand}
-            isEditMode={isEditMode}
-            onRename={handleRename}
-            onDelete={handleDelete}
-            onAddToGroup={handleOpenAddToGroup}
-            isSelected={selectedBookmarkId === item.id}
-            onSelect={setSelectedBookmarkId}
-            incomingPlaceholderHeight={getIncomingPlaceholderHeight(item.id)}
-          >
-            {item.children && item.children.length > 0 ? (
-              <>
-                <DropSlot
-                  id={createSlotId(item.id, 0)}
-                  parentId={item.id}
-                  index={0}
-                  isInsideFolder
-                />
-                {item.children.map((child, childIndex) => (
-                  <div key={child.id}>
-                    <DraggableBookmark
-                      item={child}
-                      isNested
-                      parentId={item.id}
-                      isEditMode={isEditMode}
-                      onNavigate={handleNavigate}
-                      onRename={handleRename}
-                      onDelete={handleDelete}
-                      onUpdate={onBookmarkUpdate}
-                      numPages={numPages}
-                      isSelected={selectedBookmarkId === child.id}
-                      onSelect={setSelectedBookmarkId}
-                      recentlyDropped={recentlyDroppedId === child.id}
-                    />
-                    <DropSlot
-                      id={createSlotId(item.id, childIndex + 1)}
-                      parentId={item.id}
-                      index={childIndex + 1}
-                      isInsideFolder
-                    />
-                  </div>
-                ))}
-              </>
-            ) : (
-              <DropSlot
-                id={createSlotId(item.id, 0)}
-                parentId={item.id}
-                index={0}
-                isInsideFolder
-                isEmptyState
-              />
-            )}
-          </DraggableBookmarkFolder>
-        </div>
-      );
-    } else {
-      return (
-        <div key={item.id} style={{ marginBottom: '0.5px' }}>
-          <DropSlot
-            id={createSlotId(null, rootIndex)}
-            parentId={null}
-            index={rootIndex}
-          />
-
-          <DraggableBookmark
-            item={item}
-            parentId={null}
-            isEditMode={isEditMode}
-            onNavigate={handleNavigate}
-            onRename={handleRename}
-            onDelete={handleDelete}
-            onUpdate={onBookmarkUpdate}
-            numPages={numPages}
-            isSelected={selectedBookmarkId === item.id}
-            onSelect={setSelectedBookmarkId}
-            recentlyDropped={recentlyDroppedId === item.id}
-          />
-        </div>
+        <DraggableBookmark
+          item={item}
+          isNested={depth > 0}
+          parentId={parentId}
+          isEditMode={isEditMode}
+          onNavigate={handleNavigate}
+          onRename={handleRename}
+          onDelete={handleDelete}
+          onUpdate={onBookmarkUpdate}
+          numPages={numPages}
+          isSelected={selectedBookmarkId === item.id}
+          onSelect={setSelectedBookmarkId}
+          recentlyDropped={recentlyDroppedId === item.id}
+        />
       );
     }
+
+    return (
+      <DraggableBookmarkFolder
+        item={item}
+        isExpanded={isExpanded}
+        onToggle={toggleExpand}
+        onNavigate={handleNavigate}
+        isEditMode={isEditMode}
+        onRename={handleRename}
+        onDelete={handleDelete}
+        onAddToGroup={handleOpenAddToGroup}
+        isSelected={selectedBookmarkId === item.id}
+        onSelect={setSelectedBookmarkId}
+        incomingPlaceholderHeight={getIncomingPlaceholderHeight(item.id)}
+      >
+        {item.children && item.children.length > 0 ? (
+          <>
+            <DropSlot
+              id={createSlotId(item.id, 0)}
+              parentId={item.id}
+              index={0}
+              isInsideFolder
+            />
+            {item.children.map((child, childIndex) => (
+              <div key={child.id}>
+                {renderBookmarkNode(child, item.id, depth + 1)}
+                <DropSlot
+                  id={createSlotId(item.id, childIndex + 1)}
+                  parentId={item.id}
+                  index={childIndex + 1}
+                  isInsideFolder
+                />
+              </div>
+            ))}
+          </>
+        ) : (
+          <DropSlot
+            id={createSlotId(item.id, 0)}
+            parentId={item.id}
+            index={0}
+            isInsideFolder
+            isEmptyState
+          />
+        )}
+      </DraggableBookmarkFolder>
+    );
   };
 
   return (
@@ -1068,7 +1169,16 @@ const BookmarksPanel = ({
               </div>
             ) : (
               <>
-                {bookmarkTree.map((item, index) => renderBookmarkItem(item, index))}
+                {bookmarkTree.map((item, index) => (
+                  <div key={item.id} style={{ marginBottom: '0.5px' }}>
+                    <DropSlot
+                      id={createSlotId(null, index)}
+                      parentId={null}
+                      index={index}
+                    />
+                    {renderBookmarkNode(item, null, 0)}
+                  </div>
+                ))}
                 <DropSlot
                   id={createSlotId(null, bookmarkTree.length)}
                   parentId={null}

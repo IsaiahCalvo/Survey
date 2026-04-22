@@ -37,9 +37,9 @@ const ConfirmDialog = ({
       confirmHoverBg: '#ff6b6b',
     },
     info: {
-      iconColor: COLORS.accent.primary,
-      confirmBg: COLORS.accent.primary,
-      confirmHoverBg: COLORS.accent.primaryHover,
+      iconColor: COLORS.text.muted,
+      confirmBg: COLORS.modal.primaryButton,
+      confirmHoverBg: COLORS.modal.primaryButtonHover,
     },
   };
 
@@ -58,24 +58,24 @@ const ConfirmDialog = ({
         left: 0,
         right: 0,
         bottom: 0,
-        background: COLORS.background.overlay,
+        background: COLORS.modal.overlay,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         zIndex: 10000,
-        backdropFilter: 'blur(2px)',
+        backdropFilter: 'blur(3px)',
       }}
       onClick={onClose}
     >
       <div
         style={{
-          background: COLORS.background.secondary,
+          background: COLORS.modal.surface,
           borderRadius: BORDERS.radius.xl,
           padding: '24px',
           maxWidth: '450px',
           width: '90%',
           boxShadow: SHADOWS.xl,
-          border: `1px solid ${COLORS.border.default}`,
+          border: `1px solid ${COLORS.modal.border}`,
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -157,10 +157,12 @@ const ConfirmDialog = ({
               transition: 'all 0.15s ease',
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = COLORS.border.light;
+              e.currentTarget.style.background = COLORS.modal.secondaryButtonHover;
+              e.currentTarget.style.borderColor = COLORS.modal.borderActive;
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.background = COLORS.background.elevated;
+              e.currentTarget.style.borderColor = COLORS.border.default;
             }}
           >
             {cancelText}
@@ -171,7 +173,7 @@ const ConfirmDialog = ({
               padding: '8px 16px',
               background: style.confirmBg,
               color: COLORS.text.primary,
-              border: 'none',
+              border: `1px solid ${COLORS.modal.borderActive}`,
               borderRadius: BORDERS.radius.md,
               fontSize: TYPOGRAPHY.fontSize.md,
               fontWeight: TYPOGRAPHY.fontWeight.medium,
@@ -181,9 +183,11 @@ const ConfirmDialog = ({
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = style.confirmHoverBg;
+              e.currentTarget.style.boxShadow = COLORS.modal.hoverGlow;
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.background = style.confirmBg;
+              e.currentTarget.style.boxShadow = 'none';
             }}
           >
             {confirmText}

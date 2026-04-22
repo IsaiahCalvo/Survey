@@ -1,10 +1,12 @@
 // electron-main.js
 // electron-main.js
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { exec, spawn } = require('child_process');
+const os = require('os');
 
-console.log('Starting Electron Main Process...');
+const DEV_PORT = process.env.DEV_PORT || '5173';
 
 // Suppress security warnings in development
 if (process.env.NODE_ENV === 'development') {
@@ -12,21 +14,221 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 function createWindow() {
+  // Set icon path based on platform and environment
+  // Use app.getAppPath() to get the actual app directory, which works in both dev and production
+  const appPath = app.getAppPath();
+  let iconPath;
+  
+  if (process.platform === 'darwin') {
+    // macOS - use .icns if available, otherwise fall back to .png
+    const icnsPath = path.join(appPath, 'build', 'icon.icns');
+    const pngPath = path.join(appPath, 'build', 'icon.png');
+    if (fs.existsSync(icnsPath)) {
+      iconPath = icnsPath;
+    } else if (fs.existsSync(pngPath)) {
+      iconPath = pngPath;
+    }
+  } else if (process.platform === 'win32') {
+    // Windows - use .ico if available, otherwise .png
+    const icoPath = path.join(appPath, 'build', 'icon.ico');
+    const pngPath = path.join(appPath, 'build', 'icon.png');
+    if (fs.existsSync(icoPath)) {
+      iconPath = icoPath;
+    } else if (fs.existsSync(pngPath)) {
+      iconPath = pngPath;
+    }
+  } else {
+    // Linux - use .png
+    iconPath = path.join(appPath, 'build', 'icon.png');
+  }
+
+  if (!iconPath || !fs.existsSync(iconPath)) {
+  }
+
+  // Preload path - in production, __dirname is app.asar/src, so preload.js is in the same directory
+  // In development, __dirname is the src directory
+  const preloadPath = path.join(__dirname, 'preload.js');
+  
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
+    icon: iconPath,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js'),
+      preload: preloadPath,
+      webSecurity: true, // Keep web security enabled for OAuth
+      zoomFactor: 1.0,
     },
   });
 
+  // Intercept Ctrl/Cmd+Plus/Minus/0 — prevent Electron UI zoom, forward to in-app PDF zoom
+  win.webContents.on('before-input-event', (event, input) => {
+    if ((input.control || input.meta) && (input.key === '+' || input.key === '-' || input.key === '=' || input.key === '0')) {
+      event.preventDefault();
+      // Forward zoom intent to renderer via custom DOM event
+      const direction = (input.key === '+' || input.key === '=') ? 'in' : (input.key === '-' ? 'out' : 'reset');
+      win.webContents.executeJavaScript(
+        `window.dispatchEvent(new CustomEvent('pdf-zoom', { detail: { direction: '${direction}' } }))`
+      ).catch(() => {});
+    }
+  });
+
+  // Handle OAuth redirects - Supabase redirects back to the app
+  win.webContents.on('will-navigate', (event, navigationUrl) => {
+    try {
+      const parsedUrl = new URL(navigationUrl);
+      
+      // Check if this is an OAuth callback (contains hash with access_token or code)
+      if (parsedUrl.hash && (parsedUrl.hash.includes('access_token') || parsedUrl.hash.includes('code') || parsedUrl.hash.includes('error'))) {
+        event.preventDefault();
+        
+        // Reload the app to process the OAuth token
+        if (process.env.NODE_ENV === 'development') {
+          win.loadURL(`http://localhost:${DEV_PORT}` + parsedUrl.hash);
+        } else {
+          const distPath = path.join(app.getAppPath(), 'dist', 'index.html');
+          win.loadFile(distPath).then(() => {
+            // Wait for the page to load, then inject the hash
+            win.webContents.once('did-finish-load', () => {
+              const hash = parsedUrl.hash.replace(/"/g, '\\"'); // Escape quotes
+              win.webContents.executeJavaScript(`window.location.hash = "${hash}";`).catch(err => {
+                console.error('Error setting OAuth hash:', err);
+              });
+            });
+          }).catch(err => {
+            console.error('Error loading OAuth callback:', err);
+          });
+        }
+      }
+    } catch (err) {
+      // If URL parsing fails, allow navigation (might be a relative path)
+      console.warn('Navigation URL parse error:', err);
+    }
+  });
+
+  // Handle navigation errors to prevent blank screens
+  win.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    console.error('Navigation failed:', errorCode, errorDescription, validatedURL);
+    // If it's a network error and we're in production, reload the app
+    if (errorCode === -106 && process.env.NODE_ENV !== 'development') {
+      const distPath = path.join(app.getAppPath(), 'dist', 'index.html');
+      win.loadFile(distPath).catch(err => {
+        console.error('Failed to reload app after navigation error:', err);
+      });
+    }
+  });
+
+  // Also handle external links (like OAuth providers)
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    // Allow OAuth URLs and blank windows (MSAL opens about:blank first, then navigates)
+    if (url === 'about:blank' ||
+        url.includes('oauth') ||
+        url.includes('google') ||
+        url.includes('supabase') ||
+        url.includes('microsoft') ||
+        url.includes('login.microsoftonline.com') ||
+        url.includes('login.live.com')) {
+      return { action: 'allow' };
+    }
+    // Open other external links in the default browser
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
   if (process.env.NODE_ENV === 'development') {
-    win.loadURL('http://localhost:5173');
+    win.loadURL(`http://localhost:${DEV_PORT}`);
   } else {
-    win.loadFile(path.join(__dirname, 'dist', 'index.html'));
+    // In production, __dirname is app.asar/src, so we need to go up one level to app.asar
+    // then into dist. Use app.getAppPath() which gives us the app.asar directory
+    const distPath = path.join(app.getAppPath(), 'dist', 'index.html');
+    win.loadFile(distPath);
   }
+}
+
+function createAppMenu() {
+  const isMac = process.platform === 'darwin';
+
+  const getTargetWindow = () => {
+    return BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+  };
+
+  const template = [
+    ...(isMac
+      ? [{
+        label: app.name,
+        submenu: [
+          { role: 'about' },
+          { type: 'separator' },
+          { role: 'services' },
+          { type: 'separator' },
+          { role: 'hide' },
+          { role: 'hideOthers' },
+          { role: 'unhide' },
+          { type: 'separator' },
+          { role: 'quit' }
+        ]
+      }]
+      : []),
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'Re-import PDF Bookmarks',
+          click: () => {
+            const win = getTargetWindow();
+            if (win && !win.isDestroyed()) {
+              win.webContents.send('menu:reimport-pdf-bookmarks');
+            }
+          }
+        },
+        { type: 'separator' },
+        { role: isMac ? 'close' : 'quit' }
+      ]
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' }
+      ]
+    },
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        ...(isMac
+          ? [
+            { type: 'separator' },
+            { role: 'front' }
+          ]
+          : [{ role: 'close' }])
+      ]
+    }
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
 }
 
 // File watchers storage
@@ -43,10 +245,8 @@ let chokidar = null;
   }
 })();
 
-console.log('Registering IPC handlers...');
 
 ipcMain.handle('dialog:openFile', async (event, options = {}) => {
-  console.log('IPC: dialog:openFile invoked', options);
   const { canceled, filePaths } = await dialog.showOpenDialog({
     title: options.title || 'Open File',
     defaultPath: options.defaultPath,
@@ -100,8 +300,30 @@ ipcMain.handle('dialog:saveFile', async (event, { title, defaultPath, filters, d
   }
 });
 
-ipcMain.handle('shell:openPath', async (event, path) => {
-  return await shell.openPath(path);
+ipcMain.handle('shell:openPath', async (event, filePath) => {
+  // On macOS, use the native 'open' command which works more reliably than shell.openPath
+  if (process.platform === 'darwin') {
+    return new Promise((resolve) => {
+      // Use 'open' command which is what Finder uses when you double-click
+      // The -a flag specifies the application, -W waits for the app to open
+      const escapedPath = filePath.replace(/"/g, '\\"');
+      exec(`open "${escapedPath}"`, (error, stdout, stderr) => {
+        if (error) {
+          console.error('Failed to open file with open command:', error);
+          resolve(error.message);
+        } else {
+          resolve('');
+        }
+      });
+    });
+  }
+
+  // On other platforms, use the standard shell.openPath
+  return await shell.openPath(filePath);
+});
+
+ipcMain.handle('shell:openExternal', async (event, url) => {
+  return await shell.openExternal(url);
 });
 
 ipcMain.handle('fs:readFile', async (event, path) => {
@@ -114,12 +336,60 @@ ipcMain.handle('fs:readFile', async (event, path) => {
   }
 });
 
-ipcMain.handle('fs:writeFile', async (event, { path, data }) => {
+ipcMain.handle('fs:writeFile', async (event, { path: filePath, data }) => {
   try {
-    fs.writeFileSync(path, Buffer.from(data));
+    const dir = path.dirname(filePath);
+    if (dir && !fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(filePath, Buffer.from(data));
     return { success: true };
   } catch (error) {
     console.error('Failed to write file:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('fs:appendFile', async (event, { path: filePath, data }) => {
+  try {
+    const dir = path.dirname(filePath);
+    if (dir && !fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.appendFileSync(filePath, Buffer.from(data));
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to append file:', error);
+    throw error;
+  }
+});
+
+// Diagnostics: clear a folder's contents (files + subfolders), recreating the folder.
+// Guarded to paths containing "Testing Logs" so we can't accidentally nuke anything else.
+ipcMain.handle('fs:clearDir', async (event, dirPath) => {
+  try {
+    if (!dirPath || typeof dirPath !== 'string' || !dirPath.includes('TestLogs')) {
+      throw new Error(`fs:clearDir refused path (must contain "TestLogs"): ${dirPath}`);
+    }
+    if (fs.existsSync(dirPath)) {
+      fs.rmSync(dirPath, { recursive: true, force: true });
+    }
+    fs.mkdirSync(dirPath, { recursive: true });
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to clear directory:', error);
+    throw error;
+  }
+});
+
+// Diagnostics: full-window screenshot via Electron's native webContents.capturePage().
+// Returns a Node Buffer (PNG bytes) — IPC deserializes it as Uint8Array on the renderer side.
+ipcMain.handle('screenshot:capturePage', async (event) => {
+  try {
+    const image = await event.sender.capturePage();
+    return image.toPNG();
+  } catch (error) {
+    console.error('Failed to capture page:', error);
     throw error;
   }
 });
@@ -129,6 +399,89 @@ ipcMain.handle('fs:fileExists', async (event, filePath) => {
     return fs.existsSync(filePath);
   } catch (error) {
     return false;
+  }
+});
+
+ipcMain.handle('fs:getFileStats', async (event, filePath) => {
+  try {
+    const stats = fs.statSync(filePath);
+    return {
+      mtime: stats.mtime.toISOString(),
+      size: stats.size,
+      isFile: stats.isFile(),
+      isDirectory: stats.isDirectory()
+    };
+  } catch (error) {
+    return null;
+  }
+});
+
+ipcMain.handle('os:getHomeDir', async () => {
+  const os = require('os');
+  return os.homedir();
+});
+
+ipcMain.handle('fs:listDir', async (event, dirPath) => {
+  try {
+    if (!fs.existsSync(dirPath)) {
+      return [];
+    }
+    return fs.readdirSync(dirPath);
+  } catch (error) {
+    console.error('Failed to list directory:', error);
+    return [];
+  }
+});
+
+// Atomic file write - ensures crash-safe saves by writing to temp file first
+ipcMain.handle('fs:writeFileAtomic', async (event, { path: filePath, data }) => {
+  const tempPath = filePath + '.tmp';
+  const backupPath = filePath + '.bak';
+
+  try {
+    // 1. Write to temp file first
+    fs.writeFileSync(tempPath, Buffer.from(data));
+
+    // 2. Create backup of original (if exists)
+    if (fs.existsSync(filePath)) {
+      // Remove old backup if exists
+      if (fs.existsSync(backupPath)) {
+        fs.unlinkSync(backupPath);
+      }
+      fs.renameSync(filePath, backupPath);
+    }
+
+    // 3. Rename temp to final (atomic on most filesystems)
+    fs.renameSync(tempPath, filePath);
+
+    // 4. Remove backup on success
+    if (fs.existsSync(backupPath)) {
+      fs.unlinkSync(backupPath);
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Atomic write failed:', error);
+
+    // Attempt recovery: if backup exists but final doesn't, restore backup
+    if (fs.existsSync(backupPath) && !fs.existsSync(filePath)) {
+      try {
+        fs.renameSync(backupPath, filePath);
+      } catch (recoveryError) {
+        console.error('Recovery from backup also failed:', recoveryError);
+      }
+    }
+
+    // Clean up temp file if it exists
+    if (fs.existsSync(tempPath)) {
+      try {
+        fs.unlinkSync(tempPath);
+      } catch (cleanupError) {
+        // Ignore cleanup errors
+      }
+    }
+
+    throw error;
   }
 });
 
@@ -190,16 +543,151 @@ ipcMain.handle('fileWatcher:stop', async (event, watchId) => {
   }
 });
 
-app.whenReady().then(() => {
-  createWindow();
+// OAuth window handler for Microsoft authentication
+// Opens a separate window for OAuth flow, captures the redirect, and returns the result
+ipcMain.handle('oauth:openWindow', async (event, { authUrl, redirectUri }) => {
+  return new Promise((resolve, reject) => {
+    const authWindow = new BrowserWindow({
+      width: 500,
+      height: 700,
+      show: true,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+      },
+      // Make it a child of the main window
+      parent: BrowserWindow.fromWebContents(event.sender),
+      modal: false,
+      title: 'Sign in to Microsoft',
+    });
+
+    // Remove menu bar from auth window
+    authWindow.setMenuBarVisibility(false);
+
+    // Track if we've already resolved (to prevent double resolution)
+    let resolved = false;
+
+    // Listen for navigation to the redirect URI
+    const handleNavigation = (url) => {
+      if (resolved) return;
+
+      // Check if this is the redirect URL
+      if (url.startsWith(redirectUri)) {
+        resolved = true;
+
+        // Extract the hash or query parameters
+        const urlObj = new URL(url);
+        const hash = urlObj.hash;
+        const search = urlObj.search;
+
+        // Close the auth window
+        authWindow.close();
+
+        // Return the full redirect URL so MSAL can parse it
+        resolve({ success: true, url: url });
+      }
+    };
+
+    // Listen for URL changes
+    authWindow.webContents.on('will-navigate', (e, url) => {
+      handleNavigation(url);
+    });
+
+    authWindow.webContents.on('will-redirect', (e, url) => {
+      handleNavigation(url);
+    });
+
+    // Also check after page loads (for hash-based redirects)
+    authWindow.webContents.on('did-navigate', (e, url) => {
+      handleNavigation(url);
+    });
+
+    authWindow.webContents.on('did-navigate-in-page', (e, url) => {
+      handleNavigation(url);
+    });
+
+    // Handle window close (user cancelled)
+    authWindow.on('closed', () => {
+      if (!resolved) {
+        resolved = true;
+        resolve({ success: false, error: 'User cancelled authentication' });
+      }
+    });
+
+    // Handle load errors
+    authWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+      // Ignore aborted loads (happens during redirects)
+      if (errorCode === -3) return;
+
+      if (!resolved) {
+        resolved = true;
+        authWindow.close();
+        resolve({ success: false, error: `Failed to load: ${errorDescription}` });
+      }
+    });
+
+    // Load the auth URL
+    authWindow.loadURL(authUrl);
+  });
 });
 
-app.on('before-quit', () => {
-  // Clean up all file watchers
-  fileWatchers.forEach((watcher) => {
-    watcher.close();
-  });
-  fileWatchers.clear();
+// Track if we're in the process of quitting
+let isQuitting = false;
+
+app.whenReady().then(() => {
+  createWindow();
+  createAppMenu();
+});
+
+app.on('before-quit', (event) => {
+  if (!isQuitting) {
+    event.preventDefault();
+    isQuitting = true;
+
+    // Notify all windows to save their work
+    const windows = BrowserWindow.getAllWindows();
+
+    if (windows.length === 0) {
+      app.quit();
+      return;
+    }
+
+    // Send save request to all windows
+    let windowsResponded = 0;
+    const checkAndQuit = () => {
+      windowsResponded++;
+      if (windowsResponded >= windows.length) {
+        // All windows have responded, now quit
+        setTimeout(() => {
+          // Clean up file watchers
+          fileWatchers.forEach((watcher) => {
+            watcher.close();
+          });
+          fileWatchers.clear();
+
+          app.quit();
+        }, 100);
+      }
+    };
+
+    windows.forEach((win) => {
+      if (win.isDestroyed()) {
+        checkAndQuit();
+        return;
+      }
+
+      // Send message to renderer to save
+      win.webContents.send('app:beforeQuit');
+
+      // Give each window 5 seconds to save, then continue
+      setTimeout(checkAndQuit, 5000);
+    });
+  }
+});
+
+// Handle save completion from renderer
+ipcMain.on('app:saveComplete', () => {
+  // This is just for logging, actual quit happens via timeout
 });
 
 app.on('window-all-closed', () => {

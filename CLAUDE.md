@@ -1,123 +1,55 @@
-# CLAUDE.md
+# Survey BetaSafeS2 — Claude Code Instructions
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## Phase Discipline — ENFORCED
 
-## Project Overview
+This project uses the global GSD phase discipline rules from `~/.claude/CLAUDE.md`
+(PAUL-style acceptance criteria, DO NOT CHANGE boundaries, RECONCILIATION.md at
+phase close). A SessionStart hook at `~/.claude/hooks/gsd-phase-discipline.py`
+checks `.planning/phases/` and flags gaps.
 
-This is an Electron-based PDF viewer application built with React and Vite. It allows users to open, view, zoom, and navigate PDF documents with both single-page and continuous scrolling modes.
+When creating or editing a phase CONTEXT.md in this project, **always** include:
 
-## Development Commands
+1. `## Acceptance Criteria` with Given/When/Then bullets
+2. `## DO NOT CHANGE` with an explicit file allowlist (start from the "Always
+   Protected" list below, then add phase-specific files)
 
-### Running the Application
-```bash
-npm run dev              # Start both Vite dev server and Electron (port 5173)
-npm run dev:ui           # Start only Vite dev server
-npm run dev:electron     # Start only Electron (waits for Vite on port 5173)
-```
+Never close a phase without writing `<phase>/<phase>-RECONCILIATION.md`.
 
-### Building and Distribution
-```bash
-npm run build            # Build React app for production (outputs to dist/)
-npm run dist             # Build and package Electron app with electron-builder
-```
+### Always Protected (project-wide DO NOT CHANGE unless explicitly in scope)
 
-## Architecture
+These files are load-bearing for v2.0 and must NEVER be modified without an
+explicit user waiver. Include them in every phase's DO NOT CHANGE list by default,
+then remove only the ones the phase explicitly owns.
 
-### Dual-Process Architecture (Electron)
+- `src/App.jsx` — ~1.3MB main file, zoom logic, portal host resolution, render
+  loop. Edits here are high-risk; any change requires explicit approval.
+- `src/components/PageAnnotationLayer.jsx` — per-page Fabric.js canvas overlay
+  (~9,858 lines). Only touch when the phase explicitly owns PAL changes.
+- `src/components/FabricDrawingCanvas.jsx` / `FabricEraserCanvas.jsx` /
+  `FabricEditCanvas.jsx` — all use the `zoomGeneration` signal contract; do not
+  remove or rename that signal.
+- `src/components/SVGAnnotationLayer.jsx` — SVG viewBox owns all zoom scaling.
+  Never reintroduce JavaScript zoom coordination here.
+- `package.json` / `vite.config.js` — infra. Touching requires explicit approval.
 
-The application follows Electron's standard architecture:
+### Session Moments
 
-1. **Main Process** (`src/electron-main.js`):
-   - Creates and manages browser windows
-   - Handles app lifecycle events
-   - Loads dev server (http://localhost:5173) in development
-   - Loads built files from dist/ in production
-   - **IPC Handlers**:
-     - `fs:readFile`, `fs:writeFile`, `fs:fileExists`: File system operations
-     - `fileWatcher:start`, `fileWatcher:stop`: Real-time file monitoring via chokidar
-     - `dialog:saveFile`: Native save dialogs
-     - `shell:openPath`: Open files/folders in default OS app
+Follow the PSMM logging rules in `~/.claude/CLAUDE.md`. Today's file is at
+`~/.claude/projects/-Users-isaiahcalvo-Desktop-Survey-BetaSafeS2/memory/session-moments/YYYY-MM-DD.md`
+and is auto-created at session start.
 
-2. **Renderer Process** (React app):
-   - Runs the React UI
-   - Handles PDF rendering and user interactions
-   - Isolated from Node.js APIs (contextIsolation: true)
+## CRITICAL — DO NOT BREAK (Enforced Rules)
 
-3. **Preload Script** (`src/preload.js`):
-   - Bridges main and renderer processes
-   - Exposes safe APIs via contextBridge (`window.electronAPI`)
+- **Canvas sizing MUST use container-aware measurement, not pageSize * scale.** The Electron/browser zoom factor creates a mismatch. Always measure `containerEl.offsetWidth / pageSize.width` to get `effectiveScale`. This applies to FabricDrawingCanvas, FabricEraserCanvas, FabricEditCanvas, and any future Canvas component. See Gotchas section for details.
 
-### Frontend Architecture
+- **SVG viewBox handles all zoom scaling.** The old 5-timer zoom system (beginSyncfusionScaleConfirmPending, onScaleApplied, 300ms settle, freeze/snapshot/confirm-pending) was removed in Phase 11 of the v2.0 SVG Migration. SVG annotations scale via `viewBox="0 0 pageWidth pageHeight"` with zero JavaScript coordination. Canvas components (pen, eraser, edit) use `zoomGeneration` signal for auto-commit during zoom.
 
-**Entry Point**: `src/main.jsx` → renders `App.jsx` wrapped in `AuthProvider`
+- **NEVER remove the zoomGeneration signal.** `setZoomGeneration(prev => prev + 1)` fires at zoom-start inside `beginSyncfusionScaleConfirmPending`. All mounted Canvas components (FabricDrawingCanvas, FabricEraserCanvas, FabricEditCanvas) watch this signal to auto-commit in-progress work before the container resizes.
 
-**Key Directories**:
-- `src/components/`: Reusable UI components (Modals, Tools, Layers)
-- `src/contexts/`: Global state (AuthContext)
-- `src/workers/`: Web Workers for heavy tasks (PDF rendering)
-- `src/sidebar/`: Sidebar panel components
-- `src/utils/`: Helper functions (OneDrive, Geometry, Zoom)
+## Gotchas & Lessons Learned
 
-**PDF Rendering System**:
+- **2026-04-10 — Canvas 2D and SVG path rasterizers produce visibly different strokes at non-integer sub-pixel coordinates — NOT fixable in JS:** When a shape in FabricEditCanvas appears "bolder" or "thicker" than the same shape in SVGAnnotationLayer during edit, this is not a code bug. Canvas 2D's `lineTo()` / `rect()` / `stroke()` anti-aliases edges at sub-pixel positions (e.g. `left=18.37`) across 2 pixels with a uniform gradient, producing a visually bolder result. The browser's SVG rasterizer handles the same coordinates via different heuristics and typically produces crisper single-pixel edges. Verified mathematically in Phase 11: all geometry deltas between SVG `getBoundingClientRect()` and Fabric's screen-space shape rect were sub-pixel (max 0.28px from stroke half-width bleed), with `backingRatio=2.0000` and `strokeUniform: true` honored everywhere. The inputs are identical — the rasterizers are different engines. If this ever becomes a UX problem, the fix is structural: hide the Fabric shape (`opacity: 0`) during edit and keep SVG visible as the visual truth, with Fabric only providing selection handles + hit zone. Do NOT chase this with pixel-snapping, DPR tweaks, or stroke-offset hacks — the hypothesis is mathematically confirmed.
 
-The application uses `pdfjs-dist` (Mozilla's PDF.js library) for rendering:
+- **2026-04-08 — Fabric.js Textbox fontFamily MUST be a single font name, never a CSS fallback stack:** Multi-font fallback stacks like `-apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif` cause progressive cursor drift in Fabric.js Textbox/IText. Root cause: Fabric.js measures character widths at `CACHE_FONT_SIZE=400px` and scales down — the browser may resolve different fonts in the fallback chain at 400px vs the actual size, producing wrong measurements. Fix: use single-name fonts only (e.g. `"Helvetica"`, `"Arial"`, `"Times New Roman"`). This applies to DEFAULT_FONT_FAMILY in FabricEditCanvas.jsx and any future font picker — only offer single-name standard PDF fonts.
 
-1. PDF loading: File selected via file input → converted to ArrayBuffer → loaded by PDF.js
-2. Worker configuration: Uses local worker (`src/workers/pdfRender.worker.js`)
-3. Canvas rendering: Each page rendered to HTML canvas with device pixel ratio support
-4. Two rendering modes:
-   - **Single page mode**: Renders one page at a time
-   - **Continuous mode**: Virtualized list of pages
-
-**Key Features**:
-
-- **Authentication**: Supabase-powered auth (Email, Google, SSO) via `AuthContext`
-- **Cloud Integration**: OneDrive file sync and management
-- **Zoom controls**: +/- buttons, manual input (10-500%), Ctrl+Scroll
-- **Pan/drag**: Click and drag to pan (cursor changes to grab/grabbing)
-- **Page navigation**: Arrow buttons, direct page input, auto-tracking in continuous mode
-- **Responsive toolbar**: With file name display and user account menu
-
-### Build Configuration
-
-**Vite** (`vite.config.js`):
-- Development server on port 5173
-- React plugin enabled
-- Outputs to `dist/` directory
-
-**Electron Builder** (in `package.json`):
-- Packages files: dist/**, electron-main.js, preload.js, package.json
-- Targets: macOS (dmg), Windows (nsis)
-- App ID: com.example.survey
-
-## Important Implementation Details
-
-### State Management
-- **Global User State**: Managed via `AuthContext` (User, Session, Loading)
-- **Local State**: React hooks (useState, useEffect, useRef) for component-level logic
-
-### PDF.js Worker Setup
-The worker is now bundled locally in `src/workers/pdfRender.worker.js` to ensure offline capability and consistent versioning.
-
-### Canvas Rendering
-- Uses device pixel ratio for sharp rendering on high-DPI displays
-- Implements proper cleanup to prevent memory leaks (render task cancellation)
-- Applies `setTransform()` for proper scaling
-
-### Continuous Scroll Mode
-- Pre-renders all pages on load and scale changes
-- Tracks visible page via scroll event listener
-- Auto-scrolls to page when page number changes programmatically
-
-## Development Notes
-
-### Adding Electron IPC Features
-When adding IPC communication:
-1. Define IPC handlers in `src/electron-main.js`
-2. Expose safe APIs in `src/preload.js` via contextBridge
-3. Access via `window.electronAPI` in React components
-
-### Authentication
-- Ensure `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are set in `.env`
-- `AuthContext` provides `user`, `signIn`, `signOut`, etc. to the entire app
-
+- **2026-03-22 — Canvas sizing must use container-aware measurement, not pageSize * scale:** The Electron/browser zoom factor creates a mismatch between the computed canvas size (`pageSize.width * syncfusionViewerScale`) and the actual Syncfusion page div size. At 50% PDF zoom with a 4/3 Electron zoom factor, the Syncfusion page div was 816x528 but the Fabric.js canvas was only 612x396, causing annotations to appear smaller and offset up-left. Fix: measure `containerEl.offsetWidth / pageSize.width` to get `effectiveScale` instead of trusting the Syncfusion-reported zoom percentage. Applied in PAL's canvas init (`PageAnnotationLayer.jsx:~5192`), direct resize path, and settle callback in the scale useEffect.

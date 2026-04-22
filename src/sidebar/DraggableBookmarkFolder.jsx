@@ -9,6 +9,7 @@ const DraggableBookmarkFolder = ({
   item,
   isExpanded,
   onToggle,
+  onNavigate,
   isEditMode,
   onRename,
   onDelete,
@@ -63,6 +64,9 @@ const DraggableBookmarkFolder = ({
     // For folders, only toggle expand and select
     if (onSelect) {
       onSelect(item.id);
+    }
+    if (onNavigate) {
+      onNavigate(item);
     }
     if (onToggle) {
       onToggle(item.id);
@@ -193,17 +197,17 @@ const DraggableBookmarkFolder = ({
           <div style={{
             flex: 1,
             display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
+            alignItems: 'flex-start',
             minWidth: 0
           }}>
             <span style={{
               fontSize: '13px',
               color: '#ddd',
               userSelect: 'none',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
+              whiteSpace: 'normal',
+              overflowWrap: 'anywhere',
+              wordBreak: 'break-word',
+              lineHeight: 1.25,
               textAlign: 'left'
             }}>
               {item.name}

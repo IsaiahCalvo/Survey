@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { supabase, isSupabaseAvailable } from '../supabaseClient';
 
-const AuthContext = createContext({});
+export const AuthContext = createContext({});
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -15,10 +15,49 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [subscriptionTier, setSubscriptionTier] = useState('free');
+  const [loadingTier, setLoadingTier] = useState(true);
+
+  // Fetch subscription tier from database
+  const fetchSubscriptionTier = async (userId) => {
+    if (!userId || !isSupabaseAvailable()) {
+      setSubscriptionTier('free');
+      setLoadingTier(false);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('user_subscriptions')
+        .select('tier, status')
+        .eq('user_id', userId)
+        .single();
+
+      if (error) {
+        console.error('Error fetching subscription tier:', error);
+        setSubscriptionTier('free');
+      } else {
+        // Only allow Pro/Enterprise if subscription is active or trialing
+        const activeStatuses = ['active', 'trialing'];
+        if (activeStatuses.includes(data.status)) {
+          setSubscriptionTier(data.tier);
+        } else {
+          // Canceled, past_due, incomplete -> fall back to free
+          setSubscriptionTier('free');
+        }
+      }
+    } catch (err) {
+      console.error('Error:', err);
+      setSubscriptionTier('free');
+    } finally {
+      setLoadingTier(false);
+    }
+  };
 
   useEffect(() => {
     if (!isSupabaseAvailable()) {
       setLoading(false);
+      setLoadingTier(false);
       return;
     }
 
@@ -27,6 +66,13 @@ export const AuthProvider = ({ children }) => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
+
+      // Fetch subscription tier
+      if (session?.user) {
+        fetchSubscriptionTier(session.user.id);
+      } else {
+        setLoadingTier(false);
+      }
     });
 
     // Listen for auth changes
@@ -36,10 +82,30 @@ export const AuthProvider = ({ children }) => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
+
+      // Fetch subscription tier when user changes
+      if (session?.user) {
+        fetchSubscriptionTier(session.user.id);
+      } else {
+        setSubscriptionTier('free');
+        setLoadingTier(false);
+      }
     });
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Refetch subscription tier when window regains focus (user returns from Stripe)
+  useEffect(() => {
+    const handleFocus = () => {
+      if (user?.id) {
+        fetchSubscriptionTier(user.id);
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [user]);
 
   // Sign up with email and password
   const signUp = async (email, password, metadata = {}) => {
@@ -80,15 +146,32 @@ export const AuthProvider = ({ children }) => {
       throw new Error('Supabase is not configured');
     }
 
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: window.location.origin,
-      },
-    });
+    // For Electron, use a proper redirect URL
+    // In Electron, window.location.origin might be file:// which doesn't work for OAuth
+    // Use the current window location or a custom protocol
+    let redirectTo = window.location.origin;
+    
+    // If we're in Electron (detected by checking for electronAPI)
+    if (window.electronAPI) {
+      // Use the current location - Electron will handle the redirect
+      redirectTo = window.location.href.split('#')[0]; // Remove any existing hash
+    }
 
-    if (error) throw error;
-    return data;
+    try {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: redirectTo,
+          skipBrowserRedirect: false, // Let the browser/Electron handle the redirect
+        },
+      });
+
+      if (error) throw error;
+      return data;
+    } catch (err) {
+      console.error('OAuth error:', err);
+      throw err;
+    }
   };
 
   // Sign in with SSO
@@ -111,9 +194,19 @@ export const AuthProvider = ({ children }) => {
       throw new Error('Supabase is not configured');
     }
 
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
-    
+    try {
+      // Try to sign out on the server
+      await supabase.auth.signOut();
+    } catch (error) {
+      // If sign out fails (e.g., session already expired), log it but continue
+      // We'll still clear the local session and reload
+      console.warn('Sign out API call failed, clearing local session anyway:', error);
+    }
+
+    // Always clear local state and refresh, even if API call failed
+    setUser(null);
+    setSession(null);
+
     // Refresh the page to clear cached user documents, projects, and templates
     window.location.reload();
   };
@@ -160,10 +253,17 @@ export const AuthProvider = ({ children }) => {
     return data;
   };
 
+  // Refresh subscription tier (call after user returns from Stripe checkout)
+  const refreshSubscriptionTier = async () => {
+    if (user?.id) {
+      await fetchSubscriptionTier(user.id);
+    }
+  };
+
   const value = {
     user,
     session,
-    loading,
+    loading: loading || loadingTier,
     signUp,
     signIn,
     signInWithGoogle,
@@ -172,8 +272,17 @@ export const AuthProvider = ({ children }) => {
     resetPassword,
     updatePassword,
     updateProfile,
+    refreshSubscriptionTier,
     isAuthenticated: !!user,
     isSupabaseAvailable: isSupabaseAvailable(),
+    plan: subscriptionTier,
+    tier: subscriptionTier,
+    features: {
+      cloudSync: ['pro', 'enterprise', 'developer'].includes(subscriptionTier),
+      advancedSurvey: ['pro', 'enterprise', 'developer'].includes(subscriptionTier),
+      excelExport: ['pro', 'enterprise', 'developer'].includes(subscriptionTier),
+      sso: ['enterprise', 'developer'].includes(subscriptionTier),
+    }
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

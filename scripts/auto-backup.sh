@@ -42,11 +42,19 @@ git commit -m "Backup: $TIMESTAMP" --quiet
 log "Created commit: Backup $TIMESTAMP"
 
 # Push to remote (regular push only - force push is blocked by GitHub)
-log "Pushing to GitHub..."
-if git push origin main 2>> "$LOG_FILE"; then
-    log "Successfully pushed to GitHub"
+# Get current branch
+CURRENT_BRANCH=$(git symbolic-ref --short HEAD)
+
+# Push to remote (regular push only - force push is blocked by GitHub)
+if [ -n "$CURRENT_BRANCH" ]; then
+    log "Pushing to GitHub branch: $CURRENT_BRANCH..."
+    if git push origin "$CURRENT_BRANCH" 2>> "$LOG_FILE"; then
+        log "Successfully pushed to GitHub"
+    else
+        log "ERROR: Push failed"
+    fi
 else
-    log "ERROR: Push failed"
+    log "ERROR: Could not determine current branch, skipping push"
 fi
 
 # Keep log file manageable
