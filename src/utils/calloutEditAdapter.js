@@ -202,7 +202,7 @@ export function toFabricGroup(reactCallout, pageSize) {
   // save back to setCallouts instead of setAnnotationsByPage. Mirror the
   // `{ data: { type: 'callout' } }` convention that loadCalloutAnnotation
   // already uses to identify callout groups.
-  return {
+  const groupResult = {
     objects,
     reactCalloutId: reactCallout.id,
     reactCalloutSnapshot: JSON.parse(JSON.stringify(reactCallout)),
@@ -211,6 +211,33 @@ export function toFabricGroup(reactCallout, pageSize) {
     // .getObjects() uniformly whether this is a plain shape or a live group.
     getObjects() { return this.objects; },
   };
+
+  // UX 2026-04-22: diagnostic log gated behind window.__CALLOUT_LIFECYCLE_DIAG = true.
+  // Dumps the full React->Fabric edit-entry snapshot so any divergence between
+  // imported and native callouts at edit time is captured in one log line.
+  try {
+    if (typeof window !== 'undefined' && window.__CALLOUT_LIFECYCLE_DIAG) {
+      console.log('[CalloutLifecycle state->edit]', JSON.stringify({
+        ts: new Date().toISOString(),
+        stage: 'react-to-fabric-edit-entry',
+        calloutId: reactCallout.id,
+        isPdfImported: !!reactCallout.isPdfImported,
+        pdfAnnotationId: reactCallout.pdfAnnotationId || null,
+        pageSize: { width: W, height: H },
+        reactSnapshot: reactCallout,
+        textboxSpec: {
+          left: textbox.left, top: textbox.top,
+          width: textbox.width, height: textbox.height,
+          fontFamily: textbox.fontFamily, fontSize: textbox.fontSize,
+          lineHeight: textbox.lineHeight, textAlign: textbox.textAlign,
+          splitByGrapheme: textbox.splitByGrapheme, fill: textbox.fill,
+          stroke: textbox.stroke, strokeWidth: textbox.strokeWidth,
+        },
+      }));
+    }
+  } catch (_e) { /* diag must never throw */ }
+
+  return groupResult;
 }
 
 /**
@@ -279,7 +306,7 @@ export function fromFabricGroup(fabricGroup, pageSize, originalReactCallout) {
   const tbWidth = (textbox.width ?? 0) * scaleX;
   const tbHeight = (textbox.height ?? 0) * scaleY;
 
-  return {
+  const commitResult = {
     ...originalReactCallout,
     arrowTip: { x: arrowTipPx.x / W, y: arrowTipPx.y / H },
     knee: { x: kneePx.x / W, y: kneePx.y / H },
@@ -288,6 +315,39 @@ export function fromFabricGroup(fabricGroup, pageSize, originalReactCallout) {
     textBoxHeight: tbHeight / H,
     text: textbox.text ?? originalReactCallout.text ?? '',
   };
+
+  // UX 2026-04-22: diagnostic log gated behind window.__CALLOUT_LIFECYCLE_DIAG = true.
+  // Dumps the Fabric->React commit snapshot so any drift on save (position,
+  // text, bounds) is captured alongside the edit-entry log above.
+  try {
+    if (typeof window !== 'undefined' && window.__CALLOUT_LIFECYCLE_DIAG) {
+      console.log('[CalloutLifecycle edit->commit]', JSON.stringify({
+        ts: new Date().toISOString(),
+        stage: 'fabric-edit-to-react-commit',
+        calloutId: originalReactCallout?.id || null,
+        isPdfImported: !!originalReactCallout?.isPdfImported,
+        pdfAnnotationId: originalReactCallout?.pdfAnnotationId || null,
+        pageSize: { width: W, height: H },
+        fabricChildrenSummary: {
+          childCount: children.length,
+          parts: children.map((c) => c?.data?.calloutPart || c?.type || 'unknown'),
+        },
+        textboxSnapshot: {
+          left: tbLeft, top: tbTop,
+          rawWidth: textbox.width ?? 0, rawHeight: textbox.height ?? 0,
+          scaleX, scaleY,
+          scaledWidth: tbWidth, scaledHeight: tbHeight,
+          text: textbox.text,
+          fontFamily: textbox.fontFamily, fontSize: textbox.fontSize,
+        },
+        linePixels: { knee: kneePx, arrowTip: arrowTipPx },
+        originalReactCallout,
+        committedReactCallout: commitResult,
+      }));
+    }
+  } catch (_e) { /* diag must never throw */ }
+
+  return commitResult;
 }
 
 /**

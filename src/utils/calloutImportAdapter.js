@@ -119,7 +119,7 @@ export function convertImportedCalloutToCalloutState(importedObj, pageNumber, pa
   const idSuffix = importedObj.pdfAnnotationId
     || Math.random().toString(36).slice(2, 10);
 
-  return {
+  const result = {
     id: `callout-pdf-${pageNumber}-${idSuffix}`,
     pageNumber: Number(pageNumber),
     arrowTip,
@@ -133,6 +133,43 @@ export function convertImportedCalloutToCalloutState(importedObj, pageNumber, pa
     isPdfImported: true,
     pdfAnnotationId: importedObj.pdfAnnotationId || null,
   };
+
+  // UX 2026-04-22: diagnostic log gated behind window.__CALLOUT_LIFECYCLE_DIAG = true.
+  // Dumps the full import->state conversion so a single saved log captures everything
+  // needed to verify imported callouts match native-drawn ones. Zero-cost when off.
+  try {
+    if (typeof window !== 'undefined' && window.__CALLOUT_LIFECYCLE_DIAG) {
+      console.log('[CalloutLifecycle import->state]', JSON.stringify({
+        ts: new Date().toISOString(),
+        stage: 'import-to-state',
+        pdfAnnotationId: importedObj.pdfAnnotationId || null,
+        pageNumber: Number(pageNumber),
+        pageSize: { width: pageWidth, height: pageHeight },
+        sourceTextboxSnapshot: {
+          left: importedObj.left,
+          top: importedObj.top,
+          width: importedObj.width,
+          height: importedObj.height,
+          text: importedObj.text,
+          fontSize: importedObj.fontSize,
+          fontFamily: importedObj.fontFamily,
+          textAlign: importedObj.textAlign,
+          fill: importedObj.fill,
+          stroke: importedObj.stroke,
+          strokeWidth: importedObj.strokeWidth,
+          backgroundColor: importedObj.backgroundColor,
+          data: importedObj.data,
+        },
+        derivedCalloutState: result,
+        syntheticKnee: validPoints.length === 2,
+        boxSourceUsed: (data.pdfCalloutBoxRect && Number.isFinite(data.pdfCalloutBoxRect.left))
+          ? 'appearance-rect'
+          : 'top-level-rect',
+      }));
+    }
+  } catch (_e) { /* diag must never throw */ }
+
+  return result;
 }
 
 // Splits a page's imported annotation objects into (non-callout, converted callout entries).

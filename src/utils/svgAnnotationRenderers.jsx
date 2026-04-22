@@ -24,6 +24,10 @@ import {
   buildArrowheadRenderSpec,
   ARROWHEAD_STYLES,
 } from './lineRenderHelpers.js';
+// UX 2026-04-21: Imported revision-clouds rebuild their scalloped geometry
+// from the live effective box/points on every render so the number of humps
+// grows/shrinks with the shape instead of staying baked at import size.
+import { buildCloudPathCommands } from './pdfAnnotationImporter';
 // Fill-bleed diagnostics (2026-04-16). Off by default; the wrapper calls are
 // cheap no-ops when disabled. Toggle in DevTools console:
 //   __shapeSpyOn()  __shapeSpyOff()  __captureAllShapes()
@@ -33,6 +37,12 @@ import {
   logShapeRender as __logShapeRender,
   captureShape as __captureShape,
 } from './shapeBleedDiagnostics';
+// UX 2026-04-21 (import-normalization Chunk 2): pure attr derivation for
+// path-type Fabric objects lives in svgPathAttrs.js so node-test suites
+// can import it without the JSX loader. The renderer uses it too to
+// guarantee import vs internal paths produce byte-identical SVG output
+// when their Fabric input fields match.
+import { renderPathToSvgAttrs } from './svgPathAttrs.js';
 
 const __shapeClick = (e) => __captureShape(e.currentTarget, e);
 
@@ -124,9 +134,41 @@ export const renderPath = (obj, index) => {
   const pathOffsetX = obj.pathOffset?.x || 0;
   const pathOffsetY = obj.pathOffset?.y || 0;
 
-  // Build transform: position -> rotate -> scale -> pathOffset
+  // UX 2026-04-21: rotate around the path's OWN bbox center — matches the
+  // convention used by polygon/polyline (renderPolygon below). Prior to
+  // this, path rotation used SVG's default pivot (the local origin at
+  // translate(left, top) → world corner), so an imported pen stroke at
+  // world coords (left=worldMinX, pathMinX=0) and an internal pen stroke
+  // at local coords (left=0, pathMinX=worldX) both rotated around the
+  // WRONG point — the selection overlay and bbox helpers rotate around
+  // the bbox center, but this <path> rotated around the corner, producing
+  // visible drift during any rotate. Scan the path commands for raw
+  // min/max, compute the center in the object's own coord space after
+  // pathOffset + scale are applied (mirroring the polygon formula).
+  let rawMinX = Infinity, rawMinY = Infinity, rawMaxX = -Infinity, rawMaxY = -Infinity;
+  for (const seg of obj.path) {
+    for (let j = 1; j + 1 < seg.length; j += 2) {
+      const x = seg[j];
+      const y = seg[j + 1];
+      if (typeof x === 'number' && typeof y === 'number') {
+        if (x < rawMinX) rawMinX = x;
+        if (x > rawMaxX) rawMaxX = x;
+        if (y < rawMinY) rawMinY = y;
+        if (y > rawMaxY) rawMaxY = y;
+      }
+    }
+  }
+  const hasPathBounds = Number.isFinite(rawMinX) && Number.isFinite(rawMinY);
+  const rotCenterX = hasPathBounds
+    ? scaleX * ((rawMinX + rawMaxX) / 2 - pathOffsetX)
+    : 0;
+  const rotCenterY = hasPathBounds
+    ? scaleY * ((rawMinY + rawMaxY) / 2 - pathOffsetY)
+    : 0;
+
+  // Build transform: position -> rotate-around-bbox-center -> scale -> pathOffset
   let transform = `translate(${left}, ${top})`;
-  if (angle !== 0) transform += ` rotate(${angle})`;
+  if (angle !== 0) transform += ` rotate(${angle}, ${rotCenterX}, ${rotCenterY})`;
   if (scaleX !== 1 || scaleY !== 1) transform += ` scale(${scaleX}, ${scaleY})`;
   transform += ` translate(${-pathOffsetX}, ${-pathOffsetY})`;
 
@@ -135,19 +177,56 @@ export const renderPath = (obj, index) => {
 
   const key = `path-${obj.id || obj.highlightId || obj.pdfAnnotationId || index}`;
 
+  // UX 2026-04-21 (import-normalization Chunk 2): derive the visual attrs
+  // via renderPathToSvgAttrs so imported Ink and internal pen strokes
+  // produce byte-identical <path> output given identical Fabric inputs.
+  // No branch on isPdfImported/pdfAnnotationType — those are metadata only.
+  const attrs = renderPathToSvgAttrs(obj);
+
+  // UX 2026-04-21: diagnostic log gated behind window.__INK_NORM_DIAG = true.
+  // Dumps the actual render attrs per draw call alongside the import-time
+  // log in convertInkToFabricPath — together they give the user a full
+  // audit trail for one yes/no artifact. Zero-cost when the flag is off.
+  if (typeof window !== 'undefined' && window.__INK_NORM_DIAG && obj.type === 'path') {
+    try {
+      console.log(
+        '[InkNormDiag render]',
+        JSON.stringify(
+          {
+            pdfAnnotationId: obj.pdfAnnotationId,
+            isPdfImported: obj.isPdfImported === true,
+            attrs: {
+              stroke: obj.stroke,
+              strokeWidth: obj.strokeWidth,
+              fill: obj.fill,
+              strokeUniform: obj.strokeUniform,
+              strokeLineCap: obj.strokeLineCap,
+              strokeLineJoin: obj.strokeLineJoin,
+              vectorEffect: attrs.vectorEffect ?? 'none',
+            },
+          },
+          null,
+          0
+        )
+      );
+    } catch (err) {
+      console.warn('[InkNormDiag render] log failed:', err);
+    }
+  }
+
   return (
     <path
       key={key}
       d={d}
       transform={transform}
-      stroke={erased ? 'none' : (obj.stroke || '#000')}
-      strokeWidth={erased ? 0 : (obj.strokeWidth || 1)}
+      stroke={erased ? 'none' : attrs.stroke}
+      strokeWidth={erased ? 0 : attrs.strokeWidth}
       fill={erased ? obj.fill : 'none'}
       fillRule={erased ? 'evenodd' : undefined}
-      opacity={obj.opacity ?? 1}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      vectorEffect={obj.strokeUniform ? 'non-scaling-stroke' : undefined}
+      opacity={attrs.opacity}
+      strokeLinecap={attrs.strokeLinecap}
+      strokeLinejoin={attrs.strokeLinejoin}
+      vectorEffect={attrs.vectorEffect}
       style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
     />
   );
@@ -173,8 +252,62 @@ export const renderRect = (obj, index) => {
   const rotateTransform = obj.angle
     ? `rotate(${obj.angle}, ${obj.left + effectiveWidth / 2}, ${obj.top + effectiveHeight / 2})`
     : undefined;
+
+  // UX 2026-04-21: Revision-cloud rectangles rebuild their scalloped path
+  // from the current effective box size on every render. That way when the
+  // user resizes the cloud, more humps appear as the box grows and fewer as
+  // it shrinks — matching how Bluebeam, Acrobat, and similar pro tools
+  // behave. The data.pdfCloudIntensity signal (set at import) is what
+  // flags a box as a cloud; the original baked path is ignored.
+  const cloudIntensity = obj.data?.pdfCloudIntensity;
+  if (Number.isFinite(cloudIntensity) && effectiveWidth > 0 && effectiveHeight > 0) {
+    const liveCloud = buildCloudPathCommands(
+      [
+        { x: 0, y: 0 },
+        { x: effectiveWidth, y: 0 },
+        { x: effectiveWidth, y: effectiveHeight },
+        { x: 0, y: effectiveHeight },
+      ],
+      cloudIntensity,
+      // UX 2026-04-21: pass stroke width so the renderer can keep the
+      // bump radius ≥ 2×stroke — prevents thick strokes from swallowing
+      // adjacent humps (Acrobat-style clamp, no Drawboard bloat).
+      obj.strokeWidth ?? 1
+    );
+    if (Array.isArray(liveCloud) && liveCloud.length > 0) {
+      const d = liveCloud.map((seg) => seg.join(' ')).join(' ');
+      const cloudTransform = `translate(${obj.left}, ${obj.top})${
+        obj.angle ? ` rotate(${obj.angle}, ${effectiveWidth / 2}, ${effectiveHeight / 2})` : ''
+      }`;
+      return (
+        <path
+          key={key}
+          d={d}
+          transform={cloudTransform}
+          fill={obj.fill || 'transparent'}
+          stroke={obj.stroke || 'transparent'}
+          strokeWidth={obj.strokeWidth || 0}
+          strokeLinejoin="round"
+          opacity={obj.opacity ?? 1}
+          data-shape-id={shapeId}
+          data-shape-kind="cloud-rect"
+          onClick={__shapeClick}
+        />
+      );
+    }
+  }
+
   const inset = !isHighlight && shouldInsetStroke(obj);
   const clipId = inset ? `clip-${shapeId}` : undefined;
+
+  // UX 2026-04-21: honor the Border Style picker's "dashed" choice by
+  // mapping Fabric's strokeDashArray onto the SVG strokeDasharray attr.
+  // Cloud rects skip this path entirely (cloud + dashed are mutually
+  // exclusive in the picker), so we only need to emit it here on the
+  // straight-stroke outline. Empty/missing arrays render solid.
+  const dashArrayAttr = Array.isArray(obj.strokeDashArray) && obj.strokeDashArray.length > 0
+    ? obj.strokeDashArray.join(' ')
+    : undefined;
 
   const rectEl = (
     <rect
@@ -186,6 +319,7 @@ export const renderRect = (obj, index) => {
       fill={obj.fill || 'transparent'}
       stroke={obj.stroke || 'transparent'}
       strokeWidth={obj.strokeWidth || 0}
+      strokeDasharray={dashArrayAttr}
       opacity={obj.opacity ?? 1}
       style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
       clipPath={clipId ? `url(#${clipId})` : undefined}
@@ -222,6 +356,7 @@ export const renderRect = (obj, index) => {
       fill={obj.fill || 'transparent'}
       stroke={obj.stroke || 'transparent'}
       strokeWidth={sw}
+      strokeDasharray={dashArrayAttr}
       opacity={obj.opacity ?? 1}
       data-shape-id={shapeId}
       data-shape-kind="rect"
@@ -401,6 +536,16 @@ export const renderLine = (obj, index) => {
     }
   } catch (err) { /* swallow diag errors */ }
 
+  // UX 2026-04-21: Border Style picker dashed support. Apply strokeDasharray
+  // only to the main line/curve outline — arrowheads (filled or open
+  // triangles, v-shapes, etc.) must stay solid so the tip still reads as a
+  // crisp arrow even when the shaft is dashed. React merges this prop
+  // AFTER {...spec.line}/{...spec.path} so it doesn't clobber anything
+  // else in the spec.
+  const lineDashArrayAttr = Array.isArray(obj.strokeDashArray) && obj.strokeDashArray.length > 0
+    ? obj.strokeDashArray.join(' ')
+    : undefined;
+
   if (spec.kind === 'curved') {
     // UX: Curved line/arrow — <path> + optional arrowhead inside <g>.
     // fill='none' on <path> is CRITICAL (Pitfall 5) — otherwise the bezier
@@ -408,7 +553,7 @@ export const renderLine = (obj, index) => {
     // explicitly by buildLineRenderSpec.
     return (
       <g key={key} opacity={opacity} transform={rotateTransform}>
-        <path {...spec.path} />
+        <path {...spec.path} strokeDasharray={lineDashArrayAttr} />
         {renderArrowheadFromSpec(spec.arrowhead)}
       </g>
     );
@@ -419,7 +564,7 @@ export const renderLine = (obj, index) => {
   if (spec.arrowhead.kind !== 'none') {
     return (
       <g key={key} opacity={opacity} transform={rotateTransform}>
-        <line {...spec.line} />
+        <line {...spec.line} strokeDasharray={lineDashArrayAttr} />
         {renderArrowheadFromSpec(spec.arrowhead)}
       </g>
     );
@@ -427,11 +572,11 @@ export const renderLine = (obj, index) => {
   if (rotateTransform) {
     return (
       <g key={key} transform={rotateTransform}>
-        <line {...spec.line} opacity={opacity} />
+        <line {...spec.line} strokeDasharray={lineDashArrayAttr} opacity={opacity} />
       </g>
     );
   }
-  return <line key={key} {...spec.line} opacity={opacity} />;
+  return <line key={key} {...spec.line} strokeDasharray={lineDashArrayAttr} opacity={opacity} />;
 };
 
 /**
@@ -471,6 +616,13 @@ export const renderArrow = (obj, index) => {
 
   const key = `arrow-${obj.id || index}`;
 
+  // UX 2026-04-21: dashed support on the arrow's shaft only — the polygon
+  // arrowhead below is a filled tip and must stay solid regardless of
+  // strokeDashArray so the arrow still reads as a crisp pointer.
+  const arrowDashArrayAttr = Array.isArray(obj.strokeDashArray) && obj.strokeDashArray.length > 0
+    ? obj.strokeDashArray.join(' ')
+    : undefined;
+
   return (
     <g key={key} opacity={obj.opacity ?? 1}>
       <line
@@ -480,6 +632,7 @@ export const renderArrow = (obj, index) => {
         y2={lineEndY}
         stroke={obj.stroke || '#000'}
         strokeWidth={obj.strokeWidth || 2}
+        strokeDasharray={arrowDashArrayAttr}
         strokeLinecap="round"
       />
       {arrowHead && (
@@ -542,6 +695,34 @@ export const renderPolygon = (obj, index) => {
   const shapeId = obj.id || obj.pdfAnnotationId || key;
   __logShapeRender(obj, 'polygon');
 
+  // UX 2026-04-21: Cloud-polygons rebuild scalloped geometry from the live
+  // points on every render, same pattern as cloud-rects. The polygon's own
+  // transform chain (with scale) is applied to the <path>, so the bump
+  // count scales with the shape.
+  const cloudIntensity = obj.data?.pdfCloudIntensity;
+  if (Number.isFinite(cloudIntensity) && Array.isArray(obj.points) && obj.points.length >= 3) {
+    const livePoints = obj.points.map((p) => ({ x: toNumber(p?.x), y: toNumber(p?.y) }));
+    const liveCloud = buildCloudPathCommands(livePoints, cloudIntensity, obj.strokeWidth ?? 1);
+    if (Array.isArray(liveCloud) && liveCloud.length > 0) {
+      const d = liveCloud.map((seg) => seg.join(' ')).join(' ');
+      return (
+        <path
+          key={key}
+          d={d}
+          transform={transform}
+          fill={obj.fill || 'transparent'}
+          stroke={obj.stroke || 'transparent'}
+          strokeWidth={obj.strokeWidth || 1}
+          strokeLinejoin="round"
+          opacity={obj.opacity ?? 1}
+          data-shape-id={shapeId}
+          data-shape-kind="cloud-polygon"
+          onClick={__shapeClick}
+        />
+      );
+    }
+  }
+
   // 2026-04-17: inset-clip disabled for polygon — the clipPath + polygon +
   // nested-translate transform combination renders as invisible in Chromium
   // even when wrapped in <g transform>. The fill-bleed fix (2026-04-16) is
@@ -549,6 +730,13 @@ export const renderPolygon = (obj, index) => {
   // visible. Re-apply a stroke-inset fix for polygons via a different
   // mechanism (e.g. pre-transformed absolute points, or paint-order + fill
   // + transparent stroke) once a non-clipPath approach is proven.
+  // UX 2026-04-21: Border Style picker dashed support. Cloud polygons go
+  // through the path branch above (cloud + dashed mutually exclusive), so
+  // we only emit strokeDasharray on the plain polygon outline here.
+  const polyDashArrayAttr = Array.isArray(obj.strokeDashArray) && obj.strokeDashArray.length > 0
+    ? obj.strokeDashArray.join(' ')
+    : undefined;
+
   return (
     <polygon
       key={key}
@@ -557,6 +745,7 @@ export const renderPolygon = (obj, index) => {
       fill={obj.fill || 'transparent'}
       stroke={obj.stroke || 'transparent'}
       strokeWidth={obj.strokeWidth || 1}
+      strokeDasharray={polyDashArrayAttr}
       opacity={obj.opacity ?? 1}
       strokeLinejoin="round"
       style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
@@ -615,6 +804,11 @@ export const renderPolyline = (obj, index) => {
   const shapeId = obj.id || obj.pdfAnnotationId || key;
   __logShapeRender(obj, 'polyline');
 
+  // UX 2026-04-21: Border Style picker dashed support for open polylines.
+  const plDashArrayAttr = Array.isArray(obj.strokeDashArray) && obj.strokeDashArray.length > 0
+    ? obj.strokeDashArray.join(' ')
+    : undefined;
+
   return (
     <polyline
       key={key}
@@ -623,6 +817,7 @@ export const renderPolyline = (obj, index) => {
       fill={fill}
       stroke={obj.stroke || '#000'}
       strokeWidth={obj.strokeWidth || 1}
+      strokeDasharray={plDashArrayAttr}
       opacity={obj.opacity ?? 1}
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -678,7 +873,6 @@ export const renderEllipse = (obj, index) => {
       strokeWidth={obj.strokeWidth || 0}
       opacity={obj.opacity ?? 1}
       style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
-      clipPath={clipId ? `url(#${clipId})` : undefined}
       data-shape-id={shapeId}
       data-shape-kind="ellipse"
       onClick={__shapeClick}
@@ -687,15 +881,34 @@ export const renderEllipse = (obj, index) => {
 
   if (!inset) return React.cloneElement(ellEl, { key });
 
-  // UX: clip the ellipse to its own outline so the stroke's outer half is
-  // removed. See shouldInsetStroke doc.
+  // UX 2026-04-22: shrink rx/ry by strokeWidth/2 so the outer edge of the
+  // centered stroke lands at the original (cx, cy, rx, ry) bounds. Matches
+  // the rect inset approach (renderRect :334-365). The prior clipPath +
+  // transform composition worked at 0° but visibly clipped the tilted
+  // ellipse's fill once obj.angle was non-zero — the clipPath's own rotate
+  // transform doesn't compose with the clipped element's transform the way
+  // Safari / Chromium paint rotated content, so the visible ellipse got
+  // cropped by an axis-aligned bbox mask. Shrink-instead-of-clip sidesteps
+  // the issue entirely and works at every angle, matching how rect behaves.
+  const sw = Math.max(0, Number(obj.strokeWidth) || 0);
+  const shrunkRx = Math.max(0, rx - sw / 2);
+  const shrunkRy = Math.max(0, ry - sw / 2);
   return (
-    <g key={key}>
-      <clipPath id={clipId}>
-        <ellipse cx={cx} cy={cy} rx={rx} ry={ry} transform={rotateTransform} />
-      </clipPath>
-      {ellEl}
-    </g>
+    <ellipse
+      key={key}
+      cx={cx}
+      cy={cy}
+      rx={shrunkRx}
+      ry={shrunkRy}
+      transform={rotateTransform}
+      fill={obj.fill || 'transparent'}
+      stroke={obj.stroke || 'transparent'}
+      strokeWidth={sw}
+      opacity={obj.opacity ?? 1}
+      data-shape-id={shapeId}
+      data-shape-kind="ellipse"
+      onClick={__shapeClick}
+    />
   );
 };
 

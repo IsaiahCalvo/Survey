@@ -2484,14 +2484,21 @@ export function useSVGInteraction({
           const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
           const targetObj = updatedAnnotations.objects[ds.annotationIndex];
 
-          // Absolute-coord path (imported OR user-drawn from FabricDrawingCanvas
-          // which zeroes left/top + omits pathOffset): translate the path data
-          // itself. Using obj.left as an offset on top of absolute path data
-          // made the SVG renderer and Fabric eraser canvas disagree on
-          // position (Fabric auto-computes pathOffset from path data and
-          // doesn't honor our zero convention), producing a ghost stroke at
-          // the original position during eraser mode.
+          // Absolute-coord path (user-drawn from FabricDrawingCanvas which
+          // leaves left/top at zero + omits pathOffset): translate the path
+          // data itself so the SVG renderer and Fabric eraser canvas agree
+          // on position. Imported paths that have been normalized (Chunk 2)
+          // now carry left/top as their world position with path data in
+          // LOCAL coords starting at (0, 0) — those must NOT hit this
+          // branch, or first-touch rebakes them back to world coords and
+          // zeroes left/top, which then breaks every subsequent
+          // resize/rotate. Requiring left/top to be null-or-zero keeps the
+          // old behavior for internal live-drawn strokes while letting
+          // normalized imports take the standard translate branch.
+          const pathLeftZero = obj.left == null || obj.left === 0;
+          const pathTopZero = obj.top == null || obj.top === 0;
           const isAbsolutePath = obj.type === 'path' && Array.isArray(obj.path) &&
+            pathLeftZero && pathTopZero &&
             (!obj.pathOffset || (obj.pathOffset.x === 0 && obj.pathOffset.y === 0));
 
           if (isAbsolutePath) {
@@ -2722,8 +2729,14 @@ export function useSVGInteraction({
           const actualDx = constrained.left - bbox.left;
           const actualDy = constrained.top - bbox.top;
 
-          // Same dual-convention handling as the single-move branch above.
+          // Same dual-convention handling as the single-move branch above —
+          // require left/top be null-or-zero so normalized imported paths
+          // (world-positioned, local path data) take the standard
+          // translate-by-delta branch instead of being rebaked.
+          const pathLeftZeroGrp = obj.left == null || obj.left === 0;
+          const pathTopZeroGrp = obj.top == null || obj.top === 0;
           const isAbsolutePath = obj.type === 'path' && Array.isArray(obj.path) &&
+            pathLeftZeroGrp && pathTopZeroGrp &&
             (!obj.pathOffset || (obj.pathOffset.x === 0 && obj.pathOffset.y === 0));
 
           if (isAbsolutePath) {
