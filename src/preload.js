@@ -45,6 +45,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('menu:reimport-pdf-bookmarks', subscription);
     return () => ipcRenderer.removeListener('menu:reimport-pdf-bookmarks', subscription);
   },
+  onPrintPdf: (callback) => {
+    const subscription = () => {
+      console.log('[preload] menu:print-pdf received, forwarding to renderer');
+      callback();
+    };
+    ipcRenderer.on('menu:print-pdf', subscription);
+    return () => ipcRenderer.removeListener('menu:print-pdf', subscription);
+  },
+
+  // UX 2026-04-22: Save Log GitHub push. Returns { ok, url, filename, error }.
+  pushLogToGithub: (content) => ipcRenderer.invoke('logs:pushToGithub', { content }),
 
   // OAuth APIs - opens a separate window for authentication
   openOAuthWindow: (authUrl, redirectUri) => ipcRenderer.invoke('oauth:openWindow', { authUrl, redirectUri }),

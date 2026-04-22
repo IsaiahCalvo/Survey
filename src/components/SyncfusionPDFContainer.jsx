@@ -14,6 +14,7 @@ import {
   BookmarkView,
   TextSelection,
   TextSearch,
+  Print,
   Inject
 } from '@syncfusion/ej2-react-pdfviewer';
 
@@ -1112,6 +1113,35 @@ const SyncfusionPDFContainer = forwardRef(({
     getPageLayerContainer,
     getThumbnailDataUrl,
     getPDFBookmarks: () => normalizePdfBookmarks(),
+    // UX 2026-04-22: Print menu wiring. Called from the Electron "Print PDF…"
+    // menu item (Cmd+P). Uses Syncfusion's built-in print module so the PDF
+    // prints cleanly (rasterized pages), not the whole Electron chrome.
+    print: () => {
+      const viewer = getViewerInstance();
+      console.log('[Print] menu invoked — viewer ready:', !!viewer, 'pageCount:', viewer?.pageCount);
+      if (!viewer) {
+        console.warn('[Print] no viewer instance available');
+        return false;
+      }
+      try {
+        if (viewer?.printModule?.print) {
+          console.log('[Print] calling viewer.printModule.print()');
+          viewer.printModule.print();
+          return true;
+        }
+        if (typeof viewer?.print === 'function') {
+          console.log('[Print] calling viewer.print()');
+          viewer.print();
+          return true;
+        }
+        console.warn('[Print] no print method found on viewer, falling back to window.print');
+        window.print();
+        return true;
+      } catch (err) {
+        console.error('[Print] error while printing:', err);
+        return false;
+      }
+    },
     load: (source, password = '') => {
       const viewer = getViewerInstance();
       viewer?.load?.(source, password);
@@ -1485,6 +1515,43 @@ const SyncfusionPDFContainer = forwardRef(({
     }
   }, [getViewerInstance, interactionMode]);
 
+  // UX 2026-04-22: subscribe to the Electron "Print PDF…" menu event (Cmd+P)
+  // and invoke Syncfusion's print module. Logs every step so console output
+  // can be shared if anything goes sideways.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.electronAPI?.onPrintPdf) {
+      console.log('[Print] electronAPI.onPrintPdf not available (web build or preload missing)');
+      return undefined;
+    }
+    console.log('[Print] menu listener mounted');
+    const unsubscribe = window.electronAPI.onPrintPdf(() => {
+      const viewer = getViewerInstance();
+      console.log('[Print] menu fired — viewer ready:', !!viewer, 'pageCount:', viewer?.pageCount);
+      if (!viewer) {
+        console.warn('[Print] no viewer available — open a PDF first');
+        return;
+      }
+      try {
+        if (viewer?.printModule?.print) {
+          console.log('[Print] calling viewer.printModule.print()');
+          viewer.printModule.print();
+        } else if (typeof viewer?.print === 'function') {
+          console.log('[Print] calling viewer.print()');
+          viewer.print();
+        } else {
+          console.warn('[Print] no viewer print method, falling back to window.print');
+          window.print();
+        }
+      } catch (err) {
+        console.error('[Print] error while printing:', err);
+      }
+    });
+    return () => {
+      console.log('[Print] menu listener unmounted');
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [getViewerInstance]);
+
   useEffect(() => {
     const viewer = getViewerInstance();
     if (!viewer) return;
@@ -1557,7 +1624,7 @@ const SyncfusionPDFContainer = forwardRef(({
       ajaxRequestSuccess={handleAjaxRequestSuccess}
       documentUnload={handleDocumentUnload}
     >
-      <Inject services={[Magnification, Navigation, BookmarkView, TextSelection, TextSearch]} />
+      <Inject services={[Magnification, Navigation, BookmarkView, TextSelection, TextSearch, Print]} />
     </PdfViewerComponent>
   );
 });

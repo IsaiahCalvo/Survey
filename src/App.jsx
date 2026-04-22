@@ -15209,6 +15209,24 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
 
     console.log(`[SaveLog] wrote ${written.length} files with prefix ${BASE}-: ${written.map((p) => p.split('/').pop()).join(', ')}`);
+
+    // UX 2026-04-22: mirror every save to a GitHub branch so logs from any
+    // device (Mac, Windows, sim) land in one place, tagged by platform +
+    // hostname. Silent if the handler isn't available (web build or old
+    // Electron shell) — local save still worked.
+    if (typeof api?.pushLogToGithub === 'function') {
+      try {
+        const push = await api.pushLogToGithub(consoleText);
+        if (push?.ok) {
+          console.log(`[SaveLog] pushed to GitHub: ${push.url || push.filename}`);
+        } else {
+          console.warn(`[SaveLog] GitHub push failed: ${push?.error || 'unknown error'}`);
+        }
+      } catch (ghErr) {
+        console.warn('[SaveLog] GitHub push threw:', ghErr?.message || ghErr);
+      }
+    }
+
     return { files: written };
   }, []);
 

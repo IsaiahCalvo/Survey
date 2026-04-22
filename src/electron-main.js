@@ -183,6 +183,18 @@ function createAppMenu() {
           }
         },
         { type: 'separator' },
+        {
+          label: 'Print PDF…',
+          accelerator: 'CmdOrCtrl+P',
+          click: () => {
+            const win = getTargetWindow();
+            console.log('[electron-main] Print PDF menu clicked, targetWindow alive:', !!(win && !win.isDestroyed()));
+            if (win && !win.isDestroyed()) {
+              win.webContents.send('menu:print-pdf');
+            }
+          }
+        },
+        { type: 'separator' },
         { role: isMac ? 'close' : 'quit' }
       ]
     },
@@ -540,6 +552,64 @@ ipcMain.handle('fileWatcher:stop', async (event, watchId) => {
   } catch (error) {
     console.error('Failed to stop file watcher:', error);
     throw error;
+  }
+});
+
+// UX 2026-04-22: Push the current Save Log dump to the Survey repo's "logs"
+// branch on GitHub, using whatever `gh` CLI auth the user already has. Each
+// save lands as its own timestamped file tagged with the device (platform +
+// hostname) so Mac / Windows / other-device logs never overwrite each other.
+// Returns { ok, url, error }. Never throws — worst case returns ok:false.
+ipcMain.handle('logs:pushToGithub', async (event, { content }) => {
+  try {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const platformTag = process.platform === 'darwin'
+      ? 'mac'
+      : process.platform === 'win32'
+        ? 'windows'
+        : process.platform === 'linux' ? 'linux' : process.platform;
+    const hostname = (os.hostname() || 'unknown')
+      .replace(/\.local$/i, '')
+      .replace(/[^a-zA-Z0-9_-]/g, '-')
+      .toLowerCase();
+    const filename = `${platformTag}-${hostname}-${timestamp}.log`;
+    const b64 = Buffer.from(String(content ?? ''), 'utf-8').toString('base64');
+
+    console.log(`[logs:pushToGithub] uploading ${filename} (${b64.length} base64 chars)`);
+
+    const result = await new Promise((resolve) => {
+      const child = spawn('gh', [
+        'api',
+        '--method', 'PUT',
+        '/repos/IsaiahCalvo/Survey/contents/' + filename,
+        '-f', `message=save-log from ${platformTag} (${hostname}) @ ${timestamp}`,
+        '-f', `content=${b64}`,
+        '-f', 'branch=logs'
+      ], { shell: false });
+      let out = '';
+      let err = '';
+      child.stdout.on('data', (d) => { out += d.toString(); });
+      child.stderr.on('data', (d) => { err += d.toString(); });
+      child.on('error', (e) => resolve({ ok: false, error: `gh spawn failed: ${e.message}` }));
+      child.on('close', (code) => {
+        if (code === 0) {
+          let url = null;
+          try { url = JSON.parse(out)?.content?.html_url || null; } catch {}
+          resolve({ ok: true, url, filename });
+        } else {
+          resolve({ ok: false, error: `gh exited ${code}: ${err.trim() || out.trim()}`, filename });
+        }
+      });
+    });
+    if (result.ok) {
+      console.log(`[logs:pushToGithub] pushed — ${result.url || result.filename}`);
+    } else {
+      console.warn(`[logs:pushToGithub] failed — ${result.error}`);
+    }
+    return result;
+  } catch (error) {
+    console.error('[logs:pushToGithub] unexpected error:', error);
+    return { ok: false, error: error?.message || String(error) };
   }
 });
 
