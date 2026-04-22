@@ -1,0 +1,29 @@
+===== SurveyApp Save Log =====
+version:   0.1.5
+runtime:   desktop-installer
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1203x826
+locale:    en-US
+timestamp: 2026-04-22T20:11:00.589Z (4/22/2026, 4:11:00 PM)
+==============================
+[AnnotPerf] finalize idle (forced-reset) — deferring CSS transform removal, waiting for PAL confirmation
+[DebugBridge +2549.0ms] zoom_start {"scale":0.67,"targetScale":1,"source":"keyboard_toolbar"}
+[CSeries wipe] doc=clickable-link-test.pdf-1102 totalCounters=0 legacyRemoved=0 — nothing to wipe.
+[ZoomLive svg p1] {"interactionPhase":"idle","zoomOverlayTransformActive":true,"viewerScale":0.67,"measuredScale":0.67,"committedScale":0,"overlayTransform":"none","overlayTransformScale":1,"pageHostRect":null,"overlayLayerRect":null,"overlayContentRect":null,"legacyCompensationRect":null,"legacyCompensationTransform":"none","palRootRect":null,"canvasContainerRect":null,"palCanvasRect":null,"regionRootRect":null,"regionSvgRect":null,"regionScreenWidth":0,"regionScreenHeight":0,"svgLayerRect":null,"activeSpaceId":null,"activeRegionId":null,"showRegionSelection":false}
+[Print] menu listener mounted
+[ZoomLive svg p1] {"interactionPhase":"idle","zoomOverlayTransformActive":true,"viewerScale":0.1,"measuredScale":0.1,"committedScale":1.33333,"overlayTransform":"none","overlayTransformScale":1,"pageHostRect":{"w":816,"h":1056,"left":212,"top":87},"overlayLayerRect":null,"overlayContentRect":null,"legacyCompensationRect":null,"legacyCompensationTransform":"none","palRootRect":null,"canvasContainerRect":null,"palCanvasRect":null,"regionRootRect":null,"regionSvgRect":null,"regionScreenWidth":0,"regionScreenHeight":0,"svgLayerRect":null,"activeSpaceId":null,"activeRegionId":null,"showRegionSelection":false}
+[DebugBridge +2966.2ms] pdf_loaded {"pageCount":1,"currentPage":1}
+[ZoomLive svg p1] {"interactionPhase":"idle","zoomOverlayTransformActive":true,"viewerScale":0.9,"measuredScale":1.19935,"committedScale":1.19935,"overlayTransform":"none","overlayTransformScale":1,"pageHostRect":{"w":734.398,"h":950.398,"left":252.797,"top":86.195},"overlayLayerRect":null,"overlayContentRect":null,"legacyCompensationRect":null,"legacyCompensationTransform":"none","palRootRect":null,"canvasContainerRect":null,"palCanvasRect":null,"regionRootRect":null,"regionSvgRect":null,"regionScreenWidth":0,"regionScreenHeight":0,"svgLayerRect":null,"activeSpaceId":null,"activeRegionId":null,"showRegionSelection":false}
+[ZoomLive svg p1] {"interactionPhase":"idle","zoomOverlayTransformActive":true,"viewerScale":0.67,"measuredScale":0.89379,"committedScale":0.89379,"overlayTransform":"none","overlayTransformScale":1,"pageHostRect":{"w":546.719,"h":707.516,"left":346.633,"top":84.359},"overlayLayerRect":null,"overlayContentRect":null,"legacyCompensationRect":null,"legacyCompensationTransform":"none","palRootRect":null,"canvasContainerRect":null,"palCanvasRect":null,"regionRootRect":null,"regionSvgRect":null,"regionScreenWidth":0,"regionScreenHeight":0,"svgLayerRect":null,"activeSpaceId":null,"activeRegionId":null,"showRegionSelection":false}
+[ZoomLive svg p1] {"interactionPhase":"idle","zoomOverlayTransformActive":true,"viewerScale":0.67,"measuredScale":0.89379,"committedScale":0.89379,"overlayTransform":"none","overlayTransformScale":1,"pageHostRect":{"w":546.719,"h":707.516,"left":346.633,"top":84.359},"overlayLayerRect":null,"overlayContentRect":null,"legacyCompensationRect":null,"legacyCompensationTransform":"none","palRootRect":null,"canvasContainerRect":null,"palCanvasRect":null,"regionRootRect":null,"regionSvgRect":null,"regionScreenWidth":0,"regionScreenHeight":0,"svgLayerRect":null,"activeSpaceId":null,"activeRegionId":null,"showRegionSelection":false}
+[HyperlinkDiag] post-load scan {"hyperlinkCount":1,"samples":[{"tag":"A","className":"e-pv-hyperlink","href":"https://claude.com","rect":{"x":442.6328125,"y":261.6875,"width":293.328125,"height":32,"top":261.6875,"right":735.9609375,"bottom":293.6875,"left":442.6328125}}]}
+[HyperlinkDiag] page 1 layers {"hyperlinkChildren":1,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","DIV","e-pv-hyperlink","e-pv-annotation-canvas","e-pv-text-layer"]}
+[ZoomLive svg p1] {"interactionPhase":"idle","zoomOverlayTransformActive":true,"viewerScale":0.67,"measuredScale":0.89379,"committedScale":0.89379,"overlayTransform":"none","overlayTransformScale":1,"pageHostRect":{"w":546.719,"h":707.516,"left":346.633,"top":84.359},"overlayLayerRect":null,"overlayContentRect":null,"legacyCompensationRect":null,"legacyCompensationTransform":"none","palRootRect":null,"canvasContainerRect":null,"palCanvasRect":null,"regionRootRect":null,"regionSvgRect":null,"regionScreenWidth":0,"regionScreenHeight":0,"svgLayerRect":null,"activeSpaceId":null,"activeRegionId":null,"showRegionSelection":false}
+[HyperlinkDiag] hyperlinkMouseOver FIRED {"hasElement":false}
+[ZoomLive svg p1] {"interactionPhase":"idle","zoomOverlayTransformActive":true,"viewerScale":0.67,"measuredScale":0.89379,"committedScale":0.89379,"overlayTransform":"none","overlayTransformScale":1,"pageHostRect":{"w":546.719,"h":707.516,"left":346.633,"top":84.359},"overlayLayerRect":null,"overlayContentRect":null,"legacyCompensationRect":null,"legacyCompensationTransform":"none","palRootRect":null,"canvasContainerRect":null,"palCanvasRect":null,"regionRootRect":null,"regionSvgRect":null,"regionScreenWidth":0,"regionScreenHeight":0,"svgLayerRect":null,"activeSpaceId":null,"activeRegionId":null,"showRegionSelection":false}
+[HyperlinkDiag] hyperlinkClick FIRED {"url":"https://claude.com","keys":["name","hyperlink","hyperlinkElement","cancel"]}
+[DebugBridge +4230.4ms] zoom_end {"source":"zoomChange_settle"}
+[HyperlinkDiag] hyperlinkMouseOver FIRED {"hasElement":false}
