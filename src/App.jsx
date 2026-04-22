@@ -17053,6 +17053,24 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     };
   }, [handleReimportPdfBookmarks]);
 
+  // UX 2026-04-22: Save Log is now reachable from the File menu (Cmd/Ctrl+
+  // Shift+L) so users can capture logs from anywhere in the app, not only
+  // while a PDF is open. Listener subscribes to the same menu IPC the
+  // Electron main process emits; handler is the existing SaveLog flow which
+  // writes locally and mirrors to the GitHub logs branch.
+  useEffect(() => {
+    if (!window.electronAPI?.onSaveLogMenu) return undefined;
+    const unsubscribe = window.electronAPI.onSaveLogMenu(() => {
+      console.log('[SaveLog] menu trigger received');
+      handleSaveOverlayLagLog();
+    });
+    return () => {
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
+      }
+    };
+  }, [handleSaveOverlayLagLog]);
+
   const handleBookmarkCreate = useCallback((bookmark) => {
     setBookmarks(prev => {
       const type = bookmark?.type === 'folder' ? 'folder' : 'bookmark';
@@ -31002,28 +31020,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               )}
             </div>
 
-            <button
-              onClick={handleSaveOverlayLagLog}
-              className="btn btn-default btn-sm"
-              style={{ fontSize: '12px', padding: '6px 10px' }}
-              title="Download overlay lag diagnostics (.log JSON payload)"
-            >
-              Save Log
-            </button>
-
-            <button
-              onClick={() => setOverlayLagAutoRecordEnabled((prev) => !prev)}
-              className="btn btn-default btn-sm"
-              style={{
-                fontSize: '12px',
-                padding: '6px 10px',
-                background: overlayLagAutoRecordEnabled ? '#2d4a2d' : undefined,
-                borderColor: overlayLagAutoRecordEnabled ? '#4f7a4f' : undefined
-              }}
-              title="Automatically record lag diagnostics when the app opens"
-            >
-              Auto Log: {overlayLagAutoRecordEnabled ? 'On' : 'Off'}
-            </button>
+            {/* UX 2026-04-22: Save Log + Auto Log toolbar buttons were removed
+                in favor of a File menu item (Cmd/Ctrl+Shift+L). The handler
+                is now reachable from anywhere in the app, not only when a
+                PDF is open. Auto Log was dropped entirely — user request. */}
 
             {/* Page Navigation */}
             <div style={{

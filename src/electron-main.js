@@ -375,6 +375,18 @@ function createAppMenu() {
           }
         },
         { type: 'separator' },
+        {
+          label: 'Save Log',
+          accelerator: 'CmdOrCtrl+Shift+L',
+          click: () => {
+            const win = getTargetWindow();
+            console.log('[electron-main] Save Log menu clicked, targetWindow alive:', !!(win && !win.isDestroyed()));
+            if (win && !win.isDestroyed()) {
+              win.webContents.send('menu:save-log');
+            }
+          }
+        },
+        { type: 'separator' },
         { role: isMac ? 'close' : 'quit' }
       ]
     },

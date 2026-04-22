@@ -53,6 +53,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('menu:print-pdf', subscription);
     return () => ipcRenderer.removeListener('menu:print-pdf', subscription);
   },
+  onSaveLogMenu: (callback) => {
+    const subscription = () => {
+      console.log('[preload] menu:save-log received, forwarding to renderer');
+      callback();
+    };
+    ipcRenderer.on('menu:save-log', subscription);
+    return () => ipcRenderer.removeListener('menu:save-log', subscription);
+  },
 
   // UX 2026-04-22: Save Log GitHub push. Returns { ok, url, filename, error }.
   pushLogToGithub: (content) => ipcRenderer.invoke('logs:pushToGithub', { content }),
