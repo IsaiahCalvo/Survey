@@ -1152,13 +1152,40 @@ function extractAppearanceMetadataForAnnotation(annotationDict, context, pdfLib)
   const stream = context.lookup(normalAppearance);
   if (!stream) return null;
 
+  // UX 2026-04-22: extract /AP /N Form XObject /Matrix + /BBox so shape
+  // converters (Square, Circle, Polygon) can recover rotation and true
+  // unrotated dimensions. Drawboard (and others) rotate a shape by
+  // tilting the appearance stream via /Matrix while leaving the outer
+  // /Rect axis-aligned. Without reading /Matrix, a 182×147 rectangle
+  // tilted 47° imports as a 231×231 axis-aligned square (its AABB).
+  let matrix = null;
+  let bbox = null;
+  try {
+    const streamDict = stream.dict || stream;
+    if (streamDict && typeof streamDict.get === 'function') {
+      matrix = readPdfLibNumberArray(streamDict.get(PDFName.of('Matrix')));
+      bbox = readPdfLibNumberArray(streamDict.get(PDFName.of('BBox')));
+    }
+  } catch {
+    matrix = null;
+    bbox = null;
+  }
+
+  let parsed = null;
   try {
     const decoded = decodePDFRawStream(stream).decode();
     const source = decodeStreamBytesToLatin1(decoded);
-    return parseAppearanceStream(source);
+    parsed = parseAppearanceStream(source);
   } catch {
-    return null;
+    parsed = null;
   }
+
+  if (!parsed && !matrix && !bbox) return null;
+  return {
+    ...(parsed || {}),
+    ...(Array.isArray(matrix) && matrix.length === 6 ? { matrix } : {}),
+    ...(Array.isArray(bbox) && bbox.length === 4 ? { bbox } : {}),
+  };
 }
 
 async function buildRawAnnotationMetadataById(rawPdfBytes) {
@@ -2117,11 +2144,48 @@ function convertTextToFabricNote(annotation, viewport, scale = 1) {
 /**
  * Convert PDF Square annotation to Fabric.js Rect
  */
+// UX 2026-04-22: derive a shape's rotation + true unrotated dimensions from
+// its /AP /N Form XObject /Matrix and /BBox. Drawboard (and peers) bake a
+// shape's tilt into the appearance-stream matrix while leaving the annotation's
+// /Rect axis-aligned — so a 47° tilted rectangle imports as an axis-aligned
+// square if you only look at /Rect. Returns null when the matrix is missing
+// or effectively identity (i.e. no rotation); callers fall back to /Rect.
+//
+// Angle convention: /Matrix [a,b,c,d,e,f] = [cos θ, sin θ, -sin θ, cos θ, tx, ty]
+// encodes a CCW rotation by θ in PDF's y-up space. Screen y is flipped, so the
+// on-screen visual rotation is the negative of that — which matches Fabric's
+// screen-clockwise convention: fabricAngleDeg = -atan2(b, a) * 180/π.
+function computeAppearanceRotationTransform(annotation, scale = 1) {
+  const matrix = annotation?._appearance?.matrix;
+  const bbox = annotation?._appearance?.bbox;
+  if (!Array.isArray(matrix) || matrix.length !== 6) return null;
+  if (!Array.isArray(bbox) || bbox.length !== 4) return null;
+  const [a, b, , d] = matrix;
+  const EPS = 1e-3;
+  if (Math.abs(a - 1) < EPS && Math.abs(b) < EPS && Math.abs(d - 1) < EPS) {
+    // Identity (or near-identity) — no rotation baked into the appearance.
+    return null;
+  }
+  const angleDeg = -Math.atan2(b, a) * 180 / Math.PI;
+  const bboxWidth = Math.abs(bbox[2] - bbox[0]) * scale;
+  const bboxHeight = Math.abs(bbox[3] - bbox[1]) * scale;
+  if (!Number.isFinite(angleDeg) || bboxWidth <= 0 || bboxHeight <= 0) return null;
+  return { angleDeg, bboxWidth, bboxHeight };
+}
+
 function convertSquareToFabricRect(annotation, viewport, scale = 1) {
   const viewportRect = convertPdfRectToViewportRect(annotation.rect, viewport, scale);
   if (!viewportRect) {
     return null;
   }
+
+  // UX 2026-04-22: if the source PDF rotated this rectangle via its /AP
+  // appearance matrix (Drawboard / Acrobat both do this for tilted shapes),
+  // recover the true tilt + un-rotated dimensions so the imported rect
+  // matches what the authoring tool displayed. Rect.left/top is recentered
+  // on the viewport /Rect midpoint so Fabric's rotation pivot (bbox center)
+  // matches Drawboard's.
+  const rotationTransform = computeAppearanceRotationTransform(annotation, scale);
 
   const strokeColor = pdfColorToHex(annotation.color || [0, 0, 0], annotation);
   const strokeOpacity = extractAnnotationOpacity(annotation, 1);
@@ -2154,12 +2218,26 @@ function convertSquareToFabricRect(annotation, viewport, scale = 1) {
       )
     : null;
 
+  // If a rotation transform is present, use the un-rotated /BBox dimensions
+  // and center the rect on the viewport /Rect midpoint. Otherwise fall back
+  // to the existing axis-aligned behavior.
+  const useRotation = !!rotationTransform;
+  const outWidth = useRotation ? rotationTransform.bboxWidth : viewportRect.width;
+  const outHeight = useRotation ? rotationTransform.bboxHeight : viewportRect.height;
+  const outLeft = useRotation
+    ? viewportRect.left + (viewportRect.width - outWidth) / 2
+    : viewportRect.left;
+  const outTop = useRotation
+    ? viewportRect.top + (viewportRect.height - outHeight) / 2
+    : viewportRect.top;
+
   return {
     type: 'rect',
-    left: viewportRect.left,
-    top: viewportRect.top,
-    width: viewportRect.width,
-    height: viewportRect.height,
+    left: outLeft,
+    top: outTop,
+    width: outWidth,
+    height: outHeight,
+    ...(useRotation ? { angle: rotationTransform.angleDeg } : {}),
     fill: fillColor,
     stroke: hasVisibleStroke ? hexToRgba(strokeColor, strokeOpacity) : null,
     strokeWidth: hasVisibleStroke ? strokeWidth * scale : 0,
@@ -2189,17 +2267,51 @@ function convertCircleToFabricCircle(annotation, viewport, scale = 1) {
     return null;
   }
 
-  // For ellipse, use the smaller dimension as radius
-  // Fabric.js Circle is actually a circle, but we'll approximate ellipses
-  const radius = Math.min(viewportRect.width, viewportRect.height) / 2;
-  if (radius <= 0) {
-    return null;
-  }
-
   const strokeColor = pdfColorToHex(annotation.color || [0, 0, 0], annotation);
   const strokeOpacity = extractAnnotationOpacity(annotation, 1);
   const fillColor = getShapeFillColor(annotation, strokeColor);
   const strokeWidth = getBorderWidth(annotation, 1);
+
+  // UX 2026-04-22: recover tilt + true oblong dimensions from the /AP
+  // appearance matrix when present. Drawboard tilts ellipses by baking a
+  // rotation into the /AP /N /Matrix and storing the un-rotated (oblong)
+  // radii in /AP /N /BBox — so an ellipse tilted 47° imports as a plain
+  // circle without this path. Switches output to `type: 'ellipse'` with
+  // rx/ry + angle so the SVG renderer draws it as Drawboard displayed it.
+  const rotationTransform = computeAppearanceRotationTransform(annotation, scale);
+  if (rotationTransform) {
+    const rx = rotationTransform.bboxWidth / 2;
+    const ry = rotationTransform.bboxHeight / 2;
+    if (rx <= 0 || ry <= 0) return null;
+    const cx = viewportRect.left + viewportRect.width / 2;
+    const cy = viewportRect.top + viewportRect.height / 2;
+    return {
+      type: 'ellipse',
+      left: cx - rx,
+      top: cy - ry,
+      rx,
+      ry,
+      angle: rotationTransform.angleDeg,
+      fill: fillColor,
+      stroke: hexToRgba(strokeColor, strokeOpacity),
+      strokeWidth: strokeWidth * scale,
+      strokeUniform: true,
+      selectable: true,
+      evented: true,
+      hasControls: true,
+      hasBorders: true,
+      isPdfImported: true,
+      pdfAnnotationId: annotation.id,
+      pdfAnnotationType: 'Circle',
+      layer: 'pdf-annotations'
+    };
+  }
+
+  // No rotation metadata — fall back to the existing axis-aligned path.
+  const radius = Math.min(viewportRect.width, viewportRect.height) / 2;
+  if (radius <= 0) {
+    return null;
+  }
 
   return {
     type: 'circle',
