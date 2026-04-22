@@ -1381,8 +1381,14 @@ function applyRawMetadataToAnnotation(annotation, rawMetadata) {
     borderStyle.dashArray = rawMetadata.borderDashArray;
   }
 
+  // UX 2026-04-22: prefer raw PDF /LE over pdf.js's surfaced lineEndings.
+  // pdf.js normalizes /L internally for some LineAnnotation flows (swapping
+  // endpoints so the arrow-ending point is always listed second), which
+  // decouples from the raw /LE and produces imported arrows pointing the
+  // wrong direction. Trusting the raw PDF dict (via pdf-lib) keeps /L and
+  // /LE in lockstep with what the authoring tool actually wrote.
   const normalizedLineEndings = normalizePdfLineEndings(
-    annotation.lineEndings || rawMetadata.lineEndings
+    rawMetadata.lineEndings || annotation.lineEndings
   );
 
   return {
@@ -1400,7 +1406,10 @@ function applyRawMetadataToAnnotation(annotation, rawMetadata) {
     borderStyleType: annotation.borderStyleType || rawMetadata.borderStyleType || annotation.borderStyleType,
     borderEffect: annotation.borderEffect || rawMetadata.borderEffect || null,
     lineEndings: normalizedLineEndings || annotation.lineEndings,
-    lineCoordinates: annotation.lineCoordinates || rawMetadata.lineCoordinates || annotation.lineCoordinates,
+    // UX 2026-04-22: same reason as normalizedLineEndings above — prefer the
+    // raw /L over pdf.js's potentially-reordered lineCoordinates so the two
+    // stay in lockstep with what the PDF author wrote.
+    lineCoordinates: rawMetadata.lineCoordinates || annotation.lineCoordinates,
     vertices: annotation.vertices || rawMetadata.vertices || annotation.vertices,
     calloutLine: annotation.calloutLine || rawMetadata.calloutLine || annotation.calloutLine,
     rectangleDifferences:
@@ -2345,6 +2354,23 @@ function convertLineToFabricLine(annotation, viewport, scale = 1) {
   // Line coordinates: [x1, y1, x2, y2]
   const lineCoords = annotation.lineCoordinates;
   const lineEndings = normalizePdfLineEndings(annotation.lineEndings);
+
+  // UX 2026-04-22: diagnostic log — prints exactly what pdf.js / raw-pdf
+  // metadata hand us for this Line annotation so we can see if the coord
+  // order or /LE array was reshuffled upstream. Gated behind
+  // window.__LINE_IMPORT_DIAG = true.
+  try {
+    if (typeof window !== 'undefined' && window.__LINE_IMPORT_DIAG) {
+      console.log('[LineImportDiag]', JSON.stringify({
+        id: annotation.id,
+        rawLineCoordinates: annotation.lineCoordinates,
+        rawLineEndings: annotation.lineEndings,
+        normalizedLineEndings: lineEndings,
+        rect: annotation.rect,
+        color: annotation.color,
+      }));
+    }
+  } catch (_e) { /* diag must never throw */ }
   const dashArray = extractAnnotationDashArray(annotation);
   const intent = normalizePdfNameToken(annotation.intent || '');
   const calloutPoints = convertPdfPointListToViewportPoints(annotation.calloutLine, viewport, scale);
