@@ -77,7 +77,7 @@ import OneDriveFileSaveModal from './components/OneDriveFileSaveModal';
 import TemplateOverwriteWarningModal from './components/TemplateOverwriteWarningModal';
 import ExcelSyncConfirmModal from './components/ExcelSyncConfirmModal';
 import SyncfusionPDFContainer from './components/SyncfusionPDFContainer';
-import SaveLogToast from './components/SaveLogToast';
+import SaveLogBanner from './components/SaveLogBanner';
 import LightweightAnnotationOverlay from './components/LightweightAnnotationOverlay';
 import SVGAnnotationLayer from './components/SVGAnnotationLayer';
 import FabricDrawingCanvas from './components/FabricDrawingCanvas';
@@ -26781,11 +26781,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   return (
     <>
-      {/* UX 2026-04-22: Top-right toast that confirms a Save Log push to
-          GitHub — listens for a window event the handler dispatches, auto
-          dismisses in ~2.8s. Lives here so it renders over every other
-          floating UI including the context menu below. */}
-      <SaveLogToast />
+      {/* UX 2026-04-22: Save Log banner slides in from the LEFT with a 5s
+          countdown and a Description button. If the user does nothing the
+          log pushes automatically; clicking Description lets them attach a
+          note before Submit. Lives here so it renders above every floating
+          UI including the context menu below. */}
+      <SaveLogBanner />
       {/* Annotation right-click menu. Anchored to pointer via fixed position.
           UX: stops propagation on its own mousedown so clicking an item doesn't
           also trigger the outside-click closer. Menu items depend on the
@@ -37266,27 +37267,14 @@ export default function App() {
         }
       }
 
-      // GitHub push + toast.
+      // UX 2026-04-22: Hand off to SaveLogBanner. The banner owns the 5-second
+      // countdown + optional description entry + GitHub push so the user has
+      // a chance to explain what broke before the Issue is opened. Local save
+      // already finished above, so cancelling only skips the GitHub push.
       if (typeof api?.pushLogToGithub === 'function') {
-        try {
-          const push = await api.pushLogToGithub(consoleText);
-          if (push?.ok) {
-            console.log(`[SaveLog] pushed to GitHub: ${push.url || push.filename}`);
-            window.dispatchEvent(new CustomEvent('save-log-toast', {
-              detail: { type: 'success', message: 'Log saved to GitHub', url: push.url || null }
-            }));
-          } else {
-            console.warn(`[SaveLog] GitHub push failed: ${push?.error || 'unknown'}`);
-            window.dispatchEvent(new CustomEvent('save-log-toast', {
-              detail: { type: 'error', message: 'GitHub push failed (local save ok)' }
-            }));
-          }
-        } catch (ghErr) {
-          console.warn('[SaveLog] GitHub push threw:', ghErr?.message || ghErr);
-          window.dispatchEvent(new CustomEvent('save-log-toast', {
-            detail: { type: 'error', message: 'GitHub push failed (local save ok)' }
-          }));
-        }
+        window.dispatchEvent(new CustomEvent('save-log-banner-start', {
+          detail: { consoleText }
+        }));
       } else {
         // Web build / no Electron shell — local save wasn't possible either.
         window.dispatchEvent(new CustomEvent('save-log-toast', {
@@ -37648,11 +37636,11 @@ export default function App() {
 
   return (
     <>
-      {/* UX 2026-04-22: Save Log toast mounts at the outermost App level so
+      {/* UX 2026-04-22: Save Log banner mounts at the outermost App level so
           it's visible on the dashboard / templates / auth / any view, not
           only inside the PDF viewer. Listens for a window event the Save
           Log handler dispatches. */}
-      <SaveLogToast />
+      <SaveLogBanner />
       <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
         {tabs.length > 0 && ( // Show tab bar if there are any tabs (including home)
           <TabBar

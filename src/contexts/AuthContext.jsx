@@ -73,6 +73,29 @@ export const AuthProvider = ({ children }) => {
       } else {
         setLoadingTier(false);
       }
+
+      // UX 2026-04-22: Dev-only auto-login. When running `npm run dev` and no
+      // session is restored from storage, sign in with the dev account pulled
+      // from .env.development.local so the local app never shows the login
+      // screen. Double-guarded (import.meta.env.DEV + presence of the dev env
+      // vars) so shipped installers can never trigger this.
+      if (!session && import.meta.env.DEV) {
+        const devEmail = import.meta.env.VITE_DEV_AUTO_LOGIN_EMAIL;
+        const devPassword = import.meta.env.VITE_DEV_AUTO_LOGIN_PASSWORD;
+        if (devEmail && devPassword) {
+          supabase.auth.signInWithPassword({ email: devEmail, password: devPassword })
+            .then(({ error }) => {
+              if (error) {
+                console.warn('[dev-auto-login] failed:', error.message || error);
+              } else {
+                console.log('[dev-auto-login] signed in as', devEmail);
+              }
+            })
+            .catch((err) => {
+              console.warn('[dev-auto-login] threw:', err?.message || err);
+            });
+        }
+      }
     });
 
     // Listen for auth changes
