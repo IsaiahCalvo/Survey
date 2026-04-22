@@ -38,9 +38,14 @@ jobs:
       - name: Build web bundle
         # The web bundle is large (App.jsx alone is ~1.3MB) and can exceed
         # Node's default 1.5GB heap during vite/rollup transform. Give it
-        # 8GB to match local macOS behavior.
+        # 8GB to match local macOS behavior. VITE_ env vars come from
+        # repo secrets so Supabase + Syncfusion license are baked into
+        # every packaged build.
         env:
           NODE_OPTIONS: --max-old-space-size=8192
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_SYNCFUSION_LICENSE_KEY: ${{ secrets.VITE_SYNCFUSION_LICENSE_KEY }}
         run: npm run build
 
       - name: Build & publish installer
