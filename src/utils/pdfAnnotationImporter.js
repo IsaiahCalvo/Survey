@@ -1819,7 +1819,17 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
   // payload below AND when expanding the final top-level rect. Keep this
   // value in lockstep with svgAnnotationRenderers.TEXT_PADDING.
   const TEXT_PADDING = 6;
-  const defaultAppearanceColor = annotation.defaultAppearanceData?.fontColor;
+  // UX 2026-04-22: Drawboard FreeText convention — /DA carries the BORDER
+  // color (the rg-op color, used by Drawboard when painting the box outline
+  // because the annotation has no /C entry) while /DS carries the TEXT
+  // color. Our merged defaultAppearanceData collapses them (the spread order
+  // lets /DA silently overwrite /DS), which made the text box come in with
+  // the border color painted as text, and a black border (fallback). Re-
+  // parse /DA and /DS separately so color-resolution can tell them apart.
+  const parsedDa = parseDefaultAppearanceString(annotation.defaultAppearanceString);
+  const parsedDs = parseDefaultStyleString(annotation.defaultStyleString);
+  const daColorHex = parsedDa?.fontColor ? pdfColorToHex(parsedDa.fontColor, annotation) : null;
+  const dsColorHex = parsedDs?.fontColor ? pdfColorToHex(parsedDs.fontColor, annotation) : null;
   const lineColor = annotation.lineColor;
   const lineColorHex = lineColor ? pdfColorToHex(lineColor, annotation) : null;
   // UX: Phase 15 UAT-3 (2026-04-18) — only fall through to the black
@@ -1832,9 +1842,20 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
   const fallbackAppearanceColor = annotation._appearance?.strokeColor
     ? pdfColorToHex(annotation._appearance.strokeColor, annotation)
     : null;
-  const textColor = defaultAppearanceColor
-    ? pdfColorToHex(defaultAppearanceColor, annotation)
-    : (lineColorHex || annotationColorHex || fallbackAppearanceColor || '#000000');
+  // Text color: prefer /DS when it exists (Drawboard writes a distinct text
+  // color there); fall through to /DA for Acrobat-style PDFs where /DS is
+  // absent and /DA alone carries the text color.
+  const textColor = dsColorHex
+    || daColorHex
+    || lineColorHex
+    || annotationColorHex
+    || fallbackAppearanceColor
+    || '#000000';
+  // Drawboard-style border fallback: when /DS and /DA carry DIFFERENT colors
+  // (meaning /DS is the text color and /DA is reserved for the border), use
+  // /DA as the border color. When /DS is missing or equal to /DA, /DA is
+  // really just the text color and should NOT leak onto the border.
+  const drawboardStyleBorder = !!dsColorHex && !!daColorHex && dsColorHex !== daColorHex;
   // UX: Phase 15 UAT-3 (2026-04-18) — prefer the spec-defined PDF color
   // entry (annotation.color = C) over the appearance-stream stroke color
   // for border. Acrobat sometimes writes both, with the appearance stream
@@ -1852,10 +1873,12 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
     borderColor = lineColorHex
       || fallbackAppearanceColor
       || annotationColorHex
+      || (drawboardStyleBorder ? daColorHex : null)
       || '#000000';
   } else {
     borderColor = lineColorHex
       || annotationColorHex
+      || (drawboardStyleBorder ? daColorHex : null)
       || fallbackAppearanceColor
       || '#000000';
   }
@@ -1936,6 +1959,47 @@ function convertFreeTextToFabricTextbox(annotation, viewport, scale = 1) {
   const padWidth = targetRect.width + 2 * TEXT_PADDING;
   const descenderRoom = isCalloutIntent ? 0 : (fontSize * scale) * 0.35;
   const padHeight = targetRect.height + 2 * TEXT_PADDING + descenderRoom;
+
+  // UX 2026-04-22: when the source PDF rotated this text box via its /AP
+  // appearance matrix (Drawboard stores tilted labels this way), recover
+  // the tilt + un-rotated dimensions — same approach we use for Square/
+  // Circle. Without this, the tilt was lost and /Rect (the AABB of the
+  // rotated box) came through as an oversized axis-aligned box. Only
+  // applies to plain FreeText; callouts have their own composite
+  // positioning pipeline that shouldn't gain an angle on the textbox.
+  const textBoxRotation = !isCalloutIntent
+    ? computeAppearanceRotationTransform(annotation, scale)
+    : null;
+  if (textBoxRotation) {
+    const unrotWidth = textBoxRotation.bboxWidth + 2 * TEXT_PADDING;
+    const unrotHeight = textBoxRotation.bboxHeight + 2 * TEXT_PADDING + descenderRoom;
+    const cx = viewportRect.left + viewportRect.width / 2;
+    const cy = viewportRect.top + viewportRect.height / 2;
+    return {
+      type: 'textbox',
+      left: cx - unrotWidth / 2,
+      top: cy - unrotHeight / 2,
+      width: unrotWidth,
+      height: unrotHeight,
+      angle: textBoxRotation.angleDeg,
+      text: text,
+      fill: textColor,
+      stroke: strokeWidth > 0 ? borderColor : null,
+      strokeWidth: strokeWidth * scale,
+      backgroundColor,
+      fontSize: fontSize * scale,
+      fontFamily: annotation.defaultAppearanceData?.fontName || 'sans-serif',
+      ...(Object.keys(data).length > 0 ? { data } : {}),
+      selectable: true,
+      evented: true,
+      hasControls: true,
+      hasBorders: true,
+      isPdfImported: true,
+      pdfAnnotationId: annotation.id,
+      pdfAnnotationType: 'FreeText',
+      layer: 'pdf-annotations'
+    };
+  }
 
   return {
     type: 'textbox',
