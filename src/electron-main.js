@@ -296,49 +296,72 @@ function createAppMenu() {
     return BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
   };
 
+  // UX 2026-04-22: Shared handlers so Mac's app-name menu AND the Help menu
+  // (which exists on both Mac and Windows) stay in sync. Users asked for a
+  // single Help menu so Windows can reach Check for Updates / About — Mac
+  // still exposes the same items in its native Help submenu too.
+  const triggerCheckForUpdates = async () => {
+    const win = getTargetWindow();
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('menu:check-for-updates');
+    }
+    if (!autoUpdater) return;
+    if (!app.isPackaged) {
+      if (win && !win.isDestroyed()) {
+        dialog.showMessageBox(win, {
+          type: 'info',
+          buttons: ['OK'],
+          title: 'Developer Build',
+          message: 'Auto-update only works in installed builds.',
+          detail: 'You\'re running the app in development mode, which cannot be updated.'
+        });
+      }
+      return;
+    }
+    updaterManualCheckWindow = win;
+    try {
+      await autoUpdater.checkForUpdates();
+    } catch (err) {
+      updaterManualCheckWindow = null;
+      if (win && !win.isDestroyed()) {
+        dialog.showMessageBox(win, {
+          type: 'error',
+          buttons: ['OK'],
+          title: 'Update Check Failed',
+          message: 'Could not check for updates.',
+          detail: err?.message || String(err)
+        });
+      }
+    }
+  };
+
+  const showAboutDialog = () => {
+    const win = getTargetWindow();
+    if (!win || win.isDestroyed()) return;
+    const platformLabel = process.platform === 'darwin'
+      ? `macOS (${process.arch})`
+      : process.platform === 'win32'
+        ? `Windows (${process.arch})`
+        : `${process.platform} (${process.arch})`;
+    dialog.showMessageBox(win, {
+      type: 'info',
+      buttons: ['OK'],
+      title: `About ${app.getName()}`,
+      message: `${app.getName()} ${app.getVersion()}`,
+      detail:
+        `Platform: ${platformLabel}\n` +
+        `Electron: ${process.versions.electron}\n` +
+        `Node: ${process.versions.node}\n` +
+        `Chromium: ${process.versions.chrome}`
+    });
+  };
+
   const template = [
     ...(isMac
       ? [{
         label: app.name,
         submenu: [
           { role: 'about' },
-          {
-            label: 'Check for Updates…',
-            click: async () => {
-              const win = getTargetWindow();
-              if (win && !win.isDestroyed()) {
-                win.webContents.send('menu:check-for-updates');
-              }
-              if (!autoUpdater) return;
-              if (!app.isPackaged) {
-                if (win && !win.isDestroyed()) {
-                  dialog.showMessageBox(win, {
-                    type: 'info',
-                    buttons: ['OK'],
-                    title: 'Developer Build',
-                    message: 'Auto-update only works in installed builds.',
-                    detail: 'You\'re running the app in development mode, which cannot be updated.'
-                  });
-                }
-                return;
-              }
-              updaterManualCheckWindow = win;
-              try {
-                await autoUpdater.checkForUpdates();
-              } catch (err) {
-                updaterManualCheckWindow = null;
-                if (win && !win.isDestroyed()) {
-                  dialog.showMessageBox(win, {
-                    type: 'error',
-                    buttons: ['OK'],
-                    title: 'Update Check Failed',
-                    message: 'Could not check for updates.',
-                    detail: err?.message || String(err)
-                  });
-                }
-              }
-            }
-          },
           { type: 'separator' },
           { role: 'services' },
           { type: 'separator' },
@@ -427,6 +450,27 @@ function createAppMenu() {
             { role: 'front' }
           ]
           : [{ role: 'close' }])
+      ]
+    },
+    {
+      role: 'help',
+      label: 'Help',
+      submenu: [
+        {
+          label: `About ${app.getName()}`,
+          click: showAboutDialog
+        },
+        {
+          label: 'Check for Updates…',
+          click: triggerCheckForUpdates
+        },
+        { type: 'separator' },
+        {
+          label: 'View on GitHub',
+          click: () => {
+            shell.openExternal('https://github.com/IsaiahCalvo/Survey');
+          }
+        }
       ]
     }
   ];
