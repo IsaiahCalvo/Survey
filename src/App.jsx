@@ -77,6 +77,7 @@ import OneDriveFileSaveModal from './components/OneDriveFileSaveModal';
 import TemplateOverwriteWarningModal from './components/TemplateOverwriteWarningModal';
 import ExcelSyncConfirmModal from './components/ExcelSyncConfirmModal';
 import SyncfusionPDFContainer from './components/SyncfusionPDFContainer';
+import SaveLogToast from './components/SaveLogToast';
 import LightweightAnnotationOverlay from './components/LightweightAnnotationOverlay';
 import SVGAnnotationLayer from './components/SVGAnnotationLayer';
 import FabricDrawingCanvas from './components/FabricDrawingCanvas';
@@ -15219,11 +15220,22 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         const push = await api.pushLogToGithub(consoleText);
         if (push?.ok) {
           console.log(`[SaveLog] pushed to GitHub: ${push.url || push.filename}`);
+          // UX 2026-04-22: fire the top-right toast so the user gets visible
+          // confirmation the log landed on GitHub (click opens the URL).
+          window.dispatchEvent(new CustomEvent('save-log-toast', {
+            detail: { type: 'success', message: 'Log saved to GitHub', url: push.url || null }
+          }));
         } else {
           console.warn(`[SaveLog] GitHub push failed: ${push?.error || 'unknown error'}`);
+          window.dispatchEvent(new CustomEvent('save-log-toast', {
+            detail: { type: 'error', message: 'GitHub push failed (local save ok)' }
+          }));
         }
       } catch (ghErr) {
         console.warn('[SaveLog] GitHub push threw:', ghErr?.message || ghErr);
+        window.dispatchEvent(new CustomEvent('save-log-toast', {
+          detail: { type: 'error', message: 'GitHub push failed (local save ok)' }
+        }));
       }
     }
 
@@ -17053,23 +17065,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     };
   }, [handleReimportPdfBookmarks]);
 
-  // UX 2026-04-22: Save Log is now reachable from the File menu (Cmd/Ctrl+
-  // Shift+L) so users can capture logs from anywhere in the app, not only
-  // while a PDF is open. Listener subscribes to the same menu IPC the
-  // Electron main process emits; handler is the existing SaveLog flow which
-  // writes locally and mirrors to the GitHub logs branch.
-  useEffect(() => {
-    if (!window.electronAPI?.onSaveLogMenu) return undefined;
-    const unsubscribe = window.electronAPI.onSaveLogMenu(() => {
-      console.log('[SaveLog] menu trigger received');
-      handleSaveOverlayLagLog();
-    });
-    return () => {
-      if (typeof unsubscribe === 'function') {
-        unsubscribe();
-      }
-    };
-  }, [handleSaveOverlayLagLog]);
+  // UX 2026-04-22: The File-menu Save Log listener now lives at the outer
+  // App level (see default export) so it's active on every screen, not only
+  // when a PDF is open. The PDFViewer-scoped rich diagnostic handler
+  // (handleSaveOverlayLagLog) is still reachable programmatically but no
+  // longer bound to the global keyboard shortcut — the outer handler
+  // captures the console buffer + pushes to GitHub for the common case.
 
   const handleBookmarkCreate = useCallback((bookmark) => {
     setBookmarks(prev => {
@@ -26780,6 +26781,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   return (
     <>
+      {/* UX 2026-04-22: Top-right toast that confirms a Save Log push to
+          GitHub — listens for a window event the handler dispatches, auto
+          dismisses in ~2.8s. Lives here so it renders over every other
+          floating UI including the context menu below. */}
+      <SaveLogToast />
       {/* Annotation right-click menu. Anchored to pointer via fixed position.
           UX: stops propagation on its own mousedown so clicking an item doesn't
           also trigger the outside-click closer. Menu items depend on the
@@ -37226,6 +37232,73 @@ export default function App() {
   // Microsoft Graph authentication hook
   const { graphClient, isAuthenticated: isMSAuthenticated, login: msLogin, account: msAccount, needsReconnect: msNeedsReconnect, ensureFreshToken } = useMSGraph();
 
+  // UX 2026-04-22: Global Save Log handler — subscribes to the File menu /
+  // Cmd+Shift+L shortcut from the outermost App level so it works on the
+  // dashboard, template view, auth flow, or any other screen (not only
+  // inside the PDF viewer). Dumps the console buffer to the local 1.log
+  // file and pushes to the GitHub logs branch; toast event fires for both
+  // success and failure so the user always gets visible confirmation.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.electronAPI?.onSaveLogMenu) {
+      return undefined;
+    }
+    const unsubscribe = window.electronAPI.onSaveLogMenu(async () => {
+      console.log('[SaveLog] global menu trigger — capturing console buffer');
+      const api = window.electronAPI;
+      const buf = window.__consoleLogBuffer;
+      const consoleText = Array.isArray(buf) && buf.length > 0
+        ? buf.join('\n')
+        : '(no console output captured)';
+
+      // Local save first so a failed GitHub push still leaves the user with a
+      // copy on disk.
+      if (typeof api?.writeFile === 'function') {
+        try {
+          const ts = new Date().toISOString();
+          const header = `===== SaveLog (global) @ ${ts} =====\n`;
+          await api.writeFile(
+            '/Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/1.log',
+            header + consoleText + '\n'
+          );
+          console.log(`[SaveLog] wrote ${Array.isArray(buf) ? buf.length : 0} lines locally`);
+        } catch (wErr) {
+          console.warn('[SaveLog] local write failed:', wErr?.message || wErr);
+        }
+      }
+
+      // GitHub push + toast.
+      if (typeof api?.pushLogToGithub === 'function') {
+        try {
+          const push = await api.pushLogToGithub(consoleText);
+          if (push?.ok) {
+            console.log(`[SaveLog] pushed to GitHub: ${push.url || push.filename}`);
+            window.dispatchEvent(new CustomEvent('save-log-toast', {
+              detail: { type: 'success', message: 'Log saved to GitHub', url: push.url || null }
+            }));
+          } else {
+            console.warn(`[SaveLog] GitHub push failed: ${push?.error || 'unknown'}`);
+            window.dispatchEvent(new CustomEvent('save-log-toast', {
+              detail: { type: 'error', message: 'GitHub push failed (local save ok)' }
+            }));
+          }
+        } catch (ghErr) {
+          console.warn('[SaveLog] GitHub push threw:', ghErr?.message || ghErr);
+          window.dispatchEvent(new CustomEvent('save-log-toast', {
+            detail: { type: 'error', message: 'GitHub push failed (local save ok)' }
+          }));
+        }
+      } else {
+        // Web build / no Electron shell — local save wasn't possible either.
+        window.dispatchEvent(new CustomEvent('save-log-toast', {
+          detail: { type: 'error', message: 'Save Log unavailable outside desktop app' }
+        }));
+      }
+    });
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, []);
+
   const [currentView, setCurrentView] = useState('dashboard');
   const [selectedPDF, setSelectedPDF] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -37575,6 +37648,11 @@ export default function App() {
 
   return (
     <>
+      {/* UX 2026-04-22: Save Log toast mounts at the outermost App level so
+          it's visible on the dashboard / templates / auth / any view, not
+          only inside the PDF viewer. Listens for a window event the Save
+          Log handler dispatches. */}
+      <SaveLogToast />
       <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
         {tabs.length > 0 && ( // Show tab bar if there are any tabs (including home)
           <TabBar
