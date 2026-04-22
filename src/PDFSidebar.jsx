@@ -162,10 +162,30 @@ const PDFSidebar = React.forwardRef(({
                 display: none;
               }
             `}</style>
-            {tabs.map(tab => (
+            {tabs.concat(
+              typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()
+                ? [{ id: '__savelog', label: 'Save Log', icon: 'document' }]
+                : []
+            ).map(tab => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => {
+                  if (tab.id === '__savelog') {
+                    // UX 2026-04-22: Mobile-only tile that fires the Save Log
+                    // banner without switching panels. Kept alongside Pages /
+                    // Search / Bookmarks / Spaces so the user can submit a
+                    // log from anywhere inside a PDF.
+                    const buf = window.__consoleLogBuffer;
+                    const consoleText = Array.isArray(buf) && buf.length > 0
+                      ? buf.join('\n')
+                      : '(no console output captured)';
+                    window.dispatchEvent(new CustomEvent('save-log-banner-start', {
+                      detail: { consoleText }
+                    }));
+                    return;
+                  }
+                  setActiveTab(tab.id);
+                }}
                 style={{
                   flex: 1,
                   padding: '10px 8px',
@@ -321,7 +341,11 @@ const PDFSidebar = React.forwardRef(({
           background: '#252525',
           position: 'relative'
         }}>
-          {tabs.map(tab => (
+          {tabs.concat(
+            typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()
+              ? [{ id: '__savelog', label: 'Save Log', icon: 'document' }]
+              : []
+          ).map(tab => (
             <div
               key={tab.id}
               style={{
@@ -332,6 +356,19 @@ const PDFSidebar = React.forwardRef(({
             >
               <button
                 onClick={() => {
+                  if (tab.id === '__savelog') {
+                    // UX 2026-04-22: Mobile-only Save Log in collapsed
+                    // vertical rail so the user can trigger it without
+                    // expanding the sidebar first.
+                    const buf = window.__consoleLogBuffer;
+                    const consoleText = Array.isArray(buf) && buf.length > 0
+                      ? buf.join('\n')
+                      : '(no console output captured)';
+                    window.dispatchEvent(new CustomEvent('save-log-banner-start', {
+                      detail: { consoleText }
+                    }));
+                    return;
+                  }
                   setIsCollapsed(false);
                   if (typeof onToggleCollapse === 'function') {
                     onToggleCollapse(false);

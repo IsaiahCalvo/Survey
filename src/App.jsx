@@ -5736,6 +5736,45 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
             </span>
           </div>
 
+          {/* UX 2026-04-22: "Save Log" nav item — shown ONLY on mobile
+              (Capacitor native) where keyboard shortcuts don't reliably pass
+              through the emulator/device. Desktop keeps the clean sidebar +
+              Cmd+Shift+L flow. */}
+          {typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.() && (
+            <div
+              onClick={() => {
+                const buf = window.__consoleLogBuffer;
+                const consoleText = Array.isArray(buf) && buf.length > 0
+                  ? buf.join('\n')
+                  : '(no console output captured)';
+                window.dispatchEvent(new CustomEvent('save-log-banner-start', {
+                  detail: { consoleText }
+                }));
+              }}
+              style={{
+                padding: '10px 16px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                transition: 'background 0.2s',
+                background: 'transparent',
+                borderLeft: '3px solid transparent'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              title="Save a log file"
+            >
+              <span style={navIconWrapperStyle}>
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#FFFFFF" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M10 14V4M5 9l5-5 5 5" />
+                  <path d="M3 15v2a1 1 0 001 1h12a1 1 0 001-1v-2" />
+                </svg>
+              </span>
+              <span style={navLabelStyle}>Save Log</span>
+            </div>
+          )}
+
         </nav>
 
         <div style={{
@@ -37240,8 +37279,32 @@ export default function App() {
   // file and pushes to the GitHub logs branch; toast event fires for both
   // success and failure so the user always gets visible confirmation.
   useEffect(() => {
-    if (typeof window === 'undefined' || !window.electronAPI?.onSaveLogMenu) {
+    if (typeof window === 'undefined') {
       return undefined;
+    }
+    // UX 2026-04-22: Always-on keyboard listener so the shortcut works on
+    // iOS Simulator (hardware keyboard) and the Android emulator where
+    // there is no Electron File menu. Desktop runs BOTH this and the menu
+    // subscription — the menu fires the same event, so behavior is
+    // identical whether the user clicks the menu item or hits the keys.
+    const keyHandler = (event) => {
+      const isShortcut = (event.metaKey || event.ctrlKey)
+        && event.shiftKey
+        && (event.key === 'L' || event.key === 'l');
+      if (!isShortcut) return;
+      event.preventDefault();
+      const buf = window.__consoleLogBuffer;
+      const consoleText = Array.isArray(buf) && buf.length > 0
+        ? buf.join('\n')
+        : '(no console output captured)';
+      window.dispatchEvent(new CustomEvent('save-log-banner-start', {
+        detail: { consoleText }
+      }));
+    };
+    window.addEventListener('keydown', keyHandler);
+
+    if (!window.electronAPI?.onSaveLogMenu) {
+      return () => window.removeEventListener('keydown', keyHandler);
     }
     const unsubscribe = window.electronAPI.onSaveLogMenu(async () => {
       console.log('[SaveLog] global menu trigger — capturing console buffer');
@@ -37282,6 +37345,10 @@ export default function App() {
         }));
       }
     });
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+      window.removeEventListener('keydown', keyHandler);
+    };
     return () => {
       if (typeof unsubscribe === 'function') unsubscribe();
     };
@@ -37641,7 +37708,7 @@ export default function App() {
           only inside the PDF viewer. Listens for a window event the Save
           Log handler dispatches. */}
       <SaveLogBanner />
-      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
         {tabs.length > 0 && ( // Show tab bar if there are any tabs (including home)
           <TabBar
             tabs={tabs}

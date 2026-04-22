@@ -15,6 +15,7 @@ import {
   TextSelection,
   TextSearch,
   Print,
+  LinkAnnotation,
   Inject
 } from '@syncfusion/ej2-react-pdfviewer';
 
@@ -1315,6 +1316,38 @@ const SyncfusionPDFContainer = forwardRef(({
       currentPageNumber: resolvedCurrent,
       zoomValue: resolvedZoom
     });
+
+    // UX 2026-04-22 (hyperlink diag): After a doc loads, wait a tick and
+    // inspect the DOM for Syncfusion's hyperlink overlay layer. If it's
+    // empty, the LinkAnnotation service hasn't rendered any links — we log
+    // the state of the page container so triage can tell whether Syncfusion
+    // saw the /Link annotations at all.
+    setTimeout(() => {
+      try {
+        const host = viewer?.element;
+        if (!host) { console.log('[HyperlinkDiag] no viewer element'); return; }
+        const hyperlinks = host.querySelectorAll('[class*="hyperlink"], a[href], [href]');
+        console.log('[HyperlinkDiag] post-load scan', {
+          hyperlinkCount: hyperlinks.length,
+          samples: Array.from(hyperlinks).slice(0, 5).map((el) => ({
+            tag: el.tagName,
+            className: el.className,
+            href: el.getAttribute?.('href'),
+            rect: el.getBoundingClientRect()
+          }))
+        });
+        const pageDivs = host.querySelectorAll('.e-pv-page-div');
+        pageDivs.forEach((pageDiv, i) => {
+          const pageHyperlinks = pageDiv.querySelectorAll('[class*="hyperlink"], a[href]');
+          console.log(`[HyperlinkDiag] page ${i + 1} layers`, {
+            hyperlinkChildren: pageHyperlinks.length,
+            layerClasses: Array.from(pageDiv.children).map((c) => c.className || c.tagName)
+          });
+        });
+      } catch (err) {
+        console.log('[HyperlinkDiag] post-load scan threw', err?.message);
+      }
+    }, 800);
   }, [
     clearBookmarkRetry,
     connectPageObserver,
@@ -1699,6 +1732,32 @@ const SyncfusionPDFContainer = forwardRef(({
       enableFormDesigner={false}
       enablePageOrganizer={false}
       enableHyperlink={true}
+      hyperlinkOpenState="NewTab"
+      hyperlinkClick={(args) => {
+        console.log('[HyperlinkDiag] hyperlinkClick FIRED', {
+          url: args?.hyperlink,
+          keys: args ? Object.keys(args) : null
+        });
+        const url = args?.hyperlink;
+        if (!url || typeof url !== 'string') return;
+        try { args.cancel = true; } catch {}
+        const api = typeof window !== 'undefined' ? window.electronAPI : null;
+        if (api && typeof api.openExternal === 'function') {
+          api.openExternal(url).catch(() => {
+            window.open(url, '_blank', 'noopener,noreferrer');
+          });
+        } else {
+          window.open(url, '_blank', 'noopener,noreferrer');
+        }
+      }}
+      hyperlinkMouseOver={(args) => {
+        console.log('[HyperlinkDiag] hyperlinkMouseOver FIRED', {
+          url: args?.hyperlink,
+          hasElement: !!args?.element
+        });
+        const el = args?.element;
+        if (el && el.style) el.style.cursor = 'pointer';
+      }}
       enableTextSearch={false}
       enableThumbnail={false}
       enableBookmark={true}
@@ -1721,7 +1780,7 @@ const SyncfusionPDFContainer = forwardRef(({
       ajaxRequestSuccess={handleAjaxRequestSuccess}
       documentUnload={handleDocumentUnload}
     >
-      <Inject services={[Magnification, Navigation, BookmarkView, TextSelection, TextSearch, Print]} />
+      <Inject services={[Magnification, Navigation, BookmarkView, TextSelection, TextSearch, Print, LinkAnnotation]} />
     </PdfViewerComponent>
   );
 });

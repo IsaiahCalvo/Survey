@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { buildLogPreamble } from '../utils/logPreamble';
 
 // UX 2026-04-22: Evolution of the old Save Log toast. When the user triggers
 // Save Log, a banner slides in from the LEFT with a 5-second progress bar
@@ -66,34 +67,138 @@ export default function SaveLogBanner() {
   const runPush = useCallback(async (descriptionText) => {
     const api = typeof window !== 'undefined' ? window.electronAPI : null;
     setState('submitting');
-    if (!api || typeof api.pushLogToGithub !== 'function') {
-      setResult({ message: 'Save Log unavailable outside desktop app', url: null });
-      setState('error');
-      return;
-    }
-    // UX: prepend description as a header so the auto-triage GitHub Action
-    // (which extracts the first 400 lines) surfaces it in the Issue body.
+    // UX: prepend a rich metadata preamble (version, device, OS, timestamp,
+    // dev vs prod, screen size) plus the optional description so every Issue
+    // the triage workflow opens is self-describing.
     const trimmed = (descriptionText || '').trim();
-    const payload = trimmed
-      ? `# Description: ${trimmed}\n\n${consoleTextRef.current}`
-      : consoleTextRef.current;
-    try {
-      const push = await api.pushLogToGithub(payload);
-      if (push?.ok) {
-        setResult({
-          message: trimmed ? 'Log + description saved to GitHub' : 'Log saved to GitHub',
-          url: push.url || null
-        });
-        setState('success');
-      } else {
+    const preamble = buildLogPreamble({ description: trimmed });
+    const payload = `${preamble}${consoleTextRef.current}`;
+
+    // Desktop path — Electron handler pushes to GitHub directly.
+    if (api && typeof api.pushLogToGithub === 'function') {
+      try {
+        const push = await api.pushLogToGithub(payload);
+        if (push?.ok) {
+          setResult({
+            message: trimmed ? 'Log + description saved to GitHub' : 'Log saved to GitHub',
+            url: push.url || null
+          });
+          setState('success');
+        } else {
+          setResult({ message: 'GitHub push failed (local save ok)', url: null });
+          setState('error');
+        }
+      } catch {
         setResult({ message: 'GitHub push failed (local save ok)', url: null });
         setState('error');
       }
-    } catch {
-      setResult({ message: 'GitHub push failed (local save ok)', url: null });
-      setState('error');
+      return;
     }
-  }, []);
+
+    // UX 2026-04-22: Mobile path — when there's no Electron, push directly
+    // to the GitHub contents API using a local token from .env.local so the
+    // same auto-triage pipeline fires as on desktop. The token is baked
+    // into the mobile bundle at build time; CI store builds don't include
+    // it, so the App Store / Play Store app will fall back to the system
+    // share sheet below.
+    const ghToken = import.meta.env.VITE_GITHUB_LOG_TOKEN;
+    const ghRepo = import.meta.env.VITE_GITHUB_LOG_REPO || 'IsaiahCalvo/Survey';
+    const ghBranch = import.meta.env.VITE_GITHUB_LOG_BRANCH || 'logs';
+    if (ghToken) {
+      try {
+        const platform = (() => {
+          const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
+          if (/iPad/i.test(ua)) return 'ipad';
+          if (/iPhone/i.test(ua)) return 'iphone';
+          if (/Android/i.test(ua)) return 'android';
+          return 'mobile';
+        })();
+        const host = (typeof window !== 'undefined' && window.location?.hostname) || 'unknown';
+        const ts = new Date().toISOString().replace(/[:.]/g, '-');
+        const filename = `${platform}-${host}-${ts}.log`;
+        const contentB64 = typeof btoa === 'function'
+          ? btoa(unescape(encodeURIComponent(payload)))
+          : '';
+        const res = await fetch(`https://api.github.com/repos/${ghRepo}/contents/${filename}`, {
+          method: 'PUT',
+          headers: {
+            Authorization: `token ${ghToken}`,
+            Accept: 'application/vnd.github+json',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            message: `save-log from ${platform} (${host}) @ ${ts}`,
+            content: contentB64,
+            branch: ghBranch
+          })
+        });
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setResult({
+            message: trimmed ? 'Log + description saved to GitHub' : 'Log saved to GitHub',
+            url: data?.content?.html_url || null
+          });
+          setState('success');
+          return;
+        }
+        // Non-ok response — surface the status so we can debug without
+        // reading the device console. E.g. 401=bad token, 403=scope, 404=
+        // repo/branch not found, 422=file already exists on same path.
+        let reason = `HTTP ${res.status}`;
+        try {
+          const errBody = await res.json();
+          if (errBody?.message) reason += `: ${errBody.message.slice(0, 80)}`;
+        } catch {
+          // ignore body parse errors
+        }
+        setResult({ message: `GitHub push failed — ${reason}`, url: null });
+        setState('error');
+        return;
+      } catch (netErr) {
+        setResult({
+          message: `GitHub push failed — ${netErr?.message?.slice(0, 100) || 'network error'}`,
+          url: null
+        });
+        setState('error');
+        return;
+      }
+    }
+
+    // Share / clipboard fallback (used on App Store / Play Store builds
+    // where no GitHub token is present, or when the token push fails).
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Survey log',
+          text: payload
+        });
+        setResult({
+          message: trimmed ? 'Log + description ready to share' : 'Log ready to share',
+          url: null
+        });
+        setState('success');
+        return;
+      } catch (shareErr) {
+        if (shareErr?.name === 'AbortError') {
+          dismiss();
+          return;
+        }
+      }
+    }
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(payload);
+        setResult({ message: 'Log copied to clipboard', url: null });
+        setState('success');
+        return;
+      } catch {
+        // fall through
+      }
+    }
+
+    setResult({ message: 'Save Log unavailable in this build', url: null });
+    setState('error');
+  }, [dismiss]);
 
   // UX: countdown driver — ramps the progress bar left-to-right over 5s and
   // fires the auto-push when it hits 100% (same as old zero-friction flow).
@@ -274,32 +379,35 @@ export default function SaveLogBanner() {
                 <button
                   type="button"
                   onClick={handleCancel}
+                  onTouchEnd={(e) => { e.preventDefault(); handleCancel(); }}
                   aria-label="Cancel submission"
                   title="Cancel — don't send to GitHub"
                   style={{
                     // UX 2026-04-22: Top-left X so the user can abort the push
-                    // before the 5-second timer runs out. Local save already
-                    // happened at trigger time, so cancelling only skips the
-                    // GitHub upload — their 1.log on disk stays intact.
+                    // before the 5-second timer runs out. Bumped to 32px for
+                    // touch targets; an onTouchEnd fallback guarantees the
+                    // tap registers on Android WebView (where synthetic click
+                    // after touch has been flaky in Capacitor builds).
                     background: 'transparent',
                     color: colors.text,
                     border: 'none',
-                    borderRadius: 4,
-                    width: 20,
-                    height: 20,
+                    borderRadius: 6,
+                    width: 32,
+                    height: 32,
                     display: 'inline-flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     cursor: 'pointer',
-                    opacity: 0.7,
+                    opacity: 0.8,
                     padding: 0,
-                    lineHeight: 1
+                    lineHeight: 1,
+                    touchAction: 'manipulation'
                   }}
                   onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.7'; e.currentTarget.style.background = 'transparent'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.8'; e.currentTarget.style.background = 'transparent'; }}
                 >
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                    <path d="M2 2L10 10M10 2L2 10" />
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <path d="M3 3L11 11M11 3L3 11" />
                   </svg>
                 </button>
                 <span>Submitting log to GitHub</span>

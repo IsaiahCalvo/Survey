@@ -62,7 +62,32 @@ export const AuthProvider = ({ children }) => {
     }
 
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      // UX 2026-04-22: Dev auto-login. Fires whenever the local env vars are
+      // present (from gitignored .env.local). Runs BEFORE we flip `loading`
+      // to false so the OptionalAuthPrompt doesn't flash the sign-in modal
+      // during the split second between session-check and auto-login.
+      if (!session) {
+        const devEmail = import.meta.env.VITE_DEV_AUTO_LOGIN_EMAIL;
+        const devPassword = import.meta.env.VITE_DEV_AUTO_LOGIN_PASSWORD;
+        if (devEmail && devPassword) {
+          try {
+            const { data, error } = await supabase.auth.signInWithPassword({
+              email: devEmail,
+              password: devPassword
+            });
+            if (error) {
+              console.warn('[dev-auto-login] failed:', error.message || error);
+            } else {
+              console.log('[dev-auto-login] signed in as', devEmail);
+              session = data?.session ?? session;
+            }
+          } catch (err) {
+            console.warn('[dev-auto-login] threw:', err?.message || err);
+          }
+        }
+      }
+
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
@@ -73,35 +98,21 @@ export const AuthProvider = ({ children }) => {
       } else {
         setLoadingTier(false);
       }
-
-      // UX 2026-04-22: Dev-only auto-login. When running `npm run dev` and no
-      // session is restored from storage, sign in with the dev account pulled
-      // from .env.development.local so the local app never shows the login
-      // screen. Double-guarded (import.meta.env.DEV + presence of the dev env
-      // vars) so shipped installers can never trigger this.
-      if (!session && import.meta.env.DEV) {
-        const devEmail = import.meta.env.VITE_DEV_AUTO_LOGIN_EMAIL;
-        const devPassword = import.meta.env.VITE_DEV_AUTO_LOGIN_PASSWORD;
-        if (devEmail && devPassword) {
-          supabase.auth.signInWithPassword({ email: devEmail, password: devPassword })
-            .then(({ error }) => {
-              if (error) {
-                console.warn('[dev-auto-login] failed:', error.message || error);
-              } else {
-                console.log('[dev-auto-login] signed in as', devEmail);
-              }
-            })
-            .catch((err) => {
-              console.warn('[dev-auto-login] threw:', err?.message || err);
-            });
-        }
-      }
     });
 
-    // Listen for auth changes
+    // Listen for auth changes. Supabase fires an INITIAL_SESSION event
+    // during boot which can briefly hand us a null session BEFORE the dev
+    // auto-login resolves — that window was letting OptionalAuthPrompt flash
+    // the modal even though we were about to sign the user in. Keep loading
+    // owned solely by the initial getSession/auto-login path above; ignore
+    // INITIAL_SESSION here and only react to real state changes (sign-in,
+    // sign-out, token refresh).
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'INITIAL_SESSION') {
+        return;
+      }
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);

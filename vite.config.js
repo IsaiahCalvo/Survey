@@ -8,6 +8,17 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// UX 2026-04-22: Bake the current package.json version into the built bundle
+// so every Save Log can stamp which app version produced the log.
+const APP_VERSION = (() => {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
+    return pkg.version || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+})();
+
 /** Dev-only Vite plugin: serves files from debug/fixtures/ at /debug-fixtures/ */
 function debugFixturesPlugin() {
   return {
@@ -64,6 +75,7 @@ export default defineConfig({
   },
   define: {
     'process.env': {},
-    global: 'globalThis'
+    global: 'globalThis',
+    __APP_VERSION__: JSON.stringify(APP_VERSION)
   }
 });

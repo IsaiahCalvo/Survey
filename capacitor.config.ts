@@ -16,8 +16,15 @@ const config: CapacitorConfig = {
     // cleartext: true,
   },
   ios: {
-    contentInset: 'always'
-  }
+    // UX 2026-04-22: Let the web view fill the whole screen edge-to-edge;
+    // CSS safe-area insets inside the app handle the content padding. With
+    // `always`, the native shell pushed the web view down past the status
+    // bar and revealed a white iOS root view behind it. `never` + dark
+    // native background makes the status-bar strip match the app's grey.
+    contentInset: 'never',
+    backgroundColor: '#1E1E1E'
+  },
+  backgroundColor: '#1E1E1E'
 };
 
 export default config;
