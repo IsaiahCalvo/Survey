@@ -873,7 +873,6 @@ export const renderEllipse = (obj, index) => {
       strokeWidth={obj.strokeWidth || 0}
       opacity={obj.opacity ?? 1}
       style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
-      clipPath={clipId ? `url(#${clipId})` : undefined}
       data-shape-id={shapeId}
       data-shape-kind="ellipse"
       onClick={__shapeClick}
@@ -882,15 +881,34 @@ export const renderEllipse = (obj, index) => {
 
   if (!inset) return React.cloneElement(ellEl, { key });
 
-  // UX: clip the ellipse to its own outline so the stroke's outer half is
-  // removed. See shouldInsetStroke doc.
+  // UX 2026-04-22: shrink rx/ry by strokeWidth/2 so the outer edge of the
+  // centered stroke lands at the original (cx, cy, rx, ry) bounds. Matches
+  // the rect inset approach (renderRect :334-365). The prior clipPath +
+  // transform composition worked at 0° but visibly clipped the tilted
+  // ellipse's fill once obj.angle was non-zero — the clipPath's own rotate
+  // transform doesn't compose with the clipped element's transform the way
+  // Safari / Chromium paint rotated content, so the visible ellipse got
+  // cropped by an axis-aligned bbox mask. Shrink-instead-of-clip sidesteps
+  // the issue entirely and works at every angle, matching how rect behaves.
+  const sw = Math.max(0, Number(obj.strokeWidth) || 0);
+  const shrunkRx = Math.max(0, rx - sw / 2);
+  const shrunkRy = Math.max(0, ry - sw / 2);
   return (
-    <g key={key}>
-      <clipPath id={clipId}>
-        <ellipse cx={cx} cy={cy} rx={rx} ry={ry} transform={rotateTransform} />
-      </clipPath>
-      {ellEl}
-    </g>
+    <ellipse
+      key={key}
+      cx={cx}
+      cy={cy}
+      rx={shrunkRx}
+      ry={shrunkRy}
+      transform={rotateTransform}
+      fill={obj.fill || 'transparent'}
+      stroke={obj.stroke || 'transparent'}
+      strokeWidth={sw}
+      opacity={obj.opacity ?? 1}
+      data-shape-id={shapeId}
+      data-shape-kind="ellipse"
+      onClick={__shapeClick}
+    />
   );
 };
 
