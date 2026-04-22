@@ -38,8 +38,15 @@ jobs:
               .from(fileRes.data.content, 'base64')
               .toString('utf-8');
             const lines = content.split('\n');
-            const preview = lines.slice(0, 400).join('\n');
-            const truncated = lines.length > 400;
+            // GitHub Issues cap bodies at 65536 chars. Leave ~5k for headers,
+            // leaving ~60k for the log preview. Cap both by line count AND
+            // by byte budget so long single lines can't blow past the limit.
+            const MAX_PREVIEW_CHARS = 60000;
+            let preview = lines.slice(0, 400).join('\n');
+            if (preview.length > MAX_PREVIEW_CHARS) {
+              preview = preview.slice(0, MAX_PREVIEW_CHARS) + '\n… (truncated)';
+            }
+            const truncated = lines.length > 400 || content.length > preview.length;
 
             // Device tag from filename: "mac-host-ts.log", "windows-host-ts.log", etc.
             const m = logFile.match(/^(mac|windows|linux|ios|android)-([^-]+)-/);
