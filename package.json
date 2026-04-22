@@ -103,6 +103,7 @@
       "build/icon.png"
     ],
     "asar": true,
+    "npmRebuild": false,
     "mac": {
       "target": "dmg",
       "icon": "build/icon.icns"
