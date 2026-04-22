@@ -1,6 +1,6 @@
 {
   "name": "survey",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "private": true,
   "main": "src/electron-main.js",
   "scripts": {

@@ -30,11 +30,24 @@ const detectPlatform = () => {
 };
 
 const detectRuntime = () => {
+  // UX 2026-04-22: dev vs installer detection. Vite's import.meta.env.DEV is
+  // the primary signal but can be undefined in Electron-wrapped builds where
+  // the renderer loads over file:// or where Vite's static replacement didn't
+  // see this file. Fall back to location-based check: Electron dev points the
+  // renderer at the Vite dev server (http://localhost:...), installed builds
+  // load from file://. That makes dev vs shipped unambiguous on every platform.
   try {
     if (import.meta?.env?.DEV) return 'dev-server';
   } catch {}
-  if (typeof window !== 'undefined' && window.electronAPI) return 'desktop-installer';
-  if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()) return 'mobile-build';
+  if (typeof window !== 'undefined') {
+    const loc = window.location;
+    const isLocalDevUrl = loc && (
+      loc.protocol === 'http:' || loc.protocol === 'https:'
+    ) && /^(localhost|127\.0\.0\.1|\[::1\])$/i.test(loc.hostname || '');
+    if (isLocalDevUrl && window.electronAPI) return 'dev-server';
+    if (window.electronAPI) return 'desktop-installer';
+    if (window.Capacitor?.isNativePlatform?.()) return 'mobile-build';
+  }
   return 'web';
 };
 

@@ -834,14 +834,22 @@ ipcMain.handle('logs:pushToGithub', async (event, { content }) => {
 
     console.log(`[logs:pushToGithub] uploading ${filename} (${b64.length} base64 chars)`);
 
+    // UX 2026-04-22: send the JSON body (incl. base64 log content) via stdin,
+    // not as CLI args. Passing a ~100KB base64 blob as `-f content=...` blows
+    // Windows' command-line length cap and surfaces to the user as ENAMETOOLONG.
+    // Stdin has no such limit on any OS (mac/win/linux), so this is the portable fix.
+    const ghBody = JSON.stringify({
+      message: `save-log from ${platformTag} (${hostname}) @ ${timestamp}`,
+      content: b64,
+      branch: 'logs',
+    });
+
     const result = await new Promise((resolve) => {
       const child = spawn('gh', [
         'api',
         '--method', 'PUT',
         '/repos/IsaiahCalvo/Survey/contents/' + filename,
-        '-f', `message=save-log from ${platformTag} (${hostname}) @ ${timestamp}`,
-        '-f', `content=${b64}`,
-        '-f', 'branch=logs'
+        '--input', '-'
       ], { shell: false });
       let out = '';
       let err = '';
@@ -857,6 +865,12 @@ ipcMain.handle('logs:pushToGithub', async (event, { content }) => {
           resolve({ ok: false, error: `gh exited ${code}: ${err.trim() || out.trim()}`, filename });
         }
       });
+      try {
+        child.stdin.write(ghBody);
+        child.stdin.end();
+      } catch (stdinErr) {
+        resolve({ ok: false, error: `gh stdin write failed: ${stdinErr?.message || stdinErr}`, filename });
+      }
     });
     if (result.ok) {
       console.log(`[logs:pushToGithub] pushed — ${result.url || result.filename}`);
