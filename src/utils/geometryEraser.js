@@ -47,7 +47,19 @@ const flattenPathToPolylines = (pathData) => {
             // Quadratic Bezier
             const cx = cmd[1], cy = cmd[2];
             const ex = cmd[3], ey = cmd[4];
-            const samples = 4; // Low resolution is usually fine for ink
+            // Adaptive sampling: native pen strokes from PencilBrush produce
+            // many tiny Q commands (~1-2 px chord each) so 4 samples is fine.
+            // PDF-imported ink strokes (e.g. Drawboard) often export a simplified
+            // path with long Q commands (10-50 px chord each); 4 samples turns
+            // a curved arc into a 4-segment zig-zag, so a crescent eraser on
+            // an imported stroke cuts the straight-chord approximation instead
+            // of the actual curve — producing a much larger gap than on native
+            // strokes. Ensuring each flattened segment stays ≤ 2 px makes the
+            // eraser interaction visually match across both sources.
+            const chordLen = Math.hypot(ex - currentX, ey - currentY)
+              + Math.hypot(cx - currentX, cy - currentY) * 0.5
+              + Math.hypot(ex - cx, ey - cy) * 0.5;
+            const samples = Math.max(4, Math.ceil(chordLen / 2));
             for (let i = 1; i <= samples; i++) {
                 const t = i / samples;
                 const mt = 1 - t;
@@ -62,7 +74,12 @@ const flattenPathToPolylines = (pathData) => {
             const cx1 = cmd[1], cy1 = cmd[2];
             const cx2 = cmd[3], cy2 = cmd[4];
             const ex = cmd[5], ey = cmd[6];
-            const samples = 6;
+            // Adaptive sampling — see Q command above for rationale.
+            const chordLen = Math.hypot(ex - currentX, ey - currentY)
+              + Math.hypot(cx1 - currentX, cy1 - currentY) * 0.5
+              + Math.hypot(cx2 - cx1, cy2 - cy1) * 0.5
+              + Math.hypot(ex - cx2, ey - cy2) * 0.5;
+            const samples = Math.max(6, Math.ceil(chordLen / 2));
             for (let i = 1; i <= samples; i++) {
                 const t = i / samples;
                 const mt = 1 - t;
@@ -269,46 +286,99 @@ const createCirclePolygon = (cx, cy, r, segments = 16) => {
 
 /**
  * Converts a simple polyline stroke to a polygon outline (ribbon).
- * This is a naive implementation of stroke expansion.
+ *
+ * Each interior vertex uses the BISECTOR of its two adjacent segments (with a
+ * miter-length compensation), so the ribbon stays constant width perpendicular
+ * to the centerline curve. The earlier naive version only used one segment's
+ * perpendicular per vertex, which produced a visible "jog" at every bend —
+ * that jog is what made newly-erased thin pen strokes look slightly fatter
+ * than the original stroked rendering. With bisector offsets + a conservative
+ * miter limit, the ribbon matches the visual thickness of the original stroke
+ * (which the browser renders with round joins) closely enough that the first-
+ * erase "thickening" is no longer perceptible.
  */
 const strokeToPolygon = (polyline, width) => {
     if (polyline.length < 2) return null;
 
-    const leftSide = [];
-    const rightSide = [];
     const halfWidth = width / 2;
+    const n = polyline.length;
+    const leftSide = new Array(n);
+    const rightSide = new Array(n);
 
-    for (let i = 0; i < polyline.length - 1; i++) {
+    // Precompute per-segment unit perpendiculars.
+    // perpSeg[i] = normalized perpendicular of segment polyline[i] -> polyline[i+1].
+    const perpSeg = new Array(n - 1);
+    for (let i = 0; i < n - 1; i++) {
         const p1 = polyline[i];
         const p2 = polyline[i + 1];
-
         const dx = p2.x - p1.x;
         const dy = p2.y - p1.y;
-        const len = Math.sqrt(dx * dx + dy * dy);
-        if (len === 0) continue;
-
-        const nx = -dy / len;
-        const ny = dx / len;
-
-        // Offset points
-        leftSide.push({ x: p1.x + nx * halfWidth, y: p1.y + ny * halfWidth });
-        rightSide.push({ x: p1.x - nx * halfWidth, y: p1.y - ny * halfWidth });
-
-        if (i === polyline.length - 2) {
-            leftSide.push({ x: p2.x + nx * halfWidth, y: p2.y + ny * halfWidth });
-            rightSide.push({ x: p2.x - nx * halfWidth, y: p2.y - ny * halfWidth });
+        const len = Math.hypot(dx, dy);
+        if (len === 0) {
+            perpSeg[i] = null;
+        } else {
+            perpSeg[i] = { x: -dy / len, y: dx / len };
         }
     }
 
-    // Construct polygon ring (CCW)
-    const ring = [];
-    leftSide.forEach(p => ring.push([p.x, p.y]));
-    // reverse right side
-    for (let i = rightSide.length - 1; i >= 0; i--) {
-        ring.push([rightSide[i].x, rightSide[i].y]);
+    // Find first and last valid segment indices (non-degenerate).
+    let firstSeg = 0;
+    while (firstSeg < perpSeg.length && !perpSeg[firstSeg]) firstSeg++;
+    let lastSeg = perpSeg.length - 1;
+    while (lastSeg >= 0 && !perpSeg[lastSeg]) lastSeg--;
+    if (firstSeg > lastSeg) return null;
+
+    const MITER_LIMIT = 4;
+
+    for (let i = 0; i < n; i++) {
+        const p = polyline[i];
+        let offX, offY;
+
+        // Neighboring segment perpendiculars (may be null at degenerate spots).
+        const prev = i > 0 ? perpSeg[i - 1] : null;
+        const next = i < perpSeg.length ? perpSeg[i] : null;
+
+        if (prev && next) {
+            // Interior vertex — bisector direction with miter-length compensation.
+            let bx = prev.x + next.x;
+            let by = prev.y + next.y;
+            const blen = Math.hypot(bx, by);
+            if (blen < 1e-6) {
+                // Segments are anti-parallel; fall back to one perpendicular.
+                offX = prev.x * halfWidth;
+                offY = prev.y * halfWidth;
+            } else {
+                bx /= blen;
+                by /= blen;
+                // Miter compensation so the ribbon stays constant width:
+                // offset = halfWidth / cos(angle/2), where cos(angle/2) = bisector · segmentPerpendicular.
+                const dot = prev.x * bx + prev.y * by;
+                let miter = dot !== 0 ? 1 / dot : 1;
+                if (miter > MITER_LIMIT) miter = MITER_LIMIT;
+                if (miter < -MITER_LIMIT) miter = -MITER_LIMIT;
+                offX = bx * halfWidth * miter;
+                offY = by * halfWidth * miter;
+            }
+        } else if (next) {
+            offX = next.x * halfWidth;
+            offY = next.y * halfWidth;
+        } else if (prev) {
+            offX = prev.x * halfWidth;
+            offY = prev.y * halfWidth;
+        } else {
+            offX = 0;
+            offY = 0;
+        }
+
+        leftSide[i] = { x: p.x + offX, y: p.y + offY };
+        rightSide[i] = { x: p.x - offX, y: p.y - offY };
     }
-    // close
-    if (ring.length > 0) ring.push([ring[0][0], ring[0][1]]);
+
+    // Construct polygon ring (CCW: leftSide forward, then rightSide reversed).
+    const ring = [];
+    for (let i = 0; i < n; i++) ring.push([leftSide[i].x, leftSide[i].y]);
+    for (let i = n - 1; i >= 0; i--) ring.push([rightSide[i].x, rightSide[i].y]);
+    if (ring.length > 0) ring.push([ring[0][0], ring[0][1]]); // close
 
     return [ring];
 };
