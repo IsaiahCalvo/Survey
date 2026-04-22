@@ -1367,7 +1367,13 @@ function applyRawMetadataToAnnotation(annotation, rawMetadata) {
   const borderStyle = {
     ...(annotation.borderStyle || {})
   };
-  if (!Number.isFinite(borderStyle.width) && Number.isFinite(rawMetadata.borderWidth)) {
+  // UX 2026-04-22: pdf.js silently drops /BS/W for Line annotations whose
+  // /Rect is degenerately thin on one axis (horizontal / vertical lines
+  // have Rect height or width = /BS/W exactly), so imported H/V lines came
+  // in at our fallback width of 1 while diagonal lines kept the real /BS/W
+  // of 3. Prefer the raw PDF-dict width (via pdf-lib rawMetadata) when
+  // present — same precedence we use for lineCoordinates and lineEndings.
+  if (Number.isFinite(rawMetadata.borderWidth)) {
     borderStyle.width = rawMetadata.borderWidth;
   }
   if (!borderStyle.style && rawMetadata.borderStyleType) {
@@ -1397,7 +1403,10 @@ function applyRawMetadataToAnnotation(annotation, rawMetadata) {
     lineColor: annotation.lineColor || rawMetadata.lineColor || annotation.lineColor,
     interiorColor: annotation.interiorColor || rawMetadata.interiorColor || annotation.interiorColor,
     borderStyle,
-    borderWidth: Number.isFinite(annotation.borderWidth) ? annotation.borderWidth : rawMetadata.borderWidth,
+    // UX 2026-04-22: prefer raw /BS/W for the same pdf.js-drops-on-thin-rect
+    // reason the borderStyle fix above handles. Falls back to pdf.js's
+    // borderWidth only when raw isn't available.
+    borderWidth: Number.isFinite(rawMetadata.borderWidth) ? rawMetadata.borderWidth : annotation.borderWidth,
     opacity: annotation.opacity ?? rawMetadata.opacity,
     ca: annotation.ca ?? rawMetadata.ca,
     CA: annotation.CA ?? rawMetadata.CA,
