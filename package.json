@@ -126,7 +126,8 @@
       {
         "provider": "github",
         "owner": "IsaiahCalvo",
-        "repo": "Survey"
+        "repo": "Survey",
+        "releaseType": "release"
       }
     ]
   }
