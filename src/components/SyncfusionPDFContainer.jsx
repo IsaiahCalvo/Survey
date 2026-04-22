@@ -20,6 +20,44 @@ import {
 
 const MAX_BOOKMARK_RETRIES = 20;
 
+// UX 2026-04-22 (Windows load failure) — Syncfusion's PDF form-field parser
+// (`FormFieldsBase.GetFormFields`, called unconditionally from
+// `PdfRenderer.loadDocument`, regardless of `enableFormFields`) calls
+// `_dictionary.has(...)` on every field it walks. On certain Acrobat-saved
+// PDFs the field's `_dictionary` isn't a real `PdfDictionary`, which throws
+// `TypeError: _dictionary.has is not a function`. In the unminified source
+// the identifier survives as `annotDictionary.has is not a function`; in the
+// production (minified) build the var is mangled and the error surfaces as
+// `it.has is not a function` (or any short-name variant). Match both shapes.
+const hasIsNotAFunctionRegex = /(?:^|[.\s])has is not a function/i;
+const looksLikeHasIsNotAFunctionFailure = (candidate, depth = 0) => {
+  if (!candidate || depth > 3) return false;
+  if (typeof candidate === 'string') return hasIsNotAFunctionRegex.test(candidate);
+  if (typeof candidate !== 'object') return false;
+
+  const messageFields = [
+    candidate.message,
+    candidate.errorMessage,
+    candidate.errorDescription,
+  ];
+  for (const field of messageFields) {
+    if (typeof field === 'string' && hasIsNotAFunctionRegex.test(field)) {
+      return true;
+    }
+  }
+
+  if (typeof candidate.stack === 'string' && hasIsNotAFunctionRegex.test(candidate.stack)) {
+    return true;
+  }
+
+  // Syncfusion wraps the underlying error in `.error` / `.reason` on some
+  // event shapes — recurse one level in so we don't miss the match.
+  if (candidate.error && looksLikeHasIsNotAFunctionFailure(candidate.error, depth + 1)) return true;
+  if (candidate.reason && looksLikeHasIsNotAFunctionFailure(candidate.reason, depth + 1)) return true;
+
+  return false;
+};
+
 const coercePositiveInt = (value, fallback = null) => {
   const next = Number(value);
   if (!Number.isFinite(next)) return fallback;
@@ -121,6 +159,13 @@ const SyncfusionPDFContainer = forwardRef(({
   const pageContainerMapRef = useRef({});
   const suspendContainerRefreshRef = useRef(suspendContainerRefresh === true);
   const pendingRefreshReasonRef = useRef(null);
+  // UX 2026-04-22 (Windows load failure): track per-document state for the
+  // pdf-lib sanitize-and-retry path so we don't loop. Keyed by documentKey.
+  const sanitizedRetryAttemptedRef = useRef(new Set());
+  // Keep the latest documentSource bytes available to `handleDocumentLoadFailed`
+  // without adding it to that callback's dep array (which would rebuild the
+  // callback on every byte mutation and cause unnecessary re-renders).
+  const currentDocumentSourceRef = useRef(null);
   const [isReady, setIsReady] = useState(false);
   const [resourcesReady, setResourcesReady] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -1279,11 +1324,106 @@ const SyncfusionPDFContainer = forwardRef(({
     requestPageContainerRefresh
   ]);
 
+  // UX 2026-04-22 (Windows load failure): shared pdf-lib sanitization path.
+  // Callable from both the synchronous `viewer.load()` try/catch AND from the
+  // async `documentLoadFailed` event (on Windows, Syncfusion 32.1.19 raises
+  // the `.has is not a function` TypeError from inside its promise chain so
+  // the sync catch never fires — the event path is the only hook).
+  //
+  // Strips every `/Widget` annotation from each page's `/Annots` array and
+  // replaces the catalog `/AcroForm` with an empty `{Fields: []}` dict so
+  // Syncfusion's unconditional `GetFormFields` walk finds nothing to parse.
+  // Returns a Promise<boolean> indicating whether a retry load was issued.
+  const sanitizeAndReloadDocument = useCallback(async (bytes) => {
+    const viewer = getViewerInstance();
+    if (!viewer?.load || !bytes) return false;
+    try {
+      const { PDFDocument, PDFName, PDFArray, PDFDict, PDFRef } = await import('pdf-lib');
+      const doc = await PDFDocument.load(bytes, {
+        updateMetadata: false,
+        ignoreEncryption: true,
+      });
+      doc.catalog.set(
+        PDFName.of('AcroForm'),
+        doc.context.obj({ Fields: [] })
+      );
+      const SUBTYPE = PDFName.of('Subtype');
+      const ANNOTS = PDFName.of('Annots');
+      const pages = doc.getPages();
+      const nameOf = (value) => {
+        if (!value) return '';
+        if (typeof value === 'string') return value;
+        if (typeof value.toString === 'function') return value.toString();
+        return '';
+      };
+      for (const page of pages) {
+        const node = page.node;
+        let arr = node.get(ANNOTS);
+        if (!arr) continue;
+        if (arr instanceof PDFRef) {
+          arr = doc.context.lookup(arr);
+        }
+        if (!(arr instanceof PDFArray)) continue;
+        const keep = [];
+        const size = arr.size();
+        for (let i = 0; i < size; i += 1) {
+          const entry = arr.get(i);
+          let dict = entry;
+          if (entry instanceof PDFRef) {
+            dict = doc.context.lookup(entry);
+          }
+          if (!(dict instanceof PDFDict)) continue;
+          const sub = dict.get(SUBTYPE);
+          if (nameOf(sub) === '/Widget') continue;
+          keep.push(entry);
+        }
+        if (keep.length !== size) {
+          node.set(ANNOTS, doc.context.obj(keep));
+        }
+      }
+      const sanitized = await doc.save({ useObjectStreams: false });
+      const viewerAfter = getViewerInstance();
+      if (!viewerAfter?.load) return false;
+      viewerAfter.load(sanitized, '');
+      return true;
+    } catch (retryError) {
+      emitDebugEvent('document_sanitize_failed', {
+        message: String(retryError?.message || retryError || 'unknown'),
+      });
+      return false;
+    }
+  }, [emitDebugEvent, getViewerInstance]);
+
   const handleDocumentLoadFailed = useCallback((args) => {
     loadedDocumentKeyRef.current = null;
     emitDebugEvent('document_load_failed');
+
+    // UX 2026-04-22 (Windows load failure): if Syncfusion's form-field
+    // parser blew up with `.has is not a function` (any minified shape),
+    // sanitize the bytes and retry ONCE before telling the parent that the
+    // document failed to load. We only retry per unique document bytes to
+    // avoid loops if sanitization itself can't save the file.
+    if (looksLikeHasIsNotAFunctionFailure(args)) {
+      const bytes = currentDocumentSourceRef.current;
+      const retryKey = bytes ? makeDocumentKey(bytes) : null;
+      const alreadyRetried = retryKey
+        ? sanitizedRetryAttemptedRef.current.has(retryKey)
+        : true;
+      if (bytes && !alreadyRetried) {
+        sanitizedRetryAttemptedRef.current.add(retryKey);
+        emitDebugEvent('document_sanitize_retry', { trigger: 'documentLoadFailed' });
+        sanitizeAndReloadDocument(bytes).then((retried) => {
+          if (!retried) {
+            // Sanitize couldn't help — surface the original failure.
+            onDocumentLoadFailed?.(args);
+          }
+        });
+        return;
+      }
+    }
+
     onDocumentLoadFailed?.(args);
-  }, [emitDebugEvent, onDocumentLoadFailed]);
+  }, [emitDebugEvent, onDocumentLoadFailed, sanitizeAndReloadDocument]);
 
   const handlePageChange = useCallback((args) => {
     const viewer = getViewerInstance();
@@ -1359,6 +1499,10 @@ const SyncfusionPDFContainer = forwardRef(({
     disconnectPageObserver();
     loadedDocumentKeyRef.current = null;
     lastDocumentSourceRef.current = null;
+    currentDocumentSourceRef.current = null;
+    // UX 2026-04-22: clear the sanitize-retry ledger so re-opening a file is
+    // allowed to retry again from scratch.
+    sanitizedRetryAttemptedRef.current = new Set();
     thumbnailCacheRef.current.clear();
     setPageCount(0);
     setCurrentPage(1);
@@ -1376,78 +1520,18 @@ const SyncfusionPDFContainer = forwardRef(({
     let cancelled = false;
     let retryTimer = null;
 
-    // UX: Phase 15 UAT-3 (2026-04-18) — Syncfusion's PDF form-field parser
-    // crashes with "annotDictionary.has is not a function" on PDFs whose
-    // AcroForm dictionary has an unexpected shape (seen on certain Acrobat-
-    // saved files). Form fields are disabled at the component level, but
-    // the parser still runs internally during page render and aborts the
-    // whole load. When that specific error fires we sanitize the PDF
-    // bytes with pdf-lib (drop the AcroForm entry entirely) and retry
-    // once. On any other failure we bubble up as before.
-    const loadSanitizedBytes = async () => {
-      if (cancelled) return;
-      const viewer = getViewerInstance();
-      if (!viewer?.load) return;
-      try {
-        const { PDFDocument, PDFName, PDFArray, PDFDict, PDFRef } = await import('pdf-lib');
-        const doc = await PDFDocument.load(documentSource, {
-          updateMetadata: false,
-          ignoreEncryption: true,
-        });
-        // UX: Syncfusion's form parser chokes on this PDF's AcroForm entry
-        // shape AND on any remaining /Widget annotations in the pages. We
-        // (a) replace the AcroForm with a valid empty-fields dict so the
-        // getter returns cleanly, and (b) strip every /Widget annotation
-        // from every page so the internal walk has nothing to scan.
-        doc.catalog.set(
-          PDFName.of('AcroForm'),
-          doc.context.obj({ Fields: [] })
-        );
-        const SUBTYPE = PDFName.of('Subtype');
-        const ANNOTS = PDFName.of('Annots');
-        const pages = doc.getPages();
-        const nameOf = (value) => {
-          if (!value) return '';
-          if (typeof value === 'string') return value;
-          if (typeof value.toString === 'function') return value.toString();
-          return '';
-        };
-        for (const page of pages) {
-          const node = page.node;
-          let arr = node.get(ANNOTS);
-          if (!arr) continue;
-          if (arr instanceof PDFRef) {
-            arr = doc.context.lookup(arr);
-          }
-          if (!(arr instanceof PDFArray)) continue;
-          const keep = [];
-          const size = arr.size();
-          for (let i = 0; i < size; i += 1) {
-            const entry = arr.get(i);
-            let dict = entry;
-            if (entry instanceof PDFRef) {
-              dict = doc.context.lookup(entry);
-            }
-            // Only keep entries whose target resolves to a real dict.
-            // Anything else (non-dict, or /Widget-subtype) is what makes
-            // Syncfusion's form parser choke, so drop it here.
-            if (!(dict instanceof PDFDict)) continue;
-            const sub = dict.get(SUBTYPE);
-            if (nameOf(sub) === '/Widget') continue;
-            keep.push(entry);
-          }
-          if (keep.length !== size) {
-            node.set(ANNOTS, doc.context.obj(keep));
-          }
-        }
-        const sanitized = await doc.save({ useObjectStreams: false });
-        if (cancelled) return;
-        viewer.load(sanitized, '');
-      } catch (retryError) {
-        loadedDocumentKeyRef.current = null;
-        onDocumentLoadFailed?.(retryError);
-      }
-    };
+    // UX 2026-04-22: Expose the current bytes to the async
+    // `handleDocumentLoadFailed` callback so it can sanitize-and-retry on
+    // Windows, where Syncfusion's `.has is not a function` crash surfaces
+    // via the `documentLoadFailed` event (not a sync throw).
+    currentDocumentSourceRef.current = documentSource;
+
+    // Clear any prior retry record when the underlying bytes change so the
+    // sanitize-retry path will fire again for a brand-new document.
+    const documentKey = makeDocumentKey(documentSource);
+    if (lastDocumentSourceRef.current !== documentSource) {
+      sanitizedRetryAttemptedRef.current.delete(documentKey);
+    }
 
     const attemptLoad = () => {
       if (cancelled) return;
@@ -1457,7 +1541,6 @@ const SyncfusionPDFContainer = forwardRef(({
         return;
       }
 
-      const documentKey = makeDocumentKey(documentSource);
       if (
         loadedDocumentKeyRef.current === documentKey &&
         lastDocumentSourceRef.current === documentSource
@@ -1473,10 +1556,22 @@ const SyncfusionPDFContainer = forwardRef(({
       try {
         viewer.load(documentSource, '');
       } catch (error) {
-        const msg = error && error.message ? String(error.message) : '';
-        if (msg.indexOf('annotDictionary.has is not a function') !== -1) {
-          loadSanitizedBytes();
-          return;
+        // UX 2026-04-22: see `handleDocumentLoadFailed` for the full story.
+        // This sync branch catches the Mac Phase 15 UAT-3 shape; the async
+        // event branch catches the Windows minified shape. Both funnel into
+        // the same `sanitizeAndReloadDocument` helper.
+        if (looksLikeHasIsNotAFunctionFailure(error)) {
+          if (!sanitizedRetryAttemptedRef.current.has(documentKey)) {
+            sanitizedRetryAttemptedRef.current.add(documentKey);
+            emitDebugEvent('document_sanitize_retry', { trigger: 'viewer.load-throw' });
+            sanitizeAndReloadDocument(documentSource).then((retried) => {
+              if (!retried) {
+                loadedDocumentKeyRef.current = null;
+                onDocumentLoadFailed?.(error);
+              }
+            });
+            return;
+          }
         }
         loadedDocumentKeyRef.current = null;
         onDocumentLoadFailed?.(error);
@@ -1494,10 +1589,12 @@ const SyncfusionPDFContainer = forwardRef(({
   }, [
     clearBookmarkRetry,
     documentSource,
+    emitDebugEvent,
     getViewerInstance,
     isReady,
     onDocumentLoadFailed,
-    resourcesReady
+    resourcesReady,
+    sanitizeAndReloadDocument
   ]);
 
   useEffect(() => {
