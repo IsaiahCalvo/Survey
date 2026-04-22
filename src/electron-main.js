@@ -13,6 +13,145 @@ if (process.env.NODE_ENV === 'development') {
   process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
 }
 
+// UX 2026-04-22: Auto-updater. Checks the Survey repo's GitHub Releases on
+// startup; if a newer version is published the user sees an "Update available"
+// prompt. Only runs in packaged builds — dev mode skips silently because
+// electron-updater can't patch an unbuilt source tree. Uses the publish
+// config in package.json, which points at this repo.
+let autoUpdater = null;
+let updaterManualCheckWindow = null; // tracks window that requested a manual check
+try {
+  autoUpdater = require('electron-updater').autoUpdater;
+  autoUpdater.autoDownload = false; // wait for user consent before downloading
+  autoUpdater.autoInstallOnAppQuit = true;
+} catch (err) {
+  console.warn('[updater] electron-updater not available:', err.message);
+}
+
+function setupAutoUpdater(win) {
+  if (!autoUpdater) return;
+  if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
+    console.log('[updater] dev/unpackaged build — auto-update skipped');
+    return;
+  }
+
+  const send = (channel, payload) => {
+    if (win && !win.isDestroyed()) {
+      win.webContents.send(channel, payload);
+    }
+  };
+
+  autoUpdater.on('checking-for-update', () => {
+    console.log('[updater] checking for updates…');
+    send('updater:status', { state: 'checking' });
+  });
+  autoUpdater.on('update-available', async (info) => {
+    console.log('[updater] update available:', info.version);
+    send('updater:status', { state: 'available', version: info.version, notes: info.releaseNotes || null });
+    // UX 2026-04-22: show a native prompt so the user sees the offer even if
+    // no renderer listener is wired up yet. "Install" downloads then installs;
+    // "Later" dismisses until next launch / manual check.
+    try {
+      const { response } = await dialog.showMessageBox(win, {
+        type: 'info',
+        buttons: ['Install', 'Later'],
+        defaultId: 0,
+        cancelId: 1,
+        title: 'Update Available',
+        message: `A new version (${info.version}) is available.`,
+        detail: 'Download and install it now? The app will restart automatically when done.'
+      });
+      if (response === 0) {
+        autoUpdater.downloadUpdate().catch((err) => {
+          console.warn('[updater] download failed:', err?.message || err);
+        });
+      }
+    } catch (dErr) {
+      console.warn('[updater] dialog failed:', dErr?.message || dErr);
+    }
+  });
+  autoUpdater.on('update-not-available', (info) => {
+    console.log('[updater] up to date:', info.version);
+    send('updater:status', { state: 'up-to-date', version: info.version });
+    // Only show a "you're up to date" dialog if the user manually triggered
+    // the check (from the menu). Startup auto-checks stay silent.
+    if (updaterManualCheckWindow) {
+      const manual = updaterManualCheckWindow;
+      updaterManualCheckWindow = null;
+      try {
+        dialog.showMessageBox(manual, {
+          type: 'info',
+          buttons: ['OK'],
+          title: 'Up to Date',
+          message: `You're running the latest version (${info.version}).`
+        });
+      } catch {}
+    }
+  });
+  autoUpdater.on('error', (err) => {
+    console.warn('[updater] error:', err?.message || err);
+    send('updater:status', { state: 'error', error: err?.message || String(err) });
+  });
+  autoUpdater.on('download-progress', (p) => {
+    send('updater:status', { state: 'downloading', percent: Math.round(p.percent || 0) });
+  });
+  autoUpdater.on('update-downloaded', async (info) => {
+    console.log('[updater] downloaded:', info.version);
+    send('updater:status', { state: 'downloaded', version: info.version });
+    try {
+      const { response } = await dialog.showMessageBox(win, {
+        type: 'info',
+        buttons: ['Restart Now', 'Later'],
+        defaultId: 0,
+        cancelId: 1,
+        title: 'Update Ready',
+        message: `Version ${info.version} is ready to install.`,
+        detail: 'Restart the app now to finish installing, or close the app later to apply on next launch.'
+      });
+      if (response === 0) {
+        autoUpdater.quitAndInstall(false, true);
+      }
+    } catch (dErr) {
+      console.warn('[updater] dialog failed:', dErr?.message || dErr);
+    }
+  });
+
+  autoUpdater.checkForUpdates().catch((err) => {
+    console.warn('[updater] startup check failed:', err?.message || err);
+  });
+}
+
+ipcMain.handle('updater:check', async () => {
+  if (!autoUpdater) return { ok: false, error: 'updater-unavailable' };
+  if (!app.isPackaged) return { ok: false, error: 'dev-mode' };
+  try {
+    const r = await autoUpdater.checkForUpdates();
+    return { ok: true, version: r?.updateInfo?.version || null };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+});
+
+ipcMain.handle('updater:download', async () => {
+  if (!autoUpdater) return { ok: false, error: 'updater-unavailable' };
+  try {
+    await autoUpdater.downloadUpdate();
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+});
+
+ipcMain.handle('updater:installNow', async () => {
+  if (!autoUpdater) return { ok: false, error: 'updater-unavailable' };
+  try {
+    autoUpdater.quitAndInstall(false, true);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+});
+
 function createWindow() {
   // Set icon path based on platform and environment
   // Use app.getAppPath() to get the actual app directory, which works in both dev and production
@@ -144,6 +283,10 @@ function createWindow() {
     const distPath = path.join(app.getAppPath(), 'dist', 'index.html');
     win.loadFile(distPath);
   }
+
+  // UX 2026-04-22: wire auto-updater now that the window exists, so the
+  // "update available" toast can reach the renderer. No-op in dev mode.
+  setupAutoUpdater(win);
 }
 
 function createAppMenu() {
@@ -159,6 +302,43 @@ function createAppMenu() {
         label: app.name,
         submenu: [
           { role: 'about' },
+          {
+            label: 'Check for Updates…',
+            click: async () => {
+              const win = getTargetWindow();
+              if (win && !win.isDestroyed()) {
+                win.webContents.send('menu:check-for-updates');
+              }
+              if (!autoUpdater) return;
+              if (!app.isPackaged) {
+                if (win && !win.isDestroyed()) {
+                  dialog.showMessageBox(win, {
+                    type: 'info',
+                    buttons: ['OK'],
+                    title: 'Developer Build',
+                    message: 'Auto-update only works in installed builds.',
+                    detail: 'You\'re running the app in development mode, which cannot be updated.'
+                  });
+                }
+                return;
+              }
+              updaterManualCheckWindow = win;
+              try {
+                await autoUpdater.checkForUpdates();
+              } catch (err) {
+                updaterManualCheckWindow = null;
+                if (win && !win.isDestroyed()) {
+                  dialog.showMessageBox(win, {
+                    type: 'error',
+                    buttons: ['OK'],
+                    title: 'Update Check Failed',
+                    message: 'Could not check for updates.',
+                    detail: err?.message || String(err)
+                  });
+                }
+              }
+            }
+          },
           { type: 'separator' },
           { role: 'services' },
           { type: 'separator' },

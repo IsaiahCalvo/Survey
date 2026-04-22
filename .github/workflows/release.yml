@@ -28,7 +28,12 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        # Use `npm install` rather than `npm ci` so each platform picks up its
+        # own optional dependencies (notably @rollup/rollup-<platform>-<arch>).
+        # npm has a long-standing bug where `ci` skips optional deps not
+        # resolved on the machine that generated the lock file — see
+        # https://github.com/npm/cli/issues/4828. Using install sidesteps it.
+        run: npm install --include=optional --no-audit --no-fund
 
       - name: Build web bundle
         run: npm run build

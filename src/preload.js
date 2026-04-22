@@ -57,6 +57,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // UX 2026-04-22: Save Log GitHub push. Returns { ok, url, filename, error }.
   pushLogToGithub: (content) => ipcRenderer.invoke('logs:pushToGithub', { content }),
 
+  // UX 2026-04-22: Auto-updater bridges — lets renderer trigger checks +
+  // downloads + installs, and subscribe to progress/state events. No-ops in
+  // development (handler returns { ok:false, error:'dev-mode' }).
+  checkForUpdates: () => ipcRenderer.invoke('updater:check'),
+  downloadUpdate: () => ipcRenderer.invoke('updater:download'),
+  installUpdateNow: () => ipcRenderer.invoke('updater:installNow'),
+  onUpdaterStatus: (callback) => {
+    const subscription = (_event, payload) => callback(payload);
+    ipcRenderer.on('updater:status', subscription);
+    return () => ipcRenderer.removeListener('updater:status', subscription);
+  },
+  onCheckForUpdatesMenu: (callback) => {
+    const subscription = () => callback();
+    ipcRenderer.on('menu:check-for-updates', subscription);
+    return () => ipcRenderer.removeListener('menu:check-for-updates', subscription);
+  },
+
   // OAuth APIs - opens a separate window for authentication
   openOAuthWindow: (authUrl, redirectUri) => ipcRenderer.invoke('oauth:openWindow', { authUrl, redirectUri }),
 });

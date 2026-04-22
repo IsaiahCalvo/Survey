@@ -56,6 +56,7 @@
     "@syncfusion/ej2-vue-pdfviewer": "32.1.19",
     "annotpdf": "^1.0.15",
     "chokidar": "^5.0.0",
+    "electron-updater": "^6.8.3",
     "exceljs": "^4.4.0",
     "fabric": "^5.5.2",
     "isomorphic-fetch": "^3.0.0",
@@ -112,6 +113,13 @@
     },
     "linux": {
       "icon": "build/icon.png"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "IsaiahCalvo",
+        "repo": "Survey"
+      }
+    ]
   }
 }
