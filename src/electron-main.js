@@ -377,6 +377,27 @@ function createAppMenu() {
       label: 'File',
       submenu: [
         {
+          label: 'Open PDF…',
+          accelerator: 'CmdOrCtrl+O',
+          click: () => {
+            const win = getTargetWindow();
+            if (win && !win.isDestroyed()) {
+              win.webContents.send('menu:open-pdf');
+            }
+          }
+        },
+        {
+          label: 'Export Annotated PDF…',
+          accelerator: 'CmdOrCtrl+Shift+E',
+          click: () => {
+            const win = getTargetWindow();
+            if (win && !win.isDestroyed()) {
+              win.webContents.send('menu:export-annotated-pdf');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
           label: 'Re-import PDF Bookmarks',
           click: () => {
             const win = getTargetWindow();

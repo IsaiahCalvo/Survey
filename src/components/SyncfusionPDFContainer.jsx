@@ -16,6 +16,7 @@ import {
   TextSearch,
   Print,
   LinkAnnotation,
+  FormFields,
   Inject
 } from '@syncfusion/ej2-react-pdfviewer';
 
@@ -1728,7 +1729,7 @@ const SyncfusionPDFContainer = forwardRef(({
       enableDownload={false}
       enablePrint={true}
       enableAnnotation={false}
-      enableFormFields={false}
+      enableFormFields={true}
       enableFormDesigner={false}
       enablePageOrganizer={false}
       enableHyperlink={true}
@@ -1780,7 +1781,7 @@ const SyncfusionPDFContainer = forwardRef(({
       ajaxRequestSuccess={handleAjaxRequestSuccess}
       documentUnload={handleDocumentUnload}
     >
-      <Inject services={[Magnification, Navigation, BookmarkView, TextSelection, TextSearch, Print, LinkAnnotation]} />
+      <Inject services={[Magnification, Navigation, BookmarkView, TextSelection, TextSearch, Print, LinkAnnotation, FormFields]} />
     </PdfViewerComponent>
   );
 });

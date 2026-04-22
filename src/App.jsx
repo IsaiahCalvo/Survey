@@ -2628,6 +2628,21 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     setSelectedTemplateCategoryId(null);
   }, [selectedModuleId]);
 
+  // UX 2026-04-22: File menu → "Open PDF…" fires the same flow as clicking
+  // the Upload PDF card. Wires Cmd/Ctrl+O and the Open PDF… menu item.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.electronAPI?.onOpenPdfMenu) {
+      return undefined;
+    }
+    const unsubscribe = window.electronAPI.onOpenPdfMenu(() => {
+      handleUploadClick();
+    });
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Handle file upload via Electron dialog (preserves file path)
   const handleUploadClick = async () => {
     // In Electron, use dialog to get file path
@@ -22290,6 +22305,66 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       // It's normal for new documents to not have data yet
     }
   }, [downloadFromStorage, pdfFile, numPages]);
+
+  // UX 2026-04-22: File menu → "Export Annotated PDF…" — prompts for a new
+  // file path and writes the currently-open PDF with annotations baked in.
+  // Unlike Cmd+S which overwrites the source file, this Save As flow lets
+  // the user park an exported copy alongside (or anywhere) without
+  // touching the original.
+  const handleExportAnnotatedPDF = useCallback(async () => {
+    if (!pdfFile) {
+      alert('Open a PDF first.');
+      return;
+    }
+    const api = window.electronAPI;
+    if (!api?.saveFile) {
+      alert('Export Annotated PDF is only available in the desktop app.');
+      return;
+    }
+    try {
+      const defaultName = (pdfFile.name || 'document').replace(/\.pdf$/i, '') + '-annotated.pdf';
+      const buffer = await savePDFWithAnnotationsPdfLib(
+        pdfFile,
+        annotationsByPage,
+        pageSizes,
+        null,
+        { returnBytes: true }
+      );
+      if (!buffer) {
+        alert('Nothing to export.');
+        return;
+      }
+      const bytes = Array.from(new Uint8Array(buffer));
+      const result = await api.saveFile({
+        title: 'Export Annotated PDF',
+        defaultPath: defaultName,
+        filters: [{ name: 'PDF Files', extensions: ['pdf'] }],
+        data: bytes
+      });
+      if (result?.canceled) return;
+      if (result?.error) {
+        alert(`Export failed: ${result.error}`);
+        return;
+      }
+      alert(`Exported to ${result?.filePath || 'selected location'}.`);
+    } catch (err) {
+      console.error('[ExportAnnotatedPDF] failed:', err);
+      alert(`Export failed: ${err?.message || err}`);
+    }
+  }, [pdfFile, annotationsByPage, pageSizes]);
+
+  // Subscribe to the File menu item.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.electronAPI?.onExportAnnotatedPdfMenu) {
+      return undefined;
+    }
+    const unsubscribe = window.electronAPI.onExportAnnotatedPdfMenu(() => {
+      handleExportAnnotatedPDF();
+    });
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [handleExportAnnotatedPDF]);
 
   // Save function for annotations (triggered by Cmd/Ctrl+S or auto-save)
   // silent=true skips alerts (for auto-save)

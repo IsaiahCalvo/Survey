@@ -391,7 +391,7 @@ const createFreeTextAnnotation = (pdfDoc, page, fabricObj, pageHeight) => {
 /**
  * Save PDF with embedded annotations using pdf-lib
  */
-export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, pageSizes, pdfFilePath = null) => {
+export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, pageSizes, pdfFilePath = null, options = {}) => {
   try {
     // Load PDF
     const arrayBuffer = await pdfFile.arrayBuffer();
@@ -475,6 +475,13 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
 
     // Save the PDF
     const pdfBytes = await pdfDoc.save();
+
+    // UX 2026-04-22: When callers want the raw bytes back (e.g. the
+    // Export Annotated PDF menu item), skip the file-write / download
+    // branches and return the Uint8Array directly.
+    if (options?.returnBytes) {
+      return pdfBytes;
+    }
 
     // Check if we're in Electron and have the original file path
     if (window.electronAPI && pdfFilePath) {

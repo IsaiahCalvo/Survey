@@ -61,6 +61,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('menu:save-log', subscription);
     return () => ipcRenderer.removeListener('menu:save-log', subscription);
   },
+  onOpenPdfMenu: (callback) => {
+    const subscription = () => callback();
+    ipcRenderer.on('menu:open-pdf', subscription);
+    return () => ipcRenderer.removeListener('menu:open-pdf', subscription);
+  },
+  onExportAnnotatedPdfMenu: (callback) => {
+    const subscription = () => callback();
+    ipcRenderer.on('menu:export-annotated-pdf', subscription);
+    return () => ipcRenderer.removeListener('menu:export-annotated-pdf', subscription);
+  },
 
   // UX 2026-04-22: Save Log GitHub push. Returns { ok, url, filename, error }.
   pushLogToGithub: (content) => ipcRenderer.invoke('logs:pushToGithub', { content }),

@@ -79,17 +79,33 @@ export default function SaveLogBanner() {
       try {
         const push = await api.pushLogToGithub(payload);
         if (push?.ok) {
+          console.log('[SaveLogBanner] GitHub push OK', { url: push.url, filename: push.filename });
           setResult({
             message: trimmed ? 'Log + description saved to GitHub' : 'Log saved to GitHub',
             url: push.url || null
           });
           setState('success');
         } else {
-          setResult({ message: 'GitHub push failed (local save ok)', url: null });
+          const reason = push?.error || push?.message || 'unknown reason';
+          console.warn('[SaveLogBanner] GitHub push FAILED (non-ok response)', {
+            ok: push?.ok,
+            status: push?.status,
+            error: push?.error,
+            full: push
+          });
+          setResult({ message: `GitHub push failed — ${String(reason).slice(0, 100)}`, url: null });
           setState('error');
         }
-      } catch {
-        setResult({ message: 'GitHub push failed (local save ok)', url: null });
+      } catch (thrown) {
+        console.warn('[SaveLogBanner] GitHub push THREW', {
+          name: thrown?.name,
+          message: thrown?.message,
+          stack: thrown?.stack?.split('\n').slice(0, 5).join(' | ')
+        });
+        setResult({
+          message: `GitHub push threw — ${thrown?.message?.slice(0, 100) || 'unknown error'}`,
+          url: null
+        });
         setState('error');
       }
       return;
