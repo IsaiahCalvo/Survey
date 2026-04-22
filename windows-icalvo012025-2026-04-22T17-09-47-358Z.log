@@ -1,0 +1,7 @@
+[AnnotPerf] finalize idle (forced-reset) — deferring CSS transform removal, waiting for PAL confirmation
+[AnnotPerf] finalize idle (forced-reset) — deferring CSS transform removal, waiting for PAL confirmation
+[CSeries wipe] doc=SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26263753 totalCounters=0 legacyRemoved=0 — nothing to wipe.
+[Print] menu listener mounted
+console.error @ Syncfusion documentLoadFailed: {"message":"it.has is not a function","name":"TypeError"} {}
+[AnnotPerf] finalize idle (forced-reset) — deferring CSS transform removal, waiting for PAL confirmation
+[SaveLog] global menu trigger — capturing console buffer
