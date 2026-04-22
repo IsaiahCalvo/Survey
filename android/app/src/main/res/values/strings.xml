@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Survey</string>
+    <string name="title_activity_main">Survey</string>
+    <string name="package_name">com.kalvoe.survey</string>
+    <string name="custom_url_scheme">com.kalvoe.survey</string>
+</resources>
