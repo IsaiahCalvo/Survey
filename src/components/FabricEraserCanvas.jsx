@@ -20,7 +20,7 @@
 import React, { memo, useState, useEffect, useRef } from 'react';
 import { fabric } from 'fabric';
 import { useFabricCanvas } from '../hooks/useFabricCanvas';
-import { splitPathDataByEraser, booleanErasePath } from '../utils/geometryEraser';
+import { booleanErasePath } from '../utils/geometryEraser';
 
 // Custom properties to include in object serialization (matches PAL / FabricDrawingCanvas pattern)
 const CUSTOM_PROPS = [
@@ -190,12 +190,48 @@ const FabricEraserCanvas = memo(({
       // like rect, ellipse, textbox are removed if touched, path objects get
       // boolean subtraction)
       if (obj.type === 'path' && obj.path) {
-        // Use booleanErasePath for cookie-cutter boolean subtraction
-        const result = booleanErasePath(obj, eraserPath, currentEraserSize);
+        // Short-circuit: booleanErasePath unconditionally converts a stroked
+        // polyline into a filled cookie-cutter outline. When the eraser
+        // doesn't overlap the path's bounding box at all, that conversion
+        // adds no semantic value but visually turns a stroked scribble into
+        // a filled polygon whose interior loops show as holes — the
+        // "hollow stripe through imported pen stroke" symptom. Guard: only
+        // run booleanErasePath when at least one eraser sample is within
+        // radius of the path's world-space bounding rect.
+        const pathBounds = obj.getBoundingRect ? obj.getBoundingRect(true) : null;
+        if (pathBounds) {
+          const eraserTouchesPath = eraserPoints.some((point) => {
+            return (
+              point.x >= pathBounds.left - currentEraserSize &&
+              point.x <= pathBounds.left + pathBounds.width + currentEraserSize &&
+              point.y >= pathBounds.top - currentEraserSize &&
+              point.y <= pathBounds.top + pathBounds.height + currentEraserSize
+            );
+          });
+          if (!eraserTouchesPath) {
+            continue;
+          }
+        }
+
+        // Use booleanErasePath (cookie-cutter) for ALL pen strokes, imported
+        // or native. Rationale: once a native pen stroke has been erased
+        // once, it's stored as a filled polygon (strokeWidth=0, fill=color)
+        // because booleanErasePath's first pass converts the stroked
+        // polyline into a filled ribbon outline. Every SUBSEQUENT erase on
+        // that stroke then acts on a filled polygon, which is what lets the
+        // user carve a crescent-shaped bite from the side of a stroke
+        // without cutting through it. The earlier split-path approach
+        // avoided the first-erase thickening on imported strokes but also
+        // meant imported strokes could never be partially bitten —
+        // they always fully split. Switching imported strokes to the same
+        // code path restores parity. Any slight thickening on the very
+        // first erase is the same transition every native stroke already
+        // goes through the first time it's erased.
+        let result = booleanErasePath(obj, eraserPath, currentEraserSize);
+        let isConverted = false;
 
         if (result) {
           let newPathData = null;
-          let isConverted = false;
 
           if (Array.isArray(result)) {
             // Fully erased (empty array) or direct array return
@@ -224,20 +260,60 @@ const FabricEraserCanvas = memo(({
               });
             }
 
-            // Recalculate dimensions and offsets for the new path
+            // Recalculate dimensions and offsets for the new path.
+            // Imported pen strokes obey a different storage convention from
+            // internal live-drawn strokes: left/top carry the world
+            // placement and path data is in LOCAL coords starting at (0, 0).
+            // After booleanErasePath the path's local min may have shifted,
+            // so we translate the path back to (0, 0) and absorb the shift
+            // into left/top. Internal strokes keep the legacy behavior
+            // (setPositionByOrigin with new pathOffset) so untouched PAL
+            // code paths remain identical.
             if (obj._calcDimensions) {
               const dims = obj._calcDimensions();
-              const newPathOffsetX = dims.left + dims.width / 2;
-              const newPathOffsetY = dims.top + dims.height / 2;
-              obj.set({
-                width: dims.width,
-                height: dims.height,
-                pathOffset: { x: newPathOffsetX, y: newPathOffsetY },
-              });
-              // Use setPositionByOrigin to correctly position the erased path,
-              // accounting for strokeWidth and scale (same as PencilBrush internals).
-              const newPos = new fabric.Point(newPathOffsetX, newPathOffsetY);
-              obj.setPositionByOrigin(newPos, 'center', 'center');
+              if (obj.isPdfImported) {
+                const shiftX = dims.left;
+                const shiftY = dims.top;
+                if (shiftX !== 0 || shiftY !== 0) {
+                  const translated = newPathData.map((cmd) => {
+                    const next = cmd.slice();
+                    for (let j = 1; j + 1 < next.length; j += 2) {
+                      if (typeof next[j] === 'number') next[j] -= shiftX;
+                      if (typeof next[j + 1] === 'number') next[j + 1] -= shiftY;
+                    }
+                    return next;
+                  });
+                  obj.path = translated;
+                }
+                // pathOffset MUST equal the local-path geometric center for
+                // Fabric's hit-test math to match world clicks to path data.
+                // splitPathDataByEraser/booleanErasePath both compute
+                // `localEraser = inverseMatrix(worldClick) + pathOffset` —
+                // with pathOffset at (0, 0) the eraser lands off the stroke
+                // after the first erase, producing the "second click
+                // extends the previous gap instead of cutting where I
+                // clicked" bug.
+                obj.set({
+                  width: dims.width,
+                  height: dims.height,
+                  pathOffset: { x: dims.width / 2, y: dims.height / 2 },
+                  left: (obj.left || 0) + shiftX,
+                  top: (obj.top || 0) + shiftY,
+                });
+                obj.setCoords();
+              } else {
+                const newPathOffsetX = dims.left + dims.width / 2;
+                const newPathOffsetY = dims.top + dims.height / 2;
+                obj.set({
+                  width: dims.width,
+                  height: dims.height,
+                  pathOffset: { x: newPathOffsetX, y: newPathOffsetY },
+                });
+                // Use setPositionByOrigin to correctly position the erased path,
+                // accounting for strokeWidth and scale (same as PencilBrush internals).
+                const newPos = new fabric.Point(newPathOffsetX, newPathOffsetY);
+                obj.setPositionByOrigin(newPos, 'center', 'center');
+              }
             }
 
             obj.setCoords();
@@ -284,7 +360,13 @@ const FabricEraserCanvas = memo(({
         return { ...obj.__importedJSON };
       }
       const json = obj.toJSON(CUSTOM_PROPS);
-      if (json.type === 'path') {
+      // Internal live-drawn pen strokes store left=0, top=0 with absolute
+      // world-coord path data; reset here to match that storage convention.
+      // Imported pen strokes store left/top as the world placement with
+      // local-coord path data starting at (0, 0); leaving those values
+      // alone preserves the imported convention so the stroke does NOT
+      // snap to the top-left of the page on commit.
+      if (json.type === 'path' && !obj.isPdfImported) {
         json.left = 0;
         json.top = 0;
       }
@@ -295,10 +377,21 @@ const FabricEraserCanvas = memo(({
       // would be persisted back to stored annotation state on every erase
       // commit and corrupt the selector-mode render. Restore from the
       // __orig* values stashed at load time.
+      //
+      // EXCEPTION: when booleanErasePath converted a stroked polyline into
+      // a filled-outline polygon (strokeWidth -> 0, fill -> originalStroke),
+      // that conversion is INTENTIONAL and must persist — restoring the
+      // original stroke/strokeWidth here would stamp a second stroke on
+      // top of the filled polygon and make it render visibly thicker than
+      // before the erase (the "first erase makes imported ink fatter" bug).
+      // Detect post-conversion by the strokeWidth the eraser set to 0.
       if (obj.isPdfImported && obj.__origOpacity !== undefined) {
         json.opacity = obj.__origOpacity;
-        if (obj.__origStroke !== undefined) json.stroke = obj.__origStroke;
-        if (obj.__origStrokeWidth !== undefined) json.strokeWidth = obj.__origStrokeWidth;
+        const wasConverted = (obj.strokeWidth || 0) === 0 && !!obj.fill && obj.fill !== 'transparent';
+        if (!wasConverted) {
+          if (obj.__origStroke !== undefined) json.stroke = obj.__origStroke;
+          if (obj.__origStrokeWidth !== undefined) json.strokeWidth = obj.__origStrokeWidth;
+        }
       }
       return json;
     });
@@ -550,10 +643,17 @@ const FabricEraserCanvas = memo(({
           canvas.add(obj);
 
           // Fix coordinate space for Canvas rendering.
-          // Annotations are stored with left=0, top=0 (absolute page-space path data).
-          // Use Fabric's setPositionByOrigin (same method PencilBrush uses internally)
-          // which accounts for strokeWidth, scale, and skew in the offset calculation.
-          if (obj.type === 'path' && obj.pathOffset) {
+          // INTERNAL live-drawn pen strokes are stored with left=0, top=0 and
+          // path data in absolute page-space — Fabric needs setPositionByOrigin
+          // (same method PencilBrush uses internally, accounts for strokeWidth,
+          // scale, and skew) to place the obj correctly for hit-testing.
+          // IMPORTED pen strokes use the opposite convention: left/top carry
+          // the world placement (worldMinX/Y) and path data is in LOCAL coords
+          // starting at (0, 0). Applying setPositionByOrigin to imported paths
+          // would re-anchor their center to ~(width/2, height/2) in world
+          // coords — i.e. the top-left of the page — which is exactly the
+          // "snap-to-corner on first eraser click" bug. Skip for imported.
+          if (obj.type === 'path' && obj.pathOffset && !obj.isPdfImported) {
             const pos = new fabric.Point(obj.pathOffset.x, obj.pathOffset.y);
             obj.setPositionByOrigin(pos, 'center', 'center');
             obj.setCoords();
