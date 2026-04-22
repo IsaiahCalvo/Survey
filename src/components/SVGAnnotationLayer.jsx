@@ -2651,9 +2651,35 @@ const SVGAnnotationLayer = memo(({
             const pathScaleY = renderObj.scaleY ?? 1;
             const pathOffsetX = renderObj.pathOffset?.x || 0;
             const pathOffsetY = renderObj.pathOffset?.y || 0;
-            // Same transform chain as renderPath in svgAnnotationRenderers.jsx:72-75.
+            // UX 2026-04-21: match renderPath exactly — rotate around the
+            // path's OWN bbox center (not the local origin), or the hover
+            // halo lands off the visible stroke once a rotation is applied.
+            // Without this pivot, the halo rotates around the translate
+            // anchor while the real stroke rotates around its bbox center,
+            // producing the "blue glow detached from the stroke" symptom.
+            let pathRawMinX = Infinity, pathRawMinY = Infinity;
+            let pathRawMaxX = -Infinity, pathRawMaxY = -Infinity;
+            for (const seg of renderObj.path) {
+              for (let j = 1; j + 1 < seg.length; j += 2) {
+                const x = seg[j];
+                const y = seg[j + 1];
+                if (typeof x === 'number' && typeof y === 'number') {
+                  if (x < pathRawMinX) pathRawMinX = x;
+                  if (x > pathRawMaxX) pathRawMaxX = x;
+                  if (y < pathRawMinY) pathRawMinY = y;
+                  if (y > pathRawMaxY) pathRawMaxY = y;
+                }
+              }
+            }
+            const pathHasBounds = Number.isFinite(pathRawMinX) && Number.isFinite(pathRawMinY);
+            const pathRotCenterX = pathHasBounds
+              ? pathScaleX * ((pathRawMinX + pathRawMaxX) / 2 - pathOffsetX)
+              : 0;
+            const pathRotCenterY = pathHasBounds
+              ? pathScaleY * ((pathRawMinY + pathRawMaxY) / 2 - pathOffsetY)
+              : 0;
             let pathTransform = `translate(${pathLeft}, ${pathTop})`;
-            if (pathAngle !== 0) pathTransform += ` rotate(${pathAngle})`;
+            if (pathAngle !== 0) pathTransform += ` rotate(${pathAngle}, ${pathRotCenterX}, ${pathRotCenterY})`;
             if (pathScaleX !== 1 || pathScaleY !== 1) pathTransform += ` scale(${pathScaleX}, ${pathScaleY})`;
             pathTransform += ` translate(${-pathOffsetX}, ${-pathOffsetY})`;
             const sw = renderObj.strokeWidth || 1;
