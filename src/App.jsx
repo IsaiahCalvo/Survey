@@ -78,6 +78,7 @@ import TemplateOverwriteWarningModal from './components/TemplateOverwriteWarning
 import ExcelSyncConfirmModal from './components/ExcelSyncConfirmModal';
 import SyncfusionPDFContainer from './components/SyncfusionPDFContainer';
 import SaveLogBanner from './components/SaveLogBanner';
+import PrintPanel from './components/PrintPanel';
 import LightweightAnnotationOverlay from './components/LightweightAnnotationOverlay';
 import SVGAnnotationLayer from './components/SVGAnnotationLayer';
 import FabricDrawingCanvas from './components/FabricDrawingCanvas';
@@ -9270,6 +9271,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [pageHeights, setPageHeights] = useState({});
   const [pageSizes, setPageSizes] = useState({}); // { [page]: { width, height } }
   const [canPan, setCanPan] = useState(false);
+  // UX 2026-04-23: custom Print Panel state. Cmd/Ctrl+P opens it; closing or
+  // canceling throws all settings away so the source PDF is never modified.
+  const [printPanelOpen, setPrintPanelOpen] = useState(false);
+  const [printPanelPrinters, setPrintPanelPrinters] = useState([]);
   const [isLoadingPDF, setIsLoadingPDF] = useState(true);
   const syncfusionPageContainersStateRef = useRef({});
   const syncfusionCommittedPageScalesRef = useRef({});
@@ -26820,6 +26825,161 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     setPageAnnotationVisibilityState(spaceId, pageId, { surveyVisible: value });
   }, [setPageAnnotationVisibilityState]);
 
+  // UX 2026-04-23: Cmd/Ctrl+P (or File → Print PDF…) opens the custom Print
+  // Panel. The renderer-side listener used to fire Syncfusion's built-in
+  // printModule directly; that path is now gated behind the panel's Print
+  // button so users can set page range, rotation, color, markups, copies,
+  // etc. before anything actually prints.
+  //
+  // Diagnostic logs use the `[PrintPanel]` prefix so the whole lifecycle
+  // can be traced in a Save Log dump. We log every panel event we can see.
+  useEffect(() => {
+    console.log('[PrintPanel] mount — binding Cmd/Ctrl+P listeners. electronAPI available:', !!window.electronAPI, 'onPrintPdf available:', !!window.electronAPI?.onPrintPdf);
+
+    const openPanel = (source) => {
+      console.log(`[PrintPanel] OPEN requested via ${source}`);
+      setPrintPanelOpen(true);
+      if (typeof window.electronAPI?.listPrinters === 'function') {
+        console.log('[PrintPanel] listing printers…');
+        window.electronAPI.listPrinters()
+          .then((printers) => {
+            console.log(`[PrintPanel] listPrinters returned ${Array.isArray(printers) ? printers.length : 'nothing'} entries`);
+            if (Array.isArray(printers) && printers.length) {
+              setPrintPanelPrinters(printers.map((p) => ({ id: p.name || p.id, label: p.displayName || p.name || 'Printer' })));
+            }
+          })
+          .catch((err) => console.warn('[PrintPanel] listPrinters failed:', err?.message || err));
+      } else {
+        console.log('[PrintPanel] listPrinters not exposed — preload may need reload (restart dev command)');
+      }
+    };
+
+    let unsubscribe = null;
+    if (window.electronAPI?.onPrintPdf) {
+      unsubscribe = window.electronAPI.onPrintPdf(() => openPanel('electron menu:print-pdf'));
+    }
+
+    // Safety net: intercept Cmd/Ctrl+P at the renderer level so the panel opens
+    // even if the Electron menu accelerator doesn't round-trip (e.g. during
+    // HMR without a full preload reload). Prevents default so the OS print
+    // dialog doesn't appear over our panel.
+    const keyHandler = (e) => {
+      const isP = e.key === 'p' || e.key === 'P' || e.keyCode === 80;
+      if (isP && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
+        console.log('[PrintPanel] window keydown Cmd/Ctrl+P intercepted');
+        e.preventDefault();
+        e.stopPropagation();
+        openPanel('window keydown');
+      }
+    };
+    // Capture phase so we beat Syncfusion's and the browser's default print.
+    window.addEventListener('keydown', keyHandler, true);
+
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+      window.removeEventListener('keydown', keyHandler, true);
+    };
+  }, []);
+
+  // Pages data fed to the PrintPanel — derived from the Syncfusion-reported
+  // pageSizes map. Falls back to Letter portrait if sizes aren't populated yet
+  // so the panel still opens cleanly.
+  const printPanelPages = useMemo(() => {
+    const n = Number(numPages) || 0;
+    if (n <= 0) return [];
+    const list = [];
+    for (let i = 1; i <= n; i++) {
+      const ps = pageSizes?.[i];
+      const w = (ps && Number.isFinite(ps.width) && ps.width > 0) ? ps.width / 72 : 8.5;
+      const h = (ps && Number.isFinite(ps.height) && ps.height > 0) ? ps.height / 72 : 11;
+      list.push({ index: i, width: +w.toFixed(2), height: +h.toFixed(2), isLandscape: w > h });
+    }
+    return list;
+  }, [numPages, pageSizes]);
+
+  // UX 2026-04-23: the Print Panel's preview and thumbnail strip render every
+  // page on demand through PDF.js, NOT through Syncfusion's thumbnail cache.
+  // Syncfusion only holds a rendered canvas for pages the user has scrolled
+  // near, so reading from it left most preview slots blank or returning null.
+  // PDF.js is already loaded for the main app, so we reuse the same pdfDoc and
+  // cache each rasterized page by (pageNumber, targetWidth) for instant
+  // re-use when the user flips through pages or opens Bigger Preview.
+  const printPanelRenderCacheRef = useRef(new Map());
+  const printPanelInflightRef = useRef(new Map());
+  useEffect(() => {
+    // New document → drop any cached renders + in-flight promises.
+    printPanelRenderCacheRef.current = new Map();
+    printPanelInflightRef.current = new Map();
+  }, [pdfDoc]);
+
+  const printPanelGetThumbnail = useCallback(async (pageNumber, opts = {}) => {
+    const targetWidth = Math.max(40, Math.round(opts?.targetWidth || 140));
+    const key = `${pageNumber}:${targetWidth}`;
+    const cache = printPanelRenderCacheRef.current;
+    const inflight = printPanelInflightRef.current;
+    const cached = cache.get(key);
+    if (cached) return cached;
+    const pending = inflight.get(key);
+    if (pending) return pending;
+    if (!pdfDoc || typeof pdfDoc.getPage !== 'function') {
+      console.log(`[PrintPanel→App] pdfDoc not ready yet for page ${pageNumber}`);
+      return null;
+    }
+    const job = (async () => {
+      try {
+        const page = await pdfDoc.getPage(pageNumber);
+        const baseViewport = page.getViewport({ scale: 1 });
+        const scale = targetWidth / baseViewport.width;
+        const viewport = page.getViewport({ scale });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.floor(viewport.width));
+        canvas.height = Math.max(1, Math.floor(viewport.height));
+        const ctx = canvas.getContext('2d');
+        // White backing so transparent PDF regions don't render as black.
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        const result = {
+          src: canvas.toDataURL('image/png'),
+          width: canvas.width,
+          height: canvas.height,
+        };
+        cache.set(key, result);
+        console.log(`[PrintPanel→App] rendered page=${pageNumber} @ ${canvas.width}×${canvas.height} (target ${targetWidth}px)`);
+        return result;
+      } catch (err) {
+        console.warn(`[PrintPanel→App] render failed page=${pageNumber}:`, err?.message || err);
+        return null;
+      } finally {
+        inflight.delete(key);
+      }
+    })();
+    inflight.set(key, job);
+    return job;
+  }, [pdfDoc]);
+
+  const handlePrintPanelPrint = useCallback((jobSpec) => {
+    console.log('[PrintPanel] Print fired with spec:', jobSpec);
+    // v1 real-printer fire: hand off to Syncfusion's printModule.print().
+    // Per-page rotation / paper-size / color-mode overrides are captured in
+    // jobSpec.scopes but not yet applied to the output — that's the custom
+    // render pipeline we'll land in the next pass.
+    const viewer = syncfusionViewerRef.current?.getViewer?.()
+      || syncfusionViewerRef.current;
+    try {
+      if (viewer?.printModule?.print) {
+        viewer.printModule.print();
+      } else if (typeof viewer?.print === 'function') {
+        viewer.print();
+      } else {
+        window.print();
+      }
+    } catch (err) {
+      console.error('[PrintPanel] print error:', err);
+    }
+    setPrintPanelOpen(false);
+  }, []);
+
   // Show loading state when PDF is not loaded yet
   if (!pdfDoc || isLoadingPDF) {
     return (
@@ -26901,6 +27061,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           note before Submit. Lives here so it renders above every floating
           UI including the context menu below. */}
       <SaveLogBanner />
+      {/* UX 2026-04-23: custom Print Panel — replaces the OS print dialog and
+          Syncfusion's built-in print flow. Non-destructive: close/cancel
+          discards settings, Print fires to the selected printer. A temporary
+          J ↔ K variant toggle lives in its titlebar while we compare layouts. */}
+      <PrintPanel
+        open={printPanelOpen}
+        onClose={() => setPrintPanelOpen(false)}
+        onPrint={handlePrintPanelPrint}
+        docName={pdfFile?.name || 'Untitled.pdf'}
+        pages={printPanelPages}
+        printers={printPanelPrinters}
+        getThumbnail={printPanelGetThumbnail}
+      />
       {/* Annotation right-click menu. Anchored to pointer via fixed position.
           UX: stops propagation on its own mousedown so clicking an item doesn't
           also trigger the outside-click closer. Menu items depend on the

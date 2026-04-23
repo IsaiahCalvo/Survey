@@ -1646,42 +1646,10 @@ const SyncfusionPDFContainer = forwardRef(({
     }
   }, [getViewerInstance, interactionMode]);
 
-  // UX 2026-04-22: subscribe to the Electron "Print PDF…" menu event (Cmd+P)
-  // and invoke Syncfusion's print module. Logs every step so console output
-  // can be shared if anything goes sideways.
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.electronAPI?.onPrintPdf) {
-      console.log('[Print] electronAPI.onPrintPdf not available (web build or preload missing)');
-      return undefined;
-    }
-    console.log('[Print] menu listener mounted');
-    const unsubscribe = window.electronAPI.onPrintPdf(() => {
-      const viewer = getViewerInstance();
-      console.log('[Print] menu fired — viewer ready:', !!viewer, 'pageCount:', viewer?.pageCount);
-      if (!viewer) {
-        console.warn('[Print] no viewer available — open a PDF first');
-        return;
-      }
-      try {
-        if (viewer?.printModule?.print) {
-          console.log('[Print] calling viewer.printModule.print()');
-          viewer.printModule.print();
-        } else if (typeof viewer?.print === 'function') {
-          console.log('[Print] calling viewer.print()');
-          viewer.print();
-        } else {
-          console.warn('[Print] no viewer print method, falling back to window.print');
-          window.print();
-        }
-      } catch (err) {
-        console.error('[Print] error while printing:', err);
-      }
-    });
-    return () => {
-      console.log('[Print] menu listener unmounted');
-      if (typeof unsubscribe === 'function') unsubscribe();
-    };
-  }, [getViewerInstance]);
+  // UX 2026-04-23: Cmd+P no longer fires Syncfusion's built-in print directly.
+  // The top-level App component owns a custom PrintPanel component and opens
+  // it in response to `onPrintPdf`; Syncfusion's print module is still used as
+  // the real-printer fallback once the panel's Print button is pressed.
 
   useEffect(() => {
     const viewer = getViewerInstance();

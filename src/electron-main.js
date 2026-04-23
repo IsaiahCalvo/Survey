@@ -812,6 +812,59 @@ ipcMain.handle('fileWatcher:stop', async (event, watchId) => {
   }
 });
 
+// UX 2026-04-23: Custom Print Panel — enumerate installed printers for the
+// panel's destination picker. Prefers the modern async API and falls back to
+// the deprecated sync one if the Electron version lacks it.
+ipcMain.handle('print:list-printers', async (event) => {
+  try {
+    const webContents = event?.sender;
+    if (!webContents) return [];
+    if (typeof webContents.getPrintersAsync === 'function') {
+      const printers = await webContents.getPrintersAsync();
+      return Array.isArray(printers) ? printers : [];
+    }
+    if (typeof webContents.getPrinters === 'function') {
+      return webContents.getPrinters();
+    }
+    return [];
+  } catch (error) {
+    console.warn('[print:list-printers] failed:', error?.message || error);
+    return [];
+  }
+});
+
+// UX 2026-04-23: Fire the real print job from the renderer's webContents with
+// the Print Panel's options. Runs non-silent by default so the OS print
+// confirmation shows (copies, duplex, pageSize, deviceName all flow through).
+ipcMain.handle('print:job', async (event, options = {}) => {
+  try {
+    const webContents = event?.sender;
+    if (!webContents) return { ok: false, error: 'no webContents' };
+    const printOptions = {
+      silent: options.silent === true,
+      printBackground: options.printBackground !== false,
+      color: options.color !== false,
+      landscape: options.landscape === true,
+      copies: Math.max(1, parseInt(options.copies, 10) || 1),
+      collate: options.collate !== false,
+      pageRanges: Array.isArray(options.pageRanges) ? options.pageRanges : undefined,
+    };
+    if (options.deviceName) printOptions.deviceName = options.deviceName;
+    if (options.duplexMode) printOptions.duplexMode = options.duplexMode;
+    if (options.pageSize) printOptions.pageSize = options.pageSize;
+    if (options.margins) printOptions.margins = options.margins;
+    return await new Promise((resolve) => {
+      webContents.print(printOptions, (success, failureReason) => {
+        if (success) resolve({ ok: true });
+        else resolve({ ok: false, error: failureReason || 'print canceled or failed' });
+      });
+    });
+  } catch (error) {
+    console.error('[print:job] error:', error);
+    return { ok: false, error: error?.message || String(error) };
+  }
+});
+
 // UX 2026-04-22: Push the current Save Log dump to the Survey repo's "logs"
 // branch on GitHub, using whatever `gh` CLI auth the user already has. Each
 // save lands as its own timestamped file tagged with the device (platform +

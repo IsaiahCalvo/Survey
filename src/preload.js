@@ -75,6 +75,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // UX 2026-04-22: Save Log GitHub push. Returns { ok, url, filename, error }.
   pushLogToGithub: (content) => ipcRenderer.invoke('logs:pushToGithub', { content }),
 
+  // UX 2026-04-23: Custom Print Panel — list installed printers and fire a
+  // real print job with the panel's settings. `printJob` forwards the
+  // renderer's webContents.print() options (deviceName, copies, duplex, etc.)
+  // to the main process, which owns the BrowserWindow handle.
+  listPrinters: () => ipcRenderer.invoke('print:list-printers'),
+  printJob: (options) => ipcRenderer.invoke('print:job', options),
+
   // UX 2026-04-22: Auto-updater bridges — lets renderer trigger checks +
   // downloads + installs, and subscribe to progress/state events. No-ops in
   // development (handler returns { ok:false, error:'dev-mode' }).

@@ -1,0 +1,1285 @@
+chunk-DSUIPI7G.js:28440 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
+contextMenuDiagnostics.js:128 [CTXDIAG] installed — document-level capture dispatcher + bubble + right-button mousedown listeners
+main.jsx:18 [AnnotPerf] finalize idle (forced-reset) — deferring CSS transform removal, waiting for PAL confirmation
+main.jsx:18 [DebugBridge +6726.0ms] zoom_start Object
+main.jsx:18 [CSeries wipe] doc=SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26263753 totalCounters=0 legacyRemoved=0 — nothing to wipe.
+main.jsx:18 [PrintPanel] mount — binding Cmd/Ctrl+P listeners. electronAPI available: true onPrintPdf available: true
+main.jsx:18 [ZoomLive svg p1] Object
+main.jsx:18 [ZoomLive svg p1] Object
+main.jsx:18 [PrintPanel] RENDER — panel closed
+main.jsx:18 [ZoomLive svg p1] Object
+main.jsx:18 [ZoomLive svg p1] Object
+main.jsx:18 [ZoomLive svg p1] Object
+main.jsx:18 [DebugBridge +7960.5ms] zoom_end Object
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.91993, measuredPageScale=0.91993, committedPageScale=none, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=1126, overlayDivH=729, overlayDivTransform=none, overlayContentTransform=none
+main.jsx:18 [SVG-RENDER] Page 1 received 3 objects Array(3)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [SVG-RENDER] Page 5 received 16 objects Array(16)
+main.jsx:18 [SVG p5] render — 16 objs, viewBox=1224x792
+main.jsx:18 [SVG-RENDER] Page 6 received 22 objects Array(22)
+main.jsx:18 [SVG p6] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG-RENDER] Page 7 received 22 objects Array(22)
+main.jsx:18 [SVG p7] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG-RENDER] Page 8 received 24 objects Array(24)
+main.jsx:18 [SVG p8] render — 24 objs, viewBox=1224x792
+main.jsx:18 [SVG-RENDER] Page 9 received 23 objects Array(23)
+main.jsx:18 [SVG p9] render — 23 objs, viewBox=1224x792
+main.jsx:18 [SVG-RENDER] Page 10 received 26 objects Array(26)
+main.jsx:18 [SVG p10] render — 26 objs, viewBox=1224x792
+main.jsx:18 [SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+main.jsx:18 [SVG p1] MOUNT — 3 annotations, 0 callouts, viewBox=1224x792
+main.jsx:18 [SVG-Imported p1] renderSummary — imported=3, activeSpaceId=null, selectedSpaceId=null, activeRegionId=null, showSurveyPanel=false, rows=[{"id":"4540R","pdfType":"Ink","renderType":"path","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"4545R","pdfType":"Square","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"4549R","pdfType":"Polygon","renderType":"polygon","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null}]
+main.jsx:18 [SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+main.jsx:18 [SVG p5] MOUNT — 16 annotations, 0 callouts, viewBox=1224x792
+main.jsx:18 [SVG-Imported p5] renderSummary — imported=16, activeSpaceId=null, selectedSpaceId=null, activeRegionId=null, showSurveyPanel=false, rows=[{"id":"2277R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2276R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2275R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2274R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2273R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2272R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2271R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2270R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2269R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2268R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2267R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2266R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null}]
+main.jsx:18 [SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+main.jsx:18 [SVG p6] MOUNT — 22 annotations, 0 callouts, viewBox=1224x792
+main.jsx:18 [SVG-Imported p6] renderSummary — imported=22, activeSpaceId=null, selectedSpaceId=null, activeRegionId=null, showSurveyPanel=false, rows=[{"id":"2314R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2313R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2312R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2311R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2310R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2309R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2308R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2307R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2306R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2305R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2304R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2303R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null}]
+main.jsx:18 [SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+main.jsx:18 [SVG p7] MOUNT — 22 annotations, 0 callouts, viewBox=1224x792
+main.jsx:18 [SVG-Imported p7] renderSummary — imported=22, activeSpaceId=null, selectedSpaceId=null, activeRegionId=null, showSurveyPanel=false, rows=[{"id":"2342R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2341R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2340R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2339R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2338R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2337R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2336R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2335R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2334R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2333R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2332R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2331R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null}]
+main.jsx:18 [SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+main.jsx:18 [SVG p8] MOUNT — 24 annotations, 0 callouts, viewBox=1224x792
+main.jsx:18 [SVG-Imported p8] renderSummary — imported=24, activeSpaceId=null, selectedSpaceId=null, activeRegionId=null, showSurveyPanel=false, rows=[{"id":"2374R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2373R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2372R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2371R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2370R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2369R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2368R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2367R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2366R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2365R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2364R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2363R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null}]
+main.jsx:18 [SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+main.jsx:18 [SVG p9] MOUNT — 23 annotations, 0 callouts, viewBox=1224x792
+main.jsx:18 [SVG-Imported p9] renderSummary — imported=23, activeSpaceId=null, selectedSpaceId=null, activeRegionId=null, showSurveyPanel=false, rows=[{"id":"2405R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2404R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2403R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2402R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2401R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2400R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2399R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2398R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2397R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2396R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2395R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2394R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null}]
+main.jsx:18 [SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+main.jsx:18 [SVG p10] MOUNT — 26 annotations, 0 callouts, viewBox=1224x792
+main.jsx:18 [SVG-Imported p10] renderSummary — imported=26, activeSpaceId=null, selectedSpaceId=null, activeRegionId=null, showSurveyPanel=false, rows=[{"id":"2437R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2436R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2435R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2434R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2433R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2432R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2431R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2430R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2429R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2428R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2427R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2426R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null}]
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.91993, measuredPageScale=0.91993, committedPageScale=0.91993, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=1126, overlayDivH=729, overlayDivTransform=none, overlayContentTransform=none
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [SVG p5] render — 16 objs, viewBox=1224x792
+main.jsx:18 [SVG p6] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p7] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p8] render — 24 objs, viewBox=1224x792
+main.jsx:18 [SVG p9] render — 23 objs, viewBox=1224x792
+main.jsx:18 [SVG p10] render — 26 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.91993, measuredPageScale=0.91993, committedPageScale=0.91993, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=1126, overlayDivH=729, overlayDivTransform=none, overlayContentTransform=none
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [SVG p5] render — 16 objs, viewBox=1224x792
+main.jsx:18 [SVG p6] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p7] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p8] render — 24 objs, viewBox=1224x792
+main.jsx:18 [SVG p9] render — 23 objs, viewBox=1224x792
+main.jsx:18 [SVG p10] render — 26 objs, viewBox=1224x792
+main.jsx:18 [DebugBridge +8347.4ms] pdf_loaded Object
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.91993, measuredPageScale=0.91993, committedPageScale=0.91993, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=1126, overlayDivH=729, overlayDivTransform=none, overlayContentTransform=none
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [SVG p5] render — 16 objs, viewBox=1224x792
+main.jsx:18 [SVG p6] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p7] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p8] render — 24 objs, viewBox=1224x792
+main.jsx:18 [SVG p9] render — 23 objs, viewBox=1224x792
+main.jsx:18 [SVG p10] render — 26 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.91993, measuredPageScale=0.91993, committedPageScale=0.91993, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=1126, overlayDivH=729, overlayDivTransform=none, overlayContentTransform=none
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [SVG p5] render — 16 objs, viewBox=1224x792
+main.jsx:18 [SVG p6] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p7] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p8] render — 24 objs, viewBox=1224x792
+main.jsx:18 [SVG p9] render — 23 objs, viewBox=1224x792
+main.jsx:18 [SVG p10] render — 26 objs, viewBox=1224x792
+main.jsx:18 [DebugBridge +8393.3ms] zoom_start Object
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.10703, measuredPageScale=1.10703, committedPageScale=1.10703, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.3, storedOverlayTransformScale=1, syncfusionViewerScale=0.83, overlayDiv=true, overlayDivW=1355, overlayDivH=876, overlayDivTransform=none, overlayContentTransform=scale(8.3)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [SVG p5] render — 16 objs, viewBox=1224x792
+main.jsx:18 [SVG p6] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p7] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p8] render — 24 objs, viewBox=1224x792
+main.jsx:18 [SVG p9] render — 23 objs, viewBox=1224x792
+main.jsx:18 [SVG p10] render — 26 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.10703, measuredPageScale=1.10703, committedPageScale=1.10703, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.3, storedOverlayTransformScale=1, syncfusionViewerScale=0.83, overlayDiv=true, overlayDivW=1355, overlayDivH=876, overlayDivTransform=none, overlayContentTransform=scale(8.3)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [SVG p5] render — 16 objs, viewBox=1224x792
+main.jsx:18 [SVG p6] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p7] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p8] render — 24 objs, viewBox=1224x792
+main.jsx:18 [SVG p9] render — 23 objs, viewBox=1224x792
+main.jsx:18 [SVG p10] render — 26 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.10703, measuredPageScale=1.10703, committedPageScale=1.10703, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.3, storedOverlayTransformScale=1, syncfusionViewerScale=0.83, overlayDiv=true, overlayDivW=1355, overlayDivH=876, overlayDivTransform=none, overlayContentTransform=scale(8.3)
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.10703, measuredPageScale=1.10703, committedPageScale=1.10703, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.3, storedOverlayTransformScale=1, syncfusionViewerScale=0.83, overlayDiv=true, overlayDivW=1355, overlayDivH=876, overlayDivTransform=none, overlayContentTransform=scale(8.3)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [SVG p5] render — 16 objs, viewBox=1224x792
+main.jsx:18 [SVG p6] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p7] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p8] render — 24 objs, viewBox=1224x792
+main.jsx:18 [SVG p9] render — 23 objs, viewBox=1224x792
+main.jsx:18 [SVG p10] render — 26 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.10703, measuredPageScale=1.10703, committedPageScale=1.10703, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.3, storedOverlayTransformScale=1, syncfusionViewerScale=0.83, overlayDiv=true, overlayDivW=1355, overlayDivH=876, overlayDivTransform=none, overlayContentTransform=scale(8.3)
+main.jsx:18 [ZoomLive svg p1] Object
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.10703, measuredPageScale=0.8268, committedPageScale=1.10703, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=6.2, storedOverlayTransformScale=1, syncfusionViewerScale=0.62, overlayDiv=true, overlayDivW=1012, overlayDivH=655, overlayDivTransform=none, overlayContentTransform=scale(6.2)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [SVG p5] render — 16 objs, viewBox=1224x792
+main.jsx:18 [SVG p6] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p7] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p8] render — 24 objs, viewBox=1224x792
+main.jsx:18 [SVG p9] render — 23 objs, viewBox=1224x792
+main.jsx:18 [SVG p10] render — 26 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.8268, measuredPageScale=0.8268, committedPageScale=0.8268, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=6.2, storedOverlayTransformScale=1, syncfusionViewerScale=0.62, overlayDiv=true, overlayDivW=1012, overlayDivH=655, overlayDivTransform=none, overlayContentTransform=scale(6.2)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [SVG p5] render — 16 objs, viewBox=1224x792
+main.jsx:18 [SVG p6] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p7] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p8] render — 24 objs, viewBox=1224x792
+main.jsx:18 [SVG p9] render — 23 objs, viewBox=1224x792
+main.jsx:18 [SVG p10] render — 26 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.8268, measuredPageScale=0.8268, committedPageScale=0.8268, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=6.2, storedOverlayTransformScale=1, syncfusionViewerScale=0.62, overlayDiv=true, overlayDivW=1012, overlayDivH=655, overlayDivTransform=none, overlayContentTransform=scale(6.2)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [SVG p5] render — 16 objs, viewBox=1224x792
+main.jsx:18 [SVG p6] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p7] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p8] render — 24 objs, viewBox=1224x792
+main.jsx:18 [SVG p9] render — 23 objs, viewBox=1224x792
+main.jsx:18 [SVG p10] render — 26 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.8268, measuredPageScale=0.8268, committedPageScale=0.8268, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=6.2, storedOverlayTransformScale=1, syncfusionViewerScale=0.62, overlayDiv=true, overlayDivW=1012, overlayDivH=655, overlayDivTransform=none, overlayContentTransform=scale(6.2)
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.8268, measuredPageScale=0.8268, committedPageScale=0.8268, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=6.2, storedOverlayTransformScale=1, syncfusionViewerScale=0.62, overlayDiv=true, overlayDivW=1012, overlayDivH=655, overlayDivTransform=none, overlayContentTransform=scale(6.2)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [SVG p5] render — 16 objs, viewBox=1224x792
+main.jsx:18 [SVG p6] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p7] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p8] render — 24 objs, viewBox=1224x792
+main.jsx:18 [SVG p9] render — 23 objs, viewBox=1224x792
+main.jsx:18 [SVG p10] render — 26 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.8268, measuredPageScale=0.8268, committedPageScale=0.8268, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=6.2, storedOverlayTransformScale=1, syncfusionViewerScale=0.62, overlayDiv=true, overlayDivW=1012, overlayDivH=655, overlayDivTransform=none, overlayContentTransform=scale(6.2)
+main.jsx:18 [ZoomLive svg p1] Object
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.8268, measuredPageScale=0.8268, committedPageScale=0.8268, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=6.2, storedOverlayTransformScale=1, syncfusionViewerScale=0.62, overlayDiv=true, overlayDivW=1012, overlayDivH=655, overlayDivTransform=none, overlayContentTransform=scale(6.2)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [SVG p5] render — 16 objs, viewBox=1224x792
+main.jsx:18 [SVG p6] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p7] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p8] render — 24 objs, viewBox=1224x792
+main.jsx:18 [SVG p9] render — 23 objs, viewBox=1224x792
+main.jsx:18 [SVG p10] render — 26 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.8268, measuredPageScale=0.8268, committedPageScale=0.8268, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=6.2, storedOverlayTransformScale=1, syncfusionViewerScale=0.62, overlayDiv=true, overlayDivW=1012, overlayDivH=655, overlayDivTransform=none, overlayContentTransform=scale(6.2)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [SVG p5] render — 16 objs, viewBox=1224x792
+main.jsx:18 [SVG p6] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p7] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p8] render — 24 objs, viewBox=1224x792
+main.jsx:18 [SVG p9] render — 23 objs, viewBox=1224x792
+main.jsx:18 [SVG p10] render — 26 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.8268, measuredPageScale=0.8268, committedPageScale=0.8268, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=6.2, storedOverlayTransformScale=1, syncfusionViewerScale=0.62, overlayDiv=true, overlayDivW=1012, overlayDivH=655, overlayDivTransform=none, overlayContentTransform=scale(6.2)
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.8268, measuredPageScale=0.8268, committedPageScale=0.8268, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=6.2, storedOverlayTransformScale=1, syncfusionViewerScale=0.62, overlayDiv=true, overlayDivW=1012, overlayDivH=655, overlayDivTransform=none, overlayContentTransform=scale(6.2)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [SVG p5] render — 16 objs, viewBox=1224x792
+main.jsx:18 [SVG p6] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p7] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p8] render — 24 objs, viewBox=1224x792
+main.jsx:18 [SVG p9] render — 23 objs, viewBox=1224x792
+main.jsx:18 [SVG p10] render — 26 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.8268, measuredPageScale=0.8268, committedPageScale=0.8268, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=6.2, storedOverlayTransformScale=1, syncfusionViewerScale=0.62, overlayDiv=true, overlayDivW=1012, overlayDivH=655, overlayDivTransform=none, overlayContentTransform=scale(6.2)
+main.jsx:18 [ZoomLive svg p1] Object
+main.jsx:18 [HyperlinkDiag] post-load scan Object
+main.jsx:18 [HyperlinkDiag] page 1 layers Object
+main.jsx:18 [HyperlinkDiag] page 2 layers Object
+main.jsx:18 [HyperlinkDiag] page 3 layers Object
+main.jsx:18 [HyperlinkDiag] page 4 layers Object
+main.jsx:18 [HyperlinkDiag] page 5 layers Object
+main.jsx:18 [HyperlinkDiag] page 6 layers Object
+main.jsx:18 [HyperlinkDiag] page 7 layers Object
+main.jsx:18 [HyperlinkDiag] page 8 layers Object
+main.jsx:18 [HyperlinkDiag] page 9 layers Object
+main.jsx:18 [HyperlinkDiag] page 10 layers Object
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.8268, measuredPageScale=1.08415, committedPageScale=0.8268, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.13131, storedOverlayTransformScale=1, syncfusionViewerScale=0.81, overlayDiv=true, overlayDivW=1327, overlayDivH=859, overlayDivTransform=none, overlayContentTransform=scale(8.13131)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [SVG p5] render — 16 objs, viewBox=1224x792
+main.jsx:18 [SVG p6] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p7] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p8] render — 24 objs, viewBox=1224x792
+main.jsx:18 [SVG p9] render — 23 objs, viewBox=1224x792
+main.jsx:18 [SVG p10] render — 26 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.8268, measuredPageScale=1.08415, committedPageScale=0.8268, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.13131, storedOverlayTransformScale=1, syncfusionViewerScale=0.81, overlayDiv=true, overlayDivW=1327, overlayDivH=859, overlayDivTransform=none, overlayContentTransform=scale(8.13131)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [SVG p5] render — 16 objs, viewBox=1224x792
+main.jsx:18 [SVG p6] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p7] render — 22 objs, viewBox=1224x792
+main.jsx:18 [SVG p8] render — 24 objs, viewBox=1224x792
+main.jsx:18 [SVG p9] render — 23 objs, viewBox=1224x792
+main.jsx:18 [SVG p10] render — 26 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.8268, measuredPageScale=1.08415, committedPageScale=0.8268, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.13131, storedOverlayTransformScale=1, syncfusionViewerScale=0.81, overlayDiv=true, overlayDivW=1327, overlayDivH=859, overlayDivTransform=none, overlayContentTransform=scale(8.13131)
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.8268, measuredPageScale=1.08415, committedPageScale=0.8268, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.13131, storedOverlayTransformScale=1, syncfusionViewerScale=0.81, overlayDiv=true, overlayDivW=1327, overlayDivH=859, overlayDivTransform=none, overlayContentTransform=scale(8.13131)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.8268, measuredPageScale=1.08742, committedPageScale=0.8268, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.15657, storedOverlayTransformScale=1, syncfusionViewerScale=0.81, overlayDiv=true, overlayDivW=1331, overlayDivH=861, overlayDivTransform=none, overlayContentTransform=scale(8.15657)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.8268, measuredPageScale=1.08742, committedPageScale=0.8268, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.15657, storedOverlayTransformScale=1, syncfusionViewerScale=0.81, overlayDiv=true, overlayDivW=1331, overlayDivH=861, overlayDivTransform=none, overlayContentTransform=scale(8.15657)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.8268, measuredPageScale=1.08742, committedPageScale=0.8268, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.15657, storedOverlayTransformScale=1, syncfusionViewerScale=0.81, overlayDiv=true, overlayDivW=1331, overlayDivH=861, overlayDivTransform=none, overlayContentTransform=scale(8.15657)
+main.jsx:18 [ZoomLive svg p1] Object
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.08742, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.15657, storedOverlayTransformScale=1, syncfusionViewerScale=0.81, overlayDiv=true, overlayDivW=1331, overlayDivH=861, overlayDivTransform=none, overlayContentTransform=scale(8.15657)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.08742, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.15657, storedOverlayTransformScale=1, syncfusionViewerScale=0.81, overlayDiv=true, overlayDivW=1331, overlayDivH=861, overlayDivTransform=none, overlayContentTransform=scale(8.15657)
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.09232, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.19444, storedOverlayTransformScale=1, syncfusionViewerScale=0.81, overlayDiv=true, overlayDivW=1337, overlayDivH=865, overlayDivTransform=none, overlayContentTransform=scale(8.19444)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.09232, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.19444, storedOverlayTransformScale=1, syncfusionViewerScale=0.81, overlayDiv=true, overlayDivW=1337, overlayDivH=865, overlayDivTransform=none, overlayContentTransform=scale(8.19444)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.09232, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.19444, storedOverlayTransformScale=1, syncfusionViewerScale=0.81, overlayDiv=true, overlayDivW=1337, overlayDivH=865, overlayDivTransform=none, overlayContentTransform=scale(8.19444)
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.09232, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.19444, storedOverlayTransformScale=1, syncfusionViewerScale=0.81, overlayDiv=true, overlayDivW=1337, overlayDivH=865, overlayDivTransform=none, overlayContentTransform=scale(8.19444)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.09967, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.24495, storedOverlayTransformScale=1, syncfusionViewerScale=0.82, overlayDiv=true, overlayDivW=1346, overlayDivH=871, overlayDivTransform=none, overlayContentTransform=scale(8.24495)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.09967, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.24495, storedOverlayTransformScale=1, syncfusionViewerScale=0.82, overlayDiv=true, overlayDivW=1346, overlayDivH=871, overlayDivTransform=none, overlayContentTransform=scale(8.24495)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.09967, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.24495, storedOverlayTransformScale=1, syncfusionViewerScale=0.82, overlayDiv=true, overlayDivW=1346, overlayDivH=871, overlayDivTransform=none, overlayContentTransform=scale(8.24495)
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.09967, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.24495, storedOverlayTransformScale=1, syncfusionViewerScale=0.82, overlayDiv=true, overlayDivW=1346, overlayDivH=871, overlayDivTransform=none, overlayContentTransform=scale(8.24495)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.10621, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.29545, storedOverlayTransformScale=1, syncfusionViewerScale=0.82, overlayDiv=true, overlayDivW=1354, overlayDivH=876, overlayDivTransform=none, overlayContentTransform=scale(8.29545)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.10621, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.29545, storedOverlayTransformScale=1, syncfusionViewerScale=0.82, overlayDiv=true, overlayDivW=1354, overlayDivH=876, overlayDivTransform=none, overlayContentTransform=scale(8.29545)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.10621, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.29545, storedOverlayTransformScale=1, syncfusionViewerScale=0.82, overlayDiv=true, overlayDivW=1354, overlayDivH=876, overlayDivTransform=none, overlayContentTransform=scale(8.29545)
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.10621, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.29545, storedOverlayTransformScale=1, syncfusionViewerScale=0.82, overlayDiv=true, overlayDivW=1354, overlayDivH=876, overlayDivTransform=none, overlayContentTransform=scale(8.29545)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.11111, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.33333, storedOverlayTransformScale=1, syncfusionViewerScale=0.83, overlayDiv=true, overlayDivW=1360, overlayDivH=880, overlayDivTransform=none, overlayContentTransform=scale(8.33333)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.11111, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.33333, storedOverlayTransformScale=1, syncfusionViewerScale=0.83, overlayDiv=true, overlayDivW=1360, overlayDivH=880, overlayDivTransform=none, overlayContentTransform=scale(8.33333)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.11111, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.33333, storedOverlayTransformScale=1, syncfusionViewerScale=0.83, overlayDiv=true, overlayDivW=1360, overlayDivH=880, overlayDivTransform=none, overlayContentTransform=scale(8.33333)
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.11111, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.33333, storedOverlayTransformScale=1, syncfusionViewerScale=0.83, overlayDiv=true, overlayDivW=1360, overlayDivH=880, overlayDivTransform=none, overlayContentTransform=scale(8.33333)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.11928, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.39646, storedOverlayTransformScale=1, syncfusionViewerScale=0.83, overlayDiv=true, overlayDivW=1370, overlayDivH=887, overlayDivTransform=none, overlayContentTransform=scale(8.39646)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.11928, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.39646, storedOverlayTransformScale=1, syncfusionViewerScale=0.83, overlayDiv=true, overlayDivW=1370, overlayDivH=887, overlayDivTransform=none, overlayContentTransform=scale(8.39646)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.11928, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.39646, storedOverlayTransformScale=1, syncfusionViewerScale=0.83, overlayDiv=true, overlayDivW=1370, overlayDivH=887, overlayDivTransform=none, overlayContentTransform=scale(8.39646)
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.11928, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.39646, storedOverlayTransformScale=1, syncfusionViewerScale=0.83, overlayDiv=true, overlayDivW=1370, overlayDivH=887, overlayDivTransform=none, overlayContentTransform=scale(8.39646)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.12827, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.4596, storedOverlayTransformScale=1, syncfusionViewerScale=0.84, overlayDiv=true, overlayDivW=1381, overlayDivH=893, overlayDivTransform=none, overlayContentTransform=scale(8.4596)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.12827, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.4596, storedOverlayTransformScale=1, syncfusionViewerScale=0.84, overlayDiv=true, overlayDivW=1381, overlayDivH=893, overlayDivTransform=none, overlayContentTransform=scale(8.4596)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.12827, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.4596, storedOverlayTransformScale=1, syncfusionViewerScale=0.84, overlayDiv=true, overlayDivW=1381, overlayDivH=893, overlayDivTransform=none, overlayContentTransform=scale(8.4596)
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.12827, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.4596, storedOverlayTransformScale=1, syncfusionViewerScale=0.84, overlayDiv=true, overlayDivW=1381, overlayDivH=893, overlayDivTransform=none, overlayContentTransform=scale(8.4596)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.1348, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.5101, storedOverlayTransformScale=1, syncfusionViewerScale=0.85, overlayDiv=true, overlayDivW=1389, overlayDivH=899, overlayDivTransform=none, overlayContentTransform=scale(8.5101)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.1348, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.5101, storedOverlayTransformScale=1, syncfusionViewerScale=0.85, overlayDiv=true, overlayDivW=1389, overlayDivH=899, overlayDivTransform=none, overlayContentTransform=scale(8.5101)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.1348, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.5101, storedOverlayTransformScale=1, syncfusionViewerScale=0.85, overlayDiv=true, overlayDivW=1389, overlayDivH=899, overlayDivTransform=none, overlayContentTransform=scale(8.5101)
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.1348, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.5101, storedOverlayTransformScale=1, syncfusionViewerScale=0.85, overlayDiv=true, overlayDivW=1389, overlayDivH=899, overlayDivTransform=none, overlayContentTransform=scale(8.5101)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.14297, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.57323, storedOverlayTransformScale=1, syncfusionViewerScale=0.85, overlayDiv=true, overlayDivW=1399, overlayDivH=905, overlayDivTransform=none, overlayContentTransform=scale(8.57323)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.14297, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.57323, storedOverlayTransformScale=1, syncfusionViewerScale=0.85, overlayDiv=true, overlayDivW=1399, overlayDivH=905, overlayDivTransform=none, overlayContentTransform=scale(8.57323)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.14297, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.57323, storedOverlayTransformScale=1, syncfusionViewerScale=0.85, overlayDiv=true, overlayDivW=1399, overlayDivH=905, overlayDivTransform=none, overlayContentTransform=scale(8.57323)
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.14297, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.57323, storedOverlayTransformScale=1, syncfusionViewerScale=0.85, overlayDiv=true, overlayDivW=1399, overlayDivH=905, overlayDivTransform=none, overlayContentTransform=scale(8.57323)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.14788, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.61111, storedOverlayTransformScale=1, syncfusionViewerScale=0.86, overlayDiv=true, overlayDivW=1405, overlayDivH=909, overlayDivTransform=none, overlayContentTransform=scale(8.61111)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.14788, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.61111, storedOverlayTransformScale=1, syncfusionViewerScale=0.86, overlayDiv=true, overlayDivW=1405, overlayDivH=909, overlayDivTransform=none, overlayContentTransform=scale(8.61111)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.14788, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.61111, storedOverlayTransformScale=1, syncfusionViewerScale=0.86, overlayDiv=true, overlayDivW=1405, overlayDivH=909, overlayDivTransform=none, overlayContentTransform=scale(8.61111)
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.14788, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.61111, storedOverlayTransformScale=1, syncfusionViewerScale=0.86, overlayDiv=true, overlayDivW=1405, overlayDivH=909, overlayDivTransform=none, overlayContentTransform=scale(8.61111)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.15114, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.63636, storedOverlayTransformScale=1, syncfusionViewerScale=0.86, overlayDiv=true, overlayDivW=1409, overlayDivH=912, overlayDivTransform=none, overlayContentTransform=scale(8.63636)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.15114, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.63636, storedOverlayTransformScale=1, syncfusionViewerScale=0.86, overlayDiv=true, overlayDivW=1409, overlayDivH=912, overlayDivTransform=none, overlayContentTransform=scale(8.63636)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.15114, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.63636, storedOverlayTransformScale=1, syncfusionViewerScale=0.86, overlayDiv=true, overlayDivW=1409, overlayDivH=912, overlayDivTransform=none, overlayContentTransform=scale(8.63636)
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.15114, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.63636, storedOverlayTransformScale=1, syncfusionViewerScale=0.86, overlayDiv=true, overlayDivW=1409, overlayDivH=912, overlayDivTransform=none, overlayContentTransform=scale(8.63636)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.16013, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.69949, storedOverlayTransformScale=1, syncfusionViewerScale=0.86, overlayDiv=true, overlayDivW=1420, overlayDivH=919, overlayDivTransform=none, overlayContentTransform=scale(8.69949)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.16013, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.69949, storedOverlayTransformScale=1, syncfusionViewerScale=0.86, overlayDiv=true, overlayDivW=1420, overlayDivH=919, overlayDivTransform=none, overlayContentTransform=scale(8.69949)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.16013, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.69949, storedOverlayTransformScale=1, syncfusionViewerScale=0.86, overlayDiv=true, overlayDivW=1420, overlayDivH=919, overlayDivTransform=none, overlayContentTransform=scale(8.69949)
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.16013, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.69949, storedOverlayTransformScale=1, syncfusionViewerScale=0.86, overlayDiv=true, overlayDivW=1420, overlayDivH=919, overlayDivTransform=none, overlayContentTransform=scale(8.69949)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.16503, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.73737, storedOverlayTransformScale=1, syncfusionViewerScale=0.87, overlayDiv=true, overlayDivW=1426, overlayDivH=923, overlayDivTransform=none, overlayContentTransform=scale(8.73737)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.16503, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.73737, storedOverlayTransformScale=1, syncfusionViewerScale=0.87, overlayDiv=true, overlayDivW=1426, overlayDivH=923, overlayDivTransform=none, overlayContentTransform=scale(8.73737)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.16503, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.73737, storedOverlayTransformScale=1, syncfusionViewerScale=0.87, overlayDiv=true, overlayDivW=1426, overlayDivH=923, overlayDivTransform=none, overlayContentTransform=scale(8.73737)
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.16503, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.73737, storedOverlayTransformScale=1, syncfusionViewerScale=0.87, overlayDiv=true, overlayDivW=1426, overlayDivH=923, overlayDivTransform=none, overlayContentTransform=scale(8.73737)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.18546, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.88889, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1451, overlayDivH=939, overlayDivTransform=none, overlayContentTransform=scale(8.88889)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.18546, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.88889, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1451, overlayDivH=939, overlayDivTransform=none, overlayContentTransform=scale(8.88889)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.18546, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.88889, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1451, overlayDivH=939, overlayDivTransform=none, overlayContentTransform=scale(8.88889)
+main.jsx:18 [ZoomLive svg p1] Object
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.18546, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.88889, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1451, overlayDivH=939, overlayDivTransform=none, overlayContentTransform=scale(8.88889)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.17157, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.78788, storedOverlayTransformScale=1, syncfusionViewerScale=0.87, overlayDiv=true, overlayDivW=1434, overlayDivH=928, overlayDivTransform=none, overlayContentTransform=scale(8.78788)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.17157, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.78788, storedOverlayTransformScale=1, syncfusionViewerScale=0.87, overlayDiv=true, overlayDivW=1434, overlayDivH=928, overlayDivTransform=none, overlayContentTransform=scale(8.78788)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.17157, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.78788, storedOverlayTransformScale=1, syncfusionViewerScale=0.87, overlayDiv=true, overlayDivW=1434, overlayDivH=928, overlayDivTransform=none, overlayContentTransform=scale(8.78788)
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.17157, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.78788, storedOverlayTransformScale=1, syncfusionViewerScale=0.87, overlayDiv=true, overlayDivW=1434, overlayDivH=928, overlayDivTransform=none, overlayContentTransform=scale(8.78788)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.19036, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.92677, storedOverlayTransformScale=1, syncfusionViewerScale=0.89, overlayDiv=true, overlayDivW=1457, overlayDivH=943, overlayDivTransform=none, overlayContentTransform=scale(8.92677)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.19036, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.92677, storedOverlayTransformScale=1, syncfusionViewerScale=0.89, overlayDiv=true, overlayDivW=1457, overlayDivH=943, overlayDivTransform=none, overlayContentTransform=scale(8.92677)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.19036, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.92677, storedOverlayTransformScale=1, syncfusionViewerScale=0.89, overlayDiv=true, overlayDivW=1457, overlayDivH=943, overlayDivTransform=none, overlayContentTransform=scale(8.92677)
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.19036, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.92677, storedOverlayTransformScale=1, syncfusionViewerScale=0.89, overlayDiv=true, overlayDivW=1457, overlayDivH=943, overlayDivTransform=none, overlayContentTransform=scale(8.92677)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.1732, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.1732, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.1732, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.1732, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.1732, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+main.jsx:18 [ZoomLive svg p1] Object
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.08742, measuredPageScale=1.1732, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [ZoomLive svg p1] Object
+main.jsx:18 [ZoomLive svg p1] Object
+main.jsx:18 [ZoomLive svg p1] Object
+main.jsx:18 [DebugBridge +10613.7ms] zoom_end Object
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.08742, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+main.jsx:18 [PrintPanel] window keydown Cmd/Ctrl+P intercepted
+main.jsx:18 [PrintPanel] OPEN requested via window keydown
+main.jsx:18 [PrintPanel] listing printers…
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [PrintPanel][J] rail mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] pp-mid mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] fetchThumbs start, getThumbnail type: function
+main.jsx:18 [PrintPanel] fetchPreview start page=1
+main.jsx:18 [PrintPanel] RENDER — panel opened with Object
+main.jsx:18 [PrintPanel] variant = J
+main.jsx:18 [PrintPanel] pagesToPrint = 1-99 → included: 99
+main.jsx:18 [PrintPanel] currentPage = 1
+main.jsx:18 [PrintPanel] paperSize = auto fitMode = proportional
+main.jsx:18 [PrintPanel] orientation = auto-portrait
+main.jsx:18 [PrintPanel] mirrorH = false mirrorV = false
+main.jsx:18 [PrintPanel] markupsOn = true colorOn = true
+main.jsx:18 [PrintPanel] copies = 1 collate = true duplex = false
+main.jsx:18 [PrintPanel] destination = default
+main.jsx:18 [PrintPanel][J] paperScope = Object
+main.jsx:18 [PrintPanel][J] orientScope = Object
+main.jsx:18 [PrintPanel][J] outputScope = Object
+main.jsx:18 [PrintPanel] bigPreviewOpen = false
+main.jsx:18 [PrintPanel] thumb ready page=1 (140×91)
+main.jsx:18 [PrintPanel] preview ready page=1 (140×91)
+main.jsx:18 [PrintPanel][J] rail mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] pp-mid mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] thumb ready page=2 (140×91)
+main.jsx:18 [PrintPanel][J] rail mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] pp-mid mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] thumb ready page=3 (140×91)
+main.jsx:18 [PrintPanel][J] rail mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] pp-mid mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] thumb ready page=4 (140×91)
+main.jsx:18 [PrintPanel][J] rail mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] pp-mid mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] listPrinters returned 3 entries
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [PrintPanel][J] rail mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] pp-mid mounted, rect: DOMRect
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [PrintPanel][J] rail mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] pp-mid mounted, rect: DOMRect
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+main.jsx:18 [SVG-RENDER] Page 1 received 3 objects Array(3)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [PrintPanel][J] rail mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] pp-mid mounted, rect: DOMRect
+main.jsx:18 [Diag] tool-switch DETECTED → select (scheduling t+1000ms capture)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [PrintPanel] thumb click page=2 alt=false meta=false currentlyIncluded=true
+main.jsx:18 [PrintPanel][J] rail mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] pp-mid mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] fetchThumbs start, getThumbnail type: function
+main.jsx:18 [PrintPanel] fetchPreview start page=2
+main.jsx:18 [PrintPanel] currentPage = 2
+main.jsx:18 [PrintPanel] preview ready page=2 (140×91)
+main.jsx:18 [PrintPanel][J] rail mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] pp-mid mounted, rect: DOMRect
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [PrintPanel][J] rail mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] pp-mid mounted, rect: DOMRect
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [PrintPanel] thumb click page=3 alt=false meta=false currentlyIncluded=true
+main.jsx:18 [PrintPanel][J] rail mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] pp-mid mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] fetchThumbs start, getThumbnail type: function
+main.jsx:18 [PrintPanel] fetchPreview start page=3
+main.jsx:18 [PrintPanel] currentPage = 3
+main.jsx:18 [PrintPanel] preview ready page=3 (140×91)
+main.jsx:18 [PrintPanel][J] rail mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] pp-mid mounted, rect: DOMRect
+main.jsx:18 [Diag select] screenshot saved (389 KB) → /Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/TestLogs/testlog-screenshot-select.png
+main.jsx:18 [Diag select] CAPTURED @ t+1002ms — annotations=3 callouts=0 svgWrappers=1 svgVis=[visible] svgElems=3 svgVisElems=3 eraserCanvases=0 svgMarkupBytes=27388
+main.jsx:18 [PrintPanel] thumb click page=4 alt=false meta=false currentlyIncluded=true
+main.jsx:18 [PrintPanel][J] rail mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] pp-mid mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] fetchThumbs start, getThumbnail type: function
+main.jsx:18 [PrintPanel] fetchPreview start page=4
+main.jsx:18 [PrintPanel] currentPage = 4
+main.jsx:18 [PrintPanel] preview ready page=4 (140×91)
+main.jsx:18 [PrintPanel][J] rail mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] pp-mid mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] thumb click page=5 alt=false meta=false currentlyIncluded=true
+main.jsx:18 [PrintPanel][J] rail mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] pp-mid mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] fetchThumbs start, getThumbnail type: function
+main.jsx:18 [PrintPanel] fetchPreview start page=5
+main.jsx:18 [PrintPanel] currentPage = 5
+main.jsx:18 [PrintPanel] thumb click page=4 alt=false meta=false currentlyIncluded=true
+main.jsx:18 [PrintPanel][J] rail mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] pp-mid mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] fetchThumbs start, getThumbnail type: function
+main.jsx:18 [PrintPanel] fetchPreview start page=4
+main.jsx:18 [PrintPanel] currentPage = 4
+main.jsx:18 [PrintPanel] preview ready page=4 (140×91)
+main.jsx:18 [PrintPanel][J] rail mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] pp-mid mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] thumb not yet ready page=5 (returned null)
+main.jsx:18 [PrintPanel][K] rail mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] pp-mid mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] variant = K
+main.jsx:18 [PrintPanel][K] kScope = all kSelectRange = 
+main.jsx:18 [PrintPanel] thumb not yet ready page=6 (returned null)
+main.jsx:18 [PrintPanel][K] rail mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] pp-mid mounted, rect: DOMRect
+main.jsx:18 [PrintPanel][K] kScope = select kSelectRange = 
+main.jsx:18 [PrintPanel][K] rail mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] pp-mid mounted, rect: DOMRect
+main.jsx:18 [PrintPanel][K] kScope = current kSelectRange = 
+main.jsx:18 [PrintPanel] thumb not yet ready page=7 (returned null)
+main.jsx:18 [PrintPanel] thumb click page=30 alt=false meta=false currentlyIncluded=true
+main.jsx:18 [PrintPanel][K] rail mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] pp-mid mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] fetchThumbs start, getThumbnail type: function
+main.jsx:18 [PrintPanel] fetchPreview start page=30
+main.jsx:18 [PrintPanel] currentPage = 30
+main.jsx:18 [PrintPanel] thumb click page=34 alt=false meta=false currentlyIncluded=true
+main.jsx:18 [PrintPanel][K] rail mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] pp-mid mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] fetchThumbs start, getThumbnail type: function
+main.jsx:18 [PrintPanel] fetchPreview start page=34
+main.jsx:18 [PrintPanel] currentPage = 34
+main.jsx:18 [PrintPanel] thumb click page=33 alt=false meta=false currentlyIncluded=true
+main.jsx:18 [PrintPanel][K] rail mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] pp-mid mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] fetchThumbs start, getThumbnail type: function
+main.jsx:18 [PrintPanel] fetchPreview start page=33
+main.jsx:18 [PrintPanel] currentPage = 33
+main.jsx:18 [PrintPanel] thumb click page=27 alt=false meta=false currentlyIncluded=true
+main.jsx:18 [PrintPanel][K] rail mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] pp-mid mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] fetchThumbs start, getThumbnail type: function
+main.jsx:18 [PrintPanel] fetchPreview start page=27
+main.jsx:18 [PrintPanel] currentPage = 27
+main.jsx:18 [PrintPanel] thumb not yet ready page=27 (returned null)
+main.jsx:18 [PrintPanel] preview not ready page=27
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [PrintPanel][K] rail mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] pp-mid mounted, rect: DOMRect
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [PrintPanel][K] rail mounted, rect: DOMRect
+main.jsx:18 [PrintPanel] pp-mid mounted, rect: DOMRect
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+main.jsx:18 [PrintPanel] thumb not yet ready page=26 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=28 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=25 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=29 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=24 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=30 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=23 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=31 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=22 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=32 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=21 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=33 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=20 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=34 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=19 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=35 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=18 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=36 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=17 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=37 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=16 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=38 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=15 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=39 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=14 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=40 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=13 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=41 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=12 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=42 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=11 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=43 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=10 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=44 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=9 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=45 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=8 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=46 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=7 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=47 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=6 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=48 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=5 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=49 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=50 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=51 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=52 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=53 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=54 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=55 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=56 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=57 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=58 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=59 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=60 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=61 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=62 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=63 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=64 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=65 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=66 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=67 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=68 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=69 (returned null)
+main.jsx:18 [PrintPanel] thumb not yet ready page=70 (returned null)
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [PrintPanel][K] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+main.jsx:18 [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [PrintPanel][K] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+main.jsx:18 [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+main.jsx:18 [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+main.jsx:18 [SVG p1] render — 3 objs, viewBox=1224x792
+main.jsx:18 [PrintPanel][K] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+ [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+ [SVG p1] render — 3 objs, viewBox=1224x792
+ [PrintPanel][K] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+ [SVG p1] render — 3 objs, viewBox=1224x792
+ [PrintPanel][K] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+ [SVG p1] render — 3 objs, viewBox=1224x792
+ [PrintPanel][K] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+ [SVG p1] render — 3 objs, viewBox=1224x792
+ [PrintPanel][K] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+ [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+ [SVG p1] render — 3 objs, viewBox=1224x792
+ [PrintPanel][K] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+ [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+ [SVG p1] render — 3 objs, viewBox=1224x792
+ [PrintPanel][K] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+ [SVG p1] render — 3 objs, viewBox=1224x792
+ [PrintPanel][K] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=1.1732, measuredPageScale=1.1732, committedPageScale=1.1732, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=8.80051, storedOverlayTransformScale=1, syncfusionViewerScale=0.88, overlayDiv=true, overlayDivW=1436, overlayDivH=929, overlayDivTransform=none, overlayContentTransform=scale(8.80051)
+ [PrintPanel] thumb not yet ready page=71 (returned null)
+ [PrintPanel] thumb not yet ready page=72 (returned null)
+ [PrintPanel] thumb not yet ready page=73 (returned null)
+ [PrintPanel] thumb not yet ready page=74 (returned null)
+ [PrintPanel] thumb not yet ready page=75 (returned null)
+ [PrintPanel] thumb not yet ready page=76 (returned null)
+ [PrintPanel] thumb not yet ready page=77 (returned null)
+ [PrintPanel] thumb not yet ready page=78 (returned null)
+ [PrintPanel] thumb not yet ready page=79 (returned null)
+ [PrintPanel] thumb not yet ready page=80 (returned null)
+ [PrintPanel] thumb not yet ready page=81 (returned null)
+ [PrintPanel] thumb not yet ready page=82 (returned null)
+ [PrintPanel] thumb not yet ready page=83 (returned null)
+ [PrintPanel] thumb not yet ready page=84 (returned null)
+ [PrintPanel] thumb not yet ready page=85 (returned null)
+ [PrintPanel] thumb not yet ready page=86 (returned null)
+ [PrintPanel] thumb not yet ready page=87 (returned null)
+ [PrintPanel] thumb not yet ready page=88 (returned null)
+ [PrintPanel] thumb not yet ready page=89 (returned null)
+ [PrintPanel] thumb not yet ready page=90 (returned null)
+ [PrintPanel] thumb not yet ready page=91 (returned null)
+ [PrintPanel] thumb not yet ready page=92 (returned null)
+ [PrintPanel] thumb not yet ready page=93 (returned null)
+ [PrintPanel] thumb not yet ready page=94 (returned null)
+ [PrintPanel] thumb not yet ready page=95 (returned null)
+ [PrintPanel] thumb not yet ready page=96 (returned null)
+ [PrintPanel] thumb not yet ready page=97 (returned null)
+ [PrintPanel] thumb not yet ready page=98 (returned null)
+ [PrintPanel] thumb not yet ready page=99 (returned null)
+ [AnnotPerf] finalize idle (forced-reset) — deferring CSS transform removal, waiting for PAL confirmation
+ [DebugBridge +551788.6ms] zoom_start {scale: 0.8801, targetScale: 1, source: 'keyboard_toolbar'}
+ [CSeries wipe] doc=SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26263753 totalCounters=0 legacyRemoved=0 — nothing to wipe.
+ [PrintPanel] mount — binding Cmd/Ctrl+P listeners. electronAPI available: true onPrintPdf available: true
+ [ZoomLive svg p1] {interactionPhase: 'idle', zoomOverlayTransformActive: true, viewerScale: 0.8801, measuredScale: 0.8801, committedScale: 0, …}
+ [ZoomLive svg p1] {interactionPhase: 'idle', zoomOverlayTransformActive: true, viewerScale: 0.8801, measuredScale: 0.8801, committedScale: 0, …}
+ [ZoomLive svg p1] {interactionPhase: 'idle', zoomOverlayTransformActive: true, viewerScale: 0.8801, measuredScale: 0.8801, committedScale: 0, …}
+ [ZoomLive svg p1] {interactionPhase: 'idle', zoomOverlayTransformActive: true, viewerScale: 0.8801, measuredScale: 0.8801, committedScale: 0, …}
+ [PrintPanel] RENDER — panel closed
+ [ZoomLive svg p1] {interactionPhase: 'idle', zoomOverlayTransformActive: true, viewerScale: 0.1, measuredScale: 0.1, committedScale: 0, …}
+ [ZoomLive svg p1] {interactionPhase: 'idle', zoomOverlayTransformActive: true, viewerScale: 0.1, measuredScale: 0.1, committedScale: 0, …}
+ [ZoomLive svg p1] {interactionPhase: 'idle', zoomOverlayTransformActive: true, viewerScale: 0.1, measuredScale: 0.1, committedScale: 0, …}
+ [DebugBridge +553411.2ms] zoom_end {source: 'keyboard_toolbar_settle'}
+ [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.91993, measuredPageScale=0.91993, committedPageScale=none, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=1126, overlayDivH=729, overlayDivTransform=none, overlayContentTransform=none
+ [SVG-RENDER] Page 1 received 3 objects (3) [{…}, {…}, {…}]
+ [SVG p1] render — 3 objs, viewBox=1224x792
+ [SVG-RENDER] Page 5 received 16 objects (16) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+ [SVG p5] render — 16 objs, viewBox=1224x792
+ [SVG-RENDER] Page 6 received 22 objects (22) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+ [SVG p6] render — 22 objs, viewBox=1224x792
+ [SVG-RENDER] Page 7 received 22 objects (22) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+ [SVG p7] render — 22 objs, viewBox=1224x792
+ [SVG-RENDER] Page 8 received 24 objects (24) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+ [SVG p8] render — 24 objs, viewBox=1224x792
+ [SVG-RENDER] Page 9 received 23 objects (23) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+ [SVG p9] render — 23 objs, viewBox=1224x792
+ [SVG-RENDER] Page 10 received 26 objects (26) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+ [SVG p10] render — 26 objs, viewBox=1224x792
+ [SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+ [SVG p1] MOUNT — 3 annotations, 0 callouts, viewBox=1224x792
+ [SVG-Imported p1] renderSummary — imported=3, activeSpaceId=null, selectedSpaceId=null, activeRegionId=null, showSurveyPanel=false, rows=[{"id":"4540R","pdfType":"Ink","renderType":"path","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"4545R","pdfType":"Square","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"4549R","pdfType":"Polygon","renderType":"polygon","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null}]
+ [SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+ [SVG p5] MOUNT — 16 annotations, 0 callouts, viewBox=1224x792
+ [SVG-Imported p5] renderSummary — imported=16, activeSpaceId=null, selectedSpaceId=null, activeRegionId=null, showSurveyPanel=false, rows=[{"id":"2277R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2276R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2275R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2274R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2273R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2272R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2271R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2270R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2269R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2268R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2267R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2266R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null}]
+ [SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+ [SVG p6] MOUNT — 22 annotations, 0 callouts, viewBox=1224x792
+ [SVG-Imported p6] renderSummary — imported=22, activeSpaceId=null, selectedSpaceId=null, activeRegionId=null, showSurveyPanel=false, rows=[{"id":"2314R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2313R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2312R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2311R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2310R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2309R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2308R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2307R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2306R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2305R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2304R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2303R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null}]
+ [SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+ [SVG p7] MOUNT — 22 annotations, 0 callouts, viewBox=1224x792
+ [SVG-Imported p7] renderSummary — imported=22, activeSpaceId=null, selectedSpaceId=null, activeRegionId=null, showSurveyPanel=false, rows=[{"id":"2342R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2341R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2340R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2339R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2338R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2337R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2336R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2335R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2334R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2333R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2332R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2331R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null}]
+ [SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+ [SVG p8] MOUNT — 24 annotations, 0 callouts, viewBox=1224x792
+ [SVG-Imported p8] renderSummary — imported=24, activeSpaceId=null, selectedSpaceId=null, activeRegionId=null, showSurveyPanel=false, rows=[{"id":"2374R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2373R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2372R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2371R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2370R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2369R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2368R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2367R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2366R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2365R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2364R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2363R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null}]
+ [SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+ [SVG p9] MOUNT — 23 annotations, 0 callouts, viewBox=1224x792
+ [SVG-Imported p9] renderSummary — imported=23, activeSpaceId=null, selectedSpaceId=null, activeRegionId=null, showSurveyPanel=false, rows=[{"id":"2405R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2404R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2403R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2402R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2401R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2400R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2399R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2398R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2397R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2396R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2395R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2394R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null}]
+ [SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+ [SVG p10] MOUNT — 26 annotations, 0 callouts, viewBox=1224x792
+ [SVG-Imported p10] renderSummary — imported=26, activeSpaceId=null, selectedSpaceId=null, activeRegionId=null, showSurveyPanel=false, rows=[{"id":"2437R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2436R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2435R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2434R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2433R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2432R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2431R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2430R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2429R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2428R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2427R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null},{"id":"2426R","pdfType":"AutoCAD SHX Text","renderType":"rect","renderPartType":null,"renderTool":null,"dash":"none","lineEndings":"none","isImportedPath":false,"spaceId":null,"regionId":null}]
+ [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.91993, measuredPageScale=0.91993, committedPageScale=0.91993, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=1126, overlayDivH=729, overlayDivTransform=none, overlayContentTransform=none
+ [SVG p1] render — 3 objs, viewBox=1224x792
+ [SVG p5] render — 16 objs, viewBox=1224x792
+ [SVG p6] render — 22 objs, viewBox=1224x792
+ [SVG p7] render — 22 objs, viewBox=1224x792
+ [SVG p8] render — 24 objs, viewBox=1224x792
+ [SVG p9] render — 23 objs, viewBox=1224x792
+ [SVG p10] render — 26 objs, viewBox=1224x792
+ [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.91993, measuredPageScale=0.91993, committedPageScale=0.91993, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=1126, overlayDivH=729, overlayDivTransform=none, overlayContentTransform=none
+ [SVG p1] render — 3 objs, viewBox=1224x792
+ [SVG p5] render — 16 objs, viewBox=1224x792
+ [SVG p6] render — 22 objs, viewBox=1224x792
+ [SVG p7] render — 22 objs, viewBox=1224x792
+ [SVG p8] render — 24 objs, viewBox=1224x792
+ [SVG p9] render — 23 objs, viewBox=1224x792
+ [SVG p10] render — 26 objs, viewBox=1224x792
+ [DebugBridge +554088.7ms] pdf_loaded {pageCount: 99, currentPage: 1}
+ [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.91993, measuredPageScale=0.91993, committedPageScale=0.91993, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=1126, overlayDivH=729, overlayDivTransform=none, overlayContentTransform=none
+ [SVG p1] render — 3 objs, viewBox=1224x792
+ [SVG p5] render — 16 objs, viewBox=1224x792
+ [SVG p6] render — 22 objs, viewBox=1224x792
+ [SVG p7] render — 22 objs, viewBox=1224x792
+ [SVG p8] render — 24 objs, viewBox=1224x792
+ [SVG p9] render — 23 objs, viewBox=1224x792
+ [SVG p10] render — 26 objs, viewBox=1224x792
+ [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.91993, measuredPageScale=0.91993, committedPageScale=0.91993, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=1126, overlayDivH=729, overlayDivTransform=none, overlayContentTransform=none
+ [SVG p1] render — 3 objs, viewBox=1224x792
+ [SVG p5] render — 16 objs, viewBox=1224x792
+ [SVG p6] render — 22 objs, viewBox=1224x792
+ [SVG p7] render — 22 objs, viewBox=1224x792
+ [SVG p8] render — 24 objs, viewBox=1224x792
+ [SVG p9] render — 23 objs, viewBox=1224x792
+ [SVG p10] render — 26 objs, viewBox=1224x792
+ [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.91993, measuredPageScale=0.91993, committedPageScale=0.91993, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=1126, overlayDivH=729, overlayDivTransform=none, overlayContentTransform=none
+ [SVG p1] render — 3 objs, viewBox=1224x792
+ [SVG p5] render — 16 objs, viewBox=1224x792
+ [SVG p6] render — 22 objs, viewBox=1224x792
+ [SVG p7] render — 22 objs, viewBox=1224x792
+ [SVG p8] render — 24 objs, viewBox=1224x792
+ [SVG p9] render — 23 objs, viewBox=1224x792
+ [SVG p10] render — 26 objs, viewBox=1224x792
+ [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.91993, measuredPageScale=0.91993, committedPageScale=0.91993, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=1126, overlayDivH=729, overlayDivTransform=none, overlayContentTransform=none
+ [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.91993, measuredPageScale=0.91993, committedPageScale=0.91993, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=1126, overlayDivH=729, overlayDivTransform=none, overlayContentTransform=none
+ [SVG p1] render — 3 objs, viewBox=1224x792
+ [SVG p5] render — 16 objs, viewBox=1224x792
+ [SVG p6] render — 22 objs, viewBox=1224x792
+ [SVG p7] render — 22 objs, viewBox=1224x792
+ [SVG p8] render — 24 objs, viewBox=1224x792
+ [SVG p9] render — 23 objs, viewBox=1224x792
+ [SVG p10] render — 26 objs, viewBox=1224x792
+ [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.91993, measuredPageScale=0.91993, committedPageScale=0.91993, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=1126, overlayDivH=729, overlayDivTransform=none, overlayContentTransform=none
+ [HyperlinkDiag] post-load scan {hyperlinkCount: 0, samples: Array(0)}
+ [HyperlinkDiag] page 1 layers {hyperlinkChildren: 0, layerClasses: Array(10)}
+ [HyperlinkDiag] page 2 layers {hyperlinkChildren: 0, layerClasses: Array(10)}
+ [HyperlinkDiag] page 3 layers {hyperlinkChildren: 0, layerClasses: Array(10)}
+ [HyperlinkDiag] page 4 layers {hyperlinkChildren: 0, layerClasses: Array(10)}
+ [HyperlinkDiag] page 5 layers {hyperlinkChildren: 0, layerClasses: Array(6)}
+ [HyperlinkDiag] page 6 layers {hyperlinkChildren: 0, layerClasses: Array(4)}
+ [HyperlinkDiag] page 7 layers {hyperlinkChildren: 0, layerClasses: Array(4)}
+ [HyperlinkDiag] page 8 layers {hyperlinkChildren: 0, layerClasses: Array(4)}
+ [HyperlinkDiag] page 9 layers {hyperlinkChildren: 0, layerClasses: Array(4)}
+ [HyperlinkDiag] page 10 layers {hyperlinkChildren: 0, layerClasses: Array(4)}
+ [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.91993, measuredPageScale=0.91993, committedPageScale=0.91993, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=1126, overlayDivH=729, overlayDivTransform=none, overlayContentTransform=none
+ [SVG p1] render — 3 objs, viewBox=1224x792
+ [SVG p5] render — 16 objs, viewBox=1224x792
+ [SVG p6] render — 22 objs, viewBox=1224x792
+ [SVG p7] render — 22 objs, viewBox=1224x792
+ [SVG p8] render — 24 objs, viewBox=1224x792
+ [SVG p9] render — 23 objs, viewBox=1224x792
+ [SVG p10] render — 26 objs, viewBox=1224x792
+ [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.91993, measuredPageScale=0.91993, committedPageScale=0.91993, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=1126, overlayDivH=729, overlayDivTransform=none, overlayContentTransform=none
+ [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.91993, measuredPageScale=0.91993, committedPageScale=0.91993, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=1126, overlayDivH=729, overlayDivTransform=none, overlayContentTransform=none
+ [SVG p1] render — 3 objs, viewBox=1224x792
+ [PrintPanel] window keydown Cmd/Ctrl+P intercepted
+ [PrintPanel] OPEN requested via window keydown
+ [PrintPanel] listing printers…
+ [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.91993, measuredPageScale=0.91993, committedPageScale=0.91993, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=1126, overlayDivH=729, overlayDivTransform=none, overlayContentTransform=none
+ [SVG p1] render — 3 objs, viewBox=1224x792
+ [SVG p5] render — 16 objs, viewBox=1224x792
+ [SVG p6] render — 22 objs, viewBox=1224x792
+ [SVG p7] render — 22 objs, viewBox=1224x792
+ [SVG p8] render — 24 objs, viewBox=1224x792
+ [SVG p9] render — 23 objs, viewBox=1224x792
+ [SVG p10] render — 26 objs, viewBox=1224x792
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 814.7525024414062, y: 227.85000610351562, width: 354.60003662109375, height: 498.4100036621094, top: 227.85000610351562, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 33.64747619628906, y: 227.85000610351562, width: 1135.705078125, height: 498.4100036621094, top: 227.85000610351562, …}
+ [PrintPanel] fetchThumbs start, getThumbnail type: function
+ [PrintPanel] fetchPreview start page=1
+ [PrintPanel] RENDER — panel opened with {totalPages: 99, variant: 'J', docName: 'SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf', initialIncludedCount: 99, printers: Array(0)}
+ [PrintPanel] variant = J
+ [PrintPanel] pagesToPrint = 1-99 → included: 99
+ [PrintPanel] currentPage = 1
+ [PrintPanel] paperSize = auto fitMode = proportional
+ [PrintPanel] orientation = auto-portrait
+ [PrintPanel] mirrorH = false mirrorV = false
+ [PrintPanel] markupsOn = true colorOn = true
+ [PrintPanel] copies = 1 collate = true duplex = false
+ [PrintPanel] destination = default
+ [PrintPanel][J] paperScope = {mode: 'all', range: ''}
+ [PrintPanel][J] orientScope = {mode: 'all', range: ''}
+ [PrintPanel][J] outputScope = {mode: 'all', range: ''}
+ [PrintPanel] bigPreviewOpen = false
+ [PrintPanel] listPrinters returned 3 entries
+ [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.91993, measuredPageScale=0.91993, committedPageScale=0.91993, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=1126, overlayDivH=729, overlayDivTransform=none, overlayContentTransform=none
+ [SVG p1] render — 3 objs, viewBox=1224x792
+ [SVG p5] render — 16 objs, viewBox=1224x792
+ [SVG p6] render — 22 objs, viewBox=1224x792
+ [SVG p7] render — 22 objs, viewBox=1224x792
+ [SVG p8] render — 24 objs, viewBox=1224x792
+ [SVG p9] render — 23 objs, viewBox=1224x792
+ [SVG p10] render — 26 objs, viewBox=1224x792
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 814.7525024414062, y: 227.85000610351562, width: 354.60003662109375, height: 498.4100036621094, top: 227.85000610351562, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 33.64747619628906, y: 227.85000610351562, width: 1135.705078125, height: 498.4100036621094, top: 227.85000610351562, …}
+ [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.91993, measuredPageScale=0.91993, committedPageScale=0.91993, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=1126, overlayDivH=729, overlayDivTransform=none, overlayContentTransform=none
+ [PrintPanel→App] rendered page=1 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=1 (140×90)
+ [PrintPanel→App] rendered page=1 @ 720×465 (target 720px)
+ [PrintPanel] preview ready page=1 (720×465)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 817.907470703125, y: 230.91024780273438, width: 359.8460693359375, height: 505.7837219238281, top: 230.91024780273438, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25.24639892578125, y: 230.91024780273438, width: 1152.507080078125, height: 505.7837219238281, top: 230.91024780273438, …}
+ [PrintPanel→App] rendered page=2 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=2 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=3 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=3 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=4 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=4 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=5 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=5 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=6 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=6 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.91993, measuredPageScale=0.91993, committedPageScale=0.91993, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=1126, overlayDivH=729, overlayDivTransform=none, overlayContentTransform=none
+ [SVG p1] render — 3 objs, viewBox=1224x792
+ [SVG p5] render — 16 objs, viewBox=1224x792
+ [SVG p6] render — 22 objs, viewBox=1224x792
+ [SVG p7] render — 22 objs, viewBox=1224x792
+ [SVG p8] render — 24 objs, viewBox=1224x792
+ [SVG p9] render — 23 objs, viewBox=1224x792
+ [SVG p10] render — 26 objs, viewBox=1224x792
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=7 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=7 (140×90)
+ [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.91993, measuredPageScale=0.91993, committedPageScale=0.91993, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=1126, overlayDivH=729, overlayDivTransform=none, overlayContentTransform=none
+ [SVG p1] render — 3 objs, viewBox=1224x792
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=8 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=8 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.91993, measuredPageScale=0.91993, committedPageScale=0.91993, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=1126, overlayDivH=729, overlayDivTransform=none, overlayContentTransform=none
+ [SVG p1] render — 3 objs, viewBox=1224x792
+ [SVG p5] render — 16 objs, viewBox=1224x792
+ [SVG p6] render — 22 objs, viewBox=1224x792
+ [SVG p7] render — 22 objs, viewBox=1224x792
+ [SVG p8] render — 24 objs, viewBox=1224x792
+ [SVG p9] render — 23 objs, viewBox=1224x792
+ [SVG p10] render — 26 objs, viewBox=1224x792
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.91993, measuredPageScale=0.91993, committedPageScale=0.91993, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=1126, overlayDivH=729, overlayDivTransform=none, overlayContentTransform=none
+ [SVG p1] render — 3 objs, viewBox=1224x792
+ [SVG p5] render — 16 objs, viewBox=1224x792
+ [SVG p6] render — 22 objs, viewBox=1224x792
+ [SVG p7] render — 22 objs, viewBox=1224x792
+ [SVG p8] render — 24 objs, viewBox=1224x792
+ [SVG p9] render — 23 objs, viewBox=1224x792
+ [SVG p10] render — 26 objs, viewBox=1224x792
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [App-Debug p1] PAL render — pageSize={w:1224, h:792}, layerScale=0.91993, measuredPageScale=0.91993, committedPageScale=0.91993, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=1126, overlayDivH=729, overlayDivTransform=none, overlayContentTransform=none
+ [SVG p1] render — 3 objs, viewBox=1224x792
+ [PrintPanel→App] rendered page=9 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=9 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel] thumb click page=1 alt=false meta=false currentlyIncluded=true
+ [PrintPanel] thumb click page=2 alt=false meta=false currentlyIncluded=true
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel] fetchThumbs start, getThumbnail type: function
+ [PrintPanel] fetchPreview start page=2
+ [PrintPanel] currentPage = 2
+ [PrintPanel→App] rendered page=2 @ 720×465 (target 720px)
+ [PrintPanel] preview ready page=2 (720×465)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=10 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=10 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=11 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=11 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=12 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=12 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=13 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=13 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel] thumb click page=3 alt=false meta=false currentlyIncluded=true
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel] fetchThumbs start, getThumbnail type: function
+ [PrintPanel] fetchPreview start page=3
+ [PrintPanel] currentPage = 3
+ [PrintPanel→App] rendered page=3 @ 720×465 (target 720px)
+ [PrintPanel] preview ready page=3 (720×465)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=14 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=14 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel] thumb click page=4 alt=false meta=false currentlyIncluded=true
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel] fetchThumbs start, getThumbnail type: function
+ [PrintPanel] fetchPreview start page=4
+ [PrintPanel] currentPage = 4
+ [PrintPanel→App] rendered page=4 @ 720×465 (target 720px)
+ [PrintPanel] preview ready page=4 (720×465)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=15 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=15 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=16 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=16 (140×90)
+ [PrintPanel] thumb click page=5 alt=false meta=false currentlyIncluded=true
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel] fetchThumbs start, getThumbnail type: function
+ [PrintPanel] fetchPreview start page=5
+ [PrintPanel] currentPage = 5
+ [PrintPanel] thumb ready page=16 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=17 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=17 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=5 @ 720×465 (target 720px)
+ [PrintPanel] preview ready page=5 (720×465)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel] thumb click page=8 alt=false meta=false currentlyIncluded=true
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel] fetchThumbs start, getThumbnail type: function
+ [PrintPanel] fetchPreview start page=8
+ [PrintPanel] currentPage = 8
+ [PrintPanel→App] rendered page=18 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=18 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=19 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=19 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=8 @ 720×465 (target 720px)
+ [PrintPanel] preview ready page=8 (720×465)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=20 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=20 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=21 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=21 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=22 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=22 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=23 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=23 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=24 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=24 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=25 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=25 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=26 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=26 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=27 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=27 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=28 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=28 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=29 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=29 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=30 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=30 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=31 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=31 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=32 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=32 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=33 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=33 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=34 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=34 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=35 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=35 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=36 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=36 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=37 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=37 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=38 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=38 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=39 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=39 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=40 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=40 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=41 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=41 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=42 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=42 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=43 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=43 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=44 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=44 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=45 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=45 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=46 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=46 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=47 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=47 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=48 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=48 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=49 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=49 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=50 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=50 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=51 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=51 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=52 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=52 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=53 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=53 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=54 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=54 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=55 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=55 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=56 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=56 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=57 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=57 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=58 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=58 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=59 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=59 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=60 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=60 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=61 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=61 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=62 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=62 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=63 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=63 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=64 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=64 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=65 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=65 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=66 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=66 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=67 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=67 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=68 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=68 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=69 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=69 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=70 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=70 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=71 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=71 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=72 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=72 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=73 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=73 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=74 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=74 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=75 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=75 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=76 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=76 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=77 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=77 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=78 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=78 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=79 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=79 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=80 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=80 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=81 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=81 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=82 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=82 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=83 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=83 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=84 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=84 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=85 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=85 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=86 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=86 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=87 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=87 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=88 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=88 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=89 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=89 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=90 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=90 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=91 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=91 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=92 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=92 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=93 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=93 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=94 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=94 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=95 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=95 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=96 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=96 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=97 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=97 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=98 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=98 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
+ [PrintPanel→App] rendered page=99 @ 140×90 (target 140px)
+ [PrintPanel] thumb ready page=99 (140×90)
+ [PrintPanel][J] rail mounted, rect: DOMRect {x: 818, y: 231, width: 360, height: 506, top: 231, …}
+ [PrintPanel] pp-mid mounted, rect: DOMRect {x: 25, y: 231, width: 1153, height: 506, top: 231, …}
