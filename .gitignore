@@ -36,3 +36,4 @@ debug/debug-sessions/
 
 # git worktrees (sandboxes)
 .worktrees/
+.claude/worktrees/
