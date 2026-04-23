@@ -9,13 +9,17 @@ const vite = spawn('npx', ['vite'], {
 
 let electronStarted = false;
 
+// Strip ANSI color codes before regex matching — Vite colorizes its output and
+// the CSI sequences (e.g. "localhost:\x1b[1m5173") break /localhost:(\d+)/.
+const stripAnsi = (s) => s.replace(/\x1B\[[0-9;]*[A-Za-z]/g, '');
+
 vite.stdout.on('data', (data) => {
   const text = data.toString();
   process.stdout.write(text);
 
   // Parse the actual port from Vite's output: "Local:   http://localhost:XXXX/"
   if (!electronStarted) {
-    const match = text.match(/localhost:(\d+)/);
+    const match = stripAnsi(text).match(/localhost:(\d+)/);
     if (match) {
       const port = match[1];
       electronStarted = true;
