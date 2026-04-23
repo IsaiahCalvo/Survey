@@ -1,0 +1,690 @@
+/* ==========================================================================
+   PrintPanel — custom print dialog for Survey
+   Built from the v3 wireframes (options J and K) with the app's design tokens.
+   --------------------------------------------------------------------------
+   - J variant: each customization section carries its own "Apply to" scope
+     pills (All selected / Pages… / This page).
+   - K variant: three scope tabs (All / Select / Current) at the top of the
+     right rail drive every section below.
+   - A temporary top-bar toggle flips between the two for side-by-side feel.
+   ========================================================================== */
+
+/* Tokens resolved from src/theme.js. Kept local so the panel is standalone. */
+.pp-root {
+  --pp-bg: #1E1E1E;
+  --pp-panel: #252525;
+  --pp-panel-2: #2b2b2b;
+  --pp-panel-elev: #3a3a3a;
+  --pp-border: #3a3a3a;
+  --pp-border-subtle: #333;
+  --pp-border-strong: #444;
+  --pp-ink: #FFFFFF;
+  --pp-ink-2: #eaeaea;
+  --pp-ink-3: #ddd;
+  --pp-muted: #999;
+  --pp-disabled: #666;
+  --pp-accent: #4A90E2;
+  --pp-accent-hover: #357abd;
+  --pp-accent-soft: rgba(74, 144, 226, 0.16);
+  --pp-accent-glow: 0 0 0 1px rgba(74, 144, 226, 0.35);
+  --pp-overlay: rgba(0, 0, 0, 0.55);
+  --pp-shadow-xl: 0 24px 60px rgba(0, 0, 0, 0.6), 0 2px 0 rgba(255,255,255,0.02) inset;
+  --pp-radius: 12px;
+  --pp-radius-sm: 6px;
+  --pp-font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Arial, sans-serif;
+  color-scheme: dark;
+}
+
+/* Backdrop so the floating panel has a visible separation from the app. */
+.pp-backdrop {
+  position: fixed; inset: 0;
+  background: var(--pp-overlay);
+  z-index: 9998;
+  animation: pp-fade-in 140ms ease-out;
+}
+
+@keyframes pp-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+.pp-root {
+  position: fixed;
+  top: 48px; left: 50%;
+  transform: translateX(-50%);
+  width: min(1180px, calc(100vw - 48px));
+  height: min(760px, calc(100vh - 80px));
+  background: var(--pp-panel);
+  border: 1px solid var(--pp-border);
+  border-radius: var(--pp-radius);
+  box-shadow: var(--pp-shadow-xl);
+  display: grid;
+  grid-template-rows: 44px minmax(0, 1fr) 56px;
+  grid-template-columns: minmax(0, 1fr);
+  overflow: hidden;
+  min-width: 0;
+  max-width: calc(100vw - 48px);
+  font: 13px/1.45 var(--pp-font);
+  color: var(--pp-ink-2);
+  z-index: 9999;
+  animation: pp-pop 160ms cubic-bezier(0.2, 0, 0.2, 1);
+}
+
+@keyframes pp-pop {
+  from { opacity: 0; transform: translateX(-50%) translateY(-6px) scale(0.985); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+}
+
+/* ---------- Title bar ---------- */
+.pp-titlebar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 10px 0 14px;
+  background: linear-gradient(#2c2f36, #252830);
+  border-bottom: 1px solid var(--pp-border-subtle);
+  user-select: none;
+  cursor: grab;
+}
+.pp-titlebar:active { cursor: grabbing; }
+.pp-title {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 13px; font-weight: 600; color: var(--pp-ink);
+  min-width: 0;
+}
+.pp-title-name {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 420px;
+}
+.pp-title-count {
+  color: var(--pp-muted); font-weight: 400; font-size: 12px;
+}
+.pp-title-actions { display: flex; align-items: center; gap: 10px; }
+
+/* Temporary J ↔ K variant toggle sits in the titlebar. */
+.pp-variant-toggle {
+  display: inline-flex; background: var(--pp-bg);
+  border: 1px solid var(--pp-border); border-radius: 8px;
+  padding: 3px; gap: 3px;
+}
+.pp-variant-toggle button {
+  background: transparent; color: var(--pp-muted);
+  border: 0; border-radius: 5px;
+  padding: 4px 12px; font-size: 12px;
+  font-weight: 500; cursor: pointer;
+  font-family: inherit;
+}
+.pp-variant-toggle button.is-active {
+  background: var(--pp-accent); color: #fff;
+}
+.pp-variant-toggle .pp-variant-label {
+  color: var(--pp-muted); font-size: 11px; padding: 0 8px 0 2px;
+  align-self: center; text-transform: uppercase; letter-spacing: 0.6px;
+}
+
+.pp-close {
+  width: 26px; height: 26px; border-radius: 50%;
+  background: transparent; color: var(--pp-muted);
+  border: 0; cursor: pointer; font-size: 15px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.pp-close:hover { background: var(--pp-panel-elev); color: var(--pp-ink); }
+
+/* ---------- Body ---------- */
+.pp-body {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+/* Top scope bar — shared by J and K. */
+.pp-topbar {
+  padding: 10px 14px 12px;
+  border-bottom: 1px solid var(--pp-border-subtle);
+  background: #232327;
+  display: flex; flex-direction: column; gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+.pp-topbar-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.pp-label {
+  text-transform: uppercase; font-size: 11px; letter-spacing: 0.8px;
+  color: var(--pp-muted); font-weight: 600;
+}
+.pp-range-input {
+  background: var(--pp-bg); color: var(--pp-ink);
+  border: 1px solid var(--pp-border); border-radius: var(--pp-radius-sm);
+  padding: 6px 10px; font-size: 13px; font-family: inherit;
+  font-weight: 600; min-width: 120px; outline: none;
+}
+.pp-range-input:focus {
+  border-color: var(--pp-accent);
+  box-shadow: var(--pp-accent-glow);
+}
+.pp-quicks { display: inline-flex; gap: 4px; }
+.pp-quick {
+  background: transparent; color: var(--pp-ink-2);
+  border: 1px solid var(--pp-border); border-radius: 6px;
+  padding: 4px 10px; font-size: 12px; cursor: pointer; font-family: inherit;
+}
+.pp-quick:hover { background: var(--pp-panel-elev); color: var(--pp-ink); }
+.pp-hint {
+  color: var(--pp-muted); font-size: 11px; margin-left: auto;
+}
+.pp-kbd {
+  background: var(--pp-bg); border: 1px solid var(--pp-border);
+  border-radius: 4px; padding: 1px 5px; font-family: Monaco, Consolas, monospace;
+  font-size: 11px; color: var(--pp-ink-3);
+}
+.pp-totals {
+  color: var(--pp-ink-2); font-size: 12px;
+}
+.pp-totals strong { color: var(--pp-ink); }
+
+/* Thumbnail strip */
+.pp-strip {
+  display: flex; flex-wrap: nowrap; gap: 7px;
+  overflow-x: auto; overflow-y: hidden;
+  padding: 2px 2px 6px;
+  /* UX 2026-04-23: raised from 76 → 92 so the page-number label sits
+     cleanly below each preview instead of overlapping the PDF content. */
+  height: 92px;
+  align-items: flex-start;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+}
+.pp-strip::-webkit-scrollbar { height: 8px; }
+.pp-strip::-webkit-scrollbar-track { background: #181818; border-radius: 6px; }
+.pp-strip::-webkit-scrollbar-thumb { background: #3A3A3A; border-radius: 6px; }
+
+/* UX 2026-04-23: wrapper holding one preview rectangle and the page-number
+   label below it. Hover/focus/current-state styling applies to the whole
+   cell so the label is a full click target alongside the image. */
+.pp-thumb-cell {
+  display: inline-flex; flex-direction: column; align-items: center; gap: 3px;
+  flex: 0 0 auto; cursor: pointer; padding-top: 2px;
+  transition: transform 120ms;
+}
+.pp-thumb-cell:hover { transform: translateY(-1px); }
+.pp-thumb-cell:focus-visible { outline: none; }
+.pp-thumb-cell:focus-visible .pp-thumb { border-color: var(--pp-accent); }
+
+.pp-thumb {
+  position: relative;
+  width: 46px; height: 60px; border-radius: 4px;
+  background: #f0f0ec; color: #222;
+  border: 2px solid transparent;
+  transition: border-color 120ms, box-shadow 120ms, background 120ms, opacity 120ms;
+}
+.pp-thumb.is-landscape { width: 60px; height: 46px; }
+.pp-thumb-cell:hover .pp-thumb {
+  box-shadow: 0 4px 10px rgba(0,0,0,0.35);
+}
+.pp-thumb-cell.is-excluded .pp-thumb {
+  background: #2d2d2d; border-color: #333; opacity: 0.55;
+}
+.pp-thumb-cell.is-current .pp-thumb {
+  border-color: var(--pp-accent);
+  box-shadow: var(--pp-accent-glow);
+}
+
+.pp-thumb-num {
+  /* UX 2026-04-23: page number label shows outside the preview box so it
+     stays readable regardless of PDF content. */
+  font-size: 10px; color: var(--pp-ink-2); font-weight: 600;
+  text-align: center; min-width: 14px; line-height: 1;
+  pointer-events: none;
+}
+.pp-thumb-cell.is-current .pp-thumb-num { color: var(--pp-accent); }
+.pp-thumb-cell.is-excluded .pp-thumb-num { color: var(--pp-muted); }
+
+.pp-thumb .pp-thumb-badges {
+  position: absolute; top: 2px; right: 2px;
+  display: inline-flex; gap: 2px;
+  pointer-events: none;
+}
+.pp-thumb-bd {
+  background: rgba(74, 144, 226, 0.95); color: #fff;
+  font-size: 9px; font-weight: 600; padding: 1px 4px; border-radius: 3px;
+}
+.pp-thumb-bd.bd-mk { background: #f0b000; color: #222; }
+.pp-thumb-bd.bd-rot { background: #4A90E2; }
+.pp-thumb-bd.bd-ex { background: #9b59f0; }
+.pp-thumb-bd.bd-sel { background: #4A90E2; }
+.pp-thumb .pp-thumb-face {
+  position: absolute; inset: 6px; border: 1px dashed #999; border-radius: 2px;
+  pointer-events: none;
+}
+
+/* ---------- Mid: preview + right rail ---------- */
+.pp-mid {
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  height: 100%;
+}
+
+.pp-preview-col {
+  flex: 1 1 0;
+  display: flex; flex-direction: column;
+  min-height: 0; min-width: 0;
+  border-right: 1px solid var(--pp-border-subtle);
+  padding: 12px 14px;
+  overflow: hidden;
+}
+.pp-preview-top {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px;
+}
+.pp-preview-sub { color: var(--pp-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; display: inline-flex; align-items: center; }
+/* UX 2026-04-23: inline page picker inside the preview header. Matches
+   the uppercase-muted label visually but is a real dropdown-backed text
+   input so users can type a page or open the datalist and pick one. */
+.pp-preview-page-input {
+  background: var(--pp-panel-elev); color: var(--pp-ink);
+  border: 1px solid var(--pp-border); border-radius: 4px 0 0 4px;
+  font: 600 12px/1 inherit; text-transform: none;
+  padding: 4px 6px; width: 52px; text-align: center;
+}
+.pp-preview-page-input:focus { outline: none; border-color: var(--pp-accent); }
+
+/* UX 2026-04-23: custom combo-box shell around the page picker. The input
+   and caret sit side by side with a shared border-radius so it reads as a
+   single control. The dropdown is absolute-positioned under them and is
+   capped at 10 rows tall (scrollable for longer page ranges) so it never
+   covers the preview or runs off the window. */
+.pp-ppicker {
+  position: relative; display: inline-flex; align-items: stretch;
+  margin-left: 4px; text-transform: none;
+}
+.pp-ppicker-caret {
+  background: var(--pp-panel-elev); color: var(--pp-ink);
+  border: 1px solid var(--pp-border); border-left: none; border-radius: 0 4px 4px 0;
+  padding: 0 6px; cursor: pointer; font-size: 10px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.pp-ppicker-caret:hover { background: var(--pp-accent); color: #fff; border-color: var(--pp-accent); }
+.pp-ppicker-menu {
+  position: absolute; top: calc(100% + 4px); left: 0; min-width: 100%;
+  max-height: 220px; /* fits ~10 rows; scrolls beyond */
+  overflow-y: auto;
+  background: var(--pp-panel-elev); color: var(--pp-ink);
+  border: 1px solid var(--pp-border); border-radius: 4px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.35);
+  margin: 0; padding: 4px 0; list-style: none;
+  z-index: 10;
+}
+.pp-ppicker-opt {
+  padding: 4px 10px; font: 500 12px/1.4 inherit; cursor: pointer;
+  white-space: nowrap; text-transform: none;
+}
+.pp-ppicker-opt:hover { background: rgba(255,255,255,0.08); }
+.pp-ppicker-opt.is-active { background: var(--pp-accent); color: #fff; }
+.pp-preview-stage {
+  flex: 1 1 0;
+  min-height: 180px;
+  background: #101014;
+  border: 1px solid var(--pp-border-subtle);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden; position: relative;
+}
+.pp-preview-sheet {
+  background: #ececea;
+  color: #222;
+  border-radius: 2px;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.6);
+  position: relative;
+  transition: transform 200ms cubic-bezier(0.2, 0, 0.2, 1), filter 180ms;
+}
+.pp-preview-sheet .pp-sheet-label {
+  position: absolute; top: 8px; left: 10px; font-size: 10px; color: #666;
+  font-weight: 600; letter-spacing: 0.3px;
+}
+.pp-preview-sheet .pp-sheet-face {
+  position: absolute; inset: 22px 14px 18px;
+  border: 1.5px dashed #888; border-radius: 2px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; color: #666;
+}
+.pp-preview-sheet.is-bw { filter: grayscale(1); }
+.pp-preview-sheet.is-mirror-h { transform: scaleX(-1); }
+.pp-preview-sheet.is-mirror-v { transform: scaleY(-1); }
+.pp-preview-sheet.is-mirror-hv { transform: scale(-1, -1); }
+
+.pp-pager {
+  flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding-top: 10px;
+  color: var(--pp-ink-2); font-size: 13px;
+  min-height: 40px;
+}
+.pp-pager-btn {
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--pp-panel-elev); color: var(--pp-ink);
+  border: 1px solid var(--pp-border); cursor: pointer; font-size: 16px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.pp-pager-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.pp-pager-btn:not(:disabled):hover { background: var(--pp-accent); border-color: var(--pp-accent); }
+.pp-pager-pos strong { color: var(--pp-ink); }
+/* UX 2026-04-23: dots are clickable <button>s that jump to a specific page.
+   Kept visually compact (rectangles) but given a hover state, pointer
+   cursor, keyboard focus ring, and a touch-friendly minimum size so the
+   user can mini-navigate alongside the ←/→ arrows. Wraps when there are
+   many included pages so long ranges like 1-99 stay inside the pane. */
+/* UX 2026-04-23: pager row stays on a single line — the JSX feeds it at
+   most 10 rectangles at a time via a sliding window. No wrapping, no
+   horizontal scrollbar, just a stable strip that scrolls content as the
+   user advances through a long page range. */
+.pp-pager-dots {
+  display: inline-flex; flex-wrap: nowrap; gap: 3px; margin: 0 8px;
+  justify-content: center;
+}
+/* UX 2026-04-23: each rectangle carries its page number so the user can
+   scan and tap directly instead of counting positions. Minimum width keeps
+   3-digit page counts readable; landscape pages are slightly wider. */
+.pp-pager-dot {
+  min-width: 22px; height: 20px; padding: 0 4px;
+  background: var(--pp-border-strong); color: var(--pp-ink);
+  border: 1px solid transparent; border-radius: 3px;
+  font: 600 10px/1 var(--pp-font, inherit);
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: background 120ms, transform 120ms, border-color 120ms, color 120ms;
+}
+.pp-pager-dot:hover { background: var(--pp-ink-2); color: #fff; transform: translateY(-1px); }
+.pp-pager-dot:focus-visible { outline: none; border-color: var(--pp-accent); }
+.pp-pager-dot.is-landscape { min-width: 26px; }
+.pp-pager-dot.is-current { background: var(--pp-accent); color: #fff; }
+.pp-pager-kbdhint { color: var(--pp-muted); font-size: 11px; margin-left: 4px; }
+
+.pp-bigprev-btn {
+  background: var(--pp-panel-elev); color: var(--pp-ink-2);
+  border: 1px solid var(--pp-border); border-radius: 6px;
+  padding: 5px 10px; font-size: 12px; cursor: pointer; font-family: inherit;
+}
+.pp-bigprev-btn:hover { background: var(--pp-accent); color: #fff; border-color: var(--pp-accent); }
+
+/* ---------- Right rail: sections ---------- */
+.pp-rail {
+  flex: 0 0 360px;
+  width: 360px;
+  padding: 12px 14px 14px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: #242428;
+  border-left: 1px solid var(--pp-border-subtle);
+  min-width: 0;
+  min-height: 0;
+  max-height: 100%;
+}
+.pp-rail::-webkit-scrollbar { width: 8px; }
+.pp-rail::-webkit-scrollbar-track { background: transparent; }
+.pp-rail::-webkit-scrollbar-thumb { background: #3A3A3A; border-radius: 6px; }
+
+.pp-section { margin-bottom: 10px; }
+.pp-section + .pp-section { border-top: 1px solid var(--pp-border-subtle); padding-top: 10px; }
+.pp-section-head {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 8px;
+}
+.pp-section-title {
+  text-transform: uppercase; font-size: 11px; letter-spacing: 0.9px;
+  color: var(--pp-ink-2); font-weight: 700;
+}
+.pp-section-hint {
+  color: var(--pp-muted); font-size: 11px; margin-left: auto;
+}
+
+/* Scope pills row (J only) */
+.pp-scope-row {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.pp-scope-label {
+  color: var(--pp-muted); font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.6px;
+  margin-right: 2px;
+}
+.pp-pill {
+  background: transparent; color: var(--pp-ink-3);
+  border: 1px solid var(--pp-border-strong); border-radius: 999px;
+  padding: 3px 10px; font-size: 11px; cursor: pointer; font-family: inherit;
+}
+.pp-pill:hover { background: var(--pp-panel-elev); color: var(--pp-ink); }
+.pp-pill.is-active {
+  background: var(--pp-accent); color: #fff; border-color: var(--pp-accent);
+}
+.pp-pill-range {
+  background: var(--pp-bg); color: var(--pp-ink-2);
+  border: 1px solid var(--pp-border); border-radius: 4px;
+  padding: 2px 7px; font-size: 11px; width: 110px;
+  font-family: inherit; outline: none;
+}
+.pp-pill-range:disabled {
+  opacity: 0.5;
+}
+.pp-pill-range:focus {
+  border-color: var(--pp-accent); box-shadow: var(--pp-accent-glow);
+}
+
+/* Scope tabs (K only) */
+.pp-scope-tabs {
+  display: flex; gap: 4px; background: var(--pp-bg);
+  border: 1px solid var(--pp-border); border-radius: 8px;
+  padding: 3px; margin-bottom: 10px;
+}
+.pp-scope-tab {
+  flex: 1; background: transparent; color: var(--pp-muted);
+  border: 0; border-radius: 6px;
+  padding: 6px 8px; font-size: 12px; font-family: inherit;
+  cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px;
+}
+.pp-scope-tab:hover { background: var(--pp-panel-elev); color: var(--pp-ink-2); }
+.pp-scope-tab.is-active {
+  background: var(--pp-accent); color: #fff;
+}
+.pp-scope-tab small {
+  font-size: 10px; opacity: 0.9; font-weight: 400;
+}
+.pp-scope-tab.is-active small { opacity: 1; }
+.pp-scope-select-input {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 10px;
+}
+.pp-scope-select-input input {
+  background: var(--pp-bg); color: var(--pp-ink); border: 1px solid var(--pp-border);
+  border-radius: 5px; padding: 5px 8px; font-size: 12px; flex: 1;
+  font-family: inherit; outline: none;
+}
+.pp-scope-select-input input:focus { border-color: var(--pp-accent); box-shadow: var(--pp-accent-glow); }
+
+/* Dropdown (paper size, orientation) */
+.pp-dd {
+  position: relative;
+  display: flex; align-items: center;
+  background: var(--pp-bg); color: var(--pp-ink);
+  border: 1px solid var(--pp-border);
+  border-radius: 6px; padding: 6px 28px 6px 10px;
+  font-size: 13px; cursor: pointer; font-family: inherit;
+  width: 100%;
+}
+.pp-dd-caret {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  color: var(--pp-muted); font-size: 10px; pointer-events: none;
+}
+.pp-dd select {
+  appearance: none; background: transparent; color: var(--pp-ink);
+  border: 0; outline: none; font: inherit;
+  width: 100%; padding: 0; cursor: pointer;
+}
+.pp-dd select option { background: var(--pp-panel); color: var(--pp-ink); }
+
+.pp-fit-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 6px;
+}
+.pp-seg {
+  display: inline-flex; background: var(--pp-bg);
+  border: 1px solid var(--pp-border); border-radius: 6px; padding: 2px;
+}
+.pp-seg button {
+  background: transparent; color: var(--pp-muted);
+  border: 0; border-radius: 4px;
+  padding: 3px 10px; font-size: 11px; cursor: pointer; font-family: inherit;
+}
+.pp-seg button.is-active { background: var(--pp-accent); color: #fff; }
+
+/* Orientation row */
+.pp-orient-row { display: flex; gap: 8px; align-items: center; }
+.pp-orient-row .pp-dd { flex: 1; min-width: 0; }
+.pp-rotbtns { display: inline-flex; gap: 4px; }
+.pp-rbtn {
+  background: var(--pp-panel-elev); color: var(--pp-ink-2);
+  border: 1px solid var(--pp-border); border-radius: 6px;
+  padding: 4px 8px; font-size: 10px; cursor: pointer; font-family: inherit;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  min-width: 40px;
+}
+.pp-rbtn:hover { background: var(--pp-accent); border-color: var(--pp-accent); color: #fff; }
+.pp-rbtn svg { display: block; }
+
+/* Toggles (mirror, color, markups, collate, duplex) */
+.pp-tog-row { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 8px; }
+.pp-tog {
+  display: inline-flex; align-items: center; gap: 6px;
+  cursor: pointer; font-size: 12px; color: var(--pp-ink-2);
+  user-select: none;
+}
+.pp-tog .pp-tog-sw {
+  position: relative; width: 28px; height: 16px;
+  background: #3a3f4a; border-radius: 9px;
+  transition: background 160ms;
+  flex-shrink: 0;
+}
+.pp-tog .pp-tog-sw::after {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 12px; height: 12px; background: #e6e8ee;
+  border-radius: 50%; transition: left 160ms;
+}
+.pp-tog.is-on .pp-tog-sw { background: var(--pp-accent); }
+.pp-tog.is-on .pp-tog-sw::after { left: 14px; }
+
+/* Copies control */
+.pp-copies-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 4px;
+}
+.pp-stepper {
+  display: inline-flex; align-items: center;
+  background: var(--pp-bg); border: 1px solid var(--pp-border); border-radius: 6px;
+  overflow: hidden;
+}
+.pp-stepper button {
+  background: transparent; color: var(--pp-ink-2);
+  border: 0; width: 26px; height: 26px;
+  cursor: pointer; font-size: 14px;
+}
+.pp-stepper button:hover { background: var(--pp-panel-elev); color: var(--pp-ink); }
+.pp-stepper input {
+  width: 34px; text-align: center; background: transparent;
+  color: var(--pp-ink); border: 0; outline: none;
+  font: inherit; font-weight: 600;
+}
+
+/* ---------- Footer ---------- */
+.pp-footer {
+  border-top: 1px solid var(--pp-border-subtle);
+  background: linear-gradient(#24272e, #1f2128);
+  padding: 0 14px;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px;
+}
+.pp-footer-dest {
+  display: flex; align-items: center; gap: 10px;
+  color: var(--pp-ink-2); font-size: 12px; min-width: 0;
+}
+.pp-footer-dest .pp-dd {
+  min-width: 240px; max-width: 360px;
+}
+.pp-footer-totals {
+  color: var(--pp-muted); font-size: 12px;
+}
+.pp-footer-totals strong { color: var(--pp-ink-2); }
+.pp-footer-cta { display: inline-flex; gap: 8px; align-items: center; }
+.pp-btn-cancel {
+  background: transparent; color: var(--pp-ink-2);
+  border: 1px solid var(--pp-border); border-radius: 8px;
+  padding: 7px 16px; font-size: 13px; cursor: pointer;
+  font-family: inherit;
+}
+.pp-btn-cancel:hover { background: var(--pp-panel-elev); color: var(--pp-ink); }
+.pp-btn-print {
+  background: var(--pp-accent); color: #fff;
+  border: 0; border-radius: 8px;
+  padding: 8px 20px; font-size: 13px; font-weight: 600; cursor: pointer;
+  font-family: inherit;
+  box-shadow: 0 2px 6px rgba(74, 144, 226, 0.35);
+}
+.pp-btn-print:hover { background: var(--pp-accent-hover); }
+.pp-btn-print:disabled {
+  background: var(--pp-panel-elev); color: var(--pp-muted);
+  cursor: not-allowed; box-shadow: none;
+}
+
+/* ---------- Bigger preview overlay ---------- */
+.pp-bigprev {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 10001;
+  display: flex; flex-direction: column;
+  animation: pp-fade-in 140ms ease-out;
+}
+.pp-bigprev-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px;
+  color: #eee; font-size: 13px;
+}
+.pp-bigprev-head strong { color: #fff; }
+.pp-bigprev-stage {
+  flex: 1; min-height: 0;
+  overflow: auto; display: flex; align-items: center; justify-content: center;
+  padding: 40px;
+}
+.pp-bigprev-close {
+  background: transparent; color: #ddd; border: 1px solid #555;
+  border-radius: 6px; padding: 6px 12px; font-size: 13px;
+  cursor: pointer; font-family: inherit;
+}
+.pp-bigprev-close:hover { background: #333; color: #fff; }
+.pp-bigprev-sheet {
+  background: #ececea; color: #222;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.9);
+  transform-origin: center center;
+  transition: transform 200ms cubic-bezier(0.2, 0, 0.2, 1);
+  position: relative;
+}
+.pp-bigprev-zoom {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: #ddd;
+}
+.pp-bigprev-zoom button {
+  background: #2b2b2b; color: #ddd; border: 1px solid #555;
+  border-radius: 6px; width: 28px; height: 28px; cursor: pointer;
+  font-size: 15px; font-family: inherit;
+}
+.pp-bigprev-zoom button:hover { background: #3a3a3a; color: #fff; }
+
+/* Small responsive nudges */
+@media (max-width: 1100px) {
+  .pp-rail { flex-basis: 300px; width: 300px; }
+  .pp-root { width: calc(100vw - 32px); }
+}
+@media (max-width: 900px) {
+  .pp-rail { flex-basis: 260px; width: 260px; }
+}
