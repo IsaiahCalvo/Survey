@@ -21452,10 +21452,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const requiresLegacyAnnotationLayer = useMemo(() => {
     if (rendererMode !== 'svg') return true;
 
-    // Survey highlight creation/editing still depends on PAL. Spaces/regions
-    // stay on the SVG path so imported annotations and zoom remain stable.
-    return showSurveyPanel;
-  }, [rendererMode, showSurveyPanel]);
+    // Survey highlight DISPLAY now flows through SVGAnnotationLayer (no Fabric,
+    // no zoom flicker). PAL only mounts when the user is actively drawing a
+    // highlight — matching the regular-annotation pattern where Fabric overlays
+    // are ephemeral per-tool and SVG is the steady-state visual truth.
+    return showSurveyPanel && activeTool === 'highlight';
+  }, [rendererMode, showSurveyPanel, activeTool]);
 
   useEffect(() => {
     if (!useSyncfusionRenderer) return undefined;
@@ -28465,6 +28467,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   height={resolvedPageSize.height}
                                   annotations={pageAnnotations}
                                   callouts={callouts}
+                                  surveyHighlights={newHighlightsByPage[pageNumber]}
                                   selectedModuleId={selectedModuleId}
                                   showSurveyPanel={showSurveyPanel}
                                   selectedSpaceId={annotationSpaceId}
@@ -29260,6 +29263,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       height={pageSizes[pageNumber].height}
                                       annotations={pageAnnotationsCS}
                                       callouts={callouts}
+                                      surveyHighlights={newHighlightsByPage[pageNumber]}
                                       selectedModuleId={selectedModuleId}
                                       showSurveyPanel={showSurveyPanel}
                                       selectedSpaceId={annotationSpaceId}
@@ -29819,6 +29823,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       height={pageSizes[pageNum].height}
                                       annotations={pageAnnotations}
                                       callouts={callouts}
+                                      surveyHighlights={newHighlightsByPage[pageNum]}
                                       selectedModuleId={selectedModuleId}
                                       showSurveyPanel={showSurveyPanel}
                                       selectedSpaceId={annotationSpaceId}
