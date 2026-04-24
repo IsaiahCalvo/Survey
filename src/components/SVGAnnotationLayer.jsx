@@ -1206,10 +1206,17 @@ const SVGAnnotationLayer = memo(({
       }
 
       const obj = objects[i];
-      if (!obj || obj.visible === false) {
+      if (!obj) {
         dropReasons.nullOrHiddenFlag.push(i);
         continue;
       }
+      // obj.visible is a transient Fabric runtime flag used by PAL to hide
+      // non-survey annotations while survey mode is active. Fabric's toJSON
+      // serializes it, so the survey-mode hide would persist into the saved
+      // annotations and keep regular annotations invisible after exiting
+      // survey mode. Visibility is owned by the three-layer filter below
+      // (showSurveyPanel + selectedModuleId + space/region), not by this
+      // persisted flag — so ignore it here.
 
       // --- Layer visibility check ---
       const layer = obj.layer || 'native';

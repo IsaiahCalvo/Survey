@@ -26089,12 +26089,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return showSurveyPanel ? (isSurveyPanelCollapsed ? 48 : 320) : 0;
   }, [showSurveyPanel, isSurveyPanelCollapsed]);
 
-  // Auto-adjust PDF zoom when sidebars expand/collapse or survey panel opens/closes
+  // Auto-adjust PDF zoom when the left sidebar expands/collapses (that width
+  // change is big enough that FIT_* modes need to recompute). The survey panel
+  // toggles are intentionally excluded: opening/collapsing the survey panel
+  // only changes width by ~320px, which produces a scale delta under ~3% in
+  // practice — imperceptible, but the 1-second Syncfusion zoom-settle timer
+  // still fires and blocks dependent effects (e.g. the survey-highlight paint)
+  // from running until settle, making template open feel sluggish.
   useEffect(() => {
     requestAnimationFrame(() => {
       zoomControllerRef.current?.applyZoom({ persist: false, force: true });
     });
-  }, [showSurveyPanel, isLeftSidebarCollapsed, isSurveyPanelCollapsed]);
+  }, [isLeftSidebarCollapsed]);
 
   // Ensure survey panel always opens in expanded state
   useEffect(() => {
