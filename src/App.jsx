@@ -21452,12 +21452,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const requiresLegacyAnnotationLayer = useMemo(() => {
     if (rendererMode !== 'svg') return true;
 
-    // Survey highlight DISPLAY now flows through SVGAnnotationLayer (no Fabric,
-    // no zoom flicker). PAL only mounts when the user is actively drawing a
-    // highlight — matching the regular-annotation pattern where Fabric overlays
-    // are ephemeral per-tool and SVG is the steady-state visual truth.
-    return showSurveyPanel && activeTool === 'highlight';
-  }, [rendererMode, showSurveyPanel, activeTool]);
+    // Survey highlight creation/editing still depends on PAL. Spaces/regions
+    // stay on the SVG path so imported annotations and zoom remain stable.
+    return showSurveyPanel;
+  }, [rendererMode, showSurveyPanel]);
 
   useEffect(() => {
     if (!useSyncfusionRenderer) return undefined;
