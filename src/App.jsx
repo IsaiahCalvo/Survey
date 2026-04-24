@@ -21452,10 +21452,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const requiresLegacyAnnotationLayer = useMemo(() => {
     if (rendererMode !== 'svg') return true;
 
-    // Survey highlight creation/editing still depends on PAL. Spaces/regions
-    // stay on the SVG path so imported annotations and zoom remain stable.
-    return showSurveyPanel;
-  }, [rendererMode, showSurveyPanel]);
+    // Survey highlights now render via SVGAnnotationLayer (viewBox-scaled,
+    // no Fabric repaint, no flicker) and draw via FabricDrawingCanvas under
+    // the 'highlight' tool — same path used by rect/ellipse/line/arrow. PAL
+    // is retired in SVG mode.
+    return false;
+  }, [rendererMode]);
 
   useEffect(() => {
     if (!useSyncfusionRenderer) return undefined;
@@ -28342,7 +28344,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                           {!requiresLegacyAnnotationLayer && (() => {
                             const svgInteractive = activeTool === 'select' || activeTool === 'text-select';
                             const isTextTool = activeTool === 'text';
-                            const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow';
+                            const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow' || activeTool === 'highlight';
                             const isEraserTool = activeTool === 'eraser';
                             const isEditMode = editingAnnotation?.pageNumber === pageNumber;
                             // UX 2026-04-19: bbox edit mode (uniform resize + rotate chrome
@@ -28612,6 +28614,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                   strokeWidth={strokeWidth}
                                   annotations={pageAnnotations}
                                   onStrokeCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'path:created', tool: activeTool })}
+                                  onHighlightCreated={(bounds) => handleHighlightCreated(pageNumber, bounds)}
                                   selectedModuleId={selectedModuleId}
                                   selectedSpaceId={annotationSpaceId}
                                   activeRegionId={activeRegionId}
@@ -29231,7 +29234,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                 {pageSizes[pageNumber] && !requiresLegacyAnnotationLayer && (() => {
                                   const svgInteractive = activeTool === 'select' || activeTool === 'text-select';
                                   const isTextTool = activeTool === 'text';
-                                  const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow';
+                                  const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow' || activeTool === 'highlight';
                                   const isEraserTool = activeTool === 'eraser';
                                   const isEditMode = editingAnnotation?.pageNumber === pageNumber;
                                   // UX 2026-04-19: see first mount site — bbox edit mode
@@ -29368,6 +29371,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                         strokeWidth={strokeWidth}
                                         annotations={pageAnnotationsCS}
                                         onStrokeCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'path:created', tool: activeTool })}
+                                        onHighlightCreated={(bounds) => handleHighlightCreated(pageNumber, bounds)}
                                         selectedModuleId={selectedModuleId}
                                         selectedSpaceId={annotationSpaceId}
                                         activeRegionId={activeRegionId}
@@ -29788,7 +29792,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                             )}
                             {pageSizes[pageNum] && !requiresLegacyAnnotationLayer && (() => {
                               const svgInteractive = activeTool === 'select' || activeTool === 'text-select';
-                              const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow';
+                              const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow' || activeTool === 'highlight';
                               const isEraserTool = activeTool === 'eraser';
                               const isEditMode = editingAnnotation?.pageNumber === pageNum;
                               const pageAnnotations = annotationsByPage[pageNum];
@@ -29923,6 +29927,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
                                       strokeWidth={strokeWidth}
                                       annotations={pageAnnotations}
                                       onStrokeCommit={(updatedJSON) => handleSaveAnnotations(pageNum, updatedJSON, { source: 'path:created', tool: activeTool })}
+                                      onHighlightCreated={(bounds) => handleHighlightCreated(pageNum, bounds)}
                                       selectedModuleId={selectedModuleId}
                                       selectedSpaceId={annotationSpaceId}
                                       activeRegionId={activeRegionId}
