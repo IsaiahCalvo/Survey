@@ -23,11 +23,17 @@ import { useFabricCanvas } from '../hooks/useFabricCanvas';
 import { booleanErasePath } from '../utils/geometryEraser';
 
 // Custom properties to include in object serialization (matches PAL / FabricDrawingCanvas pattern)
+// UX 2026-04-25: 'tool' added so arrows survive an erase commit. Without it,
+// Fabric's toJSON strips the 'tool' field that FabricDrawingCanvas sets when
+// the user draws an arrow ('tool: arrow'). The SVG renderer reads obj.tool
+// to decide whether to render the arrowhead — losing the field turns every
+// arrow into a plain line on the next render.
 const CUSTOM_PROPS = [
   'strokeUniform', 'spaceId', 'moduleId', 'regionId',
   'data', 'name', 'highlightId', 'needsBIC',
   'globalCompositeOperation', 'layer',
   'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType',
+  'tool',
 ];
 
 const FabricEraserCanvas = memo(({
