@@ -383,6 +383,7 @@ const PDFSidebar = React.forwardRef(({
               onMouseLeave={() => setHoveredTabId(null)}
             >
               <button
+                title={tab.label}
                 onClick={() => {
                   if (tab.id === '__savelog') {
                     // UX 2026-04-22: Mobile-only Save Log in collapsed
@@ -395,6 +396,16 @@ const PDFSidebar = React.forwardRef(({
                     window.dispatchEvent(new CustomEvent('save-log-banner-start', {
                       detail: { consoleText }
                     }));
+                    return;
+                  }
+                  if (tab.id === 'survey') {
+                    // 2026-04-25 — Survey button in the collapsed vertical
+                    // rail must NOT expand the sidebar. It opens the
+                    // template-selection modal (or tears down survey state)
+                    // exactly like the original top-toolbar button did.
+                    if (typeof onSurveyButtonClick === 'function') {
+                      onSurveyButtonClick();
+                    }
                     return;
                   }
                   setIsCollapsed(false);
