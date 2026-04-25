@@ -271,6 +271,8 @@ export function subscribeToAllNonHighlightAnnotations(documentId, callbacks = {}
     hasCalloutDelete: !!onCalloutDelete
   }));
 
+  const { onSubscribed } = callbacks;
+
   const channel = supabase
     .channel(`all-annotations:${documentId}`)
     .on(
@@ -341,6 +343,16 @@ export function subscribeToAllNonHighlightAnnotations(documentId, callbacks = {}
       if (err) {
         console.error('[CloudSync] subscribe error: ' + (err?.message || String(err)));
         if (onError) onError(err);
+      }
+      // 2026-04-25 — onSubscribed lets the hook trigger a "catch-up"
+      // re-hydrate the moment realtime is live. Closes the race where
+      // rows pushed by another device between the initial hydrate query
+      // and the subscription becoming active would otherwise be lost
+      // until the next document open / refresh.
+      if (status === 'SUBSCRIBED' && typeof onSubscribed === 'function') {
+        try { onSubscribed(); } catch (cbErr) {
+          console.warn('[CloudSync] onSubscribed callback threw: ' + (cbErr?.message || String(cbErr)));
+        }
       }
     });
 

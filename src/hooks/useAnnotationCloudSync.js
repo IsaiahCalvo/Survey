@@ -204,6 +204,11 @@ export function useAnnotationCloudSync({
 
     debounceTimerRef.current = setTimeout(async () => {
       console.log('[CloudSync][hook] fabric push debounce elapsed — pushing now');
+      // 2026-04-25 — status pulse: flip to 'syncing' the moment the push
+      // starts so the corner chip shows the orange spinner. The push only
+      // takes ~150-300ms so this can be brief, but the user wanted clear
+      // feedback that something is in flight.
+      setStatus({ stage: 'syncing' });
 
       // Detect deletions: ids that were in the prior baseline but are no
       // longer in the current state (eraser tool, manual delete, etc.).
@@ -285,6 +290,7 @@ export function useAnnotationCloudSync({
     }));
     const handle = setTimeout(async () => {
       console.log('[CloudSync][hook] callout push debounce elapsed — pushing now');
+      setStatus({ stage: 'syncing' });
       const currentCalloutIds = new Set(
         (callouts || []).map((c) => c?.id || c?.highlightId).filter(Boolean)
       );
@@ -404,7 +410,46 @@ export function useAnnotationCloudSync({
             return next;
           });
         },
-        onError: (err) => setStatus({ stage: 'error', error: err, phase: 'subscribe' })
+        onError: (err) => setStatus({ stage: 'error', error: err, phase: 'subscribe' }),
+        // 2026-04-25 — Closes the open-document race window:
+        // The initial hydrate fetch happens BEFORE the realtime
+        // subscription is fully active (Postgres realtime only
+        // forwards events that arrive AFTER subscribe). On Windows
+        // we saw the user's Mac-pushed marks not appear until they
+        // hit refresh several times — that gap is what was eating
+        // them. The moment realtime confirms it's live we run a
+        // catch-up fetch and merge any rows that landed in the gap
+        // into local state (idempotent: rows already present are
+        // overwritten with the same data).
+        onSubscribed: () => {
+          if (!documentId) return;
+          (async () => {
+            try {
+              const fresh = await loadAllNonHighlightAnnotations(documentId);
+              if (fresh.error) return;
+              if (fresh.annotationsByPage && Object.keys(fresh.annotationsByPage).length > 0) {
+                setAnnotationsByPage((prev) => {
+                  const next = mergeAnnotationsByPage(prev, fresh.annotationsByPage);
+                  lastByPageRef.current = next; // suppress echo push
+                  return next;
+                });
+              }
+              if (Array.isArray(fresh.callouts) && fresh.callouts.length > 0) {
+                setCallouts((prev) => {
+                  const next = mergeCallouts(prev, fresh.callouts);
+                  lastCalloutsRef.current = next; // suppress echo push
+                  return next;
+                });
+              }
+              console.log('[CloudSync][hook] post-subscribe catch-up rehydrate complete ' + JSON.stringify({
+                pagesFromCloud: fresh.annotationsByPage ? Object.keys(fresh.annotationsByPage).length : 0,
+                calloutsFromCloud: Array.isArray(fresh.callouts) ? fresh.callouts.length : 0
+              }));
+            } catch (err) {
+              console.warn('[CloudSync][hook] post-subscribe rehydrate failed: ' + (err?.message || String(err)));
+            }
+          })();
+        }
       },
       // Echo filter — drop realtime events that originated from THIS
       // session (this tab / this Electron process). Same user on a
@@ -414,8 +459,44 @@ export function useAnnotationCloudSync({
       { currentUserId: userId, currentSessionId: clientSessionId }
     );
 
+    // 2026-04-25 — Belt-and-suspenders rehydrate when the window comes
+    // back into focus. Catches rows that landed while the user was on
+    // another window or (for Electron) while the app was backgrounded.
+    // Cheap: one query, idempotent merge.
+    const onFocus = () => {
+      if (!documentId) return;
+      (async () => {
+        try {
+          const fresh = await loadAllNonHighlightAnnotations(documentId);
+          if (fresh.error) return;
+          if (fresh.annotationsByPage && Object.keys(fresh.annotationsByPage).length > 0) {
+            setAnnotationsByPage((prev) => {
+              const next = mergeAnnotationsByPage(prev, fresh.annotationsByPage);
+              lastByPageRef.current = next;
+              return next;
+            });
+          }
+          if (Array.isArray(fresh.callouts) && fresh.callouts.length > 0) {
+            setCallouts((prev) => {
+              const next = mergeCallouts(prev, fresh.callouts);
+              lastCalloutsRef.current = next;
+              return next;
+            });
+          }
+        } catch (err) {
+          console.warn('[CloudSync][hook] focus rehydrate failed: ' + (err?.message || String(err)));
+        }
+      })();
+    };
+    if (typeof window !== 'undefined' && window.addEventListener) {
+      window.addEventListener('focus', onFocus);
+    }
+
     return () => {
       try { unsub?.(); } catch { /* ignore */ }
+      if (typeof window !== 'undefined' && window.removeEventListener) {
+        window.removeEventListener('focus', onFocus);
+      }
     };
   }, [enabled, documentId, userId, clientSessionId, setAnnotationsByPage, setCallouts]);
 

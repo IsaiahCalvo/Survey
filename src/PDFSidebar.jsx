@@ -65,7 +65,8 @@ const PDFSidebar = React.forwardRef(({
   getRegionOverlayEnabled = null,
   isRegionOverlayToggleEnabled = null,
   showSurveyPanel = false,
-  selectedModuleId = null
+  selectedModuleId = null,
+  onSurveyButtonClick = null
 }, ref) => {
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [activeTab, setActiveTab] = useState('pages'); // 'pages' | 'search' | 'bookmarks' | 'spaces'
@@ -103,7 +104,12 @@ const PDFSidebar = React.forwardRef(({
     { id: 'pages', label: 'Pages', icon: 'pages' },
     { id: 'search', label: 'Search Text', icon: 'search' },
     { id: 'bookmarks', label: 'Bookmarks', icon: 'bookmark' },
-    { id: 'spaces', label: 'Spaces', icon: 'folder' }
+    { id: 'spaces', label: 'Spaces', icon: 'folder' },
+    // 2026-04-25 — Survey moved here from the top toolbar so the rail owns
+    // every navigation entry. Icon-only by user request: the four tabs above
+    // read as icons-first to the user, and Survey should match. The label
+    // string is kept for the hover tooltip and ARIA only.
+    { id: 'survey', label: 'Survey', icon: 'survey', iconOnly: true }
   ];
 
   return (
@@ -166,65 +172,87 @@ const PDFSidebar = React.forwardRef(({
               typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()
                 ? [{ id: '__savelog', label: 'Save Log', icon: 'document' }]
                 : []
-            ).map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => {
-                  if (tab.id === '__savelog') {
-                    // UX 2026-04-22: Mobile-only tile that fires the Save Log
-                    // banner without switching panels. Kept alongside Pages /
-                    // Search / Bookmarks / Spaces so the user can submit a
-                    // log from anywhere inside a PDF.
-                    const buf = window.__consoleLogBuffer;
-                    const consoleText = Array.isArray(buf) && buf.length > 0
-                      ? buf.join('\n')
-                      : '(no console output captured)';
-                    window.dispatchEvent(new CustomEvent('save-log-banner-start', {
-                      detail: { consoleText }
-                    }));
-                    return;
-                  }
-                  setActiveTab(tab.id);
-                }}
-                style={{
-                  flex: 1,
-                  padding: '10px 8px',
-                  background: activeTab === tab.id ? '#2b2b2b' : 'transparent',
-                  border: 'none',
-                  borderBottom: activeTab === tab.id ? '2px solid #4A90E2' : '2px solid transparent',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: '4px',
-                  fontSize: '11px',
-                  color: activeTab === tab.id ? '#ddd' : '#999',
-                  fontWeight: activeTab === tab.id ? '500' : '400',
-                  fontFamily: FONT_FAMILY,
-                  transition: 'all 0.15s ease',
-                  whiteSpace: 'nowrap',
-                  minWidth: '70px'
-                }}
-                onMouseEnter={(e) => {
-                  if (activeTab !== tab.id) {
-                    e.currentTarget.style.background = '#2b2b2b';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (activeTab !== tab.id) {
-                    e.currentTarget.style.background = 'transparent';
-                  }
-                }}
-              >
-                <Icon
-                  name={tab.icon}
-                  size={16}
-                  color={activeTab === tab.id ? '#4A90E2' : '#999'}
-                  style={tab.icon === 'pages' ? { boxSizing: 'content-box', marginTop: '3px' } : undefined}
-                />
-                <span>{tab.label}</span>
-              </button>
-            ))}
+            ).map(tab => {
+              // Survey is the only tab that doesn't switch panels — it
+              // toggles the survey workflow modal/state via a parent callback.
+              // We mark it active when the parent tells us showSurveyPanel
+              // is true so it visually reads "on" with the same blue
+              // underline + tinted background as the four real tabs.
+              const isSurveyTab = tab.id === 'survey';
+              const isActive = isSurveyTab ? !!showSurveyPanel : activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  title={tab.label}
+                  onClick={() => {
+                    if (tab.id === '__savelog') {
+                      // UX 2026-04-22: Mobile-only tile that fires the Save Log
+                      // banner without switching panels. Kept alongside Pages /
+                      // Search / Bookmarks / Spaces so the user can submit a
+                      // log from anywhere inside a PDF.
+                      const buf = window.__consoleLogBuffer;
+                      const consoleText = Array.isArray(buf) && buf.length > 0
+                        ? buf.join('\n')
+                        : '(no console output captured)';
+                      window.dispatchEvent(new CustomEvent('save-log-banner-start', {
+                        detail: { consoleText }
+                      }));
+                      return;
+                    }
+                    if (isSurveyTab) {
+                      // 2026-04-25 — Survey button moved off the top toolbar.
+                      // Click delegated up to App.jsx (Pro-tier gate +
+                      // template-selection modal + showSurveyPanel toggle).
+                      if (typeof onSurveyButtonClick === 'function') {
+                        onSurveyButtonClick();
+                      }
+                      return;
+                    }
+                    setActiveTab(tab.id);
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '10px 8px',
+                    background: isActive ? '#2b2b2b' : 'transparent',
+                    border: 'none',
+                    borderBottom: isActive ? '2px solid #4A90E2' : '2px solid transparent',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
+                    fontSize: '11px',
+                    color: isActive ? '#ddd' : '#999',
+                    fontWeight: isActive ? '500' : '400',
+                    fontFamily: FONT_FAMILY,
+                    transition: 'all 0.15s ease',
+                    whiteSpace: 'nowrap',
+                    minWidth: '70px'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.background = '#2b2b2b';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.background = 'transparent';
+                    }
+                  }}
+                >
+                  <Icon
+                    name={tab.icon}
+                    size={tab.iconOnly ? 18 : 16}
+                    color={isActive ? '#4A90E2' : '#999'}
+                    style={tab.icon === 'pages' ? { boxSizing: 'content-box', marginTop: '3px' } : undefined}
+                  />
+                  {/* Survey is icon-only per user request — the other tabs
+                      keep their text labels for parity with the existing UX. */}
+                  {!tab.iconOnly && <span>{tab.label}</span>}
+                </button>
+              );
+            })}
           </div>
 
           {/* Panel Content */}

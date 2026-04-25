@@ -121,6 +121,9 @@ import { useZoomState } from './hooks/useZoomState';
 // Phase 21: cloud sync for all annotation types — see
 // .planning/phases/21-cloud-sync-all-annotations/CONTEXT.md
 import { useAnnotationCloudSync } from './hooks/useAnnotationCloudSync.js';
+import { useDocumentPresenceList } from './hooks/useDocumentPresenceList.js';
+import SyncStatusChip from './components/SyncStatusChip';
+import PresenceAvatars from './components/PresenceAvatars';
 import { debugMark } from './utils/debugBridge';
 import {
   computeExcelSyncFingerprint,
@@ -21101,7 +21104,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // matches this client's userId — avoids the user's own writes racing their
   // in-progress drawing (counter doubling, pen flicker).
   // The hook is a no-op when documentId or user is missing.
-  useAnnotationCloudSync({
+  // 2026-04-25 — Capture status + queueSize so the top-right SyncStatusChip
+  // can show "Up to date / Syncing… / Offline · N saved locally" at a glance.
+  // Pro-tier gate is wired here (free accounts skip the cloud sync entirely
+  // and rely on local-only annotations); the chip is hidden for those users
+  // since there's nothing to sync.
+  const cloudSyncEnabled = !!documentSyncEnabled && !!features?.cloudSync;
+  const { status: cloudSyncStatus, queueSize: cloudSyncQueueSize } = useAnnotationCloudSync({
     documentId: pdfFile?.id || null,
     userId: user?.id || null,
     pdfId,
@@ -21109,7 +21118,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     callouts,
     setAnnotationsByPage,
     setCallouts,
-    enabled: !!documentSyncEnabled
+    enabled: cloudSyncEnabled
+  });
+  // Live presence list — feeds the stacked-avatars row in the toolbar.
+  // Pro tier gate is shared with cloud sync since presence is part of the
+  // collaboration package, not the free local-only experience.
+  const documentPresenceList = useDocumentPresenceList({
+    documentId: pdfFile?.id || null,
+    enabled: cloudSyncEnabled
   });
 
   // Update presence when page changes
@@ -28114,45 +28130,26 @@ ${pageBlocks}
             <Icon name="redo" size={14} />
           </button>
 
-          {/* Survey Button - Gated for Pro/Enterprise */}
-          <button
-            onClick={() => {
-              if (!features?.advancedSurvey) {
-                alert('Survey Templates are a Pro feature. Please upgrade to use this tool.');
-                return;
-              }
-              if (!showSurveyPanel) {
-                // Show template selection modal
-                setShowTemplateSelection(true);
-              } else {
-                setShowSurveyPanel(false);
-                setSelectedModuleId(null);
-                setSelectedSpaceId(null);
-                setSelectedCategoryId(null);
-                setActiveTool('select');
-              }
-            }}
-            className={`btn btn-md ${showSurveyPanel ? 'btn-active' : 'btn-default'}`}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              fontSize: '14px',
-              fontWeight: '600',
-              padding: '4px 10px',
-              marginLeft: 'auto',
-              transition: 'all 0.2s ease',
-              background: showSurveyPanel ? 'rgba(74, 144, 226, 0.1)' : 'rgba(255, 255, 255, 0.05)',
-              border: showSurveyPanel ? '1px solid #4A90E2' : '1px solid #555',
-              color: showSurveyPanel ? '#4A90E2' : '#FFF',
-              opacity: features?.advancedSurvey ? 1 : 0.6
-            }}
-            title={!features?.advancedSurvey ? 'Pro feature - Upgrade to unlock' : ''}
-          >
-            <Icon name="survey" size={18} />
-            Survey
-            {!features?.advancedSurvey && <Icon name="lock" size={12} />}
-          </button>
+          {/* 2026-04-25 — Survey button moved to the left sidebar rail.
+              The toolbar's right corner now hosts the cloud sync status
+              chip; live presence row will sit to its right in a follow-up.
+              The previous inline survey button's Pro-tier gating + template
+              selection modal logic moved to the onSurveyButtonClick prop on
+              PDFSidebar. */}
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <SyncStatusChip
+              status={cloudSyncStatus}
+              queueSize={cloudSyncQueueSize}
+              enabled={cloudSyncEnabled}
+            />
+            <PresenceAvatars
+              presence={documentPresenceList}
+              currentUserId={user?.id || null}
+              currentUserEmail={user?.email || null}
+              currentUserDisplayName={user?.user_metadata?.full_name || null}
+              enabled={cloudSyncEnabled}
+            />
+          </div>
         </div>
 
         {/* Floating Tooltip */}
@@ -28314,6 +28311,26 @@ ${pageBlocks}
             isRegionOverlayToggleEnabled={isRegionOverlayToggleEnabled}
             showSurveyPanel={showSurveyPanel}
             selectedModuleId={selectedModuleId}
+            onSurveyButtonClick={() => {
+              // 2026-04-25 — Survey button relocated from the top toolbar to
+              // the sidebar rail. Click handler mirrors the original inline
+              // button: Pro-tier gate first, then either open the template
+              // selection modal (if not already in survey mode) or tear down
+              // survey state and return to the select tool.
+              if (!features?.advancedSurvey) {
+                alert('Survey Templates are a Pro feature. Please upgrade to use this tool.');
+                return;
+              }
+              if (!showSurveyPanel) {
+                setShowTemplateSelection(true);
+              } else {
+                setShowSurveyPanel(false);
+                setSelectedModuleId(null);
+                setSelectedSpaceId(null);
+                setSelectedCategoryId(null);
+                setActiveTool('select');
+              }
+            }}
             onToggleCollapse={(isCollapsed) => {
               setIsLeftSidebarCollapsed(isCollapsed);
               requestAnimationFrame(() => {
