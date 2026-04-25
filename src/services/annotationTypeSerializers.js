@@ -142,10 +142,19 @@ export function serializeFabricObjectToRow(fabricObj, opts = {}) {
     throw new Error(`Unsupported Fabric type: ${fabricObj.type} (data.type=${fabricObj.data?.type})`);
   }
 
-  const id = highlightId
-    || fabricObj.id
-    || fabricObj.data?.id
-    || generateClientId(dbType);
+  let id = highlightId || fabricObj.id || fabricObj.data?.id;
+  if (!id) {
+    id = generateClientId(dbType);
+    // Stamp the new id back onto the fabric object's data so the SAME
+    // local object keeps the same id across future pushes. Without this,
+    // every save mints a brand-new id for id-less objects, and Supabase
+    // accepts each one as an INSERT — that's the runaway-growth bug
+    // where one pen stroke spawned thousands of duplicate counter rows.
+    if (!fabricObj.data || typeof fabricObj.data !== 'object') {
+      fabricObj.data = {};
+    }
+    if (!fabricObj.data.id) fabricObj.data.id = id;
+  }
 
   const bounds = computeBounds(fabricObj);
 

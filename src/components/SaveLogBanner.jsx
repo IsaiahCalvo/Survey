@@ -74,6 +74,13 @@ export default function SaveLogBanner() {
     const preamble = buildLogPreamble({ description: trimmed });
     const payload = `${preamble}${consoleTextRef.current}`;
 
+    console.log('[SaveLog] runPush start ' + JSON.stringify({
+      hasElectronApi: !!api,
+      hasPushLogFn: !!(api && typeof api.pushLogToGithub === 'function'),
+      hasGhTokenEnv: !!import.meta.env.VITE_GITHUB_LOG_TOKEN,
+      payloadLength: payload?.length || 0
+    }));
+
     // Desktop path — Electron handler pushes to GitHub directly.
     if (api && typeof api.pushLogToGithub === 'function') {
       try {
@@ -124,6 +131,21 @@ export default function SaveLogBanner() {
     const ghToken = import.meta.env.VITE_GITHUB_LOG_TOKEN;
     const ghRepo = import.meta.env.VITE_GITHUB_LOG_REPO || 'IsaiahCalvo/Survey';
     const ghBranch = import.meta.env.VITE_GITHUB_LOG_BRANCH || 'logs';
+    console.log('[SaveLog] mobile/browser fallback path ' + JSON.stringify({
+      hasToken: !!ghToken,
+      tokenLength: ghToken ? ghToken.length : 0,
+      repo: ghRepo,
+      branch: ghBranch
+    }));
+    if (!ghToken) {
+      // Most common dev-mode failure: the .env.local token isn't available
+      // to the renderer (vite reload hiccup, file missing, var name typo).
+      // Surface it loudly so we know which leg failed.
+      console.warn('[SaveLog] no GitHub token available in this build — falling through to share/clipboard');
+      setResult({ message: 'GitHub push unavailable — no token in this build', url: null });
+      setState('error');
+      return;
+    }
     if (ghToken) {
       try {
         const platform = (() => {
@@ -152,6 +174,10 @@ export default function SaveLogBanner() {
             branch: ghBranch
           })
         });
+        console.log('[SaveLog] github fetch returned ' + JSON.stringify({
+          status: res.status,
+          ok: res.ok
+        }));
         if (res.ok) {
           const data = await res.json().catch(() => ({}));
           setResult({
