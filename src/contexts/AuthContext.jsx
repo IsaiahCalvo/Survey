@@ -77,6 +77,14 @@ export const AuthProvider = ({ children }) => {
       // (b) `getUser()` rejects the cached token as expired/invalid.
       const devEmail = import.meta.env.VITE_DEV_AUTO_LOGIN_EMAIL;
       const devPassword = import.meta.env.VITE_DEV_AUTO_LOGIN_PASSWORD;
+      console.log('[dev-auto-login] boot ' + JSON.stringify({
+        hasDevEmail: !!devEmail,
+        devEmailHint: devEmail ? devEmail.slice(0, 4) + '***' : null,
+        hasDevPassword: !!devPassword,
+        hasCachedSession: !!session,
+        cachedSessionEmail: session?.user?.email || null,
+        cachedSessionExpiresAt: session?.expires_at || null
+      }));
 
       let needsAutoLogin = !session;
       if (session && devEmail && devPassword) {
@@ -106,6 +114,10 @@ export const AuthProvider = ({ children }) => {
         }
       }
 
+      console.log('[dev-auto-login] decision ' + JSON.stringify({
+        needsAutoLogin,
+        willAttemptSignIn: needsAutoLogin && !!devEmail && !!devPassword
+      }));
       if (needsAutoLogin) {
         if (devEmail && devPassword) {
           try {
@@ -114,14 +126,25 @@ export const AuthProvider = ({ children }) => {
               password: devPassword
             });
             if (error) {
-              console.warn('[dev-auto-login] failed:', error.message || error);
+              console.warn('[dev-auto-login] sign-in FAILED ' + JSON.stringify({
+                code: error.code || null,
+                status: error.status || null,
+                message: error.message || String(error)
+              }));
             } else {
-              console.log('[dev-auto-login] signed in as', devEmail);
+              console.log('[dev-auto-login] sign-in OK ' + JSON.stringify({
+                userId: data?.user?.id || null,
+                email: data?.user?.email || null
+              }));
               session = data?.session ?? session;
             }
           } catch (err) {
-            console.warn('[dev-auto-login] threw:', err?.message || err);
+            console.warn('[dev-auto-login] sign-in THREW ' + JSON.stringify({
+              message: err?.message || String(err)
+            }));
           }
+        } else {
+          console.warn('[dev-auto-login] needed sign-in but creds NOT loaded — skipped. Restart the dev server / Electron app to pick up .env.local.');
         }
       }
 
