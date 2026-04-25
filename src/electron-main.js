@@ -865,6 +865,108 @@ ipcMain.handle('print:job', async (event, options = {}) => {
   }
 });
 
+// UX 2026-04-24: Silent-print pipeline — receives the composed print HTML
+// from the renderer, loads it into a hidden BrowserWindow, fires a silent
+// webContents.print() with the chosen device + options, then closes the
+// hidden window. Skips the OS print dialog entirely so the custom Print
+// Panel acts as the single source of truth for every option.
+ipcMain.handle('print:html-silent', async (event, payload = {}) => {
+  const { html, options = {} } = payload || {};
+  if (!html || typeof html !== 'string') return { ok: false, error: 'no html' };
+  let hidden = null;
+  try {
+    hidden = new BrowserWindow({
+      show: false,
+      width: 800,
+      height: 1000,
+      webPreferences: {
+        offscreen: false,
+        sandbox: true,
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    });
+    const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(html);
+    await hidden.loadURL(dataUrl);
+    await new Promise((r) => setTimeout(r, 50));
+    const printOptions = {
+      silent: true,
+      printBackground: options.printBackground !== false,
+      color: options.color !== false,
+      landscape: options.landscape === true,
+      copies: Math.max(1, parseInt(options.copies, 10) || 1),
+      collate: options.collate !== false,
+    };
+    if (options.deviceName) printOptions.deviceName = options.deviceName;
+    if (options.duplexMode) printOptions.duplexMode = options.duplexMode;
+    if (options.pageSize) printOptions.pageSize = options.pageSize;
+    if (options.margins) printOptions.margins = options.margins;
+    if (options.pageRanges) printOptions.pageRanges = options.pageRanges;
+    console.log('[print:html-silent] dispatch with options:', printOptions);
+    const result = await new Promise((resolve) => {
+      hidden.webContents.print(printOptions, (success, failureReason) => {
+        if (success) resolve({ ok: true });
+        else resolve({ ok: false, error: failureReason || 'print canceled or failed' });
+      });
+    });
+    return result;
+  } catch (error) {
+    console.error('[print:html-silent] error:', error);
+    return { ok: false, error: error?.message || String(error) };
+  } finally {
+    try { if (hidden && !hidden.isDestroyed()) hidden.close(); } catch {}
+  }
+});
+
+// UX 2026-04-24: companion to silent print — when the user picks
+// "Save as PDF" as the destination, render the composed HTML to a real
+// PDF on disk via webContents.printToPDF and prompt the user for a
+// save location. Honors the same per-page @page CSS so mixed paper
+// sizes survive the round-trip.
+ipcMain.handle('print:html-to-pdf', async (event, payload = {}) => {
+  const { html, suggestedName = 'Print.pdf', options = {} } = payload || {};
+  if (!html || typeof html !== 'string') return { ok: false, error: 'no html' };
+  let hidden = null;
+  try {
+    const parentWindow = BrowserWindow.fromWebContents(event.sender) || null;
+    const saveResult = await dialog.showSaveDialog(parentWindow, {
+      title: 'Save print output as PDF',
+      defaultPath: suggestedName,
+      filters: [{ name: 'PDF', extensions: ['pdf'] }],
+    });
+    if (saveResult.canceled || !saveResult.filePath) {
+      return { ok: false, error: 'canceled' };
+    }
+    hidden = new BrowserWindow({
+      show: false,
+      width: 800,
+      height: 1000,
+      webPreferences: {
+        offscreen: false,
+        sandbox: true,
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    });
+    const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(html);
+    await hidden.loadURL(dataUrl);
+    await new Promise((r) => setTimeout(r, 100));
+    const pdfBuffer = await hidden.webContents.printToPDF({
+      printBackground: options.printBackground !== false,
+      preferCSSPageSize: true,
+      landscape: options.landscape === true,
+    });
+    fs.writeFileSync(saveResult.filePath, pdfBuffer);
+    console.log('[print:html-to-pdf] wrote', saveResult.filePath, pdfBuffer.length, 'bytes');
+    return { ok: true, filePath: saveResult.filePath };
+  } catch (error) {
+    console.error('[print:html-to-pdf] error:', error);
+    return { ok: false, error: error?.message || String(error) };
+  } finally {
+    try { if (hidden && !hidden.isDestroyed()) hidden.close(); } catch {}
+  }
+});
+
 // UX 2026-04-22: Push the current Save Log dump to the Survey repo's "logs"
 // branch on GitHub, using whatever `gh` CLI auth the user already has. Each
 // save lands as its own timestamped file tagged with the device (platform +

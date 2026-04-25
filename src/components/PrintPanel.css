@@ -56,7 +56,9 @@
   border-radius: var(--pp-radius);
   box-shadow: var(--pp-shadow-xl);
   display: grid;
-  grid-template-rows: 44px minmax(0, 1fr) 56px;
+  /* UX 2026-04-23: conservative first pass at tighter chrome — title and
+     footer rows trimmed so the middle real estate grows. */
+  grid-template-rows: 21px minmax(0, 1fr) 30px;
   grid-template-columns: minmax(0, 1fr);
   overflow: hidden;
   min-width: 0;
@@ -137,10 +139,11 @@
 
 /* Top scope bar — shared by J and K. */
 .pp-topbar {
-  padding: 10px 14px 12px;
+  /* UX 2026-04-23: 5px top/bottom padding before thumbnail strip. */
+  padding: 5px 12px 5px;
   border-bottom: 1px solid var(--pp-border-subtle);
   background: #232327;
-  display: flex; flex-direction: column; gap: 10px;
+  display: flex; flex-direction: column; gap: 6px;
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
@@ -155,7 +158,10 @@
 .pp-range-input {
   background: var(--pp-bg); color: var(--pp-ink);
   border: 1px solid var(--pp-border); border-radius: var(--pp-radius-sm);
-  padding: 6px 10px; font-size: 13px; font-family: inherit;
+  box-sizing: border-box;
+  height: 22px;
+  padding: 0 10px; font-size: 13px; font-family: inherit;
+  line-height: 20px;
   font-weight: 600; min-width: 120px; outline: none;
 }
 .pp-range-input:focus {
@@ -166,19 +172,34 @@
 .pp-quick {
   background: transparent; color: var(--pp-ink-2);
   border: 1px solid var(--pp-border); border-radius: 6px;
-  padding: 4px 10px; font-size: 12px; cursor: pointer; font-family: inherit;
+  box-sizing: border-box;
+  height: 22px;
+  padding: 0 10px; font-size: 12px; line-height: 20px;
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; font-family: inherit;
 }
 .pp-quick:hover { background: var(--pp-panel-elev); color: var(--pp-ink); }
+/* UX 2026-04-24: active state for the Pages-to-print shortcut pills. */
+.pp-quick.is-active {
+  background: var(--pp-accent); border-color: var(--pp-accent); color: #fff;
+}
+/* UX 2026-04-24: soft-red state for range inputs when the user types
+   a page that falls outside the top-row selection. Non-blocking — we
+   still let them keep typing, but the border + text color signal that
+   some of what they typed won't take effect. */
+.pp-pill-range.has-error,
+.pp-scope-select-input input.has-error,
+.pp-range-input.has-error {
+  border-color: #e74c3c !important;
+  color: #ff9b92;
+  box-shadow: 0 0 0 1px rgba(231, 76, 60, 0.35);
+}
 .pp-hint {
   color: var(--pp-muted); font-size: 11px; margin-left: auto;
 }
-.pp-kbd {
-  background: var(--pp-bg); border: 1px solid var(--pp-border);
-  border-radius: 4px; padding: 1px 5px; font-family: Monaco, Consolas, monospace;
-  font-size: 11px; color: var(--pp-ink-3);
-}
 .pp-totals {
   color: var(--pp-ink-2); font-size: 12px;
+  margin-left: auto;
 }
 .pp-totals strong { color: var(--pp-ink); }
 
@@ -186,10 +207,10 @@
 .pp-strip {
   display: flex; flex-wrap: nowrap; gap: 7px;
   overflow-x: auto; overflow-y: hidden;
-  padding: 2px 2px 6px;
-  /* UX 2026-04-23: raised from 76 → 92 so the page-number label sits
-     cleanly below each preview instead of overlapping the PDF content. */
-  height: 92px;
+  padding: 2px 2px 2px;
+  /* UX 2026-04-24: strip height includes the thumb plus the page-number
+     label beneath it — 76px was clipping the label off-view. */
+  height: 88px;
   align-items: flex-start;
   min-width: 0;
   max-width: 100%;
@@ -202,23 +223,37 @@
 /* UX 2026-04-23: wrapper holding one preview rectangle and the page-number
    label below it. Hover/focus/current-state styling applies to the whole
    cell so the label is a full click target alongside the image. */
+/* UX 2026-04-24: the cell reserves a fixed vertical slot for the thumb
+   so the page number label always lands on the same baseline across
+   the whole strip, regardless of whether each page is portrait or
+   landscape. The inner thumb sits pinned to the bottom of its slot so
+   landscape thumbs look centered on the label, while portrait thumbs
+   fill the height cleanly. */
 .pp-thumb-cell {
   display: inline-flex; flex-direction: column; align-items: center; gap: 3px;
-  flex: 0 0 auto; cursor: pointer; padding-top: 2px;
+  flex: 0 0 auto; cursor: pointer;
+  padding-top: 2px;
   transition: transform 120ms;
 }
+.pp-thumb-cell > .pp-thumb { display: block; }
 .pp-thumb-cell:hover { transform: translateY(-1px); }
 .pp-thumb-cell:focus-visible { outline: none; }
 .pp-thumb-cell:focus-visible .pp-thumb { border-color: var(--pp-accent); }
 
+/* UX 2026-04-24: every thumb occupies the same vertical footprint so
+   the page number labels below them stay on a single horizontal line.
+   Height is fixed; width varies with the page's aspect ratio, which is
+   passed in via an inline style on each thumb. */
 .pp-thumb {
   position: relative;
-  width: 46px; height: 60px; border-radius: 4px;
+  height: 60px;
+  width: auto;
+  aspect-ratio: var(--pp-thumb-ar, 46 / 60);
+  border-radius: 4px;
   background: #f0f0ec; color: #222;
   border: 2px solid transparent;
   transition: border-color 120ms, box-shadow 120ms, background 120ms, opacity 120ms;
 }
-.pp-thumb.is-landscape { width: 60px; height: 46px; }
 .pp-thumb-cell:hover .pp-thumb {
   box-shadow: 0 4px 10px rgba(0,0,0,0.35);
 }
@@ -257,6 +292,11 @@
   position: absolute; inset: 6px; border: 1px dashed #999; border-radius: 2px;
   pointer-events: none;
 }
+/* UX 2026-04-24: thumbs mirror the color/BW state live so toggling the
+   Color switch is immediately visible across the whole top strip, not
+   just the big preview pane. Applied as a CSS filter so no re-render of
+   the cached thumbnail is needed. */
+.pp-thumb.is-bw { filter: grayscale(1); }
 
 /* ---------- Mid: preview + right rail ---------- */
 .pp-mid {
@@ -273,7 +313,8 @@
   display: flex; flex-direction: column;
   min-height: 0; min-width: 0;
   border-right: 1px solid var(--pp-border-subtle);
-  padding: 12px 14px;
+  /* UX 2026-04-23: trimmed so the preview stage has more room. */
+  padding: 8px 10px;
   overflow: hidden;
 }
 .pp-preview-top {
@@ -288,7 +329,7 @@
   background: var(--pp-panel-elev); color: var(--pp-ink);
   border: 1px solid var(--pp-border); border-radius: 4px 0 0 4px;
   font: 600 12px/1 inherit; text-transform: none;
-  padding: 4px 6px; width: 52px; text-align: center;
+  padding: 4px 6px; width: 38px; text-align: center;
 }
 .pp-preview-page-input:focus { outline: none; border-color: var(--pp-accent); }
 
@@ -300,6 +341,7 @@
 .pp-ppicker {
   position: relative; display: inline-flex; align-items: stretch;
   margin-left: 4px; text-transform: none;
+  height: 20px;
 }
 .pp-ppicker-caret {
   background: var(--pp-panel-elev); color: var(--pp-ink);
@@ -317,7 +359,12 @@
   box-shadow: 0 6px 20px rgba(0,0,0,0.35);
   margin: 0; padding: 4px 0; list-style: none;
   z-index: 10;
+  /* UX 2026-04-23: keep the list scrollable but hide the scrollbar so
+     the dropdown stays visually clean. */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
+.pp-ppicker-menu::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .pp-ppicker-opt {
   padding: 4px 10px; font: 500 12px/1.4 inherit; cursor: pointer;
   white-space: nowrap; text-transform: none;
@@ -330,6 +377,9 @@
   background: #101014;
   border: 1px solid var(--pp-border-subtle);
   border-radius: 8px;
+  /* UX 2026-04-23: small breathing padding keeps the sheet's drop shadow
+     visible; the page itself still scales to fill the remaining area. */
+  padding: 12px;
   display: flex; align-items: center; justify-content: center;
   overflow: hidden; position: relative;
 }
@@ -401,20 +451,27 @@
 .pp-pager-dot:focus-visible { outline: none; border-color: var(--pp-accent); }
 .pp-pager-dot.is-landscape { min-width: 26px; }
 .pp-pager-dot.is-current { background: var(--pp-accent); color: #fff; }
-.pp-pager-kbdhint { color: var(--pp-muted); font-size: 11px; margin-left: 4px; }
 
 .pp-bigprev-btn {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  padding: 0 10px;
   background: var(--pp-panel-elev); color: var(--pp-ink-2);
   border: 1px solid var(--pp-border); border-radius: 6px;
-  padding: 5px 10px; font-size: 12px; cursor: pointer; font-family: inherit;
+  font-size: 12px; cursor: pointer; font-family: inherit;
 }
 .pp-bigprev-btn:hover { background: var(--pp-accent); color: #fff; border-color: var(--pp-accent); }
 
 /* ---------- Right rail: sections ---------- */
 .pp-rail {
-  flex: 0 0 360px;
-  width: 360px;
-  padding: 12px 14px 14px;
+  flex: 0 0 340px;
+  width: 340px;
+  /* UX 2026-04-23: rail slimmed 20px and padding tightened so more of
+     the width belongs to the preview on the left. */
+  padding: 8px 12px 10px;
   overflow-y: auto;
   overflow-x: hidden;
   background: #242428;
@@ -427,11 +484,12 @@
 .pp-rail::-webkit-scrollbar-track { background: transparent; }
 .pp-rail::-webkit-scrollbar-thumb { background: #3A3A3A; border-radius: 6px; }
 
-.pp-section { margin-bottom: 10px; }
-.pp-section + .pp-section { border-top: 1px solid var(--pp-border-subtle); padding-top: 10px; }
+/* UX 2026-04-23: tighter section rhythm on the right rail. */
+.pp-section { margin-bottom: 6px; }
+.pp-section + .pp-section { border-top: 1px solid var(--pp-border-subtle); padding-top: 6px; }
 .pp-section-head {
   display: flex; align-items: center; gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 5px;
 }
 .pp-section-title {
   text-transform: uppercase; font-size: 11px; letter-spacing: 0.9px;
@@ -504,24 +562,34 @@
 }
 .pp-scope-select-input input:focus { border-color: var(--pp-accent); box-shadow: var(--pp-accent-glow); }
 
-/* Dropdown (paper size, orientation) */
+/* UX 2026-04-24: the native select fills the entire pill so clicking
+   anywhere on the dropdown opens it — not just a narrow strip of text.
+   The wrapper carries the visual chrome (background, border, caret),
+   and the select is absolutely positioned over the top with its own
+   padding for alignment. */
 .pp-dd {
   position: relative;
   display: flex; align-items: center;
   background: var(--pp-bg); color: var(--pp-ink);
   border: 1px solid var(--pp-border);
-  border-radius: 6px; padding: 6px 28px 6px 10px;
+  border-radius: 6px;
   font-size: 13px; cursor: pointer; font-family: inherit;
   width: 100%;
+  min-height: 30px;
+  padding: 0;
 }
 .pp-dd-caret {
   position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
   color: var(--pp-muted); font-size: 10px; pointer-events: none;
+  z-index: 1;
 }
 .pp-dd select {
+  position: absolute; inset: 0;
   appearance: none; background: transparent; color: var(--pp-ink);
   border: 0; outline: none; font: inherit;
-  width: 100%; padding: 0; cursor: pointer;
+  width: 100%; height: 100%;
+  padding: 6px 28px 6px 10px;
+  cursor: pointer;
 }
 .pp-dd select option { background: var(--pp-panel); color: var(--pp-ink); }
 
@@ -542,16 +610,38 @@
 
 /* Orientation row */
 .pp-orient-row { display: flex; gap: 8px; align-items: center; }
-.pp-orient-row .pp-dd { flex: 1; min-width: 0; }
-.pp-rotbtns { display: inline-flex; gap: 4px; }
+/* UX 2026-04-24: orientation dropdown doesn't need to fill the row — the
+   three short labels (Auto / Portrait / Landscape) sit comfortably in a
+   fixed narrow pill so the rotate buttons have breathing room. */
+.pp-orient-row .pp-dd { flex: 0 0 auto; min-width: 0; width: 130px; }
+
+/* UX 2026-04-24: paper-size row hosts the dropdown plus an optional
+   "Match another page…" page picker that only appears when that option
+   is selected. Layout stays on one line. */
+.pp-paper-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.pp-paper-row .pp-dd { flex: 1 1 auto; min-width: 0; }
+.pp-match-page {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: var(--pp-muted); font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+.pp-match-label { color: var(--pp-muted); }
+/* UX 2026-04-24: round icon-only rotate buttons — a tight pair that
+   sits next to the orientation dropdown and spins the selected pages
+   ±90° per click. No text label — the arrow glyph is enough. */
+.pp-rotbtns { display: inline-flex; gap: 6px; }
 .pp-rbtn {
   background: var(--pp-panel-elev); color: var(--pp-ink-2);
-  border: 1px solid var(--pp-border); border-radius: 6px;
-  padding: 4px 8px; font-size: 10px; cursor: pointer; font-family: inherit;
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
-  min-width: 40px;
+  border: 1px solid var(--pp-border); border-radius: 50%;
+  width: 26px; height: 26px; padding: 0;
+  cursor: pointer; font-family: inherit;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: background 120ms, border-color 120ms, color 120ms, transform 120ms;
 }
 .pp-rbtn:hover { background: var(--pp-accent); border-color: var(--pp-accent); color: #fff; }
+.pp-rbtn:active { transform: scale(0.92); }
 .pp-rbtn svg { display: block; }
 
 /* Toggles (mirror, color, markups, collate, duplex) */
@@ -601,9 +691,13 @@
 .pp-footer {
   border-top: 1px solid var(--pp-border-subtle);
   background: linear-gradient(#24272e, #1f2128);
-  padding: 0 14px;
+  /* UX 2026-04-23: slimmer horizontal padding + trimmed gap between
+     destination picker, totals, and action buttons. */
+  padding: 0 12px;
+  height: 30px;
+  box-sizing: border-box;
   display: flex; align-items: center; justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
 }
 .pp-footer-dest {
   display: flex; align-items: center; gap: 10px;
@@ -611,6 +705,9 @@
 }
 .pp-footer-dest .pp-dd {
   min-width: 240px; max-width: 360px;
+  box-sizing: border-box;
+  height: 23px;
+  padding: 0 28px 0 10px;
 }
 .pp-footer-totals {
   color: var(--pp-muted); font-size: 12px;
@@ -619,16 +716,21 @@
 .pp-footer-cta { display: inline-flex; gap: 8px; align-items: center; }
 .pp-btn-cancel {
   background: transparent; color: var(--pp-ink-2);
-  border: 1px solid var(--pp-border); border-radius: 8px;
-  padding: 7px 16px; font-size: 13px; cursor: pointer;
+  border: 1px solid var(--pp-border); border-radius: 3px;
+  padding: 0 10px; font-size: 13px; cursor: pointer;
   font-family: inherit;
+  box-sizing: border-box;
+  height: 23px;
 }
 .pp-btn-cancel:hover { background: var(--pp-panel-elev); color: var(--pp-ink); }
 .pp-btn-print {
   background: var(--pp-accent); color: #fff;
-  border: 0; border-radius: 8px;
-  padding: 8px 20px; font-size: 13px; font-weight: 600; cursor: pointer;
+  border: 0; border-radius: 4px;
+  padding: 3px 8px; font-size: 13px; font-weight: 600; cursor: pointer;
   font-family: inherit;
+  box-sizing: border-box;
+  height: 23px;
+  margin: 0;
   box-shadow: 0 2px 6px rgba(74, 144, 226, 0.35);
 }
 .pp-btn-print:hover { background: var(--pp-accent-hover); }
@@ -647,19 +749,105 @@
 }
 .pp-bigprev-head {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 20px;
+  box-sizing: border-box;
+  height: 25px;
+  padding: 0 12px;
   color: #eee; font-size: 13px;
+  /* UX 2026-04-23: solid bar — keeps the header legible regardless of
+     what's behind the bigger-preview overlay. */
+  background: #1E1E1E;
+  border-bottom: 1px solid #333;
+}
+/* UX 2026-04-23: zoom controls are free-floating — no enclosing pill or
+   border. Each button carries its own hover state so the group still
+   feels cohesive without a shared frame. */
+.pp-bigprev-head .pp-bigprev-zoom {
+  gap: 4px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  height: auto;
+  align-items: center;
+}
+.pp-bigprev-head .pp-bigprev-zoom button {
+  background: transparent;
+  color: #cfcfcf;
+  border: 0;
+  border-radius: 4px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 120ms ease, color 120ms ease;
+  font-family: inherit;
+  cursor: pointer;
+}
+.pp-bigprev-head .pp-bigprev-zoom button:hover:not(:disabled) {
+  background: #3a3a3a;
+  color: #fff;
+}
+.pp-bigprev-head .pp-bigprev-zoom button:active {
+  background: var(--pp-accent);
+  color: #fff;
+}
+.pp-bigprev-head .pp-bigprev-zoom > span {
+  color: #eaeaea;
+  font-size: 11px;
+  font-weight: 600;
+  min-width: 40px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  padding: 0 2px;
+  user-select: none;
+}
+.pp-bigprev-head .pp-bigprev-close {
+  width: 22px;
+  height: 22px;
+  background: transparent;
+  border: 0;
+  color: #9a9a9a;
+  font-size: 11px;
+  line-height: 1;
+  margin-left: 10px;
+  border-radius: 50%;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.pp-bigprev-head .pp-bigprev-close:hover {
+  background: #3a3a3a;
+  color: #fff;
 }
 .pp-bigprev-head strong { color: #fff; }
+/* UX 2026-04-23: the stage uses an overflow-auto grid so the sheet stays
+   centered when it fits and reveals scrollbars when it grows past the
+   viewport. Earlier the sheet was wrapped in a flex center which clipped
+   at the center point above ~125% zoom, making larger zooms look like
+   they did nothing. */
 .pp-bigprev-stage {
   flex: 1; min-height: 0;
-  overflow: auto; display: flex; align-items: center; justify-content: center;
-  padding: 40px;
+  overflow: auto;
+  display: grid; place-items: center;
+  padding: 10px 0;
+  overscroll-behavior: contain;
 }
+.pp-bigprev-stage > .pp-bigprev-sheet { margin: auto; }
+/* UX 2026-04-23: close is an icon-only square button — minimal chrome. */
 .pp-bigprev-close {
   background: transparent; color: #ddd; border: 1px solid #555;
-  border-radius: 6px; padding: 6px 12px; font-size: 13px;
-  cursor: pointer; font-family: inherit;
+  border-radius: 50%; width: 28px; height: 28px; padding: 0;
+  font-size: 13px; line-height: 1; cursor: pointer; font-family: inherit;
+  display: inline-flex; align-items: center; justify-content: center;
+  margin-left: 8px;
 }
 .pp-bigprev-close:hover { background: #333; color: #fff; }
 .pp-bigprev-sheet {
@@ -679,6 +867,79 @@
   font-size: 15px; font-family: inherit;
 }
 .pp-bigprev-zoom button:hover { background: #3a3a3a; color: #fff; }
+
+/* UX 2026-04-23: navigation row at the bottom of the Bigger Preview —
+   mirrors the inline preview's controls (prev/next arrows, page picker,
+   sliding window of numbered page rectangles) so the user can jump
+   between pages without closing the pop-out. */
+.pp-bigprev-nav {
+  flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  box-sizing: border-box;
+  height: 40px;
+  padding: 6px 20px 12px;
+  color: #ddd; font-size: 13px;
+  background: transparent;
+}
+.pp-bigprev-nav .pp-pager-btn {
+  width: 22px;
+  height: 22px;
+  font-size: 13px;
+  background: #2b2b2b; border-color: #555; color: #ddd;
+}
+.pp-bigprev-nav .pp-pager-btn:not(:disabled):hover {
+  background: var(--pp-accent); border-color: var(--pp-accent); color: #fff;
+}
+/* UX 2026-04-23: page picker now sits inside the bigger preview's
+   header, next to the "Preview" label. */
+.pp-bigprev-title {
+  display: inline-flex; align-items: center; color: #eee;
+  font-size: 11px;
+  line-height: 1;
+}
+.pp-bigprev-title-lead { color: #eee; }
+.pp-bigprev-title-trail { color: #eee; }
+.pp-bigprev-title .pp-ppicker { margin-left: 2px; margin-right: 2px; }
+/* UX 2026-04-23: compact picker in the header — minimal width but room
+   for three digits (tabular figures keep widths stable). */
+.pp-bigprev-title .pp-preview-page-input {
+  box-sizing: border-box;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  line-height: 1;
+  height: 16px;
+  width: 32px;
+  padding: 1px 2px;
+}
+.pp-bigprev-title .pp-ppicker-caret {
+  box-sizing: border-box;
+  font-size: 8px;
+  line-height: 1;
+  min-width: 14px;
+  width: 14px;
+  height: 16px;
+  padding: 0;
+  flex-shrink: 0;
+}
+/* UX 2026-04-23: center the dropdown list under the page number + caret
+   rather than left-aligning it. Default width fits three digits; longer
+   page numbers let the list grow naturally since each row is nowrap. */
+.pp-bigprev-title .pp-ppicker-menu {
+  min-width: 0;
+  width: max-content;
+  max-height: 220px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.pp-bigprev-title .pp-ppicker-opt {
+  padding: 4px 6px;
+  min-width: 36px;
+  text-align: center;
+}
+.pp-bigprev-title .pp-ppicker-opt {
+  padding: 4px 8px; text-align: center;
+}
 
 /* Small responsive nudges */
 @media (max-width: 1100px) {

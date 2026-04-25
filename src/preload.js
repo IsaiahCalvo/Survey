@@ -81,6 +81,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // to the main process, which owns the BrowserWindow handle.
   listPrinters: () => ipcRenderer.invoke('print:list-printers'),
   printJob: (options) => ipcRenderer.invoke('print:job', options),
+  // UX 2026-04-24: silent print directly from composed HTML — skips the
+  // OS print dialog entirely. Renderer hands over the print HTML and
+  // device options; main spins up a hidden window, loads it, prints, and
+  // closes. Returns { ok, error }.
+  printHtmlSilent: (payload) => ipcRenderer.invoke('print:html-silent', payload),
+  printHtmlToPdf: (payload) => ipcRenderer.invoke('print:html-to-pdf', payload),
 
   // UX 2026-04-22: Auto-updater bridges — lets renderer trigger checks +
   // downloads + installs, and subscribe to progress/state events. No-ops in
