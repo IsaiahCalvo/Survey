@@ -66,6 +66,16 @@ export function useAnnotationCloudSync({
   const debounceTimerRef = useRef(null);
   const hydratedRef = useRef(false);
 
+  // After hydrate completes the merge into local state triggers the push
+  // effect once with the FULL post-merge bag. Pushing thousands of pre-
+  // existing rows back to Supabase is wasteful, hits statement timeouts
+  // (10s upserts), starves the UI thread, and on bloated documents can
+  // make pen strokes look like they don't commit. We skip exactly that
+  // first post-hydrate fire and lock the baseline; subsequent changes
+  // (real user edits) push normally.
+  const skipNextFabricPushRef = useRef(false);
+  const skipNextCalloutPushRef = useRef(false);
+
   // Per-tab / per-Electron-process session id used by the echo filter so
   // the same user's OTHER device (a different session) still receives live
   // updates. Generated once per hook lifetime; survives across documents.
@@ -175,8 +185,11 @@ export function useAnnotationCloudSync({
         setStatus({ stage: 'error', error: migration.error, phase: 'migrate' });
       } else {
         hydratedRef.current = true;
+        skipNextFabricPushRef.current = true;
+        skipNextCalloutPushRef.current = true;
         console.log('[CloudSync][hook] hydrate+migrate complete — push gate OPEN ' + JSON.stringify({
-          migrationPushed: migration.pushed
+          migrationPushed: migration.pushed,
+          skipNextAutoPush: true
         }));
         setStatus({ stage: 'idle', migrationPushed: migration.pushed });
       }
@@ -198,6 +211,21 @@ export function useAnnotationCloudSync({
       return;
     }
     if (annotationsByPage === lastByPageRef.current) return;
+
+    if (skipNextFabricPushRef.current) {
+      skipNextFabricPushRef.current = false;
+      lastByPageRef.current = annotationsByPage;
+      const pageCount = Object.keys(annotationsByPage || {}).length;
+      const objectCount = Object.values(annotationsByPage || {}).reduce(
+        (n, p) => n + (Array.isArray(p?.objects) ? p.objects.length : 0),
+        0
+      );
+      console.log('[CloudSync][hook] post-hydrate baseline locked — auto-push of merged state SKIPPED ' + JSON.stringify({
+        pageCount,
+        objectCount
+      }));
+      return;
+    }
 
     lastByPageRef.current = annotationsByPage;
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
@@ -266,6 +294,15 @@ export function useAnnotationCloudSync({
       return;
     }
     if (callouts === lastCalloutsRef.current) return;
+
+    if (skipNextCalloutPushRef.current) {
+      skipNextCalloutPushRef.current = false;
+      lastCalloutsRef.current = callouts;
+      console.log('[CloudSync][hook] post-hydrate callout baseline locked — auto-push SKIPPED ' + JSON.stringify({
+        count: Array.isArray(callouts) ? callouts.length : 0
+      }));
+      return;
+    }
 
     lastCalloutsRef.current = callouts;
     console.log('[CloudSync][hook] callout state changed — debounce push scheduled ' + JSON.stringify({
