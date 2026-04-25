@@ -81,7 +81,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   // UX 2026-04-22: Save Log GitHub push. Returns { ok, url, filename, error }.
-  pushLogToGithub: (content) => ipcRenderer.invoke('logs:pushToGithub', { content }),
+  // Renderer also passes a baked GitHub token (VITE_GITHUB_LOG_TOKEN) so the
+  // main-process handler can fall back to a direct GitHub Contents API call
+  // when the `gh` CLI isn't installed (typical Windows-end-user case).
+  pushLogToGithub: (content, fallbackToken) =>
+    ipcRenderer.invoke('logs:pushToGithub', { content, fallbackToken }),
 
   // UX 2026-04-23: Custom Print Panel — list installed printers and fire a
   // real print job with the panel's settings. `printJob` forwards the

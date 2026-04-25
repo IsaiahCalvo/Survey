@@ -69,13 +69,13 @@ export function useAnnotationCloudSync({
   // ---- Hydrate + migrate on document open --------------------------------
 
   useEffect(() => {
-    console.log('[CloudSync][hook] hydrate effect fired', {
+    console.log('[CloudSync][hook] hydrate effect fired ' + JSON.stringify({
       enabled, documentId, userId, pdfId
-    });
+    }));
     if (!enabled || !documentId || !userId || !pdfId) {
-      console.log('[CloudSync][hook] hydrate skipped — missing prerequisite', {
+      console.log('[CloudSync][hook] hydrate skipped — missing prerequisite ' + JSON.stringify({
         enabled, hasDocumentId: !!documentId, hasUserId: !!userId, hasPdfId: !!pdfId
-      });
+      }));
       return;
     }
     let cancelled = false;
@@ -90,17 +90,19 @@ export function useAnnotationCloudSync({
         return;
       }
       if (cloud.error) {
-        console.error('[CloudSync][hook] hydrate error', cloud.error);
+        console.error('[CloudSync][hook] hydrate error ' + (cloud.error?.message || String(cloud.error)));
         setStatus({ stage: 'error', error: cloud.error, phase: 'hydrate' });
       } else {
         if (cloud.annotationsByPage && Object.keys(cloud.annotationsByPage).length > 0) {
-          console.log('[CloudSync][hook] merging hydrated fabric annotations', {
+          console.log('[CloudSync][hook] merging hydrated fabric annotations ' + JSON.stringify({
             pages: Object.keys(cloud.annotationsByPage).length
-          });
+          }));
           setAnnotationsByPage((prev) => mergeAnnotationsByPage(prev, cloud.annotationsByPage));
         }
         if (cloud.callouts && cloud.callouts.length > 0) {
-          console.log('[CloudSync][hook] merging hydrated callouts', { count: cloud.callouts.length });
+          console.log('[CloudSync][hook] merging hydrated callouts ' + JSON.stringify({
+            count: cloud.callouts.length
+          }));
           setCallouts((prev) => mergeCallouts(prev, cloud.callouts));
         }
       }
@@ -113,20 +115,20 @@ export function useAnnotationCloudSync({
         pdfId,
         onStatus: (s) => {
           if (!cancelled) {
-            console.log('[CloudSync][hook] migration progress', s);
+            console.log('[CloudSync][hook] migration progress ' + JSON.stringify(s));
             setStatus({ stage: 'migrating', ...s });
           }
         }
       });
       if (cancelled) return;
       if (migration.error) {
-        console.error('[CloudSync][hook] migration error', migration.error);
+        console.error('[CloudSync][hook] migration error ' + (migration.error?.message || String(migration.error)));
         setStatus({ stage: 'error', error: migration.error, phase: 'migrate' });
       } else {
         hydratedRef.current = true;
-        console.log('[CloudSync][hook] hydrate+migrate complete — push gate OPEN', {
+        console.log('[CloudSync][hook] hydrate+migrate complete — push gate OPEN ' + JSON.stringify({
           migrationPushed: migration.pushed
-        });
+        }));
         setStatus({ stage: 'idle', migrationPushed: migration.pushed });
       }
 
@@ -156,17 +158,19 @@ export function useAnnotationCloudSync({
       (n, p) => n + (Array.isArray(p?.objects) ? p.objects.length : 0),
       0
     );
-    console.log('[CloudSync][hook] fabric state changed — debounce push scheduled', {
+    console.log('[CloudSync][hook] fabric state changed — debounce push scheduled ' + JSON.stringify({
       pageCount,
       objectCount,
       debounceMs
-    });
+    }));
 
     debounceTimerRef.current = setTimeout(async () => {
       console.log('[CloudSync][hook] fabric push debounce elapsed — pushing now');
       const result = await upsertAnnotationsByPage(annotationsByPage, { documentId, userId });
       if (result.error) {
-        console.warn('[CloudSync][hook] fabric push failed → queued', { error: result.error });
+        console.warn('[CloudSync][hook] fabric push failed → queued ' + JSON.stringify({
+          error: result.error?.message || String(result.error)
+        }));
         enqueueSync(documentId, {
           kind: 'fabric-bulk',
           payload: annotationsByPage,
@@ -175,7 +179,9 @@ export function useAnnotationCloudSync({
         setQueueSize(getQueueSize(documentId));
         setStatus({ stage: 'queued', error: result.error });
       } else {
-        console.log('[CloudSync][hook] fabric push synced', { count: result.data?.length || 0 });
+        console.log('[CloudSync][hook] fabric push synced ' + JSON.stringify({
+          count: result.data?.length || 0
+        }));
         setStatus({ stage: 'synced', count: result.data?.length || 0 });
       }
     }, debounceMs);
@@ -194,15 +200,17 @@ export function useAnnotationCloudSync({
     if (callouts === lastCalloutsRef.current) return;
 
     lastCalloutsRef.current = callouts;
-    console.log('[CloudSync][hook] callout state changed — debounce push scheduled', {
+    console.log('[CloudSync][hook] callout state changed — debounce push scheduled ' + JSON.stringify({
       count: Array.isArray(callouts) ? callouts.length : 0,
       debounceMs
-    });
+    }));
     const handle = setTimeout(async () => {
       console.log('[CloudSync][hook] callout push debounce elapsed — pushing now');
       const result = await upsertCallouts(callouts || [], { documentId, userId });
       if (result.error) {
-        console.warn('[CloudSync][hook] callout push failed → queued', { error: result.error });
+        console.warn('[CloudSync][hook] callout push failed → queued ' + JSON.stringify({
+          error: result.error?.message || String(result.error)
+        }));
         enqueueSync(documentId, {
           kind: 'callout-bulk',
           payload: callouts || [],
@@ -211,7 +219,9 @@ export function useAnnotationCloudSync({
         setQueueSize(getQueueSize(documentId));
         setStatus({ stage: 'queued', error: result.error });
       } else {
-        console.log('[CloudSync][hook] callout push synced', { count: result.data?.length || 0 });
+        console.log('[CloudSync][hook] callout push synced ' + JSON.stringify({
+          count: result.data?.length || 0
+        }));
         setStatus({ stage: 'synced', count: result.data?.length || 0 });
       }
     }, debounceMs);

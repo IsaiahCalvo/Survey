@@ -77,7 +77,11 @@ export default function SaveLogBanner() {
     // Desktop path — Electron handler pushes to GitHub directly.
     if (api && typeof api.pushLogToGithub === 'function') {
       try {
-        const push = await api.pushLogToGithub(payload);
+        // Pass the baked GitHub token through to main so the handler can
+        // fall back to the GitHub REST API when `gh` CLI isn't installed
+        // (common on Windows end-user machines).
+        const fallbackToken = import.meta.env.VITE_GITHUB_LOG_TOKEN || null;
+        const push = await api.pushLogToGithub(payload, fallbackToken);
         if (push?.ok) {
           console.log('[SaveLogBanner] GitHub push OK', { url: push.url, filename: push.filename });
           setResult({

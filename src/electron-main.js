@@ -983,7 +983,8 @@ ipcMain.handle('print:html-to-pdf', async (event, payload = {}) => {
 // save lands as its own timestamped file tagged with the device (platform +
 // hostname) so Mac / Windows / other-device logs never overwrite each other.
 // Returns { ok, url, error }. Never throws — worst case returns ok:false.
-ipcMain.handle('logs:pushToGithub', async (event, { content }) => {
+ipcMain.handle('logs:pushToGithub', async (event, payload = {}) => {
+  const { content, fallbackToken } = payload;
   try {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const platformTag = process.platform === 'darwin'
@@ -997,6 +998,7 @@ ipcMain.handle('logs:pushToGithub', async (event, { content }) => {
       .toLowerCase();
     const filename = `${platformTag}-${hostname}-${timestamp}.log`;
     const b64 = Buffer.from(String(content ?? ''), 'utf-8').toString('base64');
+    const commitMessage = `save-log from ${platformTag} (${hostname}) @ ${timestamp}`;
 
     console.log(`[logs:pushToGithub] uploading ${filename} (${b64.length} base64 chars)`);
 
@@ -1005,12 +1007,12 @@ ipcMain.handle('logs:pushToGithub', async (event, { content }) => {
     // Windows' command-line length cap and surfaces to the user as ENAMETOOLONG.
     // Stdin has no such limit on any OS (mac/win/linux), so this is the portable fix.
     const ghBody = JSON.stringify({
-      message: `save-log from ${platformTag} (${hostname}) @ ${timestamp}`,
+      message: commitMessage,
       content: b64,
       branch: 'logs',
     });
 
-    const result = await new Promise((resolve) => {
+    const ghResult = await new Promise((resolve) => {
       const child = spawn('gh', [
         'api',
         '--method', 'PUT',
@@ -1038,12 +1040,63 @@ ipcMain.handle('logs:pushToGithub', async (event, { content }) => {
         resolve({ ok: false, error: `gh stdin write failed: ${stdinErr?.message || stdinErr}`, filename });
       }
     });
-    if (result.ok) {
-      console.log(`[logs:pushToGithub] pushed — ${result.url || result.filename}`);
-    } else {
-      console.warn(`[logs:pushToGithub] failed — ${result.error}`);
+
+    if (ghResult.ok) {
+      console.log(`[logs:pushToGithub] pushed via gh — ${ghResult.url || ghResult.filename}`);
+      return ghResult;
     }
-    return result;
+    console.warn(`[logs:pushToGithub] gh path failed — ${ghResult.error}`);
+
+    // UX 2026-04-25: Fallback path for end-user Windows installs that don't
+    // have the `gh` CLI on PATH. We use Electron's built-in Node fetch with
+    // a token baked into the renderer bundle at build time and forwarded
+    // through the IPC payload. Same auto-triage workflow fires on the
+    // logs branch as the gh path.
+    if (!fallbackToken) {
+      const reason = `gh failed and no fallback token was provided (${ghResult.error})`;
+      console.warn(`[logs:pushToGithub] ${reason}`);
+      return { ok: false, error: reason, filename };
+    }
+
+    try {
+      const res = await fetch(
+        `https://api.github.com/repos/IsaiahCalvo/Survey/contents/${filename}`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `token ${fallbackToken}`,
+            Accept: 'application/vnd.github+json',
+            'Content-Type': 'application/json',
+            'User-Agent': 'survey-electron-savelog'
+          },
+          body: JSON.stringify({
+            message: commitMessage,
+            content: b64,
+            branch: 'logs'
+          })
+        }
+      );
+      if (res.ok) {
+        let url = null;
+        try {
+          const data = await res.json();
+          url = data?.content?.html_url || null;
+        } catch {}
+        console.log(`[logs:pushToGithub] pushed via fetch fallback — ${url || filename}`);
+        return { ok: true, url, filename };
+      }
+      let reason = `HTTP ${res.status}`;
+      try {
+        const errBody = await res.json();
+        if (errBody?.message) reason += `: ${errBody.message.slice(0, 120)}`;
+      } catch {}
+      console.warn(`[logs:pushToGithub] fetch fallback failed — ${reason}`);
+      return { ok: false, error: `gh failed (${ghResult.error}); fetch fallback ${reason}`, filename };
+    } catch (fetchErr) {
+      const msg = fetchErr?.message || String(fetchErr);
+      console.warn(`[logs:pushToGithub] fetch fallback threw — ${msg}`);
+      return { ok: false, error: `gh failed (${ghResult.error}); fetch fallback threw: ${msg}`, filename };
+    }
   } catch (error) {
     console.error('[logs:pushToGithub] unexpected error:', error);
     return { ok: false, error: error?.message || String(error) };
