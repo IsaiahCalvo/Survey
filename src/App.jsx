@@ -118,6 +118,9 @@ import {
   clearDebugState
 } from './utils/pdfDebug';
 import { useZoomState } from './hooks/useZoomState';
+// Phase 21: cloud sync for all annotation types — see
+// .planning/phases/21-cloud-sync-all-annotations/CONTEXT.md
+import { useAnnotationCloudSync } from './hooks/useAnnotationCloudSync.js';
 import { debugMark } from './utils/debugBridge';
 import {
   computeExcelSyncFingerprint,
@@ -21087,6 +21090,24 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
     };
   }, [documentSyncEnabled, getInteractionPerfResumeDelay, highlightAnnotations, isInteractionPerfWindowActive, pdfFile?.id, user?.id]);
+
+  // Phase 21: cloud sync for every non-highlight annotation type. Hydrates
+  // shapes/text/stamps/sticky-notes/callouts/counters from Supabase on
+  // document open, runs the one-time migration of stranded local marks,
+  // pushes diffs back as the user edits, and subscribes to realtime changes
+  // from other devices/users. Highlights keep their existing sync path
+  // above; this hook owns everything else.
+  // The hook is a no-op when documentId or user is missing.
+  useAnnotationCloudSync({
+    documentId: pdfFile?.id || null,
+    userId: user?.id || null,
+    pdfId,
+    annotationsByPage,
+    callouts,
+    setAnnotationsByPage,
+    setCallouts,
+    enabled: !!documentSyncEnabled
+  });
 
   // Update presence when page changes
   useEffect(() => {
