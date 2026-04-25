@@ -1,0 +1,1011 @@
+===== SurveyApp Save Log =====
+version:   0.1.20
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1203x826
+locale:    en-US
+timestamp: 2026-04-25T21:57:57.979Z (4/25/2026, 5:57:57 PM)
+==============================
+[dev-auto-login] boot {"hasDevEmail":true,"devEmailHint":"isai***","hasDevPassword":true,"hasCachedSession":true,"cachedSessionEmail":"isaiahcalvo123@gmail.com","cachedSessionExpiresAt":1777157084}
+[dev-auto-login] cached session matches dev email, keeping it
+[dev-auto-login] decision {"needsAutoLogin":false,"willAttemptSignIn":false}
+[CloudSync][hook] session id minted {"sessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb"}
+[AnnotPerf] finalize idle (forced-reset) — deferring CSS transform removal, waiting for PAL confirmation
+[DebugBridge +2847.2ms] zoom_start {"scale":0.67,"targetScale":1,"source":"keyboard_toolbar"}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":null}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":false}
+[CSeries wipe] doc=sync-test.pdf-2489 totalCounters=0 legacyRemoved=0 — nothing to wipe.
+[PrintPanel] mount — binding Cmd/Ctrl+P listeners. electronAPI available: true onPrintPdf available: true
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"sync-test.pdf-2489"}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":true}
+[ZoomLive svg p1] {"interactionPhase":"idle","zoomOverlayTransformActive":true,"viewerScale":0.67,"measuredScale":0.67,"committedScale":0,"overlayTransform":"none","overlayTransformScale":1,"pageHostRect":null,"overlayLayerRect":null,"overlayContentRect":null,"legacyCompensationRect":null,"legacyCompensationTransform":"none","palRootRect":null,"canvasContainerRect":null,"palCanvasRect":null,"regionRootRect":null,"regionSvgRect":null,"regionScreenWidth":0,"regionScreenHeight":0,"svgLayerRect":null,"activeSpaceId":null,"activeRegionId":null,"showRegionSelection":false}
+[PrintPanel] mount — binding Cmd/Ctrl+P listeners. electronAPI available: true onPrintPdf available: true
+[PrintPanel] mount — binding Cmd/Ctrl+P listeners. electronAPI available: true onPrintPdf available: true
+[PrintPanel] mount — binding Cmd/Ctrl+P listeners. electronAPI available: true onPrintPdf available: true
+[PrintPanel] RENDER — panel closed
+[CloudSync][hook] hydrate effect fired {"enabled":true,"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"sync-test.pdf-2489"}
+[CloudSync][hook] stage=hydrating
+[CloudSync][hydrate] loadAllNonHighlightAnnotations start {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3"}
+[CloudSync][hook] fabric push skipped — not hydrated yet
+[CloudSync][hook] callout push skipped — not hydrated yet
+[CloudSync][realtime] subscribing {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","currentUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","hasFabricInsert":true,"hasFabricUpdate":true,"hasFabricDelete":true,"hasCalloutInsert":true,"hasCalloutUpdate":true,"hasCalloutDelete":true}
+[CloudSync][hydrate] loadAllNonHighlightAnnotations ok {"elapsedMs":86,"totalRows":0,"rowsByType":{},"pagesWithObjects":0,"calloutCount":0}
+[CloudSync][hook] stage=migrating (one-time local→cloud push)
+[CloudSync][hook] migration progress {"stage":"scanning"}
+[CloudSync][hydrate] loadAllNonHighlightAnnotations start {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3"}
+[ZoomLive svg p1] {"interactionPhase":"idle","zoomOverlayTransformActive":true,"viewerScale":0.1,"measuredScale":0.1,"committedScale":0,"overlayTransform":"none","overlayTransformScale":1,"pageHostRect":{"w":816,"h":1056,"left":212,"top":87},"overlayLayerRect":null,"overlayContentRect":null,"legacyCompensationRect":null,"legacyCompensationTransform":"none","palRootRect":null,"canvasContainerRect":null,"palCanvasRect":null,"regionRootRect":null,"regionSvgRect":null,"regionScreenWidth":0,"regionScreenHeight":0,"svgLayerRect":null,"activeSpaceId":null,"activeRegionId":null,"showRegionSelection":false}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.33333, measuredPageScale=1.33333, committedPageScale=none, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=816, overlayDivH=1056, overlayDivTransform=none, overlayContentTransform=none
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:56:48.506Z","objId":null,"index":3,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:56:48.506Z","objId":null,"index":4,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[SVG p1] render — 7 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVG p1] MOUNT — 7 annotations, 1 callouts, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.33333, measuredPageScale=1.33333, committedPageScale=1.33333, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=816, overlayDivH=1056, overlayDivTransform=none, overlayContentTransform=none
+[SVG p1] render — 7 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.33333, measuredPageScale=1.33333, committedPageScale=1.33333, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=816, overlayDivH=1056, overlayDivTransform=none, overlayContentTransform=none
+[SVG p1] render — 7 objs, viewBox=612x792
+[CalloutGeom svg p1] id=callout-8ik9n25dq-moevopwi text="hi" {"side":"svg","timestamp":"2026-04-25T21:56:48.575Z","pageNumber":1,"source":{"id":"callout-8ik9n25dq-moevopwi","pageNumber":1,"text":"hi","arrowTip":{"x":0.12266938213527633,"y":0.6191504440457998},"knee":{"x":0.16440895530950614,"y":0.5686453935407493},"style":{"borderColor":"#1e293b","borderOpacity":1,"lineThickness":2,"arrowheadStyle":"solidTriangle","fillColor":"transparent","fillOpacity":1,"fontFamily":"Arial","fontSize":14,"fontColor":"#1e293b","bold":false,"italic":false,"underline":false,"strikethrough":false,"textAlign":"left"},"_rawKeys":["id","pageNumber","arrowTip","knee","textBoxPosition","textBoxWidth","textBoxHeight","text","style","isSelected"],"_raw":{"id":"callout-8ik9n25dq-moevopwi","pageNumber":1,"arrowTip":{"x":0.12266938213527633,"y":0.6191504440457998},"knee":{"x":0.16440895530950614,"y":0.5686453935407493},"textBoxPosition":{"x":0.20592622339510067,"y":0.6891014993466656},"textBoxWidth":0.19607843137254902,"textBoxHeight":0.04040404040404041,"text":"hi","style":{"borderColor":"#1e293b","borderOpacity":1,"lineThickness":2,"arrowheadStyle":"solidTriangle","fillColor":"transparent","fillOpacity":1,"fontFamily":"Arial","fontSize":14,"fontColor":"#1e293b","bold":false,"italic":false,"underline":false,"strikethrough":false,"textAlign":"left"},"isSelected":true}},"dom":{"root":{"tag":"g","attrs":{"data-callout-id":"callout-8ik9n25dq-moevopwi","opacity":"1"},"rect":{"x":304.55096435546875,"y":687.3522338867188,"left":304.55096435546875,"top":687.3522338867188,"right":540.2318115234375,"bottom":863.4197998046875,"width":235.68084716796875,"height":176.06756591796875},"computed":{"visibility":"visible","opacity":"1","display":"inline","transform":"none","pointer-events":"none"}},"foreignObject":{"tag":"foreignObject","attrs":{"data-callout-part":"text","x":"132.0268487178016","y":"545.7683874825592","width":"108","height":"36.9","overflow":"hidden"},"rect":{"x":388.59979248046875,"y":814.309326171875,"left":388.59979248046875,"top":814.309326171875,"right":532.246826171875,"bottom":863.4140625,"width":143.64703369140625,"height":49.104736328125}},"textDiv":{"tag":"DIV","rect":{"x":388.59979248046875,"y":814.309326171875,"left":388.59979248046875,"top":814.309326171875,"right":532.246826171875,"bottom":863.4140625,"width":143.64703369140625,"height":49.104736328125},"text":"hi","computed":{"font-size":"14px","font-family":"Arial","font-weight":"400","line-height":"15.82px","padding-top":"0px","padding-right":"0px","padding-bottom":"0px","padding-left":"0px","border-radius":"0px","background-color":"rgba(0, 0, 0, 0)","color":"rgb(30, 41, 59)","box-sizing":"border-box","width":"108px","height":"36.8984px","white-space":"pre-wrap"}},"textSpanCount":1,"arrowTip":{"rect":null,"attrs":null},"knee":{"rect":null,"attrs":null},"line1":{"rect":{"x":346.8288879394531,"y":687.3522338867188,"left":346.8288879394531,"top":687.3522338867188,"right":380.62396240234375,"bottom":814.31298828125,"width":33.795074462890625,"height":126.96075439453125},"attrs":{"data-callout-part":"line1","x1":"126.02684871780161","y1":"545.7683874825592","x2":"100.61828064941776","y2":"450.36715168427344","stroke":"#1e293b","stroke-width":"2","stroke-linecap":"round","vector-effect":"non-scaling-stroke"}},"line2":{"rect":{"x":314.7618713378906,"y":687.3522338867188,"left":314.7618713378906,"top":687.3522338867188,"right":346.8288879394531,"bottom":737.5936279296875,"width":32.0670166015625,"height":50.24139404296875},"attrs":{"data-callout-part":"line2","x1":"100.61828064941776","y1":"450.36715168427344","x2":"76.50893019849097","y2":"488.11968290203754","stroke":"#1e293b","stroke-width":"2","stroke-linecap":"round","vector-effect":"non-scaling-stroke"}},"textHit":{"rect":{"x":388.59979248046875,"y":814.309326171875,"left":388.59979248046875,"top":814.309326171875,"right":532.246826171875,"bottom":863.4140625,"width":143.64703369140625,"height":49.104736328125},"attrs":{"data-callout-part":"text","x":"132.0268487178016","y":"545.7683874825592","width":"108","height":"36.9","overflow":"hidden"}}},"rendererDerived":{"pageSize":{"width":612,"height":792},"arrowTip":{"x":75.07366186678911,"y":490.36715168427344},"knee":{"x":100.61828064941776,"y":450.36715168427344},"textBox":{"x":126.02684871780161,"y":545.7683874825592,"width":120,"height":32},"normalizedInputs":{"textBoxPosition":{"x":0.20592622339510067,"y":0.6891014993466656},"textBoxWidth":0.19607843137254902,"textBoxHeight":0.04040404040404041,"textBox":null}},"extras":{"editingCalloutId":null,"pageSize":{"width":612,"height":792}}}
+[DebugBridge +3309.4ms] pdf_loaded {"pageCount":3,"currentPage":1}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.33333, measuredPageScale=1.33333, committedPageScale=1.33333, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=816, overlayDivH=1056, overlayDivTransform=none, overlayContentTransform=none
+[SVG p1] render — 7 objs, viewBox=612x792
+[ZoomLive svg p1] {"interactionPhase":"idle","zoomOverlayTransformActive":true,"viewerScale":0.1,"measuredScale":0.1,"committedScale":1.33333,"overlayTransform":"none","overlayTransformScale":1,"pageHostRect":{"w":816,"h":1056,"left":212,"top":87},"overlayLayerRect":{"w":814,"h":1054,"left":213,"top":88},"overlayContentRect":{"w":814,"h":0,"left":213,"top":88},"legacyCompensationRect":{"w":814,"h":1054,"left":213,"top":88},"legacyCompensationTransform":"none","palRootRect":null,"canvasContainerRect":null,"palCanvasRect":null,"regionRootRect":null,"regionSvgRect":null,"regionScreenWidth":0,"regionScreenHeight":0,"svgLayerRect":{"w":814,"h":1054,"left":213,"top":88},"activeSpaceId":null,"activeRegionId":null,"showRegionSelection":false}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.33333, measuredPageScale=1.33333, committedPageScale=1.33333, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=816, overlayDivH=1056, overlayDivTransform=none, overlayContentTransform=none
+[SVG p1] render — 7 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[CloudSync][realtime] subscribe status {"status":"SUBSCRIBED","error":null}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.19935, measuredPageScale=1.19935, committedPageScale=1.19935, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1.34328, storedOverlayTransformScale=1, syncfusionViewerScale=0.9, overlayDiv=true, overlayDivW=734, overlayDivH=950, overlayDivTransform=none, overlayContentTransform=scale(1.34328)
+[SVG p1] render — 7 objs, viewBox=612x792
+[CloudSync][hydrate] loadAllNonHighlightAnnotations ok {"elapsedMs":236,"totalRows":0,"rowsByType":{},"pagesWithObjects":0,"calloutCount":0}
+[CloudSync][hook] migration progress {"stage":"pushing","pushed":0,"total":8}
+[CloudSync][push] upsertAnnotationsByPage start {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","totalRows":7,"rowsByType":{"ink":2,"square":1,"circle":1,"line":2,"freetext":1},"pages":1}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.19935, measuredPageScale=1.19935, committedPageScale=1.19935, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1.34328, storedOverlayTransformScale=1, syncfusionViewerScale=0.9, overlayDiv=true, overlayDivW=734, overlayDivH=950, overlayDivTransform=none, overlayContentTransform=scale(1.34328)
+[SVG p1] render — 7 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.19935, measuredPageScale=1.19935, committedPageScale=1.19935, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1.34328, storedOverlayTransformScale=1, syncfusionViewerScale=0.9, overlayDiv=true, overlayDivW=734, overlayDivH=950, overlayDivTransform=none, overlayContentTransform=scale(1.34328)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.19935, measuredPageScale=1.19935, committedPageScale=1.19935, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1.34328, storedOverlayTransformScale=1, syncfusionViewerScale=0.9, overlayDiv=true, overlayDivW=734, overlayDivH=950, overlayDivTransform=none, overlayContentTransform=scale(1.34328)
+[SVG p1] render — 7 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.19935, measuredPageScale=1.19935, committedPageScale=1.19935, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1.34328, storedOverlayTransformScale=1, syncfusionViewerScale=0.9, overlayDiv=true, overlayDivW=734, overlayDivH=950, overlayDivTransform=none, overlayContentTransform=scale(1.34328)
+[ZoomLive svg p1] {"interactionPhase":"idle","zoomOverlayTransformActive":true,"viewerScale":0.9,"measuredScale":1.19935,"committedScale":1.19935,"overlayTransform":"scale(1.34328)","overlayTransformScale":1.34328,"pageHostRect":{"w":734.398,"h":950.398,"left":252.797,"top":86.195},"overlayLayerRect":{"w":732.398,"h":948.398,"left":253.797,"top":87.195},"overlayContentRect":{"w":983.819,"h":0,"left":253.797,"top":87.195},"legacyCompensationRect":{"w":983.819,"h":0,"left":253.797,"top":87.195},"legacyCompensationTransform":"none","palRootRect":null,"canvasContainerRect":null,"palCanvasRect":null,"regionRootRect":null,"regionSvgRect":null,"regionScreenWidth":0,"regionScreenHeight":0,"svgLayerRect":{"w":732.398,"h":948.398,"left":253.797,"top":87.195},"activeSpaceId":null,"activeRegionId":null,"showRegionSelection":false}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.19935, measuredPageScale=0.89379, committedPageScale=1.19935, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 7 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 7 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 7 objs, viewBox=612x792
+[CloudSync][push] upsertAnnotationsByPage ok {"elapsedMs":256,"rowsReturned":7}
+[CloudSync][push] upsertCallouts start {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","count":1}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 7 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[ZoomLive svg p1] {"interactionPhase":"idle","zoomOverlayTransformActive":true,"viewerScale":0.67,"measuredScale":0.89379,"committedScale":0.89379,"overlayTransform":"scale(1)","overlayTransformScale":1,"pageHostRect":{"w":546.719,"h":707.516,"left":346.633,"top":84.359},"overlayLayerRect":{"w":544.719,"h":705.516,"left":347.633,"top":85.359},"overlayContentRect":{"w":544.719,"h":0,"left":347.633,"top":85.359},"legacyCompensationRect":{"w":544.719,"h":0,"left":347.633,"top":85.359},"legacyCompensationTransform":"none","palRootRect":null,"canvasContainerRect":null,"palCanvasRect":null,"regionRootRect":null,"regionSvgRect":null,"regionScreenWidth":0,"regionScreenHeight":0,"svgLayerRect":{"w":544.719,"h":705.516,"left":347.633,"top":85.359},"activeSpaceId":null,"activeRegionId":null,"showRegionSelection":false}
+[CloudSync][push] upsertCallouts ok {"elapsedMs":123,"rowsReturned":1}
+[CloudSync][hook] migration progress {"stage":"done","pushed":8,"total":8}
+[CloudSync][hook] hydrate+migrate complete — push gate OPEN {"migrationPushed":8,"skipNextAutoPush":true}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 7 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[CloudSync][realtime] echo-filtered INSERT {"highlightId":"ink-1777154208694-xthxr426i","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","currentUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","reason":"legacy-no-session-id"}
+[CloudSync][realtime] echo-filtered INSERT {"highlightId":"square-1777154208694-qs29kbc66","annotationType":"square","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","currentUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","reason":"legacy-no-session-id"}
+[CloudSync][realtime] echo-filtered INSERT {"highlightId":"circle-1777154208694-frp9tlhqd","annotationType":"circle","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","currentUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","reason":"legacy-no-session-id"}
+[CloudSync][realtime] echo-filtered INSERT {"highlightId":"line-1777154208694-2baibnmma","annotationType":"line","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","currentUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","reason":"legacy-no-session-id"}
+[CloudSync][realtime] echo-filtered INSERT {"highlightId":"line-1777154208694-nke7ofswa","annotationType":"line","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","currentUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","reason":"legacy-no-session-id"}
+[CloudSync][realtime] echo-filtered INSERT {"highlightId":"freetext-1777154208694-9d7dw6tq3","annotationType":"freetext","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","currentUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","reason":"legacy-no-session-id"}
+[CloudSync][realtime] echo-filtered INSERT {"highlightId":"ink-1777154208694-6nt53ec1s","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","currentUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","reason":"legacy-no-session-id"}
+[CloudSync][realtime] echo-filtered INSERT {"highlightId":"callout-8ik9n25dq-moevopwi","annotationType":"callout","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","currentUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","reason":"legacy-no-session-id"}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 7 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 7 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 7 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[ZoomLive svg p1] {"interactionPhase":"idle","zoomOverlayTransformActive":true,"viewerScale":0.67,"measuredScale":0.89379,"committedScale":0.89379,"overlayTransform":"scale(1)","overlayTransformScale":1,"pageHostRect":{"w":546.719,"h":707.516,"left":346.633,"top":84.359},"overlayLayerRect":{"w":544.719,"h":705.516,"left":347.633,"top":85.359},"overlayContentRect":{"w":544.719,"h":0,"left":347.633,"top":85.359},"legacyCompensationRect":{"w":544.719,"h":0,"left":347.633,"top":85.359},"legacyCompensationTransform":"none","palRootRect":null,"canvasContainerRect":null,"palCanvasRect":null,"regionRootRect":null,"regionSvgRect":null,"regionScreenWidth":0,"regionScreenHeight":0,"svgLayerRect":{"w":544.719,"h":705.516,"left":347.633,"top":85.359},"activeSpaceId":null,"activeRegionId":null,"showRegionSelection":false}
+[HyperlinkDiag] post-load scan {"hyperlinkCount":0,"samples":[]}
+[HyperlinkDiag] page 1 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","DIV","e-pv-annotation-canvas","e-pv-text-layer"]}
+[HyperlinkDiag] page 2 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","DIV","e-pv-annotation-canvas","e-pv-text-layer"]}
+[HyperlinkDiag] page 3 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","DIV","e-pv-annotation-canvas","e-pv-text-layer"]}
+[ZoomLive svg p1] {"interactionPhase":"idle","zoomOverlayTransformActive":true,"viewerScale":0.67,"measuredScale":0.89379,"committedScale":0.89379,"overlayTransform":"scale(1)","overlayTransformScale":1,"pageHostRect":{"w":546.719,"h":707.516,"left":346.633,"top":84.359},"overlayLayerRect":{"w":544.719,"h":705.516,"left":347.633,"top":85.359},"overlayContentRect":{"w":544.719,"h":0,"left":347.633,"top":85.359},"legacyCompensationRect":{"w":544.719,"h":0,"left":347.633,"top":85.359},"legacyCompensationTransform":"none","palRootRect":null,"canvasContainerRect":null,"palCanvasRect":null,"regionRootRect":null,"regionSvgRect":null,"regionScreenWidth":0,"regionScreenHeight":0,"svgLayerRect":{"w":544.719,"h":705.516,"left":347.633,"top":85.359},"activeSpaceId":null,"activeRegionId":null,"showRegionSelection":false}
+[ZoomLive svg p1] {"interactionPhase":"idle","zoomOverlayTransformActive":true,"viewerScale":0.67,"measuredScale":0.89379,"committedScale":0.89379,"overlayTransform":"scale(1)","overlayTransformScale":1,"pageHostRect":{"w":546.719,"h":707.516,"left":346.633,"top":84.359},"overlayLayerRect":{"w":544.719,"h":705.516,"left":347.633,"top":85.359},"overlayContentRect":{"w":544.719,"h":0,"left":347.633,"top":85.359},"legacyCompensationRect":{"w":544.719,"h":0,"left":347.633,"top":85.359},"legacyCompensationTransform":"none","palRootRect":null,"canvasContainerRect":null,"palCanvasRect":null,"regionRootRect":null,"regionSvgRect":null,"regionScreenWidth":0,"regionScreenHeight":0,"svgLayerRect":{"w":544.719,"h":705.516,"left":347.633,"top":85.359},"activeSpaceId":null,"activeRegionId":null,"showRegionSelection":false}
+[DebugBridge +4651.4ms] zoom_end {"source":"zoomChange_settle"}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 7 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 7 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 7 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 7 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:07.846Z","objId":null,"index":3,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:07.846Z","objId":null,"index":4,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[SVG p1] render — 7 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[Counter] TOOL ACTIVATED — activeTool=counter, lastShapeTool=arrow, ref will sync next render
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 7 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=361.3 clientY=432.9
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=365.2 clientY=435.3
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=372.6 clientY=440.3
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=380.1 clientY=445.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=386.6 clientY=449.4
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=391.9 clientY=452.6
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=397.3 clientY=455.3
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=402.7 clientY=458.0
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=407.0 clientY=459.9
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=411.3 clientY=461.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=416.4 clientY=463.3
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=421.5 clientY=464.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=431.2 clientY=466.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=438.9 clientY=468.6
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=446.6 clientY=470.3
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=456.3 clientY=471.6
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=466.0 clientY=473.6
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=478.0 clientY=475.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=488.8 clientY=476.4
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=502.0 clientY=477.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=515.2 clientY=478.6
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=529.7 clientY=479.3
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=561.2 clientY=481.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=578.4 clientY=484.1
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=595.5 clientY=487.4
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=612.7 clientY=491.5
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=629.8 clientY=496.4
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=647.0 clientY=501.3
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=662.0 clientY=506.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=676.4 clientY=511.4
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=689.6 clientY=515.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=702.1 clientY=520.1
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=707.2 clientY=521.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=716.9 clientY=524.4
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=725.6 clientY=526.3
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=734.3 clientY=528.1
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=742.0 clientY=529.3
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=748.7 clientY=530.4
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=754.6 clientY=531.5
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=757.0 clientY=531.9
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=760.6 clientY=532.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=763.6 clientY=534.1
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=763.6 clientY=533.6
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=763.9 clientY=532.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=765.0 clientY=530.4
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=766.6 clientY=528.4
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=767.7 clientY=526.6
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=770.0 clientY=523.4
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=771.8 clientY=520.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=772.5 clientY=518.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=774.2 clientY=516.3
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=775.3 clientY=514.4
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=776.0 clientY=513.1
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=776.6 clientY=511.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=777.0 clientY=510.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=777.2 clientY=510.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=777.5 clientY=509.9
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=777.8 clientY=509.4
+[CSeries new#1 p1] auto-created seriesId=series-1777154228832 color=#ef4444 (from toolbar strokeColor=#ef4444)
+[Counter p1] drag-start — x=483.3, y=476.4, fill=#ef4444, dragCreatedAt=1777154228832, seriesId=series-1777154228832, seriesStart=1, autoCreated=true
+[Counter p1] handleSaveAnnotations ENTRY — source=counter:drag-start, prevObjects=7, nextObjects=8, delta=1, counterObjsInJson=1, firstCounter={"type":"counter","createdAt":1777154228832,"pointerAngle":225,"displayNumber":1,"seriesId":"series-1777154228832","seriesStart":1}
+[Counter] setAnnotationsByPage reducer — after renumber, total counters in doc: 1, list: [{"page":"1","dn":1,"ca":1777154228832}]
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:08.842Z","objId":null,"index":3,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:08.842Z","objId":null,"index":4,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[Counter SVG p1] dispatching renderCounter — i=7, displayNumber=1, fill=#ef4444, numberColor=unset, left=469.2872468590442, top=462.36621536343296, radius=14
+[SVG p1] render — 8 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVG p1] MOUNT — 8 annotations, 1 callouts, viewBox=612x792
+[CloudSync][hook] post-hydrate baseline locked — auto-push of merged state SKIPPED {"pageCount":1,"objectCount":8}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 8 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[CDrag up#1 p1] FIRED dragActive=true dragPageKey=1
+[CDrag commit] ENTRY active=true createdAt=1777154228832 bodyX=483.3 bodyY=476.4 angle=225.0
+[Counter p1] handleSaveAnnotations ENTRY — source=counter:create, prevObjects=8, nextObjects=8, delta=0, counterObjsInJson=1, firstCounter={"type":"counter","createdAt":1777154228832,"pointerAngle":225,"displayNumber":1,"seriesId":"series-1777154228832","seriesStart":1}
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=777.8 clientY=509.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=777.8 clientY=511.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=777.8 clientY=513.5
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=777.8 clientY=515.9
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=777.8 clientY=517.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=777.8 clientY=519.6
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=777.8 clientY=521.9
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=777.8 clientY=523.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=777.8 clientY=526.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=777.8 clientY=528.6
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=777.8 clientY=531.6
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=777.8 clientY=534.0
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=777.8 clientY=536.3
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=778.2 clientY=538.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=778.2 clientY=539.5
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=778.5 clientY=540.5
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=778.5 clientY=541.1
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=778.5 clientY=541.6
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=778.5 clientY=541.9
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=778.5 clientY=542.1
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=778.5 clientY=542.4
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=778.5 clientY=542.6
+[Counter p1] drag-start — x=484.1, y=513.8, fill=#ef4444, dragCreatedAt=1777154229329, seriesId=series-1777154228832, seriesStart=1, autoCreated=false
+[Counter p1] handleSaveAnnotations ENTRY — source=counter:drag-start, prevObjects=8, nextObjects=9, delta=1, counterObjsInJson=2, firstCounter={"type":"counter","createdAt":1777154228832,"pointerAngle":225,"displayNumber":1,"seriesId":"series-1777154228832","seriesStart":1}
+[Counter] setAnnotationsByPage reducer — after renumber, total counters in doc: 2, list: [{"page":"1","dn":1,"ca":1777154228832},{"page":"1","dn":2,"ca":1777154229329}]
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:09.336Z","objId":null,"index":3,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:09.336Z","objId":null,"index":4,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[Counter SVG p1] dispatching renderCounter — i=7, displayNumber=1, fill=#ef4444, numberColor=unset, left=469.2872468590442, top=462.36621536343296, radius=14
+[Counter SVG p1] dispatching renderCounter — i=8, displayNumber=2, fill=#ef4444, numberColor=unset, left=470.0508863519018, top=499.76260684986516, radius=14
+[SVG p1] render — 9 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVG p1] MOUNT — 9 annotations, 1 callouts, viewBox=612x792
+[CloudSync][hook] fabric state changed — debounce push scheduled {"pageCount":1,"objectCount":9,"debounceMs":800}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 9 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[CDrag up#1 p1] FIRED dragActive=true dragPageKey=1
+[CDrag commit] ENTRY active=true createdAt=1777154229329 bodyX=484.1 bodyY=513.8 angle=225.0
+[Counter p1] handleSaveAnnotations ENTRY — source=counter:create, prevObjects=9, nextObjects=9, delta=0, counterObjsInJson=2, firstCounter={"type":"counter","createdAt":1777154228832,"pointerAngle":225,"displayNumber":1,"seriesId":"series-1777154228832","seriesStart":1}
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=778.5 clientY=542.9
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=778.5 clientY=544.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=778.5 clientY=546.1
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=778.5 clientY=547.4
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=778.5 clientY=549.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=778.5 clientY=551.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=778.5 clientY=554.0
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=778.5 clientY=557.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=778.5 clientY=560.6
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=778.5 clientY=564.3
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=778.5 clientY=566.6
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=778.5 clientY=569.6
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=778.5 clientY=572.0
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=778.9 clientY=575.0
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=778.9 clientY=576.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=778.9 clientY=578.6
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=779.3 clientY=580.5
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=779.3 clientY=582.3
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=779.3 clientY=584.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=779.3 clientY=586.9
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=779.3 clientY=588.3
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=779.3 clientY=589.6
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=779.3 clientY=591.0
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=779.3 clientY=591.9
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=779.3 clientY=592.5
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=779.3 clientY=593.1
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=779.3 clientY=593.6
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=779.3 clientY=594.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=779.3 clientY=594.5
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=779.3 clientY=594.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=779.3 clientY=595.0
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=779.3 clientY=595.2
+[Counter p1] drag-start — x=484.9, y=572.8, fill=#ef4444, dragCreatedAt=1777154229983, seriesId=series-1777154228832, seriesStart=1, autoCreated=false
+[Counter p1] handleSaveAnnotations ENTRY — source=counter:drag-start, prevObjects=9, nextObjects=10, delta=1, counterObjsInJson=3, firstCounter={"type":"counter","createdAt":1777154228832,"pointerAngle":225,"displayNumber":1,"seriesId":"series-1777154228832","seriesStart":1}
+[Counter] setAnnotationsByPage reducer — after renumber, total counters in doc: 3, list: [{"page":"1","dn":1,"ca":1777154228832},{"page":"1","dn":2,"ca":1777154229329},{"page":"1","dn":3,"ca":1777154229983}]
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:09.992Z","objId":null,"index":3,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:09.993Z","objId":null,"index":4,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[Counter SVG p1] dispatching renderCounter — i=7, displayNumber=1, fill=#ef4444, numberColor=unset, left=469.2872468590442, top=462.36621536343296, radius=14
+[Counter SVG p1] dispatching renderCounter — i=8, displayNumber=2, fill=#ef4444, numberColor=unset, left=470.0508863519018, top=499.76260684986516, radius=14
+[Counter SVG p1] dispatching renderCounter — i=9, displayNumber=3, fill=#ef4444, numberColor=unset, left=470.93741036085135, top=558.8481154265389, radius=14
+[SVG p1] render — 10 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVG p1] MOUNT — 10 annotations, 1 callouts, viewBox=612x792
+[CloudSync][hook] fabric state changed — debounce push scheduled {"pageCount":1,"objectCount":10,"debounceMs":800}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 10 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[CDrag up#1 p1] FIRED dragActive=true dragPageKey=1
+[CDrag commit] ENTRY active=true createdAt=1777154229983 bodyX=484.9 bodyY=572.8 angle=225.0
+[Counter p1] handleSaveAnnotations ENTRY — source=counter:create, prevObjects=10, nextObjects=10, delta=0, counterObjsInJson=3, firstCounter={"type":"counter","createdAt":1777154228832,"pointerAngle":225,"displayNumber":1,"seriesId":"series-1777154228832","seriesStart":1}
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=780.2 clientY=595.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=782.6 clientY=595.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=786.2 clientY=596.1
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=793.9 clientY=599.1
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=801.6 clientY=600.9
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=810.3 clientY=603.3
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=821.1 clientY=606.1
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=833.1 clientY=608.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=846.3 clientY=611.1
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=872.9 clientY=615.0
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=891.5 clientY=616.7
+[CloudSync][hook] fabric push debounce elapsed — pushing now
+[CloudSync][push] upsertAnnotationsByPage start {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","totalRows":10,"rowsByType":{"ink":2,"square":1,"circle":1,"line":2,"freetext":1,"counter":3},"pages":1}
+[CloudSync][push] upsertAnnotationsByPage ok {"elapsedMs":123,"rowsReturned":10}
+[CloudSync][hook] fabric push synced {"count":10}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 10 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[CloudSync][realtime] echo-filtered INSERT {"highlightId":"ink-1777154230798-wujyh5siz","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered INSERT {"highlightId":"square-1777154230798-qzf2ufdic","annotationType":"square","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered INSERT {"highlightId":"circle-1777154230798-a26ltt27n","annotationType":"circle","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered INSERT {"highlightId":"line-1777154230798-7e76o6gij","annotationType":"line","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered INSERT {"highlightId":"line-1777154230798-v8xzwcc23","annotationType":"line","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered INSERT {"highlightId":"freetext-1777154230798-q9h8hus6e","annotationType":"freetext","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered INSERT {"highlightId":"ink-1777154230798-9atm1sswo","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered INSERT {"highlightId":"counter-1777154230798-18ml7yaxg","annotationType":"counter","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered INSERT {"highlightId":"counter-1777154230798-urnt7nv4l","annotationType":"counter","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered INSERT {"highlightId":"counter-1777154230798-nmohcwpuv","annotationType":"counter","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777154208694-xthxr426i","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:12.504Z","objId":null,"index":3,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:12.505Z","objId":null,"index":4,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[Counter SVG p1] dispatching renderCounter — i=7, displayNumber=1, fill=#ef4444, numberColor=unset, left=469.2872468590442, top=462.36621536343296, radius=14
+[Counter SVG p1] dispatching renderCounter — i=8, displayNumber=2, fill=#ef4444, numberColor=unset, left=470.0508863519018, top=499.76260684986516, radius=14
+[Counter SVG p1] dispatching renderCounter — i=9, displayNumber=3, fill=#ef4444, numberColor=unset, left=470.93741036085135, top=558.8481154265389, radius=14
+[SVG p1] render — 11 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"square-1777154208694-qs29kbc66","annotationType":"square","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"circle-1777154208694-frp9tlhqd","annotationType":"circle","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"line-1777154208694-2baibnmma","annotationType":"line","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"line-1777154208694-nke7ofswa","annotationType":"line","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"freetext-1777154208694-9d7dw6tq3","annotationType":"freetext","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777154208694-6nt53ec1s","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777154230798-wujyh5siz","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"ink-1777154230798-wujyh5siz","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"square-1777154230798-qzf2ufdic","annotationType":"square","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"square-1777154230798-qzf2ufdic","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"circle-1777154230798-a26ltt27n","annotationType":"circle","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"circle-1777154230798-a26ltt27n","pageNumber":1}
+[SVG p1] MOUNT — 11 annotations, 1 callouts, viewBox=612x792
+[CloudSync][hook] fabric state changed — debounce push scheduled {"pageCount":1,"objectCount":11,"debounceMs":800}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[Counter SVG p1] dispatching renderCounter — i=7, displayNumber=1, fill=#ef4444, numberColor=unset, left=469.2872468590442, top=462.36621536343296, radius=14
+[Counter SVG p1] dispatching renderCounter — i=8, displayNumber=2, fill=#ef4444, numberColor=unset, left=470.0508863519018, top=499.76260684986516, radius=14
+[Counter SVG p1] dispatching renderCounter — i=9, displayNumber=3, fill=#ef4444, numberColor=unset, left=470.93741036085135, top=558.8481154265389, radius=14
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:12.529Z","objId":null,"index":13,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:12.529Z","objId":null,"index":14,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[SVG p1] render — 17 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"line-1777154230798-7e76o6gij","annotationType":"line","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"line-1777154230798-7e76o6gij","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"line-1777154230798-v8xzwcc23","annotationType":"line","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"line-1777154230798-v8xzwcc23","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"freetext-1777154230798-q9h8hus6e","annotationType":"freetext","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"freetext-1777154230798-q9h8hus6e","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777154230798-9atm1sswo","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"ink-1777154230798-9atm1sswo","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"counter-1777154230798-18ml7yaxg","annotationType":"counter","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"counter-1777154230798-18ml7yaxg","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"counter-1777154230798-urnt7nv4l","annotationType":"counter","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"counter-1777154230798-urnt7nv4l","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"counter-1777154230798-nmohcwpuv","annotationType":"counter","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"counter-1777154230798-nmohcwpuv","pageNumber":1}
+[SVG p1] MOUNT — 17 annotations, 1 callouts, viewBox=612x792
+[CloudSync][hook] fabric state changed — debounce push scheduled {"pageCount":1,"objectCount":17,"debounceMs":800}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 17 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[CloudSync][hook] fabric push debounce elapsed — pushing now
+[CloudSync][push] upsertAnnotationsByPage start {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","totalRows":17,"rowsByType":{"ink":4,"square":2,"circle":2,"line":4,"freetext":2,"counter":3},"pages":1}
+[CloudSync][push] upsertAnnotationsByPage ok {"elapsedMs":157,"rowsReturned":17}
+[CloudSync][hook] fabric push synced {"count":17}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 17 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777154230798-wujyh5siz","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"square-1777154230798-qzf2ufdic","annotationType":"square","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"circle-1777154230798-a26ltt27n","annotationType":"circle","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"line-1777154230798-7e76o6gij","annotationType":"line","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"line-1777154230798-v8xzwcc23","annotationType":"line","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"freetext-1777154230798-q9h8hus6e","annotationType":"freetext","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777154230798-9atm1sswo","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"counter-1777154230798-18ml7yaxg","annotationType":"counter","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"counter-1777154230798-urnt7nv4l","annotationType":"counter","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"counter-1777154230798-nmohcwpuv","annotationType":"counter","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777154208694-xthxr426i","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"square-1777154208694-qs29kbc66","annotationType":"square","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"circle-1777154208694-frp9tlhqd","annotationType":"circle","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"line-1777154208694-2baibnmma","annotationType":"line","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"line-1777154208694-nke7ofswa","annotationType":"line","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"freetext-1777154208694-9d7dw6tq3","annotationType":"freetext","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777154208694-6nt53ec1s","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777154208694-xthxr426i","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"ink-1777154208694-xthxr426i","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"square-1777154208694-qs29kbc66","annotationType":"square","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"square-1777154208694-qs29kbc66","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"circle-1777154208694-frp9tlhqd","annotationType":"circle","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"circle-1777154208694-frp9tlhqd","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"line-1777154208694-2baibnmma","annotationType":"line","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"line-1777154208694-2baibnmma","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"line-1777154208694-nke7ofswa","annotationType":"line","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"line-1777154208694-nke7ofswa","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"freetext-1777154208694-9d7dw6tq3","annotationType":"freetext","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"freetext-1777154208694-9d7dw6tq3","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777154208694-6nt53ec1s","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"ink-1777154208694-6nt53ec1s","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777154230798-wujyh5siz","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"ink-1777154230798-wujyh5siz","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"square-1777154230798-qzf2ufdic","annotationType":"square","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"square-1777154230798-qzf2ufdic","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"circle-1777154230798-a26ltt27n","annotationType":"circle","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"circle-1777154230798-a26ltt27n","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"line-1777154230798-7e76o6gij","annotationType":"line","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"line-1777154230798-7e76o6gij","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"line-1777154230798-v8xzwcc23","annotationType":"line","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"line-1777154230798-v8xzwcc23","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"freetext-1777154230798-q9h8hus6e","annotationType":"freetext","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"freetext-1777154230798-q9h8hus6e","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777154230798-9atm1sswo","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"ink-1777154230798-9atm1sswo","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"counter-1777154230798-18ml7yaxg","annotationType":"counter","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"counter-1777154230798-18ml7yaxg","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"counter-1777154230798-urnt7nv4l","annotationType":"counter","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"counter-1777154230798-urnt7nv4l","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"counter-1777154230798-nmohcwpuv","annotationType":"counter","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"counter-1777154230798-nmohcwpuv","pageNumber":1}
+[CloudSync][realtime] applying INSERT fabric {"highlightId":"ink-1777154240981-5a7zpfdm9","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:21.327Z","objId":null,"index":3,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:21.327Z","objId":null,"index":4,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[Counter SVG p1] dispatching renderCounter — i=7, displayNumber=1, fill=#ef4444, numberColor=unset, left=469.2872468590442, top=462.36621536343296, radius=14
+[Counter SVG p1] dispatching renderCounter — i=8, displayNumber=2, fill=#ef4444, numberColor=unset, left=470.0508863519018, top=499.76260684986516, radius=14
+[Counter SVG p1] dispatching renderCounter — i=9, displayNumber=3, fill=#ef4444, numberColor=unset, left=470.93741036085135, top=558.8481154265389, radius=14
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:21.328Z","objId":null,"index":13,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:21.328Z","objId":null,"index":14,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[SVG p1] render — 18 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVG p1] MOUNT — 18 annotations, 1 callouts, viewBox=612x792
+[CloudSync][hook] fabric state changed — debounce push scheduled {"pageCount":1,"objectCount":18,"debounceMs":800}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 18 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[CloudSync][hook] fabric push debounce elapsed — pushing now
+[CloudSync][push] upsertAnnotationsByPage start {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","totalRows":18,"rowsByType":{"ink":5,"square":2,"circle":2,"line":4,"freetext":2,"counter":3},"pages":1}
+[CloudSync][push] upsertAnnotationsByPage ok {"elapsedMs":145,"rowsReturned":18}
+[CloudSync][hook] fabric push synced {"count":18}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 18 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777154230798-wujyh5siz","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"square-1777154230798-qzf2ufdic","annotationType":"square","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"circle-1777154230798-a26ltt27n","annotationType":"circle","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"line-1777154230798-7e76o6gij","annotationType":"line","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"line-1777154230798-v8xzwcc23","annotationType":"line","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"freetext-1777154230798-q9h8hus6e","annotationType":"freetext","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777154230798-9atm1sswo","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"counter-1777154230798-18ml7yaxg","annotationType":"counter","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"counter-1777154230798-urnt7nv4l","annotationType":"counter","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"counter-1777154230798-nmohcwpuv","annotationType":"counter","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777154208694-xthxr426i","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"square-1777154208694-qs29kbc66","annotationType":"square","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"circle-1777154208694-frp9tlhqd","annotationType":"circle","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"line-1777154208694-2baibnmma","annotationType":"line","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"line-1777154208694-nke7ofswa","annotationType":"line","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"freetext-1777154208694-9d7dw6tq3","annotationType":"freetext","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777154208694-6nt53ec1s","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777154240981-5a7zpfdm9","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777154208694-xthxr426i","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"ink-1777154208694-xthxr426i","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"square-1777154208694-qs29kbc66","annotationType":"square","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"square-1777154208694-qs29kbc66","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"circle-1777154208694-frp9tlhqd","annotationType":"circle","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"circle-1777154208694-frp9tlhqd","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"line-1777154208694-2baibnmma","annotationType":"line","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"line-1777154208694-2baibnmma","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"line-1777154208694-nke7ofswa","annotationType":"line","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"line-1777154208694-nke7ofswa","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"freetext-1777154208694-9d7dw6tq3","annotationType":"freetext","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"freetext-1777154208694-9d7dw6tq3","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777154208694-6nt53ec1s","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"ink-1777154208694-6nt53ec1s","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777154230798-wujyh5siz","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"ink-1777154230798-wujyh5siz","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"square-1777154230798-qzf2ufdic","annotationType":"square","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"square-1777154230798-qzf2ufdic","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"circle-1777154230798-a26ltt27n","annotationType":"circle","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"circle-1777154230798-a26ltt27n","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"line-1777154230798-7e76o6gij","annotationType":"line","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"line-1777154230798-7e76o6gij","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"line-1777154230798-v8xzwcc23","annotationType":"line","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"line-1777154230798-v8xzwcc23","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"freetext-1777154230798-q9h8hus6e","annotationType":"freetext","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"freetext-1777154230798-q9h8hus6e","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777154230798-9atm1sswo","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"ink-1777154230798-9atm1sswo","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"counter-1777154230798-18ml7yaxg","annotationType":"counter","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"counter-1777154230798-18ml7yaxg","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"counter-1777154230798-urnt7nv4l","annotationType":"counter","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"counter-1777154230798-urnt7nv4l","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"counter-1777154230798-nmohcwpuv","annotationType":"counter","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"counter-1777154230798-nmohcwpuv","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777154240981-5a7zpfdm9","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"ink-1777154240981-5a7zpfdm9","pageNumber":1}
+[CloudSync][realtime] applying INSERT fabric {"highlightId":"ink-1777154245506-t9p2evaxo","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:26.033Z","objId":null,"index":3,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:26.033Z","objId":null,"index":4,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[Counter SVG p1] dispatching renderCounter — i=7, displayNumber=1, fill=#ef4444, numberColor=unset, left=469.2872468590442, top=462.36621536343296, radius=14
+[Counter SVG p1] dispatching renderCounter — i=8, displayNumber=2, fill=#ef4444, numberColor=unset, left=470.0508863519018, top=499.76260684986516, radius=14
+[Counter SVG p1] dispatching renderCounter — i=9, displayNumber=3, fill=#ef4444, numberColor=unset, left=470.93741036085135, top=558.8481154265389, radius=14
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:26.034Z","objId":null,"index":13,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:26.034Z","objId":null,"index":14,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[SVG p1] render — 19 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVG p1] MOUNT — 19 annotations, 1 callouts, viewBox=612x792
+[CloudSync][hook] fabric state changed — debounce push scheduled {"pageCount":1,"objectCount":19,"debounceMs":800}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 19 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[CloudSync][hook] fabric push debounce elapsed — pushing now
+[CloudSync][push] upsertAnnotationsByPage start {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","totalRows":19,"rowsByType":{"ink":6,"square":2,"circle":2,"line":4,"freetext":2,"counter":3},"pages":1}
+[CloudSync][push] upsertAnnotationsByPage ok {"elapsedMs":143,"rowsReturned":19}
+[CloudSync][hook] fabric push synced {"count":19}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 19 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777154230798-wujyh5siz","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"square-1777154230798-qzf2ufdic","annotationType":"square","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"circle-1777154230798-a26ltt27n","annotationType":"circle","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"line-1777154230798-7e76o6gij","annotationType":"line","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"line-1777154230798-v8xzwcc23","annotationType":"line","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"freetext-1777154230798-q9h8hus6e","annotationType":"freetext","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777154230798-9atm1sswo","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"counter-1777154230798-18ml7yaxg","annotationType":"counter","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"counter-1777154230798-urnt7nv4l","annotationType":"counter","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"counter-1777154230798-nmohcwpuv","annotationType":"counter","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777154208694-xthxr426i","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"square-1777154208694-qs29kbc66","annotationType":"square","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"circle-1777154208694-frp9tlhqd","annotationType":"circle","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"line-1777154208694-2baibnmma","annotationType":"line","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"line-1777154208694-nke7ofswa","annotationType":"line","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"freetext-1777154208694-9d7dw6tq3","annotationType":"freetext","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777154208694-6nt53ec1s","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777154240981-5a7zpfdm9","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777154245506-t9p2evaxo","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=891.1 clientY=679.4
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=888.8 clientY=679.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=886.9 clientY=679.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=885.1 clientY=679.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=883.2 clientY=679.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=882.3 clientY=679.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=881.3 clientY=679.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=880.8 clientY=679.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=879.6 clientY=679.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=876.6 clientY=679.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=872.3 clientY=679.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=867.9 clientY=680.3
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=862.0 clientY=680.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=857.0 clientY=681.3
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=846.1 clientY=682.0
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=841.0 clientY=682.5
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=831.3 clientY=683.1
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=822.6 clientY=683.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=814.9 clientY=684.3
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=812.0 clientY=684.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=806.9 clientY=685.3
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=802.5 clientY=685.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=799.6 clientY=686.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=797.2 clientY=686.6
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=794.9 clientY=686.9
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=794.3 clientY=686.9
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=794.0 clientY=686.9
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=793.8 clientY=686.9
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=793.8 clientY=687.1
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=793.8 clientY=687.4
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=793.8 clientY=687.6
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=794.3 clientY=687.9
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=794.6 clientY=688.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=794.9 clientY=688.4
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=795.4 clientY=688.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=795.7 clientY=689.0
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=795.9 clientY=689.0
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=796.2 clientY=689.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=796.4 clientY=689.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=796.4 clientY=689.5
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=796.4 clientY=689.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=796.4 clientY=690.0
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=795.9 clientY=690.3
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=794.9 clientY=690.9
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=793.1 clientY=691.3
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=790.7 clientY=692.0
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=787.7 clientY=692.9
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=784.7 clientY=693.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=781.1 clientY=694.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=777.5 clientY=694.6
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=773.2 clientY=695.1
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=771.3 clientY=695.5
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=768.3 clientY=695.9
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=765.4 clientY=695.9
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=763.0 clientY=695.9
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=761.1 clientY=695.9
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=759.8 clientY=695.9
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=758.8 clientY=695.9
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=757.9 clientY=695.9
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=757.6 clientY=695.9
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:30.107Z","objId":null,"index":3,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:30.107Z","objId":null,"index":4,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[Counter SVG p1] dispatching renderCounter — i=7, displayNumber=1, fill=#ef4444, numberColor=unset, left=469.2872468590442, top=462.36621536343296, radius=14
+[Counter SVG p1] dispatching renderCounter — i=8, displayNumber=2, fill=#ef4444, numberColor=unset, left=470.0508863519018, top=499.76260684986516, radius=14
+[Counter SVG p1] dispatching renderCounter — i=9, displayNumber=3, fill=#ef4444, numberColor=unset, left=470.93741036085135, top=558.8481154265389, radius=14
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:30.108Z","objId":null,"index":13,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:30.108Z","objId":null,"index":14,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[SVG p1] render — 19 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[DrawCanvas p1] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p1] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 19 objs, viewBox=612x792
+[DrawCanvas p1] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 19 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:30.961Z","objId":null,"index":3,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:30.962Z","objId":null,"index":4,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[Counter SVG p1] dispatching renderCounter — i=7, displayNumber=1, fill=#ef4444, numberColor=unset, left=469.2872468590442, top=462.36621536343296, radius=14
+[Counter SVG p1] dispatching renderCounter — i=8, displayNumber=2, fill=#ef4444, numberColor=unset, left=470.0508863519018, top=499.76260684986516, radius=14
+[Counter SVG p1] dispatching renderCounter — i=9, displayNumber=3, fill=#ef4444, numberColor=unset, left=470.93741036085135, top=558.8481154265389, radius=14
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:30.962Z","objId":null,"index":13,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:30.962Z","objId":null,"index":14,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[SVG p1] render — 20 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVG p1] MOUNT — 20 annotations, 1 callouts, viewBox=612x792
+[CloudSync][hook] fabric state changed — debounce push scheduled {"pageCount":1,"objectCount":20,"debounceMs":800}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 20 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[CloudSync][hook] fabric push debounce elapsed — pushing now
+[CloudSync][push] upsertAnnotationsByPage start {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","totalRows":20,"rowsByType":{"ink":7,"square":2,"circle":2,"line":4,"freetext":2,"counter":3},"pages":1}
+[CloudSync][push] upsertAnnotationsByPage ok {"elapsedMs":593,"rowsReturned":20}
+[CloudSync][hook] fabric push synced {"count":20}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 20 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 20 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777154230798-wujyh5siz","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"square-1777154230798-qzf2ufdic","annotationType":"square","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"circle-1777154230798-a26ltt27n","annotationType":"circle","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"line-1777154230798-7e76o6gij","annotationType":"line","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"line-1777154230798-v8xzwcc23","annotationType":"line","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"freetext-1777154230798-q9h8hus6e","annotationType":"freetext","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777154230798-9atm1sswo","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"counter-1777154230798-18ml7yaxg","annotationType":"counter","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"counter-1777154230798-urnt7nv4l","annotationType":"counter","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"counter-1777154230798-nmohcwpuv","annotationType":"counter","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777154208694-xthxr426i","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"square-1777154208694-qs29kbc66","annotationType":"square","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"circle-1777154208694-frp9tlhqd","annotationType":"circle","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"line-1777154208694-2baibnmma","annotationType":"line","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"line-1777154208694-nke7ofswa","annotationType":"line","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"freetext-1777154208694-9d7dw6tq3","annotationType":"freetext","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777154208694-6nt53ec1s","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777154240981-5a7zpfdm9","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777154245506-t9p2evaxo","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered INSERT {"highlightId":"ink-1777154251770-gt0eystjt","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777154208694-xthxr426i","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"ink-1777154208694-xthxr426i","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"square-1777154208694-qs29kbc66","annotationType":"square","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"square-1777154208694-qs29kbc66","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"circle-1777154208694-frp9tlhqd","annotationType":"circle","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"circle-1777154208694-frp9tlhqd","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"line-1777154208694-2baibnmma","annotationType":"line","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"line-1777154208694-2baibnmma","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"line-1777154208694-nke7ofswa","annotationType":"line","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"line-1777154208694-nke7ofswa","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"freetext-1777154208694-9d7dw6tq3","annotationType":"freetext","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"freetext-1777154208694-9d7dw6tq3","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777154208694-6nt53ec1s","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"ink-1777154208694-6nt53ec1s","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777154230798-wujyh5siz","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"ink-1777154230798-wujyh5siz","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"square-1777154230798-qzf2ufdic","annotationType":"square","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"square-1777154230798-qzf2ufdic","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"circle-1777154230798-a26ltt27n","annotationType":"circle","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"circle-1777154230798-a26ltt27n","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"line-1777154230798-7e76o6gij","annotationType":"line","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"line-1777154230798-7e76o6gij","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"line-1777154230798-v8xzwcc23","annotationType":"line","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"line-1777154230798-v8xzwcc23","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"freetext-1777154230798-q9h8hus6e","annotationType":"freetext","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"freetext-1777154230798-q9h8hus6e","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777154230798-9atm1sswo","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"ink-1777154230798-9atm1sswo","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"counter-1777154230798-18ml7yaxg","annotationType":"counter","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"counter-1777154230798-18ml7yaxg","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"counter-1777154230798-urnt7nv4l","annotationType":"counter","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"counter-1777154230798-urnt7nv4l","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"counter-1777154230798-nmohcwpuv","annotationType":"counter","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"counter-1777154230798-nmohcwpuv","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777154240981-5a7zpfdm9","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"ink-1777154240981-5a7zpfdm9","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777154245506-t9p2evaxo","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"ink-1777154245506-t9p2evaxo","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777154251770-gt0eystjt","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"ink-1777154251770-gt0eystjt","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777154208694-xthxr426i","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"ink-1777154208694-xthxr426i","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"square-1777154208694-qs29kbc66","annotationType":"square","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"square-1777154208694-qs29kbc66","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"circle-1777154208694-frp9tlhqd","annotationType":"circle","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"circle-1777154208694-frp9tlhqd","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"line-1777154208694-2baibnmma","annotationType":"line","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"line-1777154208694-2baibnmma","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"line-1777154208694-nke7ofswa","annotationType":"line","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"line-1777154208694-nke7ofswa","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"freetext-1777154208694-9d7dw6tq3","annotationType":"freetext","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"freetext-1777154208694-9d7dw6tq3","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777154208694-6nt53ec1s","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"ink-1777154208694-6nt53ec1s","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777154230798-wujyh5siz","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"ink-1777154230798-wujyh5siz","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"square-1777154230798-qzf2ufdic","annotationType":"square","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"square-1777154230798-qzf2ufdic","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"circle-1777154230798-a26ltt27n","annotationType":"circle","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"circle-1777154230798-a26ltt27n","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"line-1777154230798-7e76o6gij","annotationType":"line","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"line-1777154230798-7e76o6gij","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"line-1777154230798-v8xzwcc23","annotationType":"line","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"line-1777154230798-v8xzwcc23","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"freetext-1777154230798-q9h8hus6e","annotationType":"freetext","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"freetext-1777154230798-q9h8hus6e","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777154230798-9atm1sswo","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"ink-1777154230798-9atm1sswo","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"counter-1777154230798-18ml7yaxg","annotationType":"counter","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"counter-1777154230798-18ml7yaxg","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"counter-1777154230798-urnt7nv4l","annotationType":"counter","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"counter-1777154230798-urnt7nv4l","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"counter-1777154230798-nmohcwpuv","annotationType":"counter","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"counter-1777154230798-nmohcwpuv","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777154240981-5a7zpfdm9","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"ink-1777154240981-5a7zpfdm9","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777154245506-t9p2evaxo","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"ink-1777154245506-t9p2evaxo","pageNumber":1}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777154251770-gt0eystjt","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][hook] dropped own-write echo (recently-pushed set) {"event":"UPDATE","highlightId":"ink-1777154251770-gt0eystjt","pageNumber":1}
+[CloudSync][realtime] applying INSERT fabric {"highlightId":"counter-1777154257028-4lzcyilih","annotationType":"counter","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:37.912Z","objId":null,"index":3,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:37.913Z","objId":null,"index":4,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[Counter SVG p1] dispatching renderCounter — i=7, displayNumber=1, fill=#ef4444, numberColor=unset, left=469.2872468590442, top=462.36621536343296, radius=14
+[Counter SVG p1] dispatching renderCounter — i=8, displayNumber=2, fill=#ef4444, numberColor=unset, left=470.0508863519018, top=499.76260684986516, radius=14
+[Counter SVG p1] dispatching renderCounter — i=9, displayNumber=3, fill=#ef4444, numberColor=unset, left=470.93741036085135, top=558.8481154265389, radius=14
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:37.914Z","objId":null,"index":13,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:37.914Z","objId":null,"index":14,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[Counter SVG p1] dispatching renderCounter — i=20, displayNumber=1, fill=#ef4444, numberColor=unset, left=389.6790069487641, top=661.3185892538404, radius=14
+[SVG p1] render — 21 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVG p1] MOUNT — 21 annotations, 1 callouts, viewBox=612x792
+[CloudSync][hook] fabric state changed — debounce push scheduled {"pageCount":1,"objectCount":21,"debounceMs":800}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 21 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[CloudSync][hook] fabric push debounce elapsed — pushing now
+[CloudSync][push] upsertAnnotationsByPage start {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","totalRows":21,"rowsByType":{"ink":7,"square":2,"circle":2,"line":4,"freetext":2,"counter":4},"pages":1}
+[CloudSync][push] upsertAnnotationsByPage ok {"elapsedMs":396,"rowsReturned":21}
+[CloudSync][hook] fabric push synced {"count":21}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 21 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777154230798-wujyh5siz","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"square-1777154230798-qzf2ufdic","annotationType":"square","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"circle-1777154230798-a26ltt27n","annotationType":"circle","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"line-1777154230798-7e76o6gij","annotationType":"line","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"line-1777154230798-v8xzwcc23","annotationType":"line","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"freetext-1777154230798-q9h8hus6e","annotationType":"freetext","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777154230798-9atm1sswo","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"counter-1777154230798-18ml7yaxg","annotationType":"counter","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"counter-1777154230798-urnt7nv4l","annotationType":"counter","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"counter-1777154230798-nmohcwpuv","annotationType":"counter","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777154208694-xthxr426i","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"square-1777154208694-qs29kbc66","annotationType":"square","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"circle-1777154208694-frp9tlhqd","annotationType":"circle","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"line-1777154208694-2baibnmma","annotationType":"line","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"line-1777154208694-nke7ofswa","annotationType":"line","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"freetext-1777154208694-9d7dw6tq3","annotationType":"freetext","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777154208694-6nt53ec1s","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777154240981-5a7zpfdm9","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777154245506-t9p2evaxo","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777154251770-gt0eystjt","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"counter-1777154257028-4lzcyilih","annotationType":"counter","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","currentSessionId":"533fe91f-9315-4bd1-baf4-2c8cdc7370cb","reason":"same-session"}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 21 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 21 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 21 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:40.708Z","objId":null,"index":3,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:40.708Z","objId":null,"index":4,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[Counter SVG p1] dispatching renderCounter — i=7, displayNumber=1, fill=#ef4444, numberColor=unset, left=469.2872468590442, top=462.36621536343296, radius=14
+[Counter SVG p1] dispatching renderCounter — i=8, displayNumber=2, fill=#ef4444, numberColor=unset, left=470.0508863519018, top=499.76260684986516, radius=14
+[Counter SVG p1] dispatching renderCounter — i=9, displayNumber=3, fill=#ef4444, numberColor=unset, left=470.93741036085135, top=558.8481154265389, radius=14
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:40.709Z","objId":null,"index":13,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-25T21:57:40.709Z","objId":null,"index":14,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[Counter SVG p1] dispatching renderCounter — i=20, displayNumber=1, fill=#ef4444, numberColor=unset, left=389.6790069487641, top=661.3185892538404, radius=14
+[SVG p1] render — 21 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[Counter] TOOL ACTIVATED — activeTool=counter, lastShapeTool=counter, ref will sync next render
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 21 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 21 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 21 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 21 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 21 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 21 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[CSeries popup] chevron click — open=true seriesCount=2 activeSeriesId=series-1777154228832
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 21 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 21 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=730.1 clientY=751.1
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=730.5 clientY=749.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=730.8 clientY=747.8
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 21 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=804.9 clientY=680.3
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=805.4 clientY=675.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=805.4 clientY=669.3
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=805.9 clientY=664.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=805.9 clientY=659.1
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=805.9 clientY=657.3
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=806.4 clientY=653.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=806.4 clientY=650.0
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=806.4 clientY=647.1
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=806.4 clientY=645.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=806.4 clientY=642.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=806.4 clientY=641.0
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=806.4 clientY=639.6
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=806.4 clientY=637.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=806.7 clientY=636.4
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=806.7 clientY=635.5
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=806.7 clientY=634.1
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=807.0 clientY=632.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=807.0 clientY=631.4
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=807.4 clientY=630.0
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=807.8 clientY=628.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=808.1 clientY=626.3
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=808.5 clientY=623.9
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=808.9 clientY=622.6
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=809.2 clientY=620.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=810.9 clientY=614.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=811.3 clientY=612.3
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=812.0 clientY=610.9
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=812.8 clientY=608.6
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=813.2 clientY=606.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=813.9 clientY=604.3
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=814.7 clientY=602.5
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=815.4 clientY=600.6
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=816.1 clientY=598.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=816.8 clientY=597.4
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=817.5 clientY=596.1
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=818.1 clientY=595.1
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=818.4 clientY=594.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=819.1 clientY=592.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=819.4 clientY=591.9
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=820.0 clientY=591.3
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=820.3 clientY=590.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=820.6 clientY=589.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=820.8 clientY=589.5
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=821.1 clientY=588.9
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=821.4 clientY=588.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=823.3 clientY=588.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=828.4 clientY=588.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=832.7 clientY=588.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=837.8 clientY=588.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=842.1 clientY=587.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=846.4 clientY=587.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=850.7 clientY=586.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=855.8 clientY=586.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=870.3 clientY=585.4
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=878.9 clientY=584.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=883.3 clientY=584.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=892.0 clientY=584.2
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 21 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[CSeries popup] click-outside → close
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 21 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
+[SVG p1] render — 21 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(1)
