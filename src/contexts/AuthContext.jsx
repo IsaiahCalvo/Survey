@@ -63,13 +63,50 @@ export const AuthProvider = ({ children }) => {
 
     // Get initial session
     supabase.auth.getSession().then(async ({ data: { session } }) => {
-      // UX 2026-04-22: Dev auto-login. Fires whenever the local env vars are
-      // present (from gitignored .env.local). Runs BEFORE we flip `loading`
-      // to false so the OptionalAuthPrompt doesn't flash the sign-in modal
-      // during the split second between session-check and auto-login.
-      if (!session) {
-        const devEmail = import.meta.env.VITE_DEV_AUTO_LOGIN_EMAIL;
-        const devPassword = import.meta.env.VITE_DEV_AUTO_LOGIN_PASSWORD;
+      // UX 2026-04-22 / updated 2026-04-25: Dev auto-login. Fires whenever
+      // the local env vars are present (from gitignored .env.local). Runs
+      // BEFORE we flip `loading` to false so the OptionalAuthPrompt doesn't
+      // flash the sign-in modal during the split second between
+      // session-check and auto-login.
+      //
+      // The 2026-04-25 update: previously this only ran when `!session`,
+      // which meant a stale-but-truthy cached session would block the
+      // auto-login forever — the user had to manually sign out before the
+      // hook would re-sign them in. Now we also override when (a) the
+      // cached session's user email doesn't match the dev creds, or
+      // (b) `getUser()` rejects the cached token as expired/invalid.
+      const devEmail = import.meta.env.VITE_DEV_AUTO_LOGIN_EMAIL;
+      const devPassword = import.meta.env.VITE_DEV_AUTO_LOGIN_PASSWORD;
+
+      let needsAutoLogin = !session;
+      if (session && devEmail && devPassword) {
+        const cachedEmail = session?.user?.email;
+        if (cachedEmail && cachedEmail.toLowerCase() !== devEmail.toLowerCase()) {
+          console.log('[dev-auto-login] cached session is for a different user, overriding', {
+            cachedEmail, devEmail
+          });
+          needsAutoLogin = true;
+        } else {
+          try {
+            const { data: userCheck, error: userErr } = await supabase.auth.getUser();
+            if (userErr || !userCheck?.user) {
+              console.log('[dev-auto-login] cached session is stale, overriding', {
+                error: userErr?.message || 'no user'
+              });
+              needsAutoLogin = true;
+            }
+          } catch (err) {
+            console.warn('[dev-auto-login] getUser check threw, overriding', err?.message || err);
+            needsAutoLogin = true;
+          }
+        }
+        if (needsAutoLogin) {
+          try { await supabase.auth.signOut(); } catch { /* ignore */ }
+          session = null;
+        }
+      }
+
+      if (needsAutoLogin) {
         if (devEmail && devPassword) {
           try {
             const { data, error } = await supabase.auth.signInWithPassword({
