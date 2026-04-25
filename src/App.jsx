@@ -26855,12 +26855,52 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const openPanel = (source) => {
       console.log(`[PrintPanel] OPEN requested via ${source}, panel enabled=${PRINT_PANEL_ENABLED}`);
       if (!PRINT_PANEL_ENABLED) {
-        try {
-          const ok = syncfusionViewerRef.current?.print?.();
-          console.log('[PrintPanel] disabled — fired native Syncfusion print, returned:', ok);
-        } catch (err) {
-          console.error('[PrintPanel] native print failed:', err);
+        // UX 2026-04-24: route Cmd/Ctrl+P through our PDF.js render
+        // pipeline straight into a hidden iframe and call print() on
+        // its contentWindow. This pops the OS native print dialog —
+        // which on Windows AND macOS includes a built-in preview pane,
+        // so users get what they expect without us building our own
+        // preview. Bypasses Syncfusion's printModule (which reports
+        // "not supported" inside the packaged Windows shell).
+        const totalPagesNow = Number(numPages) || 0;
+        if (!totalPagesNow) {
+          console.warn('[PrintPanel] disabled — no pages to print');
+          return;
         }
+        const perPage = [];
+        for (let i = 1; i <= totalPagesNow; i++) {
+          const ps = pageSizes?.[i];
+          const w = (ps && Number.isFinite(ps.width) && ps.width > 0) ? ps.width / 72 : 8.5;
+          const h = (ps && Number.isFinite(ps.height) && ps.height > 0) ? ps.height / 72 : 11;
+          perPage.push({
+            pageNumber: i,
+            naturalWidth: +w.toFixed(2),
+            naturalHeight: +h.toFixed(2),
+            naturalLandscape: w > h,
+            rotation: 0,
+            mirrorH: false,
+            mirrorV: false,
+            withAnnotations: true,
+            bw: false,
+            paperSize: 'auto',
+            fitMode: 'proportional',
+            orientation: 'auto',
+            matchPageDims: null,
+          });
+        }
+        const docName = (pdfFile?.name || 'Document');
+        const jobSpec = {
+          docName,
+          variant: 'J',
+          includedPages: perPage.map((p) => p.pageNumber),
+          perPage,
+          job: { copies: 1, collate: true, duplex: false, destination: undefined },
+          settings: { paperSize: 'auto', fitMode: 'proportional', orientation: 'auto', mirrorH: false, mirrorV: false, markupsOn: true, colorOn: true },
+          scopes: { paper: { mode: 'all' }, orient: { mode: 'all' }, output: { mode: 'all' } },
+          useNativeDialog: true,
+        };
+        console.log('[PrintPanel] disabled — running native-dialog print for', perPage.length, 'pages');
+        handlePrintPanelPrint(jobSpec);
         return;
       }
       setPrintPanelOpen(true);
@@ -27254,7 +27294,13 @@ ${pageBlocks}
           : (job.duplex === 'short-edge' ? 'shortEdge' : 'simplex'),
       };
       let used = 'iframe';
-      if (isSavePdf && typeof window !== 'undefined' && window.electronAPI?.printHtmlToPdf) {
+      // UX 2026-04-24: when the caller asks for the OS native print
+      // dialog (so the user gets the system's built-in preview pane on
+      // Windows + macOS), force the iframe path even in Electron. The
+      // silent path is only used when the custom panel collected an
+      // explicit destination.
+      const forceNativeDialog = jobSpec.useNativeDialog === true;
+      if (isSavePdf && !forceNativeDialog && typeof window !== 'undefined' && window.electronAPI?.printHtmlToPdf) {
         used = 'electron-pdf';
         const safeName = String(jobSpec.docName || 'Print').replace(/[\\/:*?"<>|]/g, '_');
         const result = await window.electronAPI.printHtmlToPdf({
@@ -27264,7 +27310,7 @@ ${pageBlocks}
         });
         console.log('[PrintPanel] electron printHtmlToPdf →',
           'ok=', result?.ok, 'filePath=', result?.filePath || '(none)', 'error=', result?.error || '(none)');
-      } else if (typeof window !== 'undefined' && window.electronAPI?.printHtmlSilent) {
+      } else if (!forceNativeDialog && typeof window !== 'undefined' && window.electronAPI?.printHtmlSilent) {
         used = 'electron-silent';
         const result = await window.electronAPI.printHtmlSilent({ html, options: printOptions });
         console.log('[PrintPanel] electron printHtmlSilent →',
