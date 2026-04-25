@@ -21452,10 +21452,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const requiresLegacyAnnotationLayer = useMemo(() => {
     if (rendererMode !== 'svg') return true;
 
-    // Survey highlight creation/editing still depends on PAL. Spaces/regions
-    // stay on the SVG path so imported annotations and zoom remain stable.
-    return showSurveyPanel;
-  }, [rendererMode, showSurveyPanel]);
+    // Survey highlights now render via SVGAnnotationLayer (viewBox-scaled,
+    // no Fabric repaint, no flicker) and draw via FabricDrawingCanvas under
+    // the 'highlight' tool — same path used by rect/ellipse/line/arrow. PAL
+    // is retired in SVG mode.
+    return false;
+  }, [rendererMode]);
 
   useEffect(() => {
     if (!useSyncfusionRenderer) return undefined;
@@ -26089,12 +26091,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return showSurveyPanel ? (isSurveyPanelCollapsed ? 48 : 320) : 0;
   }, [showSurveyPanel, isSurveyPanelCollapsed]);
 
-  // Auto-adjust PDF zoom when sidebars expand/collapse or survey panel opens/closes
+  // Auto-adjust PDF zoom when the left sidebar expands/collapses (that width
+  // change is big enough that FIT_* modes need to recompute). The survey panel
+  // toggles are intentionally excluded: opening/collapsing the survey panel
+  // only changes width by ~320px, which produces a scale delta under ~3% in
+  // practice — imperceptible, but the 1-second Syncfusion zoom-settle timer
+  // still fires and blocks dependent effects (e.g. the survey-highlight paint)
+  // from running until settle, making template open feel sluggish.
   useEffect(() => {
     requestAnimationFrame(() => {
       zoomControllerRef.current?.applyZoom({ persist: false, force: true });
     });
-  }, [showSurveyPanel, isLeftSidebarCollapsed, isSurveyPanelCollapsed]);
+  }, [isLeftSidebarCollapsed]);
 
   // Ensure survey panel always opens in expanded state
   useEffect(() => {
@@ -28648,7 +28656,7 @@ ${pageBlocks}
                           {!requiresLegacyAnnotationLayer && (() => {
                             const svgInteractive = activeTool === 'select' || activeTool === 'text-select';
                             const isTextTool = activeTool === 'text';
-                            const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow';
+                            const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow' || activeTool === 'highlight';
                             const isEraserTool = activeTool === 'eraser';
                             const isEditMode = editingAnnotation?.pageNumber === pageNumber;
                             // UX 2026-04-19: bbox edit mode (uniform resize + rotate chrome
@@ -28771,6 +28779,7 @@ ${pageBlocks}
                                   height={resolvedPageSize.height}
                                   annotations={pageAnnotations}
                                   callouts={callouts}
+                                  surveyHighlights={newHighlightsByPage[pageNumber]}
                                   selectedModuleId={selectedModuleId}
                                   showSurveyPanel={showSurveyPanel}
                                   selectedSpaceId={annotationSpaceId}
@@ -28917,6 +28926,7 @@ ${pageBlocks}
                                   strokeWidth={strokeWidth}
                                   annotations={pageAnnotations}
                                   onStrokeCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'path:created', tool: activeTool })}
+                                  onHighlightCreated={(bounds) => handleHighlightCreated(pageNumber, bounds)}
                                   selectedModuleId={selectedModuleId}
                                   selectedSpaceId={annotationSpaceId}
                                   activeRegionId={activeRegionId}
@@ -29536,7 +29546,7 @@ ${pageBlocks}
                                 {pageSizes[pageNumber] && !requiresLegacyAnnotationLayer && (() => {
                                   const svgInteractive = activeTool === 'select' || activeTool === 'text-select';
                                   const isTextTool = activeTool === 'text';
-                                  const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow';
+                                  const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow' || activeTool === 'highlight';
                                   const isEraserTool = activeTool === 'eraser';
                                   const isEditMode = editingAnnotation?.pageNumber === pageNumber;
                                   // UX 2026-04-19: see first mount site — bbox edit mode
@@ -29566,6 +29576,7 @@ ${pageBlocks}
                                       height={pageSizes[pageNumber].height}
                                       annotations={pageAnnotationsCS}
                                       callouts={callouts}
+                                      surveyHighlights={newHighlightsByPage[pageNumber]}
                                       selectedModuleId={selectedModuleId}
                                       showSurveyPanel={showSurveyPanel}
                                       selectedSpaceId={annotationSpaceId}
@@ -29672,6 +29683,7 @@ ${pageBlocks}
                                         strokeWidth={strokeWidth}
                                         annotations={pageAnnotationsCS}
                                         onStrokeCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'path:created', tool: activeTool })}
+                                        onHighlightCreated={(bounds) => handleHighlightCreated(pageNumber, bounds)}
                                         selectedModuleId={selectedModuleId}
                                         selectedSpaceId={annotationSpaceId}
                                         activeRegionId={activeRegionId}
@@ -30092,7 +30104,7 @@ ${pageBlocks}
                             )}
                             {pageSizes[pageNum] && !requiresLegacyAnnotationLayer && (() => {
                               const svgInteractive = activeTool === 'select' || activeTool === 'text-select';
-                              const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow';
+                              const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow' || activeTool === 'highlight';
                               const isEraserTool = activeTool === 'eraser';
                               const isEditMode = editingAnnotation?.pageNumber === pageNum;
                               const pageAnnotations = annotationsByPage[pageNum];
@@ -30125,6 +30137,7 @@ ${pageBlocks}
                                       height={pageSizes[pageNum].height}
                                       annotations={pageAnnotations}
                                       callouts={callouts}
+                                      surveyHighlights={newHighlightsByPage[pageNum]}
                                       selectedModuleId={selectedModuleId}
                                       showSurveyPanel={showSurveyPanel}
                                       selectedSpaceId={annotationSpaceId}
@@ -30226,6 +30239,7 @@ ${pageBlocks}
                                       strokeWidth={strokeWidth}
                                       annotations={pageAnnotations}
                                       onStrokeCommit={(updatedJSON) => handleSaveAnnotations(pageNum, updatedJSON, { source: 'path:created', tool: activeTool })}
+                                      onHighlightCreated={(bounds) => handleHighlightCreated(pageNum, bounds)}
                                       selectedModuleId={selectedModuleId}
                                       selectedSpaceId={annotationSpaceId}
                                       activeRegionId={activeRegionId}

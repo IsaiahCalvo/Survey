@@ -105,6 +105,12 @@ const SVGAnnotationLayer = memo(({
   height,         // unscaled PDF page height (e.g., 792)
   annotations,    // Fabric.js JSON { objects: [...] }
   callouts,       // array of callout objects
+  // Survey highlights for this page. Array of:
+  //   { highlightId, x, y, width, height, color, moduleId, regionId, needsBIC }
+  // Rendered as SVG rects with mix-blend-mode: multiply, passed through the
+  // same three-layer visibility filter as annotation objects. Display-only in
+  // Stage 1 (pointer-events: none) — edit UX lands in a later stage.
+  surveyHighlights,
   // Filtering props
   selectedModuleId,
   showSurveyPanel,
@@ -1206,10 +1212,24 @@ const SVGAnnotationLayer = memo(({
       }
 
       const obj = objects[i];
-      if (!obj || obj.visible === false) {
+      if (!obj) {
         dropReasons.nullOrHiddenFlag.push(i);
         continue;
       }
+      // Skip legacy survey-highlight rects baked into pageAnnotations by PAL
+      // (they carry a highlightId). They now render through the dedicated
+      // surveyHighlightElements memo below so highlightAnnotations state stays
+      // the single source of truth for survey highlights.
+      if (obj.highlightId) {
+        continue;
+      }
+      // obj.visible is a transient Fabric runtime flag used by PAL to hide
+      // non-survey annotations while survey mode is active. Fabric's toJSON
+      // serializes it, so the survey-mode hide would persist into the saved
+      // annotations and keep regular annotations invisible after exiting
+      // survey mode. Visibility is owned by the three-layer filter below
+      // (showSurveyPanel + selectedModuleId + space/region), not by this
+      // persisted flag — so ignore it here.
 
       // --- Layer visibility check ---
       const layer = obj.layer || 'native';
@@ -1401,6 +1421,134 @@ const SVGAnnotationLayer = memo(({
     getSpaceIdForRegion,
     activeTool,
     editingAnnotationIndex,
+  ]);
+
+  // ---------------------------------------------------------------------------
+  // Survey highlight rects — synthesized from the surveyHighlights prop and
+  // filtered through the same three-layer visibility rules as annotation
+  // objects. Rendered as SVG rects via renderRect so they scale via viewBox
+  // (no Fabric, no zoom flicker). Stage 1 renders display-only; interaction
+  // wiring follows in later stages.
+  // ---------------------------------------------------------------------------
+  const surveyHighlightElements = useMemo(() => {
+    if (!Array.isArray(surveyHighlights) || surveyHighlights.length === 0) return [];
+
+    let isOverlayEnabledForThisPage = false;
+    if (activeRegions !== null && selectedSpaceId && isRegionOverlayEnabled) {
+      const space = spaces?.find((s) => s.id === selectedSpaceId);
+      if (space) {
+        const page = space.assignedPages?.find((p) => p.pageId === pageNumber);
+        if (page) {
+          isOverlayEnabledForThisPage = isRegionOverlayEnabled(selectedSpaceId, pageNumber, page);
+        }
+      }
+    }
+    const hasActiveRegions =
+      activeRegions !== null &&
+      Array.isArray(activeRegions) &&
+      activeRegions.length > 0 &&
+      isOverlayEnabledForThisPage;
+
+    const elements = [];
+    for (let i = 0; i < surveyHighlights.length; i++) {
+      const h = surveyHighlights[i];
+      if (!h) continue;
+
+      const visibilityScope = getAnnotationVisibilityScope({
+        moduleId: h.moduleId,
+        regionId: h.regionId,
+      });
+      const isSurveyAnnotation =
+        visibilityScope === ANNOTATION_VISIBILITY_SCOPE.SURVEY ||
+        visibilityScope === ANNOTATION_VISIBILITY_SCOPE.SURVEY_REGION;
+      const isScopedRegionAnnotation =
+        visibilityScope === ANNOTATION_VISIBILITY_SCOPE.REGION ||
+        visibilityScope === ANNOTATION_VISIBILITY_SCOPE.SURVEY_REGION;
+      const derivedSpaceId = isScopedRegionAnnotation ? getSpaceIdForRegion(h.regionId) : null;
+
+      let matchesSpace = true;
+      if (hasActiveRegions && !isScopedRegionAnnotation) {
+        matchesSpace = true;
+      } else if (isScopedRegionAnnotation && derivedSpaceId !== null) {
+        matchesSpace = activeSpaceId !== null && derivedSpaceId === activeSpaceId;
+      }
+
+      let surveyAnnotationVisible = true;
+      if (isSurveyAnnotation) {
+        surveyAnnotationVisible =
+          showSurveyPanel && selectedModuleId !== null && h.moduleId === selectedModuleId;
+      } else if (!isScopedRegionAnnotation) {
+        surveyAnnotationVisible = !(showSurveyPanel && selectedModuleId !== null);
+      }
+
+      let scopedRegionAnnotationVisible = true;
+      if (isScopedRegionAnnotation) {
+        if (activeSpaceId === null) {
+          scopedRegionAnnotationVisible = false;
+        } else if (hasActiveRegions) {
+          scopedRegionAnnotationVisible = true;
+        } else if (activeRegionId !== null) {
+          scopedRegionAnnotationVisible = h.regionId === activeRegionId;
+        } else {
+          scopedRegionAnnotationVisible = false;
+        }
+      }
+
+      let pageScopedAnnotationVisible = true;
+      if (!isScopedRegionAnnotation && selectedSpaceId !== null) {
+        pageScopedAnnotationVisible = isAnnotationVisibleByPageControl({
+          scope: visibilityScope,
+          canvasVisible: getCanvasAnnotationVisibilityState
+            ? getCanvasAnnotationVisibilityState(selectedSpaceId, pageNumber)
+            : true,
+          surveyVisible: getSurveyAnnotationVisibilityState
+            ? getSurveyAnnotationVisibilityState(selectedSpaceId, pageNumber)
+            : true,
+        });
+      }
+
+      const isVisible =
+        matchesSpace &&
+        surveyAnnotationVisible &&
+        scopedRegionAnnotationVisible &&
+        pageScopedAnnotationVisible;
+
+      if (!isVisible) continue;
+
+      const pseudoRect = {
+        type: 'rect',
+        highlightId: h.highlightId,
+        left: h.x,
+        top: h.y,
+        width: h.width,
+        height: h.height,
+        fill: h.needsBIC ? 'transparent' : (h.color || 'rgba(255,235,59,0.25)'),
+        stroke: h.needsBIC ? '#4A90E2' : 'transparent',
+        strokeWidth: h.needsBIC ? 2 : 0,
+        strokeDashArray: h.needsBIC ? [5, 5] : undefined,
+        globalCompositeOperation: 'multiply',
+        opacity: 1,
+        scaleX: 1,
+        scaleY: 1,
+        angle: 0,
+      };
+      elements.push(renderRect(pseudoRect, `survey-hl-${h.highlightId || i}`));
+    }
+    return elements;
+  }, [
+    surveyHighlights,
+    pageNumber,
+    selectedModuleId,
+    showSurveyPanel,
+    selectedSpaceId,
+    activeSpaceId,
+    activeRegions,
+    activeRegionId,
+    spaces,
+    getCanvasAnnotationVisibilityState,
+    getSurveyAnnotationVisibilityState,
+    isRegionOverlayEnabled,
+    getSpaceIdForRegion,
   ]);
 
   // ---------------------------------------------------------------------------
@@ -2837,6 +2985,14 @@ const SVGAnnotationLayer = memo(({
       onDoubleClick={isSelectTool ? handleAnnotationDoubleClick : undefined}
     >
       {wrappedAnnotations}
+      {/* Survey highlights: display-only SVG rects, scaled via viewBox.
+          Stage 1 is pointer-events: none so clicks fall through to any
+          annotation underneath. Interaction wiring lands in a later stage. */}
+      {surveyHighlightElements.length > 0 && (
+        <g className="survey-highlights" style={{ pointerEvents: 'none' }}>
+          {surveyHighlightElements}
+        </g>
+      )}
       {filteredCallouts}
       {/* UX: Plan 15-04 Issue 2 — new-text creation preview. FabricEditCanvas
           paints the in-flight textbox transparent during create (same pattern

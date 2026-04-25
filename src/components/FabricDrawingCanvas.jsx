@@ -30,7 +30,7 @@ const CUSTOM_PROPS = [
   'tool',
 ];
 
-const SHAPE_TOOLS = ['rect', 'ellipse', 'line', 'arrow'];
+const SHAPE_TOOLS = ['rect', 'ellipse', 'line', 'arrow', 'highlight'];
 
 const FabricDrawingCanvas = memo(({
   pageNumber,
@@ -42,6 +42,7 @@ const FabricDrawingCanvas = memo(({
   strokeWidth,
   annotations,
   onStrokeCommit,
+  onHighlightCreated,
   selectedModuleId,
   selectedSpaceId,
   activeRegionId,
@@ -67,6 +68,7 @@ const FabricDrawingCanvas = memo(({
   const spacesRef = useRef(spaces);
   const isRegionOverlayEnabledRef = useRef(isRegionOverlayEnabled);
   const onStrokeCommitRef = useRef(onStrokeCommit);
+  const onHighlightCreatedRef = useRef(onHighlightCreated);
   const initialZoomGenRef = useRef(zoomGeneration);
   const isDisposingRef = useRef(false);
 
@@ -279,6 +281,15 @@ const FabricDrawingCanvas = memo(({
           left: pointer.x, top: pointer.y, width: 0, height: 0,
           fill: 'transparent', stroke: color, strokeWidth: sw, strokeUniform: true,
         });
+      } else if (tool === 'highlight') {
+        state.shape = new fabric.Rect({
+          left: pointer.x, top: pointer.y, width: 0, height: 0,
+          fill: highlightColor,
+          stroke: 'transparent', strokeWidth: 0,
+          globalCompositeOperation: 'multiply',
+          opacity: 1,
+          strokeUniform: true,
+        });
       } else if (tool === 'ellipse') {
         state.shape = new fabric.Ellipse({
           left: pointer.x, top: pointer.y, rx: 0, ry: 0,
@@ -314,7 +325,7 @@ const FabricDrawingCanvas = memo(({
       const pointer = getPointer(opt);
       const tool = activeToolRef.current;
 
-      if (tool === 'rect') {
+      if (tool === 'rect' || tool === 'highlight') {
         const left = Math.min(state.startX, pointer.x);
         const top = Math.min(state.startY, pointer.y);
         state.shape.set({
@@ -346,7 +357,7 @@ const FabricDrawingCanvas = memo(({
       const s = state.shape;
       const tool = activeToolRef.current;
       let hasSize = false;
-      if (tool === 'rect') hasSize = s.width > 2 && s.height > 2;
+      if (tool === 'rect' || tool === 'highlight') hasSize = s.width > 2 && s.height > 2;
       else if (tool === 'ellipse') hasSize = s.rx > 1 && s.ry > 1;
       else if (tool === 'line' || tool === 'arrow') {
         const dx = s.x2 - s.x1, dy = s.y2 - s.y1;
@@ -371,7 +382,24 @@ const FabricDrawingCanvas = memo(({
         if (tool === 'line' || tool === 'arrow') {
           s.set({ strokeDashArray: null, opacity: 1 });
         }
-        commitShape(s);
+        if (tool === 'highlight') {
+          // Survey highlights route through handleHighlightCreated so the
+          // highlightAnnotations state + Supabase sync path used by PAL
+          // stays authoritative. The fabric preview gets removed here (no
+          // commitShape → no entry in pageAnnotations.objects); SVG paints
+          // the persisted highlight next render.
+          canvas.remove(s);
+          if (onHighlightCreatedRef.current) {
+            onHighlightCreatedRef.current({
+              x: s.left,
+              y: s.top,
+              width: s.width,
+              height: s.height,
+            });
+          }
+        } else {
+          commitShape(s);
+        }
       } else {
         canvas.remove(s);
         console.log(`[DrawCanvas p${pageNumber}] shape too small, discarded`);
@@ -421,6 +449,10 @@ const FabricDrawingCanvas = memo(({
   useEffect(() => {
     onStrokeCommitRef.current = onStrokeCommit;
   }, [onStrokeCommit]);
+
+  useEffect(() => {
+    onHighlightCreatedRef.current = onHighlightCreated;
+  }, [onHighlightCreated]);
 
   useEffect(() => {
     annotationsRef.current = annotations;

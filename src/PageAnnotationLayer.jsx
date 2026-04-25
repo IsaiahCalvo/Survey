@@ -3214,6 +3214,11 @@ const PageAnnotationLayer = memo(({
 }) => {
   const canvasRef = useRef(null);
   const fabricRef = useRef(null);
+  // Fires when fabricRef.current becomes a live canvas. Drives effects that
+  // depend on the canvas being ready to paint (e.g. seeding saved survey
+  // highlights on template open, which otherwise race the Fabric mount and
+  // silently drop the first paint until the user draws a new highlight).
+  const [isCanvasReady, setIsCanvasReady] = useState(false);
   const scaleUpdateFrameRef = useRef(null);
   const pointerRecoveryRafRef = useRef(null);
   const zoomSettleTimerRef = useRef(null);
@@ -4992,6 +4997,12 @@ const PageAnnotationLayer = memo(({
     if (!canvas) return;
 
     canvas.clear();
+    // Tracking refs for already-rendered survey highlights are tied to live
+    // canvas objects we just destroyed. Reset them so the newHighlights effect
+    // (which runs next when annotations change) re-seeds from scratch instead
+    // of thinking they're already on canvas and skipping the paint.
+    renderedHighlightsRef.current = new Map();
+    processedHighlightsRef.current = new Set();
     canvas.setBackgroundColor('transparent', () => { });
 
     if (annotationsData && annotationsData.objects && annotationsData.objects.length > 0) {
@@ -5388,6 +5399,7 @@ const PageAnnotationLayer = memo(({
     canvas.freeDrawingBrush = brush;
 
     fabricRef.current = canvas;
+    setIsCanvasReady(true);
     debugMark('pal_mount', { page: pageNumber });
     console.log(`[PAL-CTX register] page=${pageNumber} (from mount useEffect)`);
     contextMenuBridge.register(pageNumber, (e, annotationIndex) => {
@@ -8005,6 +8017,7 @@ const PageAnnotationLayer = memo(({
         }
         fabricRef.current = null;
       }
+      setIsCanvasReady(false);
     };
 	  }, [cancelPendingPaintCommit, cancelPointerRecovery, pageNumber, width, height]);
 
@@ -8371,6 +8384,12 @@ const PageAnnotationLayer = memo(({
   // Add highlights when newHighlights prop changes
   useEffect(() => {
     if (!fabricRef.current || !newHighlights || newHighlights.length === 0) return;
+    // Defer painting while a zoom/interaction is in flight. Opening the survey
+    // panel force-refits the PDF (App.jsx:26094), so scale goes from e.g. 1.24
+    // to 0.69 mid-paint, causing the "flash-then-reposition" flicker. Bail now;
+    // when isZooming/isInteracting flip back to false the effect re-fires with
+    // the settled scale and paints cleanly.
+    if (isZooming || isInteracting) return;
 
     const canvas = fabricRef.current;
     const currentZoom = canvas.getZoom();
@@ -8683,7 +8702,7 @@ const PageAnnotationLayer = memo(({
         console.error(`[Page ${pageNumber}] Save error:`, e);
       }
     }
-  }, [newHighlights, highlightColor, pageNumber, onSaveAnnotations, scale]);
+  }, [newHighlights, highlightColor, pageNumber, onSaveAnnotations, scale, isCanvasReady, annotations, isZooming, isInteracting]);
 
   // Remove highlights when highlightsToRemove prop changes
   const processedRemovalsRef = useRef(new Set());
