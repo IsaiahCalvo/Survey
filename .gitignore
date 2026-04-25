@@ -34,6 +34,15 @@ scripts/backup-daemon.pid
 # Debug session output
 debug/debug-sessions/
 
+# Test artifacts (regenerated each run)
+/TestLogs/
+/test-results/
+/playwright-report/
+
+# Per-session debug log dumps left at the project root
+/1.log
+/[0-9]*.log
+
 # git worktrees (sandboxes)
 .worktrees/
 .claude/worktrees/

@@ -1,8 +1,0 @@
-Branch tip commits captured before deletion on 2026-04-22
-Restore any branch with: git branch <name> <sha>  (local commits are kept in reflog for ~90 days)
-Or push the sha back up to origin: git push origin <sha>:refs/heads/<name>
-
-Layer-Revamp             -> 066149f05b6cc34fdba5aca4a74e9914691fca50
-checkpoint-2026-03-03    -> 991b1e2e3ca7edc7c3ca8c2a9498cd3c5fee9a36
-2025-12-18-bytp          -> e9cb3b61f6e82262d050a74d2bbffdfd0dee7896
-post-v2.0/cleanup        -> 846db2714325d3b474eec8e70bd9dc5f716a73c1
