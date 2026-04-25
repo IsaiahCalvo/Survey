@@ -28983,7 +28983,7 @@ ${pageBlocks}
                                     });
                                   }}
                                   activeTool={activeTool}
-                                  editingAnnotationIndex={isEditMode ? editingAnnotation.index : null}
+                                  editingAnnotationIndex={isEditMode && !editingAnnotation.reactCalloutId ? editingAnnotation.index : null}
                                   editingAnnotationEditType={isEditMode ? editingAnnotation.editType : null}
                                   onRequestExitEdit={() => setEditingAnnotation(null)}
                                   // UX: Phase 14 CALL-10 + KBD-01 + CREATE-01 — new props
@@ -29762,7 +29762,7 @@ ${pageBlocks}
                                         });
                                       }}
                                       activeTool={activeTool}
-                                      editingAnnotationIndex={isEditMode ? editingAnnotation.index : null}
+                                      editingAnnotationIndex={isEditMode && !editingAnnotation.reactCalloutId ? editingAnnotation.index : null}
                                       editingAnnotationEditType={isEditMode ? editingAnnotation.editType : null}
                                       onRequestExitEdit={() => setEditingAnnotation(null)}
                                       // UX: Phase 14 CALL-10 + KBD-01 + CREATE-01 —
@@ -30319,7 +30319,7 @@ ${pageBlocks}
                                         });
                                       }}
                                       activeTool={activeTool}
-                                      editingAnnotationIndex={isEditMode ? editingAnnotation.index : null}
+                                      editingAnnotationIndex={isEditMode && !editingAnnotation.reactCalloutId ? editingAnnotation.index : null}
                                       editingAnnotationEditType={isEditMode ? editingAnnotation.editType : null}
                                       onRequestExitEdit={() => setEditingAnnotation(null)}
                                       // UX: Phase 14 CALL-10 + KBD-01 + CREATE-01 —
