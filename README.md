@@ -1,179 +1,98 @@
-# Survey - PDF Viewer & Analysis Tool
+# Survey — PDF Annotation App
 
-An Electron-based PDF viewer application built with React and Vite. Features advanced PDF viewing, annotation, bookmarking, spaces for organizing pages, and export capabilities.
+An Electron + React desktop app for marking up engineering and construction PDFs. Survey adds the high-fidelity annotation tools (highlight, pen, callouts, counter chains, shapes, text, sticky notes) on top of a Syncfusion PDF viewer, with a Supabase cloud database as the live source of truth so annotations sync across devices.
 
-## Features
-
-- **PDF Viewing**: Single-page and continuous scroll modes with zoom controls
-- **Page Management**: Duplicate, delete, rotate, mirror, and reorder pages
-- **Bookmarks**: Create hierarchical bookmarks and bookmark groups with drag-and-drop organization
-- **Spaces**: Define regions on pages, organize them into spaces, and export filtered data
-- **User Accounts**: Secure authentication via Supabase (Email, Google, SSO)
-- **Cloud Integration**: Connect to OneDrive to sync and manage files
-- **Search**: Full-text search across PDF documents
-- **Export**: Export spaces to CSV or PDF format
-- **Multi-Document**: Tabbed interface for working with multiple PDFs simultaneously
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js (v14 or higher)
-- npm or yarn
-- Supabase project (for authentication)
-
-### Installation
+## Quick Start
 
 ```bash
 npm install
+npm run dev          # Vite dev server + Electron (port 5173)
+npm test             # Node test runner — recursive over tests/
+npm run build        # Production web build → dist/
+npm run dist         # Web build + electron-builder installers
 ```
 
-### Configuration
-
-Create a `.env` file in the root directory with your Supabase credentials:
+A `.env` file in the project root supplies Supabase credentials and the Syncfusion license key:
 
 ```env
-VITE_SUPABASE_URL=your_supabase_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+VITE_SUPABASE_URL=...
+VITE_SUPABASE_ANON_KEY=...
+VITE_SYNCFUSION_LICENSE_KEY=...
 ```
 
-### Development
+In development, `.env.development.local` can also auto-sign-in a test user — see `feedback_dev_auto_login.md` in the auto-memory folder for details.
 
-Run the application in development mode:
+## Architecture (high level)
 
-```bash
-npm run dev              # Start both Vite dev server and Electron (port 5173)
-```
+- **Display layer (SVG).** Every annotation type renders as SVG with a `viewBox` that auto-scales on zoom — no JavaScript zoom timers, no Canvas mounted unless the user is actively editing. Lives in `src/components/SVGAnnotationLayer.jsx`.
+- **Edit layer (Fabric.js).** When the user picks a tool (pen, eraser, text, shape edit), a small per-page Fabric.js Canvas mounts on top of the SVG layer and unmounts when the tool exits. Lives in `src/components/FabricDrawingCanvas.jsx`, `FabricEraserCanvas.jsx`, `FabricEditCanvas.jsx`.
+- **Cloud sync.** All annotation writes go to Supabase. The annotation database is canonical for every device, and multi-device sync propagates within ~1 second. The PDF file itself is never the source of truth — it's only an output projection at print/export/download time.
+- **Print, export, download (in flight).** A new "bake on demand" pipeline (under `src/utils/pdfNativeExport/`) is being built behind a feature flag — at output time, app annotations are converted into native PDF annotation dictionaries so Adobe Acrobat treats them as editable annotations rather than flat pixels. See the v3.0 plan in `docs/superpowers/plans/2026-04-25-pdf-native-annotations.md`.
 
-Or run components separately:
+## Tech Stack
 
-```bash
-npm run dev:ui           # Start only Vite dev server
-npm run dev:electron     # Start only Electron (waits for Vite on port 5173)
-```
+- React 18 + Vite + Electron 38
+- Syncfusion ej2-react-pdfviewer 32.1.19 (read-only viewer; the app's annotation toolbar is custom)
+- Fabric.js 5.5.2 (edit-time Canvas only)
+- pdf-lib 1.17 (low-level PDF manipulation) and annotpdf 1.0 (high-level PDF annotation creation, used by the bake pipeline)
+- Supabase (auth + database)
+- Node built-in test runner + Playwright for e2e
+- electron-builder + electron-updater for desktop installers and auto-update
+- Capacitor for the iOS / Android shells (under `ios/` and `android/`)
 
-### Building for Production
-
-Build the React app:
-
-```bash
-npm run build            # Build React app for production (outputs to dist/)
-```
-
-Package the Electron app:
-
-```bash
-npm run dist             # Build and package Electron app with electron-builder
-```
-
-This will create distributable packages for your platform in the `dist/` folder.
-
-## Architecture
-
-### Technology Stack
-
-- **Frontend**: React 18 with Hooks
-- **Build Tool**: Vite
-- **Desktop Framework**: Electron
-- **PDF Rendering**: PDF.js (pdfjs-dist)
-- **PDF Manipulation**: pdf-lib
-- **Authentication**: Supabase Auth
-- **Drag & Drop**: @dnd-kit/core, @dnd-kit/sortable
-- **Export**: xlsx for CSV/Excel export
-
-### Project Structure
+## Project Layout
 
 ```
-Survey/
-├── src/
-│   ├── App.jsx                      # Main application component
-│   ├── main.jsx                     # React entry point
-│   ├── electron-main.js             # Electron main process
-│   ├── preload.js                   # Electron preload script
-│   ├── components/                  # Reusable UI components
-│   │   ├── AuthModal.jsx            # Authentication modal
-│   │   ├── PageAnnotationLayer.jsx  # Canvas annotation layer
-│   │   ├── RegionSelectionTool.jsx  # Region drawing tool
-│   │   └── ...
-│   ├── contexts/                    # React Contexts
-│   │   └── AuthContext.jsx          # User authentication state
-│   ├── sidebar/                     # Sidebar panels
-│   │   ├── PagesPanel.jsx           # Page thumbnails
-│   │   ├── BookmarksPanel.jsx       # Bookmarks management
-│   │   └── SpacesPanel.jsx          # Spaces management
-│   ├── utils/                       # Utility functions
-│   │   ├── oneDriveUtils.js         # OneDrive integration
-│   │   └── regionMath.js            # Geometry calculations
-│   └── workers/                     # Web Workers
-│       └── pdfRender.worker.js      # PDF rendering worker
-├── public/                          # Static assets
-├── dist/                            # Build output
-├── index.html                       # HTML entry point
-├── package.json                     # Dependencies and scripts
-├── vite.config.js                   # Vite configuration
-└── CLAUDE.md                        # Development documentation
+src/
+  App.jsx                 # main app (~1.3MB; render loop, zoom logic, portal hosts)
+  electron-main.js        # Electron main process
+  preload.js              # IPC bridge (window.electronAPI)
+  components/             # SyncfusionPDFContainer, SVG/Fabric layers, panels
+  utils/                  # pdf helpers, geometry, pdfNativeExport bake pipeline
+  workers/                # PDF.js render worker + paint worker
+public/                   # static assets copied into dist/ at build
+tests/                    # node --test unit tests (recursive)
+debug/                    # Playwright scenarios + analyzer scripts
+docs/                     # docs, handoffs, superpowers plans, security audits
+.planning/                # GSD workflow: roadmap, phases, milestones, requirements
+scripts/                  # bootstrap, backup, dev-env helpers
+ios/ android/             # Capacitor mobile shells
+landing/                  # marketing landing page
+supabase/                 # Supabase migrations
 ```
 
-## Key Features Explained
+## Where to Find Things
 
-### Spaces
+- **Roadmap and progress:** `.planning/ROADMAP.md`. Per-phase work lives under `.planning/phases/<N>-<slug>/`. Each phase carries a CONTEXT, plans, summaries, and a RECONCILIATION.md.
+- **Active milestone plans:** `docs/superpowers/plans/`. Latest is the v3.0 PDF-native annotations plan (started 2026-04-25).
+- **Session handoffs:** `docs/handoffs/` (date-prefixed).
+- **Project memory and gotchas:** `CLAUDE.md` (project-level rules, hard invariants, gotchas).
+- **Security review notes:** `docs/SECURITY_AUDIT_REPORT.md`.
+- **Stripe / webhook setup:** `docs/STRIPE_SETUP.md`, `docs/WEBHOOK_DEBUGGING.md`.
 
-Spaces allow you to define regions of interest on PDF pages and organize them:
+## Critical Project Invariants (do not break)
 
-1. Create a space in the Spaces panel
-2. Add pages using page numbers or ranges (e.g., "1-5, 7, 10")
-3. Click "Edit" to draw rectangular or freehand regions on each page
-4. Export space data to CSV (tabular) or PDF (visual) format
+These are enforced both by `CLAUDE.md` and by the GSD discipline hook. Touching code in any of the following without explicit scope is a boundary violation:
 
-### Bookmarks
+- `src/App.jsx` — load-bearing main file, do not refactor without explicit approval
+- `src/components/PageAnnotationLayer.jsx` — per-page Fabric overlay, ~9.8k lines
+- `src/components/SVGAnnotationLayer.jsx` — owns all SVG zoom scaling via `viewBox`
+- The Fabric Canvas trio (`FabricDrawingCanvas`, `FabricEditCanvas`, `FabricEraserCanvas`) — all rely on the `zoomGeneration` signal contract
+- `package.json` and `vite.config.js` — infra; touching requires explicit approval
 
-Create bookmarks to quickly navigate to specific pages:
-
-- Single bookmarks: Link to one page
-- Bookmark groups: Organize multiple bookmarks in folders
-- Drag and drop to reorder or nest bookmarks
-- Double-click folders to expand/collapse
-
-### Page Operations
-
-- **Duplicate**: Create copies of pages
-- **Delete**: Remove pages from the document
-- **Rotate**: Rotate pages 90° clockwise
-- **Mirror**: Flip pages horizontally
-- **Reorder**: Drag pages to rearrange order
-
-## Development Notes
-
-### Electron IPC
-
-To add new IPC features:
-
-1. Define handlers in `src/electron-main.js`
-2. Expose APIs in `src/preload.js` via `contextBridge`
-3. Access via `window.electronAPI` in React components
-
-### PDF.js Configuration
-
-The PDF.js worker is currently loaded from CDN. For offline/production use, bundle the worker locally from `node_modules/pdfjs-dist/build/pdf.worker.min.js`.
-
-### State Management
-
-State is managed via React hooks (useState, useEffect, useRef). No external state management library is currently used.
-
-## Browser Support
-
-This is an Electron application and uses Chromium rendering. Modern JavaScript features (ES6+) are fully supported.
+Specific gotchas (canvas sizing must use container-aware measurement, single-name fonts only, etc.) are documented in `CLAUDE.md`.
 
 ## Contributing
 
-Contributions are welcome! Please follow the existing code style and test your changes thoroughly.
+This codebase uses a phased planning workflow (GSD) under `.planning/`. New work flows through:
+
+1. **Discuss** the phase intent — write a `CONTEXT.md` with Acceptance Criteria (Given/When/Then) and a DO NOT CHANGE list.
+2. **Plan** — break the phase into bite-sized tasks with failing-test-first TDD steps.
+3. **Execute** — atomic commits per task, with verification runs.
+4. **Reconcile** — close the phase with a `RECONCILIATION.md` (plan vs actual, criteria results, lessons).
+
+Follow the existing code style. Run `npm test` before committing. Manual smoke testing in the dev app is required for any UI change.
 
 ## License
 
-[Add your license here]
-
-## Acknowledgments
-
-- [PDF.js](https://mozilla.github.io/pdf.js/) by Mozilla
-- [pdf-lib](https://pdf-lib.js.org/) for PDF manipulation
-- [dnd-kit](https://dndkit.com/) for drag and drop functionality
+Proprietary — all rights reserved.
