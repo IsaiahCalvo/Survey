@@ -79,6 +79,42 @@ export function useAnnotationCloudSync({
   }
   const clientSessionId = sessionIdRef.current;
 
+  // Belt-and-suspenders echo filter — track every highlight_id this client
+  // pushes and drop realtime events for those ids for a short window. This
+  // protects against any case where the session-id filter fails (legacy
+  // rows without sessionId in annotation_data, serializer regenerating ids
+  // mid-flight, etc.) while still letting OTHER devices' writes through
+  // since their ids never enter this set. TTL is generous (60s) because
+  // Supabase realtime can lag under network jitter.
+  const recentlyPushedRef = useRef(new Map()); // id -> expiresAt epoch ms
+  const PUSHED_ID_TTL_MS = 60_000;
+  const markPushedIds = (ids) => {
+    if (!ids || ids.length === 0) return;
+    const now = Date.now();
+    const map = recentlyPushedRef.current;
+    for (const id of ids) {
+      if (id) map.set(id, now + PUSHED_ID_TTL_MS);
+    }
+    // Lazy GC — drop expired entries so the map doesn't grow unbounded
+    // across long sessions with thousands of edits.
+    if (map.size > 5000) {
+      for (const [id, exp] of map) {
+        if (exp <= now) map.delete(id);
+      }
+    }
+  };
+  const isRecentlyPushed = (id) => {
+    if (!id) return false;
+    const map = recentlyPushedRef.current;
+    const exp = map.get(id);
+    if (!exp) return false;
+    if (exp <= Date.now()) {
+      map.delete(id);
+      return false;
+    }
+    return true;
+  };
+
   // ---- Hydrate + migrate on document open --------------------------------
 
   useEffect(() => {
@@ -179,7 +215,26 @@ export function useAnnotationCloudSync({
 
     debounceTimerRef.current = setTimeout(async () => {
       console.log('[CloudSync][hook] fabric push debounce elapsed — pushing now');
+      // Mark every id that we're about to push BEFORE the network call so
+      // realtime echoes that arrive before the push promise resolves are
+      // still filtered. Pull ids from the local fabric objects so we cover
+      // the same population the serializer will see.
+      const idsToMark = [];
+      for (const page of Object.values(annotationsByPage || {})) {
+        if (!page || !Array.isArray(page.objects)) continue;
+        for (const obj of page.objects) {
+          const id = obj?.id || obj?.data?.id;
+          if (id) idsToMark.push(id);
+        }
+      }
+      markPushedIds(idsToMark);
       const result = await upsertAnnotationsByPage(annotationsByPage, { documentId, userId, clientSessionId });
+      // Mark ids returned by the upsert too — covers the case where the
+      // serializer generated a brand-new highlight_id for an object that
+      // didn't have one locally.
+      if (Array.isArray(result?.data)) {
+        markPushedIds(result.data.map((r) => r?.highlight_id).filter(Boolean));
+      }
       if (result.error) {
         console.warn('[CloudSync][hook] fabric push failed → queued ' + JSON.stringify({
           error: result.error?.message || String(result.error)
@@ -219,7 +274,14 @@ export function useAnnotationCloudSync({
     }));
     const handle = setTimeout(async () => {
       console.log('[CloudSync][hook] callout push debounce elapsed — pushing now');
+      const calloutIds = (callouts || [])
+        .map((c) => c?.id || c?.highlightId)
+        .filter(Boolean);
+      markPushedIds(calloutIds);
       const result = await upsertCallouts(callouts || [], { documentId, userId, clientSessionId });
+      if (Array.isArray(result?.data)) {
+        markPushedIds(result.data.map((r) => r?.highlight_id).filter(Boolean));
+      }
       if (result.error) {
         console.warn('[CloudSync][hook] callout push failed → queued ' + JSON.stringify({
           error: result.error?.message || String(result.error)
@@ -251,21 +313,59 @@ export function useAnnotationCloudSync({
       documentId,
       {
         onFabricInsert: (fabricObject, pageNumber, highlightId) => {
+          if (isRecentlyPushed(highlightId)) {
+            console.log('[CloudSync][hook] dropped own-write echo (recently-pushed set) ' + JSON.stringify({
+              event: 'INSERT', highlightId, pageNumber
+            }));
+            return;
+          }
           setAnnotationsByPage((prev) => insertOrUpdateOnPage(prev, pageNumber, fabricObject, highlightId));
         },
         onFabricUpdate: (fabricObject, pageNumber, highlightId) => {
+          if (isRecentlyPushed(highlightId)) {
+            console.log('[CloudSync][hook] dropped own-write echo (recently-pushed set) ' + JSON.stringify({
+              event: 'UPDATE', highlightId, pageNumber
+            }));
+            return;
+          }
           setAnnotationsByPage((prev) => insertOrUpdateOnPage(prev, pageNumber, fabricObject, highlightId));
         },
         onFabricDelete: (highlightId) => {
+          if (isRecentlyPushed(highlightId)) {
+            console.log('[CloudSync][hook] dropped own-write echo (recently-pushed set) ' + JSON.stringify({
+              event: 'DELETE', highlightId
+            }));
+            return;
+          }
           setAnnotationsByPage((prev) => removeFromAllPages(prev, highlightId));
         },
         onCalloutInsert: (callout) => {
+          const id = callout?.id || callout?.highlightId;
+          if (isRecentlyPushed(id)) {
+            console.log('[CloudSync][hook] dropped own-write echo (recently-pushed set) ' + JSON.stringify({
+              event: 'INSERT', highlightId: id, kind: 'callout'
+            }));
+            return;
+          }
           setCallouts((prev) => upsertCalloutInList(prev, callout));
         },
         onCalloutUpdate: (callout) => {
+          const id = callout?.id || callout?.highlightId;
+          if (isRecentlyPushed(id)) {
+            console.log('[CloudSync][hook] dropped own-write echo (recently-pushed set) ' + JSON.stringify({
+              event: 'UPDATE', highlightId: id, kind: 'callout'
+            }));
+            return;
+          }
           setCallouts((prev) => upsertCalloutInList(prev, callout));
         },
         onCalloutDelete: (highlightId) => {
+          if (isRecentlyPushed(highlightId)) {
+            console.log('[CloudSync][hook] dropped own-write echo (recently-pushed set) ' + JSON.stringify({
+              event: 'DELETE', highlightId, kind: 'callout'
+            }));
+            return;
+          }
           setCallouts((prev) => (prev || []).filter((c) => (c.id ?? c.highlightId) !== highlightId));
         },
         onError: (err) => setStatus({ stage: 'error', error: err, phase: 'subscribe' })
