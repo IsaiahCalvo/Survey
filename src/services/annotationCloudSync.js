@@ -54,15 +54,35 @@ export async function upsertFabricAnnotation(fabricObj, opts = {}) {
 export async function upsertAnnotationsByPage(annotationsByPage, opts = {}) {
   if (!supabase) return { data: [], error: new Error('Supabase unavailable') };
   const rows = serializeAnnotationsByPage(annotationsByPage, opts);
-  if (rows.length === 0) return { data: [], error: null };
+  if (rows.length === 0) {
+    console.log('[CloudSync][push] upsertAnnotationsByPage: nothing to push (0 rows)');
+    return { data: [], error: null };
+  }
+  const byType = rows.reduce((acc, r) => {
+    acc[r.annotation_type] = (acc[r.annotation_type] || 0) + 1;
+    return acc;
+  }, {});
+  const t0 = Date.now();
+  console.log('[CloudSync][push] upsertAnnotationsByPage start', {
+    documentId: opts.documentId,
+    userId: opts.userId,
+    totalRows: rows.length,
+    rowsByType: byType,
+    pages: Object.keys(annotationsByPage || {}).length
+  });
   const { data, error } = await supabase
     .from('document_annotations')
     .upsert(rows, { onConflict: 'document_id,highlight_id', ignoreDuplicates: false })
     .select();
+  const elapsedMs = Date.now() - t0;
   if (error) {
-    console.error('[CloudSync] upsertAnnotationsByPage failed:', error);
+    console.error('[CloudSync][push] upsertAnnotationsByPage failed', { elapsedMs, error });
     return { data: [], error };
   }
+  console.log('[CloudSync][push] upsertAnnotationsByPage ok', {
+    elapsedMs,
+    rowsReturned: data?.length || 0
+  });
   return { data: data || [], error: null };
 }
 
@@ -72,17 +92,29 @@ export async function upsertAnnotationsByPage(annotationsByPage, opts = {}) {
 export async function upsertCallouts(callouts, opts = {}) {
   if (!supabase) return { data: [], error: new Error('Supabase unavailable') };
   if (!Array.isArray(callouts) || callouts.length === 0) {
+    console.log('[CloudSync][push] upsertCallouts: nothing to push (empty list)');
     return { data: [], error: null };
   }
   const rows = callouts.map((c) => serializeCalloutToRow(c, opts));
+  const t0 = Date.now();
+  console.log('[CloudSync][push] upsertCallouts start', {
+    documentId: opts.documentId,
+    userId: opts.userId,
+    count: rows.length
+  });
   const { data, error } = await supabase
     .from('document_annotations')
     .upsert(rows, { onConflict: 'document_id,highlight_id', ignoreDuplicates: false })
     .select();
+  const elapsedMs = Date.now() - t0;
   if (error) {
-    console.error('[CloudSync] upsertCallouts failed:', error);
+    console.error('[CloudSync][push] upsertCallouts failed', { elapsedMs, error });
     return { data: [], error };
   }
+  console.log('[CloudSync][push] upsertCallouts ok', {
+    elapsedMs,
+    rowsReturned: data?.length || 0
+  });
   return { data: data || [], error: null };
 }
 
@@ -137,20 +169,36 @@ export async function loadAllNonHighlightAnnotations(documentId) {
   if (!documentId) {
     return { annotationsByPage: {}, callouts: [], error: null };
   }
+  const t0 = Date.now();
+  console.log('[CloudSync][hydrate] loadAllNonHighlightAnnotations start', { documentId });
   const { data, error } = await supabase
     .from('document_annotations')
     .select('*')
     .eq('document_id', documentId)
     .in('annotation_type', NON_HIGHLIGHT_TYPES)
     .order('page_number', { ascending: true });
+  const elapsedMs = Date.now() - t0;
   if (error) {
-    console.error('[CloudSync] loadAllNonHighlightAnnotations failed:', error);
+    console.error('[CloudSync][hydrate] loadAllNonHighlightAnnotations failed', { elapsedMs, error });
     return { annotationsByPage: {}, callouts: [], error };
   }
   const rows = data || [];
+  const byType = rows.reduce((acc, r) => {
+    acc[r.annotation_type] = (acc[r.annotation_type] || 0) + 1;
+    return acc;
+  }, {});
+  const annotationsByPage = deserializeRowsToAnnotationsByPage(rows);
+  const callouts = deserializeRowsToCallouts(rows);
+  console.log('[CloudSync][hydrate] loadAllNonHighlightAnnotations ok', {
+    elapsedMs,
+    totalRows: rows.length,
+    rowsByType: byType,
+    pagesWithObjects: Object.keys(annotationsByPage).length,
+    calloutCount: callouts.length
+  });
   return {
-    annotationsByPage: deserializeRowsToAnnotationsByPage(rows),
-    callouts: deserializeRowsToCallouts(rows),
+    annotationsByPage,
+    callouts,
     rawRows: rows,
     error: null
   };
@@ -169,13 +217,21 @@ export async function loadAllNonHighlightAnnotations(documentId) {
  *   - onCalloutDelete(highlightId)
  *   - onError(error)
  *
+ * Echo filter — UX rule: when the local user writes a row, Supabase realtime
+ * echoes that same row back to this client. If we re-applied it we'd race
+ * the user's in-progress drawing (counter pins duplicating, pen flicker).
+ * Pass `currentUserId` so we can drop events where last_modified_by matches
+ * the local user. Mirrors the existing pattern in App.jsx for highlights:
+ *   if (annotation.lastModifiedBy === user.id) return;
+ *
  * The subscriber filters out highlight rows so the existing highlight
  * subscription in documentAnnotationService.js continues to own them
  * without conflict.
  */
-export function subscribeToAllNonHighlightAnnotations(documentId, callbacks = {}) {
+export function subscribeToAllNonHighlightAnnotations(documentId, callbacks = {}, options = {}) {
   if (!supabase) return () => {};
 
+  const { currentUserId = null } = options;
   const {
     onFabricInsert,
     onFabricUpdate,
@@ -185,6 +241,17 @@ export function subscribeToAllNonHighlightAnnotations(documentId, callbacks = {}
     onCalloutDelete,
     onError
   } = callbacks;
+
+  console.log('[CloudSync][realtime] subscribing', {
+    documentId,
+    currentUserId,
+    hasFabricInsert: !!onFabricInsert,
+    hasFabricUpdate: !!onFabricUpdate,
+    hasFabricDelete: !!onFabricDelete,
+    hasCalloutInsert: !!onCalloutInsert,
+    hasCalloutUpdate: !!onCalloutUpdate,
+    hasCalloutDelete: !!onCalloutDelete
+  });
 
   const channel = supabase
     .channel(`all-annotations:${documentId}`)
@@ -196,7 +263,7 @@ export function subscribeToAllNonHighlightAnnotations(documentId, callbacks = {}
         table: 'document_annotations',
         filter: `document_id=eq.${documentId}`
       },
-      (payload) => routeRow('insert', payload.new, callbacks)
+      (payload) => routeRow('insert', payload.new, callbacks, currentUserId)
     )
     .on(
       'postgres_changes',
@@ -206,7 +273,7 @@ export function subscribeToAllNonHighlightAnnotations(documentId, callbacks = {}
         table: 'document_annotations',
         filter: `document_id=eq.${documentId}`
       },
-      (payload) => routeRow('update', payload.new, callbacks)
+      (payload) => routeRow('update', payload.new, callbacks, currentUserId)
     )
     .on(
       'postgres_changes',
@@ -220,6 +287,22 @@ export function subscribeToAllNonHighlightAnnotations(documentId, callbacks = {}
         const oldRow = payload.old;
         if (!oldRow) return;
         if (oldRow.annotation_type === 'highlight') return; // legacy module owns it
+        // Echo filter — see header comment. Drop deletes initiated by this
+        // client so we don't re-process our own removal and flicker state.
+        if (currentUserId && oldRow.last_modified_by === currentUserId) {
+          console.log('[CloudSync][realtime] echo-filtered DELETE', {
+            highlightId: oldRow.highlight_id,
+            annotationType: oldRow.annotation_type,
+            lastModifiedBy: oldRow.last_modified_by,
+            currentUserId
+          });
+          return;
+        }
+        console.log('[CloudSync][realtime] applying DELETE', {
+          highlightId: oldRow.highlight_id,
+          annotationType: oldRow.annotation_type,
+          lastModifiedBy: oldRow.last_modified_by
+        });
         if (oldRow.annotation_type === 'callout') {
           if (onCalloutDelete) onCalloutDelete(oldRow.highlight_id);
         } else if (NON_HIGHLIGHT_TYPES.includes(oldRow.annotation_type)) {
@@ -228,6 +311,7 @@ export function subscribeToAllNonHighlightAnnotations(documentId, callbacks = {}
       }
     )
     .subscribe((status, err) => {
+      console.log('[CloudSync][realtime] subscribe status', { status, error: err?.message || null });
       if (err) {
         console.error('[CloudSync] subscribe error:', err);
         if (onError) onError(err);
@@ -235,19 +319,40 @@ export function subscribeToAllNonHighlightAnnotations(documentId, callbacks = {}
     });
 
   return () => {
+    console.log('[CloudSync][realtime] unsubscribing', { documentId });
     if (supabase?.removeChannel) {
       supabase.removeChannel(channel);
     }
   };
 }
 
-function routeRow(event, row, callbacks) {
+function routeRow(event, row, callbacks, currentUserId) {
   if (!row) return;
   const type = row.annotation_type;
   if (type === 'highlight') return; // legacy module owns it
+
+  // Echo filter — UX rule: a Supabase realtime echo of the user's own write
+  // would race the user's in-progress UI (e.g. counter doubling, pen flicker).
+  // Drop events whose last_modified_by matches this client's userId so we
+  // only react to writes from other devices/users.
+  if (currentUserId && row.last_modified_by === currentUserId) {
+    console.log(`[CloudSync][realtime] echo-filtered ${event.toUpperCase()}`, {
+      highlightId: row.highlight_id,
+      annotationType: type,
+      lastModifiedBy: row.last_modified_by,
+      currentUserId
+    });
+    return;
+  }
+
   if (type === 'callout') {
     try {
       const callout = deserializeRowToCallout(row);
+      console.log(`[CloudSync][realtime] applying ${event.toUpperCase()} callout`, {
+        highlightId: row.highlight_id,
+        pageNumber: row.page_number,
+        lastModifiedBy: row.last_modified_by
+      });
       if (event === 'insert' && callbacks.onCalloutInsert) callbacks.onCalloutInsert(callout);
       else if (event === 'update' && callbacks.onCalloutUpdate) callbacks.onCalloutUpdate(callout);
     } catch (err) {
@@ -258,6 +363,12 @@ function routeRow(event, row, callbacks) {
   if (NON_HIGHLIGHT_TYPES.includes(type)) {
     try {
       const { fabricObject, pageNumber, highlightId } = deserializeRowToFabricObject(row);
+      console.log(`[CloudSync][realtime] applying ${event.toUpperCase()} fabric`, {
+        highlightId,
+        annotationType: type,
+        pageNumber,
+        lastModifiedBy: row.last_modified_by
+      });
       if (event === 'insert' && callbacks.onFabricInsert) {
         callbacks.onFabricInsert(fabricObject, pageNumber, highlightId);
       } else if (event === 'update' && callbacks.onFabricUpdate) {

@@ -69,39 +69,64 @@ export function useAnnotationCloudSync({
   // ---- Hydrate + migrate on document open --------------------------------
 
   useEffect(() => {
-    if (!enabled || !documentId || !userId || !pdfId) return;
+    console.log('[CloudSync][hook] hydrate effect fired', {
+      enabled, documentId, userId, pdfId
+    });
+    if (!enabled || !documentId || !userId || !pdfId) {
+      console.log('[CloudSync][hook] hydrate skipped — missing prerequisite', {
+        enabled, hasDocumentId: !!documentId, hasUserId: !!userId, hasPdfId: !!pdfId
+      });
+      return;
+    }
     let cancelled = false;
     hydratedRef.current = false;
 
     (async () => {
       setStatus({ stage: 'hydrating' });
+      console.log('[CloudSync][hook] stage=hydrating');
       const cloud = await loadAllNonHighlightAnnotations(documentId);
-      if (cancelled) return;
+      if (cancelled) {
+        console.log('[CloudSync][hook] hydrate cancelled mid-flight');
+        return;
+      }
       if (cloud.error) {
+        console.error('[CloudSync][hook] hydrate error', cloud.error);
         setStatus({ stage: 'error', error: cloud.error, phase: 'hydrate' });
       } else {
         if (cloud.annotationsByPage && Object.keys(cloud.annotationsByPage).length > 0) {
+          console.log('[CloudSync][hook] merging hydrated fabric annotations', {
+            pages: Object.keys(cloud.annotationsByPage).length
+          });
           setAnnotationsByPage((prev) => mergeAnnotationsByPage(prev, cloud.annotationsByPage));
         }
         if (cloud.callouts && cloud.callouts.length > 0) {
+          console.log('[CloudSync][hook] merging hydrated callouts', { count: cloud.callouts.length });
           setCallouts((prev) => mergeCallouts(prev, cloud.callouts));
         }
       }
 
       setStatus({ stage: 'migrating' });
+      console.log('[CloudSync][hook] stage=migrating (one-time local→cloud push)');
       const migration = await migrateLocalAnnotationsToCloud({
         documentId,
         userId,
         pdfId,
         onStatus: (s) => {
-          if (!cancelled) setStatus({ stage: 'migrating', ...s });
+          if (!cancelled) {
+            console.log('[CloudSync][hook] migration progress', s);
+            setStatus({ stage: 'migrating', ...s });
+          }
         }
       });
       if (cancelled) return;
       if (migration.error) {
+        console.error('[CloudSync][hook] migration error', migration.error);
         setStatus({ stage: 'error', error: migration.error, phase: 'migrate' });
       } else {
         hydratedRef.current = true;
+        console.log('[CloudSync][hook] hydrate+migrate complete — push gate OPEN', {
+          migrationPushed: migration.pushed
+        });
         setStatus({ stage: 'idle', migrationPushed: migration.pushed });
       }
 
@@ -117,15 +142,31 @@ export function useAnnotationCloudSync({
 
   useEffect(() => {
     if (!enabled || !documentId || !userId) return;
-    if (!hydratedRef.current) return; // skip until initial hydrate finishes
+    if (!hydratedRef.current) {
+      console.log('[CloudSync][hook] fabric push skipped — not hydrated yet');
+      return;
+    }
     if (annotationsByPage === lastByPageRef.current) return;
 
     lastByPageRef.current = annotationsByPage;
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
 
+    const pageCount = Object.keys(annotationsByPage || {}).length;
+    const objectCount = Object.values(annotationsByPage || {}).reduce(
+      (n, p) => n + (Array.isArray(p?.objects) ? p.objects.length : 0),
+      0
+    );
+    console.log('[CloudSync][hook] fabric state changed — debounce push scheduled', {
+      pageCount,
+      objectCount,
+      debounceMs
+    });
+
     debounceTimerRef.current = setTimeout(async () => {
+      console.log('[CloudSync][hook] fabric push debounce elapsed — pushing now');
       const result = await upsertAnnotationsByPage(annotationsByPage, { documentId, userId });
       if (result.error) {
+        console.warn('[CloudSync][hook] fabric push failed → queued', { error: result.error });
         enqueueSync(documentId, {
           kind: 'fabric-bulk',
           payload: annotationsByPage,
@@ -134,6 +175,7 @@ export function useAnnotationCloudSync({
         setQueueSize(getQueueSize(documentId));
         setStatus({ stage: 'queued', error: result.error });
       } else {
+        console.log('[CloudSync][hook] fabric push synced', { count: result.data?.length || 0 });
         setStatus({ stage: 'synced', count: result.data?.length || 0 });
       }
     }, debounceMs);
@@ -145,13 +187,22 @@ export function useAnnotationCloudSync({
 
   useEffect(() => {
     if (!enabled || !documentId || !userId) return;
-    if (!hydratedRef.current) return;
+    if (!hydratedRef.current) {
+      console.log('[CloudSync][hook] callout push skipped — not hydrated yet');
+      return;
+    }
     if (callouts === lastCalloutsRef.current) return;
 
     lastCalloutsRef.current = callouts;
+    console.log('[CloudSync][hook] callout state changed — debounce push scheduled', {
+      count: Array.isArray(callouts) ? callouts.length : 0,
+      debounceMs
+    });
     const handle = setTimeout(async () => {
+      console.log('[CloudSync][hook] callout push debounce elapsed — pushing now');
       const result = await upsertCallouts(callouts || [], { documentId, userId });
       if (result.error) {
+        console.warn('[CloudSync][hook] callout push failed → queued', { error: result.error });
         enqueueSync(documentId, {
           kind: 'callout-bulk',
           payload: callouts || [],
@@ -160,6 +211,7 @@ export function useAnnotationCloudSync({
         setQueueSize(getQueueSize(documentId));
         setStatus({ stage: 'queued', error: result.error });
       } else {
+        console.log('[CloudSync][hook] callout push synced', { count: result.data?.length || 0 });
         setStatus({ stage: 'synced', count: result.data?.length || 0 });
       }
     }, debounceMs);
@@ -172,32 +224,39 @@ export function useAnnotationCloudSync({
   useEffect(() => {
     if (!enabled || !documentId) return;
 
-    const unsub = subscribeToAllNonHighlightAnnotations(documentId, {
-      onFabricInsert: (fabricObject, pageNumber, highlightId) => {
-        setAnnotationsByPage((prev) => insertOrUpdateOnPage(prev, pageNumber, fabricObject, highlightId));
+    const unsub = subscribeToAllNonHighlightAnnotations(
+      documentId,
+      {
+        onFabricInsert: (fabricObject, pageNumber, highlightId) => {
+          setAnnotationsByPage((prev) => insertOrUpdateOnPage(prev, pageNumber, fabricObject, highlightId));
+        },
+        onFabricUpdate: (fabricObject, pageNumber, highlightId) => {
+          setAnnotationsByPage((prev) => insertOrUpdateOnPage(prev, pageNumber, fabricObject, highlightId));
+        },
+        onFabricDelete: (highlightId) => {
+          setAnnotationsByPage((prev) => removeFromAllPages(prev, highlightId));
+        },
+        onCalloutInsert: (callout) => {
+          setCallouts((prev) => upsertCalloutInList(prev, callout));
+        },
+        onCalloutUpdate: (callout) => {
+          setCallouts((prev) => upsertCalloutInList(prev, callout));
+        },
+        onCalloutDelete: (highlightId) => {
+          setCallouts((prev) => (prev || []).filter((c) => (c.id ?? c.highlightId) !== highlightId));
+        },
+        onError: (err) => setStatus({ stage: 'error', error: err, phase: 'subscribe' })
       },
-      onFabricUpdate: (fabricObject, pageNumber, highlightId) => {
-        setAnnotationsByPage((prev) => insertOrUpdateOnPage(prev, pageNumber, fabricObject, highlightId));
-      },
-      onFabricDelete: (highlightId) => {
-        setAnnotationsByPage((prev) => removeFromAllPages(prev, highlightId));
-      },
-      onCalloutInsert: (callout) => {
-        setCallouts((prev) => upsertCalloutInList(prev, callout));
-      },
-      onCalloutUpdate: (callout) => {
-        setCallouts((prev) => upsertCalloutInList(prev, callout));
-      },
-      onCalloutDelete: (highlightId) => {
-        setCallouts((prev) => (prev || []).filter((c) => (c.id ?? c.highlightId) !== highlightId));
-      },
-      onError: (err) => setStatus({ stage: 'error', error: err, phase: 'subscribe' })
-    });
+      // Echo filter — drop realtime events whose last_modified_by matches
+      // this client's userId (Supabase echoes the user's own writes back).
+      // Mirrors the highlight pattern at App.jsx ~20920.
+      { currentUserId: userId }
+    );
 
     return () => {
       try { unsub?.(); } catch { /* ignore */ }
     };
-  }, [enabled, documentId, setAnnotationsByPage, setCallouts]);
+  }, [enabled, documentId, userId, setAnnotationsByPage, setCallouts]);
 
   // ---- Drain offline queue on reconnect ----------------------------------
 
