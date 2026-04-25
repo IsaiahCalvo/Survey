@@ -12,7 +12,7 @@
     "postinstall": "node scripts/bootstrap-dev-env.mjs",
     "build": "vite build",
     "dist": "npm run build && electron-builder",
-    "test": "node --test tests/*.test.mjs",
+    "test": "node --test 'tests/**/*.test.mjs'",
     "test:debug": "npx playwright test --config debug/playwright.config.mjs",
     "debug:scenario": "npx playwright test --config debug/playwright.config.mjs --grep",
     "debug:process": "node debug/lib/post-process.mjs",
