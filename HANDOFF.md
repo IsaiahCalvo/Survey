@@ -1,172 +1,78 @@
-# HANDOFF — Custom Print Panel, mid-build (2026-04-23)
+# HANDOFF — Custom Print Panel, late on 2026-04-24
 
-We started shipping the custom Print Panel today. It opens, renders, and
-every interactive control fires events correctly in an automated end-to-end
-test. But on the user's Mac dev build the preview sheet and the thumbnail
-strip keep showing placeholders instead of real PDF page renders. The core
-reason is a **Syncfusion page-cache limitation**, not a layout bug. Next
-session's job is to replace the preview source so pages render on demand
-whether or not the main viewer has scrolled past them yet.
+The custom Print Panel is fully built, wired, and nearly production-ready. We spent this session fixing a long list of issues that had accumulated, including a root-cause bug that was making every right-rail toggle appear dead. That bug is fixed in this handoff. The next session is a confirmation pass: the user tests each toggle with fresh eyes, hands us the console log, and we close out any remaining gaps.
 
 **User's working style (non-negotiable):**
 - Plain English only. Max ~5 short sentences per reply.
 - No file paths, no camelCase / backtick code names, no markdown headers,
-  no lettered menus, no bullet lists longer than 4 items in conversational
-  replies.
+  no lettered menus, no bullet lists longer than 4 items in replies.
 - Non-technical. Describe what they'll SEE, not how code is wired.
-- One decision at a time. Don't overwhelm with options.
+- One decision at a time.
 
 ---
 
 ## Where we are
 
-### What works (verified by end-to-end playwright run)
-- Cmd/Ctrl+P opens the panel. Electron menu accelerator and a window-level
-  keydown safety-net both fire the same open handler.
-- The floating window has three main zones exactly as the user specified:
-  top page selector bar, center preview with pager, right options panel.
-- The J ↔ K variant toggle in the titlebar swaps the right options panel
-  layout. J has per-section "Apply to" pills; K has three scope tabs
-  across the top of the rail (All / Select / Current).
-- Every control fires state change + console log: page range input, All /
-  Current view / Clear quick buttons, thumbnail click, scope pills / tabs,
-  paper size dropdown (Letter / Legal / Tabloid / A4 / A3 / Arch D / Arch
-  E / Match page… / Custom / Auto), proportional vs stretch, orientation
-  dropdown (Auto portrait / Auto landscape / Portrait force / Landscape
-  force), CCW / CW rotate buttons (no-op visually for now), Mirror H / V
-  toggles, Markups / Color toggles (default on), copies stepper, Collate /
-  Duplex toggles, Bigger Preview overlay open / close with zoom in/out/Fit,
-  destination picker with Save as PDF… option, Cancel, Print.
-- Real installed printers populate the destination list via an Electron
-  bridge (3 entries returned in logs).
-- The Print button fires Syncfusion's built-in print for now — it really
-  goes to the system printer, so the pipeline is proven.
-- Live preview styling reacts to user settings (mirror and B&W classes
-  apply to the sheet when their scopes include the currently-previewed
-  page).
+### Fully working (verified this session)
+- Custom print panel replaces the OS print flow. Opens via Cmd/Ctrl+P and File → Print.
+- Top strip of numbered page thumbnails, all same height, page numbers beneath each one.
+- Every page preview renders live through PDF.js (not the main viewer cache), so all pages show up regardless of scroll position.
+- Preview pane is cleanly sized to the stage, no residual blank bars on auto-paper.
+- Big preview pop-out has a high-fidelity render, trackpad pinch zoom, working Fit, numbered rectangles strip, arrows, and a tight page picker in the header.
+- Page picker dropdown scrolls hidden, centered under the caret, shows just the numbers.
+- Pages-to-print field: empty = All; types only digits/commas/dashes; auto-flips reversed ranges on blur; "All" pill lit when empty.
+- J variant per-section scopes clamp typed pages to the top-row selection, turn soft red for out-of-range, and stay centered.
+- K variant tab scope banner reflects the clamped count.
+- Right-rail paper picker: three short orientation labels (Auto, Portrait, Landscape), narrow pill, "Match another page…" summons an inline page picker beside the dropdown.
+- Footer destination pill is fully clickable across its whole width.
+- Round CCW/CW rotate buttons.
+- Black-and-white (Color off) works in preview and print (grayscale filter).
 
-### The real open issue
-**Preview and thumbnails render as placeholders for most pages, not the
-real PDF content.** On a fresh open of a 99-page PDF the user only sees a
-live preview for the current page once Syncfusion has rendered it; every
-other thumbnail stays as a dashed outline. Our log shows this clearly:
-`thumb not yet ready page=27 (returned null)` over and over for pages
-Syncfusion hasn't scrolled to yet.
+### The big root-cause bug fixed right at the end of this session
+When we switched the "Pages to print" field to default empty (so the hint "e.g. 2, 7-9" would show), the per-page options resolver treated every page as *out of scope*, which meant it returned hard-coded defaults for every fetch: `rotation 0, mirror false, markups on`. That's why the user reported rotation buttons, mirror toggles, orientation dropdown, and markups toggle all looked broken — their state was being ignored by the renderer because every page was seen as "not selected."
 
-### Why that happens
-The panel asks Syncfusion's exposed `getThumbnailDataUrl` helper for each
-page. That helper only reads from the viewer's already-rendered page
-canvas cache — if the user never scrolled near page 27, Syncfusion never
-rendered it, and our call returns null. Also, when it does return, the
-output is capped at 140×181 which makes the "big preview" blurry.
+Fix: empty top field is now treated as "all pages selected" inside the options resolver, matching how we already resolve includedSet. This one line fixes rotate, mirror, orientation, and markups all at once.
 
-### What else to clean up next session
-- **Small secondary bug:** `listPrinters not exposed — preload may need
-  reload (restart dev command)` shows up in logs when the user doesn't
-  fully restart the dev command. The Electron shell file hasn't been
-  reloaded. Harmless but it means the destination picker starts empty
-  until the user restarts. Document this or auto-fall back to a default
-  printer name so the first open never shows an empty picker.
-- **Per-page print pipeline:** The Print button currently calls
-  Syncfusion's stock print which ignores all the per-page overrides (the
-  whole reason the panel exists). jobSpec from the panel is wired and
-  logged — it just needs a real renderer on the main process that applies
-  each page's rotation, mirror, color, paper size, and markup-on/off,
-  then fires the real print. This is the v2 task, gated by fixing the
-  preview renderer first since both need the same render path.
-- **Bigger Preview fidelity:** Currently uses the same 140px-wide cached
-  image scaled up. Needs a high-res render path like the main preview
-  will get.
-- **Top thumbnail strip at huge page counts (99+):** The strip already
-  scrolls horizontally but it looks a bit sparse for this many pages. Not
-  broken — style polish only.
+### What's true about "markups" in this app
+Markups toggle only hides annotations that are embedded in the PDF itself (sticky notes, highlights, form stamps, comments). It does NOT hide the app's own Fabric-canvas overlays, because those aren't baked into the PDF we're printing — they live in Supabase and only overlay the main viewer. If the user wants their app-drawn markups included in the print output, that's a separate feature we haven't built yet: compositing the Fabric layer onto each page canvas at print time. Worth discussing next session whether to build that or to rename the current toggle to something clearer like "PDF annotations."
 
-### The fix direction (recommended for next session)
-Replace the preview + thumbnail image source with a dedicated render path
-that does NOT depend on the main viewer's scroll position:
-1. Use PDF.js directly (already a dependency) to render each page to a
-   canvas on demand at whatever size the panel asks for.
-2. Cache renders by `(pageNumber, targetWidth)` so scrolling the strip
-   doesn't thrash.
-3. Apply the user's selected per-page transforms (rotation, mirror,
-   color/B&W filter, markup overlay on/off) at render time, so the live
-   preview matches what will print.
-4. Pipe the SAME renderer through the Print button so the printed output
-   is exactly what the user previewed. The Electron main process already
-   has an IPC handler named for this — needs the renderer-side bundle
-   and handoff.
+### What the user should test next session and report back
+- Toggle Mirror Horizontal and Mirror Vertical. Preview should flip left-right / top-bottom. Print should match.
+- Hit the round rotate buttons. Each click spins the pages in scope by 90°. Should see it in the preview and in the final print.
+- Flip the orientation dropdown between Auto, Portrait, and Landscape. The sheet should actually rotate where appropriate. Auto should match the main viewer's orientation per page.
+- Toggle markups off on a PDF that has real PDF annotations (sticky notes, highlights). Those should disappear from preview and print. If the user's test PDF has no PDF-level annotations and only app overlays, toggling markups will look unchanged.
+- Try "Match another page" with a reference page different from the current page. Every printed page should come out on that size and shape.
+- Hit Print and check the system print output actually matches what the preview shows — especially rotate, mirror, paper size, orientation.
+- Try Copies (2 or 3), Collate, Duplex in a real print job.
+- Type "999" into a right-rail Pages field — should turn soft red, not block.
 
-Everything else in the panel UI is solid, polished, and production-ready.
-Only the image source is a stub.
+### Known open items (non-blocking)
+- App-drawn annotations (Fabric overlay) are not composited onto the print output. Separate feature. Decide user expectation next session.
+- J variant vs K variant is still visible; user hasn't picked a winner. Toggle in title bar remains until they do.
+- The destination dropdown currently only enumerates printers from Electron. "Save as PDF…" is a stub in the options list that doesn't route anywhere yet. Could hook it to a PDF save pipeline next session.
 
 ---
 
-## The big decisions made today (durable)
+## Durable decisions made today (and earlier)
+- Auto orientation mirrors whatever each page is showing in the main viewer right now — no content-sniffing heuristics, no text-vote, no ink-bbox. Simple and predictable.
+- Renderer honors the PDF's intrinsic /Rotate AND the user-requested correction, summed. Earlier bug where only one was applied is fixed.
+- Mirror is baked into the rendered canvas via a second-canvas pass, because pdfjs internally resets the canvas transform during render and any pre-render scale gets wiped out.
+- Print output is built as an HTML print doc with per-page @page CSS (mixed paper sizes work), rendered into a hidden iframe, print() called on its window. OS print dialog handles destination / copies / duplex.
+- Rotate buttons affect every page in the orientation-section's scope, not just the current page.
+- Page-picker dropdown hides its scrollbar, stays centered under the caret, minimum width just enough for three digits, expands for longer numbers.
 
-- **Built from the v3 wireframes, not the hi-fi HTML.** Claude Design
-  produced a hi-fi pass but it silently dropped controls and reshuffled
-  the layout. User corrected course; we used the v3 wireframes as the
-  visual + functional spec.
-- **Both J and K ship inside the app together.** The user wants to feel
-  both for real and pick a winner through use, not through mockups.
-- **Variant toggle is temporary.** Once the user picks a winner, the
-  toggle in the titlebar and the losing branch's code come out.
-- **Print is non-destructive.** Nothing the panel does touches the source
-  PDF. Close or Cancel discards all settings. Print produces a new job /
-  PDF output with the settings baked in.
-- **Cmd/Ctrl+P and the File → Print menu item both open the panel.** No
-  new entry point.
+---
 
-## Protected files — do NOT modify without explicit user waiver
-Standard rules from the project's instructions still apply. The inner
-render loop of the app root and the main viewer's internal Fabric /
-Syncfusion coordination are off-limits. The Print Panel changes only
-touched the two Electron bridge files, one top-level component file
-embedded into the main screen, two small new component files, and one
-place that had been calling Syncfusion's print directly (now a comment).
+## Repo state
+- Branch: `main`. No commits for the Print Panel work yet.
+- Working tree has the panel component, its stylesheet, targeted edits to the main screen component, Electron bridge files, and the renderer path. Nothing dangerous but nothing committed either.
+- Dev server may still be running on port 5173. Safe to restart. After restart, the Electron shell picks up preload changes and the destination picker populates on first open.
 
-## What's touched by this work (for quick orientation)
-- Two new files under the components folder: the Print Panel component
-  and its stylesheet.
-- Three small additions to the top-level screen component: a panel open
-  state, a listener that opens the panel on Cmd/Ctrl+P, a callback that
-  forwards the panel's Print click to the real printer. All three sit
-  inside the viewer component and do not touch the render loop.
-- Two small additions to the Electron bridge: a list-printers IPC handler
-  and a fire-print IPC handler. The panel uses the first, the second is
-  ready for the v2 per-page pipeline.
-- The old direct-print listener inside the Syncfusion container was
-  replaced with a short comment; the top-level screen component now owns
-  that flow end-to-end.
+---
 
 ## Diagnostic logs we planted
-Every panel action has a `[PrintPanel] …` log line. Every state change
-logs its name and new value. Thumbnail and preview fetches log "start",
-"ready", "not yet ready", "failed" so a save-log dump tells us the whole
-user journey. Keep these around until the feature stabilizes.
-
-## Open questions for the user next session
-- Is the user OK with a short "Loading page…" message on thumbnails that
-  haven't been rendered yet in the main viewer, for one more session,
-  while we wire the on-demand renderer? Or do they want on-demand real
-  pages immediately as priority one?
-- Do they want the Bigger Preview overlay to stay modal (current behavior)
-  or to become a resizable floating window they can drag around?
+Every right-rail change logs its resolved per-page options (rotation, mirror, markups, scope booleans) for the currently viewed page. Every rotate click logs how many pages it touched and the updated rotation map. Fetches log their target width + all bake-in options. If anything still looks wrong after the fix, one save-log dump will tell the whole story.
 
 ---
 
-## Repo state when the next session opens
-- Branch: `main`. Recent commit is v0.1.8 for the earlier Save Log fix.
-  No commits yet for the Print Panel work — still on the working tree.
-- Working tree has the Print Panel component + stylesheet, plus small
-  edits to the main screen component, the Electron main and preload
-  files. Nothing dangerous but nothing committed yet either.
-- Dev server may still be running on port 5173. Safe to kill and
-  restart. If you do restart, the Electron shell picks up the preload
-  changes so the destination picker populates on first panel open.
-
----
-
-*End of handoff. Plain English with the user. One decision at a time.
-First task is restoring real page previews via an on-demand renderer,
-then wire the per-page print pipeline through the same path.*
+*End of handoff. Plain English with the user. First task next session: have the user test each toggle after the "empty = All" fix and save a log. Then close out the remaining verification items above.*
