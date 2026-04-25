@@ -7,6 +7,7 @@
 - [x] **v2.1 Shape Edit Polish & Foundation Wins** — Phase 12 (shipped 2026-04-14, DONE_WITH_CONCERNS) — [archive](milestones/v2.1-ROADMAP.md)
 - [x] **v2.2 Rotation Handle Polish** — Phase 13 (shipped 2026-04-14)
 - [ ] **v2.3 Tools Polish (combined-tools rewrite)** — Phases 14-18 (planning, 26 requirements)
+- [ ] **v3.0 PDF-Native Annotations (bake-on-export)** — Phase 20 (Foundations DONE 2026-04-25), Phases 21-26 (B–G outlined; concrete tasks land per-phase) — [plan](../docs/superpowers/plans/2026-04-25-pdf-native-annotations.md)
 
 ## Phases
 
@@ -350,6 +351,7 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13 → 14 → 
 | 16. Line/Arrow Mini-Toolbar + Curvature Pill + Min-Drag | v2.3 | 0/TBD | Not started | - |
 | 17. Callout Handle Collisions + Rollback + Resize | v2.3 | 0/TBD | Not started | - |
 | 18. Callout Auto-Routing + Hover Affordances + Self-Destruct | v2.3 | 0/TBD | Not started | - |
+| 20. PDF-Native Annotations — Foundations (Phase A) | v3.0 | 4/4 | Complete (DONE_WITH_CONCERNS) | 2026-04-25 |
 
 ---
-*Last updated: 2026-04-15 — v2.3 milestone roadmap created. Phases 14-18 defined for 26 requirements. Coverage 26/26 v2.3 requirements mapped (100%). CALL-10 lands as Phase 14 to unblock downstream callout work against the final unified render path. lineGeometry.js wiring grouped in Phase 15 (pure port, not rewrite). Ready for `/gsd:discuss-phase 14`.*
+*Last updated: 2026-04-25 — v3.0 PDF-Native Annotations milestone kicked off. Phase 20 (Foundations / Phase A in the milestone plan) shipped: annotpdf installed, feature flag scaffolded with env + per-document override, coordinate-space helpers, public API surface. All Phase A code is dormant — no behavioral wiring until Phase E. Carry-forward: annotpdf 1.0.15 ships a class-based AnnotationFactory API (not the standalone create-functions the plan speculated about) — Phase B.0 fixture extraction reflects that. Manual smoke pass deferred to user.*
