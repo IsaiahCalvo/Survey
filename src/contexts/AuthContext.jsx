@@ -87,30 +87,23 @@ export const AuthProvider = ({ children }) => {
       }));
 
       let needsAutoLogin = !session;
+      // 2026-04-25 (revised): only override the cached session when we're
+      // certain it's wrong — i.e. it belongs to a different user than the
+      // dev creds. Previously this also overrode on getUser() failures,
+      // which could be triggered by transient network blips and ended up
+      // signing the user out then leaving them stuck if the sign-in retry
+      // also failed. Trust the cached session unless the email mismatches.
       if (session && devEmail && devPassword) {
         const cachedEmail = session?.user?.email;
         if (cachedEmail && cachedEmail.toLowerCase() !== devEmail.toLowerCase()) {
-          console.log('[dev-auto-login] cached session is for a different user, overriding', {
+          console.log('[dev-auto-login] cached session is for a different user, overriding ' + JSON.stringify({
             cachedEmail, devEmail
-          });
+          }));
           needsAutoLogin = true;
-        } else {
-          try {
-            const { data: userCheck, error: userErr } = await supabase.auth.getUser();
-            if (userErr || !userCheck?.user) {
-              console.log('[dev-auto-login] cached session is stale, overriding', {
-                error: userErr?.message || 'no user'
-              });
-              needsAutoLogin = true;
-            }
-          } catch (err) {
-            console.warn('[dev-auto-login] getUser check threw, overriding', err?.message || err);
-            needsAutoLogin = true;
-          }
-        }
-        if (needsAutoLogin) {
           try { await supabase.auth.signOut(); } catch { /* ignore */ }
           session = null;
+        } else {
+          console.log('[dev-auto-login] cached session matches dev email, keeping it');
         }
       }
 
