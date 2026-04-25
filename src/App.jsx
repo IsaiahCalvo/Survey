@@ -118,9 +118,6 @@ import {
   clearDebugState
 } from './utils/pdfDebug';
 import { useZoomState } from './hooks/useZoomState';
-// Phase 21: cloud sync for all annotation types — see
-// .planning/phases/21-cloud-sync-all-annotations/CONTEXT.md
-import { useAnnotationCloudSync } from './hooks/useAnnotationCloudSync.js';
 import { debugMark } from './utils/debugBridge';
 import {
   computeExcelSyncFingerprint,
@@ -21090,24 +21087,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
     };
   }, [documentSyncEnabled, getInteractionPerfResumeDelay, highlightAnnotations, isInteractionPerfWindowActive, pdfFile?.id, user?.id]);
-
-  // Phase 21: cloud sync for every non-highlight annotation type.
-  // TEMPORARILY DISABLED 2026-04-25 — caused regressions in counter and
-  // pen tools (likely realtime echo from supabase re-inserting the user's
-  // own writes back into annotationsByPage). The hook stays in the
-  // codebase ready to re-enable once the echo-suppression and debounce
-  // contention are fixed. Pass enabled: false to make every internal
-  // useEffect a no-op.
-  useAnnotationCloudSync({
-    documentId: pdfFile?.id || null,
-    userId: user?.id || null,
-    pdfId,
-    annotationsByPage,
-    callouts,
-    setAnnotationsByPage,
-    setCallouts,
-    enabled: false
-  });
 
   // Update presence when page changes
   useEffect(() => {

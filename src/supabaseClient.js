@@ -1,11 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-// `import.meta.env` is provided by Vite in the browser/dev/build pipeline.
-// Under Node's --test runner, `import.meta.env` is undefined; guard so test
-// imports of modules that depend on this file don't crash at module-load.
-const env = (typeof import.meta !== 'undefined' && import.meta.env) || {};
-const supabaseUrl = env.VITE_SUPABASE_URL;
-const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.warn('Supabase credentials not found. Running in offline mode.');
