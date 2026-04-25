@@ -181,7 +181,13 @@ export function useAnnotationCloudSync({
     }
     if (annotationsByPage === lastByPageRef.current) return;
 
-    // (skipNextFabricPushRef logic removed 2026-04-25 — see hydrate effect.)
+    // Capture the prior baseline BEFORE we overwrite lastByPageRef with the
+    // current state — otherwise priorByPage and the new state are the same
+    // reference, the diff below short-circuits, and eraser deletions never
+    // reach the cloud (logged as a 2026-04-25 root-cause for the eraser
+    // sync flicker — erases would visually revert because the cloud row
+    // persisted and the next remote echo painted it back).
+    const priorByPage = lastByPageRef.current;
     lastByPageRef.current = annotationsByPage;
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
 
@@ -195,10 +201,6 @@ export function useAnnotationCloudSync({
       objectCount,
       debounceMs
     }));
-
-    // Capture the prior baseline NOW (before we overwrite lastByPageRef
-    // with the current state) so we can diff for eraser-style deletions.
-    const priorByPage = lastByPageRef.current;
 
     debounceTimerRef.current = setTimeout(async () => {
       console.log('[CloudSync][hook] fabric push debounce elapsed — pushing now');
@@ -347,26 +349,60 @@ export function useAnnotationCloudSync({
     // saw the id in its own set. The service-side echo filter (session
     // id match) is the authoritative source of truth; it correctly only
     // drops echoes that came from THIS session. Trust it.
+    // 2026-04-25 — Suppress remote-echo push loop:
+    // When a realtime event applies a remote change locally, we must update
+    // lastByPageRef/lastCalloutsRef SYNCHRONOUSLY inside the setter so the
+    // push useEffect's identity check (`state === lastRef`) returns true
+    // and the change is NOT re-pushed back to cloud. Without this, every
+    // remote update triggered a full-state re-push, both devices ping-ponged
+    // forever, and any erase done on one device lost the race when the
+    // other side's echo re-painted the missing row. (Logged 2026-04-25 as
+    // the eraser-flicker root cause companion to the diff capture-order
+    // bug above.)
     const unsub = subscribeToAllNonHighlightAnnotations(
       documentId,
       {
         onFabricInsert: (fabricObject, pageNumber, highlightId) => {
-          setAnnotationsByPage((prev) => insertOrUpdateOnPage(prev, pageNumber, fabricObject, highlightId));
+          setAnnotationsByPage((prev) => {
+            const next = insertOrUpdateOnPage(prev, pageNumber, fabricObject, highlightId);
+            lastByPageRef.current = next; // suppress local push echo
+            return next;
+          });
         },
         onFabricUpdate: (fabricObject, pageNumber, highlightId) => {
-          setAnnotationsByPage((prev) => insertOrUpdateOnPage(prev, pageNumber, fabricObject, highlightId));
+          setAnnotationsByPage((prev) => {
+            const next = insertOrUpdateOnPage(prev, pageNumber, fabricObject, highlightId);
+            lastByPageRef.current = next; // suppress local push echo
+            return next;
+          });
         },
         onFabricDelete: (highlightId) => {
-          setAnnotationsByPage((prev) => removeFromAllPages(prev, highlightId));
+          setAnnotationsByPage((prev) => {
+            const next = removeFromAllPages(prev, highlightId);
+            lastByPageRef.current = next; // suppress local push echo
+            return next;
+          });
         },
         onCalloutInsert: (callout) => {
-          setCallouts((prev) => upsertCalloutInList(prev, callout));
+          setCallouts((prev) => {
+            const next = upsertCalloutInList(prev, callout);
+            lastCalloutsRef.current = next; // suppress local push echo
+            return next;
+          });
         },
         onCalloutUpdate: (callout) => {
-          setCallouts((prev) => upsertCalloutInList(prev, callout));
+          setCallouts((prev) => {
+            const next = upsertCalloutInList(prev, callout);
+            lastCalloutsRef.current = next; // suppress local push echo
+            return next;
+          });
         },
         onCalloutDelete: (highlightId) => {
-          setCallouts((prev) => (prev || []).filter((c) => (c.id ?? c.highlightId) !== highlightId));
+          setCallouts((prev) => {
+            const next = (prev || []).filter((c) => (c.id ?? c.highlightId) !== highlightId);
+            lastCalloutsRef.current = next; // suppress local push echo
+            return next;
+          });
         },
         onError: (err) => setStatus({ stage: 'error', error: err, phase: 'subscribe' })
       },
