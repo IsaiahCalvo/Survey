@@ -29492,6 +29492,22 @@ ${pageBlocks}
                                     setEditingAnnotation(null);
                                   }}
                                   onEditCancel={() => {
+                                    // UX 2026-04-25 — Esc on a brand-new callout removes
+                                    // the callout entirely (it never had text). Esc on an
+                                    // existing callout reverts the in-progress edit and
+                                    // keeps the callout with its prior text.
+                                    if (editingAnnotation?.reactCalloutId) {
+                                      const orig = editingAnnotation.originalReactCallout;
+                                      const hadPriorText = !!(orig && orig.text && String(orig.text).trim());
+                                      if (!hadPriorText) {
+                                        addHistoryCheckpoint('callouts:cancel-new', {
+                                          calloutId: editingAnnotation.reactCalloutId,
+                                        });
+                                        setCallouts((prev) => prev.filter((c) =>
+                                          c.id !== editingAnnotation.reactCalloutId
+                                        ));
+                                      }
+                                    }
                                     editModeCooldownRef.current = Date.now();
                                     setEditingAnnotation(null);
                                   }}
@@ -29999,6 +30015,21 @@ ${pageBlocks}
                                           setEditingAnnotation(null);
                                         }}
                                         onEditCancel={() => {
+                                          // UX 2026-04-25 — see first mount site for
+                                          // rationale. Esc on a new callout removes it;
+                                          // Esc on an existing one reverts the edit.
+                                          if (editingAnnotation?.reactCalloutId) {
+                                            const orig = editingAnnotation.originalReactCallout;
+                                            const hadPriorText = !!(orig && orig.text && String(orig.text).trim());
+                                            if (!hadPriorText) {
+                                              addHistoryCheckpoint('callouts:cancel-new', {
+                                                calloutId: editingAnnotation.reactCalloutId,
+                                              });
+                                              setCallouts((prev) => prev.filter((c) =>
+                                                c.id !== editingAnnotation.reactCalloutId
+                                              ));
+                                            }
+                                          }
                                           editModeCooldownRef.current = Date.now();
                                           setEditingAnnotation(null);
                                         }}
@@ -30734,6 +30765,21 @@ ${pageBlocks}
                                         setEditingAnnotation(null);
                                       }}
                                       onEditCancel={() => {
+                                        // UX 2026-04-25 — see first mount site for
+                                        // rationale. Esc on a new callout removes it;
+                                        // Esc on an existing one reverts the edit.
+                                        if (editingAnnotation?.reactCalloutId) {
+                                          const orig = editingAnnotation.originalReactCallout;
+                                          const hadPriorText = !!(orig && orig.text && String(orig.text).trim());
+                                          if (!hadPriorText) {
+                                            addHistoryCheckpoint('callouts:cancel-new', {
+                                              calloutId: editingAnnotation.reactCalloutId,
+                                            });
+                                            setCallouts((prev) => prev.filter((c) =>
+                                              c.id !== editingAnnotation.reactCalloutId
+                                            ));
+                                          }
+                                        }
                                         editModeCooldownRef.current = Date.now();
                                         setEditingAnnotation(null);
                                       }}

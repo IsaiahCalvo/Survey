@@ -1127,7 +1127,18 @@ const FabricEditCanvas = memo(({
       return;
     }
 
-    const activeObj = canvas.getActiveObject();
+    // UX 2026-04-25 — Fall back to the only object on the canvas if Fabric
+    // already deselected by the time commitAndClose runs. Click-outside
+    // and the text:editing:exited setTimeout can both fire after Fabric
+    // has cleared the active object, returning getActiveObject() === null.
+    // Without the fallback, commit takes the cancel branch and the user's
+    // typed text is lost — visible as a callout that stays blank after
+    // the user types and clicks away.
+    let activeObj = canvas.getActiveObject();
+    if (!activeObj) {
+      const objs = typeof canvas.getObjects === 'function' ? canvas.getObjects() : [];
+      if (objs.length > 0) activeObj = objs[0];
+    }
 
     // For text: exit editing mode cleanly
     if (editTypeRef.current === 'text' && activeObj && activeObj.isEditing) {
