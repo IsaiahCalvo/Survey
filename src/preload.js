@@ -53,6 +53,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('menu:print-pdf', subscription);
     return () => ipcRenderer.removeListener('menu:print-pdf', subscription);
   },
+  onPrintPdfMarkup: (callback) => {
+    const subscription = () => {
+      console.log('[preload] menu:print-pdf-markup received, forwarding to renderer');
+      callback();
+    };
+    ipcRenderer.on('menu:print-pdf-markup', subscription);
+    return () => ipcRenderer.removeListener('menu:print-pdf-markup', subscription);
+  },
   onSaveLogMenu: (callback) => {
     const subscription = () => {
       console.log('[preload] menu:save-log received, forwarding to renderer');

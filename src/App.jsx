@@ -26852,16 +26852,57 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // panel code is still wired up — flip PRINT_PANEL_ENABLED to true
     // to bring it back.
     const PRINT_PANEL_ENABLED = false;
-    const openPanel = (source) => {
-      console.log(`[PrintPanel] OPEN requested via ${source}, panel enabled=${PRINT_PANEL_ENABLED}`);
+    let printInFlight = false;
+    const openPanel = (source, opts = {}) => {
+      const withMarkup = opts.withMarkup === true;
+      console.log(`[PrintPanel] OPEN requested via ${source}, withMarkup=${withMarkup}, panel enabled=${PRINT_PANEL_ENABLED}, inFlight=${printInFlight}`);
+      if (printInFlight) {
+        console.log('[PrintPanel] ignoring — a print job is still composing');
+        return;
+      }
       if (!PRINT_PANEL_ENABLED) {
-        // UX 2026-04-24: route Cmd/Ctrl+P through our PDF.js render
-        // pipeline straight into a hidden iframe and call print() on
-        // its contentWindow. This pops the OS native print dialog —
-        // which on Windows AND macOS includes a built-in preview pane,
-        // so users get what they expect without us building our own
-        // preview. Bypasses Syncfusion's printModule (which reports
-        // "not supported" inside the packaged Windows shell).
+        // UX 2026-04-25: two-path print. Default Cmd/Ctrl+P hands the
+        // original PDF straight to the OS via a blob URL — instant, no
+        // markup. Cmd/Ctrl+Shift+P (or "Print with Markup…" in the
+        // File menu) takes the slower bake pipeline so the user's
+        // annotations land on the printed page. Neither path mutates
+        // the live editable annotations — only a temporary print
+        // document is built and discarded after the dialog closes.
+        if (!withMarkup && pdfFile && typeof URL?.createObjectURL === 'function') {
+          try {
+            const blobUrl = URL.createObjectURL(pdfFile);
+            console.log('[PrintPanel] disabled — blob-URL fast print, file:', pdfFile.name);
+            const frame = document.createElement('iframe');
+            frame.style.position = 'fixed';
+            frame.style.right = '0';
+            frame.style.bottom = '0';
+            frame.style.width = '0';
+            frame.style.height = '0';
+            frame.style.border = '0';
+            frame.src = blobUrl;
+            document.body.appendChild(frame);
+            const cleanup = () => {
+              try { frame.remove(); } catch {}
+              try { URL.revokeObjectURL(blobUrl); } catch {}
+            };
+            frame.addEventListener('load', () => {
+              setTimeout(() => {
+                try {
+                  frame.contentWindow?.focus();
+                  frame.contentWindow?.print();
+                  console.log('[PrintPanel] blob-URL iframe.print() called');
+                } catch (err) {
+                  console.error('[PrintPanel] blob-URL print failed:', err);
+                }
+                setTimeout(cleanup, 30000);
+              }, 100);
+            }, { once: true });
+            setTimeout(() => { if (frame.isConnected && !frame.contentDocument) cleanup(); }, 10000);
+            return;
+          } catch (err) {
+            console.warn('[PrintPanel] blob-URL print errored, falling back to render pipeline:', err);
+          }
+        }
         const totalPagesNow = Number(numPages) || 0;
         if (!totalPagesNow) {
           console.warn('[PrintPanel] disabled — no pages to print');
@@ -26900,7 +26941,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           useNativeDialog: true,
         };
         console.log('[PrintPanel] disabled — running native-dialog print for', perPage.length, 'pages');
-        handlePrintPanelPrint(jobSpec);
+        printInFlight = true;
+        Promise.resolve(handlePrintPanelPrint(jobSpec)).finally(() => {
+          // Brief cooldown after the iframe print() returns so the
+          // dialog has time to appear before another Cmd+P queues.
+          setTimeout(() => { printInFlight = false; }, 1500);
+        });
         return;
       }
       setPrintPanelOpen(true);
@@ -26920,18 +26966,27 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     };
 
     let unsubscribe = null;
+    let unsubscribeMarkup = null;
     if (window.electronAPI?.onPrintPdf) {
       unsubscribe = window.electronAPI.onPrintPdf(() => openPanel('electron menu:print-pdf'));
     }
+    if (window.electronAPI?.onPrintPdfMarkup) {
+      unsubscribeMarkup = window.electronAPI.onPrintPdfMarkup(() => openPanel('electron menu:print-pdf-markup', { withMarkup: true }));
+    }
 
-    // Safety net: intercept Cmd/Ctrl+P at the renderer level so the panel opens
-    // even if the Electron menu accelerator doesn't round-trip (e.g. during
-    // HMR without a full preload reload). Prevents default so the OS print
-    // dialog doesn't appear over our panel.
+    // Safety net: intercept Cmd/Ctrl+P (no markup) and Cmd/Ctrl+Shift+P
+    // (with markup) at the renderer level so both shortcuts work even if
+    // the Electron menu accelerator doesn't round-trip during HMR.
     const keyHandler = (e) => {
       const isP = e.key === 'p' || e.key === 'P' || e.keyCode === 80;
-      if (isP && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
-        console.log('[PrintPanel] window keydown Cmd/Ctrl+P intercepted');
+      if (!isP || !(e.metaKey || e.ctrlKey) || e.altKey) return;
+      if (e.shiftKey) {
+        console.log('[PrintPanel] window keydown Cmd/Ctrl+Shift+P intercepted (with markup)');
+        e.preventDefault();
+        e.stopPropagation();
+        openPanel('window keydown shift', { withMarkup: true });
+      } else {
+        console.log('[PrintPanel] window keydown Cmd/Ctrl+P intercepted (no markup)');
         e.preventDefault();
         e.stopPropagation();
         openPanel('window keydown');
@@ -26942,9 +26997,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     return () => {
       if (typeof unsubscribe === 'function') unsubscribe();
+      if (typeof unsubscribeMarkup === 'function') unsubscribeMarkup();
       window.removeEventListener('keydown', keyHandler, true);
     };
-  }, []);
+    // UX 2026-04-24: rebind whenever the PDF + page metadata change so
+    // openPanel reads the live page count (the previous closure-only
+    // capture froze numPages at 0 from the very first render, which
+    // made Cmd/Ctrl+P log "no pages to print" forever after).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [numPages, pageSizes, pdfFile]);
 
   // Pages data fed to the PrintPanel — derived from the Syncfusion-reported
   // pageSizes map. Falls back to Letter portrait if sizes aren't populated yet
@@ -27103,8 +27164,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           ctx.clearRect(0, 0, canvas.width, canvas.height);
           ctx.drawImage(tmp, 0, 0);
         }
+        // UX 2026-04-24: JPEG at quality 0.85 is ~5-10× smaller than PNG
+        // for raster page output and encodes far faster — enough to take
+        // a 100-page job from minutes to seconds. Tiny renders (≤180px,
+        // strip thumbnails) stay PNG for crispness on UI surfaces.
+        const useJpeg = canvas.width > 180;
         const result = {
-          src: canvas.toDataURL('image/png'),
+          src: useJpeg ? canvas.toDataURL('image/jpeg', 0.85) : canvas.toDataURL('image/png'),
           width: canvas.width,
           height: canvas.height,
         };
@@ -27150,25 +27216,40 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       return;
     }
     try {
-      // 1. Render each page at a healthy print resolution with its per-page
-      //    transforms baked in. 2000px wide is ~200 DPI at Letter, suitable
-      //    for inkjet/laser home printers; large-format plotters still get
-      //    crisp raster output.
-      const perPageRenders = [];
-      for (const p of pages) {
-        const img = await printPanelGetThumbnail(p.pageNumber, {
-          targetWidth: 2000,
-          rotation: p.rotation,
-          mirrorH: p.mirrorH,
-          mirrorV: p.mirrorV,
-          withAnnotations: p.withAnnotations,
-        });
-        if (img?.src) {
-          perPageRenders.push({ spec: p, img });
-        } else {
-          console.warn(`[PrintPanel] print render missing for page ${p.pageNumber}`);
+      // 1. Render each page with its per-page transforms baked in.
+      //    Native-dialog mode targets 1200px wide (~140 DPI at Letter)
+      //    so the OS print dialog appears in seconds, not minutes, on
+      //    a 100-page PDF. Custom-panel mode (no useNativeDialog) keeps
+      //    the higher 2000px target. Renders run in parallel with a
+      //    concurrency cap so PDF.js doesn't get hammered.
+      // Native-dialog mode: smaller width because the OS dialog scales
+      // the preview anyway, and JPEG output keeps the data URL light.
+      // Custom-panel mode keeps the higher target for crisp print pixels.
+      const targetWidth = jobSpec.useNativeDialog === true ? 900 : 2000;
+      const CONCURRENCY = 8;
+      const renderResults = new Array(pages.length);
+      let cursor = 0;
+      const runWorker = async () => {
+        while (true) {
+          const slot = cursor++;
+          if (slot >= pages.length) return;
+          const p = pages[slot];
+          const img = await printPanelGetThumbnail(p.pageNumber, {
+            targetWidth,
+            rotation: p.rotation,
+            mirrorH: p.mirrorH,
+            mirrorV: p.mirrorV,
+            withAnnotations: p.withAnnotations,
+          });
+          if (img?.src) {
+            renderResults[slot] = { spec: p, img };
+          } else {
+            console.warn(`[PrintPanel] print render missing for page ${p.pageNumber}`);
+          }
         }
-      }
+      };
+      await Promise.all(Array.from({ length: CONCURRENCY }, runWorker));
+      const perPageRenders = renderResults.filter(Boolean);
       if (!perPageRenders.length) {
         console.warn('[PrintPanel] no page renders produced — aborting print');
         setPrintPanelOpen(false);

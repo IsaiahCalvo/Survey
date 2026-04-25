@@ -418,6 +418,17 @@ function createAppMenu() {
             }
           }
         },
+        {
+          label: 'Print with Markup…',
+          accelerator: 'CmdOrCtrl+Shift+P',
+          click: () => {
+            const win = getTargetWindow();
+            console.log('[electron-main] Print with Markup menu clicked, targetWindow alive:', !!(win && !win.isDestroyed()));
+            if (win && !win.isDestroyed()) {
+              win.webContents.send('menu:print-pdf-markup');
+            }
+          }
+        },
         { type: 'separator' },
         {
           label: 'Save Log',
