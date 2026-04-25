@@ -228,12 +228,18 @@ export async function loadAllNonHighlightAnnotations(documentId) {
  *   - onCalloutDelete(highlightId)
  *   - onError(error)
  *
- * Echo filter — UX rule: when the local user writes a row, Supabase realtime
- * echoes that same row back to this client. If we re-applied it we'd race
+ * Echo filter — UX rule: when this CLIENT writes a row, Supabase realtime
+ * echoes the same row back to this client. If we re-applied it we'd race
  * the user's in-progress drawing (counter pins duplicating, pen flicker).
- * Pass `currentUserId` so we can drop events where last_modified_by matches
- * the local user. Mirrors the existing pattern in App.jsx for highlights:
- *   if (annotation.lastModifiedBy === user.id) return;
+ * The filter compares `clientSessionId` (a per-tab/per-Electron-process
+ * UUID embedded in annotation_data) so the user's OWN device drops its
+ * own writes while the SAME user's OTHER device (different session) still
+ * gets the live update. Filtering on `last_modified_by === userId` would
+ * also drop cross-device updates for the same account, breaking the
+ * primary use case for cloud sync.
+ *
+ * `currentUserId` is kept as a fallback for legacy rows written before the
+ * sessionId field existed.
  *
  * The subscriber filters out highlight rows so the existing highlight
  * subscription in documentAnnotationService.js continues to own them
@@ -242,7 +248,7 @@ export async function loadAllNonHighlightAnnotations(documentId) {
 export function subscribeToAllNonHighlightAnnotations(documentId, callbacks = {}, options = {}) {
   if (!supabase) return () => {};
 
-  const { currentUserId = null } = options;
+  const { currentUserId = null, currentSessionId = null } = options;
   const {
     onFabricInsert,
     onFabricUpdate,
@@ -256,6 +262,7 @@ export function subscribeToAllNonHighlightAnnotations(documentId, callbacks = {}
   console.log('[CloudSync][realtime] subscribing ' + JSON.stringify({
     documentId,
     currentUserId,
+    currentSessionId,
     hasFabricInsert: !!onFabricInsert,
     hasFabricUpdate: !!onFabricUpdate,
     hasFabricDelete: !!onFabricDelete,
@@ -274,7 +281,7 @@ export function subscribeToAllNonHighlightAnnotations(documentId, callbacks = {}
         table: 'document_annotations',
         filter: `document_id=eq.${documentId}`
       },
-      (payload) => routeRow('insert', payload.new, callbacks, currentUserId)
+      (payload) => routeRow('insert', payload.new, callbacks, currentUserId, currentSessionId)
     )
     .on(
       'postgres_changes',
@@ -284,7 +291,7 @@ export function subscribeToAllNonHighlightAnnotations(documentId, callbacks = {}
         table: 'document_annotations',
         filter: `document_id=eq.${documentId}`
       },
-      (payload) => routeRow('update', payload.new, callbacks, currentUserId)
+      (payload) => routeRow('update', payload.new, callbacks, currentUserId, currentSessionId)
     )
     .on(
       'postgres_changes',
@@ -299,7 +306,12 @@ export function subscribeToAllNonHighlightAnnotations(documentId, callbacks = {}
         if (!oldRow) return;
         if (oldRow.annotation_type === 'highlight') return; // legacy module owns it
         // Echo filter — see header comment. Drop deletes initiated by this
-        // client so we don't re-process our own removal and flicker state.
+        // session (same browser tab / Electron process) so we don't
+        // re-process our own removal and flicker state. Postgres DELETE
+        // payloads in Supabase realtime only carry primary keys by default,
+        // so we don't have annotation_data on the `old` row — fall back to
+        // user-id matching here. (DELETE echoes are rare in practice; the
+        // hot path is INSERT/UPDATE where sessionId works.)
         if (currentUserId && oldRow.last_modified_by === currentUserId) {
           console.log('[CloudSync][realtime] echo-filtered DELETE ' + JSON.stringify({
             highlightId: oldRow.highlight_id,
@@ -340,21 +352,38 @@ export function subscribeToAllNonHighlightAnnotations(documentId, callbacks = {}
   };
 }
 
-function routeRow(event, row, callbacks, currentUserId) {
+function routeRow(event, row, callbacks, currentUserId, currentSessionId) {
   if (!row) return;
   const type = row.annotation_type;
   if (type === 'highlight') return; // legacy module owns it
 
-  // Echo filter — UX rule: a Supabase realtime echo of the user's own write
-  // would race the user's in-progress UI (e.g. counter doubling, pen flicker).
-  // Drop events whose last_modified_by matches this client's userId so we
-  // only react to writes from other devices/users.
-  if (currentUserId && row.last_modified_by === currentUserId) {
+  // Echo filter — UX rule: a Supabase realtime echo of THIS SESSION's own
+  // write would race the user's in-progress UI (counter doubling, pen
+  // flicker). We drop only events whose annotation_data.clientSessionId
+  // matches the local session, so the SAME user's OTHER device (a
+  // different session id) still gets the live update.
+  const rowSessionId = row.annotation_data?.clientSessionId || null;
+  if (currentSessionId && rowSessionId && rowSessionId === currentSessionId) {
     console.log(`[CloudSync][realtime] echo-filtered ${event.toUpperCase()} ` + JSON.stringify({
       highlightId: row.highlight_id,
       annotationType: type,
       lastModifiedBy: row.last_modified_by,
-      currentUserId
+      rowSessionId,
+      currentSessionId,
+      reason: 'same-session'
+    }));
+    return;
+  }
+  // Legacy fallback for rows written before the sessionId field existed:
+  // if there's no rowSessionId on the incoming row but last_modified_by
+  // matches the current user, treat as a same-user echo.
+  if (!rowSessionId && currentUserId && row.last_modified_by === currentUserId) {
+    console.log(`[CloudSync][realtime] echo-filtered ${event.toUpperCase()} ` + JSON.stringify({
+      highlightId: row.highlight_id,
+      annotationType: type,
+      lastModifiedBy: row.last_modified_by,
+      currentUserId,
+      reason: 'legacy-no-session-id'
     }));
     return;
   }

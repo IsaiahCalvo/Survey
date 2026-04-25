@@ -66,6 +66,19 @@ export function useAnnotationCloudSync({
   const debounceTimerRef = useRef(null);
   const hydratedRef = useRef(false);
 
+  // Per-tab / per-Electron-process session id used by the echo filter so
+  // the same user's OTHER device (a different session) still receives live
+  // updates. Generated once per hook lifetime; survives across documents.
+  const sessionIdRef = useRef(null);
+  if (sessionIdRef.current === null) {
+    const rnd = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    sessionIdRef.current = rnd;
+    console.log('[CloudSync][hook] session id minted ' + JSON.stringify({ sessionId: rnd }));
+  }
+  const clientSessionId = sessionIdRef.current;
+
   // ---- Hydrate + migrate on document open --------------------------------
 
   useEffect(() => {
@@ -166,7 +179,7 @@ export function useAnnotationCloudSync({
 
     debounceTimerRef.current = setTimeout(async () => {
       console.log('[CloudSync][hook] fabric push debounce elapsed — pushing now');
-      const result = await upsertAnnotationsByPage(annotationsByPage, { documentId, userId });
+      const result = await upsertAnnotationsByPage(annotationsByPage, { documentId, userId, clientSessionId });
       if (result.error) {
         console.warn('[CloudSync][hook] fabric push failed → queued ' + JSON.stringify({
           error: result.error?.message || String(result.error)
@@ -174,7 +187,7 @@ export function useAnnotationCloudSync({
         enqueueSync(documentId, {
           kind: 'fabric-bulk',
           payload: annotationsByPage,
-          opts: { documentId, userId }
+          opts: { documentId, userId, clientSessionId }
         });
         setQueueSize(getQueueSize(documentId));
         setStatus({ stage: 'queued', error: result.error });
@@ -206,7 +219,7 @@ export function useAnnotationCloudSync({
     }));
     const handle = setTimeout(async () => {
       console.log('[CloudSync][hook] callout push debounce elapsed — pushing now');
-      const result = await upsertCallouts(callouts || [], { documentId, userId });
+      const result = await upsertCallouts(callouts || [], { documentId, userId, clientSessionId });
       if (result.error) {
         console.warn('[CloudSync][hook] callout push failed → queued ' + JSON.stringify({
           error: result.error?.message || String(result.error)
@@ -214,7 +227,7 @@ export function useAnnotationCloudSync({
         enqueueSync(documentId, {
           kind: 'callout-bulk',
           payload: callouts || [],
-          opts: { documentId, userId }
+          opts: { documentId, userId, clientSessionId }
         });
         setQueueSize(getQueueSize(documentId));
         setStatus({ stage: 'queued', error: result.error });
@@ -257,16 +270,18 @@ export function useAnnotationCloudSync({
         },
         onError: (err) => setStatus({ stage: 'error', error: err, phase: 'subscribe' })
       },
-      // Echo filter — drop realtime events whose last_modified_by matches
-      // this client's userId (Supabase echoes the user's own writes back).
-      // Mirrors the highlight pattern at App.jsx ~20920.
-      { currentUserId: userId }
+      // Echo filter — drop realtime events that originated from THIS
+      // session (this tab / this Electron process). Same user on a
+      // different device has a different session id and still receives
+      // updates. Falls back to user-id matching for legacy rows that
+      // pre-date the sessionId field.
+      { currentUserId: userId, currentSessionId: clientSessionId }
     );
 
     return () => {
       try { unsub?.(); } catch { /* ignore */ }
     };
-  }, [enabled, documentId, userId, setAnnotationsByPage, setCallouts]);
+  }, [enabled, documentId, userId, clientSessionId, setAnnotationsByPage, setCallouts]);
 
   // ---- Drain offline queue on reconnect ----------------------------------
 
@@ -318,10 +333,10 @@ export function useAnnotationCloudSync({
     }
     if (!documentId || !userId) return;
     if (lastByPageRef.current) {
-      await upsertAnnotationsByPage(lastByPageRef.current, { documentId, userId });
+      await upsertAnnotationsByPage(lastByPageRef.current, { documentId, userId, clientSessionId });
     }
     if (lastCalloutsRef.current) {
-      await upsertCallouts(lastCalloutsRef.current, { documentId, userId });
+      await upsertCallouts(lastCalloutsRef.current, { documentId, userId, clientSessionId });
     }
   };
 
