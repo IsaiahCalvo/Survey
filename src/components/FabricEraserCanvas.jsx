@@ -351,12 +351,18 @@ const FabricEraserCanvas = memo(({
     // absolute path data (translate(0,0) is a no-op, path coords render directly).
     const canvasObjects = canvas.getObjects();
     const serializedObjects = canvasObjects.map((obj) => {
-      // Bypass toJSON for imported textboxes (see post-enliven block): Fabric
-      // 5.5.2 throws inside Text.toObject on PDF-imported Textboxes. Since
-      // imported textboxes are never mutated on this canvas, the original
-      // import JSON is still the correct serialization. Shallow-copy so the
-      // caller can't retroactively mutate our stashed reference.
-      if (obj.isPdfImported && obj.__importedJSON) {
+      // Bypass toJSON for any textbox with stashed original JSON. Two
+      // reasons this matters: (1) Fabric 5.5.2 throws inside Text.toObject
+      // on PDF-imported Textboxes (styles/textLines indexing crash), so
+      // imported textboxes can't be serialized at all. (2) For
+      // internally-drawn textboxes, Fabric's toJSON writes back the
+      // auto-laid-out width/height, which differs from stored after
+      // enliven and would shrink the visible textbox on first eraser
+      // click. Textboxes are never partially erased on this canvas —
+      // kept whole or removed entirely — so the stashed original JSON is
+      // always the correct serialization. Shallow-copy so the caller
+      // can't retroactively mutate our stashed reference.
+      if (obj.type === 'textbox' && obj.__importedJSON) {
         return { ...obj.__importedJSON };
       }
       const json = obj.toJSON(CUSTOM_PROPS);
@@ -602,6 +608,20 @@ const FabricEraserCanvas = memo(({
           obj.__origOpacity = obj.opacity;
           obj.__origStroke = obj.stroke;
           obj.__origStrokeWidth = obj.strokeWidth;
+
+          // UX 2026-04-25 — Textboxes (imported AND internally-drawn) get
+          // their original JSON stashed so the serialize path can return
+          // it verbatim, bypassing Fabric's toJSON which would write back
+          // the auto-laid-out width/height. Without this, the eraser
+          // commit persists Fabric's recalculated dimensions to storage,
+          // making the textbox visibly shrink (vertically) the first time
+          // the user clicks the eraser and never recover. Textboxes are
+          // never partially erased — they are kept whole or removed
+          // entirely (see the for-loop above) — so the stored JSON is
+          // always the correct serialization for kept textboxes.
+          if (obj.type === 'textbox') {
+            obj.__importedJSON = { ...objData };
+          }
 
           if (objData.isPdfImported) {
 
