@@ -22,7 +22,8 @@ import {
   upsertCallouts,
   loadAllNonHighlightAnnotations,
   subscribeToAllNonHighlightAnnotations,
-  deleteAnnotation
+  deleteAnnotation,
+  deleteAnnotations
 } from '../services/annotationCloudSync.js';
 import { migrateLocalAnnotationsToCloud } from '../services/cloudSyncMigration.js';
 import {
@@ -241,21 +242,59 @@ export function useAnnotationCloudSync({
       debounceMs
     }));
 
+    // Capture the prior baseline NOW (before we overwrite lastByPageRef
+    // with the current state) so we can diff for eraser-style deletions.
+    const priorByPage = lastByPageRef.current;
+
     debounceTimerRef.current = setTimeout(async () => {
       console.log('[CloudSync][hook] fabric push debounce elapsed — pushing now');
       // Mark every id that we're about to push BEFORE the network call so
       // realtime echoes that arrive before the push promise resolves are
       // still filtered. Pull ids from the local fabric objects so we cover
       // the same population the serializer will see.
-      const idsToMark = [];
+      const currentIds = new Set();
       for (const page of Object.values(annotationsByPage || {})) {
         if (!page || !Array.isArray(page.objects)) continue;
         for (const obj of page.objects) {
           const id = obj?.id || obj?.data?.id;
-          if (id) idsToMark.push(id);
+          if (id) currentIds.add(id);
         }
       }
-      markPushedIds(idsToMark);
+      markPushedIds([...currentIds]);
+
+      // Detect deletions: ids that were in the prior baseline but are no
+      // longer in the current state (eraser tool, manual delete, etc.).
+      // Without this step the cloud row would persist and the other device
+      // would still see the erased annotation. Mark as recently-pushed too
+      // so the realtime DELETE echo doesn't bounce back to local state.
+      const deletedIds = [];
+      if (priorByPage && priorByPage !== annotationsByPage) {
+        for (const page of Object.values(priorByPage || {})) {
+          if (!page || !Array.isArray(page.objects)) continue;
+          for (const obj of page.objects) {
+            const id = obj?.id || obj?.data?.id;
+            if (id && !currentIds.has(id)) deletedIds.push(id);
+          }
+        }
+      }
+      if (deletedIds.length > 0) {
+        markPushedIds(deletedIds);
+        console.log('[CloudSync][hook] eraser/delete detected — removing rows from cloud ' + JSON.stringify({
+          count: deletedIds.length,
+          firstFew: deletedIds.slice(0, 5)
+        }));
+        try {
+          const delResult = await deleteAnnotations(documentId, deletedIds);
+          if (!delResult.success) {
+            console.warn('[CloudSync][hook] cloud delete failed ' + JSON.stringify({
+              error: delResult.error?.message || String(delResult.error)
+            }));
+          }
+        } catch (err) {
+          console.warn('[CloudSync][hook] cloud delete threw ' + (err?.message || String(err)));
+        }
+      }
+
       const result = await upsertAnnotationsByPage(annotationsByPage, { documentId, userId, clientSessionId });
       // Mark ids returned by the upsert too — covers the case where the
       // serializer generated a brand-new highlight_id for an object that
@@ -304,6 +343,7 @@ export function useAnnotationCloudSync({
       return;
     }
 
+    const priorCallouts = lastCalloutsRef.current;
     lastCalloutsRef.current = callouts;
     console.log('[CloudSync][hook] callout state changed — debounce push scheduled ' + JSON.stringify({
       count: Array.isArray(callouts) ? callouts.length : 0,
@@ -311,10 +351,37 @@ export function useAnnotationCloudSync({
     }));
     const handle = setTimeout(async () => {
       console.log('[CloudSync][hook] callout push debounce elapsed — pushing now');
-      const calloutIds = (callouts || [])
-        .map((c) => c?.id || c?.highlightId)
-        .filter(Boolean);
-      markPushedIds(calloutIds);
+      const currentCalloutIds = new Set(
+        (callouts || []).map((c) => c?.id || c?.highlightId).filter(Boolean)
+      );
+      markPushedIds([...currentCalloutIds]);
+
+      // Detect deleted callouts the same way as fabric annotations.
+      const deletedCalloutIds = [];
+      if (priorCallouts && priorCallouts !== callouts) {
+        for (const c of priorCallouts) {
+          const id = c?.id || c?.highlightId;
+          if (id && !currentCalloutIds.has(id)) deletedCalloutIds.push(id);
+        }
+      }
+      if (deletedCalloutIds.length > 0) {
+        markPushedIds(deletedCalloutIds);
+        console.log('[CloudSync][hook] callout delete detected — removing rows from cloud ' + JSON.stringify({
+          count: deletedCalloutIds.length,
+          firstFew: deletedCalloutIds.slice(0, 5)
+        }));
+        try {
+          const delResult = await deleteAnnotations(documentId, deletedCalloutIds);
+          if (!delResult.success) {
+            console.warn('[CloudSync][hook] callout cloud delete failed ' + JSON.stringify({
+              error: delResult.error?.message || String(delResult.error)
+            }));
+          }
+        } catch (err) {
+          console.warn('[CloudSync][hook] callout cloud delete threw ' + (err?.message || String(err)));
+        }
+      }
+
       const result = await upsertCallouts(callouts || [], { documentId, userId, clientSessionId });
       if (Array.isArray(result?.data)) {
         markPushedIds(result.data.map((r) => r?.highlight_id).filter(Boolean));
