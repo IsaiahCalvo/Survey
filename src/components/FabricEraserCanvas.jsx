@@ -392,6 +392,12 @@ const FabricEraserCanvas = memo(({
           if (obj.__origStroke !== undefined) json.stroke = obj.__origStroke;
           if (obj.__origStrokeWidth !== undefined) json.strokeWidth = obj.__origStrokeWidth;
         }
+      } else if (obj.__origOpacity !== undefined) {
+        // UX 2026-04-25 — Internally-drawn marks also get opacity:0 in
+        // eraser mode (see post-enliven block). Stroke/strokeWidth were
+        // not modified for non-imported types so they don't need
+        // restoration here, only opacity.
+        json.opacity = obj.__origOpacity;
       }
       return json;
     });
@@ -584,14 +590,20 @@ const FabricEraserCanvas = memo(({
           // __orig* here and restore them in the serialize path inside
           // applyEraserAndCommit so each erase commit emits the real values,
           // not our invisible override.
+          // UX 2026-04-25 — Stash originals on every object (imported or
+          // internally-drawn) so the opacity:0 invisible-overlay treatment
+          // can extend to every annotation in eraser mode. Without this,
+          // internally-drawn marks (counter pins, rectangles, ellipses,
+          // text) render visibly on the Fabric eraser canvas while ALSO
+          // rendering visibly on the SVG layer below — producing the
+          // "doubled / thicker / counter numbers missing" eraser appearance.
+          // Originals are restored in the serialize path so the override
+          // never persists to stored annotation state.
+          obj.__origOpacity = obj.opacity;
+          obj.__origStroke = obj.stroke;
+          obj.__origStrokeWidth = obj.strokeWidth;
+
           if (objData.isPdfImported) {
-            // Stash originals so the serialize path can restore them onto
-            // the outgoing JSON. Undefined means "use the stored JSON value
-            // for this field" — Fabric's enliven already populated obj.*
-            // from objData.*, so obj.opacity etc. already reflect stored.
-            obj.__origOpacity = obj.opacity;
-            obj.__origStroke = obj.stroke;
-            obj.__origStrokeWidth = obj.strokeWidth;
 
             // SERIALIZE BYPASS for imported textboxes: Fabric 5.5.2 has a
             // toJSON bug on PDF-imported Textboxes — serialization throws
@@ -638,6 +650,18 @@ const FabricEraserCanvas = memo(({
                 `[FabricEraserCanvas p${pageNumber}] imported-override idx=${index} ${label} → hit-zone only, SVG renders visual`
               );
             }
+          } else {
+            // UX 2026-04-25 — Internally-drawn marks (counter pins,
+            // rectangles, ellipses, text, etc.) also become invisible
+            // hit zones in eraser mode. Stroke/strokeWidth are left
+            // untouched for non-imported types because the SVG layer
+            // below renders them verbatim from the stored JSON, and
+            // restoring stroke at serialize time matches the imported
+            // path. The result: SVG below is the single visual truth
+            // in eraser mode for every annotation, no rasterizer
+            // doubling, no missing counter numbers.
+            obj.set({ opacity: 0 });
+            obj.setCoords();
           }
 
           canvas.add(obj);
