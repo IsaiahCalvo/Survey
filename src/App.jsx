@@ -21091,13 +21091,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     };
   }, [documentSyncEnabled, getInteractionPerfResumeDelay, highlightAnnotations, isInteractionPerfWindowActive, pdfFile?.id, user?.id]);
 
-  // Phase 21: cloud sync for every non-highlight annotation type. Hydrates
-  // shapes/text/stamps/sticky-notes/callouts/counters from Supabase on
-  // document open, runs the one-time migration of stranded local marks,
-  // pushes diffs back as the user edits, and subscribes to realtime changes
-  // from other devices/users. Highlights keep their existing sync path
-  // above; this hook owns everything else.
-  // The hook is a no-op when documentId or user is missing.
+  // Phase 21: cloud sync for every non-highlight annotation type.
+  // TEMPORARILY DISABLED 2026-04-25 — caused regressions in counter and
+  // pen tools (likely realtime echo from supabase re-inserting the user's
+  // own writes back into annotationsByPage). The hook stays in the
+  // codebase ready to re-enable once the echo-suppression and debounce
+  // contention are fixed. Pass enabled: false to make every internal
+  // useEffect a no-op.
   useAnnotationCloudSync({
     documentId: pdfFile?.id || null,
     userId: user?.id || null,
@@ -21106,7 +21106,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     callouts,
     setAnnotationsByPage,
     setCallouts,
-    enabled: !!documentSyncEnabled
+    enabled: false
   });
 
   // Update presence when page changes
