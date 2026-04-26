@@ -288,3 +288,19 @@
 .syncfusion-renderer-only .e-pv-viewer-container {
   background: #2b2b2b !important;
 }
+
+/*
+ * 2026-04-25 — Off-page cursor override (paired with the JS in
+ * cursorScoping.js). When the cursor is in the gray gutter outside
+ * a page, a JS mousemove handler adds the __cursor-off-page class
+ * to the page-container; this rule then forces every descendant
+ * cursor back to the default arrow with !important so Syncfusion's
+ * per-element pan-grab rules can't override us. Removing the class
+ * (cursor returns to a page) immediately restores Syncfusion's
+ * native cursor (grab in pan mode, crosshair in select mode, etc.).
+ */
+.syncfusion-renderer-only .e-pv-page-container.__cursor-off-page,
+.syncfusion-renderer-only .e-pv-page-container.__cursor-off-page * {
+  cursor: default !important;
+}
+

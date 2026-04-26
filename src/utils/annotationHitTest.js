@@ -17,6 +17,13 @@ export function resolveAnnotationAt(e) {
   let annotationIndex = null;
   let calloutId = null;
   let isCounter = false;
+  // 2026-04-25 — Track the EXACT pageDiv element the click traversed
+  // through (not just the page number). The Syncfusion sidebar
+  // thumbnails share the same `_pageDiv_N` id pattern as the main
+  // viewer pages, so re-querying by id later picks up the wrong
+  // element. Saving the actual hit element keeps subsequent
+  // page-bounds checks aimed at the page the user clicked on.
+  let matchedPageDiv = null;
   // UX: Phase 19 follow-up — when the click lands on empty space inside
   // the outer dashed bounding box of a multi-selection, resolve it as
   // a 'group' kind so the right-click menu can batch cut/copy/delete/
@@ -36,7 +43,10 @@ export function resolveAnnotationAt(e) {
     }
     if (pageNumber == null && el.id) {
       const m = String(el.id).match(/_pageDiv_(\d+)$/);
-      if (m) pageNumber = Number(m[1]) + 1; // Syncfusion is 0-indexed
+      if (m) {
+        pageNumber = Number(m[1]) + 1; // Syncfusion is 0-indexed
+        matchedPageDiv = el;
+      }
     }
     if (annotationIndex == null) {
       const ai = el.getAttribute('data-annotation-index');
@@ -61,6 +71,69 @@ export function resolveAnnotationAt(e) {
     for (const el of stack) {
       readFrom(el);
       if (pageNumber != null) break;
+    }
+  }
+
+  // 2026-04-25 — Reject pageNumber matches that came purely from a
+  // Syncfusion `_pageDiv_N` id when the cursor isn't actually within
+  // the rendered page rectangle. Since each of Syncfusion's inner
+  // elements (page-canvas, annotation-canvas, text-layer) may all
+  // extend past the visible page (CSS-stretched to the full
+  // container), we can't trust class-based hit-testing alone. Use
+  // the actual drawing-buffer dimensions of the page-canvas (the
+  // canvas `width`/`height` attributes set by Syncfusion to the
+  // rendered page size in pixels) and check the cursor's offset
+  // within the canvas.
+  if (pageNumber != null && annotationIndex == null && !calloutId && !isCounter) {
+    const camePurelyFromPageDiv = !path.some((el) =>
+      el && el.getAttribute && (
+        el.getAttribute('data-pal-root') != null
+        || el.getAttribute('data-diag-svg-wrapper') != null
+      )
+    );
+    if (camePurelyFromPageDiv) {
+      const sfIndex = pageNumber - 1;
+      // 2026-04-25 — Use the EXACT pageDiv the click hit (saved during
+      // path walking). Sidebar thumbnails share the same id pattern,
+      // so document.querySelector returns the wrong element about half
+      // the time. matchedPageDiv is guaranteed to be the one under
+      // the cursor.
+      const pageDiv = matchedPageDiv
+        || document.querySelector(`[id$="_pageDiv_${sfIndex}"]`);
+      const pageCanvas = pageDiv?.querySelector('canvas.e-pv-page-canvas')
+        || pageDiv?.querySelector('.e-pv-page-canvas')
+        || null;
+      // Diagnostic — emit the rects we used so the next save-log can
+      // be inspected directly. This is the data needed to confirm
+      // whether the page-canvas rect is actually page-sized or
+      // container-wide.
+      try {
+        const pdRect = pageDiv?.getBoundingClientRect();
+        const pcRect = pageCanvas?.getBoundingClientRect();
+        console.log(`[HitTest pageDiv-bounds] sfIndex=${sfIndex} cursor=(${Math.round(e.clientX)},${Math.round(e.clientY)}) pageDiv=${pdRect ? JSON.stringify({l:Math.round(pdRect.left), t:Math.round(pdRect.top), r:Math.round(pdRect.right), b:Math.round(pdRect.bottom), w:Math.round(pdRect.width), h:Math.round(pdRect.height)}) : 'null'} pageCanvas=${pcRect ? JSON.stringify({l:Math.round(pcRect.left), t:Math.round(pcRect.top), r:Math.round(pcRect.right), b:Math.round(pcRect.bottom), w:Math.round(pcRect.width), h:Math.round(pcRect.height)}) : 'null'} canvasIntrinsic=${pageCanvas ? `${pageCanvas.width}x${pageCanvas.height}` : 'n/a'}`);
+      } catch { /* ignore */ }
+      // 2026-04-25 — Two reference rects we can use for the page bounds:
+      // (1) the inner page-canvas's CSS rect, and (2) the pageDiv's own
+      // bounding rect. The canvas rect is more accurate (it's exactly
+      // the rendered PDF surface) BUT some Syncfusion configurations
+      // collapse the canvas to zero CSS size while keeping its
+      // intrinsic drawing buffer. When that happens, the pageDiv rect
+      // is the next-best truth: the pageDiv visually wraps the page
+      // exactly in continuous mode at most zooms. Fall back accordingly.
+      let insidePage = false;
+      const canvasRect = pageCanvas?.getBoundingClientRect();
+      const canvasUsable = canvasRect && canvasRect.width > 0 && canvasRect.height > 0;
+      const refRect = canvasUsable ? canvasRect : pageDiv?.getBoundingClientRect();
+      if (refRect && refRect.width > 0 && refRect.height > 0) {
+        insidePage = e.clientX >= refRect.left && e.clientX <= refRect.right
+          && e.clientY >= refRect.top && e.clientY <= refRect.bottom;
+        try {
+          console.log(`[HitTest ref-rect] usingCanvas=${canvasUsable} ref=(${Math.round(refRect.left)},${Math.round(refRect.top)})-(${Math.round(refRect.right)},${Math.round(refRect.bottom)}) inside=${insidePage}`);
+        } catch { /* ignore */ }
+      }
+      if (!insidePage) {
+        pageNumber = null;
+      }
     }
   }
 

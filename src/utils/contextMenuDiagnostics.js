@@ -15,9 +15,37 @@
 import { lookup as lookupPalHandler, listRegistered } from './contextMenuBridge.js';
 import { resolveAnnotationAt } from './annotationHitTest.js';
 
+// 2026-04-25 — Build stamp so save-logs reveal which version of this
+// dispatcher is actually live. If HMR mis-replaces the listener, the
+// stamp in the install log will still match the stale build's value.
+const CTX_DIAG_BUILD = 'page-gated-v2-2026-04-25';
+
+// Mirror every diagnostic line through console.warn AS WELL as console.log.
+// DevTools sometimes filters .log out of the "Default" view but keeps .warn,
+// and the in-app save-log buffer captures both — so the entry survives no
+// matter which capture path the user is using to share logs.
+function diag(line) {
+  try { console.log(line); } catch { /* ignore */ }
+  try { console.warn(line); } catch { /* ignore */ }
+  try {
+    if (typeof window !== 'undefined') {
+      window.__rightClickDiag = window.__rightClickDiag || [];
+      window.__rightClickDiag.push({ t: Date.now(), line });
+      if (window.__rightClickDiag.length > 1000) window.__rightClickDiag.shift();
+    }
+  } catch { /* ignore */ }
+}
+
 (function installContextMenuDiag() {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
-  if (window.__contextMenuDiagInstalled) return;
+  // 2026-04-25 — HMR-safe install. If a previous version of this module
+  // is already bound, remove its listeners before binding the new ones.
+  // Without this, Vite hot-reloads silently keep the OLD dispatcher
+  // logic active, so any code change here appears not to take effect
+  // until the user does a full page reload.
+  if (window.__contextMenuDiagTeardown) {
+    try { window.__contextMenuDiagTeardown(); } catch { /* ignore */ }
+  }
   window.__contextMenuDiagInstalled = true;
 
   const shortTag = (el) => {
@@ -63,24 +91,49 @@ import { resolveAnnotationAt } from './annotationHitTest.js';
         pathDepth: path.length,
         pathSummary: summarizePath(path),
       };
-      console.log(`[CTXDIAG ${phase}] ${JSON.stringify(payload)}`);
+      diag(`[CTXDIAG ${phase} ${CTX_DIAG_BUILD}] ${JSON.stringify(payload)}`);
 
       // At capture phase also dump elementsFromPoint so we see every layer
       // under the cursor (stacking order from topmost to bottommost). This
       // tells us which layer the native hit-test actually selects at the
       // click coordinate.
-      if (phase === 'capture' && typeof document.elementsFromPoint === 'function') {
+      if ((phase === 'capture' || phase === 'win-capture') && typeof document.elementsFromPoint === 'function') {
         const stack = document.elementsFromPoint(e.clientX, e.clientY)
-          .slice(0, 10)
+          .slice(0, 15)
           .map((el, i) => `${i}:${shortTag(el)}`);
-        console.log(`[CTXDIAG capture stack-at-point] ${JSON.stringify(stack)}`);
+        diag(`[CTXDIAG ${phase} stack-at-point] ${JSON.stringify(stack)}`);
+
+        // 2026-04-25 — Also dump the bounding-rect of every PAL root +
+        // SVG wrapper currently in the DOM, so we can SEE whether one
+        // of them extends past the visible page edge into the gray
+        // padding (which would explain why right-clicks "to the right
+        // of the canvas" still resolve to a pageNumber and open the
+        // empty-page Paste menu).
+        const wrappers = document.querySelectorAll('[data-pal-root], [data-diag-svg-wrapper]');
+        const rects = [];
+        for (const w of wrappers) {
+          const r = w.getBoundingClientRect();
+          const hit = e.clientX >= r.left && e.clientX <= r.right
+            && e.clientY >= r.top && e.clientY <= r.bottom;
+          rects.push({
+            tag: shortTag(w),
+            left: Math.round(r.left), top: Math.round(r.top),
+            right: Math.round(r.right), bottom: Math.round(r.bottom),
+            width: Math.round(r.width), height: Math.round(r.height),
+            hit
+          });
+        }
+        diag(`[CTXDIAG ${phase} wrapper-rects @cursor=(${Math.round(e.clientX)},${Math.round(e.clientY)})] ${JSON.stringify(rects)}`);
       }
     } catch (err) {
-      console.warn('[CTXDIAG] log failed', err?.message || err);
+      diag(`[CTXDIAG] log failed: ${err?.message || err}`);
     }
   };
 
-  document.addEventListener('contextmenu', (e) => {
+  const captureListener = (e) => {
+    // 2026-04-25 — Unconditional ENTRY log so we ALWAYS know the
+    // dispatcher fired, even if logEvent or downstream code throws.
+    diag(`[CTXDIAG enter ${CTX_DIAG_BUILD}] type=${e.type} button=${e.button} clientX=${e.clientX} clientY=${e.clientY} target=${shortTag(e.target)}`);
     logEvent('capture', e);
 
     // UX 2026-04-21: the properties panel is a tool surface — right-click
@@ -93,6 +146,7 @@ import { resolveAnnotationAt } from './annotationHitTest.js';
     // Fully swallow the event: no annotation menu, no native menu.
     if (e.target && typeof e.target.closest === 'function'
         && e.target.closest('[data-annotation-properties-panel]')) {
+      diag('[CTXDIAG] suppressed — inside annotation properties panel');
       e.preventDefault();
       e.stopPropagation();
       return;
@@ -112,7 +166,7 @@ import { resolveAnnotationAt } from './annotationHitTest.js';
     // `pageNumber != null` keeps the menu scoped to the page surface.
     const handler = pageNumber != null ? (globalHandler || palHandler) : null;
 
-    console.log(`[CTXDIAG dispatch] page=${pageNumber} annoIdx=${annotationIndex} calloutId=${calloutId} kind=${kind} groupIndices=${groupIndices ? groupIndices.length : 0} handler=${!!handler} source=${pageNumber == null ? 'off-page' : (globalHandler ? 'app' : (palHandler ? 'pal' : 'none'))} registered=${JSON.stringify(listRegistered())}`);
+    diag(`[CTXDIAG dispatch ${CTX_DIAG_BUILD}] page=${pageNumber} annoIdx=${annotationIndex} calloutId=${calloutId} kind=${kind} groupIndices=${groupIndices ? groupIndices.length : 0} handler=${!!handler} source=${pageNumber == null ? 'off-page-suppressed' : (globalHandler ? 'app' : (palHandler ? 'pal' : 'none'))} registered=${JSON.stringify(listRegistered())}`);
 
     if (handler) {
       e.preventDefault();
@@ -120,17 +174,61 @@ import { resolveAnnotationAt } from './annotationHitTest.js';
       try {
         handler({ pageNumber, annotationIndex, calloutId, kind, groupIndices, event: e });
       } catch (err) {
-        console.warn('[CTXDIAG dispatch] handler threw', err?.message || err);
+        diag(`[CTXDIAG dispatch] handler threw: ${err?.message || err}`);
       }
     }
-  }, true);
-
-  document.addEventListener('contextmenu', (e) => logEvent('bubble-final', e), false);
-
-  document.addEventListener('mousedown', (e) => {
+  };
+  // 2026-04-25 — TWO capture-phase listeners (window AND document) so
+  // we catch the event even if some library installs a stopImmediate
+  // capture handler on document. The window-level handler runs FIRST
+  // in capture order. Both are read-only logging — neither prevents
+  // default unless the page-gate logic decides to fire the menu.
+  const winCaptureListener = (e) => {
+    diag(`[CTXDIAG win-enter ${CTX_DIAG_BUILD}] type=${e.type} button=${e.button} clientX=${e.clientX} clientY=${e.clientY} target=${shortTag(e.target)} defaultPrevented=${e.defaultPrevented}`);
+    logEvent('win-capture', e);
+  };
+  const bubbleListener = (e) => logEvent('bubble-final', e);
+  const mousedownListener = (e) => {
     if (e.button !== 2) return;
+    diag(`[CTXDIAG mousedown-right-raw] clientX=${e.clientX} clientY=${e.clientY} target=${shortTag(e.target)}`);
     logEvent('mousedown-right', e);
-  }, true);
+  };
+  // 2026-04-25 — Also intercept the menu-state setter from the React
+  // side. Whenever the annotation context menu actually opens, log a
+  // stack trace so we can see WHICH code path opened it. This catches
+  // the case where some other module is calling setAnnotationContextMenu
+  // outside our dispatcher.
+  const menuOpenWatcher = (snapshot) => {
+    try {
+      const stack = (new Error('CTXDIAG menu-open trace')).stack;
+      diag(`[CTXDIAG menu-open watcher] ${JSON.stringify(snapshot)} stack=${stack ? stack.split('\n').slice(1, 6).join(' | ') : 'no-stack'}`);
+    } catch { /* ignore */ }
+  };
+  window.__ctxDiagMenuOpenWatcher = menuOpenWatcher;
 
-  console.log('[CTXDIAG] installed — document-level capture dispatcher + bubble + right-button mousedown listeners');
+  window.addEventListener('contextmenu', winCaptureListener, true);
+  document.addEventListener('contextmenu', captureListener, true);
+  document.addEventListener('contextmenu', bubbleListener, false);
+  window.addEventListener('mousedown', mousedownListener, true);
+
+  window.__contextMenuDiagTeardown = () => {
+    window.removeEventListener('contextmenu', winCaptureListener, true);
+    document.removeEventListener('contextmenu', captureListener, true);
+    document.removeEventListener('contextmenu', bubbleListener, false);
+    window.removeEventListener('mousedown', mousedownListener, true);
+    delete window.__ctxDiagMenuOpenWatcher;
+    window.__contextMenuDiagInstalled = false;
+  };
+
+  diag(`[CTXDIAG ${CTX_DIAG_BUILD}] installed — window+document capture dispatcher + bubble + right-button mousedown listeners + menu-open watcher`);
 })();
+
+// Vite HMR hook — when this module reloads, run the teardown so the next
+// install replaces the listeners cleanly.
+if (typeof import.meta !== 'undefined' && import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    if (typeof window !== 'undefined' && window.__contextMenuDiagTeardown) {
+      try { window.__contextMenuDiagTeardown(); } catch { /* ignore */ }
+    }
+  });
+}

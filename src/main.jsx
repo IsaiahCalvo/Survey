@@ -38,6 +38,7 @@ import './utils/shapeBleedDiagnostics';
 // document level so we can confirm whether right-click reaches PAL's
 // onContextMenu handler. Remove once wiring is fixed.
 import './utils/contextMenuDiagnostics';
+import './utils/cursorScoping';
 import '@syncfusion/ej2-base/styles/material.css';
 import '@syncfusion/ej2-buttons/styles/material.css';
 import '@syncfusion/ej2-inputs/styles/material.css';

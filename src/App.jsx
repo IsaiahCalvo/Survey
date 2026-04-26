@@ -11257,6 +11257,28 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // — one listener, always on, covers every page without needing PAL to be mounted.
   useEffect(() => {
     window.__onAnnotationContextMenu = ({ pageNumber, annotationIndex, calloutId, kind, groupIndices, event }) => {
+      // 2026-04-25 — Always log when the menu is about to open. Mirrored
+      // through console.log AND console.warn so it can't be filtered
+      // out, plus a stack trace so we see WHO called this — if the
+      // dispatcher logs are absent this still tells us which module
+      // opened the menu.
+      const snapshot = {
+        page: pageNumber,
+        kind,
+        annoIdx: annotationIndex,
+        calloutId,
+        groupCount: Array.isArray(groupIndices) ? groupIndices.length : 0,
+        clientX: event?.clientX,
+        clientY: event?.clientY
+      };
+      const line = `[CTXDIAG menu-open] ${JSON.stringify(snapshot)}`;
+      try { console.log(line); } catch { /* ignore */ }
+      try { console.warn(line); } catch { /* ignore */ }
+      try {
+        if (typeof window !== 'undefined' && typeof window.__ctxDiagMenuOpenWatcher === 'function') {
+          window.__ctxDiagMenuOpenWatcher(snapshot);
+        }
+      } catch { /* ignore */ }
       setAnnotationContextMenu({
         x: event.clientX,
         y: event.clientY,
