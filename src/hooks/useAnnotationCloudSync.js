@@ -449,6 +449,40 @@ export function useAnnotationCloudSync({
             return next;
           });
         },
+        // 2026-04-26 — Fallback when a realtime DELETE arrives with an
+        // empty old payload (Supabase realtime sometimes serves empty
+        // `payload.old` for a window after schema changes, even with
+        // REPLICA IDENTITY FULL set). Refetch the full cloud snapshot
+        // and replace local state — guarantees convergence whether or
+        // not the per-row delete payload made it through.
+        onDeleteFallback: () => {
+          if (!documentId) return;
+          (async () => {
+            try {
+              const fresh = await loadAllNonHighlightAnnotations(documentId);
+              if (fresh.error) {
+                console.warn('[CloudSync][hook] delete-fallback refetch failed: ' + (fresh.error?.message || fresh.error));
+                return;
+              }
+              const nextByPage = fresh.annotationsByPage || {};
+              const nextCallouts = Array.isArray(fresh.callouts) ? fresh.callouts : [];
+              console.log('[CloudSync][hook] delete-fallback reconcile ' + JSON.stringify({
+                pages: Object.keys(nextByPage).length,
+                callouts: nextCallouts.length
+              }));
+              setAnnotationsByPage(() => {
+                lastByPageRef.current = nextByPage;
+                return nextByPage;
+              });
+              setCallouts(() => {
+                lastCalloutsRef.current = nextCallouts;
+                return nextCallouts;
+              });
+            } catch (err) {
+              console.warn('[CloudSync][hook] delete-fallback threw: ' + (err?.message || err));
+            }
+          })();
+        },
         onError: (err) => setStatus({ stage: 'error', error: err, phase: 'subscribe' }),
         // 2026-04-25 — Closes the open-document race window:
         // The initial hydrate fetch happens BEFORE the realtime

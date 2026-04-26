@@ -256,6 +256,7 @@ export function subscribeToAllNonHighlightAnnotations(documentId, callbacks = {}
     onCalloutInsert,
     onCalloutUpdate,
     onCalloutDelete,
+    onDeleteFallback,
     onError
   } = callbacks;
 
@@ -304,25 +305,38 @@ export function subscribeToAllNonHighlightAnnotations(documentId, callbacks = {}
         filter: `document_id=eq.${documentId}`
       },
       (payload) => {
-        const oldRow = payload.old;
-        if (!oldRow) return;
+        const oldRow = payload.old || {};
         if (oldRow.annotation_type === 'highlight') return; // legacy module owns it
         // 2026-04-25 — DO NOT echo-filter DELETEs by user-id. Postgres
         // DELETE payloads only carry the primary key, so we can't
-        // recover the originating sessionId. The previous fallback
-        // dropped any DELETE whose last_modified_by matched the local
-        // user — which silently broke cross-device deletion when the
-        // SAME account was signed in on Mac + Windows (every cross-
-        // device delete looked like a self-echo and was suppressed).
-        // Applying our own DELETE echo is harmless: removing a
-        // highlight_id that's already absent from local state is a
-        // no-op. Worst case (delete races our local optimistic update)
-        // we still converge to the correct cloud-authoritative state.
+        // recover the originating sessionId. Applying our own DELETE
+        // echo is harmless: removing a highlight_id that's already
+        // absent from local state is a no-op.
         console.log('[CloudSync][realtime] applying DELETE ' + JSON.stringify({
           highlightId: oldRow.highlight_id,
           annotationType: oldRow.annotation_type,
-          lastModifiedBy: oldRow.last_modified_by
+          lastModifiedBy: oldRow.last_modified_by,
+          payloadKeys: Object.keys(oldRow)
         }));
+        // 2026-04-26 — Per-id apply path requires the row payload to
+        // include `highlight_id` AND `annotation_type`. That requires
+        // the table to be configured with REPLICA IDENTITY FULL — but
+        // even with that set, Supabase realtime sometimes serves
+        // empty `payload.old` for a window after the schema change.
+        // FALLBACK: when the payload is empty (no highlight_id), do
+        // a full cloud refetch and reconcile. This always converges
+        // to the correct state regardless of payload completeness,
+        // at the cost of one extra fetch per DELETE event.
+        if (!oldRow.highlight_id || !oldRow.annotation_type) {
+          if (onDeleteFallback) {
+            try {
+              onDeleteFallback();
+            } catch (err) {
+              console.warn('[CloudSync][realtime] delete fallback threw: ' + (err?.message || err));
+            }
+          }
+          return;
+        }
         if (oldRow.annotation_type === 'callout') {
           if (onCalloutDelete) onCalloutDelete(oldRow.highlight_id);
         } else if (NON_HIGHLIGHT_TYPES.includes(oldRow.annotation_type)) {
