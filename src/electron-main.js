@@ -174,6 +174,8 @@ ipcMain.handle('developer-mode:set', async (_event, enabled) => {
   }
   return { ok: true, developerMode };
 });
+
+function createWindow() {
   // Set icon path based on platform and environment
   // Use app.getAppPath() to get the actual app directory, which works in both dev and production
   const appPath = app.getAppPath();
