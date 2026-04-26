@@ -20901,7 +20901,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
       removeDocumentPresence(documentId, user.id, 'app');
     };
-  }, [getInteractionPerfResumeDelay, handlePresenceFailure, isInteractionPerfWindowActive, pageNum, pdfFile?.id, user?.id]);
+    // 2026-04-26 — `pageNum` removed from the deps. With pageNum included,
+    // every page change re-fired the whole presence-init effect: the
+    // cleanup ran (removeDocumentPresence), then the body ran which
+    // immediately calls setDocumentSyncEnabled(false) before its async
+    // presence handshake — that brief flip to false made
+    // cloudSyncEnabled false in the toolbar gate, so the sidebar's
+    // collaboration footer (sync chip + presence avatars) unmounted on
+    // every page navigation and reappeared a beat later. The dedicated
+    // page-change presence effect immediately below already handles
+    // pushing the new page to presence; this effect only needs to run
+    // when the document or user changes.
+  }, [getInteractionPerfResumeDelay, handlePresenceFailure, isInteractionPerfWindowActive, pdfFile?.id, user?.id]);
 
   // Subscribe to real-time annotation changes
   useEffect(() => {
