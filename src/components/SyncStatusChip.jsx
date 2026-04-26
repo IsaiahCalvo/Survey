@@ -16,7 +16,7 @@ import React from 'react';
  * cloud sync is gated). The local-only fallback path makes a chip meaningless
  * since there is nothing to sync.
  */
-export default function SyncStatusChip({ status, queueSize = 0, enabled = true }) {
+export default function SyncStatusChip({ status, queueSize = 0, enabled = true, compact = false }) {
   if (!enabled) return null;
   const stage = status?.stage || 'idle';
 
@@ -42,6 +42,43 @@ export default function SyncStatusChip({ status, queueSize = 0, enabled = true }
     offline: '#ef4444'
   };
   const color = colors[state];
+
+  // Compact mode (used by the collapsed sidebar rail): icon-only — drop the
+  // text label and the chip background so just the colored dot or spinner
+  // shows. The full label is still available on hover via the title attr.
+  if (compact) {
+    return (
+      <div role="status" aria-live="polite" title={label} style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '28px',
+        height: '28px',
+        color
+      }}>
+        {state === 'syncing' ? (
+          <span aria-hidden="true" style={{
+            width: '14px',
+            height: '14px',
+            border: '2px solid currentColor',
+            borderTopColor: 'transparent',
+            borderRadius: '50%',
+            animation: 'sync-chip-spin 0.8s linear infinite'
+          }} />
+        ) : (
+          <span aria-hidden="true" style={{
+            width: '10px',
+            height: '10px',
+            borderRadius: '50%',
+            background: 'currentColor'
+          }} />
+        )}
+        <style>{`
+          @keyframes sync-chip-spin { to { transform: rotate(360deg); } }
+        `}</style>
+      </div>
+    );
+  }
 
   return (
     <div

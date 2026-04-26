@@ -4,6 +4,8 @@ import PagesPanel from './sidebar/PagesPanel';
 import SearchTextPanel from './sidebar/SearchTextPanel';
 import BookmarksPanel from './sidebar/BookmarksPanel';
 import SpacesPanel from './sidebar/SpacesPanel';
+import SyncStatusChip from './components/SyncStatusChip';
+import PresenceAvatars from './components/PresenceAvatars';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -66,7 +68,18 @@ const PDFSidebar = React.forwardRef(({
   isRegionOverlayToggleEnabled = null,
   showSurveyPanel = false,
   selectedModuleId = null,
-  onSurveyButtonClick = null
+  // 2026-04-25 — Collaboration footer at the bottom of the rail. The chip
+  // and presence pile used to live in the top-right corner but the toolbar
+  // they sat in scrolls with the PDF area, so they vanished on page change.
+  // The sidebar rail stays put, so anchoring them here keeps them visible
+  // for every page.
+  cloudSyncStatus = null,
+  cloudSyncQueueSize = 0,
+  cloudSyncEnabled = false,
+  presence = [],
+  currentUserId = null,
+  currentUserEmail = null,
+  currentUserDisplayName = null
 }, ref) => {
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [activeTab, setActiveTab] = useState('pages'); // 'pages' | 'search' | 'bookmarks' | 'spaces'
@@ -100,16 +113,14 @@ const PDFSidebar = React.forwardRef(({
     }
   }), [onToggleCollapse]);
 
+  // 2026-04-25 (revised) — Survey is back in the top toolbar; this rail
+  // owns the four navigation tabs only. The collaboration footer below the
+  // tab content carries the sync status chip + live presence row instead.
   const tabs = [
     { id: 'pages', label: 'Pages', icon: 'pages' },
     { id: 'search', label: 'Search Text', icon: 'search' },
     { id: 'bookmarks', label: 'Bookmarks', icon: 'bookmark' },
-    { id: 'spaces', label: 'Spaces', icon: 'folder' },
-    // 2026-04-25 — Survey moved here from the top toolbar so the rail owns
-    // every navigation entry. Icon-only by user request: the four tabs above
-    // read as icons-first to the user, and Survey should match. The label
-    // string is kept for the hover tooltip and ARIA only.
-    { id: 'survey', label: 'Survey', icon: 'survey', iconOnly: true }
+    { id: 'spaces', label: 'Spaces', icon: 'folder' }
   ];
 
   return (
@@ -173,13 +184,7 @@ const PDFSidebar = React.forwardRef(({
                 ? [{ id: '__savelog', label: 'Save Log', icon: 'document' }]
                 : []
             ).map(tab => {
-              // Survey is the only tab that doesn't switch panels — it
-              // toggles the survey workflow modal/state via a parent callback.
-              // We mark it active when the parent tells us showSurveyPanel
-              // is true so it visually reads "on" with the same blue
-              // underline + tinted background as the four real tabs.
-              const isSurveyTab = tab.id === 'survey';
-              const isActive = isSurveyTab ? !!showSurveyPanel : activeTab === tab.id;
+              const isActive = activeTab === tab.id;
               return (
                 <button
                   key={tab.id}
@@ -197,15 +202,6 @@ const PDFSidebar = React.forwardRef(({
                       window.dispatchEvent(new CustomEvent('save-log-banner-start', {
                         detail: { consoleText }
                       }));
-                      return;
-                    }
-                    if (isSurveyTab) {
-                      // 2026-04-25 — Survey button moved off the top toolbar.
-                      // Click delegated up to App.jsx (Pro-tier gate +
-                      // template-selection modal + showSurveyPanel toggle).
-                      if (typeof onSurveyButtonClick === 'function') {
-                        onSurveyButtonClick();
-                      }
                       return;
                     }
                     setActiveTab(tab.id);
@@ -243,13 +239,11 @@ const PDFSidebar = React.forwardRef(({
                 >
                   <Icon
                     name={tab.icon}
-                    size={tab.iconOnly ? 18 : 16}
+                    size={16}
                     color={isActive ? '#4A90E2' : '#999'}
                     style={tab.icon === 'pages' ? { boxSizing: 'content-box', marginTop: '3px' } : undefined}
                   />
-                  {/* Survey is icon-only per user request — the other tabs
-                      keep their text labels for parity with the existing UX. */}
-                  {!tab.iconOnly && <span>{tab.label}</span>}
+                  <span>{tab.label}</span>
                 </button>
               );
             })}
@@ -367,7 +361,11 @@ const PDFSidebar = React.forwardRef(({
           padding: '8px',
           gap: '4px',
           background: '#252525',
-          position: 'relative'
+          position: 'relative',
+          // 2026-04-25 — flex:1 lets the collaboration footer at the bottom
+          // sit at the actual bottom of the rail instead of stacking right
+          // below the last icon.
+          flex: 1
         }}>
           {tabs.concat(
             typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()
@@ -396,16 +394,6 @@ const PDFSidebar = React.forwardRef(({
                     window.dispatchEvent(new CustomEvent('save-log-banner-start', {
                       detail: { consoleText }
                     }));
-                    return;
-                  }
-                  if (tab.id === 'survey') {
-                    // 2026-04-25 — Survey button in the collapsed vertical
-                    // rail must NOT expand the sidebar. It opens the
-                    // template-selection modal (or tears down survey state)
-                    // exactly like the original top-toolbar button did.
-                    if (typeof onSurveyButtonClick === 'function') {
-                      onSurveyButtonClick();
-                    }
                     return;
                   }
                   setIsCollapsed(false);
@@ -468,6 +456,38 @@ const PDFSidebar = React.forwardRef(({
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* 2026-04-25 — Collaboration footer (sync chip on top, presence row
+          below) anchored at the bottom of the rail. Lives here so it stays
+          on screen for every page — the previous top-toolbar location
+          scrolled off with the PDF area on page change.
+          Hidden entirely when cloud sync is disabled (free tier or no PDF). */}
+      {cloudSyncEnabled && (
+        <div style={{
+          borderTop: '1px solid #3a3a3a',
+          padding: isCollapsed ? '10px 6px' : '12px',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '10px',
+          background: '#252525'
+        }}>
+          <SyncStatusChip
+            status={cloudSyncStatus}
+            queueSize={cloudSyncQueueSize}
+            enabled
+            compact={isCollapsed}
+          />
+          <PresenceAvatars
+            presence={presence}
+            currentUserId={currentUserId}
+            currentUserEmail={currentUserEmail}
+            currentUserDisplayName={currentUserDisplayName}
+            enabled
+            compact={isCollapsed}
+          />
         </div>
       )}
     </div>

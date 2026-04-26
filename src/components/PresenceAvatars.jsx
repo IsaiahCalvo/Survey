@@ -25,7 +25,8 @@ export default function PresenceAvatars({
   currentUserId = null,
   currentUserEmail = null,
   currentUserDisplayName = null,
-  enabled = true
+  enabled = true,
+  compact = false
 }) {
   const [popoverOpen, setPopoverOpen] = useState(false);
   if (!enabled) return null;
@@ -67,6 +68,12 @@ export default function PresenceAvatars({
   const hasOverflow = total > visibleCap;
   const visibleUsers = hasOverflow ? users.slice(0, visibleCap) : users;
   const overflowUsers = hasOverflow ? users.slice(visibleCap) : [];
+
+  // Compact mode (collapsed sidebar rail) shrinks the avatars and hides
+  // the "N viewing" caption so the row fits inside the 48px-wide rail.
+  const avatarSize = compact ? 18 : 22;
+  const overlap = compact ? -8 : -10;
+  const initialsFontSize = compact ? 8 : 9;
 
   const initialsOf = (row) => {
     const name = row?.display_name || row?.user_id || '?';
@@ -121,19 +128,21 @@ export default function PresenceAvatars({
             initials={initialsOf(row)}
             background={colorOf(row.user_id)}
             email={emailOf(row)}
-            offset={idx > 0 ? '-10px' : '0'}
+            offset={idx > 0 ? `${overlap}px` : '0'}
+            size={avatarSize}
+            fontSize={initialsFontSize}
           />
         ))}
         {hasOverflow && (
           <div
-            style={{ position: 'relative', marginLeft: '-10px' }}
+            style={{ position: 'relative', marginLeft: `${overlap}px` }}
             onMouseEnter={() => setPopoverOpen(true)}
             onMouseLeave={() => setPopoverOpen(false)}
           >
             <div
               style={{
-                width: '22px',
-                height: '22px',
+                width: `${avatarSize}px`,
+                height: `${avatarSize}px`,
                 borderRadius: '50%',
                 background: 'rgba(255,255,255,0.08)',
                 color: '#ddd',
@@ -141,7 +150,7 @@ export default function PresenceAvatars({
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: '9px',
+                fontSize: `${initialsFontSize}px`,
                 fontWeight: 600,
                 cursor: 'default'
               }}
@@ -215,15 +224,18 @@ export default function PresenceAvatars({
           </div>
         )}
       </div>
-      <div style={{ fontSize: '10px', color: '#9aa0a8', lineHeight: 1 }}>
-        {total === 1 ? 'just you' : `${total} viewing`}
-      </div>
+      {/* Caption hidden in compact mode — the rail is too narrow for it. */}
+      {!compact && (
+        <div style={{ fontSize: '10px', color: '#9aa0a8', lineHeight: 1 }}>
+          {total === 1 ? 'just you' : `${total} viewing`}
+        </div>
+      )}
     </div>
   );
 }
 
 // Single avatar with a hover-tooltip showing the user's email.
-function Avatar({ initials, background, email, offset = '0' }) {
+function Avatar({ initials, background, email, offset = '0', size = 22, fontSize = 9 }) {
   const [hover, setHover] = useState(false);
   return (
     <div
@@ -233,12 +245,12 @@ function Avatar({ initials, background, email, offset = '0' }) {
     >
       <span
         style={{
-          width: '22px',
-          height: '22px',
+          width: `${size}px`,
+          height: `${size}px`,
           borderRadius: '50%',
           background,
           color: 'white',
-          fontSize: '9px',
+          fontSize: `${fontSize}px`,
           fontWeight: 600,
           border: '2px solid #1E1E1E',
           display: 'inline-flex',
