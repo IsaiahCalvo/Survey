@@ -1,0 +1,495 @@
+===== SurveyApp Save Log =====
+version:   0.1.35
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1203x826
+locale:    en-US
+timestamp: 2026-04-26T03:51:20.260Z (4/25/2026, 11:51:20 PM)
+==============================
+[dev-auto-login] boot {"hasDevEmail":true,"devEmailHint":"isai***","hasDevPassword":true,"hasCachedSession":true,"cachedSessionEmail":"isaiahcalvo123@gmail.com","cachedSessionExpiresAt":1777178119}
+[dev-auto-login] cached session matches dev email, keeping it
+[dev-auto-login] decision {"needsAutoLogin":false,"willAttemptSignIn":false}
+[CloudSync][hook] session id minted {"sessionId":"413709d6-d9c3-4a32-9d52-8dbc1a590c1c"}
+[AnnotPerf] finalize idle (forced-reset) — deferring CSS transform removal, waiting for PAL confirmation
+[DebugBridge +5835.2ms] zoom_start {"scale":0.8926767676767676,"targetScale":1,"source":"keyboard_toolbar"}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":null}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":false}
+[CSeries wipe] doc=sync-test.pdf-2489 totalCounters=0 legacyRemoved=0 — nothing to wipe.
+[PrintPanel] mount — binding Cmd/Ctrl+P listeners. electronAPI available: true onPrintPdf available: true
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"sync-test.pdf-2489"}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":true}
+[ZoomLive svg p1] {"interactionPhase":"idle","zoomOverlayTransformActive":true,"viewerScale":0.89268,"measuredScale":0.89268,"committedScale":0,"overlayTransform":"none","overlayTransformScale":1,"pageHostRect":null,"overlayLayerRect":null,"overlayContentRect":null,"legacyCompensationRect":null,"legacyCompensationTransform":"none","palRootRect":null,"canvasContainerRect":null,"palCanvasRect":null,"regionRootRect":null,"regionSvgRect":null,"regionScreenWidth":0,"regionScreenHeight":0,"svgLayerRect":null,"activeSpaceId":null,"activeRegionId":null,"showRegionSelection":false}
+[PrintPanel] mount — binding Cmd/Ctrl+P listeners. electronAPI available: true onPrintPdf available: true
+[PrintPanel] mount — binding Cmd/Ctrl+P listeners. electronAPI available: true onPrintPdf available: true
+[PrintPanel] mount — binding Cmd/Ctrl+P listeners. electronAPI available: true onPrintPdf available: true
+[PrintPanel] RENDER — panel closed
+[CursorScope] bound mousemove on container syncfusion-pdf-viewer-tab-1777175428358-b8ijzcymy_pageViewContainer
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.33333, measuredPageScale=1.33333, committedPageScale=none, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=816, overlayDivH=1056, overlayDivTransform=none, overlayContentTransform=none
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVG p1] MOUNT — 5 annotations, 0 callouts, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.33333, measuredPageScale=1.33333, committedPageScale=1.33333, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=816, overlayDivH=1056, overlayDivTransform=none, overlayContentTransform=none
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.33333, measuredPageScale=1.33333, committedPageScale=1.33333, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=816, overlayDivH=1056, overlayDivTransform=none, overlayContentTransform=none
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.33333, measuredPageScale=1.33333, committedPageScale=1.33333, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=816, overlayDivH=1056, overlayDivTransform=none, overlayContentTransform=none
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.33333, measuredPageScale=1.33333, committedPageScale=1.33333, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=816, overlayDivH=1056, overlayDivTransform=none, overlayContentTransform=none
+[ZoomLive svg p1] {"interactionPhase":"idle","zoomOverlayTransformActive":true,"viewerScale":0.1,"measuredScale":0.1,"committedScale":1.33333,"overlayTransform":"none","overlayTransformScale":1,"pageHostRect":{"w":816,"h":1056,"left":212,"top":87},"overlayLayerRect":{"w":814,"h":1054,"left":213,"top":88},"overlayContentRect":{"w":814,"h":0,"left":213,"top":88},"legacyCompensationRect":{"w":814,"h":1054,"left":213,"top":88},"legacyCompensationTransform":"none","palRootRect":null,"canvasContainerRect":null,"palCanvasRect":null,"regionRootRect":null,"regionSvgRect":null,"regionScreenWidth":0,"regionScreenHeight":0,"svgLayerRect":{"w":814,"h":1054,"left":213,"top":88},"activeSpaceId":null,"activeRegionId":null,"showRegionSelection":false}
+[DebugBridge +6277.8ms] pdf_loaded {"pageCount":3,"currentPage":1}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.33333, measuredPageScale=1.33333, committedPageScale=1.33333, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=816, overlayDivH=1056, overlayDivTransform=none, overlayContentTransform=none
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.33333, measuredPageScale=1.33333, committedPageScale=1.33333, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=816, overlayDivH=1056, overlayDivTransform=none, overlayContentTransform=none
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.19935, measuredPageScale=1.19935, committedPageScale=1.19935, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1.0082, storedOverlayTransformScale=1, syncfusionViewerScale=0.9, overlayDiv=true, overlayDivW=734, overlayDivH=950, overlayDivTransform=none, overlayContentTransform=scale(1.0082)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.19935, measuredPageScale=1.19935, committedPageScale=1.19935, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1.0082, storedOverlayTransformScale=1, syncfusionViewerScale=0.9, overlayDiv=true, overlayDivW=734, overlayDivH=950, overlayDivTransform=none, overlayContentTransform=scale(1.0082)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.19935, measuredPageScale=1.19935, committedPageScale=1.19935, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1.0082, storedOverlayTransformScale=1, syncfusionViewerScale=0.9, overlayDiv=true, overlayDivW=734, overlayDivH=950, overlayDivTransform=none, overlayContentTransform=scale(1.0082)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.19935, measuredPageScale=1.19935, committedPageScale=1.19935, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1.0082, storedOverlayTransformScale=1, syncfusionViewerScale=0.9, overlayDiv=true, overlayDivW=734, overlayDivH=950, overlayDivTransform=none, overlayContentTransform=scale(1.0082)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.19935, measuredPageScale=1.19935, committedPageScale=1.19935, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1.0082, storedOverlayTransformScale=1, syncfusionViewerScale=0.9, overlayDiv=true, overlayDivW=734, overlayDivH=950, overlayDivTransform=none, overlayContentTransform=scale(1.0082)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.19935, measuredPageScale=1.19935, committedPageScale=1.19935, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1.0082, storedOverlayTransformScale=1, syncfusionViewerScale=0.9, overlayDiv=true, overlayDivW=734, overlayDivH=950, overlayDivTransform=none, overlayContentTransform=scale(1.0082)
+[SVG p1] render — 5 objs, viewBox=612x792
+[CloudSync][hook] hydrate effect fired {"enabled":true,"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"sync-test.pdf-2489"}
+[CloudSync][hook] stage=hydrating
+[CloudSync][hydrate] loadAllNonHighlightAnnotations start {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3"}
+[CloudSync][hook] fabric push skipped — not hydrated yet
+[CloudSync][hook] callout push skipped — not hydrated yet
+[CloudSync][realtime] subscribing {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","currentUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","currentSessionId":"413709d6-d9c3-4a32-9d52-8dbc1a590c1c","hasFabricInsert":true,"hasFabricUpdate":true,"hasFabricDelete":true,"hasCalloutInsert":true,"hasCalloutUpdate":true,"hasCalloutDelete":true}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.19935, measuredPageScale=1.19935, committedPageScale=1.19935, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1.0082, storedOverlayTransformScale=1, syncfusionViewerScale=0.9, overlayDiv=true, overlayDivW=734, overlayDivH=950, overlayDivTransform=none, overlayContentTransform=scale(1.0082)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.19935, measuredPageScale=1.19935, committedPageScale=1.19935, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1.0082, storedOverlayTransformScale=1, syncfusionViewerScale=0.9, overlayDiv=true, overlayDivW=734, overlayDivH=950, overlayDivTransform=none, overlayContentTransform=scale(1.0082)
+[ZoomLive svg p1] {"interactionPhase":"idle","zoomOverlayTransformActive":true,"viewerScale":0.9,"measuredScale":1.19935,"committedScale":1.19935,"overlayTransform":"scale(1.0082)","overlayTransformScale":1.0082,"pageHostRect":{"w":734.398,"h":950.398,"left":252.797,"top":86.195},"overlayLayerRect":{"w":732.398,"h":948.398,"left":253.797,"top":87.195},"overlayContentRect":{"w":738.407,"h":0,"left":253.797,"top":87.195},"legacyCompensationRect":{"w":738.407,"h":0,"left":253.797,"top":87.195},"legacyCompensationTransform":"none","palRootRect":null,"canvasContainerRect":null,"palCanvasRect":null,"regionRootRect":null,"regionSvgRect":null,"regionScreenWidth":0,"regionScreenHeight":0,"svgLayerRect":{"w":732.398,"h":948.398,"left":253.797,"top":87.195},"activeSpaceId":null,"activeRegionId":null,"showRegionSelection":false}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.19935, measuredPageScale=0.89379, committedPageScale=1.19935, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[CloudSync][hydrate] loadAllNonHighlightAnnotations ok {"elapsedMs":100,"totalRows":5,"rowsByType":{"ink":5},"pagesWithObjects":1,"calloutCount":0}
+[CloudSync][hook] replacing local fabric state with cloud (cloud is authoritative) {"pages":1,"migrationDone":true}
+[CloudSync][hook] replacing local callouts with cloud (cloud is authoritative) {"count":0,"migrationDone":true}
+[CloudSync][hook] stage=migrating (one-time local→cloud push)
+[CloudSync][hook] hydrate+migrate complete — push gate OPEN {"migrationPushed":0}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[ZoomLive svg p1] {"interactionPhase":"idle","zoomOverlayTransformActive":true,"viewerScale":0.67,"measuredScale":0.89379,"committedScale":0.89379,"overlayTransform":"scale(0.750552)","overlayTransformScale":0.75055,"pageHostRect":{"w":546.719,"h":707.516,"left":346.633,"top":84.359},"overlayLayerRect":{"w":544.719,"h":705.516,"left":347.633,"top":85.359},"overlayContentRect":{"w":408.84,"h":0,"left":347.633,"top":85.359},"legacyCompensationRect":{"w":408.84,"h":0,"left":347.633,"top":85.359},"legacyCompensationTransform":"none","palRootRect":null,"canvasContainerRect":null,"palCanvasRect":null,"regionRootRect":null,"regionSvgRect":null,"regionScreenWidth":0,"regionScreenHeight":0,"svgLayerRect":{"w":544.719,"h":705.516,"left":347.633,"top":85.359},"activeSpaceId":null,"activeRegionId":null,"showRegionSelection":false}
+[CloudSync][realtime] subscribe status {"status":"SUBSCRIBED","error":null}
+[CloudSync][hydrate] loadAllNonHighlightAnnotations start {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3"}
+[CloudSync][hydrate] loadAllNonHighlightAnnotations ok {"elapsedMs":44,"totalRows":5,"rowsByType":{"ink":5},"pagesWithObjects":1,"calloutCount":0}
+[CloudSync][hook] post-subscribe catch-up rehydrate complete {"pagesFromCloud":1,"calloutsFromCloud":0}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[ZoomLive svg p1] {"interactionPhase":"idle","zoomOverlayTransformActive":true,"viewerScale":0.67,"measuredScale":0.89379,"committedScale":0.89379,"overlayTransform":"scale(0.750552)","overlayTransformScale":0.75055,"pageHostRect":{"w":546.719,"h":707.516,"left":346.633,"top":84.359},"overlayLayerRect":{"w":544.719,"h":705.516,"left":347.633,"top":85.359},"overlayContentRect":{"w":408.84,"h":0,"left":347.633,"top":85.359},"legacyCompensationRect":{"w":408.84,"h":0,"left":347.633,"top":85.359},"legacyCompensationTransform":"none","palRootRect":null,"canvasContainerRect":null,"palCanvasRect":null,"regionRootRect":null,"regionSvgRect":null,"regionScreenWidth":0,"regionScreenHeight":0,"svgLayerRect":{"w":544.719,"h":705.516,"left":347.633,"top":85.359},"activeSpaceId":null,"activeRegionId":null,"showRegionSelection":false}
+[HyperlinkDiag] post-load scan {"hyperlinkCount":0,"samples":[]}
+[HyperlinkDiag] page 1 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","DIV","e-pv-annotation-canvas","e-pv-text-layer"]}
+[HyperlinkDiag] page 2 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","DIV","e-pv-annotation-canvas","e-pv-text-layer"]}
+[HyperlinkDiag] page 3 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","DIV","e-pv-annotation-canvas","e-pv-text-layer"]}
+[ZoomLive svg p1] {"interactionPhase":"idle","zoomOverlayTransformActive":true,"viewerScale":0.67,"measuredScale":0.89379,"committedScale":0.89379,"overlayTransform":"scale(0.750552)","overlayTransformScale":0.75055,"pageHostRect":{"w":546.719,"h":707.516,"left":346.633,"top":84.359},"overlayLayerRect":{"w":544.719,"h":705.516,"left":347.633,"top":85.359},"overlayContentRect":{"w":408.84,"h":0,"left":347.633,"top":85.359},"legacyCompensationRect":{"w":408.84,"h":0,"left":347.633,"top":85.359},"legacyCompensationTransform":"none","palRootRect":null,"canvasContainerRect":null,"palCanvasRect":null,"regionRootRect":null,"regionSvgRect":null,"regionScreenWidth":0,"regionScreenHeight":0,"svgLayerRect":{"w":544.719,"h":705.516,"left":347.633,"top":85.359},"activeSpaceId":null,"activeRegionId":null,"showRegionSelection":false}
+[ZoomLive svg p1] {"interactionPhase":"idle","zoomOverlayTransformActive":true,"viewerScale":0.67,"measuredScale":0.89379,"committedScale":0.89379,"overlayTransform":"scale(0.750552)","overlayTransformScale":0.75055,"pageHostRect":{"w":546.719,"h":707.516,"left":346.633,"top":84.359},"overlayLayerRect":{"w":544.719,"h":705.516,"left":347.633,"top":85.359},"overlayContentRect":{"w":408.84,"h":0,"left":347.633,"top":85.359},"legacyCompensationRect":{"w":408.84,"h":0,"left":347.633,"top":85.359},"legacyCompensationTransform":"none","palRootRect":null,"canvasContainerRect":null,"palCanvasRect":null,"regionRootRect":null,"regionSvgRect":null,"regionScreenWidth":0,"regionScreenHeight":0,"svgLayerRect":{"w":544.719,"h":705.516,"left":347.633,"top":85.359},"activeSpaceId":null,"activeRegionId":null,"showRegionSelection":false}
+[DebugBridge +7613.9ms] zoom_end {"source":"zoomChange_settle"}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 5 objs, viewBox=612x792
+[CloudSync][realtime] applying DELETE {}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777175388890-4j9mebwdy","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777175080202-n3dae4rx2","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777175105685-e2ennkhn7","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777175111627-b4vwca5mo","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[CursorScope] mousemove cursor=(349,383) onPage=true target=<div#syncfusion-pdf-viewer-tab-1777175428358-b8ijzcymy_textLayer_0> computedCursor=auto transitioned=true
+[CursorScope] mousemove cursor=(347,384) onPage=true target=<div#syncfusion-pdf-viewer-tab-1777175428358-b8ijzcymy_textLayer_0> computedCursor=grab transitioned=false
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(347,384) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(347,385) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(348,386) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(349,387) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(351,388) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(353,390) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(357,394) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(361,397) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(367,401) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(376,407) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(383,413) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(400,425) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(423,442) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(436,451) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(449,461) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(463,472) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(479,483) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 5 objs, viewBox=612x792
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(507,505) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(521,515) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(534,523) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(547,532) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(559,539) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(573,546) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(583,550) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(589,552) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(596,553) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(598,554) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(600,555) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(602,557) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(607,561) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(612,566) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(618,571) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(622,574) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(629,580) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(635,586) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(641,591) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 5 objs, viewBox=612x792
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(653,602) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 5 objs, viewBox=612x792
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(657,607) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(660,610) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(661,612) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(665,618) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(666,620) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(667,621) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(668,623) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(668,624) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(668,624) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(669,626) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(669,627) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(669,627) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(670,627) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(670,628) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(671,628) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(672,629) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[CursorScope] mousemove cursor=(674,629) onPage=true target=<div#syncfusion-pdf-viewer-tab-1777175428358-b8ijzcymy_textLayer_0> computedCursor=grab transitioned=false
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(674,629) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(676,629) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(679,629) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(682,629) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(686,628) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(690,627) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(695,626) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(700,625) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(704,624) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(709,623) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(711,623) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(718,622) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(720,621) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(722,620) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(725,620) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(730,620) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(732,620) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(734,620) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(735,620) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(735,620) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(736,620) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(736,620) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(736,620) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(736,620) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(737,620) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(737,620) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(737,620) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(737,620) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(737,621) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(737,621) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(737,621) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(737,621) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(737,621) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(737,622) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(737,622) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(737,622) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(737,622) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(737,623) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(737,623) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(737,623) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(737,624) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(737,624) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(737,625) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(738,625) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(738,626) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(738,626) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(738,626) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(738,627) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(738,627) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(738,627) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[HitTest pageDiv-bounds] sfIndex=0 cursor=(738,627) pageDiv={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} pageCanvas={"l":347,"t":84,"r":893,"b":792,"w":547,"h":708} canvasIntrinsic=547x708
+[HitTest ref-rect] usingCanvas=true ref=(347,84)-(893,792) inside=true
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 5 objs, viewBox=612x792
+[Diag] tool-switch DETECTED → select (scheduling t+1000ms capture)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[CursorScope] mousemove cursor=(715,627) onPage=true target=<svg> computedCursor=default transitioned=false
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[Diag select] screenshot saved (116 KB) → /Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/TestLogs/testlog-screenshot-select.png
+[Diag select] CAPTURED @ t+1001ms — annotations=5 callouts=0 svgWrappers=1 svgVis=[visible] svgElems=5 svgVisElems=5 eraserCanvases=0 svgMarkupBytes=8731
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[CursorScope] mousemove cursor=(527,720) onPage=true target=<svg> computedCursor=default transitioned=false
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 4 objs, viewBox=612x792
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVG p1] MOUNT — 4 annotations, 0 callouts, viewBox=612x792
+[CloudSync][hook] fabric state changed — debounce push scheduled {"pageCount":1,"objectCount":4,"debounceMs":800}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 4 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[CloudSync][hook] fabric push debounce elapsed — pushing now
+[CloudSync][hook] eraser/delete detected — removing rows from cloud {"count":1,"firstFew":["ink-1777175105685-e2ennkhn7"]}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 4 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[CloudSync][push] upsertAnnotationsByPage start {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","totalRows":4,"rowsByType":{"ink":4},"pages":1}
+[CloudSync][realtime] applying DELETE {}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 4 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[CloudSync][push] upsertAnnotationsByPage ok {"elapsedMs":86,"rowsReturned":4}
+[CloudSync][hook] fabric push synced {"count":4}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 4 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[CloudSync][realtime] echo-filtered INSERT {"highlightId":"ink-1777175093072-zqplg8pgc","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"413709d6-d9c3-4a32-9d52-8dbc1a590c1c","currentSessionId":"413709d6-d9c3-4a32-9d52-8dbc1a590c1c","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777175388890-4j9mebwdy","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"413709d6-d9c3-4a32-9d52-8dbc1a590c1c","currentSessionId":"413709d6-d9c3-4a32-9d52-8dbc1a590c1c","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777175080202-n3dae4rx2","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"413709d6-d9c3-4a32-9d52-8dbc1a590c1c","currentSessionId":"413709d6-d9c3-4a32-9d52-8dbc1a590c1c","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777175111627-b4vwca5mo","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"413709d6-d9c3-4a32-9d52-8dbc1a590c1c","currentSessionId":"413709d6-d9c3-4a32-9d52-8dbc1a590c1c","reason":"same-session"}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 4 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[CloudSync][realtime] applying DELETE {}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777175080202-n3dae4rx2","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 4 objs, viewBox=612x792
+[CloudSync][realtime] applying INSERT fabric {"highlightId":"ink-1777175105685-e2ennkhn7","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777175111627-b4vwca5mo","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777175093072-zqplg8pgc","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] MOUNT — 5 annotations, 0 callouts, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.89379, measuredPageScale=0.89379, committedPageScale=0.89379, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750552, storedOverlayTransformScale=1, syncfusionViewerScale=0.67, overlayDiv=true, overlayDivW=547, overlayDivH=708, overlayDivTransform=none, overlayContentTransform=scale(0.750552)
