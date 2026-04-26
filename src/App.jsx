@@ -22275,6 +22275,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     saveCallouts(pdfId, callouts);
   }, [pdfId, callouts]);
 
+  // 2026-04-25 — Mirror annotationsByPage to localStorage on every change.
+  // Without this auto-save, localStorage only got rewritten on manual
+  // Cmd/Ctrl+S, so cloud-authoritative replacements (deletions made on
+  // another device, or any push from a peer) would update React state
+  // and push to Supabase but leave a stale snapshot in localStorage.
+  // Next app boot would flash the stale data before the cloud-sync
+  // hydrate replaced it. Mirroring on every change keeps localStorage
+  // in lock-step with the live state, matching how callouts already work.
+  useEffect(() => {
+    if (!pdfId) return;
+    saveAnnotationsByPage(pdfId, annotationsByPage);
+  }, [pdfId, annotationsByPage]);
+
   // Save survey data to Supabase Storage
   const saveSurveyDataToSupabase = useCallback(async (currentAnnotations, currentSpaces, currentTemplate) => {
     if (!pdfFile || !pdfFile.projectId || !pdfId) {
