@@ -1,0 +1,297 @@
+===== SurveyApp Save Log =====
+version:   0.1.36
+runtime:   desktop-installer
+platform:  desktop
+device:    Windows PC
+os:        Windows 10.0
+screen:    1536x960 @1.25x
+viewport:  1186x743
+locale:    en-US
+timestamp: 2026-04-26T03:51:24.368Z (4/25/2026, 11:51:24 PM)
+==============================
+[dev-auto-login] boot {"hasDevEmail":false,"devEmailHint":null,"hasDevPassword":false,"hasCachedSession":true,"cachedSessionEmail":"isaiahcalvo123@gmail.com","cachedSessionExpiresAt":1777176314}
+[dev-auto-login] decision {"needsAutoLogin":false,"willAttemptSignIn":false}
+[CloudSync][hook] session id minted {"sessionId":"433babf4-25e7-4ece-ba74-a6f278d32564"}
+[AnnotPerf] finalize idle (forced-reset) — deferring CSS transform removal, waiting for PAL confirmation
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":null}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":false}
+[CSeries wipe] doc=sync-test.pdf-2489 totalCounters=0 legacyRemoved=0 — nothing to wipe.
+[PrintPanel] mount — binding Cmd/Ctrl+P listeners. electronAPI available: true onPrintPdf available: true
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"sync-test.pdf-2489"}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":true}
+[ZoomLive svg p1] {"interactionPhase":"idle","zoomOverlayTransformActive":true,"viewerScale":0.78662,"measuredScale":0.78662,"committedScale":0,"overlayTransform":"none","overlayTransformScale":1,"pageHostRect":null,"overlayLayerRect":null,"overlayContentRect":null,"legacyCompensationRect":null,"legacyCompensationTransform":"none","palRootRect":null,"canvasContainerRect":null,"palCanvasRect":null,"regionRootRect":null,"regionSvgRect":null,"regionScreenWidth":0,"regionScreenHeight":0,"svgLayerRect":null,"activeSpaceId":null,"activeRegionId":null,"showRegionSelection":false}
+[PrintPanel] mount — binding Cmd/Ctrl+P listeners. electronAPI available: true onPrintPdf available: true
+[PrintPanel] mount — binding Cmd/Ctrl+P listeners. electronAPI available: true onPrintPdf available: true
+[PrintPanel] mount — binding Cmd/Ctrl+P listeners. electronAPI available: true onPrintPdf available: true
+[PrintPanel] RENDER — panel closed
+[CursorScope] bound mousemove on container syncfusion-pdf-viewer-tab-1777175430961-stzc7svus_pageViewContainer
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.33333, measuredPageScale=1.33333, committedPageScale=none, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=816, overlayDivH=1056, overlayDivTransform=none, overlayContentTransform=none
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVG p1] MOUNT — 5 annotations, 0 callouts, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.33333, measuredPageScale=1.33333, committedPageScale=1.33333, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=816, overlayDivH=1056, overlayDivTransform=none, overlayContentTransform=none
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.33333, measuredPageScale=1.33333, committedPageScale=1.33333, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=816, overlayDivH=1056, overlayDivTransform=none, overlayContentTransform=none
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.33333, measuredPageScale=1.33333, committedPageScale=1.33333, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=816, overlayDivH=1056, overlayDivTransform=none, overlayContentTransform=none
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.33333, measuredPageScale=1.33333, committedPageScale=1.33333, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=816, overlayDivH=1056, overlayDivTransform=none, overlayContentTransform=none
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.33333, measuredPageScale=1.33333, committedPageScale=1.33333, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=816, overlayDivH=1056, overlayDivTransform=none, overlayContentTransform=none
+[SVG p1] render — 5 objs, viewBox=612x792
+[CloudSync][hook] hydrate effect fired {"enabled":true,"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"sync-test.pdf-2489"}
+[CloudSync][hook] stage=hydrating
+[CloudSync][hydrate] loadAllNonHighlightAnnotations start {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3"}
+[CloudSync][hook] fabric push skipped — not hydrated yet
+[CloudSync][hook] callout push skipped — not hydrated yet
+[CloudSync][realtime] subscribing {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","currentUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","currentSessionId":"433babf4-25e7-4ece-ba74-a6f278d32564","hasFabricInsert":true,"hasFabricUpdate":true,"hasFabricDelete":true,"hasCalloutInsert":true,"hasCalloutUpdate":true,"hasCalloutDelete":true}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.33333, measuredPageScale=1.33333, committedPageScale=1.33333, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=816, overlayDivH=1056, overlayDivTransform=none, overlayContentTransform=none
+[SVG p1] render — 5 objs, viewBox=612x792
+[ZoomLive svg p1] {"interactionPhase":"idle","zoomOverlayTransformActive":true,"viewerScale":0.1,"measuredScale":0.1,"committedScale":1.33333,"overlayTransform":"none","overlayTransformScale":1,"pageHostRect":{"w":816,"h":1056,"left":204,"top":86.4},"overlayLayerRect":{"w":814.4,"h":1054.4,"left":204.8,"top":87.2},"overlayContentRect":{"w":814.4,"h":0,"left":204.8,"top":87.2},"legacyCompensationRect":{"w":814.4,"h":1054.4,"left":204.8,"top":87.2},"legacyCompensationTransform":"none","palRootRect":null,"canvasContainerRect":null,"palCanvasRect":null,"regionRootRect":null,"regionSvgRect":null,"regionScreenWidth":0,"regionScreenHeight":0,"svgLayerRect":{"w":814.4,"h":1054.4,"left":204.8,"top":87.2},"activeSpaceId":null,"activeRegionId":null,"showRegionSelection":false}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.33333, measuredPageScale=1.33333, committedPageScale=1.33333, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=816, overlayDivH=1056, overlayDivTransform=none, overlayContentTransform=none
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.33333, measuredPageScale=1.33333, committedPageScale=1.33333, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=816, overlayDivH=1056, overlayDivTransform=none, overlayContentTransform=none
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.33333, measuredPageScale=1.33333, committedPageScale=1.33333, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=816, overlayDivH=1056, overlayDivTransform=none, overlayContentTransform=none
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.33333, measuredPageScale=1.33333, committedPageScale=1.33333, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=816, overlayDivH=1056, overlayDivTransform=none, overlayContentTransform=none
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.33333, measuredPageScale=1.33333, committedPageScale=1.33333, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1, storedOverlayTransformScale=1, syncfusionViewerScale=0.1, overlayDiv=true, overlayDivW=816, overlayDivH=1056, overlayDivTransform=none, overlayContentTransform=none
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.33333, measuredPageScale=1.05392, committedPageScale=1.33333, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1.0043, storedOverlayTransformScale=1, syncfusionViewerScale=0.79, overlayDiv=true, overlayDivW=645, overlayDivH=834, overlayDivTransform=none, overlayContentTransform=scale(1.0043)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.05392, measuredPageScale=1.05392, committedPageScale=1.05392, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1.0043, storedOverlayTransformScale=1, syncfusionViewerScale=0.79, overlayDiv=true, overlayDivW=645, overlayDivH=834, overlayDivTransform=none, overlayContentTransform=scale(1.0043)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.05392, measuredPageScale=1.05392, committedPageScale=1.05392, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1.0043, storedOverlayTransformScale=1, syncfusionViewerScale=0.79, overlayDiv=true, overlayDivW=645, overlayDivH=834, overlayDivTransform=none, overlayContentTransform=scale(1.0043)
+[CloudSync][hydrate] loadAllNonHighlightAnnotations ok {"elapsedMs":191,"totalRows":5,"rowsByType":{"ink":5},"pagesWithObjects":1,"calloutCount":0}
+[CloudSync][hook] replacing local fabric state with cloud (cloud is authoritative) {"pages":1,"migrationDone":true}
+[CloudSync][hook] replacing local callouts with cloud (cloud is authoritative) {"count":0,"migrationDone":true}
+[CloudSync][hook] stage=migrating (one-time local→cloud push)
+[CloudSync][hook] hydrate+migrate complete — push gate OPEN {"migrationPushed":0}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.05392, measuredPageScale=1.05392, committedPageScale=1.05392, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1.0043, storedOverlayTransformScale=1, syncfusionViewerScale=0.79, overlayDiv=true, overlayDivW=645, overlayDivH=834, overlayDivTransform=none, overlayContentTransform=scale(1.0043)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.05392, measuredPageScale=1.05392, committedPageScale=1.05392, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1.0043, storedOverlayTransformScale=1, syncfusionViewerScale=0.79, overlayDiv=true, overlayDivW=645, overlayDivH=834, overlayDivTransform=none, overlayContentTransform=scale(1.0043)
+[SVG p1] render — 5 objs, viewBox=612x792
+[CloudSync][realtime] subscribe status {"status":"SUBSCRIBED","error":null}
+[CloudSync][hydrate] loadAllNonHighlightAnnotations start {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3"}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.05392, measuredPageScale=1.05392, committedPageScale=1.05392, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1.0043, storedOverlayTransformScale=1, syncfusionViewerScale=0.79, overlayDiv=true, overlayDivW=645, overlayDivH=834, overlayDivTransform=none, overlayContentTransform=scale(1.0043)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.05392, measuredPageScale=1.05392, committedPageScale=1.05392, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1.0043, storedOverlayTransformScale=1, syncfusionViewerScale=0.79, overlayDiv=true, overlayDivW=645, overlayDivH=834, overlayDivTransform=none, overlayContentTransform=scale(1.0043)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.05392, measuredPageScale=1.05392, committedPageScale=1.05392, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1.0043, storedOverlayTransformScale=1, syncfusionViewerScale=0.79, overlayDiv=true, overlayDivW=645, overlayDivH=834, overlayDivTransform=none, overlayContentTransform=scale(1.0043)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.05392, measuredPageScale=1.05392, committedPageScale=1.05392, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1.0043, storedOverlayTransformScale=1, syncfusionViewerScale=0.79, overlayDiv=true, overlayDivW=645, overlayDivH=834, overlayDivTransform=none, overlayContentTransform=scale(1.0043)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.05392, measuredPageScale=1.05392, committedPageScale=1.05392, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1.0043, storedOverlayTransformScale=1, syncfusionViewerScale=0.79, overlayDiv=true, overlayDivW=645, overlayDivH=834, overlayDivTransform=none, overlayContentTransform=scale(1.0043)
+[CloudSync][hydrate] loadAllNonHighlightAnnotations ok {"elapsedMs":61,"totalRows":5,"rowsByType":{"ink":5},"pagesWithObjects":1,"calloutCount":0}
+[CloudSync][hook] post-subscribe catch-up rehydrate complete {"pagesFromCloud":1,"calloutsFromCloud":0}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.05392, measuredPageScale=1.05392, committedPageScale=1.05392, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1.0043, storedOverlayTransformScale=1, syncfusionViewerScale=0.79, overlayDiv=true, overlayDivW=645, overlayDivH=834, overlayDivTransform=none, overlayContentTransform=scale(1.0043)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.05392, measuredPageScale=1.05392, committedPageScale=1.05392, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1.0043, storedOverlayTransformScale=1, syncfusionViewerScale=0.79, overlayDiv=true, overlayDivW=645, overlayDivH=834, overlayDivTransform=none, overlayContentTransform=scale(1.0043)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.05392, measuredPageScale=1.05392, committedPageScale=1.05392, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=1.0043, storedOverlayTransformScale=1, syncfusionViewerScale=0.79, overlayDiv=true, overlayDivW=645, overlayDivH=834, overlayDivTransform=none, overlayContentTransform=scale(1.0043)
+[ZoomLive svg p1] {"interactionPhase":"idle","zoomOverlayTransformActive":true,"viewerScale":0.79,"measuredScale":1.05392,"committedScale":1.05392,"overlayTransform":"scale(1.0043)","overlayTransformScale":1.0043,"pageHostRect":{"w":644.638,"h":834.237,"left":289.675,"top":84.713},"overlayLayerRect":{"w":643.038,"h":832.638,"left":290.475,"top":85.513},"overlayContentRect":{"w":645.804,"h":0,"left":290.475,"top":85.513},"legacyCompensationRect":{"w":645.804,"h":0,"left":290.475,"top":85.513},"legacyCompensationTransform":"none","palRootRect":null,"canvasContainerRect":null,"palCanvasRect":null,"regionRootRect":null,"regionSvgRect":null,"regionScreenWidth":0,"regionScreenHeight":0,"svgLayerRect":{"w":643.038,"h":832.638,"left":290.475,"top":85.513},"activeSpaceId":null,"activeRegionId":null,"showRegionSelection":false}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=1.05392, measuredPageScale=0.78595, committedPageScale=1.05392, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[ZoomLive svg p1] {"interactionPhase":"idle","zoomOverlayTransformActive":true,"viewerScale":0.59,"measuredScale":0.78595,"committedScale":0.78595,"overlayTransform":"scale(0.750048)","overlayTransformScale":0.75005,"pageHostRect":{"w":481.438,"h":623.038,"left":371.275,"top":83.113},"overlayLayerRect":{"w":479.837,"h":621.438,"left":372.075,"top":83.912},"overlayContentRect":{"w":359.901,"h":0,"left":372.075,"top":83.912},"legacyCompensationRect":{"w":359.901,"h":0,"left":372.075,"top":83.912},"legacyCompensationTransform":"none","palRootRect":null,"canvasContainerRect":null,"palCanvasRect":null,"regionRootRect":null,"regionSvgRect":null,"regionScreenWidth":0,"regionScreenHeight":0,"svgLayerRect":{"w":479.837,"h":621.438,"left":372.075,"top":83.912},"activeSpaceId":null,"activeRegionId":null,"showRegionSelection":false}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[ZoomLive svg p1] {"interactionPhase":"idle","zoomOverlayTransformActive":true,"viewerScale":0.59,"measuredScale":0.78595,"committedScale":0.78595,"overlayTransform":"scale(0.750048)","overlayTransformScale":0.75005,"pageHostRect":{"w":481.438,"h":623.038,"left":371.275,"top":83.113},"overlayLayerRect":{"w":479.837,"h":621.438,"left":372.075,"top":83.912},"overlayContentRect":{"w":359.901,"h":0,"left":372.075,"top":83.912},"legacyCompensationRect":{"w":359.901,"h":0,"left":372.075,"top":83.912},"legacyCompensationTransform":"none","palRootRect":null,"canvasContainerRect":null,"palCanvasRect":null,"regionRootRect":null,"regionSvgRect":null,"regionScreenWidth":0,"regionScreenHeight":0,"svgLayerRect":{"w":479.837,"h":621.438,"left":372.075,"top":83.912},"activeSpaceId":null,"activeRegionId":null,"showRegionSelection":false}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[HyperlinkDiag] post-load scan {"hyperlinkCount":0,"samples":[]}
+[HyperlinkDiag] page 1 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","DIV","e-pv-annotation-canvas","e-pv-text-layer"]}
+[HyperlinkDiag] page 2 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","DIV","e-pv-annotation-canvas","e-pv-text-layer"]}
+[HyperlinkDiag] page 3 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","DIV","e-pv-annotation-canvas","e-pv-text-layer"]}
+[ZoomLive svg p1] {"interactionPhase":"idle","zoomOverlayTransformActive":true,"viewerScale":0.59,"measuredScale":0.78595,"committedScale":0.78595,"overlayTransform":"scale(0.750048)","overlayTransformScale":0.75005,"pageHostRect":{"w":481.438,"h":623.038,"left":371.275,"top":83.113},"overlayLayerRect":{"w":479.837,"h":621.438,"left":372.075,"top":83.912},"overlayContentRect":{"w":359.901,"h":0,"left":372.075,"top":83.912},"legacyCompensationRect":{"w":359.901,"h":0,"left":372.075,"top":83.912},"legacyCompensationTransform":"none","palRootRect":null,"canvasContainerRect":null,"palCanvasRect":null,"regionRootRect":null,"regionSvgRect":null,"regionScreenWidth":0,"regionScreenHeight":0,"svgLayerRect":{"w":479.837,"h":621.438,"left":372.075,"top":83.912},"activeSpaceId":null,"activeRegionId":null,"showRegionSelection":false}
+[ZoomLive svg p1] {"interactionPhase":"idle","zoomOverlayTransformActive":true,"viewerScale":0.59,"measuredScale":0.78595,"committedScale":0.78595,"overlayTransform":"scale(0.750048)","overlayTransformScale":0.75005,"pageHostRect":{"w":481.438,"h":623.038,"left":371.275,"top":83.113},"overlayLayerRect":{"w":479.837,"h":621.438,"left":372.075,"top":83.912},"overlayContentRect":{"w":359.901,"h":0,"left":372.075,"top":83.912},"legacyCompensationRect":{"w":359.901,"h":0,"left":372.075,"top":83.912},"legacyCompensationTransform":"none","palRootRect":null,"canvasContainerRect":null,"palCanvasRect":null,"regionRootRect":null,"regionSvgRect":null,"regionScreenWidth":0,"regionScreenHeight":0,"svgLayerRect":{"w":479.837,"h":621.438,"left":372.075,"top":83.912},"activeSpaceId":null,"activeRegionId":null,"showRegionSelection":false}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 5 objs, viewBox=612x792
+[Diag] tool-switch DETECTED → select (scheduling t+1000ms capture)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[CursorScope] mousemove cursor=(380,322) onPage=true target=<svg> computedCursor=default transitioned=true
+[CursorScope] mousemove cursor=(402,313) onPage=true target=<svg> computedCursor=default transitioned=false
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+console.warn @ [Diag select] screenshot capture failed: Error invoking remote method 'fs:writeFile': Error: EPERM: operation not permitted, mkdir '/Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/TestLogs'
+[Diag select] CAPTURED @ t+1004ms — annotations=5 callouts=0 svgWrappers=1 svgVis=[visible] svgElems=5 svgVisElems=5 eraserCanvases=0 svgMarkupBytes=8461
+[BboxScaleDiag] annotation-pointerdown {"ts":"2026-04-26T03:50:35.004Z","annotationIndex":2,"objType":"path","shiftKey":false,"altKey":false,"metaKey":false,"alreadySelected":false,"objSnapshot":{"left":0,"top":0,"width":325.13,"height":331.4,"angle":0,"scaleX":1,"scaleY":1}}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 5 objs, viewBox=612x792
+[CursorScope] mousemove cursor=(620,189) onPage=true target=<svg> computedCursor=default transitioned=false
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 4 objs, viewBox=612x792
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVG p1] MOUNT — 4 annotations, 0 callouts, viewBox=612x792
+[CloudSync][hook] fabric state changed — debounce push scheduled {"pageCount":1,"objectCount":4,"debounceMs":800}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 4 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[CloudSync][hook] fabric push debounce elapsed — pushing now
+[CloudSync][hook] eraser/delete detected — removing rows from cloud {"count":1,"firstFew":["ink-1777175093072-zqplg8pgc"]}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 4 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[CloudSync][push] upsertAnnotationsByPage start {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","totalRows":4,"rowsByType":{"ink":4},"pages":1}
+[CloudSync][push] upsertAnnotationsByPage ok {"elapsedMs":54,"rowsReturned":4}
+[CloudSync][hook] fabric push synced {"count":4}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 4 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[CloudSync][realtime] applying DELETE {}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777175388890-4j9mebwdy","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"433babf4-25e7-4ece-ba74-a6f278d32564","currentSessionId":"433babf4-25e7-4ece-ba74-a6f278d32564","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777175080202-n3dae4rx2","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"433babf4-25e7-4ece-ba74-a6f278d32564","currentSessionId":"433babf4-25e7-4ece-ba74-a6f278d32564","reason":"same-session"}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 4 objs, viewBox=612x792
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777175105685-e2ennkhn7","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"433babf4-25e7-4ece-ba74-a6f278d32564","currentSessionId":"433babf4-25e7-4ece-ba74-a6f278d32564","reason":"same-session"}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777175111627-b4vwca5mo","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"433babf4-25e7-4ece-ba74-a6f278d32564","currentSessionId":"433babf4-25e7-4ece-ba74-a6f278d32564","reason":"same-session"}
+[CloudSync][realtime] applying DELETE {}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 4 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[CloudSync][realtime] applying INSERT fabric {"highlightId":"ink-1777175093072-zqplg8pgc","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] MOUNT — 5 annotations, 0 callouts, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 5 objs, viewBox=612x792
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777175388890-4j9mebwdy","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 5 objs, viewBox=612x792
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777175080202-n3dae4rx2","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[CloudSync][realtime] applying UPDATE fabric {"highlightId":"ink-1777175111627-b4vwca5mo","annotationType":"ink","pageNumber":1,"lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd"}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[CursorScope] mousemove cursor=(558,560) onPage=true target=<svg> computedCursor=default transitioned=false
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[CursorScope] mousemove cursor=(860,360) onPage=false target=<canvas#syncfusion-pdf-viewer-tab-1777175430961-stzc7svus_annotationCanvas_0> computedCursor=auto transitioned=true
+[CursorScope] mousemove cursor=(844,335) onPage=true target=<svg> computedCursor=default transitioned=true
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[CursorScope] mousemove cursor=(693,428) onPage=true target=<svg> computedCursor=default transitioned=false
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 5 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 4 objs, viewBox=612x792
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVG p1] MOUNT — 4 annotations, 0 callouts, viewBox=612x792
+[CloudSync][hook] fabric state changed — debounce push scheduled {"pageCount":1,"objectCount":4,"debounceMs":800}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 4 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[CloudSync][hook] fabric push debounce elapsed — pushing now
+[CloudSync][hook] eraser/delete detected — removing rows from cloud {"count":1,"firstFew":["ink-1777175388890-4j9mebwdy"]}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 4 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[CloudSync][push] upsertAnnotationsByPage start {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","totalRows":4,"rowsByType":{"ink":4},"pages":1}
+[CloudSync][push] upsertAnnotationsByPage ok {"elapsedMs":94,"rowsReturned":4}
+[CloudSync][hook] fabric push synced {"count":4}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 4 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[CloudSync][realtime] applying DELETE {}
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[SVG p1] render — 4 objs, viewBox=612x792
+[App-Debug p1] PAL render — pageSize={w:612, h:792}, layerScale=0.78595, measuredPageScale=0.78595, committedPageScale=0.78595, legacyCommitCompensationPending=false, legacyCommitCompensationScale=1, overlayContentTransformScale=0.750048, storedOverlayTransformScale=1, syncfusionViewerScale=0.59, overlayDiv=true, overlayDivW=481, overlayDivH=623, overlayDivTransform=none, overlayContentTransform=scale(0.750048)
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777175080202-n3dae4rx2","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"433babf4-25e7-4ece-ba74-a6f278d32564","currentSessionId":"433babf4-25e7-4ece-ba74-a6f278d32564","reason":"same-session"}
+[CloudSync][realtime] echo-filtered INSERT {"highlightId":"ink-1777175105685-e2ennkhn7","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"433babf4-25e7-4ece-ba74-a6f278d32564","currentSessionId":"433babf4-25e7-4ece-ba74-a6f278d32564","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777175111627-b4vwca5mo","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"433babf4-25e7-4ece-ba74-a6f278d32564","currentSessionId":"433babf4-25e7-4ece-ba74-a6f278d32564","reason":"same-session"}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777175093072-zqplg8pgc","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"433babf4-25e7-4ece-ba74-a6f278d32564","currentSessionId":"433babf4-25e7-4ece-ba74-a6f278d32564","reason":"same-session"}
