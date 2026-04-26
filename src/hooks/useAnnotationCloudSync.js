@@ -31,8 +31,14 @@ import {
   drainQueue,
   getQueueSize
 } from '../services/cloudSyncQueue.js';
+import { getAuthSnapshot } from '../supabaseClient.js';
 
 const DEFAULT_DEBOUNCE_MS = 800; // mid-drag pushes are coalesced into one upsert
+// 2026-04-26 — How long to wait before re-asking the cloud when the first read
+// came back empty but the device still shows annotations. Long enough for a
+// transient auth/replica race to finish; short enough that it does not feel
+// like a stall when the device legitimately has nothing.
+const EMPTY_CLOUD_VERIFY_DELAY_MS = 1000;
 
 /**
  * @param {object} args
@@ -108,7 +114,17 @@ export function useAnnotationCloudSync({
     (async () => {
       setStatus({ stage: 'hydrating' });
       console.log('[CloudSync][hook] stage=hydrating');
-      const cloud = await loadAllNonHighlightAnnotations(documentId);
+      // 2026-04-26 — capture local counts at fire time so the verify helper
+      // can decide whether an empty cloud read should be trusted on its own
+      // or re-asked once. annotationsByPage / callouts here are the closure
+      // values React handed us when the effect committed.
+      const localFabricAtHydrate = countFabricObjects(annotationsByPage);
+      const localCalloutAtHydrate = calloutCountSafe(callouts);
+      const cloud = await loadCloudWithEmptyVerify(documentId, {
+        localFabricCount: localFabricAtHydrate,
+        localCalloutCount: localCalloutAtHydrate,
+        contextLabel: 'initial-hydrate'
+      });
       if (cancelled) {
         console.log('[CloudSync][hook] hydrate cancelled mid-flight');
         return;
@@ -235,9 +251,29 @@ export function useAnnotationCloudSync({
       (n, p) => n + (Array.isArray(p?.objects) ? p.objects.length : 0),
       0
     );
+    // 2026-04-26 — extra trace so we can see EVERY scheduled push, including
+    // the prior-vs-new object counts. If this ever logs "priorObjects:N
+    // currentObjects:0 — DESTRUCTIVE WIPE PUSH", it means a path mutated
+    // local state without updating lastByPageRef in lock-step (the protective
+    // pattern used throughout this hook). That would be the destructive
+    // empty-push that explains a peer device going blank.
+    const priorObjectCount = countFabricObjects(priorByPage);
+    const isWipePush = objectCount === 0 && priorObjectCount > 0;
+    if (isWipePush) {
+      console.warn('[CloudSync][hook][SUSPICIOUS] fabric push scheduled with WIPE diff ' + JSON.stringify({
+        priorObjects: priorObjectCount,
+        currentObjects: objectCount,
+        priorPages: priorByPage ? Object.keys(priorByPage).length : 0,
+        currentPages: pageCount,
+        priorRef: priorByPage === null ? 'null' : 'object',
+        currentRef: annotationsByPage === null ? 'null' : 'object'
+      }));
+    }
     console.log('[CloudSync][hook] fabric state changed — debounce push scheduled ' + JSON.stringify({
       pageCount,
       objectCount,
+      priorObjectCount,
+      isWipePush,
       debounceMs
     }));
 
@@ -323,8 +359,23 @@ export function useAnnotationCloudSync({
 
     const priorCallouts = lastCalloutsRef.current;
     lastCalloutsRef.current = callouts;
+    // 2026-04-26 — same wipe-push trace as fabric. Catches a callout-side
+    // destructive push that would clear another device's callouts.
+    const priorCalloutCount = calloutCountSafe(priorCallouts);
+    const currentCalloutCount = calloutCountSafe(callouts);
+    const isCalloutWipePush = currentCalloutCount === 0 && priorCalloutCount > 0;
+    if (isCalloutWipePush) {
+      console.warn('[CloudSync][hook][SUSPICIOUS] callout push scheduled with WIPE diff ' + JSON.stringify({
+        priorCount: priorCalloutCount,
+        currentCount: currentCalloutCount,
+        priorRef: priorCallouts === null ? 'null' : 'array',
+        currentRef: callouts === null ? 'null' : 'array'
+      }));
+    }
     console.log('[CloudSync][hook] callout state changed — debounce push scheduled ' + JSON.stringify({
-      count: Array.isArray(callouts) ? callouts.length : 0,
+      count: currentCalloutCount,
+      priorCount: priorCalloutCount,
+      isCalloutWipePush,
       debounceMs
     }));
     const handle = setTimeout(async () => {
@@ -498,7 +549,14 @@ export function useAnnotationCloudSync({
           if (!documentId) return;
           (async () => {
             try {
-              const fresh = await loadAllNonHighlightAnnotations(documentId);
+              // 2026-04-26 — verify empty cloud reads against local snapshot
+              // so a transient read race during the subscribe handshake does
+              // not wipe what the user is looking at.
+              const fresh = await loadCloudWithEmptyVerify(documentId, {
+                localFabricCount: countFabricObjects(lastByPageRef.current),
+                localCalloutCount: calloutCountSafe(lastCalloutsRef.current),
+                contextLabel: 'post-subscribe-catchup'
+              });
               if (fresh.error) return;
               // Cloud-authoritative refresh — replace local with whatever
               // the cloud has now. Catches both rows added by another
@@ -548,7 +606,15 @@ export function useAnnotationCloudSync({
       if (!documentId) return;
       (async () => {
         try {
-          const fresh = await loadAllNonHighlightAnnotations(documentId);
+          // 2026-04-26 — same verify guard as the initial hydrate. If the
+          // window comes back into focus and the cloud query returns empty
+          // while we are still showing annotations, re-ask once before
+          // wiping. Cheap insurance against a transient read race.
+          const fresh = await loadCloudWithEmptyVerify(documentId, {
+            localFabricCount: countFabricObjects(lastByPageRef.current),
+            localCalloutCount: calloutCountSafe(lastCalloutsRef.current),
+            contextLabel: 'focus-rehydrate'
+          });
           if (fresh.error) return;
           // Cloud-authoritative on focus too — picks up deletions made
           // while this window was backgrounded. 2026-04-25 — gate
@@ -644,6 +710,113 @@ export function useAnnotationCloudSync({
   };
 
   return { status, queueSize, forceFlush };
+}
+
+// ----------------------------------------------------------------------------
+// Empty-cloud verification helper — added 2026-04-26
+// ----------------------------------------------------------------------------
+//
+// Symptom this guards against: one device's first cloud read after a refresh
+// returns zero rows even though the cloud actually has data. Hypothesised
+// causes include an auth/RLS handshake race, a slow read replica, or a
+// transient Supabase connection swap. Whatever the cause, the user-visible
+// damage is the same — the device wipes its local cache to match a false-empty
+// cloud and ends up showing a blank canvas while the other device renders
+// fine.
+//
+// Strategy: when the cloud claims to be empty AND the device is showing
+// annotations, do not trust the first read. Wait briefly, ask once more, and
+// only commit to the wipe if both reads agree. Costs one extra round trip in
+// the rare suspicious case; safe in every other case (empty cloud + empty
+// device returns the first read immediately, non-empty cloud short-circuits).
+
+function countFabricObjects(annotationsByPage) {
+  if (!annotationsByPage || typeof annotationsByPage !== 'object') return 0;
+  let n = 0;
+  for (const page of Object.values(annotationsByPage)) {
+    if (page && Array.isArray(page.objects)) n += page.objects.length;
+  }
+  return n;
+}
+
+function calloutCountSafe(callouts) {
+  return Array.isArray(callouts) ? callouts.length : 0;
+}
+
+async function loadCloudWithEmptyVerify(documentId, opts = {}) {
+  const {
+    localFabricCount = 0,
+    localCalloutCount = 0,
+    contextLabel = 'unknown'
+  } = opts;
+  const t0 = Date.now();
+  const first = await loadAllNonHighlightAnnotations(documentId);
+  if (first.error) return first;
+
+  const firstFabric = first.annotationsByPage ? Object.keys(first.annotationsByPage).length : 0;
+  const firstFabricObjects = countFabricObjects(first.annotationsByPage);
+  const firstCallouts = calloutCountSafe(first.callouts);
+  const firstEmpty = firstFabric === 0 && firstCallouts === 0;
+  const localHasData = localFabricCount > 0 || localCalloutCount > 0;
+
+  console.log('[CloudSync][verify] first read summary ' + JSON.stringify({
+    contextLabel,
+    documentId,
+    elapsedMs: Date.now() - t0,
+    firstFabricPages: firstFabric,
+    firstFabricObjects,
+    firstCallouts,
+    firstEmpty,
+    localFabricCount,
+    localCalloutCount,
+    localHasData,
+    willVerify: firstEmpty && localHasData
+  }));
+
+  if (!firstEmpty || !localHasData) return first;
+
+  const auth = await getAuthSnapshot();
+  console.warn('[CloudSync][verify] empty cloud + non-empty device — verifying ' + JSON.stringify({
+    contextLabel,
+    documentId,
+    localFabricCount,
+    localCalloutCount,
+    auth,
+    waitMs: EMPTY_CLOUD_VERIFY_DELAY_MS
+  }));
+
+  await new Promise((resolve) => setTimeout(resolve, EMPTY_CLOUD_VERIFY_DELAY_MS));
+
+  const t1 = Date.now();
+  const second = await loadAllNonHighlightAnnotations(documentId);
+  if (second.error) {
+    console.warn('[CloudSync][verify] verification query errored — keeping first (empty) result ' + JSON.stringify({
+      contextLabel,
+      err: second.error?.message || String(second.error)
+    }));
+    return first;
+  }
+  const secondFabric = second.annotationsByPage ? Object.keys(second.annotationsByPage).length : 0;
+  const secondFabricObjects = countFabricObjects(second.annotationsByPage);
+  const secondCallouts = calloutCountSafe(second.callouts);
+  const secondEmpty = secondFabric === 0 && secondCallouts === 0;
+  const authAfter = await getAuthSnapshot();
+
+  console.warn('[CloudSync][verify] verification result ' + JSON.stringify({
+    contextLabel,
+    documentId,
+    elapsedMs: Date.now() - t1,
+    secondFabricPages: secondFabric,
+    secondFabricObjects,
+    secondCallouts,
+    secondEmpty,
+    authAfter,
+    decision: secondEmpty
+      ? 'CONFIRMED_EMPTY — wipe is safe to proceed'
+      : 'REJECTED — using verification result with data instead'
+  }));
+
+  return secondEmpty ? first : second;
 }
 
 // ----------------------------------------------------------------------------
