@@ -103,9 +103,16 @@ import { resolveAnnotationAt } from './annotationHitTest.js';
       ? window.__onAnnotationContextMenu
       : null;
     const palHandler = pageNumber != null ? lookupPalHandler(pageNumber) : null;
-    const handler = globalHandler || palHandler;
+    // 2026-04-25 — Only show the annotation/page right-click menu when the
+    // cursor is actually over a PDF page. Right-clicks on the toolbar,
+    // sidebar, panels, or any non-page chrome should fall through to the
+    // browser's native menu. Previously the global handler fired on every
+    // right-click, opening the empty-page "Paste" menu over chrome that
+    // had nothing to paste into — confusing UX. Anchoring on
+    // `pageNumber != null` keeps the menu scoped to the page surface.
+    const handler = pageNumber != null ? (globalHandler || palHandler) : null;
 
-    console.log(`[CTXDIAG dispatch] page=${pageNumber} annoIdx=${annotationIndex} calloutId=${calloutId} kind=${kind} groupIndices=${groupIndices ? groupIndices.length : 0} handler=${!!handler} source=${globalHandler ? 'app' : (palHandler ? 'pal' : 'none')} registered=${JSON.stringify(listRegistered())}`);
+    console.log(`[CTXDIAG dispatch] page=${pageNumber} annoIdx=${annotationIndex} calloutId=${calloutId} kind=${kind} groupIndices=${groupIndices ? groupIndices.length : 0} handler=${!!handler} source=${pageNumber == null ? 'off-page' : (globalHandler ? 'app' : (palHandler ? 'pal' : 'none'))} registered=${JSON.stringify(listRegistered())}`);
 
     if (handler) {
       e.preventDefault();

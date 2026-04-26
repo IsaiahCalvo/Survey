@@ -307,22 +307,17 @@ export function subscribeToAllNonHighlightAnnotations(documentId, callbacks = {}
         const oldRow = payload.old;
         if (!oldRow) return;
         if (oldRow.annotation_type === 'highlight') return; // legacy module owns it
-        // Echo filter — see header comment. Drop deletes initiated by this
-        // session (same browser tab / Electron process) so we don't
-        // re-process our own removal and flicker state. Postgres DELETE
-        // payloads in Supabase realtime only carry primary keys by default,
-        // so we don't have annotation_data on the `old` row — fall back to
-        // user-id matching here. (DELETE echoes are rare in practice; the
-        // hot path is INSERT/UPDATE where sessionId works.)
-        if (currentUserId && oldRow.last_modified_by === currentUserId) {
-          console.log('[CloudSync][realtime] echo-filtered DELETE ' + JSON.stringify({
-            highlightId: oldRow.highlight_id,
-            annotationType: oldRow.annotation_type,
-            lastModifiedBy: oldRow.last_modified_by,
-            currentUserId
-          }));
-          return;
-        }
+        // 2026-04-25 — DO NOT echo-filter DELETEs by user-id. Postgres
+        // DELETE payloads only carry the primary key, so we can't
+        // recover the originating sessionId. The previous fallback
+        // dropped any DELETE whose last_modified_by matched the local
+        // user — which silently broke cross-device deletion when the
+        // SAME account was signed in on Mac + Windows (every cross-
+        // device delete looked like a self-echo and was suppressed).
+        // Applying our own DELETE echo is harmless: removing a
+        // highlight_id that's already absent from local state is a
+        // no-op. Worst case (delete races our local optimistic update)
+        // we still converge to the correct cloud-authoritative state.
         console.log('[CloudSync][realtime] applying DELETE ' + JSON.stringify({
           highlightId: oldRow.highlight_id,
           annotationType: oldRow.annotation_type,
