@@ -25,7 +25,7 @@ import {
   deleteAnnotation,
   deleteAnnotations
 } from '../services/annotationCloudSync.js';
-import { migrateLocalAnnotationsToCloud } from '../services/cloudSyncMigration.js';
+import { migrateLocalAnnotationsToCloud, hasMigrationRun } from '../services/cloudSyncMigration.js';
 import {
   enqueueSync,
   drainQueue,
@@ -127,29 +127,45 @@ export function useAnnotationCloudSync({
         // any subsequent state changes hit. Empty cloud falls through to
         // the existing migration helper which pushes localStorage to
         // cloud, so the "first time on this device" boot still works.
-        const cloudHasFabric = cloud.annotationsByPage
-          && Object.keys(cloud.annotationsByPage).length > 0;
-        const cloudHasCallouts = Array.isArray(cloud.callouts) && cloud.callouts.length > 0;
-        if (cloudHasFabric) {
+        // 2026-04-25 — Fully authoritative replacement only AFTER the
+        // one-time local→cloud migration has run for this (user, doc).
+        // Before migration runs, local may hold rows that have never
+        // reached the cloud, so we must preserve them; the migration
+        // step below will push them up. After migration, an empty cloud
+        // snapshot means "the user truly has nothing here" and we
+        // unconditionally replace local — this is what fixes the bug
+        // where a callout deleted on another device kept reappearing on
+        // a fresh boot because cloud was empty and the old guard
+        // (`if (cloudHas…)`) skipped the replace.
+        const migrationDone = hasMigrationRun(userId, documentId);
+        const cloudFabricPages = cloud.annotationsByPage
+          ? Object.keys(cloud.annotationsByPage).length : 0;
+        const cloudCalloutCount = Array.isArray(cloud.callouts)
+          ? cloud.callouts.length : 0;
+        const replaceFabric = migrationDone || cloudFabricPages > 0;
+        const replaceCallouts = migrationDone || cloudCalloutCount > 0;
+        if (replaceFabric) {
           console.log('[CloudSync][hook] replacing local fabric state with cloud (cloud is authoritative) ' + JSON.stringify({
-            pages: Object.keys(cloud.annotationsByPage).length
+            pages: cloudFabricPages, migrationDone
           }));
           setAnnotationsByPage(() => {
             // Update lastByPageRef.current synchronously inside the setter
             // so the push useEffect's identity check (state === lastRef)
             // returns true and we don't echo the cloud snapshot right back
             // up as if it were a local change.
-            lastByPageRef.current = cloud.annotationsByPage;
-            return cloud.annotationsByPage;
+            const next = cloud.annotationsByPage || {};
+            lastByPageRef.current = next;
+            return next;
           });
         }
-        if (cloudHasCallouts) {
+        if (replaceCallouts) {
           console.log('[CloudSync][hook] replacing local callouts with cloud (cloud is authoritative) ' + JSON.stringify({
-            count: cloud.callouts.length
+            count: cloudCalloutCount, migrationDone
           }));
           setCallouts(() => {
-            lastCalloutsRef.current = cloud.callouts;
-            return cloud.callouts;
+            const next = Array.isArray(cloud.callouts) ? cloud.callouts : [];
+            lastCalloutsRef.current = next;
+            return next;
           });
         }
       }
@@ -454,16 +470,22 @@ export function useAnnotationCloudSync({
               // the cloud has now. Catches both rows added by another
               // device during the hydrate-vs-subscribe gap AND remote
               // deletions that the additive merge would otherwise miss.
-              if (fresh.annotationsByPage && Object.keys(fresh.annotationsByPage).length > 0) {
+              // 2026-04-25 — only do empty-cloud replacement once the
+              // one-time migration has run, otherwise we'd wipe local
+              // data that hasn't been pushed up yet on this device.
+              const subMigrationDone = hasMigrationRun(userId, documentId);
+              const subFresh = fresh.annotationsByPage || {};
+              const subFreshCallouts = Array.isArray(fresh.callouts) ? fresh.callouts : [];
+              if (subMigrationDone || Object.keys(subFresh).length > 0) {
                 setAnnotationsByPage(() => {
-                  lastByPageRef.current = fresh.annotationsByPage;
-                  return fresh.annotationsByPage;
+                  lastByPageRef.current = subFresh;
+                  return subFresh;
                 });
               }
-              if (Array.isArray(fresh.callouts) && fresh.callouts.length > 0) {
+              if (subMigrationDone || subFreshCallouts.length > 0) {
                 setCallouts(() => {
-                  lastCalloutsRef.current = fresh.callouts;
-                  return fresh.callouts;
+                  lastCalloutsRef.current = subFreshCallouts;
+                  return subFreshCallouts;
                 });
               }
               console.log('[CloudSync][hook] post-subscribe catch-up rehydrate complete ' + JSON.stringify({
@@ -495,17 +517,22 @@ export function useAnnotationCloudSync({
           const fresh = await loadAllNonHighlightAnnotations(documentId);
           if (fresh.error) return;
           // Cloud-authoritative on focus too — picks up deletions made
-          // while this window was backgrounded.
-          if (fresh.annotationsByPage && Object.keys(fresh.annotationsByPage).length > 0) {
+          // while this window was backgrounded. 2026-04-25 — gate
+          // empty-cloud replacement on migration-done so first-boot local
+          // data isn't wiped before it gets pushed up.
+          const focusMigrationDone = hasMigrationRun(userId, documentId);
+          const focusFresh = fresh.annotationsByPage || {};
+          const focusFreshCallouts = Array.isArray(fresh.callouts) ? fresh.callouts : [];
+          if (focusMigrationDone || Object.keys(focusFresh).length > 0) {
             setAnnotationsByPage(() => {
-              lastByPageRef.current = fresh.annotationsByPage;
-              return fresh.annotationsByPage;
+              lastByPageRef.current = focusFresh;
+              return focusFresh;
             });
           }
-          if (Array.isArray(fresh.callouts) && fresh.callouts.length > 0) {
+          if (focusMigrationDone || focusFreshCallouts.length > 0) {
             setCallouts(() => {
-              lastCalloutsRef.current = fresh.callouts;
-              return fresh.callouts;
+              lastCalloutsRef.current = focusFreshCallouts;
+              return focusFreshCallouts;
             });
           }
         } catch (err) {

@@ -169,6 +169,16 @@ export async function migrateLocalAnnotationsToCloud(ctx) {
 }
 
 /**
+ * Has the one-time local→cloud migration already run for this (user, document)
+ * pair? Used by the cloud-sync hook to decide whether the cloud snapshot is
+ * fully authoritative (replace local with empty cloud) or still in the
+ * "first boot, preserve local until migration pushes it up" phase.
+ */
+export function hasMigrationRun(userId, documentId) {
+  return alreadyMigrated(userId, documentId);
+}
+
+/**
  * For tests: forget the migration flag for a (user, document) pair.
  */
 export function resetMigrationFlag(userId, documentId) {
