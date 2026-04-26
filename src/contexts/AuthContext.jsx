@@ -182,6 +182,16 @@ export const AuthProvider = ({ children }) => {
     return () => subscription.unsubscribe();
   }, []);
 
+  // 2026-04-26 — Tell the Electron main process whether to enable
+  // developer mode (Reload + Toggle DevTools menu items, Cmd+R / Cmd+Shift+I
+  // / F12 keyboard shortcuts). Only a developer-tier account flips it on
+  // in shipped builds; free / Pro / Enterprise see a clean shipped app.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.electronAPI?.setDeveloperMode) return;
+    if (loadingTier) return;
+    window.electronAPI.setDeveloperMode(subscriptionTier === 'developer').catch(() => {});
+  }, [subscriptionTier, loadingTier]);
+
   // Refetch subscription tier when window regains focus (user returns from Stripe)
   useEffect(() => {
     const handleFocus = () => {
@@ -364,8 +374,16 @@ export const AuthProvider = ({ children }) => {
     isSupabaseAvailable: isSupabaseAvailable(),
     plan: subscriptionTier,
     tier: subscriptionTier,
+    isDeveloper: subscriptionTier === 'developer',
     features: {
-      cloudSync: ['pro', 'enterprise', 'developer'].includes(subscriptionTier),
+      // 2026-04-26 — Cloud sync available to ALL tiers, including free.
+      // Free users get cross-device sync of their own work; multi-user
+      // edit-on-the-same-PDF (the `multiUserEdit` flag below) stays
+      // gated to Pro/Enterprise/Developer. This means a free user
+      // signed in on Mac and Windows sees the same PDFs and the same
+      // marks; they just can't share an editable PDF with another user.
+      cloudSync: true,
+      multiUserEdit: ['pro', 'enterprise', 'developer'].includes(subscriptionTier),
       advancedSurvey: ['pro', 'enterprise', 'developer'].includes(subscriptionTier),
       excelExport: ['pro', 'enterprise', 'developer'].includes(subscriptionTier),
       sso: ['enterprise', 'developer'].includes(subscriptionTier),

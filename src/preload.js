@@ -119,4 +119,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // OAuth APIs - opens a separate window for authentication
   openOAuthWindow: (authUrl, redirectUri) => ipcRenderer.invoke('oauth:openWindow', { authUrl, redirectUri }),
+
+  // 2026-04-26 — Renderer flips the developer-mode gate on/off based on
+  // the signed-in user's tier. When ON, the View menu shows Reload +
+  // Toggle DevTools and the Cmd+R / Cmd+Shift+I / F12 shortcuts work.
+  // When OFF (default for shipped builds), all of those are blocked so
+  // the app feels like a clean native install.
+  setDeveloperMode: (enabled) => ipcRenderer.invoke('developer-mode:set', enabled),
 });

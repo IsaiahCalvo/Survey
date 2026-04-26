@@ -13,6 +13,14 @@ if (process.env.NODE_ENV === 'development') {
   process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
 }
 
+// 2026-04-26 — Developer-mode gate. Default OFF for shipped builds so the
+// View menu doesn't expose Reload / Toggle DevTools and the keyboard
+// shortcuts (Cmd+R, Cmd+Shift+I, F12) are blocked. The renderer flips this
+// ON via IPC after auth detects a developer-tier account, and the menu
+// rebuilds. Dev mode (NODE_ENV=development) auto-enables it so local
+// development still has full tooling.
+let developerMode = process.env.NODE_ENV === 'development';
+
 // UX 2026-04-22: Auto-updater. Checks the Survey repo's GitHub Releases on
 // startup; if a newer version is published the user sees an "Update available"
 // prompt. Only runs in packaged builds — dev mode skips silently because
@@ -152,7 +160,20 @@ ipcMain.handle('updater:installNow', async () => {
   }
 });
 
-function createWindow() {
+// 2026-04-26 — Renderer flips developer mode on/off here based on the
+// signed-in user's tier. Developer-tier accounts get Reload, Toggle
+// DevTools, and the keyboard shortcuts back; everyone else sees a clean
+// shipped-app menu. Local NODE_ENV=development always boots in developer
+// mode so day-to-day development stays unaffected.
+ipcMain.handle('developer-mode:set', async (_event, enabled) => {
+  const next = process.env.NODE_ENV === 'development' ? true : !!enabled;
+  if (next === developerMode) return { ok: true, developerMode };
+  developerMode = next;
+  try { createAppMenu(); } catch (err) {
+    console.warn('[developer-mode] menu rebuild failed:', err?.message || err);
+  }
+  return { ok: true, developerMode };
+});
   // Set icon path based on platform and environment
   // Use app.getAppPath() to get the actual app directory, which works in both dev and production
   const appPath = app.getAppPath();
@@ -210,6 +231,23 @@ function createWindow() {
       win.webContents.executeJavaScript(
         `window.dispatchEvent(new CustomEvent('pdf-zoom', { detail: { direction: '${direction}' } }))`
       ).catch(() => {});
+    }
+    // 2026-04-26 — Block developer keyboard shortcuts unless developer
+    // mode is on. Cmd/Ctrl+R reloads the app, Cmd/Ctrl+Shift+R force
+    // reloads, Cmd+Alt+I or Ctrl+Shift+I opens DevTools, F12 toggles
+    // DevTools. These are appropriate for developer-tier accounts and
+    // local dev mode but should NOT be available to free / Pro /
+    // Enterprise users — the app should feel like a shipped native app.
+    if (!developerMode) {
+      const key = (input.key || '').toLowerCase();
+      const mod = input.control || input.meta;
+      const isReload = mod && key === 'r';
+      const isInspect = mod && input.shift && (key === 'i' || key === 'j' || key === 'c');
+      const isMacInspect = input.meta && input.alt && key === 'i';
+      const isF12 = key === 'f12';
+      if (isReload || isInspect || isMacInspect || isF12) {
+        event.preventDefault();
+      }
     }
   });
 
@@ -460,10 +498,18 @@ function createAppMenu() {
     {
       label: 'View',
       submenu: [
-        { role: 'reload' },
-        { role: 'forceReload' },
-        { role: 'toggleDevTools' },
-        { type: 'separator' },
+        // 2026-04-26 — Reload + force-reload + DevTools are developer-only.
+        // Hidden in shipped builds so free/Pro/Enterprise see a clean
+        // native-feeling app. Re-shown when the renderer flips developer
+        // mode on for a developer-tier account.
+        ...(developerMode
+          ? [
+            { role: 'reload' },
+            { role: 'forceReload' },
+            { role: 'toggleDevTools' },
+            { type: 'separator' }
+          ]
+          : []),
         { role: 'resetZoom' },
         { role: 'zoomIn' },
         { role: 'zoomOut' },

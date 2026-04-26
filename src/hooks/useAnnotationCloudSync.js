@@ -117,17 +117,40 @@ export function useAnnotationCloudSync({
         console.error('[CloudSync][hook] hydrate error ' + (cloud.error?.message || String(cloud.error)));
         setStatus({ stage: 'error', error: cloud.error, phase: 'hydrate' });
       } else {
-        if (cloud.annotationsByPage && Object.keys(cloud.annotationsByPage).length > 0) {
-          console.log('[CloudSync][hook] merging hydrated fabric annotations ' + JSON.stringify({
+        // 2026-04-26 — Cloud is the source of truth on hydrate. Previously
+        // the merge was additive (only added cloud rows that weren't in
+        // local), which meant deletions made on another device came back
+        // when this device opened the doc — local cache still had the
+        // deleted rows. Now we REPLACE local state with cloud's state on
+        // hydrate. Local-only annotations that were never pushed are still
+        // safe because the migration step below will push them up before
+        // any subsequent state changes hit. Empty cloud falls through to
+        // the existing migration helper which pushes localStorage to
+        // cloud, so the "first time on this device" boot still works.
+        const cloudHasFabric = cloud.annotationsByPage
+          && Object.keys(cloud.annotationsByPage).length > 0;
+        const cloudHasCallouts = Array.isArray(cloud.callouts) && cloud.callouts.length > 0;
+        if (cloudHasFabric) {
+          console.log('[CloudSync][hook] replacing local fabric state with cloud (cloud is authoritative) ' + JSON.stringify({
             pages: Object.keys(cloud.annotationsByPage).length
           }));
-          setAnnotationsByPage((prev) => mergeAnnotationsByPage(prev, cloud.annotationsByPage));
+          setAnnotationsByPage(() => {
+            // Update lastByPageRef.current synchronously inside the setter
+            // so the push useEffect's identity check (state === lastRef)
+            // returns true and we don't echo the cloud snapshot right back
+            // up as if it were a local change.
+            lastByPageRef.current = cloud.annotationsByPage;
+            return cloud.annotationsByPage;
+          });
         }
-        if (cloud.callouts && cloud.callouts.length > 0) {
-          console.log('[CloudSync][hook] merging hydrated callouts ' + JSON.stringify({
+        if (cloudHasCallouts) {
+          console.log('[CloudSync][hook] replacing local callouts with cloud (cloud is authoritative) ' + JSON.stringify({
             count: cloud.callouts.length
           }));
-          setCallouts((prev) => mergeCallouts(prev, cloud.callouts));
+          setCallouts(() => {
+            lastCalloutsRef.current = cloud.callouts;
+            return cloud.callouts;
+          });
         }
       }
 
@@ -427,18 +450,20 @@ export function useAnnotationCloudSync({
             try {
               const fresh = await loadAllNonHighlightAnnotations(documentId);
               if (fresh.error) return;
+              // Cloud-authoritative refresh — replace local with whatever
+              // the cloud has now. Catches both rows added by another
+              // device during the hydrate-vs-subscribe gap AND remote
+              // deletions that the additive merge would otherwise miss.
               if (fresh.annotationsByPage && Object.keys(fresh.annotationsByPage).length > 0) {
-                setAnnotationsByPage((prev) => {
-                  const next = mergeAnnotationsByPage(prev, fresh.annotationsByPage);
-                  lastByPageRef.current = next; // suppress echo push
-                  return next;
+                setAnnotationsByPage(() => {
+                  lastByPageRef.current = fresh.annotationsByPage;
+                  return fresh.annotationsByPage;
                 });
               }
               if (Array.isArray(fresh.callouts) && fresh.callouts.length > 0) {
-                setCallouts((prev) => {
-                  const next = mergeCallouts(prev, fresh.callouts);
-                  lastCalloutsRef.current = next; // suppress echo push
-                  return next;
+                setCallouts(() => {
+                  lastCalloutsRef.current = fresh.callouts;
+                  return fresh.callouts;
                 });
               }
               console.log('[CloudSync][hook] post-subscribe catch-up rehydrate complete ' + JSON.stringify({
@@ -469,18 +494,18 @@ export function useAnnotationCloudSync({
         try {
           const fresh = await loadAllNonHighlightAnnotations(documentId);
           if (fresh.error) return;
+          // Cloud-authoritative on focus too — picks up deletions made
+          // while this window was backgrounded.
           if (fresh.annotationsByPage && Object.keys(fresh.annotationsByPage).length > 0) {
-            setAnnotationsByPage((prev) => {
-              const next = mergeAnnotationsByPage(prev, fresh.annotationsByPage);
-              lastByPageRef.current = next;
-              return next;
+            setAnnotationsByPage(() => {
+              lastByPageRef.current = fresh.annotationsByPage;
+              return fresh.annotationsByPage;
             });
           }
           if (Array.isArray(fresh.callouts) && fresh.callouts.length > 0) {
-            setCallouts((prev) => {
-              const next = mergeCallouts(prev, fresh.callouts);
-              lastCalloutsRef.current = next;
-              return next;
+            setCallouts(() => {
+              lastCalloutsRef.current = fresh.callouts;
+              return fresh.callouts;
             });
           }
         } catch (err) {

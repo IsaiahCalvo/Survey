@@ -9,7 +9,12 @@
 /coverage
 
 # production
-/build
+# 2026-04-26 — Ignore everything inside /build EXCEPT the app icons. The
+# GitHub Actions release workflow needs the icons to build Mac + Windows
+# installers; everything else here is electron-builder output noise.
+/build/*
+!/build/icon.icns
+!/build/icon.png
 /dist
 
 # misc
