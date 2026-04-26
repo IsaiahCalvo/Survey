@@ -1,16 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 /**
- * Top-right cloud sync status indicator.
+ * Cloud sync status indicator.
  *
  * UX: a small pill that reads at-a-glance whether the document is in sync.
  *   - Solid green dot · "Up to date" — everyone sees the latest, nothing pending.
  *   - Orange spinner · "Syncing…"     — saving local changes or pulling new ones.
  *   - Red dot · "Offline · N saved locally" — connection lost; changes queued.
  *
- * Reads from useAnnotationCloudSync's `status` and `queueSize`. Designed to sit
- * where the previous "Survey" button lived in the toolbar — the survey button
- * has moved to the left rail. (2026-04-25)
+ * Compact mode (used by the collapsed sidebar rail): icon-only with a
+ * right-side hover tooltip that matches the rail's existing tab tooltips.
  *
  * Hidden entirely when `enabled` is false (e.g. user is on the free tier and
  * cloud sync is gated). The local-only fallback path makes a chip meaningless
@@ -33,9 +32,6 @@ export default function SyncStatusChip({ status, queueSize = 0, enabled = true, 
     label = 'Syncing…';
   }
 
-  // Color tokens chosen to match the toolbar's existing dark theme so the
-  // chip reads as a status, not a CTA. Keep neutrals tight against the
-  // toolbar background.
   const colors = {
     synced:  '#2bbd7e',
     syncing: '#f5a524',
@@ -43,43 +39,75 @@ export default function SyncStatusChip({ status, queueSize = 0, enabled = true, 
   };
   const color = colors[state];
 
-  // Compact mode (used by the collapsed sidebar rail): icon-only — drop the
-  // text label and the chip background so just the colored dot or spinner
-  // shows. The full label is still available on hover via the title attr.
-  if (compact) {
-    return (
-      <div role="status" aria-live="polite" title={label} style={{
+  return compact
+    ? <CompactSyncStatusChip state={state} label={label} color={color} />
+    : <ExpandedSyncStatusChip state={state} label={label} color={color} />;
+}
+
+function CompactSyncStatusChip({ state, label, color }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        position: 'relative',
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
         width: '28px',
         height: '28px',
         color
-      }}>
-        {state === 'syncing' ? (
-          <span aria-hidden="true" style={{
-            width: '14px',
-            height: '14px',
-            border: '2px solid currentColor',
-            borderTopColor: 'transparent',
-            borderRadius: '50%',
-            animation: 'sync-chip-spin 0.8s linear infinite'
-          }} />
-        ) : (
-          <span aria-hidden="true" style={{
-            width: '10px',
-            height: '10px',
-            borderRadius: '50%',
-            background: 'currentColor'
-          }} />
-        )}
-        <style>{`
-          @keyframes sync-chip-spin { to { transform: rotate(360deg); } }
-        `}</style>
-      </div>
-    );
-  }
+      }}
+    >
+      {state === 'syncing' ? (
+        <span aria-hidden="true" style={{
+          width: '14px',
+          height: '14px',
+          border: '2px solid currentColor',
+          borderTopColor: 'transparent',
+          borderRadius: '50%',
+          animation: 'sync-chip-spin 0.8s linear infinite'
+        }} />
+      ) : (
+        <span aria-hidden="true" style={{
+          width: '10px',
+          height: '10px',
+          borderRadius: '50%',
+          background: 'currentColor'
+        }} />
+      )}
+      {hover && (
+        <div style={{
+          position: 'absolute',
+          left: '100%',
+          top: '50%',
+          transform: 'translateY(-50%)',
+          marginLeft: '8px',
+          background: '#1a1a1a',
+          color: '#ddd',
+          padding: '6px 10px',
+          borderRadius: '4px',
+          fontSize: '12px',
+          whiteSpace: 'nowrap',
+          zIndex: 1000,
+          pointerEvents: 'none',
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+          border: '1px solid #3a3a3a'
+        }}>
+          {label}
+        </div>
+      )}
+      <style>{`
+        @keyframes sync-chip-spin { to { transform: rotate(360deg); } }
+      `}</style>
+    </div>
+  );
+}
 
+function ExpandedSyncStatusChip({ state, label, color }) {
   return (
     <div
       role="status"
@@ -101,29 +129,21 @@ export default function SyncStatusChip({ status, queueSize = 0, enabled = true, 
       }}
     >
       {state === 'syncing' ? (
-        // CSS-only spinner so the chip stays self-contained — no SVG asset
-        // dependency. Borrows currentColor from the chip's color token.
-        <span
-          aria-hidden="true"
-          style={{
-            width: '12px',
-            height: '12px',
-            border: '2px solid currentColor',
-            borderTopColor: 'transparent',
-            borderRadius: '50%',
-            animation: 'sync-chip-spin 0.8s linear infinite'
-          }}
-        />
+        <span aria-hidden="true" style={{
+          width: '12px',
+          height: '12px',
+          border: '2px solid currentColor',
+          borderTopColor: 'transparent',
+          borderRadius: '50%',
+          animation: 'sync-chip-spin 0.8s linear infinite'
+        }} />
       ) : (
-        <span
-          aria-hidden="true"
-          style={{
-            width: '8px',
-            height: '8px',
-            borderRadius: '50%',
-            background: 'currentColor'
-          }}
-        />
+        <span aria-hidden="true" style={{
+          width: '8px',
+          height: '8px',
+          borderRadius: '50%',
+          background: 'currentColor'
+        }} />
       )}
       <span>{label}</span>
       <style>{`

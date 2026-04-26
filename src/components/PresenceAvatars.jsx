@@ -131,6 +131,7 @@ export default function PresenceAvatars({
             offset={idx > 0 ? `${overlap}px` : '0'}
             size={avatarSize}
             fontSize={initialsFontSize}
+            tooltipDirection={compact ? 'right' : 'bottom'}
           />
         ))}
         {hasOverflow && (
@@ -161,15 +162,21 @@ export default function PresenceAvatars({
               <div
                 style={{
                   position: 'absolute',
-                  top: 'calc(100% + 6px)',
-                  right: 0,
+                  // 2026-04-25 — In the collapsed sidebar rail the popover
+                  // slides out to the right (matching the rail's tab
+                  // tooltips) so it doesn't get clipped by the rail edge.
+                  // In the expanded toolbar layout we keep it below,
+                  // anchored to the right of the pile.
+                  ...(compact
+                    ? { left: 'calc(100% + 8px)', top: '50%', transform: 'translateY(-50%)' }
+                    : { top: 'calc(100% + 6px)', right: 0 }),
                   background: '#11131a',
                   border: '1px solid rgba(255,255,255,0.1)',
                   borderRadius: '8px',
                   padding: '8px 0',
                   minWidth: '240px',
                   boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-                  zIndex: 100
+                  zIndex: 1000
                 }}
               >
                 <div
@@ -235,8 +242,15 @@ export default function PresenceAvatars({
 }
 
 // Single avatar with a hover-tooltip showing the user's email.
-function Avatar({ initials, background, email, offset = '0', size = 22, fontSize = 9 }) {
+// `tooltipDirection` is 'right' for the collapsed sidebar rail (matches the
+// existing Pages / Search / Bookmarks tab tooltips that slide out to the
+// right) and 'bottom' for the expanded layout where the row has more
+// horizontal space and a downward tooltip is more comfortable.
+function Avatar({ initials, background, email, offset = '0', size = 22, fontSize = 9, tooltipDirection = 'bottom' }) {
   const [hover, setHover] = useState(false);
+  const tooltipPosition = tooltipDirection === 'right'
+    ? { left: 'calc(100% + 8px)', top: '50%', transform: 'translateY(-50%)' }
+    : { top: 'calc(100% + 6px)', left: '50%', transform: 'translateX(-50%)' };
   return (
     <div
       style={{ position: 'relative', marginLeft: offset }}
@@ -265,18 +279,16 @@ function Avatar({ initials, background, email, offset = '0', size = 22, fontSize
         <div
           style={{
             position: 'absolute',
-            top: 'calc(100% + 6px)',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            background: '#11131a',
-            color: '#e6e8eb',
-            border: '1px solid rgba(255,255,255,0.1)',
+            ...tooltipPosition,
+            background: '#1a1a1a',
+            color: '#ddd',
+            border: '1px solid #3a3a3a',
             padding: '6px 10px',
-            borderRadius: '6px',
-            fontSize: '11px',
+            borderRadius: '4px',
+            fontSize: '12px',
             whiteSpace: 'nowrap',
-            zIndex: 100,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+            zIndex: 1000,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
             pointerEvents: 'none'
           }}
         >
