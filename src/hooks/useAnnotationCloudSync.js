@@ -549,6 +549,12 @@ export function useAnnotationCloudSync({
           if (!documentId) return;
           (async () => {
             try {
+              // 2026-04-26 — flip the corner chip to 'syncing' for the whole
+              // catch-up window so the user sees something is in flight even
+              // if the verify-pause kicks in. Without this pulse the chip
+              // stayed silent for up to ~1.2s during the catch-up + verify,
+              // which made the app look frozen during cross-device sync.
+              setStatus({ stage: 'syncing' });
               // 2026-04-26 — verify empty cloud reads against local snapshot
               // so a transient read race during the subscribe handshake does
               // not wipe what the user is looking at.
@@ -557,7 +563,10 @@ export function useAnnotationCloudSync({
                 localCalloutCount: calloutCountSafe(lastCalloutsRef.current),
                 contextLabel: 'post-subscribe-catchup'
               });
-              if (fresh.error) return;
+              if (fresh.error) {
+                setStatus({ stage: 'error', error: fresh.error, phase: 'subscribe-catchup' });
+                return;
+              }
               // Cloud-authoritative refresh — replace local with whatever
               // the cloud has now. Catches both rows added by another
               // device during the hydrate-vs-subscribe gap AND remote
@@ -584,8 +593,12 @@ export function useAnnotationCloudSync({
                 pagesFromCloud: fresh.annotationsByPage ? Object.keys(fresh.annotationsByPage).length : 0,
                 calloutsFromCloud: Array.isArray(fresh.callouts) ? fresh.callouts.length : 0
               }));
+              // Catch-up done — flip the chip back to a calm "synced" state
+              // so the user sees the activity resolved cleanly.
+              setStatus({ stage: 'synced' });
             } catch (err) {
               console.warn('[CloudSync][hook] post-subscribe rehydrate failed: ' + (err?.message || String(err)));
+              setStatus({ stage: 'error', error: err, phase: 'subscribe-catchup' });
             }
           })();
         }
@@ -606,6 +619,11 @@ export function useAnnotationCloudSync({
       if (!documentId) return;
       (async () => {
         try {
+          // 2026-04-26 — pulse the corner chip to 'syncing' for the focus
+          // rehydrate too. Without this the verify-pause runs silently and
+          // the app looks frozen for up to ~1.2s after switching back into
+          // the window from another app.
+          setStatus({ stage: 'syncing' });
           // 2026-04-26 — same verify guard as the initial hydrate. If the
           // window comes back into focus and the cloud query returns empty
           // while we are still showing annotations, re-ask once before
@@ -615,7 +633,10 @@ export function useAnnotationCloudSync({
             localCalloutCount: calloutCountSafe(lastCalloutsRef.current),
             contextLabel: 'focus-rehydrate'
           });
-          if (fresh.error) return;
+          if (fresh.error) {
+            setStatus({ stage: 'error', error: fresh.error, phase: 'focus-rehydrate' });
+            return;
+          }
           // Cloud-authoritative on focus too — picks up deletions made
           // while this window was backgrounded. 2026-04-25 — gate
           // empty-cloud replacement on migration-done so first-boot local
@@ -635,8 +656,11 @@ export function useAnnotationCloudSync({
               return focusFreshCallouts;
             });
           }
+          // Focus catch-up done — back to a calm "synced" state.
+          setStatus({ stage: 'synced' });
         } catch (err) {
           console.warn('[CloudSync][hook] focus rehydrate failed: ' + (err?.message || String(err)));
+          setStatus({ stage: 'error', error: err, phase: 'focus-rehydrate' });
         }
       })();
     };
