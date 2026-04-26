@@ -27508,6 +27508,19 @@ ${pageBlocks}
           selectedSpaceId={null}
           scale={1}
           onToggleCollapse={() => { }}
+          // 2026-04-26 — Pass the live sync data through to the loading-
+          // state sidebar too. Without this, any time Syncfusion briefly
+          // flips back into a loading render (page navigation, document
+          // reload) the sidebar's collaboration footer unmounts and the
+          // chip + presence row appear to "disappear" on scroll. Sharing
+          // the same props means the footer stays mounted continuously.
+          cloudSyncStatus={cloudSyncStatus}
+          cloudSyncQueueSize={cloudSyncQueueSize}
+          cloudSyncEnabled={cloudSyncEnabled}
+          presence={documentPresenceList}
+          currentUserId={user?.id || null}
+          currentUserEmail={user?.email || null}
+          currentUserDisplayName={user?.user_metadata?.full_name || null}
         />
         {/* Loading content */}
         <div style={{
