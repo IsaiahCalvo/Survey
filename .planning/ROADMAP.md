@@ -82,7 +82,7 @@ See [`milestones/v2.1-ROADMAP.md`](milestones/v2.1-ROADMAP.md) for full phase de
 - Highlights stay on legacy sync path through v2.4 (Excel-sync risk; folded into v2.5).
 - SVG-display + Fabric-edit-on-demand split is load-bearing and immutable; CRDT layer wraps under it, never replaces.
 
-- [ ] **Phase 27: CRDT Foundation (Yjs install + per-doc Y.Doc + IndexedDB persistence)** — Install `yjs@^13.6.30` + `y-protocols@^1.0.7` + `y-indexeddb@^9.0.12`, build `<YDocProvider docId>` mounted at document-open boundary, Y.Doc registry keyed by document_id, Web Locks election for multi-tab safety, snapshot architecture (`doc_yjs_state` + `doc_yjs_updates` schema design), `applyUpdate`-only-never-replace rule, license CI gate. Defends pitfalls 1, 2, 5, 10, 12, 15, 17, 20, 21, 22.
+- [x] **Phase 27: CRDT Foundation (Yjs install + per-doc Y.Doc + IndexedDB persistence)** — Install `yjs@^13.6.30` + `y-protocols@^1.0.7` + `y-indexeddb@^9.0.12`, build `<YDocProvider docId>` mounted at document-open boundary, Y.Doc registry keyed by document_id, Web Locks election for multi-tab safety, snapshot architecture (`doc_yjs_state` + `doc_yjs_updates` schema design), `applyUpdate`-only-never-replace rule, license CI gate. Defends pitfalls 1, 2, 5, 10, 12, 15, 17, 20, 21, 22. **Functionally complete 2026-04-27 (5/5 plans); awaiting `/gsd:verify-work 27` + 27-RECONCILIATION.md.**
 - [ ] **Phase 28: Transport Spike + Auth + Server Validator (TIMEBOX 1 WEEK)** — Build a custom Supabase Realtime adapter (~150-300 LOC default) AND a Hocuspocus prototype side-by-side; benchmark against go/no-go criteria (binary frame stability, 2-5 concurrent peer load, server-side update validator capability). Lock the transport choice. Land RLS policies on `doc_yjs_updates` + `doc_yjs_state`. Defends pitfalls 3, 14, 15, 16.
 - [ ] **Phase 29: Fabric ↔ Yjs Binding + Per-User Undo (HIGHEST RISK)** — `crdtAnnotationBridge.js` (one-direction-at-a-time Fabric ↔ Y.Map), origin tags (`{source:'local-fabric',userId,deviceId,sessionId}`), `applyingRemote` guard, `Y.UndoManager` with `trackedOrigins: new Set([clientID])` for per-user undo, registry-based `Map<annoId, FabricObject>` lookup, `useAnnotationsCRDT` hook over `useSyncExternalStore + observeDeep`. Defends pitfalls 4, 6, 7, 8.
 - [ ] **Phase 30: Migration Phase A — Dual-Write Era** — Every new annotation writes BOTH legacy `document_annotations` row AND CRDT update; old clients read legacy column; new clients read CRDT column. Idempotent backfill keyed by `client_anno_id`. No "diff = delete" logic anywhere. Reads never bleed across paths.
@@ -377,10 +377,10 @@ Plans:
 
 Plans:
 - [x] 27-01-PLAN.md — Wave 0: test scaffold + license CI gate (6 node:test scaffolds + 5 Playwright scenarios + license-gate workflow + check-licenses script) — shipped 2026-04-27
-- [ ] 27-02-PLAN.md — Wave 1: yjs trio + license-checker install + ydocRegistry.js (the ONE allowed `new Y.Doc(` site)
+- [x] 27-02-PLAN.md — Wave 1: yjs trio + license-checker install + ydocRegistry.js (the ONE allowed `new Y.Doc(` site) — shipped 2026-04-27
 - [x] 27-03-PLAN.md — Wave 1: Supabase migration for doc_yjs_updates + doc_yjs_state + activity_log + RLS stubs (AUTH-03 server_ts column lands here) — shipped 2026-04-27
-- [ ] 27-04-PLAN.md — Wave 2: ydocLifecycle (Web Locks election + IndexeddbPersistence + BroadcastChannel) + storageFailureDetector + crdtFeatureFlag
-- [ ] 27-05-PLAN.md — Wave 3: YDocProvider + useYDoc hook + StorageFailureBanner + App.jsx mount (per-phase narrow waiver) + UAT checkpoint
+- [x] 27-04-PLAN.md — Wave 2: ydocLifecycle (Web Locks election + IndexeddbPersistence + BroadcastChannel) + storageFailureDetector + crdtFeatureFlag — shipped 2026-04-27
+- [x] 27-05-PLAN.md — Wave 3: YDocProvider + useYDoc hook + StorageFailureBanner + App.jsx mount (per-phase narrow waiver) + UAT checkpoint — shipped 2026-04-27
 
 ### Phase 28: Transport Spike + Auth + Server Validator (TIMEBOX 1 WEEK)
 
@@ -575,7 +575,7 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13 → 14 → 
 | 17. Callout Handle Collisions + Rollback + Resize | v2.3 | 0/TBD | Not started | - |
 | 18. Callout Auto-Routing + Hover Affordances + Self-Destruct | v2.3 | 0/TBD | Not started | - |
 | 20. PDF-Native Annotations — Foundations (Phase A) | v3.0 | 4/4 | Complete (DONE_WITH_CONCERNS) | 2026-04-25 |
-| 27. CRDT Foundation | 4/5 | In Progress|  | - |
+| 27. CRDT Foundation | 5/5 | Complete   | 2026-04-27 | - |
 
 ---
-*Last updated: 2026-04-27 — v2.4 Phase 27 (CRDT Foundation) Plan 02 shipped: yjs@13.6.30 + y-protocols@1.0.7 + y-indexeddb@9.0.12 + license-checker@25.0.1 installed at locked versions; src/lib/collab/ydocRegistry.js shipped as the single allowed `new Y.Doc(` site, HMR-safe via globalThis.__ydocRegistry__ Map, releaseYDoc deliberately never destroys (Pitfall 21). Plan 27-01's applyUpdateOnlyInvariant + ydocRegistry test scaffolds flipped from skip→green automatically. License gate stays GREEN with all 4 new deps. Pitfalls 5/20/21 now defended by code, not just convention. Test baseline 280→286 pass.*
+*Last updated: 2026-04-27 — v2.4 Phase 27 (CRDT Foundation) functionally complete (5/5 plans shipped). Plan 27-05 landed the React surface: YDocProvider context provider + useYDoc hook + StorageFailureBanner with all 4 copy variants per 27-UI-SPEC.md, mounted at the App.jsx document-open boundary via per-phase narrow waiver (1 import + 1 JSX wrap around <PDFViewer>). Live UAT verified single-user round-trip — pen-stroke drawn, page refreshed, stroke reappeared. applyUpdate-only invariant remains green; license gate green; test baseline preserved (290 pass / 6 fail pre-existing / 3 skipped); always-protected files (PAL/Fabric/SVG/vite.config.js) byte-identical except the App.jsx narrow waiver. Phase 27 awaiting `/gsd:verify-work 27` + 27-RECONCILIATION.md. Next: Phase 28 (transport spike + auth + server validator).*
