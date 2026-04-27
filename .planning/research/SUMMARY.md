@@ -1,108 +1,115 @@
-# Research Summary — v2.2 Rotation Handle Polish
+# Research Summary — v2.4 Multi-User Collaboration (CRDT Rebuild)
 
-**Project:** Survey BetaSafeS2 — PDF Annotation App
-**Domain:** SVG + Fabric.js annotation editor (localized rotation-handle polish)
-**Researched:** 2026-04-14
-**Confidence:** HIGH
+_Synthesizes STACK.md / FEATURES.md / ARCHITECTURE.md / PITFALLS.md into a single decision document for the roadmapper._
 
 ## Executive Summary
 
-v2.2 is a surgical polish milestone, not a feature build. All three gaps (Gap 3: hover pill stale ref, Gap 4: mtr handle clipped in edit mode, Gap 2: off-screen handle relocation) are carry-forwards from v2.1 Phase 12. Research confirms **zero new dependencies** and that Gaps 3 and 4 are both LOW risk fixes landing in 1–2 files each. The existing SVG + Fabric.js edit-only architecture is correct and stable — v2.2 does not change any architectural invariant.
+Adopt Yjs (`yjs@^13.6.30` + `y-protocols@^1.0.7` + `y-indexeddb@^9.0.12`) as the CRDT engine, store binary updates in Supabase Postgres (`bytea`), use `Y.Awareness` for ephemeral presence, ship per-user `Y.UndoManager` with `trackedOrigins` scoping. Every user-stated requirement (per-annotation authorship + device, per-user undo that never erases collaborator work, real concurrent collaborators, same-user-multi-device parallel/sequential, offline-first with auto-merge, "pick up where you left off") maps directly onto documented Yjs primitives plus a thin layer of app glue. The four research dimensions converge unusually cleanly — STACK/FEATURES/ARCHITECTURE/PITFALLS all point at the same shape of system. The disagreement is narrow.
 
-The most important synthesis finding is that **Gap 4's stated root cause in the backlog (`overflow: hidden`) is WRONG.** The real clip is a canvas pixel buffer clip (`BBOX_PADDING=32` minus Fabric's default `rotatingPointOffset=40` = handle at `y=-8`, outside the drawable canvas surface), and possibly a Syncfusion ancestor clipper. This changes the fix strategy: the cleanest fix keeps the SVG rotation handle visible during edit mode for pre-rotated shapes, **entirely avoiding `FabricEditCanvas.jsx`** — which is held by the counter-session. Gap 3 is a one-line dep-array fix in `SVGAnnotationLayer.jsx` with a preferred event-delegation upgrade path. **Gap 2 should be deferred:** a 9-tool industry survey (Figma, tldraw, Excalidraw, Miro, Illustrator, Sketch, Inkscape, Nutrient, PSPDFKit) found **zero tools that relocate rotation handles**, and v2.1's typed-degree pill already addresses ~95% of the underlying pain.
+The single highest-risk decision is the transport layer: a custom Supabase Realtime Broadcast adapter (~150-300 LOC, reuses existing infra, billing stays Supabase + Stripe) versus self-hosted Hocuspocus (battle-tested, MIT, but adds a Node WebSocket service to deploy/scale/monitor). STACK explicitly recommends the custom adapter as the default; ARCHITECTURE agrees but frames it as "Option B" of three; PITFALLS calls the choice itself the multi-month-detour-either-way risk and demands a 1-week prototype spike before commitment. Server-side update validation (RLS-vs-CRDT mismatch) is the strongest structural argument for Hocuspocus and is unresolved on the Supabase-custom path — the spike must answer whether a Postgres function or Edge Function can gate `INSERT INTO doc_yjs_updates` against current RLS state.
 
-Execution risk is low as long as the counter-session lane is respected. Gap 3 and Gap 4 (Fix A) touch only `SVGAnnotationLayer.jsx` and `SVGSelectionOverlay.jsx` — neither held by counter-session. Sequence: **Gap 3 first, then Gap 4, then verify against 113/113 tests before deciding on any Gap 2 work.**
+The risk profile is dominated by one fact: the previous simple-sync system bled data through six well-documented failure modes, and the new CRDT layer must defend against those failure modes by construction, not by convention. PITFALLS catalogs 22 distinct pitfalls — five CRITICAL (migration partial-state, multi-tab corruption via `yjs/y-indexeddb#25`, RLS-vs-CRDT mismatch, echo loop, 1-second verify-wipe regression). Mitigations are known. The roadmap must be sequenced so each critical pitfall has an explicit phase that owns its prevention, with Playwright assertions baked into acceptance criteria — not bolt-on at the end. Phase 3 (the Yjs ↔ Fabric binding) carries 4 critical/high pitfalls converging in one place; that phase needs the heaviest planning load.
 
----
+## Convergence (where all four dimensions agree — high-confidence path)
 
-## Contradiction Resolutions (Synthesizer Verdicts)
+1. **Yjs is the CRDT engine** — all four files; no viable alternative for v2.4.
+2. **Per-user undo via `Y.UndoManager` with `trackedOrigins`** — Figma pattern, native Yjs primitive.
+3. **`Y.Awareness` for presence; never put cursors/selections in Y.Doc**.
+4. **One Y.Doc per PDF, registry-keyed by document_id**, mounted at document-open boundary not App root.
+5. **`y-indexeddb` replaces `localStorage` as offline-first cache**.
+6. **Persist updates as `bytea` in Postgres** — never TEXT/JSONB.
+7. **Highlights stay on legacy path through v2.4** — only non-highlight annotations enter the Y.Doc (Excel-sync risk).
+8. **Silent merge on reconnect; no conflict modals**.
+9. **Authorship hover, not persistent color halos** — construction markup colors carry semantic meaning.
+10. **Device attribution as first-class differentiator** — no major collab tool ships this.
 
-### Gap 4 fix strategy — VERDICT: Fix A / Architecture Option C (SVG-side structural fix)
+## Open Questions (where research dimensions diverge)
 
-Architecture and Pitfalls converge: keep SVG mtr handle visible during edit for pre-rotated shapes by modifying the `SVGAnnotationLayer.jsx:1050` short-circuit to return null only when `editIsBorderFlush && angle === 0`. Lane-safe (touches `SVGAnnotationLayer.jsx` + `SVGSelectionOverlay.jsx` only).
+1. **Transport layer**: custom Supabase adapter vs Hocuspocus — must be decided in Phase 2 with a hard 1-week timebox spike.
+2. **Initial-sync mechanism**: encoded state-as-update + delta sync vs append-only update log replay from `seq`. Both work; compaction strategy must be picked in Phase 1.
+3. **Migration sequencing**: ARCHITECTURE proposes "advisory-locked first-open backfill"; PITFALLS demands two-phase dual-write era + sealed cutover. Roadmap needs Phase 4 (dual-write) AND Phase 5 (cutover seal) as distinct phases.
+4. **Activity log location**: Postgres, not Y.Doc. Schema in Phase 1; consumption in Phase 7.
+5. **Server-side update validator**: strongest structural argument for Hocuspocus. Phase 2 spike must answer whether Postgres function / Edge Function can gate `INSERT` on current RLS state.
+6. **Multi-tab safety**: Web Locks API election required in Phase 1, not deferred.
 
-Features and Stack proposed Fabric-side fixes (`controlsAboveOverlay = true`, custom mtr Control with `offsetY: -20`) but both land in `FabricEditCanvas.jsx` — a **LANE CONFLICT** with the counter-session. These are documented as deferred fallbacks, gated on counter-session coordination.
+## Recommended Stack
 
-### Gap 2 include/defer — VERDICT: DEFAULT DEFER
+Yjs core (`yjs` + `y-protocols` + `y-indexeddb`), MIT, ~15kB total gzipped, drop-in compatible with React 18 / Vite 5 / Electron 25 / Fabric 5.5.2. Yjs lives at the data layer, Fabric/SVG at rendering — the existing v2.0+ JSON shape (`annotationsByPage`, `callouts`) becomes a derived view of Y.Doc state. Transport layer contested between custom Supabase adapter (~150-300 LOC) and Hocuspocus self-hosted; Phase 2 spike decides. Persistence: new tables `doc_yjs_updates (bytea)` (append-only log) + `doc_yjs_state (bytea)` (compacted snapshots) + `activity_log` (server-authoritative). Existing `document_annotations` table preserved during cutover, deprecated for non-highlights post-v2.4. **Anti-recommendations**: AlexDunmow/y-supabase (broken), Fabric 6.x upgrade (out of scope), Excel-style whole-annotation LWW, custom OT, Liveblocks/Tiptap Cloud/y-sweet (third-party billing, splits source-of-truth).
 
-Features UX verdict is load-bearing: universal industry convention across 9 surveyed tools says "handles stay put." Architecture and Stack correctly assess Gap 2 as "architecturally clean" — it is, but clean math does not overcome a broken mental model.
+## Expected Features
 
-**Recommendation:** Defer handle-relocation as `wontfix_superseded_by_typed_input`. If any Gap 2 work lands in v2.2, scope strictly to verifying/extending existing pill-clamp behavior in `rotationInputHelpers.js` — no handle movement, no new utility, no new SVGSelectionOverlay props.
+**Must have (v2.4.0 launch):** per-annotation authorship + timestamp data model, authorship hover tooltip, per-user undo (Figma pattern via `trackedOrigins`), silent merge on reconnect (LWW per property), offline editing with auto-resync, activity log + filterable sidebar, 4-role permissions (Owner/Editor/Commenter/Viewer), mutation queue with idempotency keys.
 
-### Gap 3 strategy — VERDICT: Strategy A acceptable, Strategy B preferred
+**Differentiators (also v2.4.0 launch):** device attribution on every edit (no major collab tool ships this — first-class differentiator for same-user-multi-device), "Where am I picking up?" cross-device resume banner (almost free given activity log), sync-state toast.
 
-Strategy A (add `editingAnnotationIndex` to dep array, with `!= null` early-return gate) is one line. Strategy B (event delegation on stable SVG ancestor via `e.target.closest('[data-rotation-handle="mtr"]')`) eliminates the entire class of stale-ref bugs. Start with Strategy A; upgrade to B only if a regression test reveals another unmount trigger. Both must gate on `editingAnnotationIndex == null` at effect-top.
+**Defer to v2.4.x:** CSV export of activity log, per-annotation right-click "show history," renameable device labels, sync state in title bar.
 
----
+**Anti-features (ship as explicit non-goals):** live cursors, conflict resolution modals, per-annotation locks, per-user color halos, comment threads, branching/suggestion mode, real-time character-level merge in text annotations.
 
-## Suggested Phase Structure
+## Architecture Approach
 
-### Phase A — Gap 3: Hover Pill Stale Ref Fix
-- **Risk:** LOW. Single-file, fully independent.
-- **Delivers:** Pill re-arms after any edit-mode exit without the deselect/reselect workaround.
-- **Files:** `SVGAnnotationLayer.jsx` only
-- **Avoids:** Dep-array expansion onto tick-rate values (`annotations`, `visualTransform`); MutationObserver; `querySelector` in render body
+Wrap the CRDT around the existing display layer; do not rewrite it. The v2.0+ architecture (SVG renders from JSON, Fabric mounts only during edit, `zoomGeneration` signal contract) is treated as load-bearing and immutable. The CRDT layer sits *under* `App.jsx`'s state setters: `useAnnotationsCRDT` produces the same `{ annotationsByPage, callouts }` shape, derived from Y.Doc via `useSyncExternalStore` over `observeDeep`. Setters become `ydoc.transact(() => yMap.set(...), origin)` calls. SVG and Fabric never learn about Yjs.
 
-### Phase B — Gap 4: mtr Handle Visibility in Edit Mode
-- **Risk:** MEDIUM. Requires live DOM diagnostic as first plan step before writing code.
-- **Delivers:** Pre-rotated shapes show visible rotation handle on edit-mode entry (SVG layer, visual-only).
-- **Files:** `SVGAnnotationLayer.jsx` (narrow `:1050` condition) + `SVGSelectionOverlay.jsx` (new `isEditing` prop, mtr-only rendering path)
-- **Prerequisite:** Run live DOM diagnostic (`getBoundingClientRect + getComputedStyle` on ancestor chain) to confirm clipper identity before coding.
-- **Avoids:** Touching `FabricEditCanvas.jsx`; deleting the SVG short-circuit; adding `snapAngle` or rotation interactivity
+**Major components:** `<YDocProvider docId>`, `useAnnotationsCRDT`, `crdtAnnotationBridge.js`, `crdtUndoManager.js`, custom Supabase Yjs provider (or Hocuspocus pending Phase 2 spike), `Y.Awareness` channel, Postgres tables `doc_yjs_updates` + `doc_yjs_state` + `activity_log`, migration utilities `crdtBackfill.js`.
 
-### Phase C (conditional) — Gap 2 Pill-Clamp Verification
-- **Risk:** LOW (if scoped strictly to pill-clamp; high if expanded to handle-relocation)
-- **Delivers:** Typed-degree pill stays reachable even when handle orbit is off-page.
-- **Files:** `src/utils/rotationInputHelpers.js` + possibly `RotationInputField.jsx`
-- **Close Gap 2 handle-relocation as `wontfix_superseded_by_typed_input` in RECONCILIATION.md.**
-- **Only open if Gap 3 + Gap 4 code-complete and verified with ≥2 days slack.**
+## Critical Pitfalls (top 5 — any one causes data loss or security breach)
 
----
+1. **Migration partial-state** — clients on old code-path keep writing legacy rows during rollout. Fix: two-phase dual-write era with `migrated_at` seal flag; idempotent backfill keyed by `client_anno_id`. **No "diff between cloud and local means delete" anywhere — that was the simple-sync killer.**
+2. **y-indexeddb multi-tab corruption** (`yjs/y-indexeddb#25`) — two tabs on same Y.Doc duplicate updates. Fix: Web Locks API election before `IndexeddbPersistence`.
+3. **Y.Doc vs RLS mismatch** — RLS protects rows, CRDTs protect convergence; orthogonal. Removed collaborator's local Y.Doc keeps accepting edits silently rejected on flush. Fix: server-side update validator + `permission_revoked` event + forced local Y.Doc destroy + IndexedDB wipe.
+4. **Echo loop** — local Fabric event → Y.Map → observer fires → applies to Fabric → fires `object:modified` → loop. Fix: mandatory transaction-origin pattern, all observers short-circuit on `event.transaction.origin?.source === 'local-fabric'`, plus `applyingRemote` flag mute.
+5. **1-second verify-wipe regression** — naive "rehydrate from server snapshot" replaces local Y.Doc state, wiping in-flight edits. Simple-sync failure in CRDT clothing. Fix: always `Y.applyUpdate(doc, update)`, never replace.
 
-## Critical Pitfalls for Plan Authors
+## Roadmap Implications
 
-1. **Gap 4 `overflow: hidden` wild goose chase** — does not exist in FabricEditCanvas. Do live DOM diagnostic first.
-2. **Gap 3 dep array expansion onto tick-rate values** — never add `annotations`, `visualTransform`. The `eslint-disable` at `:312` is load-bearing.
-3. **Counter-session lane staging accident** — never `git add -A`. Explicit paths only. The 7 WIP files: `App.jsx`, `PageAnnotationLayer.jsx`, `FabricEditCanvas.jsx`, `useDatabase.js`, `counterNumbering.js`, `svgAnnotationRenderers.jsx`, `dist/index.html`.
-4. **Gap 4 SVG short-circuit deletion** — narrow the `:1050` condition; never delete it. Deletion renders doubled handles.
-5. **Gap 2 scope creep** — Plan 12-02 estimated 11 LOC, shipped 1,195 LOC. Same trap. Pill-clamp only.
+Eight phases. Phase 3 carries the heaviest planning load.
 
----
+**Phase 1: CRDT Foundation** — schema, registry, snapshot architecture, applyUpdate-only rule, license CI gate. Defends pitfalls 1, 2, 5, 10, 12, 15, 17, 20, 21, 22.
 
-## Counter-Session Lane Conflict Summary
+**Phase 2: Transport + Auth + Server Validator (TIMEBOX SPIKE)** — 1-week prototype spike (custom Supabase adapter vs Hocuspocus), server-side update validator, RLS on new tables. Defends pitfalls 3, 14, 15, 16.
 
-**NEVER stage from v2.2 unless explicitly authorized:**
-- `src/App.jsx`
-- `src/components/PageAnnotationLayer.jsx`
-- `src/components/FabricEditCanvas.jsx`
-- `src/hooks/useDatabase.js`
-- `src/utils/counterNumbering.js`
-- `src/utils/svgAnnotationRenderers.jsx`
-- `dist/index.html`
+**Phase 3: Yjs ↔ Fabric Binding + Per-User Undo (HIGHEST RISK)** — origin tags, applyingRemote guard, per-user UndoManager, registry-based annoId↔Fabric lookup. Defends pitfalls 4, 6, 7, 8.
 
-**Per-gap lane safety:**
-- Gap 3 — touches `SVGAnnotationLayer.jsx` only. LANE-SAFE.
-- Gap 4 Fix A (preferred) — touches `SVGAnnotationLayer.jsx` + `SVGSelectionOverlay.jsx`. LANE-SAFE.
-- Gap 4 Fix B (fallback) — touches `FabricEditCanvas.jsx`. LANE CONFLICT, blocked until counter-session coordinates.
-- Gap 2 pill-clamp — touches `rotationInputHelpers.js` + `RotationInputField.jsx`. LANE-SAFE.
+**Phase 4: Migration Phase A — Dual-Write Era** — new annotations write BOTH legacy row AND CRDT update; old clients read legacy column; new clients read CRDT column.
 
----
+**Phase 5: Migration Phase B — Cutover Seal** — `migrated_at` flag on `documents`, DB trigger / RLS makes legacy read-only post-seal.
+
+**Phase 6: Multi-tab + Persistence Hardening** — Web Locks stress-test, periodic Y.Doc compaction, IndexedDB-quota UX.
+
+**Phase 7: Activity Log + Awareness** — server-side `update` listener writes `activity_log`, sidebar UI, "Where am I picking up?" cross-device resume banner, `Y.Awareness` channel.
+
+**Phase 8: Sharing UX + Permission Revocation** — 4-role UI, `permission_revoked` realtime handler, decommission legacy `useAnnotationCloudSync` / `cloudSyncMigration` / `cloudSyncQueue`.
+
+**Phase ordering rationale:** Phases 1 → 2 → 3 strictly sequential. Phases 4 and 5 must be distinct. Phases 6 and 7 can run in parallel if capacity allows; otherwise 7 first (user-visible wins), 6 next (production hardening). Phase 8 last — depends on activity log (Phase 7) and seal flag (Phase 5).
+
+**Research flags:**
+- Phase 1: Web Locks in Electron; y-indexeddb compaction specifics.
+- Phase 2: **MANDATORY 1-week prototype spike** with go/no-go criteria.
+- Phase 3: Fabric.js 5.5.2 event-firing matrix during programmatic `set()`.
+- Phase 6: Observed IndexedDB quota in this app's Electron 25 build.
+- Skip research: Phases 4, 5, 7, 8 (standard patterns).
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Direct source inspection; zero new dependencies confirmed |
-| Features | HIGH | 9-tool survey with direct behavioral observation |
-| Architecture | HIGH | All options cited to specific file + line number; ranked by lane safety |
-| Pitfalls | HIGH | Root causes confirmed by source inspection + `1.log` runtime evidence |
+| Stack | HIGH | Yjs trio verified; current versions, MIT, ~15kB, ESM. MEDIUM on transport (Phase 2 spike validates). |
+| Features | MEDIUM-HIGH | Vendor docs and engineering blogs. Live-cursor UX is community-feedback grade. |
+| Architecture | MEDIUM-HIGH | Yjs ecosystem patterns HIGH. SVG/Fabric integration MEDIUM, validated against source tree. `useSyncExternalStore` + `observeDeep` performance unmeasured. |
+| Pitfalls | HIGH | Yjs/Supabase/IndexedDB mechanics verified. MEDIUM on app-specific integration assumptions. |
 
-**Overall: HIGH**
+**Overall confidence: HIGH on the path.** Single open architectural decision: transport layer (Phase 2 spike). Everything else well-mapped.
 
-**One unresolved gap:** Gap 4 clipper identity (canvas pixel buffer vs Syncfusion `e-pv-page-div` ancestor) cannot be determined without the live DOM diagnostic. This is the mandatory first step of the Gap 4 plan, not a research artifact.
+## Gaps to Address
 
----
+1. Transport-layer prototype unbuilt — Phase 2 must include hard 1-week timebox.
+2. Server-side update validator not architected for Supabase path.
+3. Migration advisory-lock failure modes unaddressed — Phase 4 needs lock TTL / heartbeat.
+4. `useSyncExternalStore` + `observeDeep` performance on 500+ annotation docs — Phase 1 acceptance must include synthetic benchmark.
+5. Fabric 5.5.2 event-firing matrix during programmatic `set()` incompletely characterized — Phase 3 must produce exact matrix.
+6. No precedent UX for device-attribution-on-every-edit — Phase 7 must produce its own UI design (default OS hostname, user-renameable).
+7. `document_yjs_updates` compaction cadence and triggering mechanism not yet decided.
 
-## Ready for Roadmap
+## Sources
 
-All 4 research files committed (`91eb0843`). Orchestrator can proceed to requirements definition using this synthesis. The roadmapper should structure v2.2 as **two mandatory plans (Gap 3, Gap 4) with Gap 2 deferred** per the Features UX verdict — or, if the user overrides, as **three plans with Gap 2 scoped strictly to pill-clamp verification only**.
+See STACK.md, FEATURES.md, ARCHITECTURE.md, PITFALLS.md for full URL list. Primary sources include Yjs official docs (Awareness, UndoManager, Y.Map, Document Updates, Releases), y-indexeddb GitHub + issue #25, y-protocols, Supabase Realtime Protocol + Limits, Hocuspocus GitHub, Figma multiplayer engineering blog, Notion offline blog, Linear sync engine, Bluebeam Studio Sessions activity reports, Drawboard offline markup. Secondary: discuss.yjs.dev community threads (echo loops, capturing authors, GC and snapshotting, Supabase for yjs), PowerSync Postgres+Yjs CRDT pattern, Hocuspocus + Supabase Auth integration guide. Tertiary (reference only): AlexDunmow/y-supabase (flagged not-for-production by maintainer).

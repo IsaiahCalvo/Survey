@@ -1,25 +1,19 @@
-# Feature Research — v2.2 Rotation Handle Polish
+# Feature Research
 
-**Domain:** Shape-editing UX conventions in SVG/canvas design tools (Figma, tldraw, Excalidraw, Miro, Adobe Illustrator, Sketch, Inkscape, PSPDFKit/Nutrient)
-**Scope:** Gap 3 (hover pill after edit-mode return), Gap 4 (mtr handle clip in edit mode), Gap 2 (off-screen handle relocation — **conditional**)
-**Researched:** 2026-04-14
-**Confidence:** HIGH on Gaps 3 and 4; HIGH (negative) on Gap 2 — survey confirms no mainstream tool does what the backlog proposes.
-
-> **NOTE — scoped research.** This file covers ONLY the three rotation handle
-> polish gaps carry-forward from v2.1 Phase 12. It supersedes the prior
-> `.planning/research/FEATURES.md` (2026-04-12 Stage 0 Shift-snap scope) for
-> v2.2 roadmap purposes. The v2.0 SVG Migration and v2.1 Shift-snap landscapes
-> were researched separately and remain valid for their own phases.
+**Domain:** Multi-user collaboration on a desktop PDF annotation app (engineering survey work)
+**Researched:** 2026-04-26
+**Confidence:** MEDIUM-HIGH (Figma / Notion / Linear / Bluebeam / Drawboard / Google Docs / Excel claims grounded in vendor docs and engineering blogs; live-cursor UX claim is community-feedback-grade only)
 
 ---
 
-## TL;DR — Opinionated Recommendations
+## Scope Note: Read This First
 
-**Gap 3 (hover pill after edit-return)** — Ship. Table stakes. Standard pattern across every tool surveyed: after any mode exit (edit, drag, keyboard), selection-mode affordances must re-arm automatically. The bug is a React stale-ref defect, not a design question. Implementation is a dependency-array / ref-rebind fix in `SVGAnnotationLayer.jsx`'s hover-intent effect, ~5–20 LOC. **Complexity: LOW.**
+The downstream consumer is a small construction-survey shop. The realistic multi-user shape is:
 
-**Gap 4 (mtr handle visible in edit mode)** — Ship. Table stakes. Fabric.js has a first-party property for exactly this situation (`controlsAboveOverlay = true`), and the docs explicitly say it exists to prevent clipPath from clipping away controls. The fix is almost certainly a one-line Fabric option plus an `overflow: visible` on a wrapper div. **Complexity: LOW.**
+1. **Same user, multiple devices (95% of sessions):** Isaiah-on-Mac plus Isaiah-on-Windows plus future Isaiah-on-phone, often **not** simultaneous. Continuity matters more than concurrency.
+2. **Owner + occasional contractor (5% of sessions):** Isaiah plus a sub or a PM dropping in to mark up one drawing for a few minutes. Concurrent for short windows.
 
-**Gap 2 (off-screen handle relocates to opposite side)** — **Do NOT ship as designed.** Zero tools in the survey do this. The universal pattern is (a) user pans/zooms to bring the handle back into view, (b) edge-scrolling auto-pans during drag (tldraw), or (c) user types an exact angle via numeric input — which v2.1 already shipped. Relocating the handle to a non-standard position creates a worse problem: users learn "rotation handle is above the shape" and a context-dependent flip breaks that model. The backlog's underlying pain (can't re-grab a handle that sits above the page) is already ~95% solved by the typed-degree pill from EDIT-12. **Recommendation:** Close Gap 2 as `wontfix_superseded_by_typed_input` OR downgrade to a far cheaper variant (clamp the pill to the visible page rect while the handle itself scrolls with the viewport). **Complexity of "as designed" version: HIGH for low / arguably negative user value.**
+It is **not** Figma's "12 designers in a file all afternoon" nor Bluebeam's "30-person punch-list session." Anything sized for that scale is over-engineering for v2.4. This document is ruthless about that distinction.
 
 ---
 
@@ -27,237 +21,197 @@
 
 ### Table Stakes (Users Expect These)
 
-Features users assume exist the moment they hover, rotate, and enter edit mode. Missing these = interaction model feels broken.
+Features users assume exist. Missing these = product feels broken.
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| **Rotation affordance re-arms after exiting edit mode** (Gap 3) | Every tool surveyed (Figma, Excalidraw, Miro, Illustrator, Sketch, tldraw) treats mode-exit as "return to a clean select state." Hover affordances, cursors, tooltips, and marching ants all re-arm with zero user intervention. If hovering the rotation handle after click-off-to-commit does nothing, users conclude the selection is dead and reselect — a workaround is not acceptance. | LOW | Root cause is confirmed in the backlog entry: React reconciles the overlay on edit-commit, the hover-intent effect's `handleEl` ref captures a stale DOM node. Fix: re-run the effect when `annotations` identity changes, or resolve the handle element on each pointerenter instead of at mount. Scope: `SVGAnnotationLayer.jsx` hover-intent effect only. |
-| **Rotation handle stays fully visible when shape enters edit mode** (Gap 4) | Users expect the selection chrome they saw in select mode to still be there in edit mode, just possibly dimmed or de-emphasized. Fabric's own `controlsAboveOverlay` property exists specifically because the Fabric authors recognized clipPath cropping controls is a defect, not a feature. A half-clipped handle reads as "the app is broken, not as an intentional boundary." | LOW | Two concrete levers: (1) set `canvas.controlsAboveOverlay = true` on `FabricEditCanvas` canvas init — documented cure for clipPath / overlay control cropping; (2) `overflow: visible` on the FabricEditCanvas wrapper div so controls painted outside the canvas bitmap aren't CSS-clipped by the container. The Gap 4 symptom (clipping only at non-zero rotation) is consistent with both causes: at 0° the mtr handle offset stays inside the tight bounding rect, at non-zero it rotates outside. Scope: `FabricEditCanvas.jsx` canvas init + wrapper CSS. |
-| **Rotation handle painted above overlay / z-stack** | Across all tools, transform controls sit at the top of the z-stack above content, above overlays, and above clipping boundaries. This is a strict invariant — no tool buries rotation handles under content. | LOW | Fabric's `controlsAboveOverlay` is the direct implementation. If the project ever adds a visible overlay layer inside FabricEditCanvas, this flag keeps the mtr handle on top. |
-| **Free rotation still works at non-zero starting angle** | Already shipped in v2.1. Listed here because Gap 4 could tempt a fix that locks rotation during edit mode. Do not remove rotation-in-edit-mode to make the clip problem go away — that's a regression. | LOW (preserve) | Rotation is allowed during text edit in Figma, Nutrient, Illustrator, tldraw. Rotate-in-edit-mode is table stakes; the right fix is to unclip the handle, not to disable rotation. |
-| **Hover-intent gating on rotation pill** | Already shipped in v2.1 (RotationInputField hover-intent visibility state machine). Listed for completeness — Gap 3's fix must preserve this gate so the pill still only appears with intent, not on every mouse flyby. | LOW (preserve) | Don't regress hover-intent while fixing the stale ref. The dependency array change is the surgical fix. |
+| **Per-annotation authorship stored on the record** | Already implied by current presence indicators; users assume "if you can see who's online, you can see who drew this." Bluebeam, Drawboard, Google Docs, Figma all do this. ([Drawboard](https://www.drawboard.com/), [Bluebeam Studio Sessions activity log](https://support.bluebeam.com/online-help/prime/Content/Studio%20Prime/Studio%20Prime%20Guide/03%20-%20Portal/How-to-See-a-Users-Activity.htm)) | LOW (data model only — `created_by`, `updated_by`, `created_at`, `updated_at` columns) | Foundational. Every other v2.4 feature reads from this. Backfill existing annotations to the document owner. |
+| **Per-annotation authorship surfaced on hover** | Drawboard's "hover over any annotation to see exactly who made it and when" is the de facto standard for engineering markup tools ([Drawboard product page](https://www.drawboard.com/)). Figma puts authorship in the right-rail, Google Docs hovers reveal author from version history. | LOW-MED (tooltip on SVG hover; data already on record from row above) | Low friction — does not clutter the canvas. Better than persistent color halos for engineering where the markup itself carries meaning. |
+| **Activity log of every change with user + timestamp** | Bluebeam Studio Sessions ships this and survey users explicitly want "who deleted this stroke 5 minutes ago" — this is the milestone's own stated requirement. Studio's session record covers join, document add, markup add/edit/status, chats ([Bluebeam](https://support.bluebeam.com/online-help/prime/Content/Studio%20Prime/Studio%20Prime%20Guide/03%20-%20Portal/How-to-See-a-Users-Activity.htm)). | MED (append-only event table, sidebar/panel UI; export to CSV is a small bonus) | Construction shops use this for accountability ("the GC marked this RFI'd, here's the trail"). Ship it. |
+| **Live presence list of who's currently in the document** | Already shipped pre-v2.4. Listed for completeness — keep working. | — (existing) | Don't regress this when CRDT rebuild lands. |
+| **Per-user undo (your undo never erases someone else's work)** | Figma, Google Docs, Notion, Linear all maintain a per-client undo stack — the "global undo" model is universally rejected as anti-pattern. Figma: "each user has their own undo / redo stack" ([Figma multiplayer blog](https://www.figma.com/blog/how-figmas-multiplayer-technology-works/), [Multiplayer Editing in Figma](https://www.figma.com/blog/multiplayer-editing-in-figma/)). | MED (already half-built — undo exists, just needs scoping to the local client's actions only) | The tricky case: undoing a delete must restore the deleted object. Figma's solution: "Data is stored in the undo buffer of the client that performed the delete. If that client wants to undo the delete, then it's also responsible for restoring all properties of the deleted objects" ([Figma blog](https://www.figma.com/blog/how-figmas-multiplayer-technology-works/)). Mirror this. |
+| **Silent merge on reconnect (no conflict modals)** | Google Docs, Notion (mostly), Figma, Linear all merge silently. Excel co-authoring "the last change saved wins" is the only major exception and is widely disliked ([Microsoft Support](https://support.microsoft.com/en-us/office/collaborate-on-excel-workbooks-at-the-same-time-with-co-authoring-7152aa8b-b791-414c-a3bb-3024e46fb104)). For independent annotation objects (not a single rich-text stream), silent merge is trivial and correct. | MED (idempotent ops + last-write-wins per annotation property is enough — full CRDT not required) | An annotation is an independent object. Two users adding strokes simultaneously is not a "conflict," it's just two strokes. The CRDT-grade hard case (two users editing the same Bezier curve at the same moment) is rare enough to accept LWW per property. |
+| **Offline editing with auto-sync on reconnect** | Drawboard Projects ships full offline markup ([Drawboard offline blog](https://www.drawboard.com/blog/markup-drawings-and-documents-while-offline-using-drawboard-projects)), Notion ships full offline ([Notion engineering](https://www.notion.com/blog/how-we-made-notion-available-offline)), Linear ships local-first as the architecture itself ([Linear sync engine](https://linear.app/now/scaling-the-linear-sync-engine)). Survey work happens in basements, mechanical rooms, job sites with no signal. This is non-negotiable. | HIGH (queue local mutations, retry with idempotency keys, replay through merge engine on reconnect) | Existing localStorage persistence is the foundation. The new work is the mutation queue + reconciliation pipeline. |
+| **Permissions: viewer / commenter / editor / owner** | Figma's three-tier model (Viewer / Commenter / Editor) plus "owner" as a fourth invisible level is the universal pattern ([Figma roles docs](https://help.figma.com/hc/en-us/articles/360039960434-Roles-in-Figma)). Every collab tool with shared docs has it. Construction users expect "the GC can comment, the field tech can mark up, the foreman owns the doc." | MED (RLS policies + UI state + a permission column on the share row) | Don't go more granular than four roles. Figma users explicitly request more granular permissions; Figma has held the line at 3 levels for years and it's working. ([Figma forum granular permissions thread](https://forum.figma.com/archive-21/a-granular-apporach-to-user-roles-24788)) |
 
-### Differentiators (Competitive Polish)
+### Differentiators (Where v2.4 Can Win)
 
-Features that would make rotation feel unusually refined but are NOT required to close the milestone.
+These are not table stakes but they directly serve the use case ("me on multiple devices") in ways the major incumbents do poorly.
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| **Pill clamps to visible page rect even when handle is off-page** | Partial Gap 2 answer. The handle itself lives at the geometrically correct orbit (constant-radius from shape center), but the typed-degree pill clamps so it remains reachable. User can ALWAYS type an angle even if the handle is off-screen. The pill already clamps correctly per v2.1 12-02 notes — this is verifying/extending, not building from scratch. | LOW–MEDIUM | Cheap version of Gap 2. Preserves the "handle is always above the shape" learned mental model while giving users a fallback interaction (typed angle) that works regardless of handle visibility. If Gap 2 is ever revisited, do THIS, not handle relocation. |
-| **Keyboard rotation nudging** | Already shipped in v2.1 (Arrow nudges ±1° via RotationInputField). Listed here as the existing fallback when the handle is off-screen. | LOW (preserve) | Users who bump into the off-screen handle problem can still nudge via arrows or type a value. This is the "Gap 2 is already 95% solved" argument. |
-| **Edge-scrolling during rotate drag (tldraw pattern)** | When user drags the rotation handle toward the viewport edge, the viewport itself pans at a rate proportional to proximity to the edge. tldraw uses an `edgeScrollDistance` (default 8px) proximity zone and scales pan speed 0→1 across the zone. Elegant, discoverable, no new UI. | HIGH | Would require hooking the PDF viewer scroll/pan system to the SVG rotation drag state. The Syncfusion viewer has its own scroll model — hybridizing this is non-trivial. Probably not worth it for v2.2; file for a later polish stage if the off-screen-handle complaint resurfaces. |
-| **Numeric rotation always visible during drag** | Excalidraw and Figma both show a live degree readout during rotation drag — next to cursor, in a corner HUD, or in the sidebar. This is a strictly better version of the current "hover to see pill" pattern. | MEDIUM | Out of v2.2 scope (pill visibility gate is shipped and working). Worth remembering for any future Rotation UX v3. |
+| **Device attribution on every edit (Mac / Windows / phone)** | No major collab tool surfaces *device* in addition to user — Excel only shows device names when conflicts spawn duplicate files (`Report-LaptopName.docx`) ([Excel sync conflicts](https://www.digitalcitizen.life/cloud-sync-conflicts-explained-why-files-duplicate-or-overwrite-themselves/)). For a **single-user-multi-device** workflow this is genuinely useful: "I marked this in the field on iPad, finished on Mac, exported on Windows" — being able to retrace which device captured which observation is forensic-grade for survey work. | LOW (one extra column `device_label` derived from `os.hostname()` at app start; UI: append "(on Mac mini)" or "(on Surface)" to author tooltip + activity log row) | Treat device label as a free-text field the user can rename in Settings ("Mac mini in office", "Job-site iPad"). Otherwise default to OS hostname. |
+| **Authorship hover with timestamp and device, no persistent color halo** | Color-coded selection halos work in Figma because the canvas is otherwise empty. Construction PDFs are already saturated with red/blue/green markup that *carries semantic meaning* (red = revision, blue = field measurement, green = approved). Adding per-user color halos directly conflicts with markup color semantics. Hover-only authorship surfacing is the right call here. | LOW (re-uses table-stakes hover) | Differentiator vs Figma/Bluebeam: do **not** ship color halos. Document this as a deliberate non-goal. |
+| **Activity log filterable by user, by page, by date, by annotation type** | Bluebeam exports session activity reports but the UI filtering is weak. A small construction shop can ship a tighter, faster filterable log because the data volumes are tiny (one project = thousands of events, not millions). | MED (Postgres + simple filter UI) | "Show me everything Mike marked on page 6 yesterday" is the killer query for site visits. |
+| **"Where am I picking up?" view across devices** | Same-user-multi-device unique need. Show "last edit on this doc was 12 minutes ago on your Surface, page 14, sticky note about HVAC duct" when you open the doc on Mac. No incumbent does this — they all assume different users on different devices. | LOW-MED (read latest event from activity log scoped to current user, render as a banner at doc open) | Possibly the single most valuable v2.4 feature for the actual primary use case. Almost free if activity log is already built. |
+| **Optimistic UI everywhere — strokes commit locally first, sync in background** | Linear and Figma both treat optimistic-local-first as religion. The user never waits for the network. Already half-true in current build. | MED (extend existing local persistence to cover all annotation types under the new sync engine) | The single biggest perceived-quality lever. Network errors should never block the pencil. |
+| **Toast for sync state ("Saved to cloud", "Working offline", "Resyncing 3 changes")** | Subtle but enormously calming for users who care about data integrity (survey deliverables go into legal RFI threads). Notion does this well; Drawboard does this well. | LOW | Use the existing toast/snackbar system. Don't gate the user — never block input behind sync state. |
 
-### Anti-Features (Do NOT Build)
-
-Tempting features that every researched tool rejects, or that would regress the v2.1 interaction model.
+### Anti-Features (Skip These — They Look Good but Cost a Lot)
 
 | Feature | Why Requested | Why Problematic | Alternative |
 |---------|---------------|-----------------|-------------|
-| **Relocate rotation handle to opposite side / nearest visible side when off-screen** (Gap 2 as designed in backlog) | User ran into an off-screen handle in 12-02-UAT Test 14 and couldn't re-grab it without first moving the shape. | **(a)** Zero tools in the survey do this. Figma, Excalidraw, Miro, Illustrator, Sketch, tldraw, Inkscape, Nutrient, PSPDFKit — all keep the rotation handle at a fixed relative position to the bounding box. **(b)** Breaks the universal "rotation handle is above the shape" mental model users bring from every other app. **(c)** Creates a context-dependent handle position that changes as user pans — handle jumps around while user tries to target it. **(d)** "Nearest visible side" is ambiguous when two sides are equidistant — design requires tiebreaker rules that users will find surprising. **(e)** The real pain (can't rotate when handle is off-screen) is already ~95% solved by the typed-degree pill from EDIT-12 + Arrow nudging. | **Preferred:** Close Gap 2 as `wontfix_superseded_by_typed_input`. Document that the typed pill + Arrow keys are the canonical interaction when the handle is inaccessible. **Cheap compromise:** Ensure the typed-degree pill clamps to the visible viewport even if the handle orbits off-page, so the user always has a reachable exact-angle input. **Expensive alternative (not recommended):** Adopt tldraw's edge-scrolling pattern — pan the viewport during drag — rather than relocating the handle. |
-| **Hide the rotation handle entirely during edit mode** | Easy "fix" for Gap 4 — if the handle isn't rendered, it can't clip. | **(a)** Removes rotation-in-edit as a feature. Figma, Nutrient, Illustrator, tldraw all allow rotation of a shape while editing its text/content. **(b)** Creates a mode where user can see the shape is rotated but can't adjust the rotation without exiting. **(c)** Asymmetric with the v2.1 typed-degree pill which remains visible in all selection states. **(d)** The root cause is a trivial clipPath/overflow bug — masking it by removing the handle is treating a symptom, not the disease. | Fix the clip with `controlsAboveOverlay = true` + `overflow: visible`. Both are one-liners. |
-| **Make the pill / handle rotation-snap to 45° when released off-screen** | User might argue "if I can't see the handle, at least snap so I know where it is." | Breaks the v2.1 invariant that Shift-snap is a drag-only modifier and typed/Arrow commits are exact. Adds a hidden mode switch the user didn't opt into. | Rotation snap remains strictly drag-and-Shift. Off-screen UX is solved by pill clamping, not by silent behavior changes. |
-| **Persistent "rotation mode" the user enters with a hotkey** | Some users would love a Figma-R-style modal rotation tool. | Scope creep for a polish milestone. The v2.1 interaction model is modeless-select with hover-intent affordances — switching to a modal tool would be an entire new UI paradigm. | Defer to a future Rotation UX redesign if the modeless pattern ever proves insufficient. |
-| **Re-implement hover-intent by polling pointerMove on document** | Tempting "bulletproof" fix for Gap 3 — if the effect listens globally, it can't miss the handle. | Global pointermove listeners during idle selection are wasteful, racy with other overlays, and break the single-responsibility of the hover-intent effect. | Surgical fix: re-run the existing effect when `annotations` identity changes, OR resolve `handleEl` lazily on pointerenter rather than capturing it at effect-mount. |
-| **Add an `overflow: visible` to the entire SVG annotation layer** | Might solve Gap 4 "structurally." | Too broad — the SVG layer's overflow rules interact with Syncfusion page div clipping, drag-to-select hit zones, and outside-click dismiss. Gap 4 is specifically the FabricEditCanvas container. | Scope the `overflow: visible` fix narrowly to the FabricEditCanvas wrapper, and verify `controlsAboveOverlay` is the primary fix. |
+| **Live cursors** ("see Sarah's cursor moving in real time") | Looks impressive in demos. Figma made it iconic. | (1) Figma's own community pushes back: "silent cursors floating around as distracting at best and anxiety-inducing at worst" ([Figma forum thread](https://forum.figma.com/suggest-a-feature-11/disable-observe-mode-18772/index2.html)). (2) For the actual use case (mostly same user across devices, occasional second person), there is no one to watch. (3) Network cost: cursor packets are the dominant traffic in real-time collab apps and require a dedicated low-latency channel beyond annotation sync. (4) Implementation complexity ladders into needing a presence server, throttling logic, smoothing/interpolation, multi-page cursor projection. | Stick with the existing presence-list-only approach. Maybe ship a cursor *click-to-locate* feature ("tell me what page Sarah is on") instead of continuous cursor tracking. **80% of the value at 5% of the cost.** |
+| **Conflict resolution modals** ("These two versions conflict — pick one") | Feels safe to engineering minds — "the user is in control." | Catastrophically poor UX. Every modern collab tool that has tried this (Dropbox, old SharePoint, old Excel shared workbooks) has actively migrated away. Notion still does this for offline conflicts on database properties and it's their most-complained-about behavior ([Notion CRDT discussion](https://dev.to/smallstack/crdts-and-local-first-architecture-how-smallstack-handles-offline-conflict-resolution-338c)). Users dismiss the modal randomly and lose data either way. | Silent merge with last-write-wins per property + a "recent activity" panel. If users want to recover a lost edit, they go to activity log, not a modal. |
+| **Per-annotation locks ("I'm editing this, you can't touch it")** | Surface-level reasonable. Zotero PDF Reader does this ([Zotero forum](https://forums.zotero.org/discussion/96174/zotero-pdf-reader-why-are-annotations-by-other-users-locked)) — annotations from other users are locked from edit. PDF Annotator has explicit lock UX. Altium Designer does soft-locks at the document level ([Altium docs](https://www.altium.com/documentation/altium-designer/collaborators-visualization-conflict-prevention)). | Wrong default for the use case. Survey users explicitly want to *correct* each other's mistakes ("the GC marked the wrong duct, let me fix it"). Locking by author creates a "frozen by predecessor" problem when the original author isn't reachable. **CRDT-style merging makes locks unnecessary** for the small-team case — there's no contention to lock against. | Don't ship locks. If a specific contractor scenario emerges later, ship them as an opt-in toggle on the document, not the default. |
+| **Last-writer-wins on the *whole annotation*** (Excel-style) | Simplest possible merge model. | Excel co-authoring's "last change wins" is universally disliked when applied at the file level ([Excel co-authoring](https://www.breadcrumbdigital.com.au/co-authoring-troubleshooting-tips/)). Applied at the annotation-property level (color, position, stroke width independently) it's fine. Applied at the annotation level (whole stroke replaced) it loses work. | LWW *per property*, not per annotation. If two users change color on the same stroke, last-write-wins on color only. The stroke geometry is preserved. |
+| **Real-time character-by-character sync inside text annotations** | The Google-Docs-y dream. Looks magical in demos. | Genuinely hard. Notion's blog ([Peritext / Notion](https://www.notion.com/blog/how-we-made-notion-available-offline)) outlines the problem: rich-text CRDTs with real-time character merge is *the* boss-level problem in collab. The current app's text annotations are short labels ("HVAC", "12'-3\""), not paragraphs. Two people typing in the same label simultaneously is essentially zero-frequency in survey work. | LWW on the whole text content of the annotation. If two people simultaneously edit the same text label (~zero-frequency event), one wins, the other shows up in activity log as a re-edit. Acceptable. |
+| **Branching / forking / suggestion mode** ("propose a change, I approve") | Nice for review workflows. Word/Google Docs ship it as Track Changes / Suggestions. | Construction markup is ground-truth observation, not a suggestion-and-approval flow. Adding a suggestion layer on top of annotation drawing doubles the data model and quadruples the UI complexity for a workflow nobody is asking for. | Activity log + per-user undo covers 95% of "I want to back out a change someone made" without needing a formal approval pipeline. |
+| **Comment threads on annotations** ("reply to this stroke") | Figma comments, Drawboard comments. | Different from annotations. Annotations *are* the comments in this app — that's what survey markup *is*. Adding a second-tier commenting layer is feature drift toward Drawboard Projects, which is a different product category (project management on top of PDFs). | Defer indefinitely. If the need surfaces, ship sticky-note replies, not a separate threading layer. |
+| **5-second polling sync** ("check the cloud every 5 seconds") | Easy to build, looks like real-time. | Burns battery, burns mobile data, falls behind under load, doesn't actually feel real-time at 5s intervals. Every modern collab tool uses WebSockets / SSE / push for a reason. | Supabase Realtime channels (already in the stack) — sub-second push, far less network cost. |
 
 ---
 
-## Evidence by Concern
+## Capability-Area Synthesis (the 10 questions, answered directly)
 
-### Concern 1 — Hover affordances on rotation handles after edit-mode exit
+### 1. Authorship surfacing — when and where?
 
-**Question:** When should the rotation pill appear/disappear? What should happen when user click-off-commits an edit and is back in select mode hovering the handle?
+**Answer:** Hover-only on the annotation, plus author column in activity log. **No persistent color halo.** Reasoning: construction markup colors carry semantic meaning (red = revision, blue = field, green = approved). Layering per-user halos on top corrupts the markup language. Hover-reveal is what Drawboard ships and what survey users have already been trained to expect.
 
-**What other tools do (evidence):**
+**Pattern reference:** Drawboard ([drawboard.com](https://www.drawboard.com/)) — "hover over any annotation to see exactly who made it and when."
 
-- **Figma** — Rotation affordance is entirely hover-driven: you hover just outside a bounding-box corner and the cursor changes to the curved-double-arrow rotate cursor. This re-arms automatically the moment selection returns to idle after any mode exit. Figma has NO persistent rotation handle element — the corner hit zone IS the affordance. No stale-ref possible because no React ref is captured.
-- **tldraw** — The select tool is an explicit state machine with children `idle`, `pointing`, `translating`, `resizing`, `rotating`, etc. When a user exits an edit mode, the state machine returns to `idle` and cursor rendering is recomputed from scratch on the next hover. No DOM ref capture; cursor is a derived value from current state.
-- **Excalidraw** — Rotation handle is a circle rendered above the bounding rectangle when the shape is in select state. Every render pass re-emits the handle and attaches hover/pointer handlers based on current selection. No persistence across edit-to-select transitions because the handle is re-created, not re-used.
-- **Illustrator** — Cursor change on hovering near a bounding-box corner is computed on every mouse move; there's no captured handle element. (Users have filed bugs when this doesn't work — the expected behavior is re-arm on every selection state.)
-- **Miro** — Rotation handle sits at top-center of the selected shape, re-rendered every selection cycle, same hover-to-cursor pattern as Figma.
-- **Nutrient/PSPDFKit Web** — Rotation handle appears at the bottom of the annotation when it's selected. Selection state is recomputed on mode changes; no stale ref.
+### 2. Live cursors — useful or not?
 
-**Pattern:** Every tool surveyed treats the rotation affordance as a **derived render from current selection state**, not a captured DOM reference. When selection mode is re-entered (via click-off from edit, Escape, etc.), the affordance is freshly computed and cannot be stale.
+**Answer:** **No.** For this use case (mostly same-user-multi-device), there is no second person to track 95% of sessions. For the 5% with a contractor, presence-list + last-edit page indicator covers the need. Live cursors carry real complexity (smoothing, throttling, multi-page projection, low-latency channel) and a real UX cost ([Figma users complain](https://forum.figma.com/suggest-a-feature-11/disable-observe-mode-18772/index2.html)). **80/5 rule applies — biggest perceived feature savings in v2.4.**
 
-**Survey → bug diagnosis:** The v2.1 implementation captured `handleEl` in a React ref inside the hover-intent effect. When edit-commit triggers a React reconciliation that re-creates the handle DOM element, the captured ref still points at the orphaned pre-reconcile node. This is a React lifecycle bug, not a design question. The fix is well-understood:
+### 3. Per-user undo — universal? How granular?
 
-1. **Option A (simplest):** Add `annotations` identity to the effect's dependency array so the effect re-subscribes after every commit.
-2. **Option B (more robust):** Resolve the handle element lazily on each `pointerenter` instead of caching at mount time. `document.querySelector` inside a shape-scoped parent works and is sub-millisecond.
-3. **Option C (most idiomatic React):** Use a callback ref on the handle element so the effect re-runs automatically whenever the DOM node changes.
+**Answer:** **Universal among modern collab tools.** Figma, Notion, Linear, Google Docs all maintain per-client undo stacks. Granularity is per-action (one stroke = one undo step), with undo of a delete restoring the full deleted object from the local client's buffer (Figma's approach). Don't try anything more granular than per-action. Don't ship a "global undo" — universally rejected.
 
-**Reference tools to visually inspect:** Figma (free tier), Excalidraw (open-source, browsable source).
+**Pattern reference:** [Figma multiplayer undo](https://www.figma.com/blog/how-figmas-multiplayer-technology-works/) — "Data is stored in the undo buffer of the client that performed the delete. If that client wants to undo the delete, then it's also responsible for restoring all properties of the deleted objects."
 
-**Edge cases to cover:**
+### 4. Offline → online reconciliation UX
 
-- Exit edit via Escape key (not just click-off) — must also re-arm the hover affordance.
-- Exit edit via commit-then-select-different-shape — the NEW shape's rotation handle must be armed, not the old one's.
-- Multi-select → enter edit on one shape → commit → multi-select restored — all selected shapes' affordances must re-arm (probably out of scope for v2.2 since multi-select edit isn't shipped, but worth noting for test coverage).
-- Rapid double-click → accidental edit-mode enter → immediate Escape → hover handle — must work on first hover after the aborted edit.
+**Answer:** **Silent merge.** No modals. The mutation queue replays through last-write-wins per annotation property, and the activity log captures everything. If a user feels something was lost, they go to activity log to inspect or restore. **The conflict modal is a 1990s artifact.** Notion still has them for database property conflicts and it's their most-disliked offline behavior.
 
-**UX anti-patterns to avoid:**
+**Toast surface:** "Resyncing 3 changes…" → "All changes saved." That's the whole UX.
 
-- Requiring a full deselect + reselect as a "workaround." This is what the v2.1 ship surface does today, and it fails the "tool feels finished" bar.
-- Masking the bug by removing the hover gate entirely (always show the pill on selection). This regresses the hover-intent design from 12-02.
-- Using a global pointermove listener as a sledgehammer. Wasteful and racy.
+### 5. Activity log / change history — depth and surfacing?
 
----
+**Answer:**
+- **Depth:** Forever (event-sourced append-only table; data volumes are tiny — a project has tens of thousands of events, not millions).
+- **Surfacing:** Sidebar panel on the document, filterable by user / page / date / annotation type. Plus a per-annotation "history" item in the right-click menu showing just that annotation's changes. Plus an export-to-CSV for the construction-shop legal-trail use case.
+- **Don't ship:** Periodic snapshots (Google Docs version-history-style) — over-engineering for object-level annotations. Don't ship a separate page; the sidebar is enough.
 
-### Concern 2 — Rotation handle visibility in edit mode on pre-rotated shapes
+**Pattern reference:** [Bluebeam Studio Sessions activity report](https://support.bluebeam.com/online-help/prime/Content/Studio%20Prime/Studio%20Prime%20Guide/03%20-%20Portal/How-to-See-a-Users-Activity.htm) — same shape, leaner UI.
 
-**Question:** When a shape is already rotated and enters edit mode, is the rotation handle still visible and draggable? If yes, how is it kept inside the clip boundary?
+### 6. Locking / soft-locking
 
-**What other tools do (evidence):**
+**Answer:** **No locks.** The CRDT-grade merge model + per-user undo + activity log covers the small-team contention case without locks. Locks introduce frozen-by-predecessor problems and conflict with the survey-correction workflow. Zotero and PDF Annotator ship locks; that's because they're long-form document annotation tools where one author "owns" each comment. Construction markup is collaborative correction by design.
 
-- **Figma** — Text edit on a rotated text frame keeps the entire bounding box visible, including the corner rotation hit zones. The edit chrome (text cursor, selection range highlights) renders inside the rotated local coordinate frame, but the selection bounding box and rotation affordance are in the parent (canvas) frame and are not clipped. User can rotate while editing text.
-- **tldraw** — Shape rendering uses CSS `transform: translate() rotate() scale()` on the shape wrapper, and selection UI is rendered in a separate layer that's not clipped to the shape. Text labels edit in-place but the selection overlay stays live. Release notes explicitly mention "Editing a shape with a label now ensures that the label is on screen" — tldraw actively pans to keep the edit surface visible rather than letting content get clipped.
-- **Nutrient/PSPDFKit Web** — Free-rotatable text/image annotations keep their rotation handle available during editing because edit-mode controls are painted at the page-overlay level, not inside a shape-local clip region.
-- **Illustrator** — Text-on-path or rotated text object edits happen in-place with the full bounding box and rotation affordance visible.
-- **Fabric.js (the library this project uses for edit mode)** — Fabric's own documentation explicitly addresses this: "clipPath will clip away controls, if you do not want this to happen use `controlsAboveOverlay = true`." This is a documented, supported flag on the Canvas class and is the direct fix for Gap 4's symptom.
+### 7. Device attribution beyond user
 
-**Pattern:** Transform controls (rotation, resize) should ALWAYS be painted above any clip region that applies to the shape content. This is a universal invariant across design tools and is directly supported by Fabric via `controlsAboveOverlay`.
+**Answer:** **Yes, ship it. This is a real differentiator.** No major collab tool surfaces device alongside user (Excel only does it as a side-effect of OneDrive conflict-copy filenames). For a workflow centered on "me across multiple devices," device attribution is exactly the missing piece. Implementation is one extra column + tooltip suffix.
 
-**Survey → bug diagnosis:** Gap 4's symptom (mtr handle clipped only at non-zero rotation, not at 0°) is the textbook `clipPath`-vs-`controls` interaction. At 0° the mtr handle offset is small enough that it sits inside whatever tight rect bounds the FabricEditCanvas. At non-zero rotation the mtr's rotated offset protrudes outside that rect and gets clipped.
+**Implementation:** `device_label` as user-renameable (default to OS hostname). Surface as "Isaiah on Mac mini" in author hover and activity log.
 
-**Recommended fix order:**
+### 8. Co-author count limits
 
-1. **Primary:** Set `canvas.controlsAboveOverlay = true` on `FabricEditCanvas` canvas initialization. One line. Documented cure.
-2. **Secondary:** Add `overflow: visible` to the FabricEditCanvas wrapper div. The CSS clip is a second possible culprit — the Fabric canvas element itself is one layer, the React wrapper around it is another.
-3. **Tertiary (if the above don't fully solve it):** Increase the FabricEditCanvas canvas element's bitmap size to include the rotation handle's maximum orbit. The mtr handle sits `cornerSize + rotationHandleOffset` pixels outside the shape's local bounding rect. At rotation `r`, its worst-case position relative to the shape's axis-aligned bounding box is `sqrt((w/2 + offset)^2 + (h/2)^2)` etc. Reserve that much padding.
+**Answer:** **Soft cap at 10 concurrent on a doc, hard cap at 50 across the project.** Reasoning:
+- Bluebeam Studio Sessions caps at 500 attendees ([Bluebeam](https://support.bluebeam.com/studio/resources/studio-faqs.html)) — far overkill for a small construction shop.
+- The realistic case is 2-3 concurrent users at most.
+- The infrastructure cost (Supabase Realtime channel cost, broadcast fan-out) starts mattering above ~20 concurrent users. Setting a soft cap forces the architecture to scale linearly within the budget the existing subscription tier supports.
+- Practical ceiling for the design is whatever the WebSocket fan-out can handle without batching — likely 50-100 concurrent before things need redesign.
 
-**Reference tools to visually inspect:** Figma (rotate a text frame 30°, then double-click to edit — rotation corner hit zone still works). Fabric.js demos with `controlsAboveOverlay = true` set.
+**Don't ship:** Live cursors at 50 users. The cursor packet rate becomes the dominant cost.
 
-**Edge cases to cover:**
+### 9. Permissions / roles
 
-- Shape rotated to exactly 90°, 180°, 270° — the "rotation extends mtr offset in maximum direction" assertion holds at these angles; verify they don't clip.
-- Shape rotated to 45° (maximum AABB expansion) — verify.
-- Text shape in edit mode with a very long line wrapping the textbox — the wrapping dimension change shouldn't re-introduce clipping.
-- Edit mode + live resize (if shipped) — handle visibility should survive resize.
-- Edit mode + zoom change — Syncfusion viewer zoom shouldn't re-introduce clipping because Fabric controls are measured in screen space, not PDF space.
+**Answer:** **Four roles: Owner / Editor / Commenter / Viewer.** Mirror Figma exactly ([Figma roles](https://help.figma.com/hc/en-us/articles/360039960434-Roles-in-Figma)). Figma has held this line for years against repeated requests for finer-grained permissions and the model is working. Construction users expect this exact split:
+- **Owner:** the document owner. Manages permissions, can delete the doc.
+- **Editor:** can draw / edit / delete any annotation.
+- **Commenter:** can add sticky notes only. Cannot draw on the canvas.
+- **Viewer:** read-only.
 
-**UX anti-patterns to avoid:**
+**Don't go more granular** ("can edit highlights but not strokes") — that's the request Figma users have raised and Figma has correctly refused. The complexity overhead isn't worth it for the use case.
 
-- Hiding the rotation handle during edit. Breaks rotation-while-editing, which is table stakes.
-- Forcibly resetting rotation to 0 on edit enter. Data-destructive and breaks user intent.
-- Re-projecting the mtr handle into a "safe" position that no longer corresponds to the shape's rotation. Visually confusing — users expect the handle at the top of the rotated shape.
-- Using a massive `padding: 500px` on the wrapper. Blunt instrument that hurts hit testing, scroll, and z-stacking on adjacent overlays.
+### 10. Conflict scenarios that surprise users (the "even with CRDTs you still lose data" list)
 
----
+These are the real ways collab tools lose data even with sophisticated merge engines. v2.4 must be honest about each:
 
-### Concern 3 — Off-screen rotation handle behavior
-
-**Question:** If the mtr handle would render off the canvas/page, what to do? Relocate, clamp, mirror, or leave off-screen?
-
-**What other tools do (evidence):**
-
-- **Figma** — Rotation hit zone sits at corners of the bounding box. If the shape extends beyond the viewport, user zooms out or pans to reach the corner. No handle relocation. The rotation affordance simply isn't reachable until the user changes viewport.
-- **tldraw** — Rotation handle stays at its geometrically correct position. During an active drag (rotate, resize, translate), tldraw's **edge-scrolling** kicks in: when the pointer enters an 8-pixel proximity zone at any viewport edge, the camera pans at a rate proportional to depth into the zone. Requires active drag + unlocked camera + pointer in zone. This means users drag the handle toward the edge and the world scrolls under them. Outside an active drag, the handle just stays where it geometrically belongs.
-- **Excalidraw** — Rotation handle stays above the bounding rect. Users pan/zoom if it's off-screen. No relocation.
-- **Miro** — Rotation handle at top-center of the shape. Stays there. Users pan/zoom.
-- **Illustrator** — No persistent rotation handle to relocate; rotation affordance is the cursor-near-corner hit zone. Inaccessible hit zones require the user to change the artboard view.
-- **Sketch** — Rotation uses ⌘+corner-click (no persistent handle at all). Same story — reach via viewport change.
-- **Inkscape** — Rotation handles (double-click to toggle to rotate mode, then corners become rotation handles) stay at corners. Off-screen handles require pan.
-- **Nutrient/PSPDFKit Web** — Rotation handle at bottom of annotation. Stays at bottom. If it's off-page, user scrolls the page view.
-
-**Pattern:** **Zero tools in the survey relocate a rotation handle to an alternate side when it's off-screen.** The universal pattern is:
-
-1. Keep the handle at its geometric position (predictable, matches user mental model).
-2. User reaches it by panning or zooming the viewport.
-3. (tldraw only) During an active drag, edge-scrolling auto-pans the camera as the pointer approaches the viewport edge.
-4. Fallback interaction: numeric typed input in a sidebar / property panel.
-
-**Survey → design critique of Gap 2 (as designed):**
-
-The backlog describes Gap 2 as: "When user places a shape near the page edge and rotates it, the mtr rotation handle can go off-screen. Currently the user must move the shape away from the edge to re-grab the handle. Desired flow: place shape near edge → rotate → if handle would be off-screen, it relocates to the opposite side of the shape (or nearest visible side) so the user can re-grab it without moving the shape first. Pill follows the new handle position."
-
-Problems with "as designed":
-
-1. **No tool does this.** The absence across Figma, tldraw, Excalidraw, Miro, Illustrator, Sketch, Inkscape, Nutrient, PSPDFKit is not coincidence — it's a load-bearing invariant for learnability.
-2. **Breaks learned mental models.** Users bring "rotation handle is above the shape" from every other tool. A context-dependent flip creates "wait, where did it go?" moments that are worse than "wait, I can't reach it right now."
-3. **Tiebreaker ambiguity.** "Nearest visible side" has multiple ambiguous cases (shape partially off-page in two dimensions, shape center off-page, shape larger than visible area). Every rule the team invents will surprise some users.
-4. **Moving target during drag.** If the handle can relocate based on viewport, then user-pans or zoom changes during a rotation drag would cause the handle to snap to a new side mid-drag — visually catastrophic.
-5. **Already 95% solved by v2.1.** The typed-degree pill + Arrow nudging, both shipped in EDIT-12/12-03, provide a fully-functional rotation path with zero handle-grabbing required. The user can already rotate an off-screen-handle shape by typing or arrowing. Gap 2's underlying pain is thin.
-6. **RotationInputField pill already clamps correctly** per v2.1 notes. The user's typed input affordance is already reachable in most off-screen handle cases. The missing piece — if there is one — is "pill is visible even when the handle orbit lies outside the page rect." That's a pill-clamp fix, not a handle-relocation fix.
-
-**Recommended outcomes (pick one):**
-
-- **Option A (strongest recommendation):** Close Gap 2 as `wontfix_superseded_by_typed_input`. Document in the milestone reconciliation that v2.1's typed-degree pill + Arrow nudging is the canonical interaction for unreachable rotation handles, matching what every surveyed tool implicitly relies on (keyboard / numeric fallback when viewport can't show the handle). Ship v2.2 with only Gaps 3 and 4 closed.
-- **Option B (cheap compromise, if Gap 2 MUST ship in some form):** Verify and extend the existing pill-clamp logic so the typed-degree pill remains visually reachable even when its natural orbit point is off-screen, without moving the mtr handle itself. The handle lives at its geometric home; the pill clamps to the visible viewport edge (with a leader line back to the handle if desired). Scope: `RotationInputField` placement helpers. Preserves universal handle mental model, gives off-screen user a fallback affordance.
-- **Option C (most ambitious, probably not v2.2):** Adopt tldraw's edge-scrolling pattern — during an active rotation drag that approaches the viewport edge, pan the Syncfusion PDF page so the handle stays in view. Requires hooking SVG rotate drag into the Syncfusion viewer scroll API, which has its own coordinate model. HIGH complexity, unclear payoff for the engineering-drawing user base.
-
-**Reference tools to visually inspect:**
-
-- tldraw's edge-scrolling (https://tldraw.dev/sdk-features/edge-scrolling) — only tool in the survey with an active-drag edge behavior.
-- Figma, Excalidraw — watch how they handle a shape placed at the top of the canvas with a rotation handle above the viewport. Both tools make you scroll/zoom; neither relocates.
-
-**Edge cases to cover (for Option B pill-clamp only):**
-
-- Pill sits on top of mini-toolbar or other overlays — z-ordering.
-- Pill clamped to the same edge as the shape, covering the shape itself — small offset.
-- Multiple shapes selected, each with off-screen handles — pill per shape? pill per selection center? (Out of v2.2 scope regardless.)
-- Shape rotated such that the pill's normal orbit position is outside BOTH the page rect and the viewport rect — pill is off-viewport entirely. Fallback: anchor pill to the shape's visible bounding rect on the page.
-
-**UX anti-patterns to avoid (critical):**
-
-- **Relocating the mtr handle to a non-standard position based on viewport.** This is the headline anti-feature — breaks the learned mental model and no tool does it.
-- **Shrinking the handle into the nearest corner when close to the edge.** Violates "constant-radius from shape center" invariant from v2.1 pill placement.
-- **Letting the pill orbit silently off-screen when the handle does.** If we ship Option B, verify the clamp is active and user-visible — failing silently is worse than no clamp at all.
-- **Adding a modal "rotate" button in a corner toolbar when the handle is off-screen.** Breaks modelessness. Users would have to learn a second rotation path that only appears in edge cases.
+1. **Concurrent delete + edit race.** User A deletes annotation X while user B is editing X's color offline. Most CRDTs resolve this as "delete wins" — user B's edit silently disappears. **Mitigation:** activity log surfaces it; per-user undo recovers it. **Don't try to "fix" it** — it's the correct CRDT semantics.
+2. **Move + concurrent move.** User A drags the stroke 10px right, user B drags it 10px down. CRDTs implement move as delete+insert and you get one of the two destinations or, in pathological cases, two duplicates ([CRDT pitfalls](https://dev.to/puritanic/building-collaborative-interfaces-operational-transforms-vs-crdts-2obo)). **Mitigation:** treat position as a single mergeable property with LWW timestamp tiebreak. Accept the rare jumpy-position artifact.
+3. **Property merges that don't merge.** Notion is honest about this: "database properties — select fields, dates, relations, rollups — don't merge. When two people edit the same property offline, only one version survives and the other is silently overwritten" ([Notion offline guide](https://www.taskfoundry.com/2025/08/notion-offline-mode-setup-sync-conflict-guide.html)). **Mitigation:** activity log + LWW per property. Don't pretend it merged when it didn't.
+4. **Long offline window with parallel edits on the same annotation.** If both users have been offline for an hour and edited the same stroke independently, on reconnect only one survives. **Mitigation:** Activity log captures the loser's version verbatim so it can be re-applied manually if needed. Toast says "1 change replaced by newer edit" so the user knows.
+5. **Tombstone garbage growth (long-term).** Every deleted annotation must persist as a tombstone forever, otherwise late-syncing devices will resurrect it ([CRDT dictionary](https://www.iankduncan.com/engineering/2025-11-27-crdt-dictionary/)). **Mitigation:** for an annotation-object model (vs character-level CRDT), tombstones are cheap — one row each. For 100 deletes per project, that's 100 rows. Acceptable. Run a quarterly garbage collect on tombstones older than 90 days.
 
 ---
 
 ## Feature Dependencies
 
 ```
-Gap 3 (hover pill after edit-return)
-    └── requires: stable reference to mtr handle DOM element after React reconciliation
-        └── requires: SVGAnnotationLayer hover-intent effect
-            └── requires: useSVGInteraction rotation/hover state (shipped v2.1)
+[Per-annotation authorship columns (data model)]
+    ├──required-by──> [Authorship hover UI]
+    ├──required-by──> [Per-user undo scoping]
+    ├──required-by──> [Activity log]
+    └──required-by──> [Permissions enforcement]
 
-Gap 4 (mtr handle not clipped in edit mode)
-    └── requires: Fabric canvas.controlsAboveOverlay = true
-        └── requires: FabricEditCanvas canvas init (shipped v2.0 Phase 11)
-    └── requires: wrapper div overflow: visible
-        └── requires: FabricEditCanvas wrapper layout (shipped v2.0 Phase 11)
+[Activity log]
+    ├──required-by──> [Filterable activity sidebar]
+    ├──required-by──> [Per-annotation history menu item]
+    └──required-by──> ["Where am I picking up?" cross-device resume banner]
 
-Gap 2 Option B (pill clamps to visible viewport)
-    └── requires: RotationInputField placement helpers (shipped v2.1 EDIT-12)
-    └── requires: PDF page rect in screen coordinates (shipped, used by v2.1 pill placement)
+[Mutation queue + idempotency keys]
+    ├──required-by──> [Offline editing]
+    ├──required-by──> [Silent merge on reconnect]
+    └──required-by──> [Optimistic UI for cloud-sync writes]
 
-Gap 2 Option C (edge-scrolling during rotate drag) [NOT RECOMMENDED]
-    └── requires: Syncfusion viewer scroll API hook
-    └── requires: SVG rotation drag state machine integration with viewport
-    └── conflicts with: existing Syncfusion page scroll model, zoom-aware drag bounds
+[Device label column]
+    ├──required-by──> [Device-aware hover + activity log rows]
+    └──required-by──> [Cross-device resume banner]
+
+[Permissions column]
+    ├──required-by──> [RLS policies]
+    └──required-by──> [Role-based UI gating (Commenter sees no pen)]
+
+[Per-user undo]  ──displaces──>  [Per-annotation locks (anti-feature)]
+[Activity log + LWW per property]  ──displaces──>  [Conflict modals (anti-feature)]
+[Authorship hover]  ──displaces──>  [Per-user color halos (anti-feature)]
 ```
 
 ### Dependency Notes
 
-- **Gap 3 depends on React effect dependency / ref-rebind discipline.** The fix touches `SVGAnnotationLayer.jsx` only. No cross-cutting changes. No data model changes.
-- **Gap 4 depends on two independent levers.** Both are one-liners. Test them individually to attribute the symptom correctly. `controlsAboveOverlay` is the idiomatic Fabric answer; `overflow: visible` is the React/CSS backstop.
-- **Gap 2 Option B depends on the pill placement system from v2.1.** The pill-clamp logic already exists (per v2.1 notes); Option B is verifying and possibly extending it. Low-medium complexity.
-- **Gap 2 Option C conflicts with the Syncfusion scroll model.** The PDF viewer owns its own scroll container, and hooking rotation drag into its scroll API would be the first integration of that kind. Strongly recommend against for v2.2.
-- **Gap 3 and Gap 4 are independent.** They touch different files (`SVGAnnotationLayer.jsx` vs `FabricEditCanvas.jsx`). They can land in either order. Both should be in v2.2.
-- **Gap 2 is independent of Gaps 3 and 4** — the roadmap can include or exclude it without affecting the other two.
+- **Data model first.** Author / device / timestamp columns must land before any UI feature reads from them. Backfill existing annotations to the document owner's user ID at migration time.
+- **Mutation queue is the gatekeeper for everything offline.** Offline edit, silent merge, optimistic UI all read from the same queue. Build it once, build it right.
+- **Activity log is read-cheap.** Once it exists, it powers cross-device resume, per-annotation history, filterable views, and CSV export at near-zero incremental cost.
+- **Per-user undo is independent of CRDT choice.** Figma is not a true CRDT and still ships per-user undo. Don't gate undo on the merge engine — it's a client-side stack.
 
 ---
 
-## MVP Definition — v2.2 Milestone Close
+## MVP Definition (v2.4 Scope)
 
-### Ship in v2.2 (strong recommendation)
+### Launch With (v2.4.0)
 
-- [ ] **Gap 3 — hover pill re-arms after edit-mode exit.** Table stakes. LOW complexity. Scope: `SVGAnnotationLayer.jsx` hover-intent effect only. Fix is dependency-array / ref-rebind / lazy-resolve (pick one).
-- [ ] **Gap 4 — mtr handle fully visible in edit mode on pre-rotated shapes.** Table stakes. LOW complexity. Scope: `FabricEditCanvas.jsx` canvas init + wrapper CSS. Primary fix: `controlsAboveOverlay = true`. Secondary: `overflow: visible` on wrapper.
+The minimum that makes "Isaiah on multiple devices + occasional contractor" feel like a real collab product.
 
-### Conditional (only if it slots cleanly)
+- [x] **Per-annotation authorship + timestamp columns** (data model) — foundational, blocks everything
+- [x] **Authorship hover tooltip** — table stakes
+- [x] **Mutation queue with idempotency keys** — gatekeeper for offline / silent-merge / optimistic
+- [x] **Silent merge on reconnect (LWW per property)** — replaces conflict-modal anti-pattern
+- [x] **Offline editing with auto-resync** — survey work demand
+- [x] **Per-user undo (your undo never erases collaborator work)** — universal table stake
+- [x] **Activity log (append-only) + sidebar UI with filters** — the "who deleted this" requirement, also enables resume banner
+- [x] **Permissions: Owner / Editor / Commenter / Viewer** — gates real-world contractor sharing
+- [x] **Device label column + hover/activity-log surfacing** — the actual differentiator vs Figma/Bluebeam for this use case
+- [x] **"Where am I picking up?" cross-device resume banner** — almost free given activity log; biggest UX win for the same-user-multi-device case
+- [x] **Sync-state toast** ("Resyncing 3 changes…", "All changes saved", "Working offline")
 
-- [ ] **Gap 2 Option B — pill clamps to visible viewport when handle orbit goes off-screen.** LOW–MEDIUM complexity. Scope: `RotationInputField` placement helpers. Only take this if Gaps 3 and 4 land fast and there's time left in the milestone. Do NOT ship Option A (handle relocation) — it's an anti-feature.
+### Add After Validation (v2.4.x)
 
-### Defer / Reject
+Real but lower-impact polish.
 
-- [x] **Gap 2 Option A (relocate handle to opposite side)** — **REJECT.** See anti-features table above. No tool in the survey does this; it breaks universal mental models; v2.1's typed-degree pill already solves 95% of the underlying pain.
-- [ ] **Gap 2 Option C (edge-scrolling during rotate drag)** — Defer to a future polish milestone. Requires Syncfusion scroll integration; HIGH complexity; out of scope for a polish milestone.
-- [ ] **Blur-commit / invalid-value revert for RotationInputField** — Already explicitly de-scoped during v2.1 12-02 UAT. Remains de-scoped.
-- [ ] **Fabric-path rotation snap** — Already de-scoped in v2.1. Remains de-scoped.
+- [ ] **CSV export of activity log** — construction-shop legal trail. Add when first user asks.
+- [ ] **Per-annotation right-click "show history"** — already in the data; add the menu item if hover-tooltip + sidebar isn't enough.
+- [ ] **Renameable device labels in Settings** ("Mac mini in office" vs OS hostname default) — quality-of-life only.
+- [ ] **Sync state in title bar** ("Document name — saving…" / "— offline") — only if toast feels too transient.
+
+### Future Consideration (v2.5+)
+
+- [ ] **Live cursors** — if and only if a heavy 3+ user concurrent use case emerges from real users (not from internal "would be cool" thinking). Default: never.
+- [ ] **Comment threads on annotations** — only if survey markup language proves insufficient. Default: never (would compete with the annotation system itself).
+- [ ] **Per-annotation locks** — only if a specific contractor scenario demands it; ship as opt-in document setting.
+- [ ] **Branching / suggestion mode** — out of scope for survey workflow; defer indefinitely.
+- [ ] **Real-time character-level merge inside text annotations** — out of scope; LWW-per-text-content is enough.
 
 ---
 
@@ -265,67 +219,85 @@ Gap 2 Option C (edge-scrolling during rotate drag) [NOT RECOMMENDED]
 
 | Feature | User Value | Implementation Cost | Priority |
 |---------|------------|---------------------|----------|
-| Gap 3 hover pill re-arm | MEDIUM (high frustration to work around) | LOW | **P1** |
-| Gap 4 mtr visible in edit mode | MEDIUM (visually broken, undermines "looks finished") | LOW | **P1** |
-| Gap 2 Option B pill-clamp | LOW–MEDIUM (partial fallback for edge case) | LOW–MEDIUM | **P2** |
-| Gap 2 Option A handle relocate | NEGATIVE (breaks mental model) | MEDIUM–HIGH | **REJECT** |
-| Gap 2 Option C edge-scroll drag | MEDIUM (novel but powerful) | HIGH (Syncfusion integration) | **P3 / defer** |
+| Authorship columns + hover | HIGH | LOW | **P1** |
+| Mutation queue + idempotency | HIGH | MED | **P1** |
+| Silent merge / LWW per property | HIGH | MED | **P1** |
+| Offline editing + auto-sync | HIGH | HIGH | **P1** |
+| Per-user undo (scoped) | HIGH | MED | **P1** |
+| Activity log + sidebar | HIGH | MED | **P1** |
+| Permissions (4 roles + RLS) | HIGH | MED | **P1** |
+| Device attribution | MED | LOW | **P1** (cheap differentiator) |
+| Cross-device resume banner | HIGH | LOW | **P1** (huge value, cheap) |
+| Sync-state toast | MED | LOW | **P1** |
+| CSV export of activity log | LOW | LOW | P2 |
+| Per-annotation history right-click | LOW | LOW | P2 |
+| Renameable device labels | LOW | LOW | P2 |
+| Live cursors | LOW (this use case) | HIGH | **P3 / never** |
+| Comment threads | LOW (overlaps with annotations) | HIGH | **P3 / never** |
+| Per-annotation locks | LOW (anti-pattern for use case) | MED | **P3 / never** |
+| Conflict modals | NEGATIVE | MED | **never** |
+| Per-user color halos | NEGATIVE (clashes with markup colors) | LOW | **never** |
+| Suggestion / branching mode | LOW | HIGH | **never** |
 
 **Priority key:**
-- **P1** — Must close v2.2 milestone.
-- **P2** — Ship if it slots cleanly; not a gating item.
-- **P3** — Defer; file for future polish milestone.
-- **REJECT** — Do not build; document rationale in reconciliation.
+- **P1:** v2.4.0 launch
+- **P2:** v2.4.x post-launch polish
+- **P3:** v2.5+ if user demand surfaces
+- **never:** ship in v2.4 docs explicitly as non-goals (saves future scope-creep arguments)
 
 ---
 
 ## Competitor Feature Analysis
 
-| Concern | Figma | tldraw | Excalidraw | Illustrator | Nutrient/PSPDFKit | Our v2.2 Approach |
-|---------|-------|--------|------------|-------------|-------------------|-------------------|
-| Hover affordance for rotation | Cursor-based (corner hit zone), re-armed per render | State-machine derived, re-armed on state return to `idle` | Handle re-rendered per selection, hover handlers fresh | Cursor-based (corner hit zone), re-armed per mouse move | Selection chrome re-rendered on selection cycle | **Fix the React stale-ref bug in hover-intent effect; keep the pill pattern. Matches the "derived from current selection" pattern of every surveyed tool.** |
-| Rotation handle visibility in edit mode | Yes, bounding box & corner hit zones remain active during text edit | Yes, selection UI painted above content layer, not clipped | Yes, handles stay above bounding rect | Yes, free transform + rotate work on rotated text | Yes, free-rotatable text/image annotations keep rotation handle | **Fabric `controlsAboveOverlay = true` + wrapper `overflow: visible`. Matches Fabric-documented cure and universal "controls above clip" invariant.** |
-| Off-screen rotation handle | Handle stays put; user pans/zooms | Handle stays put; edge-scrolling pans viewport during active drag | Handle stays put; user pans/zooms | No persistent handle; user pans/zooms to reach corner hit zone | Handle stays put; user scrolls page | **Handle stays put (matches every tool). Pill clamps to visible viewport (Option B, if slottable). Explicitly do NOT relocate the handle (no tool does this).** |
-
----
-
-## Open Questions / Needs Plan-Phase Investigation
-
-1. **Gap 3 fix selection:** Is `annotations` identity the right dep-array trigger, or does the effect need a callback-ref on the handle element? Plan-phase should verify which of the three fix options is cleanest against the current `SVGAnnotationLayer.jsx` structure.
-2. **Gap 4 primary cause:** Is the clip caused by Fabric's clipPath (fixed by `controlsAboveOverlay`), by the React wrapper CSS (fixed by `overflow: visible`), or both? Plan-phase should run the one-liner Fabric flag in isolation first, then add the CSS fix only if the symptom persists.
-3. **Gap 4 and `cornerSize` / `rotateHandleOffset`:** Does the current FabricEditCanvas set these to values large enough that the handle escapes the default canvas bitmap boundary even with `controlsAboveOverlay`? If so, may need a bitmap-padding adjustment too. Plan-phase should measure.
-4. **Gap 2 (if Option B is pursued):** Does the v2.1 pill-clamp already handle the viewport-edge case, or does it only clamp to the PDF page rect? The 12-02 notes say "pill already clamps correctly" but this needs verification against the specific off-screen handle case from Test 14.
-5. **Cross-gap interaction:** Does fixing Gap 4 (un-clipping the mtr handle) inadvertently re-introduce hit-testing on a handle that extends outside the FabricEditCanvas visible area? Could create a new "ghost hit zone" bug. Plan-phase should verify hit bounds after fix.
+| Feature | Figma | Bluebeam Studio Sessions | Drawboard Projects | Notion | Linear | Google Docs | Excel co-auth | Our Approach |
+|---------|-------|--------------------------|--------------------|--------|--------|-------------|---------------|--------------|
+| Authorship surfacing | Right-rail + selection halo color | Activity panel + markup author col | Hover tooltip on annotation | Per-block author indicator | Per-issue author + history tab | Hover in version history + colored highlights in version preview | None at cell level | **Hover tooltip only — no halo (markup color is semantic)** |
+| Live cursors | Yes (signature feature) | No | No | Yes (multiplayer block highlight) | No (sync engine, not real-time editor) | Yes (in-text cursor) | No | **No — presence list only** |
+| Per-user undo | Yes — per-client stack | Per-user, with redo modifying history | Yes | Yes | Yes (sync engine isolation) | Yes (per session) | Per-user, last-save-wins limits it | **Yes — Figma-pattern client-stored** |
+| Offline editing | Limited (single-page) | No (Sessions need cloud) | Yes (Projects) | Yes (recent rebuild) | Yes (foundational) | Limited | Limited | **Yes — first-class** |
+| Conflict UX | Silent (CRDT-inspired) | Server-mediated, last-save-wins | Silent merge | Silent for text, modal for db props | Silent (centralized server arbitrates) | Silent | Last-save-wins, sometimes spawns conflict file | **Silent + LWW per property** |
+| Activity log | Comments + version history | Full session report, exportable | Hover-level | Page history per block | Full issue history | Version history + Activity Dashboard | Limited | **Full activity log + filterable sidebar + CSV export** |
+| Per-annotation locks | No | No (per-document permissions only) | No | No | No | No | File-level only | **No — explicitly anti-feature** |
+| Device attribution | No | No | No | No | No | No | Only via OneDrive conflict-copy filename | **Yes — first-class differentiator** |
+| Co-author cap | High (org-tier) | 500 attendees | Unlimited (Projects) | High | High | 100 simultaneous editors | ~10 stable | **10 concurrent / 50 project (small-shop right-sized)** |
+| Roles | Owner / Editor / Commenter / Viewer | Owner / Editor / Reviewer / Member | Owner / Editor / Reviewer | Workspace + page roles | Workspace + role | Owner / Editor / Commenter / Viewer | View / Edit | **Owner / Editor / Commenter / Viewer (Figma-clone)** |
 
 ---
 
 ## Sources
 
-**Primary (HIGH confidence):**
+### Engineering blogs (HIGH confidence — primary sources)
+- [How Figma's Multiplayer Technology Works — Figma Blog](https://www.figma.com/blog/how-figmas-multiplayer-technology-works/) — authoritative on Figma's not-quite-CRDT centralized server model, per-user undo, deleted-object responsibility
+- [Multiplayer Editing in Figma — Figma Blog](https://www.figma.com/blog/multiplayer-editing-in-figma/) — original announcement; covers cursor and selection broadcasting
+- [How we made Notion available offline — Notion Blog](https://www.notion.com/blog/how-we-made-notion-available-offline) — primary source on Notion's offline CRDT migration, rich-text conflict resolution
+- [Scaling the Linear Sync Engine — Linear](https://linear.app/now/scaling-the-linear-sync-engine) — local-first architecture overview
+- [Figma roles documentation](https://help.figma.com/hc/en-us/articles/360039960434-Roles-in-Figma) — canonical 3-role model
 
-- [Fabric.js Canvas API — `controlsAboveOverlay` property](https://fabricjs.com/api/classes/canvas/) — First-party Fabric documentation explicitly states `controlsAboveOverlay = true` prevents clipPath from clipping controls. Direct cure for Gap 4 symptom.
-- [tldraw Edge Scrolling SDK docs](https://tldraw.dev/sdk-features/edge-scrolling) — Official tldraw documentation on edge-scrolling during active drag states (translating, resizing). Source of Gap 2 Option C pattern.
-- [tldraw Tools / Cursors SDK docs](https://tldraw.dev/sdk-features/tools) — State-machine model for select tool (idle/pointing/translating/resizing/rotating). Source of "hover affordance is a derived render from current selection state" pattern for Gap 3.
-- [Nutrient/PSPDFKit Web 2023.1 Rich Text + Rotation release](https://www.nutrient.io/blog/pspdfkit-web-2023-1-rich-text-support-annotation-rotation/) — Confirms annotation rotation UX in a PDF-annotation tool competitor. Rotation handle at bottom of annotation, rotation allowed in edit mode.
-- [Figma rotation help doc](https://help.figma.com/hc/en-us/articles/360039956914-Adjust-alignment-rotation-position-and-dimensions) — Confirms Figma's corner-hover cursor pattern and Shift=15° snap.
-- v2.1 Phase 12 close documentation (`FEATURE-BACKLOG.md`, `v2.1-ROADMAP.md`, 12-VERIFICATION.md human_decision) — Source of Gap 2/3/4 symptoms, reproduction steps, and suspected root causes. HIGH confidence because these are internal project records written during UAT.
+### Vendor support docs (HIGH confidence)
+- [Bluebeam Studio Sessions activity reports](https://support.bluebeam.com/online-help/prime/Content/Studio%20Prime/Studio%20Prime%20Guide/03%20-%20Portal/How-to-See-a-Users-Activity.htm) — confirms what gets tracked and exported
+- [Bluebeam Studio FAQ — 500 attendee cap](https://support.bluebeam.com/studio/resources/studio-faqs.html)
+- [Drawboard Projects markup offline](https://www.drawboard.com/blog/markup-drawings-and-documents-while-offline-using-drawboard-projects) — confirms offline markup pattern
+- [Drawboard product page — hover authorship](https://www.drawboard.com/) — hover-to-see-author UX pattern
+- [Excel co-authoring conflict resolution](https://support.microsoft.com/en-us/office/collaborate-on-excel-workbooks-at-the-same-time-with-co-authoring-7152aa8b-b791-414c-a3bb-3024e46fb104) — last-save-wins model
+- [Google Docs version history + activity dashboard](https://support.google.com/docs/answer/7378739) — per-user attribution UX
 
-**Supporting (MEDIUM confidence):**
+### Community / engineering analyses (MEDIUM confidence)
+- [Building Collaborative Interfaces: OT vs CRDT — DEV](https://dev.to/puritanic/building-collaborative-interfaces-operational-transforms-vs-crdts-2obo) — pitfalls list
+- [CRDTs and Local-First — smallstack](https://dev.to/smallstack/crdts-and-local-first-architecture-how-smallstack-handles-offline-conflict-resolution-338c) — rich-text user-intent problem
+- [Notion offline guide — TaskFoundry](https://www.taskfoundry.com/2025/08/notion-offline-mode-setup-sync-conflict-guide.html) — confirms property-merge limitation
+- [CRDT Dictionary — Ian Duncan](https://www.iankduncan.com/engineering/2025-11-27-crdt-dictionary/) — tombstone overhead, common pitfalls
+- [Cloud Sync Conflicts Explained](https://www.digitalcitizen.life/cloud-sync-conflicts-explained-why-files-duplicate-or-overwrite-themselves/) — Excel/Dropbox device-name-in-filename pattern
+- [Figma forum — disable observe mode](https://forum.figma.com/suggest-a-feature-11/disable-observe-mode-18772/index2.html) — community pushback on live cursors
+- [Figma forum — granular permissions request](https://forum.figma.com/archive-21/a-granular-apporach-to-user-roles-24788) — confirms Figma's deliberate hold at 3 roles
+- [Zotero PDF Reader annotation locks](https://forums.zotero.org/discussion/96174/zotero-pdf-reader-why-are-annotations-by-other-users-locked) — locks-by-author pattern (we are NOT adopting)
+- [Altium Designer soft locks](https://www.altium.com/documentation/altium-designer/collaborators-visualization-conflict-prevention) — document-level soft-lock pattern (we are NOT adopting)
 
-- [Adobe Illustrator rotation handle community discussions](https://community.adobe.com/t5/illustrator-discussions/rotation-option-not-showing-up-when-you-hover-over-a-corner-point-on-the-bounding-box/td-p/8762118) — Confirms Illustrator uses corner-hover cursor affordance, not a persistent handle.
-- [Excalidraw shape transformation deep-wiki](https://deepwiki.com/excalidraw/excalidraw/3.4-element-transformations) — Confirms Excalidraw rotation handle rendered above bounding rect, re-created per render.
-- [Miro rotation community thread](https://community.miro.com/developer-platform-and-apis-57/how-to-rotate-24076) — Confirms Miro rotation handle position (top-center of selection) and Shift=45° snap.
-- [FigJam resize/rotate help](https://help.figma.com/hc/en-us/articles/1500006206242-Resize-rotate-and-flip-objects-in-FigJam) — Confirms FigJam inherits Figma's rotation UX model.
-- [Sketch resize/rotate docs](https://www.sketch.com/docs/designing/layer-basics/resizing-and-rotating-layers/) — Confirms Sketch uses ⌘+corner-click for rotation (no persistent handle to relocate).
-- [React stale closure / stale ref discussions](https://dmitripavlutin.com/react-hooks-stale-closures/) — Standard React pattern literature on why a captured ref becomes stale after reconciliation and how to avoid it.
-
-**Not-found (confirms negative claim):**
-
-- **No design tool in the survey implements handle-relocation when off-screen.** Queries for "rotation handle offscreen clamp opposite side relocate" across Figma, Sketch, Illustrator, Inkscape, Excalidraw, Miro, tldraw returned zero positive matches. The closest behavior — tldraw edge-scrolling — pans the viewport, it does NOT relocate the handle. This is a HIGH-confidence negative finding that grounds the Gap 2 Option A rejection.
+### Confidence caveats
+- Figma's exact CRDT-vs-OT internals are inferred from blog posts, not source. The engineering blog is closest to authoritative.
+- Linear's "OT not CRDT" claim comes from third-party reverse-engineering ([wzhudev/reverse-linear-sync-engine on GitHub](https://github.com/wzhudev/reverse-linear-sync-engine), endorsed by Linear CTO per readme). HIGH for the architectural claim; MEDIUM for any specific implementation detail.
+- The "Figma users find live cursors distracting" claim is community-feedback grade, not formal user research. Treat as directionally true, not statistically proven.
+- "No major collab tool surfaces device alongside user" is a confident negative — verified across Figma docs, Bluebeam docs, Drawboard, Notion, Linear, Google Docs, Excel. If a counter-example exists, it is rare enough that "device attribution" remains a real differentiator.
 
 ---
-
-*Feature research for: v2.2 Rotation Handle Polish milestone*
-*Researched: 2026-04-14*
-*Scope: Gap 3 (hover pill re-arm), Gap 4 (mtr handle clip), Gap 2 (off-screen handle, conditional)*
-*Supersedes prior FEATURES.md for v2.2 roadmap purposes only.*
+*Feature research for: v2.4 Multi-User Collaboration (CRDT/merge-engine rebuild)*
+*Researched: 2026-04-26*

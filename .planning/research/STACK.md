@@ -1,90 +1,115 @@
-# Stack Research — v2.2 Rotation Handle Polish
+# Stack Research — v2.4 Multi-User Collaboration (CRDT Rebuild)
 
-**Domain:** React + SVG + Fabric.js PDF annotation editor (3 localized rotation handle bugs)
-**Researched:** 2026-04-14
-**Confidence:** HIGH
-**Scope:** What stack additions are needed to fix Gap 2 (off-screen relocation), Gap 3 (hover-intent stale-ref), and Gap 4 (mtr clipped in edit canvas). DOES NOT re-evaluate the v2.0/v2.1 stack.
-
----
-
-## Verdict: NO NEW LIBRARIES REQUIRED
-
-All three rotation-handle gaps are fixable inside the existing codebase with vanilla React 18 + the utilities already shipped in `src/utils/svgBoundingBox.js`, `src/utils/svgTransformMath.js`, and the existing `BBOX_PADDING` constant in `src/components/FabricEditCanvas.jsx`. Root causes were verified by direct source inspection:
-
-| Gap | Root Cause (verified) | Fix Shape | New Dependency? |
-|-----|----------------------|-----------|------------------|
-| **3 — Hover-intent stale ref** | Hover-intent `useEffect` in `SVGAnnotationLayer.jsx:213` has deps `[selectedIds, setRotInputVisibleDbg]`. When the selection chrome is unmounted during edit mode (`SVGAnnotationLayer.jsx:1050` returns `null` for the edited index) and remounted on edit-commit, the `annotations` prop identity changes but `useSVGInteraction.js:99-105` returns the **same `selectedIds` Set reference** when all selected indices still resolve. The effect therefore does NOT re-run, and `handleEl` captured earlier is either `null` (bailed) or detached. | Add `editingAnnotationIndex` to the effect's dep array, OR wire a callback ref from `SVGSelectionOverlay` up to `SVGAnnotationLayer` so listeners re-attach on mount/unmount. | **None.** React 18 `useEffect` + dep array, or React 18 callback ref pattern. |
-| **4 — mtr clipped in edit canvas** | `BBOX_PADDING = 32` page-units (`FabricEditCanvas.jsx:83`) is the top-edge buffer of the Fabric canvas pixel buffer. Fabric 5.5.2's default `rotatingPointOffset` = 40 px (canvas-local). In pageSpaceMode (`canvas.setZoom(1)`), the default mtr sits at canvas-local `(width/2, 32 - 40) = (width/2, -8)`, which is **outside** the canvas drawing surface → hard-clipped by Canvas2D itself (NOT by CSS overflow — `container.style.overflow = 'visible'` is already set at `FabricEditCanvas.jsx:950 / 965` and `wrapperEl.style.overflow = 'visible'` at `FabricEditCanvas.jsx:1662`). At `angle=0` the non-pageSpace branch runs `canvas.setZoom(effectiveScale)` and the ~1.33 Electron zoom factor pushes the mtr back inside the buffer (32×1.33 − 40 = 2.56 px of breathing room), which is why 0° "works". | Option A: increase the top-edge allowance to `max(BBOX_PADDING, rotatingPointOffset + mtrHandleRadius)` and bump the canvas height by the delta. Option B: install a custom Fabric `Control` for `mtr` that positions the handle at `y = +2` (same page-unit offset as `SVGSelectionOverlay`'s ~22 px rotation handle gap) so it stays inside the existing 32 px buffer. Option C: set `fabric.Object.prototype.rotatingPointOffset = 22` on the loaded shape. | **None.** All three options use Fabric.js 5.5.2's existing `Control` API + existing `BBOX_PADDING` constant. |
-| **2 — Off-screen relocation** | Requires (a) computing each handle's viewport-space position and (b) flipping it to the opposite side when outside the page container's bbox. `SVGSelectionOverlay.jsx` already receives `bbox` + `inverseScale` and `src/utils/svgBoundingBox.js` already exports `getHandlePositions(bbox, padding)`. The page container bbox is `svgRef.current.getBoundingClientRect()` — already used by `useSVGInteraction.js:1114-1117` for counter-rotate pointer math. | Add a pure helper `relocateHandleIfOffScreen(handlePos, viewportBbox, shapeCenter)` that returns the mirrored position when outside the viewport. Wire it in `SVGSelectionOverlay.jsx:167` around the `handles.mtr.x / handles.mtr.y` computation. | **None.** Pure geometric math using existing `getBoundingClientRect()` + `getHandlePositions()`. |
+**Domain:** Real-time collaborative editing layer bolted onto an existing single-user PDF annotation app
+**Researched:** 2026-04-26
+**Confidence:** HIGH (Yjs core + persistence) / MEDIUM (transport layer — see decision matrix) / HIGH (anti-recommendations)
 
 ---
 
-## Existing Stack (unchanged — reference only)
+## Executive Recommendation (Read This First)
 
-| Technology | Version | Role | Source of truth |
-|------------|---------|------|-----------------|
-| React | 18 | Rendering, hooks, refs | `package.json` |
-| Fabric.js | **5.5.2** (pinned) | Edit-only canvas for rotation/resize/text | CLAUDE.md: "Must keep Fabric.js 5.5.2" |
-| Syncfusion React PDF Viewer | (pinned) | PDF viewer host | `package.json` |
-| Vite | 5 | Dev server + build | `package.json` |
+**Adopt Yjs as the CRDT engine.** Use the standard Yjs ecosystem packages (`yjs`, `y-protocols`, `y-indexeddb`) for the CRDT, awareness, and offline persistence layers — these are not negotiable because they are part of Yjs itself. They are MIT-licensed, mature, actively maintained (yjs `13.6.30` published March 2026), and have zero dependencies that conflict with Fabric 5.5.2 / React 18 / Electron 25 / Vite 5.
 
-**Fabric.js 5.5.2 API surfaces relevant to Gap 4 (verified at fabric.js sources):**
-- `fabric.Control` — per-object custom controls with `positionHandler`, `actionHandler`, `render`.
-- `fabric.Object.prototype.rotatingPointOffset` — default `40`. Per-object override via `obj.rotatingPointOffset = N`.
-- `obj.controls.mtr` — the default rotation control. Can be replaced with a custom `new fabric.Control({...})`.
-- `installShapeHandleRenderers()` (`FabricEditCanvas.jsx:216`) already iterates over `tl/tr/bl/br/mt/mb/ml/mr`. Adding `mtr` to this installer is a ~15-line addition.
+**The only real architectural decision is the transport layer.** Three viable shapes, in order of recommendation for this specific stack:
 
-**React 18 patterns relevant to Gap 3 (verified against [react.dev/reference/react/useEffect](https://react.dev/reference/react/useEffect)):**
-- `useEffect` dep array: every reactive value referenced inside must be listed.
-- Callback refs (`ref={handleRef}` where `handleRef` is memoized with `useCallback`) fire with the element on mount and `null` on unmount — ideal for DOM listener attach/detach that must survive remount.
-- Strict Mode (dev) invokes mount/unmount twice — any listener-attach logic must be idempotent.
+1. **Custom thin Supabase Realtime Broadcast adapter** (RECOMMENDED) — ~150-300 LOC. Carries Yjs binary update payloads over Supabase's existing WebSocket infrastructure as base64-encoded broadcast messages. No new server, reuses existing auth/RLS, billing remains Stripe-only.
+2. **Self-hosted Hocuspocus on a small Node service** (FALLBACK) — battle-tested, MIT, but adds an ops surface (Node WebSocket server, scaling, deployment) that the project does not currently have.
+3. **Liveblocks Yjs / Tiptap Cloud / y-sweet** (REJECTED for v2.4) — managed services, but adds a third-party billing dependency on top of Stripe + Supabase, splits the source-of-truth, and creates SOC compliance + data-residency complications for a Stripe-billed commercial app.
+
+**Do NOT adopt the existing `AlexDunmow/y-supabase` package as-is** — explicitly marked "not recommended for production" by its author, has known message-flooding bugs, and was last meaningfully updated in 2023. Its design (one realtime channel per Y.Doc, postgres-row-per-update) is a starting reference for what to write ourselves, not something to depend on.
 
 ---
 
-## Supporting Utilities — Already in Place (no new installs)
+## Recommended Stack
 
-| Utility | File | Role in v2.2 |
-|---------|------|--------------|
-| `getHandlePositions(bbox, padding)` | `src/utils/svgBoundingBox.js` | Computes all 9 handle positions in page-space. Gap 2 relocation logic wraps this. |
-| `getInverseScale(svgEl, pageWidth)` | `src/utils/svgTransformMath.js` | Already used by `useSVGInteraction.js:75` via ResizeObserver. Gap 2 uses the same `svgEl.getBoundingClientRect()` it internally reads. |
-| `getAnnotationBBox(obj)` | `src/utils/svgBoundingBox.js` | Already used for `shapeCenterViewBox` memo (`SVGAnnotationLayer.jsx:348-357`). Gap 2 handle-flip math can reuse. |
-| `BBOX_PADDING` | `src/components/FabricEditCanvas.jsx:83` | Existing load-bearing constant. Gap 4 fix is a one-line bump + asymmetric top-allowance. |
-| `ResizeObserver` (browser native) | `useSVGInteraction.js:77` | Already wired. No new observer needed for these gaps. |
+### Core CRDT Layer — REQUIRED
 
----
+| Technology | Version | Purpose | Why Recommended |
+|------------|---------|---------|-----------------|
+| `yjs` | `^13.6.30` | CRDT engine: shared types (Y.Doc, Y.Map, Y.Array, Y.Text), conflict-free merge, binary update encoding, per-user `Y.UndoManager` | Industry standard CRDT for collaborative apps — used by Tiptap, Liveblocks, Atlassian, Jupyter, Notion-likes. MIT. ~10kB gzipped. Mature (since 2015). Actively maintained — `13.6.30` released March 2026. Drop-in compatible with React 18 / Vite 5 / Electron — no native deps, pure ESM. |
+| `y-protocols` | `^1.0.7` | Binary encoding protocols for sync, **awareness/presence**, and history. Provides `Awareness` class for cursors/selections/online-status | Required peer of yjs. Awareness protocol (`y-protocols/awareness`) is exactly what the existing partial presence wiring should be migrated to — schemaless JSON state per client with 30s heartbeat-based offline detection built in. MIT. |
+| `y-indexeddb` | `^9.0.12` | IndexedDB persistence provider — caches Y.Doc state in the browser/Electron renderer for instant load + offline edits | Replaces the existing `localStorage` offline queue. IndexedDB has effectively unlimited quota in Electron (vs `localStorage`'s 5-10MB) and stores binary Y.js updates natively without base64 inflation. Auto-merges queued offline writes when the doc reconnects. MIT. |
 
-## Development Tools — Unchanged
+### Transport Layer — CHOOSE ONE
 
-| Tool | Version | Purpose | Notes |
-|------|---------|---------|-------|
-| Vite | 5 | HMR dev server on :5173 | No config changes needed |
-| React DevTools | latest | Verify `editingAnnotationIndex` transitions fire the hover-intent effect after Gap 3 fix | Already installed |
+| Option | Status | When to Use |
+|--------|--------|-------------|
+| **Custom Supabase Realtime Broadcast adapter** (RECOMMENDED) | Build in Phase X, ~150-300 LOC | Default. Reuses existing `@supabase/supabase-js@^2.81.1`. Zero new infra. |
+| `@hocuspocus/server` `^2.13.x` + `@hocuspocus/provider` `^2.13.x` | MIT, mature, actively maintained by Tiptap (Ueberdosis) | If we ever need server-side awareness validation, document-level access control beyond RLS, or document size > 100KB where broadcast frame limits hurt. |
+| `y-websocket@3.0.0` + custom Node server | Stable, but the bare provider is intentionally minimal | Only if we want full control of the WebSocket protocol and don't need Hocuspocus's auth/persistence hooks. Almost never the right choice over Hocuspocus. |
+
+**Why custom Supabase adapter is the right default:**
+
+- Supabase Realtime v2.0+ supports **binary WebSocket frames** explicitly (per `supabase.com/docs/guides/realtime/protocol`), which means Yjs `Y.encodeStateAsUpdate()` Uint8Array payloads can ride directly without JSON-stringifying them.
+- The broadcast channel model (`channel.send({ type: 'broadcast', event: 'yjs-update', payload: { update: base64 } })`) maps cleanly onto Yjs's `provider.on('update', cb)` interface.
+- We already have authenticated Supabase clients in every renderer — no new auth tokens, no new CORS setup.
+- Document-of-record persistence stays in Postgres (`document_annotations` continues to store the materialized annotation set; a new `document_yjs_updates` append-only log stores the binary patches for cold-start replay).
+- One Supabase Realtime channel per `document_id` — model already matches how the app thinks about scope.
+
+**Anti-recommendations (transport):** see "What NOT to Use" table below.
+
+### Persistence-of-Record (Server) — REUSE EXISTING
+
+| Technology | Version | Purpose | Why Recommended |
+|------------|---------|---------|-----------------|
+| `@supabase/supabase-js` | `^2.81.1` (existing) | Postgres + Realtime + Auth — unchanged | Already in the stack. v2.4 adds **two** new tables (no breaking schema changes): `document_yjs_updates` (append-only Yjs binary patches with `user_id`, `device_id`, `created_at`, `seq`) and `document_yjs_snapshots` (periodic compacted state for fast cold-load). RLS rules on both tables mirror the existing `document_annotations` policies. |
+
+### Authorship & Activity Log — NEW SUPPORTING TABLES (no new libraries)
+
+The "who did what when on which device" requirement is satisfied by writing alongside the Yjs update log, not by a new library:
+
+- Every Yjs `Y.Doc.transact(fn, origin)` call passes an `origin` object `{ userId, deviceId, sessionId, clientId }`.
+- A document `update` listener writes one row per remote-bound update to `document_yjs_updates` with `(user_id, device_id, session_id, encoded_update, created_at)`.
+- The activity log UI is just a Postgres query — no separate event-sourcing library, no Kafka, no audit-log service.
+
+### Per-User Undo/Redo — NATIVE TO YJS
+
+`Y.UndoManager` accepts a `trackedOrigins: Set` constructor option. Instantiate one `UndoManager` per local user, wired to track only that user's `clientId`. Each user's Cmd+Z undoes only their own changes — this is a documented Yjs pattern, not custom code.
+
+### Development Tools
+
+| Tool | Purpose | Notes |
+|------|---------|-------|
+| `vite-plugin-node-polyfills` (already in devDeps `^0.24.0`) | `lib0` (Yjs's encoding lib) occasionally pulls in Node-style imports under certain bundler configs | Already installed. No new config expected — Yjs ships modern ESM and works clean under Vite 5. |
+| Existing `ws@^8.18.3` (already in devDeps) | Only matters if we choose the Hocuspocus fallback (Node WS server) | No-op for the Supabase Broadcast adapter path. |
 
 ---
 
 ## Installation
 
 ```bash
-# NONE. Zero new packages for v2.2.
+# Core CRDT layer — required regardless of transport choice
+npm install yjs@^13.6.30 y-protocols@^1.0.7 y-indexeddb@^9.0.12
+
+# Transport — RECOMMENDED PATH (custom Supabase adapter, no new packages):
+# (no install — adapter is a hand-written ~200 LOC module under src/lib/collab/SupabaseYjsProvider.js)
+
+# Transport — FALLBACK PATH (only if Phase X discovers Supabase broadcast can't carry the load):
+# npm install @hocuspocus/provider@^2.13.6
+# (server install happens out-of-tree on whatever node host we deploy to)
+
+# No new dev dependencies needed
 ```
 
-No `npm install` required. All fixes land inside existing files.
+**Bundle size impact:**
+- `yjs` ~10kB gzipped
+- `y-protocols` ~3kB gzipped
+- `y-indexeddb` ~1.5kB gzipped
+- Total cost to ship: **~15kB gzipped**, all tree-shaken under Vite 5.
 
 ---
 
-## Alternatives Considered (and rejected)
+## Alternatives Considered
 
-| Suggested | Rejected | Why |
-|-----------|----------|-----|
-| `react-use` or `ahooks` `useLatest` / `useLockFn` | **Rejected** | Adds a 20+ KB dependency for what is one `useRef` assignment already present at `SVGAnnotationLayer.jsx:170-171` (`rotInputVisibleRef`). The pattern is already in the file. |
-| `usehooks-ts` `useEventListener` | **Rejected** | The existing hand-rolled `addEventListener` / `removeEventListener` cleanup (lines 296-305) is correct. Swapping it in now would rewrite ~40 lines of working code just to import one hook. Not proportionate to a dep-array fix. |
-| `react-intersection-observer` / `IntersectionObserver` for Gap 2 | **Rejected** | `IntersectionObserver` reports "is the element inside root" — but we need "WHERE does the handle land relative to the viewport so we can mirror it." A single `getBoundingClientRect()` on the page container gives us that directly. `IntersectionObserver` would tell us too little, too late (async callback), and would fire continuously during zoom/pan unnecessarily. |
-| `MutationObserver` to detect mtr DOM remount and re-attach listeners | **Rejected** | The remount IS React's reconciliation — we already know exactly when it happens (`editingAnnotationIndex` transition). Putting a `MutationObserver` on top of React's own mount lifecycle is the wrong layer — it reimplements what React's dep array or callback ref already does natively. Over-engineering. |
-| `use-sync-external-store` shim for stable `selectedIds` reference | **Rejected** | The problem isn't a stale store — it's that the effect's dep list is missing a prop. `useSyncExternalStore` is for subscribing to external stores, not for fixing dep arrays. Wrong tool. |
-| `xstate` / state machine library for hover-intent states (hidden / visible / closing) | **Rejected** | The 3-state machine at `SVGAnnotationLayer.jsx:143-187` is already implemented with `useState` + two `useRef` timers. It works. Migrating it to xstate would be a 300+ LOC refactor for zero user-visible gain and would conflict with the "minimize churn in load-bearing files" rule in CLAUDE.md (SVGAnnotationLayer.jsx is 1,317 lines of battle-tested logic). |
-| Redux / Zustand for edit-mode coordination | **Rejected** | The edit-mode flag already flows through props (`editingAnnotationIndex`). Adding a global store for a two-component handshake is anti-pattern. |
-| Effect orchestration libraries (`effect-ts`, `redux-observable`) | **Rejected** | Three localized DOM bugs. Orchestration is not the problem. |
-| Pixel-snap / DPR tweak libraries for Gap 4 | **Rejected** | Rejected by CLAUDE.md lesson 2026-04-10: "Canvas 2D and SVG path rasterizers produce visibly different strokes... NOT fixable in JS." The Gap 4 clip is canvas pixel buffer bounds, not a rasterizer issue. Fix is geometric, not DPR-related. |
+| Recommended | Alternative | When to Use Alternative |
+|-------------|-------------|-------------------------|
+| Yjs | **Automerge 2.x** | If we wanted JSON-Patch-like document semantics and richer historical query without `Y.UndoManager` boilerplate. Rejected because Automerge's bundle (~150-300kB WASM) is 10-20x larger than Yjs and the Y.Map / Y.Array API is a closer match to our existing per-annotation row model. |
+| Yjs | **Loro** (Rust CRDT, 2024+) | Newer, faster than Yjs in some benchmarks, supports rich history. Rejected for v2.4 because the JS ecosystem is immature, the WASM bundle is larger, and the docs/community are not at Yjs's level. Re-evaluate in 2027 if Loro reaches Yjs's maturity. |
+| Custom Supabase Broadcast adapter | **Hocuspocus self-hosted** | If broadcast payload size becomes a problem (>3MB updates, sustained >50 updates/sec), or we need server-side awareness validation, or document-level ACLs we can't express in Postgres RLS. Hocuspocus is the right second choice — MIT, battle-tested, persistence hooks pluggable. |
+| Custom Supabase Broadcast adapter | **Liveblocks Yjs** | If we wanted to outsource collab entirely and accept a third-party billing dependency. Rejected because: (a) we're already paying Supabase + Stripe; (b) Liveblocks would split the source-of-truth between their edge KV and our Postgres; (c) data-residency / SOC concerns for an engineering-firm customer base. |
+| Custom Supabase Broadcast adapter | **y-sweet** (Jamsocket) | S3-backed Yjs server, cheap at very large doc counts. Rejected because we already have a Postgres source-of-truth and don't want a second blob store to back up. |
+| `y-indexeddb` | **`y-leveldb` in Electron main process** | RxDB recommends running storage in the Electron main process, not the renderer. Considered — but Yjs IndexedDB in the renderer is the standard Yjs pattern, IndexedDB in Chromium has effectively unlimited quota, and pushing storage to main adds IPC latency on every Y.Doc update. y-indexeddb is the right call. |
+| Native `Y.UndoManager` | Custom event-log undo | Rejected — `trackedOrigins` is exactly designed for this multi-user case; rebuilding it would replicate ~600 LOC of Yjs internals. |
 
 ---
 
@@ -92,137 +117,134 @@ No `npm install` required. All fixes land inside existing files.
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
-| **Any new npm package** | All three gaps are fixable with files already in-repo. Adding a dep costs install time, audit surface, and maintenance for zero value. | Vanilla React 18 hooks + existing `BBOX_PADDING` / `getHandlePositions` / `getBoundingClientRect`. |
-| **Global state libraries** (Redux, Zustand, Jotai) | None of the 3 gaps have cross-component state coordination problems. `editingAnnotationIndex` already props-threads cleanly. | Existing prop chain from App → SVGAnnotationLayer → SVGSelectionOverlay. |
-| **State machine libraries** (xstate, robot) | The hover-intent state machine is already hand-rolled, documented with UX comments, and works after 7 rounds of debugging. Rewriting it is net-negative risk. | The existing `rotInputVisible` / `rotInputHoveredRef` / `rotInputCloseTimerRef` trio at `SVGAnnotationLayer.jsx:152-187`. |
-| **`MutationObserver` for React subtree watching** | React already knows when the subtree mounts/unmounts. Observing DOM mutations on top of React reconciliation is a layering violation. | React 18 `useEffect` deps + callback ref — both fire at exactly the right moment. |
-| **`IntersectionObserver` for off-screen handle detection (Gap 2)** | IO is for visibility of an element within a scroll root and fires async. We need a synchronous bbox intersection check to render the handle at the correct position on the same frame. | Synchronous `getBoundingClientRect()` on the page container + pure math. The logic runs during React render, not on an observer tick. |
-| **`react-use` `useMeasure` / `useRect`** | `useSVGInteraction.js` already uses a `ResizeObserver` at line 77 to drive `inverseScale`. Duplicating that with a library hook adds nothing. | The existing ResizeObserver + `getInverseScale()` helper. |
-| **Raising `BBOX_PADDING` from 32 to 80+ globally** | CLAUDE.md warns: "Do not lower without auditing all BBOX_PADDING call sites." RAISING it also touches ~30 call sites (outline-offset, toolbar positioning, mini-bar math, resize deltas). The safer fix is an asymmetric top allowance or a custom `mtr` control that stays inside the existing buffer. | Scoped fix: either Option A (asymmetric top-only delta) or Option B (custom `mtr` control at +2 page units). |
-
----
-
-## Integration Points (for plan-phase authors)
-
-### Gap 3 fix — where it lands
-
-**File:** `src/components/SVGAnnotationLayer.jsx`
-**Line:** 213-313 (the `useEffect` commented "EDIT-12: Hover-intent listeners on the mtr handle")
-**Change shape (Option A, minimal):**
-- Add `editingAnnotationIndex` to the dep array at line 313: `}, [selectedIds, setRotInputVisibleDbg, editingAnnotationIndex]);`
-- Update the comment at lines 306-312 to explain WHY `editingAnnotationIndex` is now in the deps (so a future reader doesn't strip it again in a flicker hunt).
-
-**Change shape (Option B, more robust):**
-- Replace the `querySelector('[data-rotation-handle="mtr"]')` lookup with a callback ref exported from `SVGSelectionOverlay.jsx:168` (the `<g className="rotation-handle">`). Pass a `mtrRef` prop into `SVGSelectionOverlay` from `SVGAnnotationLayer`. The callback ref fires reliably on every mount/unmount cycle without depending on React effect scheduling.
-- Tradeoff: touches both files + adds a prop; but eliminates the entire class of "effect deps didn't re-run" bugs for this handle.
-
-**Recommendation:** Start with Option A (one-line dep fix). Upgrade to Option B only if regression test reveals another remount trigger that Option A misses.
-
-### Gap 4 fix — where it lands
-
-**File:** `src/components/FabricEditCanvas.jsx`
-**Lines:** 83 (`BBOX_PADDING` constant), 944-966 (container sizing), 1044-1048 (canvas dimensions), 1352-1377 (shape load `obj.set(...)`)
-
-**Change shape (Option A — asymmetric top-edge allowance, LOWEST RISK):**
-- Introduce a sibling constant: `const BBOX_TOP_EXTRA = 20;` (page units — enough to house the 40 px default rotating offset minus the existing 32 px padding plus ~12 px handle radius).
-- In the container sizing block (line 944-966) and the canvas dimensions block (1044-1048), add `BBOX_TOP_EXTRA` to the height and shift `top` upward by the same amount. Must be applied symmetrically in both the `pageSpaceMode` and non-page-space branches.
-- Audit the `object:moving` → `bboxOriginRef` round-trip (lines 1491-1508) and the ResizeObserver settle path (1994-2095) to confirm the extra top allowance does not leak into the stored `annotation.top`.
-- CLAUDE.md DO NOT CHANGE: this is inside a file explicitly protected against unscoped edits, but `BBOX_PADDING` is the phase's stated scope per the backlog entry. The audit of all 30+ `BBOX_PADDING` references is the mandatory cost of this fix.
-
-**Change shape (Option B — custom Fabric `mtr` Control, MORE SCOPED):**
-- In `installShapeHandleRenderers()` at line 216 (or in a new `installMtrHandleRenderer()` helper), add:
-  ```js
-  obj.controls.mtr = new fabric.Control({
-    x: 0, y: -0.5,                    // top-center of shape
-    offsetY: -20,                     // page units above the shape (inside BBOX_PADDING=32)
-    cursorStyle: 'crosshair',
-    actionName: 'rotate',
-    actionHandler: fabric.controlsUtils.rotationWithSnapping,
-    render: renderMtrHandle,          // custom renderer matching SVGSelectionOverlay mtr visual
-  });
-  ```
-- The `offsetY: -20` sits inside the existing 32 page-unit top buffer → no canvas-size changes needed.
-- `BBOX_PADDING` stays at 32. Zero cascade edits. Single file.
-- **Recommended.** Matches CLAUDE.md's "minimize churn in load-bearing files" rule.
-
-**Change shape (Option C — `obj.rotatingPointOffset` override, SIMPLEST):**
-- Single line in the `obj.set({...})` call at line 1353: add `rotatingPointOffset: 20`.
-- Fabric 5.5.2 respects per-object `rotatingPointOffset` when computing mtr position.
-- But: the default rendered mtr visual in Fabric 5.5.2 does NOT match `SVGSelectionOverlay`'s icon+ring visual, so users will see a different handle chrome in edit mode than in select mode. A visual regression against the Phase 11 "handles in edit mode match handles in select mode" acceptance gate.
-- **Accept only if Option B runs over-budget.**
-
-### Gap 2 fix — where it lands
-
-**File:** `src/components/SVGSelectionOverlay.jsx`
-**Lines:** 167-206 (the `<g className="rotation-handle">` block)
-
-**Change shape:**
-- Add a new prop: `viewportBbox` (optional `{ left, top, right, bottom }` in page coords — the visible region of the current page in `svgRef.current.getBoundingClientRect()` → mapped through `getScreenCTM().inverse()`).
-- Compute `mtrRelocated` locally:
-  ```js
-  const mtrRelocated = relocateIfOffScreen(
-    handles.mtr,      // from getHandlePositions(bbox, padding)
-    viewportBbox,
-    { cx, cy },       // shape center
-    angle
-  );
-  ```
-- Render the `<line>` + `<circle>` + `<image>` at `mtrRelocated.x / mtrRelocated.y` instead of `handles.mtr.x / handles.mtr.y`. The connector line still anchors at `handles.mt.x / handles.mt.y` (top-center of bbox) — it just draws to the new handle position.
-- Add `relocateIfOffScreen()` as a pure helper in `src/utils/svgBoundingBox.js` (sibling to `getHandlePositions`). Logic: if `mtr.y < viewportBbox.top + threshold`, mirror through `(cx, cy)` — place at `(cx + (cx - mtr.x), cy + (cy - mtr.y))`. Same for each other edge.
-- `RotationInputField` already reads its anchor from `shapeCenterViewBox` and the mtr handle DOM position, so the pill will follow automatically as long as the visible `<circle>` has moved.
-- **Conditional:** Per v2.2 scope, this fix only lands "if it slots cleanly" into the same phase. The scope is 1 new helper + ~15 LOC in `SVGSelectionOverlay.jsx` + 1 new prop threaded from `SVGAnnotationLayer.jsx`. That is a clean slot — recommend including.
+| **`AlexDunmow/y-supabase`** package | Author's own README says "not recommended for production." Last meaningful commit 2023. Known issue thread "y-supabase: Too many message events" (`discuss.yjs.dev/t/2447`) shows broadcast storm bug. Reuses Postgres rows-per-update model that we'd want to redesign anyway for our snapshot+log shape. | Hand-write a thin ~200 LOC adapter on `@supabase/supabase-js` Realtime Broadcast. Use y-supabase as a *reference*, not a dependency. |
+| **Fabric.js 6.x upgrade as part of v2.4** | Explicitly out of scope per CLAUDE.md "Always Protected" + PROJECT.md "Fabric.js: Stay on 5.5.2." No CRDT work requires Fabric 6. | Stay on `fabric@^5.5.2`. Yjs is rendering-engine-agnostic — it doesn't care whether the SVG layer or Fabric edit canvas is the consumer. |
+| **`@y/websocket@4.0.0-0`** (the new scoped pre-release) | Pre-release, `-0` suffix, last published a month ago in early-development state. | If we go Hocuspocus, use `@hocuspocus/provider@^2.13.x`. If we go custom, no WS provider package needed. |
+| **`y-websocket@3.0.0`** as the production transport | Bare-bones reference provider — no auth, no persistence hooks, you have to wrap a Node server yourself anyway. Last published a year ago. | Either custom Supabase adapter (preferred) or Hocuspocus (which uses `y-websocket` internals but adds the missing pieces). |
+| **`localStorage` offline queue** (existing v2.3 implementation) | 5-10MB quota cap, synchronous (blocks main thread on writes), JSON-only (forces base64 inflation of binary Y updates), no transactional semantics. | `y-indexeddb` provider — async, effectively unlimited quota, native binary, transactional, auto-merges on reconnect. Keep `localStorage` only for non-doc UI prefs. |
+| **Postgres-row-per-Yjs-update without snapshot compaction** | After a few months of edits a hot document accumulates 10K+ update rows; cold load becomes O(N) update applications. | Append-only `document_yjs_updates` log + periodic `document_yjs_snapshots` compaction job (e.g., every 100 updates or every 24h, take a `Y.encodeStateAsUpdate()` snapshot, then prune updates older than the snapshot). Standard Yjs pattern. |
+| **Liveblocks / Tiptap Cloud / y-sweet hosted services** for v2.4 | Adds a third recurring vendor bill on top of Supabase + Stripe. Splits doc state across two systems. Data-residency / SOC-2 audit surface grows. | Self-managed Yjs over Supabase Broadcast. Re-evaluate if we ever cross 100+ concurrent docs per minute or need an SLA we can't carry. |
+| **Last-write-wins upserts on `document_annotations` (the existing v2.3 model)** | Cannot represent simultaneous edits to the same annotation by two users. Loses authorship granularity below the row level. Cannot do per-user undo. | Yjs CRDT operations on a Y.Doc per document. Materialize the resulting state into `document_annotations` for read-only consumers (PDF export, search, the existing single-user code paths) but treat the Y.Doc + update log as the source of truth. |
+| **Custom OT (Operational Transform)** | OT requires a central authoritative server to sequence ops; Yjs CRDT does not. Building OT in 2026 over an existing CRDT-friendly stack is a 6-12 month rebuild we don't need. | Yjs. Full stop. |
 
 ---
 
 ## Stack Patterns by Variant
 
-**If Gap 3 fix (Option A — dep array) regresses the Issue 4 flicker loop:**
-- The effect must NOT include `rotInputVisible` or `isRotating` in its deps (those are what caused the original flicker).
-- Adding `editingAnnotationIndex` is SAFE: it toggles at most twice per edit cycle (enter-edit → commit), not on every animation frame.
-- If regression does appear, fall back to Option B (callback ref from `SVGSelectionOverlay`) which bypasses the effect-deps pathway entirely.
+**If we ship Supabase Broadcast adapter (RECOMMENDED — default v2.4 path):**
+- `SupabaseYjsProvider` class implements: `connect`, `disconnect`, listens to local `Y.Doc.on('update', (update, origin) => broadcast)`, listens to remote broadcasts and applies via `Y.applyUpdate(doc, update, 'remote')`.
+- One Realtime channel per `document_id`. Channel events: `yjs-sync-step-1` (request), `yjs-sync-step-2` (state vector reply), `yjs-update` (incremental), `awareness-update`.
+- Cold-load path: query `document_yjs_snapshots` for latest snapshot → `Y.applyUpdate` → query `document_yjs_updates` after snapshot's `seq` → apply each → join broadcast channel.
+- Persistence path: every Y.Doc `update` event → write one row to `document_yjs_updates` with origin metadata → broadcast.
+- Awareness: separate Realtime channel event (`awareness-update`) carrying `y-protocols/awareness` encoded state.
 
-**If Gap 4 fix (Option B — custom mtr control) has visual drift from SVG select-mode mtr:**
-- The SVG mtr visual is defined in `SVGSelectionOverlay.jsx:179-206`: a 12×sqrt(is) radius white circle with 1×sqrt(is) stroke, 16.8×sqrt(is) rotate-icon image, 22 page-unit offset above the top-center handle (via `getHandlePositions` mtr entry).
-- The Fabric mtr custom renderer must mirror this by:
-  - Reading `fabricObject._svgEffectiveScale` (already stored at line 1340).
-  - Using `getHandleVisualScale(fabricObject)` for the strokeWidth (same helper used by `renderDampedCircleControl`).
-  - Drawing a 12×vs circle + crosshair/rotate-icon glyph (fabric.js Control `render` receives `ctx, left, top, styleOverride, fabricObject` — exact same signature as existing custom controls in this file).
+**If we fall back to Hocuspocus (only if Phase X benchmarks find Broadcast can't carry the load):**
+- Run `@hocuspocus/server` on a small Node host (Fly.io / Railway / a Supabase Edge Function in long-poll mode).
+- Hocuspocus persistence hook → write through to Supabase Postgres on every doc-update flush.
+- Renderer uses `@hocuspocus/provider` instead of the custom Supabase adapter.
+- Auth: pass Supabase JWT in the WebSocket connection params; verify in Hocuspocus's `onAuthenticate` hook.
 
-**If Gap 2 relocation causes the rotation input pill to overlap the shape body:**
-- `RotationInputField` already clamps its position to the page viewport per the v2.1 carry-forward note ("pill already clamps correctly" from the backlog entry).
-- The pill anchors at `shapeCenter + direction_to_mtr * offset` — if we mirror the mtr through the shape center, the pill naturally follows to the mirrored direction without any additional logic.
+**If document size grows to >3MB or we hit Realtime broadcast frame limits:**
+- Periodic snapshot compaction in `document_yjs_snapshots` becomes mandatory rather than optional.
+- Consider chunking large updates across multiple broadcast messages with a sequence header. (Yjs `encodeStateAsUpdate` rarely produces >1MB outputs in practice for annotation workloads.)
 
 ---
 
 ## Version Compatibility
 
-| Constraint | Note |
-|-----------|------|
-| Fabric.js 5.5.2 pinned | `fabric.Control` API used in Gap 4 Option B is stable in 5.x. The Fabric 6.x `Control` API is backwards-compatible but 6.x introduces other breaking changes (see combined-tools reference project) — stay on 5.5.2 for this milestone per `CLAUDE.md` constraint. |
-| React 18 | `useEffect` dep arrays, callback refs, and `useRef` patterns used here are all stable in React 18 and 19 — no upgrade needed. |
-| Vite 5 | HMR compatible with all the changes; no config touch. |
+| Package A | Compatible With | Notes |
+|-----------|-----------------|-------|
+| `yjs@^13.6.30` | React 18.2 ✓, Vite 5.2 ✓, Electron 25 ✓, Fabric 5.5.2 ✓ | Pure ESM, zero native deps, framework-agnostic. No conflict surface. |
+| `y-protocols@^1.0.7` | yjs `^13.6.x` (peer) | Tightly coupled to Yjs major; bumps in lockstep. |
+| `y-indexeddb@^9.0.12` | yjs `^13.6.x` (peer), Chromium-based runtimes (Electron 25 = Chromium 114, IndexedDB v3 supported) | Works in Electron renderer. Do not run in Electron main process — use renderer per Yjs convention. |
+| `@supabase/supabase-js@^2.81.1` | Realtime broadcast binary frames added in Realtime v2.0 (verified via `supabase.com/docs/guides/realtime/protocol`) | Confirmed binary payload support. JWT auth flows unchanged. |
+| `@hocuspocus/provider@^2.13.x` (fallback only) | yjs `^13.6.x`, Y.Doc, browser WebSocket | Fabric 5.5.2 has no interaction with this layer. |
+| Capacitor 8 (iOS/Android targets) | yjs ✓, y-indexeddb ✓ (WKWebView IndexedDB), `@supabase/supabase-js` ✓ | Yjs runs identically on Capacitor WebView — same JS engine. y-indexeddb works under WKWebView and Android System WebView. No platform-specific shim needed. |
+
+**Known compatibility risks (verified or flagged):**
+
+- **Vite + lib0 ESM resolution** — Yjs's encoding lib (`lib0`) historically had occasional `vite dev` issues with certain `import.meta` patterns. Current `lib0` versions ship clean ESM and work under Vite 5. Already-installed `vite-plugin-node-polyfills@^0.24.0` is sufficient if any polyfill warnings appear.
+- **Electron 25 IndexedDB quota** — Chromium 114 grants effectively unlimited IndexedDB quota for `file://` and packaged-app origins. No quota bumps needed.
+- **Capacitor iOS WKWebView IndexedDB** — supported, but capped at ~50MB per origin without special entitlements. For mobile, consider a snapshot-only mode (apply server snapshot + recent updates, skip the long-tail `y-indexeddb` cache) if doc histories grow large.
+- **Fabric 5.5.2 ↔ Yjs** — zero direct interaction. Yjs lives at the data layer; Fabric lives at the edit-render layer. The bridge is the existing `annotationsByPage` state shape, which v2.4 will derive from a `Y.Map<page, Y.Map<annotationId, Y.Map<...>>>` instead of from React state.
+
+---
+
+## Integration Points (How This Plugs Into Existing Code)
+
+1. **Replace 800ms-debounced upsert push** (`src/lib/sync/*` per the milestone context) with Y.Doc `update` event handlers that:
+   - Write to `y-indexeddb` (instant local persistence)
+   - Send via `SupabaseYjsProvider` to the Realtime channel (live broadcast to peers)
+   - Append to `document_yjs_updates` Postgres log (durable record, cold-load source)
+2. **Replace per-row LWW upsert** with materialized projection — a Postgres trigger or scheduled job re-derives `document_annotations` from the latest `document_yjs_snapshots` for backwards compatibility with the existing single-user read paths (PDF export, search, mini-map).
+3. **Per-tab session id** — already exists per the milestone context. Becomes the `sessionId` field of the Yjs transaction `origin` object.
+4. **Fabric edit canvas commit path** — instead of `setAnnotationsByPage(...)`, the commit calls `doc.transact(() => { yMapForPage.set(annotationId, encodedAnnotation) }, { userId, deviceId, sessionId })`. The CRDT layer fires the update event, persistence + broadcast happen transparently.
+5. **Existing `migration` of stranded local annotations** — runs once per (user, document) on first v2.4 load: reads existing `document_annotations` rows, wraps them in a Y.Doc, encodes the initial state, writes the first `document_yjs_snapshots` row. Migration is idempotent.
+6. **Presence indicators** (already partially wired) — switch to `y-protocols/awareness`. Each client sets `awareness.setLocalStateField('user', { id, color, cursor })` and listens on `awareness.on('change', ...)` for remote state changes.
+
+---
+
+## License Compatibility (commercial Stripe-billed app)
+
+| Package | License | Commercial use |
+|---------|---------|----------------|
+| `yjs` | MIT | ✓ unrestricted, no SaaS clause, no AGPL contamination |
+| `y-protocols` | MIT | ✓ |
+| `y-indexeddb` | MIT | ✓ |
+| `@hocuspocus/server` (fallback) | MIT | ✓ |
+| `@hocuspocus/provider` (fallback) | MIT | ✓ |
+| `@supabase/supabase-js` | MIT | ✓ already shipped |
+
+Yjs's author asks for a moral sponsorship if you commercialize on top of his work — **this is voluntary, not a license obligation**. Recommend budgeting a small annual sponsor amount (Open Collective tier) as goodwill, similar to how the Fabric.js sponsorship is treated. No legal risk if we don't.
+
+**No copyleft / AGPL packages enter the dependency tree under this stack.** Safe for proprietary commercial distribution and the existing Stripe-billed model.
+
+---
+
+## What Is Explicitly NOT Being Added
+
+To avoid scope creep into adjacent collaboration features:
+
+- **Rich-text editor** (Tiptap, Lexical, Slate) — out of scope. Annotations are not a rich-text document. Yjs is being used as a generic CRDT, not as the substrate for an editor.
+- **Operational Transform layer** — superseded by Yjs.
+- **Custom WebRTC mesh transport** (`y-webrtc`) — peer-to-peer is incompatible with the auth/persistence-of-record model and impossible behind enterprise NAT. Skip it.
+- **Separate audit-log database** — the `document_yjs_updates` append-only Postgres table IS the audit log. No Kafka/Redpanda/event-store needed.
+- **Self-hosted Node WebSocket server** — only added if/when Supabase Broadcast adapter cannot carry the load (FALLBACK path).
+- **New auth provider** — Supabase Auth + RLS continues to gate every Realtime channel, every Postgres row, every Yjs update.
 
 ---
 
 ## Sources
 
-- **Primary: direct source inspection** — verified gap root causes against:
-  - `src/components/SVGAnnotationLayer.jsx` lines 140, 152-187, 213-313, 1049-1050 (hover-intent effect + edit-mode unmount) — HIGH confidence.
-  - `src/components/SVGSelectionOverlay.jsx` lines 167-206 (mtr handle DOM structure) — HIGH confidence.
-  - `src/components/FabricEditCanvas.jsx` lines 66-83 (`BBOX_PADDING` constant + comments), 216-245 (`installShapeHandleRenderers`), 944-966 (container overflow + sizing), 1052-1054 (`canvas.setDimensions`), 1352-1377 (`obj.set` angle=0), 1662 (`wrapperEl.overflow = 'visible'`) — HIGH confidence.
-  - `src/hooks/useSVGInteraction.js` lines 96-107 (`selectedIds` Set identity preservation on annotation-identity change), 75-86 (ResizeObserver + inverseScale) — HIGH confidence.
-- **Secondary: React 18 official docs**
-  - [React `useEffect` reference](https://react.dev/reference/react/useEffect) — verified dep-array semantics: every reactive value used inside must be listed; dep changes trigger cleanup+setup. HIGH confidence.
-  - [React `useCallback` reference](https://react.dev/reference/react/useCallback) — verified callback-ref memoization pattern (empty dep array for stable ref callbacks). HIGH confidence.
-- **Tertiary: web-verified patterns**
-  - [Advanced React Refs: Mastering the Callback Pattern (dev.to)](https://dev.to/maximlogunov/advanced-react-refs-mastering-the-callback-pattern-4jpm) — confirms React 18 callback-ref behavior on unmount (fires with `null`) and ideal use for DOM listener lifecycle. MEDIUM confidence (community post, cross-checked against react.dev).
-  - [React ref Callback Use Cases (julesblom.com)](https://julesblom.com/writing/ref-callback-use-cases) — additional context on callback ref vs useEffect trade-offs. MEDIUM confidence.
-- **Project memory**
-  - `CLAUDE.md` — Always Protected file list (SVGAnnotationLayer.jsx is load-bearing); DO NOT CHANGE boundaries; Fabric.js 5.5.2 pinning; "do not chase sub-pixel rasterizer deltas with JS" lesson. HIGH confidence.
-  - `.planning/FEATURE-BACKLOG.md` lines 66-90 — Gap 2/3/4 symptoms, log evidence (`1.log`), suspected scope. HIGH confidence.
-  - `.planning/PROJECT.md` — Existing validated stack + Phase 12 reconciliation + v2.1 carry-forward decisions. HIGH confidence.
+### Authoritative (HIGH confidence)
+- [yjs on npm — `13.6.30` published 2026-03-14](https://www.npmjs.com/package/yjs)
+- [Yjs Releases — GitHub](https://github.com/yjs/yjs/releases)
+- [Yjs Docs — License (MIT)](https://docs.yjs.dev/license)
+- [Yjs Docs — Awareness & Presence](https://docs.yjs.dev/getting-started/adding-awareness)
+- [Yjs Docs — Y.UndoManager (trackedOrigins for per-user undo)](https://docs.yjs.dev/api/undo-manager)
+- [Yjs Docs — Offline Editing / y-indexeddb](https://docs.yjs.dev/getting-started/allowing-offline-editing)
+- [y-indexeddb on GitHub](https://github.com/yjs/y-indexeddb)
+- [y-protocols on npm — `1.0.7`](https://www.npmjs.com/package/y-protocols)
+- [Supabase Realtime Protocol — binary frame support](https://supabase.com/docs/guides/realtime/protocol)
+- [Supabase Realtime Broadcast docs](https://supabase.com/docs/guides/realtime/broadcast)
+- [Hocuspocus on GitHub (MIT, MIT-licensed Yjs WS backend)](https://github.com/ueberdosis/hocuspocus)
+- [@hocuspocus/server on npm](https://www.npmjs.com/package/@hocuspocus/server)
+
+### Reference (MEDIUM confidence — community / discussion)
+- [AlexDunmow/y-supabase — flagged "not recommended for production"](https://github.com/AlexDunmow/y-supabase)
+- [Yjs Community — "Supabase for yjs" discussion thread](https://discuss.yjs.dev/t/supabase-for-yjs/1480)
+- [Yjs Community — "y-supabase: Too many message events" bug thread](https://discuss.yjs.dev/t/y-supabase-too-many-message-events/2447)
+- [Supabase Discussion #27105 — Tiptap/YJS Collaborative Editing with Supabase Realtime](https://github.com/orgs/supabase/discussions/27105)
+- [Liveblocks blog — Liveblocks Yjs (managed alternative considered + rejected)](https://liveblocks.io/blog/introducing-liveblocks-yjs)
+- [y-sweet-supabase-demo (Jamsocket)](https://github.com/jamsocket/y-sweet-supabase-demo)
+
+### Internal context
+- `/Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/package.json` — current locked versions verified (`fabric@^5.5.2`, `react@^18.2.0`, `vite@^5.2.0`, `electron@^25.2.1`, `@supabase/supabase-js@^2.81.1`, `@capacitor/*@^8.3.1`)
+- `/Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/.planning/PROJECT.md` — Fabric 5.5.2 lock, SVG display + Fabric edit-only architecture
+- `/Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/CLAUDE.md` — Always-Protected file list (App.jsx, PageAnnotationLayer.jsx, package.json, vite.config.js)
 
 ---
-*Stack research for: v2.2 Rotation Handle Polish (Gap 2/3/4)*
-*Researched: 2026-04-14*
-*Verdict: ZERO new dependencies. All fixes land in existing files using existing React 18 + Fabric.js 5.5.2 + vanilla DOM APIs.*
+
+*Stack research for: v2.4 multi-user collaboration on existing PDF annotation app*
+*Researched: 2026-04-26*
+*Confidence: HIGH on core Yjs trio + persistence; MEDIUM on transport (custom Supabase adapter is RECOMMENDED but unbuilt — Phase X spike will validate); HIGH on anti-recommendations.*

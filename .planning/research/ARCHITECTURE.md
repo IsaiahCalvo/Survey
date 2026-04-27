@@ -1,534 +1,674 @@
-# Architecture Research — v2.2 Rotation Handle Polish
+# Architecture Research — v2.4 Multi-User Collaboration (CRDT Rebuild)
 
-**Domain:** SVG annotation layer — rotation-handle integration polish
-**Researched:** 2026-04-14
-**Confidence:** HIGH (all claims verified against source at the cited line numbers)
-**Scope:** Gap 3 (hover-intent stale ref) + Gap 4 (mtr handle clipped in edit mode) + Gap 2 (off-screen handle relocation). Subsequent-milestone polish, NOT a new feature build.
+**Domain:** Real-time collaborative PDF annotation, retrofitted onto an existing single-user app
+**Researched:** 2026-04-26
+**Confidence:** MEDIUM-HIGH (Yjs ecosystem patterns: HIGH from official docs; integration specifics for this app's SVG/Fabric split: MEDIUM, validated against the existing source tree)
 
----
-
-## TL;DR for the roadmapper
-
-| Gap | Integration point | Files touched | LOC est. | Build order | Risk |
-|-----|-------------------|---------------|----------|-------------|------|
-| Gap 3 | `SVGAnnotationLayer.jsx` hover-intent `useEffect` dep array | 1 file | ~5 LOC | **First (independent)** | LOW — single effect, no new data flow |
-| Gap 4 | `FabricEditCanvas.jsx` React-owned `containerStyle` + Syncfusion parent clip audit | 1–2 files | ~20–60 LOC depending on root cause | Third (needs live-DOM diagnostic before plan) | MEDIUM — container sizing interacts with zero-timer zoom invariant |
-| Gap 2 | NEW util `handlePlacementMath.js` + `svgBoundingBox.js getHandlePositions` + `SVGSelectionOverlay.jsx` + `SVGAnnotationLayer.jsx` call sites | 3–4 files | ~80–120 LOC | Second (independent of Gap 3/4) | MEDIUM — pure math, unit-testable, but coordinates with connector-line render |
-
-All three gaps are **architecturally independent** — no shared data-flow changes, no cross-gap prerequisites. Recommended serial order is by risk, not dependency.
-
-**Boundary check:** None of the three gaps require edits to `App.jsx`, `PageAnnotationLayer.jsx`, or any file on the CLAUDE.md Always Protected list except `FabricEditCanvas.jsx` and `SVGAnnotationLayer.jsx` — both of which are on the list with the carve-out "Only touch when the phase explicitly owns …". The v2.2 phase explicitly owns rotation-handle polish, so those edits fall inside scope. The `zoomGeneration` signal contract is NOT touched by any proposed fix.
+This document maps a CRDT collaboration layer onto the existing Survey-BetaSafeS2 codebase. The existing **SVG display + Fabric edit-on-demand** architecture is treated as load-bearing and immutable for this milestone — the CRDT layer is wrapped *around* it, not in place of it.
 
 ---
 
-## Existing architecture recap (load-bearing invariants)
+## 1. System Overview
+
+### Where the new layer sits
 
 ```
-                ┌───────────────────────────────────────────┐
-                │            SVGAnnotationLayer             │
-                │  (per-page React component, display-only) │
-                │                                            │
-                │   <svg viewBox="0 0 pageW pageH">          │
-                │     renderAnnotations(...)                 │
-                │     <SVGSelectionOverlay>                  │
-                │       <g data-rotation-handle="mtr">  <────┼── Gap 3 target element
-                │     </SVGSelectionOverlay>                 │
-                │   </svg>                                   │
-                │   + Hover-intent useEffect (DOM listeners) │
-                │   + <RotationInputField> (HTML portal)     │
-                └───────────────────────────────────────────┘
-                                 │
-                                 │  (same overlay div, parent of <svg>)
-                                 ▼
-                ┌───────────────────────────────────────────┐
-                │     FabricEditCanvas (mount-on-edit)       │
-                │   React container div (overflow: visible   │
-                │   for shape mode) → Fabric wrapperEl →     │
-                │   lower-canvas + upper-canvas              │
-                │   Container sized to                       │
-                │   (annW + BBOX_PADDING*2) × (annH + ...)   │
-                │   — tight to the shape's pre-rotation AABB │
-                │   — mtr handle is at y = top - padding - 40│
-                └───────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│  PRESENTATION (UNCHANGED — DO NOT TOUCH IN v2.4)                     │
+│  ┌─────────────────────┐  ┌─────────────────────────────────────┐    │
+│  │ SVGAnnotationLayer  │  │ FabricDrawingCanvas / Edit / Eraser │    │
+│  │ (display, viewBox)  │  │ (mount-on-demand edit canvas)       │    │
+│  └──────────┬──────────┘  └─────────────────┬───────────────────┘    │
+│             │ reads JSON                    │ reads/writes JSON       │
+└─────────────┼───────────────────────────────┼─────────────────────────┘
+              │                               │
+              ▼                               ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│  REACT STATE FAÇADE (UNCHANGED CONTRACT, NEW SOURCE)                 │
+│  annotationsByPage   callouts   highlightAnnotations   selection     │
+│  ▲                                                                    │
+│  │ derived via useY(...) — useSyncExternalStore over Y.Doc           │
+└──┼───────────────────────────────────────────────────────────────────┘
+   │
+┌──┴───────────────────────────────────────────────────────────────────┐
+│  CRDT LAYER (NEW)                                                    │
+│  ┌──────────────────────┐   ┌──────────────────────────────────┐     │
+│  │ Y.Doc per document   │   │ Awareness (ephemeral)            │     │
+│  │  annotations: Y.Map  │   │  cursor, page, selection, tool   │     │
+│  │   <id, Y.Map>        │   │  user (name, color, deviceId)    │     │
+│  │  callouts:    Y.Map  │   └──────────────────────────────────┘     │
+│  │   <id, Y.Map>        │                                            │
+│  │  meta:        Y.Map  │   ┌──────────────────────────────────┐     │
+│  │   docVersion, schema │   │ Y.UndoManager (per-origin)       │     │
+│  └──────────┬───────────┘   │  origin = local clientId         │     │
+│             │               └──────────────────────────────────┘     │
+│             ▼                                                         │
+│  ┌──────────────────────┐   ┌──────────────────────────────────┐     │
+│  │ y-indexeddb          │   │ Provider (transport)             │     │
+│  │ (offline-first cache)│   │ Hocuspocus or HTTP+Realtime      │     │
+│  └──────────────────────┘   └──────────────────────────────────┘     │
+└─────────────────────────────────────────────────────────────────────-┘
+              │
+┌─────────────┼─────────────────────────────────────────────────────────┐
+│  PERSISTENCE (NEW SCHEMA, OLD SCHEMA RETAINED IN PARALLEL)           │
+│  ┌──────────────────────────┐  ┌──────────────────────────────────┐  │
+│  │ doc_yjs_state (snapshots)│  │ doc_yjs_updates (append log)     │  │
+│  │  document_id, state_vec, │  │  document_id, update bytea,      │  │
+│  │  state bytea, updated_at │  │  client_id, ts, seq              │  │
+│  └──────────────────────────┘  └──────────────────────────────────┘  │
+│  ┌─────────────────────────────────────────────────────────────────┐ │
+│  │ document_annotations (LEGACY — still owns highlights, frozen    │ │
+│  │ for non-highlights post-migration; one-way bridge during cutover│ │
+│  └─────────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
-### Load-bearing invariants (cannot break)
+### Component Responsibilities
 
-1. **SVG viewBox owns all zoom scaling** — `SVGAnnotationLayer.jsx:1002` sets `viewBox={`0 0 ${width} ${height}`}`; no JS coordinates scale. Any Gap 2 / Gap 4 fix must NOT reintroduce a zoom timer or JS zoom coordination.
-2. **`zoomGeneration` signal** — read by `FabricEditCanvas.jsx` ~line 1907 to dismiss edit mode on zoom. Cannot be removed or renamed.
-3. **Container-aware scale** — `FabricEditCanvas.jsx:890` reads `parentEl.offsetWidth / pageWidth` for `effectiveScale` (the 2026-03-22 fix). Any container resize fix for Gap 4 must preserve this measurement.
-4. **RotationInputField portaled to `svgRef.current?.parentElement`** — NOT into `foreignObject` (SVGAnnotationLayer.jsx:1299-1310). Pill lives as an HTML sibling of the `<svg>`, not inside it.
-5. **Full-click-cycle stopPropagation** on portaled UI (Plan 12-02 Round 7 fix) — any new cross-component pointer wiring must preserve this contract.
-6. **`visualTransform.rotate` drag-wins invariant** — optimistic-paint pattern at `useSVGInteraction.js:835-855` must NOT be destabilized by off-screen relocation logic.
+| Component | Owns | Status |
+|---|---|---|
+| `SVGAnnotationLayer.jsx` | Render annotations from React state. Reads `annotationsByPage` and `callouts` as plain JSON. | UNCHANGED. The display layer must not learn about Yjs. |
+| `FabricDrawing/Edit/EraserCanvas.jsx` | Mount-on-demand mutable canvas. Emits commit-shaped Fabric JSON via existing callbacks. | UNCHANGED. Edits are still committed as Fabric JSON to React setters. |
+| `App.jsx` state setters (`setAnnotationsByPage`, `setCallouts`) | The integration seam. After v2.4, these become **derived from Y.Doc**, not free-standing useState. | MODIFIED (one wire-up file, but the *contract* — the JSON shape — is preserved). |
+| `useYDoc` (NEW) | Provides the Y.Doc for the currently open document. Owns lifecycle: create on open, destroy on close. Exposes `ydoc`, `awareness`, `provider`, `connectionState`. | NEW |
+| `useAnnotationsCRDT` (NEW) | Subscribes to `annotations: Y.Map` and `callouts: Y.Map` via `useSyncExternalStore`, exposes the same `annotationsByPage` and `callouts` shape App.jsx already consumes. | NEW |
+| `crdtAnnotationBridge.js` (NEW) | Pure module. Converts Fabric JSON ↔ Y.Map. One direction at a time, never both during a single transaction. | NEW |
+| `crdtUndoManager.js` (NEW) | Wraps `Y.UndoManager`, scoped to local origin. Replaces the existing per-tool Fabric undo path. | NEW |
+| `useAnnotationCloudSync.js` (LEGACY) | Currently owns push/pull for non-highlights via Supabase upserts. **DELETED** in v2.4 once cutover complete. | DELETED |
+| `documentAnnotationService.js` (LEGACY) | Owns highlight rows. **STAYS** — highlights remain on the legacy path through v2.4, migrated in v2.5. | UNCHANGED |
+| `cloudSyncMigration.js` (LEGACY) | One-time local→cloud Fabric-row migration. Replaced by `crdtBackfill.js`. | DEPRECATED post-cutover |
 
 ---
 
-## Gap 3 — Hover-intent stale `handleEl` ref after edit→commit
+## 2. Y.Doc Placement in the React Tree
 
-### Root cause (confirmed at source)
+### Decision: a `YDocProvider` context at the document-open boundary, not at App root
 
-**File:** `src/components/SVGAnnotationLayer.jsx:213-313`
+Rationale: a Y.Doc is per-document. Mounting at App root forces destroy-and-recreate every time the user switches PDFs, which is the dominant navigation event in this app. Mounting at the boundary where `documentId` becomes non-null lets us treat the Y.Doc lifecycle as a hook driven by `documentId`, mirroring the current `useAnnotationCloudSync({ documentId })` shape.
 
-The hover-intent `useEffect` has dependency array `[selectedIds, setRotInputVisibleDbg]` (line 313, deliberately excludes `rotInputVisible` for Issue 4 flicker fix).
-
-The effect body at line 232 does:
-
-```js
-const handleEl = svgRef.current?.querySelector('[data-rotation-handle="mtr"]');
+```
+<App>
+  <DocumentRouter>           // resolves documentId from PDF open
+    <YDocProvider docId={documentId} userId={userId}>
+      <SyncfusionPDFContainer>
+        <PageAnnotationLayer> // reads context via useYDoc + useAnnotationsCRDT
+          <SVGAnnotationLayer />        // reads JSON shape, unchanged
+          <FabricEditCanvas />          // reads/writes JSON shape, unchanged
+        </PageAnnotationLayer>
+      </SyncfusionPDFContainer>
+    </YDocProvider>
+  </DocumentRouter>
+</App>
 ```
 
-Then attaches `pointerenter` / `pointerleave` listeners to that element, and captures `handleEl` in the cleanup closure (lines 301-302).
+### Sharing between SVG display and Fabric edit
 
-**The DOM node it finds becomes stale during edit-mode transitions** because:
+Critical constraint: **the SVG and Fabric layers must not learn about Yjs.** They consume `annotationsByPage` (per-page Fabric JSON arrays) and `callouts` (flat list) and emit commit-shaped JSON via setters. The `useAnnotationsCRDT` hook produces those exact shapes via `Y.Map.toJSON()` materialization, gated by `useSyncExternalStore` to avoid tearing.
 
-1. `editingAnnotationIndex` flips non-null on double-click → edit.
-2. SVGAnnotationLayer.jsx:1049 computes `isBeingEditedNow = editingAnnotationIndex != null && selectedIndex === editingAnnotationIndex`.
-3. SVGAnnotationLayer.jsx:1234 passes `isGroupSelection={isBeingEditedNow}` to the `SVGSelectionOverlay`.
-4. SVGSelectionOverlay.jsx:86 gates the handles block on `{!isGroupSelection && ...}` — so all 8 handles AND the `<g data-rotation-handle="mtr">` element **unmount from the DOM** during edit mode.
-5. On click-off, `editingAnnotationIndex` returns to null. React reconciles; a **new** `<g data-rotation-handle="mtr">` node is created.
-6. `selectedIds` did NOT change across that transition (the selection set survives edit mode). The effect's dep array saw no change. **The effect never re-ran**, so the old closure still references the unmounted node. No listeners on the new node.
+**Read path:** `Y.Map.observeDeep` fires → external-store snapshot recomputed → `useAnnotationsCRDT` returns `{ annotationsByPage, callouts }` → SVG re-renders.
 
-The log evidence in `1.log` (referenced in `FEATURE-BACKLOG.md`) matches: "hover-intent effect RUN selectedIds.size=1 → attaching listeners to handleEl, but NO subsequent pointerenter on mtr fires on hover until after the deselect/reselect cycle."
+**Write path:** Fabric edit-canvas commits a JSON object → existing `setAnnotationsByPage(...)` callback is rewritten to call `crdtAnnotationBridge.applyFabricCommit(ydoc, fabricJson)` inside a Y transaction with `origin: localClientId`.
 
-### Options analysis
-
-| Option | Cleanness | Risk | Survives future selection-overlay refactors? |
-|--------|-----------|------|-----------------------------------------------|
-| **A. Add `editingAnnotationIndex` to dep array** | Best (minimal diff) | LOW | Yes — React-level reconciliation trigger, declarative |
-| B. Read `handleEl` fresh on each `pointerenter` via delegated listener | Cleaner but larger refactor | MEDIUM (pointerenter doesn't bubble — would need pointerover with boundary math) | Yes |
-| C. MutationObserver on overlay root | Over-engineered for one use case | MEDIUM (MO on active DOM during 60fps drag) | Yes but with perf cost |
-| D. Event delegation from `<svg>` root using `e.target.closest('[data-rotation-handle="mtr"]')` | Cleaner long-term | MEDIUM (need to migrate the pointerenter→pointerover contract, pointer-cancel edge cases) | Yes |
-
-### Recommendation: **Option A + a subtle guard**
-
-```js
-// Current (line 313):
-}, [selectedIds, setRotInputVisibleDbg]);
-
-// Proposed:
-}, [selectedIds, editingAnnotationIndex, setRotInputVisibleDbg]);
-```
-
-Plus one extra guard inside the effect body: if `editingAnnotationIndex != null`, early-return and clear timers. The handles don't exist during edit mode, so trying to attach to a non-existent element is wasted work AND the effect would log "handleEl NOT FOUND" which is noise.
-
-**Why this is cleanest given the existing architecture:**
-
-- Keeps the effect **declarative**: React already knows when edit state changes, use that signal.
-- Preserves the Issue 4 flicker fix (rotInputVisible still NOT in deps — the ref pattern stays).
-- Zero new surface area, zero new data flow, zero interaction with `useSVGInteraction`.
-- The `setRotInputVisibleDbg` stable-callback contract is untouched.
-- Does NOT touch `svgRef.current.querySelector` — so it's NOT at risk of the imperative DOM-reading pitfall that caused the Round 7 focus-loss hunt.
-
-**Why NOT Option D (event delegation):** The current per-handle listener contract is scoped. Event delegation from `<svg>` would cross the interactive-vs-non-interactive boundary (line 140 `isInteractive`), which is load-bearing for FabricEditCanvas pointer routing. Any delegation change would need to re-validate against the `isInteractive` gate, and the payoff isn't large enough to justify the audit.
-
-### Integration point
-
-- **File:** `src/components/SVGAnnotationLayer.jsx`
-- **Function/Hook:** the `useEffect` at line 213 with the `eslint-disable-next-line react-hooks/exhaustive-deps` comment
-- **Existing helper to absorb logic:** none — this IS the logic
-- **New components:** none
-- **Data-flow changes:** none
-
-### Acceptance test (for plan-phase)
-
-**Given** a shape is selected and double-click enters edit mode,
-**When** the user clicks off the shape to dismiss edit mode,
-**Then** on hover over the rotation handle the pill appears within 150ms (the existing hover-intent delay), without requiring deselect + reselect.
-
-### DO NOT CHANGE boundary (Gap 3)
-
-- `src/App.jsx`
-- `src/components/PageAnnotationLayer.jsx`
-- `src/components/FabricDrawingCanvas.jsx`
-- `src/components/FabricEraserCanvas.jsx`
-- `src/components/FabricEditCanvas.jsx`
-- `src/components/SVGSelectionOverlay.jsx`
-- `src/hooks/useSVGInteraction.js`
-- `src/components/RotationInputField.jsx` (load-bearing focus contract)
-- `src/utils/zoomController.js`
-- `vite.config.js` / `package.json`
-
-Only `SVGAnnotationLayer.jsx` is in scope for Gap 3.
+This preserves the existing Fabric/SVG split exactly. The only file that changes shape is the App.jsx wire-up where setters are bound — and even there, the *callbacks* preserve their signature.
 
 ---
 
-## Gap 4 — mtr handle clipped when pre-rotated shape enters edit mode
+## 3. Annotation → Y Type Mapping
 
-### Current state (confirmed at source)
+### Each annotation = one Y.Map keyed by stable id
 
-**File:** `src/components/FabricEditCanvas.jsx`
+```
+ydoc.getMap('annotations')     // Y.Map<string, Y.Map>
+  ├── "ann_4f8c2..."  → Y.Map { id, type, pageNumber, fabric: Y.Map { left, top, ... }, meta: Y.Map { authorId, deviceId, createdAt, updatedAt } }
+  ├── "ann_9a1e7..."  → Y.Map { ... }
+  └── ...
 
-Multiple layers of overflow handling already exist:
+ydoc.getMap('callouts')        // Y.Map<string, Y.Map>
+  ├── "call_b3d10..." → Y.Map { id, pageNumber, anchor: Y.Map { x, y }, knee: Y.Map { x, y }, label, ... }
+  └── ...
 
-1. **React container** (lines 942-968): `overflow: editType === 'shape' ? 'visible' : undefined`. Shape mode explicitly sets `overflow: visible`.
-2. **Fabric wrapperEl** (line 1661-1662): `wrapperEl.style.overflow = 'visible'` at the end of `loadShapeAnnotation`. "Allow handles to extend past the canvas during scaling" comment.
-3. **BBOX_PADDING = 32** page units (line 83). Intended to give "full handle plus a safety margin" at the worst case zoom. Comment at lines 75-82 explicitly says 32 page-units gives ~42 CSS px at Electron normal. Rotation handle sits 40 page units above the bbox top (`svgBoundingBox.js:105`: `mtr: { x: left + width / 2, y: top - padding - 40 }`).
+ydoc.getMap('meta')            // Y.Map
+  ├── "schemaVersion" → "v2.4.0"
+  └── "createdAt"     → 1714000000
+```
 
-So a 32-unit padding ring + a 40-unit handle offset = handle center sits **8 page units above the React container's top edge** even at 0° rotation. With `overflow: visible` that works because the handle renders outside the container rect.
+### Why two top-level maps, not one
 
-### Why Gap 4 fails at non-zero angles
+Callouts and Fabric annotations have meaningfully different shapes today (Fabric JSON vs `{anchor, knee, label}`) and different commit patterns (callouts are HTML-overlay-based pre-CALL-10; Fabric annotations are pure JSON). Keeping them in separate Y.Maps:
+- mirrors the existing React state split (`annotationsByPage` vs `callouts`)
+- lets us evolve the callout shape independently when CALL-10 lands
+- means observers can subscribe to one map without churning on the other
 
-The gap report explicitly says **"Does NOT happen at 0° rotation — only when shape is pre-rotated."** That's the key signal. Looking at the rotated-shape branch (lines 934-955):
+After CALL-10 unifies callout rendering onto SVG, both maps still make architectural sense — they have different **identity semantics** (a callout's identity includes its anchor link to a Fabric shape; a pen stroke has no such link).
 
-```js
-if (annAngle) {
-  // Page-space CSS transform: replicates SVG's transformation chain
-  style = {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    width: annWidth + BBOX_PADDING * 2,
-    height: annHeight + BBOX_PADDING * 2,
-    zIndex: 101,
-    pointerEvents: 'auto',
-    overflow: editType === 'shape' ? 'visible' : undefined,
-    transformOrigin: '0 0',
-    transform: buildBboxTransform(sx, sy, annLeft, annTop, annWidth, annHeight, annAngle),
-    visibility: 'hidden',
-  };
-  pageSpaceModeRef.current = true;
+### Why per-annotation Y.Map, not per-page Y.Array
+
+The existing `annotationsByPage` is a `{ [page]: { objects: Fabric[] } }` shape. The naive port is one Y.Array per page. **Don't do this** — it makes per-annotation operations (move, edit a single property) far harder to express as minimal CRDT updates and creates contention when two users edit different annotations on the same page. Instead, store annotations flat keyed by id and **derive `annotationsByPage`** in `useAnnotationsCRDT` by grouping on `pageNumber`. The grouping is O(n) on small n (a typical doc has <500 annotations) and runs once per change batch, not per render.
+
+### Inside each annotation: shallow Y.Map of properties
+
+Each annotation's Y.Map holds the Fabric properties as flat scalars (or one level of Y.Map for nested groups like callouts and counters). Pen-stroke `path` arrays go in as immutable JSON inside a single key — pen strokes are commit-once-then-edit-rarely; nested Y.Array for path points is overkill and would balloon the update size on every commit.
+
+```
+{
+  id: "ann_4f8c2",
+  type: "rect",            // Fabric type (used by SVG renderer dispatch)
+  pageNumber: 6,
+  fabric: {                // verbatim Fabric JSON, flat keys
+    left: 100, top: 200, width: 80, height: 40,
+    angle: 0, scaleX: 1, scaleY: 1, fill: "rgba(255,235,59,0.4)",
+    stroke: "#000", strokeWidth: 2,
+    data: { id: "ann_4f8c2", category: "egress", ... }
+  },
+  meta: {
+    authorId: "user_abc", deviceId: "dev_def",
+    createdAt: 1714000000, updatedAt: 1714000123,
+    schemaVersion: "v2.4.0"
+  }
 }
 ```
 
-The container is `(annWidth + 64) × (annHeight + 64)` page units, then CSS-transformed into position via `buildBboxTransform` which applies `scale(sx, sy) × translate × rotate`. The rotation handle (in Fabric canvas-local coordinates) sits above the shape's bbox top — i.e. above the container's top edge.
-
-**With `overflow: visible`** the browser SHOULD render the handle outside the rotated container. And within the container itself it does. **But the Syncfusion page-div ancestor has `overflow: hidden`** — PAL is a sibling and FabricEditCanvas's container gets portaled into the overlay div, which sits inside `e-pv-page-div`. At 0° rotation the `BBOX_PADDING*2` ring provides enough slack INSIDE the container for the handle to live; since the container itself is inside the page div without protruding, no ancestor clips it.
-
-At non-zero rotation, the **rotated** container is still the same page-unit size, but the rotation handle — originally 40 page units ABOVE the shape's local top, inside the padding ring — gets rotated along with the container. For a shape near the top edge of the page, the rotated handle can project past the Syncfusion page-div top edge even though it remains inside the container's `overflow: visible` region. The ancestor `e-pv-page-div` clips it.
-
-**Alternative root cause** (also worth investigating before committing to a fix): the Fabric wrapperEl's `position: absolute` + `top: 0 / left: 0` might place the handle in canvas-local coordinates that, under the CSS rotation transform, end up outside the PRE-transform container rect. If the browser applies `overflow: visible` in pre-transform space, the rotated handle could land outside the transformed outline which the CSS transform's new bounding rect covers.
-
-### Options analysis
-
-| Option | Respects zero-timer? | Risk | Notes |
-|--------|---------------------|------|-------|
-| **A. Expand `BBOX_PADDING`** from 32 to cover worst-case rotation AABB | YES | LOW-MED | The container becomes larger in both width AND height. Need to expand enough to cover a handle at any rotation, which means the padding must be ≥ 40 (the handle offset) + handle radius + safety margin ≈ 60 page units. Costs: (a) bigger click-through dead zone in the `mouse:down → commitAndClose` path at line 1864-1883 (comment at 1848-1855 flags this is ALREADY proportionally huge for tiny counter shapes); (b) bigger transform box affects the mini-toolbar's `toolbarPos` calculation. |
-| **B. Audit + fix ancestor clip** (Syncfusion page div → overlay div → container) | YES | MED | Cleanest conceptually, but requires touching Syncfusion overlay-div CSS, potentially in App.jsx/PAL which are DO-NOT-CHANGE-heavy. Not recommended unless Option A + C fail. |
-| **C. Keep SVG rotation handle VISIBLE behind Fabric** during edit mode instead of hiding it | YES | LOW | Currently SVGSelectionOverlay HIDES handles when `isGroupSelection=true` (= `isBeingEditedNow`). Flip that to "hide resize handles but keep mtr visible" and use the SVG handle as the grab target. The Fabric mtr control becomes a visual-only decoration (or gets hidden). |
-| D. Portal Fabric canvas to document.body | NO-ish | HIGH | Breaks the container-aware sizing contract (`parentEl.offsetWidth / pageWidth` at line 890). Would need an entirely new portal-host resolution. Rejected. |
-| E. Remove `overflow: hidden` from ancestor(s) | YES | HIGH | Syncfusion's page div is managed by the viewer, not our code. High-risk infrastructure touch. Rejected. |
-
-### Recommendation: **Option C with Option A as fallback**
-
-**Option C — "Keep SVG rotation handle visible during edit mode"**
-
-Change SVGSelectionOverlay to accept a new prop `hideResizeHandlesOnly: boolean` (or refactor `isGroupSelection` into two separate booleans: `isGroupSelection` vs `isEditing`). When `isEditing=true`:
-
-- Hide the 8 resize handles (they belong to Fabric during edit)
-- KEEP the mtr rotation handle visible
-- Users grab the SVG-rendered rotation handle, which lives inside the `<svg>` element that covers the full page and is NOT clipped by the tight FabricEditCanvas container.
-
-**Why this is the best fix:**
-
-- The root cause in Gap 4 is that **Fabric's rotation handle is inside a container that's tight to the shape's AABB**. The SVG rotation handle is NOT — it sits inside the page-wide `<svg>` element which covers the entire Syncfusion page div.
-- Reuses existing code paths: SVGSelectionOverlay already renders the mtr handle exactly where it needs to go, and `useSVGInteraction`'s `handleHandlePointerDown` with `handleId === 'mtr'` already knows how to route it into the rotate branch (`useSVGInteraction.js:702`).
-- Avoids growing `BBOX_PADDING` — which would bloat the click-through dead zone that's already proportionally huge for small shapes (comment at line 1848 flags this).
-- **Bonus**: this also fixes an unreported inconsistency. Today, during shape edit mode, the user sees Fabric-rendered corner handles AND mini-toolbar. Rotation via Fabric's native mtr handle is separate from SVG's rotate branch — they look identical but the rotation commit path differs. Routing rotation through the SVG handle even during edit mode unifies the commit path.
-- BUT this needs explicit hand-off design: during edit mode, the rotation drag should NOT trigger `editingAnnotationIndex → null` (exit edit mode). It should rotate the shape AND the FabricEditCanvas container's CSS transform needs to update to follow. The `useSVGInteraction` rotate branch already sets `visualTransform.rotate`, so the Fabric container's `buildBboxTransform` math needs to read that signal. This is not a trivial wire-up.
-
-**Fallback: Option A if Option C's wire-up proves expensive.** Grow `BBOX_PADDING` from 32 to ~72. Accept the larger click-through dead zone. Update the `mouse:down → commitAndClose` empty-click heuristic at line 1864 to only dismiss when the click lands in the OUTER ring (beyond the old 32-unit boundary), preserving the old dismissal UX inside the original ring.
-
-### Integration point
-
-- **Option C:** `SVGSelectionOverlay.jsx` (accept `isEditing` prop) + `SVGAnnotationLayer.jsx` (pass prop when `isBeingEditedNow=true`) + verify `handleHandlePointerDown` works while `editingAnnotationIndex != null` + decide whether the rotation commit exits edit mode or updates the FabricEditCanvas's rotation transform live.
-- **Option A (fallback):** `FabricEditCanvas.jsx:83` (BBOX_PADDING constant) + line 1864 dismissal heuristic.
-
-### Pre-commit verification step for plan-phase
-
-**Before touching any code, run a one-shot diagnostic in the running app:**
-
-1. Select a pre-rotated shape near the top edge of the page.
-2. Inspect the DOM element at the shape → find the ancestor chain up to `e-pv-page-div`.
-3. For each ancestor, read `getBoundingClientRect()` and `window.getComputedStyle(el).overflow`.
-4. Identify which ancestor's rect the handle visually gets clipped by.
-
-This tells us definitively whether the clip is (a) the FabricEditCanvas container itself, (b) the overlay div, (c) `e-pv-page-div`, or (d) something farther up. **Option selection depends on this diagnostic** — the architecture research can identify candidates but the specific clipper needs live DOM inspection.
-
-### Acceptance test (for plan-phase)
-
-**Given** a shape that has been pre-rotated (e.g. 30°) and placed near the top-left edge of the page,
-**When** the user double-clicks to enter edit mode,
-**Then** the full rotation handle (circle + icon) is visible and grabbable, the mini-toolbar renders unclipped, and rotating via the handle updates both the shape angle and the edit-mode chrome together (or, if Option A, dismisses edit first).
-
-### DO NOT CHANGE boundary (Gap 4)
-
-- `src/App.jsx`
-- `src/components/PageAnnotationLayer.jsx`
-- `src/components/FabricDrawingCanvas.jsx`
-- `src/components/FabricEraserCanvas.jsx`
-- `src/hooks/useSVGInteraction.js` (Option A only; Option C needs the rotate-during-edit wire-up, which is a scope expansion)
-- `src/utils/zoomController.js`
-- `vite.config.js` / `package.json`
-
-In scope for Gap 4: `FabricEditCanvas.jsx` (owned by rotation polish phase), `SVGSelectionOverlay.jsx` (Option C only), `SVGAnnotationLayer.jsx` (Option C only).
+The **outer** Y.Map enables atomic property-level merge (two users editing different properties of the same annotation merge cleanly). The **inner** `fabric` Y.Map is where Fabric edits land. The `meta` Y.Map is append-only metadata.
 
 ---
 
-## Gap 2 — Rotation handle relocates to opposite side when off-screen
+## 4. Fabric.js ↔ Y.Map Bridge
 
-### Current state (confirmed at source)
+### One-directional translation at the commit boundary, never bidirectional during a drag
 
-**Handle placement formula:** `src/utils/svgBoundingBox.js:93-107` — `getHandlePositions(bbox, padding)` is a **pure function** that returns a static map of 9 handle positions computed from the unrotated bbox. `mtr` is hardcoded at `{ x: left + width / 2, y: top - padding - 40 }` — always 40 page units above the bbox top.
+Fabric.js fires events at high frequency during drag (`object:moving` ~60Hz). Routing every tick into a Y transaction would saturate the awareness/sync channel. The current architecture **already** debounces this — Fabric edits live in the local mutable canvas and only commit on `mouseup`/blur/click-off. We preserve that boundary exactly.
 
-**Rotation application:** `src/components/SVGSelectionOverlay.jsx:65` — `transform={angle ? `rotate(${angle}, ${cx}, ${cy})` : undefined}` wraps the entire overlay group. So the mtr handle is rotated ALONG WITH the bbox around the shape center. For a shape near the page edge, after 90° rotation the mtr handle that was originally above the shape now projects beyond the page edge.
+### Read direction: Y.Map → Fabric (only on edit-canvas mount)
 
-**Pill clamping:** `src/utils/rotationInputHelpers.js:159-166` — the pill already clamps to the host div with `EDGE_MARGIN = 4`. So when the handle goes off-screen, the pill stays visible but gets disconnected from the handle. The user can see the pill but can't grab the handle.
+When `FabricEditCanvas` mounts to edit annotation `id`:
+1. Read the current Y.Map snapshot for that id: `ydoc.getMap('annotations').get(id).toJSON()`
+2. Hand the resulting Fabric JSON to Fabric.js `loadFromJSON` exactly as today
+3. The mutable Fabric scene runs locally — no Y observers feed it during the edit session
 
-### Who knows "off-screen"?
+If a remote user edits the same annotation while a local edit is open, **the local edit wins on commit** (last-write-wins at the property level via Y.Map's CRDT semantics, but the local user's choices are not interrupted mid-drag). Awareness UI surfaces that the remote user is editing the same shape — see §5.
 
-- **SVGSelectionOverlay** knows: bbox in viewBox coords, rotation angle, handle offset math.
-- **SVGAnnotationLayer** knows: viewBox (`0 0 pageWidth pageHeight`) which defines the visible page bounds.
-- **RotationInputField** knows: host div bounding rect (screen space) — it's the only component that currently does edge-clamping against a real viewport rect.
+### Write direction: Fabric commit → Y.Map (atomic transaction)
 
-**Key observation:** "off-screen" in the Gap 2 user story means "outside the Syncfusion page viewport", not "outside the viewBox of the currently-visible page." For a shape at page-bottom-left, the mtr handle in its natural position might be inside the page viewBox but outside what the user can see (e.g. clipped by the Syncfusion scroll container). However, the simplest and most-correct-by-default interpretation is "outside the page's own viewBox" — because that's what SVGSelectionOverlay can compute without touching scroll/viewport state.
+On `commit-and-unmount-fabric`:
+```js
+ydoc.transact(() => {
+  const annMap = ydoc.getMap('annotations').get(id);
+  const fabricMap = annMap.get('fabric');
+  // Update only changed keys (computed via shallow diff vs. the map snapshot
+  // captured at edit-canvas mount). DO NOT clear-and-set — that produces
+  // larger update messages and breaks property-level merge.
+  for (const key of changedKeys) fabricMap.set(key, newFabricJson[key]);
+  annMap.get('meta').set('updatedAt', Date.now());
+  annMap.get('meta').set('lastEditorId', userId);
+}, /* origin = */ localClientId);
+```
 
-**Recommendation:** Make the fix viewBox-relative, not viewport-relative. "Off-screen" = "the mtr handle point, after rotation, falls outside `[0, pageWidth] × [0, pageHeight]`." This keeps the function pure and testable, and for a rotated shape whose handle crosses the viewBox boundary, the user will see the relocated handle on the opposite edge regardless of scroll position.
+`origin: localClientId` is critical — `Y.UndoManager` uses it to scope undo to this user's edits.
 
-### Architecture decision
+### Create / delete
 
-Put the "flip to opposite side" logic into a **new pure utility module**: `src/utils/handlePlacementMath.js`.
+- **Create:** `ydoc.getMap('annotations').set(id, freshAnnotationYMap)` inside a transaction.
+- **Delete:** `ydoc.getMap('annotations').delete(id)` inside a transaction. Y.Map handles tombstones; the SVG layer sees the id disappear from the materialized state and unmounts the shape.
+
+### What the bridge module looks like
 
 ```js
-/**
- * Compute mtr handle position in viewBox coordinates, flipping to the
- * opposite side of the shape when the default position would land
- * outside the page viewBox.
- *
- * Pure function — no DOM, no React, unit-testable in isolation.
- *
- * @param {{left, top, width, height, angle}} bbox — shape bbox in viewBox coords
- * @param {number} pageWidth, pageHeight — viewBox dimensions
- * @param {number} [padding=2] — selection overlay padding
- * @returns {{ x: number, y: number, side: 'top'|'bottom'|'left'|'right' }}
- *   Handle position in UNROTATED viewBox coords (before the overlay's
- *   rotate() wrapper applies). `side` is the chosen anchor side.
- */
-export function computeMtrHandlePosition(bbox, pageWidth, pageHeight, padding = 2) { /* ... */ }
+// crdtAnnotationBridge.js — pure functions, no React, no Fabric instance
+export function fabricJsonToYMap(ydoc, fabricJson, ctx) { /* build the Y.Map */ }
+export function yMapToFabricJson(yMap)                  { return yMap.toJSON(); }
+export function applyFabricCommit(ydoc, id, oldJson, newJson, ctx) { /* shallow diff + transact */ }
+export function applyFabricCreate(ydoc, fabricJson, ctx)            { /* set new Y.Map */ }
+export function applyFabricDelete(ydoc, id, ctx)                    { /* delete from map */ }
 ```
 
-### Integration flow
+Pure functions are deliberate. They're trivially unit-testable without a React or Fabric runtime — the bridge is the most failure-prone piece, so isolating it pays off.
 
-```
- SVGAnnotationLayer.jsx (owns pageWidth, pageHeight — already passed as props)
-        │
-        ▼
- SVGSelectionOverlay.jsx (accept new prop `pageWidth`, `pageHeight`)
-        │
-        ▼
- Replaces call at svgBoundingBox.js:105 with computeMtrHandlePosition(bbox, pageWidth, pageHeight)
- (getHandlePositions still owns the 8 resize handles — unchanged)
-        │
-        ▼
- Returns {x, y, side} instead of just {x, y}
-        │
-        ▼
- SVGSelectionOverlay renders:
-   - connector line from the nearest side midpoint TO the handle
-     (currently hardcoded to `handles.mt → handles.mtr`; generalize to
-      `handles[side] → handles.mtr`)
-   - circle + icon at new (x, y)
-        │
-        ▼
- RotationInputField pill placement — ALREADY works automatically because
- computeInputPosition reads the handle's screen rect via DOM query-selector
- (line 233) and computes the radial direction from shapeCenter → handle.
- No pill changes needed — relocation follows the handle automatically.
-```
+---
 
-### Why this placement
+## 5. Awareness State
 
-- **Keeps `getHandlePositions` simple** — the 8 resize handles have no relocation story; only mtr does. Don't pollute `svgBoundingBox.js` with page-dimension awareness.
-- **New utility is pure** — unit-testable in isolation (no React, no DOM). Wave-0 testable, same pattern as `snapAngleToNearest45` and `rotationInputHelpers.computeInputPosition`.
-- **Zero cross-component state** — SVGSelectionOverlay receives `pageWidth`/`pageHeight` from SVGAnnotationLayer (which already has them). RotationInputField needs ZERO changes because it computes pill placement radially from the handle's actual screen rect, which naturally follows the relocated handle.
-- **Preserves the rotation wrapper** — SVGSelectionOverlay's `transform={angle ? `rotate(...)` : undefined}` stays. The relocation is computed in the **pre-rotation** frame. The utility must account for the angle when deciding which side is "off-screen" because the handle's POST-rotation position is what actually gets clipped.
+### Y.Awareness, not part of the Y.Doc
 
-### Algorithm sketch
+Awareness is **ephemeral** — it lives on the awareness CRDT, not in the persistent doc. It auto-cleans when a user disconnects.
 
-```
-1. Compute the 4 candidate mtr positions (top, bottom, left, right)
-   each offset 40 page units from the matching side midpoint.
-2. For each candidate, apply the shape's rotation transform (rotate(angle, cx, cy))
-   to get the post-rotation position in viewBox coords.
-3. Pick the first candidate whose post-rotation position falls INSIDE
-   [0, pageWidth] × [0, pageHeight] (plus a margin for the handle radius).
-4. Prefer the natural "top" side when all 4 candidates are valid
-   (no behavior change for non-edge shapes).
-5. Return the candidate in UNROTATED frame, plus the `side` label so
-   the connector-line renderer can draw from the matching midpoint handle.
+### Local awareness fields
+
+```js
+awareness.setLocalStateField('user', {
+  id: userId, name: displayName, color: deterministicColorFor(userId)
+});
+awareness.setLocalStateField('cursor', {
+  pageNumber: currentPage, x: cursorX, y: cursorY  // PDF page coordinates
+});
+awareness.setLocalStateField('selection', {
+  annotationId: selectedAnnId || null
+});
+awareness.setLocalStateField('tool', {
+  active: 'pen' | 'rect' | 'select' | null
+});
+awareness.setLocalStateField('editingAnnotationId', editingId || null);
 ```
 
-### Edge cases for plan-phase to specify
+`editingAnnotationId` is the key one — it's how other users' UI knows to show "Alice is editing this rectangle" without blocking the local edit. It's also how the local edit can detect a contention situation (another user is mid-edit on the same annotation) and surface a soft warning in the mini-toolbar.
 
-- **All 4 sides off-screen** — shape larger than page viewBox. Fallback: use the top side anyway (current behavior). Document in CONTEXT.md.
-- **Multi-select / group selection** — group union bbox has `angle: 0`, so relocation only matters for individual selection. Current fallback ("natural top") works.
-- **Border-flush types** (rect, text, textbox, i-text) — `padding=0`. Algorithm works the same; handle offset is still 40 units from the bbox.
-- **Angle mid-drag** — `visualTransform.rotate.angle` during drag is NOT persisted yet. SVGSelectionOverlay reads `bbox.angle` which is the live angle via `useSVGInteraction.js`'s `visualTransform` propagation. The relocation will shift side mid-drag, which could feel jittery. **Mitigation:** compute the side at drag-start (captured in `dragStateRef.current`) and hold it constant during the drag. Switch at drag-end.
+### Throttling
 
-### Integration point
+Cursor updates fire on `mousemove` — naive forwarding would be ~60Hz per user. Throttle to **30Hz** in production (33ms), **5Hz** for selection/tool/editingAnnotationId (those don't need to be smoother than `requestAnimationFrame`).
 
-- **NEW file:** `src/utils/handlePlacementMath.js` with `computeMtrHandlePosition(bbox, pageW, pageH, padding)` and its unit tests `handlePlacementMath.test.js`.
-- **Modified files:**
-  - `src/utils/svgBoundingBox.js` — minor: either add a new export alongside `getHandlePositions`, or leave unchanged and have SVGSelectionOverlay call the new util separately for mtr. Recommendation: leave `getHandlePositions` unchanged, keep mtr split into its own call site.
-  - `src/components/SVGSelectionOverlay.jsx` — accept `pageWidth`, `pageHeight` props, call `computeMtrHandlePosition`, generalize the connector-line source from hardcoded `handles.mt` to `handles[side]`.
-  - `src/components/SVGAnnotationLayer.jsx` — pass `pageWidth={width}`, `pageHeight={height}` to all 3 `<SVGSelectionOverlay>` call sites (lines 1229, 1255, 1279).
+### Where awareness state is consumed
 
-### Existing utility or hook that should absorb new logic
+| Consumer | Reads awareness field | Renders |
+|---|---|---|
+| `RemoteCursorOverlay` (NEW) | `cursor` from all peers | SVG ghost cursor per peer, page-scoped |
+| `PresenceAvatarsRow` (NEW; replaces `useDocumentPresenceList`) | `user` from all peers | Stacked avatars next to sync chip |
+| `RemoteSelectionHighlight` (NEW) | `selection` from all peers | Coloured outline on annotations selected by others |
+| `MiniToolbar` (MODIFIED) | `editingAnnotationId` from all peers | Soft warning when another peer is editing the same annotation |
 
-- `rotationInputHelpers.js` is NOT the right home — it's scoped to pill placement.
-- `svgBoundingBox.js` is NOT the right home — it's scoped to bbox computation, and its public contract is "geometry, no page awareness".
-- **Create a new pure module.** This matches the v2.1 precedent (`snapAngleToNearest45` in the svg-interaction helpers file, `computeInputPosition` in `rotationInputHelpers.js`) — small pure utilities colocated by feature, unit-testable without React.
-
-### Suggested build order within Gap 2
-
-1. Write `handlePlacementMath.js` + tests (Wave 0 — pure function, no React).
-2. Wire into `SVGSelectionOverlay` (Wave 1 — changes render output only).
-3. Pass props from `SVGAnnotationLayer` (Wave 1).
-4. Manual UAT: rotate a shape near each of the 4 edges, verify the handle flips to the nearest visible side.
-
-### Acceptance test (for plan-phase)
-
-**Given** a rectangle placed at the top-left corner of the page with 0° rotation,
-**When** the user rotates the shape until the mtr handle's post-rotation position would fall above the page top edge,
-**Then** the mtr handle relocates to the bottom side of the shape (opposite the rotation direction's clipped side) and the pill follows to the new anchor — without the user having to move the shape.
-
-**Given** a rectangle whose all 4 candidate handle positions fall inside the viewBox,
-**When** the user selects it,
-**Then** the mtr handle appears at the natural "top" position (no behavior change vs v2.1).
-
-### DO NOT CHANGE boundary (Gap 2)
-
-- `src/App.jsx`
-- `src/components/PageAnnotationLayer.jsx`
-- `src/components/FabricDrawingCanvas.jsx`
-- `src/components/FabricEraserCanvas.jsx`
-- `src/components/FabricEditCanvas.jsx`
-- `src/hooks/useSVGInteraction.js` (pointer-event contract; rotation branch stays intact)
-- `src/components/RotationInputField.jsx` (pill works automatically via radial-from-handle math — DO NOT modify)
-- `src/utils/rotationInputHelpers.js` (pill placement is decoupled by design)
-- `src/utils/zoomController.js`
-- `vite.config.js` / `package.json`
-
-In scope for Gap 2: `SVGSelectionOverlay.jsx`, `SVGAnnotationLayer.jsx`, `svgBoundingBox.js` (minimal), and the NEW `handlePlacementMath.js` + its test file.
+The existing `document_presence` Postgres table and `useDocumentPresenceList` hook **become redundant** once awareness ships. Plan: keep the table during cutover, delete after v2.4 ships.
 
 ---
 
-## Build order with rationale
+## 6. Supabase Transport — Decision Matrix
 
-### Recommended: Gap 3 → Gap 2 → Gap 4
+### Three options were on the table
 
-| Step | Gap | Rationale |
-|------|-----|-----------|
-| 1 | **Gap 3** | Tiny (~5 LOC dep-array fix + early-return guard). Gets a polish gap closed fast, restores user confidence that the rotation polish story is being finished. Zero risk to other gaps. |
-| 2 | **Gap 2** | Independent from Gaps 3 and 4. New pure module + 3 file mods. Unit-testable at the boundary. Unblocks the most user-facing v2.2 feature (off-screen relocation). Touches SVGSelectionOverlay/SVGAnnotationLayer at the handle-placement seam — a surface that Gap 4 Option C would later want to touch too. Landing Gap 2 first clarifies what SVGSelectionOverlay's prop surface looks like, making Gap 4 Option C's prop additions consistent. |
-| 3 | **Gap 4** | Highest risk. Needs the live-DOM diagnostic first to identify the actual clipper. Option C's wire-up is non-trivial and benefits from having Gap 2's SVGSelectionOverlay refactor already in place (same prop-surface conventions). Option A is the safe fallback if Option C proves expensive. |
+| Option | What it is | Pros | Cons | Verdict |
+|---|---|---|---|---|
+| **A. Supabase Realtime + binary blob in Postgres** (`y-supabase`-style) | Existing Supabase Realtime broadcasts updates; Postgres holds state vector + snapshot blob | Reuses existing Supabase Auth + RLS; zero new infra; matches current billing model | y-supabase is explicitly "not production-ready" per maintainer. Realtime broadcast wasn't designed for binary CRDT updates and has had reported "too many message events" issues at scale. | NOT RECOMMENDED |
+| **B. Supabase as append-only update log + Realtime as notify channel** | Postgres `doc_yjs_updates` table with one row per update; Realtime fires on insert; client pulls new updates by seq | Reuses Supabase infra; fits existing RLS model; simple to reason about; survives offline (clients pull by seq on reconnect) | Higher write volume than blob-only; needs periodic compaction (collapse N updates into a snapshot); no automatic awareness channel — must reuse Realtime presence | RECOMMENDED for v2.4 |
+| **C. Hocuspocus self-hosted Yjs server** | Standalone WebSocket server, Postgres for storage, Supabase Auth for JWT-gated auth handshake | Battle-tested; built-in awareness; built-in role-based read-only enforcement; Supabase Auth integration documented (`onAuthenticate` parses Supabase JWT) | New service to deploy, monitor, scale; new failure mode independent of Supabase outages; offline-first requires `y-indexeddb` regardless | RECOMMENDED for v2.5+ if scale demands it |
 
-**Alternative: Gap 3 → Gap 4 (Option A) → Gap 2** if the roadmapper wants to close all three CLAUDE.md "Always Protected" carve-outs (FabricEditCanvas) in a single surge before doing pure-utility work.
+### Recommended: Option B for v2.4
 
-**Do NOT attempt parallel:** all three gaps touch SVGAnnotationLayer or SVGSelectionOverlay. Serialize to avoid merge conflicts in the rotation-polish surface.
+Reasoning specific to this app:
 
----
+1. **Billing model.** The app is a per-seat tool for engineering firms. Active concurrent collab sessions per document are typically 2–5, not 50. Hocuspocus's value (scaling to thousands of concurrent editors per doc) is overkill.
 
-## Cross-cutting architectural notes for plan-phase
+2. **Offline-first.** Engineers use this on job sites with flaky connectivity. The y-indexeddb provider already covers offline; the transport layer just needs to flush queued updates on reconnect. Append-only log fits this naturally — a client on reconnect asks "give me everything since seq N" and replays.
 
-### Test strategy (matches v2.1 precedent)
+3. **RLS reuse.** The existing `document_collaborators` table + `user_can_access_document(doc_id, role)` function already gates read/write access per document. The new tables (`doc_yjs_updates`, `doc_yjs_state`) reuse the same gating — RLS does the work, no new auth logic on the transport.
 
-- **Wave 0 unit tests** for pure helpers:
-  - Gap 2: `handlePlacementMath.test.js` — test each edge (top, bottom, left, right) at 0° / 45° / 90° / 135° / 180° / 225° / 270° / 315°. Test degenerate cases (shape at corner, shape larger than page).
-  - Gap 3 and Gap 4 have no Wave 0 surface — they're integration fixes against DOM and rendered output.
-- **Wave 1 integration**: manual UAT script in `12-*-UAT.md` style.
-  - Gap 3: the exact sequence in `1.log` (select shape → double-click → click off → hover → expect pill).
-  - Gap 4: pre-rotated shape at each edge orientation.
-  - Gap 2: shape at each of 4 corners + 4 edges, rotate through full 360°.
+4. **Migration cost.** Option B is ~400 LOC of new code and one `useYDoc` provider. Option C is that plus a Hocuspocus deployment, monitoring, and a fallback story when Hocuspocus is down but Supabase is up.
 
-### Session-moment discipline
+5. **Escape hatch.** If Option B hits a scaling wall, we swap the transport behind the same `useYDoc` interface. The Y.Doc, awareness, and bridge layers don't change — only the provider does. Cost of migration B→C is bounded.
 
-Per `CLAUDE.md` project rules, any deliberate architectural choice during the plan-phase for v2.2 should be logged as a `DECISION` in the session-moments file. Specific items likely to produce session moments:
+### Schema for Option B
 
-- Gap 4 Option selection (C vs A) after the live-DOM diagnostic.
-- Gap 2 algorithm tie-breaker decisions (all 4 candidates invalid → fallback behavior).
-- Any scope expansion from "3 gaps" to "gaps + related polish".
+```sql
+-- Append-only update log (the source of truth for deltas)
+CREATE TABLE doc_yjs_updates (
+  id          BIGSERIAL PRIMARY KEY,
+  document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  client_id   TEXT NOT NULL,                -- Y.Doc clientID (per-tab)
+  seq         BIGINT NOT NULL,              -- per-document monotonic
+  update      BYTEA NOT NULL,               -- binary Yjs update
+  origin      TEXT,                         -- userId / deviceId for audit
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX ON doc_yjs_updates (document_id, seq);
 
-### RECONCILIATION.md requirement
+-- Periodic compaction snapshot (so new joiners don't replay the entire log)
+CREATE TABLE doc_yjs_state (
+  document_id   UUID PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+  state         BYTEA NOT NULL,             -- encoded Y.Doc state
+  state_vector  BYTEA NOT NULL,             -- for delta sync
+  through_seq   BIGINT NOT NULL,            -- updates up to this seq are in `state`
+  updated_at    TIMESTAMPTZ DEFAULT NOW()
+);
 
-Per CLAUDE.md: write `v2.2-phase/<phase>-RECONCILIATION.md` at phase close with "Acceptance Criteria Results", "Boundaries Honored", "Status: DONE|DONE_WITH_CONCERNS|NEEDS_CONTEXT|BLOCKED". Phase 12 shipped DONE_WITH_CONCERNS due to Gaps 3/4 deferral — v2.2 closes the concerns.
+-- RLS: same pattern as document_annotations — gated by user_can_access_document
+ALTER TABLE doc_yjs_updates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE doc_yjs_state   ENABLE ROW LEVEL SECURITY;
+-- (Policies omitted for brevity — they mirror the existing 4-policy pattern.)
+```
 
----
-
-## Integration summary for gsd-roadmapper
-
-### New components
-
-| Component | Purpose | Lines est. |
-|-----------|---------|------------|
-| `src/utils/handlePlacementMath.js` | Pure utility — compute mtr handle position with off-screen relocation | ~60 |
-| `src/utils/__tests__/handlePlacementMath.test.js` | Unit tests — 8 rotation angles × 4 edges + degenerate cases | ~150 |
-
-### Modified components
-
-| File | Gap | Nature of change | Lines est. |
-|------|-----|------------------|------------|
-| `src/components/SVGAnnotationLayer.jsx` | Gap 3 | Add `editingAnnotationIndex` to hover-intent effect dep array + early-return guard | ~5 |
-| `src/components/SVGAnnotationLayer.jsx` | Gap 2 | Pass `pageWidth`/`pageHeight` to 3 SVGSelectionOverlay call sites | ~3 |
-| `src/components/SVGSelectionOverlay.jsx` | Gap 2 | Accept `pageWidth`/`pageHeight` props; call `computeMtrHandlePosition`; generalize connector-line source | ~15 |
-| `src/components/SVGSelectionOverlay.jsx` | Gap 4 Option C | Accept `isEditing` prop OR split `isGroupSelection`; conditionally render mtr during edit mode | ~10 |
-| `src/components/FabricEditCanvas.jsx` | Gap 4 Option A (fallback) | Grow `BBOX_PADDING` + adjust empty-click heuristic | ~15 |
-| `src/components/FabricEditCanvas.jsx` | Gap 4 Option C | Suppress Fabric's native mtr control during edit OR coordinate with SVG rotation | ~30 |
-| `src/utils/svgBoundingBox.js` | Gap 2 | Optional: minor refactor if mtr is split out of `getHandlePositions` | ~5 |
-
-### Data flow changes
-
-**None.** All three gaps are local fixes. No new cross-component state, no new reducers, no new context. The existing prop surface (`pageWidth`, `pageHeight`, `editingAnnotationIndex`, `selectedIds`, `bbox`, `angle`) covers everything Gap 2/3/4 need.
-
-### CLAUDE.md Always Protected boundary check
-
-| File | Gap 3 | Gap 4 | Gap 2 | Waiver needed? |
-|------|-------|-------|-------|----------------|
-| `src/App.jsx` | — | — | — | No — no proposed edits |
-| `src/components/PageAnnotationLayer.jsx` | — | — | — | No |
-| `src/components/FabricDrawingCanvas.jsx` | — | — | — | No |
-| `src/components/FabricEraserCanvas.jsx` | — | — | — | No |
-| `src/components/FabricEditCanvas.jsx` | — | YES | — | No — phase explicitly owns rotation-handle polish in edit mode |
-| `src/components/SVGAnnotationLayer.jsx` | YES | maybe (Option C) | YES | No — phase explicitly owns rotation chrome |
-| `src/utils/zoomController.js` | — | — | — | No — zoomGeneration signal untouched |
-| `vite.config.js` / `package.json` | — | — | — | No |
-
-**No protected-list waivers required.** v2.2 phase scope = "rotation handle polish", which is precisely the carve-out on the Always Protected list for `FabricEditCanvas.jsx` and `SVGAnnotationLayer.jsx`.
-
-### Load-bearing contracts NOT touched by any fix
-
-- `zoomGeneration` signal — untouched across all 3 gaps
-- Container-aware scale measurement (`parentEl.offsetWidth / pageWidth`) — untouched
-- SVG viewBox as the sole zoom mechanism — untouched (Gap 2's relocation computes in viewBox space without introducing JS zoom math)
-- Full-click-cycle stopPropagation on RotationInputField — untouched (no pill changes for any gap)
-- Optimistic-paint pattern (`visualTransform.rotate` + `applyOptimisticRotation`) — untouched
-- v2.0 Phase 11 rasterizer delta (NOT fixable in JS) — irrelevant; no rendering changes
+Compaction job: a Postgres function or scheduled edge function that periodically reads updates beyond `through_seq`, applies them to the snapshot, writes a new snapshot row, and either deletes or archives consumed update rows. v2.4 ships without compaction (acceptable for small docs); compaction is a v2.4.x follow-up.
 
 ---
 
-## Confidence assessment
+## 7. Auth & RLS Translation
 
-| Area | Confidence | Notes |
-|------|------------|-------|
-| Gap 3 root cause | **HIGH** | Confirmed at SVGAnnotationLayer.jsx line 232 + 313 + dep array analysis + SVGSelectionOverlay.jsx line 86 gate + log evidence in 1.log |
-| Gap 3 recommended fix | **HIGH** | Single dep-array addition; zero new data flow; declarative React pattern |
-| Gap 4 suspected clipper | **MEDIUM** | Strong hypothesis (Syncfusion ancestor clip OR browser overflow-in-transform quirk) but needs live-DOM diagnostic to confirm before choosing Option A vs C. WebFetch of React/Fabric.js docs would not resolve this — it's a layout-math question, not an API question. |
-| Gap 4 Option C preference | **MEDIUM** | Architecturally cleaner but has a non-trivial wire-up (coordinated rotation during edit mode). Plan-phase should time-box Option C exploration before falling back to Option A. |
-| Gap 2 algorithm | **HIGH** | Pure math, unit-testable, matches the v2.1 precedent for helper-module placement |
-| Gap 2 integration seam | **HIGH** | SVGSelectionOverlay already receives bbox + inverseScale; adding pageW/pageH is a minimal prop-surface expansion |
-| Build order | **HIGH** | Gap 3 is independent, Gap 2 unblocks Gap 4 Option C's refactor surface, Gap 4 risk-boxed last |
-| DO NOT CHANGE boundary | **HIGH** | Explicit grep through CLAUDE.md Always Protected list; only in-scope files touched |
+### Supabase Auth still gates every read/write
 
----
+No new auth handshake on the transport. The Supabase JS client already attaches the user JWT to every request — including the Realtime subscription. The new tables (`doc_yjs_updates`, `doc_yjs_state`) get RLS policies that gate on `user_can_access_document(document_id, 'editor')` for INSERT/UPDATE/DELETE and `'viewer'` for SELECT. Existing helper function reused unchanged.
 
-## Open questions for discuss-phase
+### Document-collaborator model stays put
 
-1. **Gap 4 Option C scope** — does the user want rotation during edit mode to (a) exit edit first then rotate (simple), (b) rotate in place with the FabricEditCanvas container following via CSS transform (complex), or (c) rotate the shape but keep edit mode active only if the rotation stays inside the visible region? This is a UX decision, not a code decision.
-2. **Gap 2 side-preference tiebreaker** — when two sides (e.g. top and left) are both valid post-rotation candidates, prefer the one closer to "above the shape in world space" (rotation-aware) or the one closest to the original top-side position (rotation-agnostic)? The former is more natural but slightly more complex math.
-3. **Gap 2 viewport vs viewBox** — confirmed recommendation is viewBox-relative (pure math, testable). If the user reports "handle still off-screen when the page is partially scrolled out of view", that's a separate scroll-clamping issue — NOT the v2.2 scope, NOT a regression of Gap 2.
-4. **Gap 4 diagnostic gate** — should plan-phase be blocked on a pre-plan DOM diagnostic run (10 minutes of live app inspection) before committing to Option A vs C? Recommended yes — it's cheap insurance.
+`document_collaborators` (owner / editor / commenter / viewer) → translates to:
+- **viewer:** can SELECT updates and snapshots, can read awareness, **cannot** insert updates. Y.Doc loaded read-only on client; the bridge guards writes.
+- **commenter:** identical to viewer for v2.4 (no comment system yet — future milestone).
+- **editor / owner:** full read + write of updates and snapshots; full awareness.
+
+### What Hocuspocus would change (Option C reference)
+
+If/when Option C ships, the auth handshake adds an `onAuthenticate(token)` server hook that verifies the Supabase JWT against the Supabase JWKS endpoint, looks up the user's role in `document_collaborators`, and sets `connection.readOnly = true` for non-editors. Documented pattern — reference: Emergence Engineering's Hocuspocus + Supabase guide. Roughly 100 LOC.
 
 ---
 
-*Architecture research for: v2.2 Rotation Handle Polish — subsequent-milestone polish integration*
-*Researched: 2026-04-14*
-*Downstream consumers: gsd-roadmapper, /gsd:plan-phase for v2.2*
+## 8. Legacy Highlights — Stay Out of the Y.Doc for v2.4
+
+`highlightAnnotations` is a separate React state slice with its own legacy sync path through `documentAnnotationService.js` and dedicated columns (`color`, `opacity`, `name`, `notes`, `category_id`, `module_id`, `space_id`, `checklist_responses`, `ball_in_court_*`). The highlights schema is heavily survey-specific and is **read by the Excel sync subsystem** (`excelGraphService.js`, `excelSessionService.js`) — touching it would cascade into every survey export.
+
+### Decision: highlights stay on the legacy path through v2.4
+
+Rationale:
+- v2.4 is already a major architectural lift. Folding highlights in would double the surface area and introduce Excel-sync risk.
+- Highlights are the **least real-time-collaborative** annotation type — they're survey items with structured metadata, not free-form drawings. The pain point that justifies CRDT (concurrent free-form edits losing data) doesn't bite here.
+- A v2.5 milestone migrates highlights into the Y.Doc as `ydoc.getMap('highlights')`, with a separate one-way bridge from the legacy table during cutover.
+
+**Architectural cost:** the React state has three sources of truth (`annotationsByPage` ← Y.Doc, `callouts` ← Y.Doc, `highlightAnnotations` ← Supabase Realtime via legacy hook). Documented as a known seam; the SVG layer already handles all three uniformly.
+
+---
+
+## 9. Boot Sequence (Document Open)
+
+```
+1. User clicks PDF → documentId resolved
+2. <YDocProvider> mounts → constructs new Y.Doc (in-memory)
+3. y-indexeddb provider attaches → asynchronously hydrates Y.Doc
+   from IndexedDB (offline-first; if there's a cached state, it shows
+   immediately, even before the network round-trip)
+   ╠═ HAZARD A: SVG layer mounting before y-indexeddb finishes hydration
+4. Transport provider attaches → sends state vector to server, server
+   sends back encoded state diff (or full snapshot if first load)
+   ╠═ HAZARD B: server's snapshot conflicts with indexeddb's local
+       snapshot from another device (e.g. user added marks on phone offline,
+       opens laptop online — both have unsynced state). Y.Doc merges both
+       deterministically; no special handling needed, but the user may
+       briefly see annotations "appear" as the server delta lands.
+5. Awareness provider attaches → broadcasts local user state, receives peers' states
+6. SVG renders from current Y.Doc materialization
+7. User starts an edit → FabricEditCanvas mounts, reads current Y.Map snapshot
+8. Edit committed → Y.transact writes back to Y.Map
+9. Local Y observer fires → React state recomputed → SVG re-renders
+10. Transport provider broadcasts the update → peers' Y.Docs receive it
+```
+
+### Concurrency hazards & mitigations
+
+**Hazard A — SVG renders empty during hydration.** `useAnnotationsCRDT` returns `{ annotationsByPage: null, callouts: null, isHydrating: true }` while y-indexeddb is loading. SVG layer treats null as "skip render" (matches existing `isHydrating`-from-cloud-sync check, just renamed). Once hydrated, switches to the materialized state.
+
+**Hazard B — server delta arrives mid-edit.** The local user is editing annotation X in Fabric. Server delta updates annotation X from a remote peer. Resolution: Y.Map merges the remote update into the persistent state. The local Fabric canvas does **not** see it — Fabric is editing a *snapshot* taken at mount time, not a live observer. On commit, the local edit wins for any property the local user changed; remote changes to *other* properties survive (Y.Map property-level merge). Edge case: both users changed the same property. Local commit wins (last-write-wins with `updatedAt` tiebreaker logged in `meta`). Acceptable for v2.4; this is documented in PITFALLS.md.
+
+**Hazard C — y-indexeddb writes during a Y.transact.** y-indexeddb subscribes to `update` events on the Y.Doc and writes asynchronously. Safe — writes happen post-transaction, doesn't block the React render. No mitigation needed.
+
+**Hazard D — Auth token expiring mid-session.** Supabase JS client auto-refreshes access tokens. The Realtime channel survives refresh as of supabase-js v2.x. Validated. Failure mode: token *revoked* (user signed out elsewhere) → channel disconnects → provider goes into retry-with-backoff. Awareness drops, edits queue locally in y-indexeddb, replay on reconnect.
+
+**Hazard E — Two tabs of the same user.** Each tab has its own Y.Doc clientID. Tabs sync via the transport like any other peer. Awareness shows the user as two presences (acceptable; Figma does the same). Cross-tab via BroadcastChannel is a v2.5 polish.
+
+---
+
+## 10. Undo/Redo
+
+### Y.UndoManager scoped to local origin replaces Fabric's undo
+
+```js
+const undoManager = new Y.UndoManager(
+  [ydoc.getMap('annotations'), ydoc.getMap('callouts')],
+  { trackedOrigins: new Set([localClientId]) }
+);
+```
+
+`trackedOrigins` is the key — it's how undo is per-user. Only operations originated by this user's client are tracked. A remote user's edits move through the doc but don't push onto this user's undo stack.
+
+### What changes vs today
+
+The current Fabric undo lives inside `useFabricCanvas` and the per-tool commit hooks (the existing `fabric-history`-style pattern). v2.4 **replaces** this — undo is now at the CRDT layer, not the Fabric layer. Reason: Fabric undo only knows about operations on the local Fabric canvas instance, which mounts and unmounts per edit. Cross-edit undo (undo my last action even if it was on a different annotation) is broken in the current model and gets fixed for free by Y.UndoManager.
+
+Wrapping pattern:
+- Existing `Cmd+Z` keyboard handler in App.jsx → call `undoManager.undo()`
+- Existing `Cmd+Shift+Z` → `undoManager.redo()`
+- Inside `FabricEditCanvas` during an open edit session, **local undo is disabled** — there's no "undo a sub-step of an in-progress edit" in this app. The Fabric edit canvas is a transactional unit; commit is the undo granularity.
+
+### Capture stops & coalescing
+
+- `captureTimeout` (default 500ms) coalesces rapid-fire transactions into one undo step. Default is fine for typing but the app's commits are already debounced at the Fabric layer, so each `commitFabric` produces one Y transaction → one undo step → matches user expectation.
+- `stopCapturing()` called explicitly after each commit ensures multi-property edits in one drag don't split into many undo steps.
+
+### Edge case: undoing a delete
+
+Y.UndoManager handles tombstone resurrection automatically. No special handling for "undo the deletion of an annotation" — the Y.Map.delete is reversed and the annotation reappears with all properties intact.
+
+---
+
+## 11. Migration Path for Existing Rows
+
+Six months of existing `document_annotations` rows must enter the new CRDT world without data loss.
+
+### Strategy: one-time per-document backfill at first open under v2.4
+
+```
+On document open under v2.4 client:
+  1. Check if doc_yjs_state row exists for this documentId.
+     YES → load it as the initial Y.Doc state. Done.
+     NO  → backfill:
+       a. SELECT * FROM document_annotations WHERE document_id = X
+            AND annotation_type IN <NON_HIGHLIGHT_TYPES>
+       b. For each row, deserialize via existing
+          deserializeRowToFabricObject (annotationTypeSerializers.js — REUSE)
+       c. Build a fresh Y.Doc, populate ydoc.getMap('annotations') and
+          ydoc.getMap('callouts') with one Y.Map per row
+       d. Encode and INSERT into doc_yjs_state
+       e. Mark the source rows with `migrated_to_crdt = TRUE` (new column)
+          so they are not re-imported by a stale client
+  3. Continue boot sequence from step 4 above.
+```
+
+### Why server-side, not client-side
+
+The naive approach is "first client to open the doc under v2.4 does the import." This has a race condition — two clients open simultaneously, both run the import, both write to `doc_yjs_state` with conflicting initial Y.Doc client IDs. Solutions:
+
+**Option α (RECOMMENDED):** A Postgres function `crdt_backfill_document(doc_id UUID)` called via RPC. Wrapped in a transaction with `SELECT ... FOR UPDATE` on the documents row. Does the backfill server-side, returns the encoded state. Client just inserts into `doc_yjs_state` if missing.
+
+But — Y.Doc encoding is JS-only (yjs is npm, not pgsql). So Option α actually means: the first client that opens the doc grabs an advisory lock (`SELECT pg_try_advisory_lock(hashtext(doc_id))`), runs the backfill in JS, releases. Other clients waiting on the lock retry-and-find-state-now-exists. ~50 LOC of provider logic.
+
+**Option β:** Cloud Function (Supabase Edge Function) does the backfill on document creation — but that doesn't cover the existing 6 months of data. Edge function on first-open-under-v2.4 with the same advisory-lock pattern works.
+
+Either way: the source rows are kept (NOT deleted) as a recovery fallback for v2.4.0 → v2.4.x. Once we're confident no client is silently losing data, drop them in v2.5.
+
+### Highlights are skipped
+
+Backfill filters `annotation_type` = NON_HIGHLIGHT_TYPES (per existing `loadAllNonHighlightAnnotations`). Highlights stay on legacy path; see §8.
+
+### Local-storage marks (the case `cloudSyncMigration.js` handles today)
+
+After the first Y.Doc backfill, run a v2.4 equivalent of `cloudSyncMigration`:
+```
+For each pdfId in localStorage[annotationsByPage_*]:
+  if there's a documentId mapping AND backfill has run for it:
+    diff localStorage rows against current Y.Doc state
+    for any local annotation NOT in the Y.Doc, write it as a new Y.Map
+    mark the migration done with an updated key
+    (DON'T delete localStorage — it's the offline-first cache now,
+    handled by y-indexeddb going forward)
+```
+
+### Schema migration table
+
+```sql
+ALTER TABLE document_annotations ADD COLUMN migrated_to_crdt BOOLEAN DEFAULT FALSE;
+CREATE INDEX ON document_annotations (document_id, migrated_to_crdt) WHERE NOT migrated_to_crdt;
+```
+
+After v2.4 ships and is verified, a maintenance job can mark all non-highlight rows `migrated_to_crdt = TRUE` for documents whose `doc_yjs_state` exists.
+
+---
+
+## 12. Build Order
+
+Topological dependencies force this order:
+
+### Phase A — CRDT round-trip in isolation (single user, no collab)
+
+1. **YDocProvider + useYDoc**: bare Y.Doc lifecycle keyed on documentId. No transport. y-indexeddb only.
+2. **crdtAnnotationBridge.js**: pure functions, fully unit-tested.
+3. **useAnnotationsCRDT**: useSyncExternalStore over Y.Doc. Returns the same `{ annotationsByPage, callouts }` shape App.jsx already consumes.
+4. **App.jsx wire-up**: replace the existing free-standing useState for these two slices with the hook output. Setters are rewired to call the bridge inside Y.transact.
+5. **Disable** `useAnnotationCloudSync` behind a feature flag.
+
+**Acceptance:** A user makes annotations, closes the tab, reopens. Annotations come back via y-indexeddb. SVG and Fabric edit work exactly as before. Zero regression on single-user UX.
+
+**Why first:** every later phase depends on the bridge working. Shipping it without transport derisks the most failure-prone piece in isolation.
+
+### Phase B — Backfill of existing rows
+
+6. **crdtBackfill.js**: server-side advisory-locked import of `document_annotations` rows into Y.Doc. Hooked into YDocProvider's first-open path.
+7. **doc_yjs_state schema migration**: new tables (no policies yet — single-user only).
+8. **Local-storage migration shim**: equivalent to `cloudSyncMigration.js` for the v2.4 model.
+
+**Acceptance:** A user with existing annotations from v2.3 opens a doc under v2.4. All annotations appear; no duplicates; localStorage marks are preserved.
+
+**Why second:** Phase A has no production users — Phase B is what makes Phase A safe to deploy to existing users.
+
+### Phase C — Multi-device single-user sync (transport, no collab UI)
+
+9. **doc_yjs_updates schema + RLS policies** (full RLS, gated on document_collaborators).
+10. **Custom Yjs provider** that wraps Supabase Realtime + INSERT-into-doc_yjs_updates pattern.
+11. Hook the provider into YDocProvider.
+
+**Acceptance:** Same user, two devices, edits made on device A appear on device B within ~1s. Echo-filter prevents the originating device from re-applying its own updates. Offline edits replay on reconnect.
+
+**Why third:** transport without collab UI is testable as "my own annotations sync between my laptop and phone." If this works, multi-user collab is structurally identical — the only difference is the user_id on the other end.
+
+### Phase D — Awareness (presence, cursors, selection)
+
+12. **Awareness wired through the provider**: setLocalStateField for user, cursor, page, selection, tool, editingAnnotationId. Throttled.
+13. **RemoteCursorOverlay** (new SVG component, page-scoped).
+14. **PresenceAvatarsRow** (replaces useDocumentPresenceList).
+15. **RemoteSelectionHighlight** (outline annotations selected by other peers).
+16. **MiniToolbar contention warning** when editingAnnotationId collides.
+
+**Acceptance:** Two users on the same doc see each other's cursors, page changes, selection. Edits from one are visible to the other within the transport latency.
+
+**Why fourth:** awareness is real-time UX polish. It doesn't gate the data integrity of multi-user collab — that was settled in Phase C. Awareness is independently shippable and deferrable if Phase C runs long.
+
+### Phase E — Y.UndoManager replaces Fabric undo
+
+17. **crdtUndoManager.js**: wraps Y.UndoManager scoped to local origin.
+18. **App.jsx Cmd+Z / Cmd+Shift+Z handlers** rewire to undoManager.
+19. **Remove the existing fabric-history undo path** from useFabricCanvas and per-tool commit hooks.
+
+**Acceptance:** Cmd+Z on user A only undoes user A's actions, even when user B is editing simultaneously. Cross-annotation undo (undo last action on annotation X, then last action on annotation Y) works correctly.
+
+**Why fifth:** undo migration is the most behaviorally risky change for existing single-user UX (long-term users have muscle memory for the current undo behavior). Shipping last lets us roll back independently if user reports surface.
+
+### Phase F — Decommission legacy non-highlight sync path
+
+20. Delete `useAnnotationCloudSync.js`, `annotationCloudSync.js`, `cloudSyncMigration.js`, `cloudSyncQueue.js`.
+21. Delete `useDocumentPresenceList.js` (replaced by awareness).
+22. Drop the `document_presence` table in a follow-up migration (after a full release cycle of awareness in production).
+
+**Acceptance:** Tree is clean of dual-sync code. Highlights remain on legacy path (intentional; v2.5 problem).
+
+**Why last:** removal must follow proven-in-production. Don't delete the safety net before the parachute is verified.
+
+### Build order summary
+
+```
+A (single-user CRDT)       — derisks the bridge
+  → B (backfill)           — derisks the data migration
+    → C (transport)        — derisks the sync protocol
+      → D (awareness)      — adds collab UX
+      → E (undo)           — replaces undo (parallel to D, ships independently)
+        → F (cleanup)      — removes legacy paths
+```
+
+D and E can ship in either order or in parallel; they don't depend on each other. The strict prerequisite is A → B → C, then D/E in either order, then F.
+
+---
+
+## 13. Anti-Patterns (Specific to This Migration)
+
+### Anti-Pattern 1: Per-page Y.Array for annotations
+
+**What people do:** Mirror `annotationsByPage[page].objects` directly as `Y.Map<page, Y.Array>`.
+**Why it's wrong:** Edits to a single annotation become array splice operations, which produce larger CRDT updates than property-level merge. Two users editing different annotations on the same page contend on the array.
+**Do this instead:** Flat `Y.Map<id, Y.Map>` with derived `annotationsByPage` grouping in the React hook.
+
+### Anti-Pattern 2: Bidirectional Fabric ↔ Y observer during a drag
+
+**What people do:** Subscribe a Fabric canvas to Y.Map updates so remote edits show up live during local editing.
+**Why it's wrong:** Fabric's mutable instance fights with Y's transaction model; conflict resolution becomes ambiguous; UI flickers if the remote update lands mid-drag.
+**Do this instead:** One-direction-at-a-time. Y → Fabric only on edit-canvas mount. Fabric → Y only on commit. Awareness handles "another user is editing this" UX.
+
+### Anti-Pattern 3: Rolling your own awareness via Postgres rows
+
+**What people do:** Continue using `document_presence` rows + `useDocumentPresenceList` polling for cursor positions.
+**Why it's wrong:** Postgres-backed presence has 30s staleness and saturates RLS read load. Y.Awareness is purpose-built for this — sub-100ms latency, zero DB writes, auto-cleanup.
+**Do this instead:** Use Y.Awareness via the same provider as the Y.Doc. Drop the `document_presence` table.
+
+### Anti-Pattern 4: Storing pen-stroke point arrays as Y.Array
+
+**What people do:** Pen strokes have hundreds of {x,y} points; modeling each as a Y.Array element seems "more granular."
+**Why it's wrong:** Pen strokes are commit-once-edit-rarely. Granular CRDT structure for points balloons the update size by 10–100x with zero collaborative benefit (no two users edit the same pen stroke's interior).
+**Do this instead:** Pen-stroke `path` is an opaque JSON blob inside the annotation's Y.Map. The annotation's *position, scale, rotation* are mergeable scalars; the stroke geometry is atomic.
+
+### Anti-Pattern 5: Hocuspocus on day one
+
+**What people do:** Reach for the "production" sync server immediately because Yjs docs feature it heavily.
+**Why it's wrong:** Adds operational complexity (a service to deploy, scale, and monitor) before scale demands it. Splits the auth model — JWT verification on Hocuspocus *and* RLS on Postgres for non-Yjs data.
+**Do this instead:** Phase C lands a thin Supabase-Realtime-backed provider. If/when scale forces it, swap providers behind the same `useYDoc` interface; the rest of the app doesn't notice.
+
+---
+
+## 14. Integration Points Summary
+
+### External Services
+
+| Service | Integration Pattern | Notes |
+|---|---|---|
+| Supabase Auth | Existing JWT, attached automatically by supabase-js to all requests including the new Yjs transport. | No change. Token refresh handles expiry automatically. |
+| Supabase Realtime | Notify channel for new `doc_yjs_updates` rows. Client pulls by seq on receipt. | Reuses existing per-document channel pattern from `useAnnotationCloudSync`. |
+| Supabase Postgres | New tables: `doc_yjs_updates` (append log), `doc_yjs_state` (snapshot). RLS gated by existing `user_can_access_document`. | Existing `document_annotations` table preserved during cutover, deprecated for non-highlights post-v2.4. |
+| y-indexeddb | Browser IndexedDB persistence for the Y.Doc. Standard Yjs provider, no custom code. | Becomes the primary local persistence; localStorage paths deprecated. |
+| Electron renderer | Shares the same Y.Doc lifecycle as browser. IndexedDB exists in Electron renderer; works unchanged. | No special handling. |
+
+### Internal Boundaries
+
+| Boundary | Communication | Notes |
+|---|---|---|
+| App.jsx ↔ useAnnotationsCRDT | Hook returns `{ annotationsByPage, callouts, isHydrating }`. App.jsx setters call bridge. | The contract is identical to today; only the implementation moves. |
+| useAnnotationsCRDT ↔ Y.Doc | `observeDeep` + `useSyncExternalStore`. Snapshot recomputed on every change batch. | Avoid React tearing via useSyncExternalStore. |
+| Y.Doc ↔ FabricEditCanvas | Snapshot-on-mount, commit-on-unmount via crdtAnnotationBridge. **No live observer during edit.** | Preserves existing Fabric/SVG split. |
+| Y.Doc ↔ SVGAnnotationLayer | Indirectly via useAnnotationsCRDT → React state → SVG props. SVG never knows about Y. | Display layer remains pure-functional w.r.t. JSON. |
+| Y.Awareness ↔ presence UI | New components subscribe to awareness `change` events. | Replaces `useDocumentPresenceList`. |
+| Y.UndoManager ↔ App.jsx | Cmd+Z/Cmd+Shift+Z keyboard handlers. | Replaces existing per-tool undo. |
+| Bridge ↔ Y.transact | Every mutation through the bridge wraps in `ydoc.transact(fn, localClientId)`. | `localClientId` is the undo-scope key. |
+
+---
+
+## 15. Confidence & Sources
+
+**HIGH confidence (Yjs ecosystem fundamentals — official docs):**
+- Y.Map / Y.Doc / observeDeep / transact API
+- Y.Awareness API and ephemeral semantics
+- Y.UndoManager trackedOrigins-based per-user scoping
+- y-indexeddb provider behavior
+
+**MEDIUM confidence (community-validated patterns):**
+- useSyncExternalStore for Y.Doc → React (react-yjs library implements this, multiple production apps use it)
+- Hocuspocus + Supabase Auth integration (one well-documented blog post; battle-tested elsewhere but not in this exact stack)
+- Append-only update log + Realtime notify pattern (standard in non-Yjs CRDT work; sound but not a copy-paste reference)
+
+**LOW confidence (this app's specific tradeoffs):**
+- Migration of 6 months of `document_annotations` rows without race conditions — needs validation in Phase B
+- Performance of useSyncExternalStore + observeDeep on a doc with 500+ annotations — needs benchmark in Phase A; expected fine, but not measured
+- Whether y-indexeddb in Electron renderer behaves identically to browser — should, but not verified in this codebase
+
+### Sources
+
+- [Yjs Documentation — Awareness & Presence](https://docs.yjs.dev/getting-started/adding-awareness)
+- [Yjs Documentation — Y.UndoManager](https://docs.yjs.dev/api/undo-manager)
+- [Yjs Documentation — Y.Map](https://docs.yjs.dev/api/shared-types/y.map)
+- [react-yjs: useSyncExternalStore + observeDeep pattern](https://github.com/nikgraf/react-yjs)
+- [Tag1 — Why awareness is essential for collaborative applications](https://www.tag1consulting.com/blog/yjs-deep-dive-part-3)
+- [Hocuspocus + Supabase Auth integration guide](https://emergence-engineering.com/blog/hocuspocus-with-supabase)
+- [y-supabase provider (reference, NOT recommended for production)](https://github.com/AlexDunmow/y-supabase)
+- [Hocuspocus GitHub](https://github.com/ueberdosis/hocuspocus)
+- [PowerSync — Postgres + Yjs CRDT pattern](https://www.powersync.com/blog/postgres-and-yjs-crdt-collaborative-text-editing-using-powersync)
+- Existing codebase audit: `src/hooks/useAnnotationCloudSync.js`, `src/services/annotationCloudSync.js`, `src/services/documentAnnotationService.js`, `src/services/cloudSyncMigration.js`, `src/services/annotationTypeSerializers.js`, `supabase/migrations/2024–2026 *.sql`
+
+---
+
+*Architecture research for: v2.4 Multi-User Collaboration*
+*Researched: 2026-04-26*
