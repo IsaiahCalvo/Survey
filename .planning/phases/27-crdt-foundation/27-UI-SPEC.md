@@ -1,10 +1,11 @@
 ---
 phase: 27
 slug: crdt-foundation
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-04-27
+reviewed_at: 2026-04-27T00:00:00Z
 ---
 
 # Phase 27 — UI Design Contract
