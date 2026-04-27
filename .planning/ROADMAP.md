@@ -402,7 +402,15 @@ Plans:
   4. **User + device attribution lands at transaction origin** — Every `ydoc.transact(fn, origin)` carries `{ userId, deviceId, sessionId, clientID, serverTs }`. Device label defaults to OS hostname (Electron `os.hostname()`); renameable in account settings (data path only — UI is Phase 33).
   5. **RLS policies fully active** — `doc_yjs_updates` + `doc_yjs_state` gated on `user_can_access_document(doc_id, 'editor')` for INSERT, `'viewer'` for SELECT. Verified via SQL test from a non-collaborator JWT.
 
-**Plans**: TBD (populated by `/gsd:plan-phase 28`)
+**Plans**: 6 plans
+
+Plans:
+- [ ] 28-01-PLAN.md — Wave 0 test scaffolds + benchmark harness skeleton + 28-BENCHMARK.md shell (zero src/ changes)
+- [ ] 28-02-PLAN.md — SupabaseYjsProvider (default-path) + originBuilder + deviceId + authSessionBridge (AUTH-01/02 data path; Pitfall 1 defense)
+- [ ] 28-03-PLAN.md — HocuspocusYjsProvider (fallback-path wrapper, package.json waiver gated on spike outcome)
+- [ ] 28-04-PLAN.md — Multi-peer throttled-network benchmark + 28-BENCHMARK.md decision lock + checkpoint:decision (transport + validator surface)
+- [ ] 28-05-PLAN.md — Supabase migration: drop Phase 27 stub policies, real RLS + user_can_access_document helper + BEFORE INSERT trigger + Pitfall 3 indexes
+- [ ] 28-06-PLAN.md — Wire chosen transport into YDocProvider + extend StorageFailureBanner (3 new copy variants) + ReSignInModal + read-only mode gate + App.jsx narrow waiver + UAT checkpoint
 
 ### Phase 29: Fabric ↔ Yjs Binding + Per-User Undo (HIGHEST RISK)
 
