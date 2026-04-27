@@ -77,6 +77,7 @@ import OneDriveFileSaveModal from './components/OneDriveFileSaveModal';
 import TemplateOverwriteWarningModal from './components/TemplateOverwriteWarningModal';
 import ExcelSyncConfirmModal from './components/ExcelSyncConfirmModal';
 import SyncfusionPDFContainer from './components/SyncfusionPDFContainer';
+import YDocProvider from './components/collab/YDocProvider.jsx';
 import SaveLogBanner from './components/SaveLogBanner';
 import PrintPanel from './components/PrintPanel';
 import LightweightAnnotationOverlay from './components/LightweightAnnotationOverlay';
@@ -38604,30 +38605,32 @@ export default function App() {
                   display: isVisible ? 'block' : 'none'
                 }}
               >
-                <PDFViewer
-                  pdfFile={tab.file}
-                  pdfFilePath={tab.filePath}
-                  onBack={handleBack}
-                  tabId={tab.id}
-                  onPageDrop={handlePageDrop}
-                  onUpdatePDFFile={handleUpdatePDFFile}
-                  onUnsavedAnnotationsChange={handleUnsavedAnnotationsChange}
-                  onRequestCreateTemplate={handleCreateTemplateRequest}
-                  initialViewState={tabViewState}
-                  onViewStateChange={handleViewStateChange}
-                  templates={appTemplates}
-                  onTemplatesChange={handleTemplatesChange}
-                  onRefetchTemplates={refetchTemplates}
-                  user={user}
-                  isMSAuthenticated={isMSAuthenticated}
-                  msLogin={msLogin}
-                  graphClient={graphClient}
-                  msAccount={msAccount}
-                  msNeedsReconnect={msNeedsReconnect}
-                  ensureFreshToken={ensureFreshToken}
-                  ballInCourtEntities={ballInCourtEntities}
-                  setBallInCourtEntities={setBallInCourtEntities}
-                />
+                <YDocProvider docId={tab.file?.id}>
+                  <PDFViewer
+                    pdfFile={tab.file}
+                    pdfFilePath={tab.filePath}
+                    onBack={handleBack}
+                    tabId={tab.id}
+                    onPageDrop={handlePageDrop}
+                    onUpdatePDFFile={handleUpdatePDFFile}
+                    onUnsavedAnnotationsChange={handleUnsavedAnnotationsChange}
+                    onRequestCreateTemplate={handleCreateTemplateRequest}
+                    initialViewState={tabViewState}
+                    onViewStateChange={handleViewStateChange}
+                    templates={appTemplates}
+                    onTemplatesChange={handleTemplatesChange}
+                    onRefetchTemplates={refetchTemplates}
+                    user={user}
+                    isMSAuthenticated={isMSAuthenticated}
+                    msLogin={msLogin}
+                    graphClient={graphClient}
+                    msAccount={msAccount}
+                    msNeedsReconnect={msNeedsReconnect}
+                    ensureFreshToken={ensureFreshToken}
+                    ballInCourtEntities={ballInCourtEntities}
+                    setBallInCourtEntities={setBallInCourtEntities}
+                  />
+                </YDocProvider>
               </div>
             );
           })}
