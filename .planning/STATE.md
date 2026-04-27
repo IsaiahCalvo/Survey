@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
-status: Yjs data substrate locked in (Plan 27-02 complete). applyUpdate-only invariant enforced by automated test from this commit forward. License gate green with all 4 new deps. Plan 27-01 scaffolds for applyUpdateOnlyInvariant + ydocRegistry flipped skip→green automatically. Pitfalls 5/20/21 now defended by code; Pitfalls 1/10/15/17 schema-defended (Plan 27-03).
-stopped_at: Completed 27-02-PLAN.md (yjs trio installed; src/lib/collab/ydocRegistry.js shipped; Plan 27-01 scaffolds flipped skip→green)
-last_updated: "2026-04-27T17:41:19.508Z"
-last_activity: "2026-04-27 — Plan 27-02 executed (2 tasks, 2 commits: 3218d4c7 / 2c7f7ec1)"
+status: Plan 27-04 shipped — runtime lifecycle layer (Web Locks election + IndexeddbPersistence + BroadcastChannel) + storageFailureDetector + crdtFeatureFlag landed under src/lib/collab/. Pitfalls 2/5 defended by code; silent-fallback anti-pattern defended via storage detector. applyUpdate-only invariant remains green. License gate green (no new deps). Plan 27-01's storageFailureDetector scaffold flipped skip→green (4 tests). Test baseline 286→290 pass / 7→3 skipped / 6 fail (pre-existing, unchanged). Zero always-protected files touched.
+stopped_at: Completed 27-04-PLAN.md (storageFailureDetector + crdtFeatureFlag + ydocLifecycle; Plan 27-01 storageFailureDetector scaffold flipped to green)
+last_updated: "2026-04-27T17:51:23.031Z"
+last_activity: "2026-04-27 — Plan 27-04 executed (3 tasks, 3 commits: 5d27d3ed / 5e4bbb76 / a7015a2f)"
 progress:
   total_phases: 14
   completed_phases: 2
   total_plans: 14
-  completed_plans: 11
-  percent: 64
+  completed_plans: 13
+  percent: 93
 ---
 
 # Project State
@@ -26,12 +26,12 @@ See: .planning/PROJECT.md (updated 2026-04-14)
 ## Current Position
 
 Milestone: v2.4 — CRDT Foundation + Real-Time Sync (Yjs port; SVG/Fabric layers immutable)
-Phase: **Phase 27 — CRDT Foundation** (Plan 27-02 shipped 2026-04-27)
-Plan: 27-02 — complete (yjs@13.6.30 + y-protocols@1.0.7 + y-indexeddb@9.0.12 + license-checker@25.0.1 installed at locked versions; src/lib/collab/ydocRegistry.js shipped as the single allowed `new Y.Doc(` site; HMR-safe via globalThis.__ydocRegistry__; releaseYDoc never destroys (Pitfall 21); Plan 27-01's applyUpdateOnlyInvariant + ydocRegistry scaffolds flip skip→green automatically). Next: Plan 27-04 (Web Locks election + IndexeddbPersistence + storage-failure detector).
-Status: Yjs data substrate locked in. applyUpdate-only invariant enforced by automated test from this commit forward (Pitfall 5 defended by code, not convention). License gate stays GREEN with all 4 new deps. Test baseline 280→286 pass (6 scaffolds flipped skip→green; 0 new failures; 6 pre-existing failures unchanged).
-Last activity: 2026-04-27 — Plan 27-02 executed (2 tasks, 2 commits: 3218d4c7 / 2c7f7ec1)
+Phase: **Phase 27 — CRDT Foundation** (Plan 27-04 shipped 2026-04-27; Plan 27-05 next)
+Plan: 27-04 — complete (src/lib/collab/storageFailureDetector.js shipped — IDB error → code mapping via window.unhandledrejection; src/lib/collab/crdtFeatureFlag.js shipped — 3-tier read order kill switch (localStorage > VITE env > default ON); src/lib/collab/ydocLifecycle.js shipped — Web Locks election on `y-doc-${documentId}` gates IndexeddbPersistence (Pitfall 2 defended by code); BroadcastChannel handoff merges via Y.applyUpdate with REMOTE_BC_ORIGIN echo-loop guard; SSR-safe in all 3 modules; co-located 8-test suite covers detector contract; Plan 27-01's storageFailureDetector scaffold flipped skip→green via Rule 3 destructuring alignment; ydocLifecycle comment rewritten to dodge invariant-grep false positive). Next: Plan 27-05 (`<YDocProvider docId>` mount in src/App.jsx document-open boundary + storage-failure banner UI).
+Status: Plan 27-04 shipped — runtime lifecycle layer + storage detector + kill switch landed. Pitfalls 2/5 defended by code; silent-fallback anti-pattern defended via storage detector callback. License gate stays GREEN (no new deps). Test baseline 286→290 pass (4 storageFailureDetector scaffolds flipped skip→green; 0 new failures; 6 pre-existing failures unchanged). Zero always-protected files touched.
+Last activity: 2026-04-27 — Plan 27-04 executed (3 tasks, 3 commits: 5d27d3ed / 5e4bbb76 / a7015a2f)
 
-Progress: [████████░░] 79% (v2.4: 11/14 plans complete; v2.3 closed at Phase 15)
+Progress: [█████████░] 93% (v2.4: 13/14 plans complete; v2.3 closed at Phase 15)
 
 ## Performance Metrics
 
@@ -61,6 +61,7 @@ Progress: [████████░░] 79% (v2.4: 11/14 plans complete; v2.3
 | Phase 27 P03 | 2min | 2 tasks | 2 files |
 | Phase 27 P01 | 11min | 3 tasks | 13 files |
 | Phase 27 P02 | 3min | 2 tasks | 4 files |
+| Phase 27 P04 | 4min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -122,6 +123,11 @@ Progress: [████████░░] 79% (v2.4: 11/14 plans complete; v2.3
 - [Phase 27]: Plan 27-01: custom JSON parser instead of license-checker --onlyAllow flag — handles compound license strings (OR=consumer-picks, AND=all-required), 12-case in-script self-test verifies AGPL still blocks under both compound forms
 - [Phase 27]: Plan 27-01: per-test existence-guard skip pattern (skip: !existsSync(file)) — Wave 0 tests auto-flip from skip to run when later plans land their respective production modules; cleaner than Phase 15's file-level describe.skip wrapper for plans owning multiple modules
 - [Phase 27]: Plan 27-02: HMR-safe registry via globalThis.__ydocRegistry__ Map stash + autoLoad:false on Y.Doc construction locks applyUpdate-only invariant at constructor; releaseYDoc never destroys (Pitfall 21); Plan 27-01's 6 scaffolds flip skip→green automatically. Test baseline 280→286 pass.
+- [Phase 27]: Plan 27-04: Web Locks election on `y-doc-${documentId}` with `mode:'exclusive'` + never-resolving callback promise gates IndexeddbPersistence to a single leader tab — defends Pitfall 2 (yjs/y-indexeddb#25 multi-tab corruption) by code, not convention. Loser tabs participate via BroadcastChannel + Y.applyUpdate with REMOTE_BC_ORIGIN frozen-object reference for echo-loop short-circuit.
+- [Phase 27]: Plan 27-04: storageFailureDetector emits stable codes ('quota_exceeded' / 'invalid_state' / 'version_mismatch') from window.unhandledrejection — defends silent-fallback anti-pattern (CONTEXT.md decision). options.windowRef test-injection seam preserves SSR safety while supporting Plan 27-01 scaffold's fakeWindow contract.
+- [Phase 27]: Plan 27-04: crdtFeatureFlag.isCRDTEnabled() three-tier read order (localStorage CRDT_LAYER_DISABLED='1' > VITE_CRDT_LAYER_DISABLED='1' > default ON). Read-only API — no setter exposed; developers toggle via DevTools. Silent kill switch (zero console calls).
+- [Phase 27]: Plan 27-04: Aligned Plan 27-01 storageFailureDetector scaffold to locked Pattern 4 `{detach}` return shape (4 destructuring sites) — Rule 3 blocking fix needed for scaffold flip skip→green per plan success criterion.
+- [Phase 27]: Plan 27-04: ydocLifecycle.js self-documenting comment rewritten to avoid the literal applyUpdate-only invariant grep pattern (`a Y.Doc directly` instead of the regex-matchable form) — Rule 3 blocking fix to keep invariant test green while still documenting the rule.
 
 ### Roadmap Evolution
 
@@ -154,8 +160,8 @@ Progress: [████████░░] 79% (v2.4: 11/14 plans complete; v2.3
 
 ## Session Continuity
 
-Last session: 2026-04-27T17:41:19.505Z
-Stopped at: Completed 27-02-PLAN.md (yjs trio + ydocRegistry; Plan 27-01 scaffolds flipped to green)
+Last session: 2026-04-27T17:51:23.031Z
+Stopped at: Completed 27-04-PLAN.md (storageFailureDetector + crdtFeatureFlag + ydocLifecycle; Plan 27-01 storageFailureDetector scaffold flipped to green)
 
 ### Resume instructions for the next session (read carefully)
 

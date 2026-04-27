@@ -575,7 +575,7 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13 → 14 → 
 | 17. Callout Handle Collisions + Rollback + Resize | v2.3 | 0/TBD | Not started | - |
 | 18. Callout Auto-Routing + Hover Affordances + Self-Destruct | v2.3 | 0/TBD | Not started | - |
 | 20. PDF-Native Annotations — Foundations (Phase A) | v3.0 | 4/4 | Complete (DONE_WITH_CONCERNS) | 2026-04-25 |
-| 27. CRDT Foundation | 3/5 | In Progress|  | - |
+| 27. CRDT Foundation | 4/5 | In Progress|  | - |
 
 ---
 *Last updated: 2026-04-27 — v2.4 Phase 27 (CRDT Foundation) Plan 02 shipped: yjs@13.6.30 + y-protocols@1.0.7 + y-indexeddb@9.0.12 + license-checker@25.0.1 installed at locked versions; src/lib/collab/ydocRegistry.js shipped as the single allowed `new Y.Doc(` site, HMR-safe via globalThis.__ydocRegistry__ Map, releaseYDoc deliberately never destroys (Pitfall 21). Plan 27-01's applyUpdateOnlyInvariant + ydocRegistry test scaffolds flipped from skip→green automatically. License gate stays GREEN with all 4 new deps. Pitfalls 5/20/21 now defended by code, not just convention. Test baseline 280→286 pass.*
