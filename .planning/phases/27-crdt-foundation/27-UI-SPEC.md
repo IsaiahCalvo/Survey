@@ -66,12 +66,12 @@ Banner is the only typographic surface this phase introduces. Reuses the existin
 |------|------|--------|-------------|----------|
 | Banner heading | 14px | 600 | 1.4 | "Local saving is offline" — matches existing `.btn-lg` 14px size; semibold to draw attention without screaming |
 | Banner body | 13px | 400 | 1.5 | Explanation sentence — matches existing `.btn-md` 13px size used across modals |
-| Banner inline link | 13px | 500 | 1.5 | "Learn how to fix this" / "Retry" — matches existing `.btn` weight 500 convention from `src/styles.css:57` |
+| Banner inline link | 13px | 400 | 1.5 | "Learn how to fix this" / "Retry" — same weight as body; interactivity signaled by underline + accent color (`#4A90E2`), matching Linear / Notion link patterns |
 | Banner secondary | 12px | 400 | 1.4 | "Annotations still syncing to cloud" — matches existing `.btn-sm` 12px size |
 
-Letter-spacing: `-0.01em` for the heading (matches existing `.btn` letter-spacing in `src/styles.css:59`). Default for body and secondary.
+Letter-spacing: `-0.01em` for the heading (matches existing `.btn` letter-spacing in `src/styles.css:59`). Default for body, inline link, and secondary.
 
-Two weights total: 400 (regular) and 600 (semibold). 500 (medium) is reused from the existing button system for the inline link only.
+Two weights total: **400 (regular)** and **600 (semibold)**. Weight 600 is reserved for the banner heading only; everything else (body, inline link, secondary metadata) is weight 400. The inline link relies on its underline plus the accent color (`#4A90E2`) — not weight — to signal interactivity. This matches the link convention used by Linear and Notion and keeps the banner to exactly two type weights.
 
 ---
 
@@ -159,7 +159,7 @@ Layout (declared, not "consider"):
 Accessibility:
 - `role="alert"` on the banner root so screen readers announce immediately on mount.
 - `aria-live="polite"` (NOT `assertive` — failure is non-blocking; user is mid-task).
-- Action link is a `<button>` with explicit `type="button"` (matches existing AuthModal pattern), keyboard-focusable, focus ring `0 0 0 2px rgba(74, 144, 226, 0.4)` matching existing input focus.
+- Action link is a `<button>` with explicit `type="button"` (matches existing AuthModal pattern), keyboard-focusable, focus ring `0 0 0 2px rgba(74, 144, 226, 0.4)` matching existing input focus. Link text uses weight 400 with underline + accent color (`#4A90E2`) — interactivity is signaled by the underline and color, not by font weight.
 - Dismiss button is a `<button>` with `aria-label="Dismiss banner"`.
 
 ### Annotation fade-in (no new component — CSS-only)
