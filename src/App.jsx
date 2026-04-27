@@ -22,6 +22,7 @@ import {
 import PageAnnotationLayer, { ARROWHEAD_STYLES, ARROWHEAD_STYLE_LABELS } from './PageAnnotationLayer';
 import TextLayer from './TextLayer';
 import { savePDFWithAnnotationsPdfLib } from './utils/pdfAnnotationsPdfLib';
+import { saveAnnotatedPDFFile } from './utils/saveAnnotatedPDFFile';
 import { importAnnotationsFromPdf } from './utils/pdfAnnotationImporter';
 import { resolveAnnotationAt } from './utils/annotationHitTest';
 import { splitImportedCalloutsFromPage } from './utils/calloutImportAdapter';
@@ -22465,28 +22466,70 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     if (!pdfId || !pdfFile) return;
 
     try {
+      // UX 2026-04-27 (Phase 27 follow-up): split the cloud-side save (always
+      // automatic) from the PDF-file output (user choice). The cloud-side
+      // save is the "your work is preserved" guarantee — runs first, never
+      // prompts. The file output runs second and only on explicit user action.
 
-      // Save PDF with embedded annotations (overwrites original file if path available)
-      await savePDFWithAnnotationsPdfLib(pdfFile, annotationsByPage, pageSizes, pdfFilePath);
-
-      // Also save to localStorage as backup (for loading next time)
+      // --- Step 1: cloud / local annotation backup (silent, always runs) ---
       saveAnnotationsByPage(pdfId, annotationsByPage);
       savedAnnotationsByPageRef.current = { ...annotationsByPage };
       setHasUnsavedAnnotations(false);
-      // Notify parent component that changes have been saved
-      // Notify parent component that changes have been saved
       if (onUnsavedAnnotationsChange) {
         onUnsavedAnnotationsChange(false, tabId);
       }
-
-      if (!silent) {
-        alert('PDF saved with annotations! The file has been updated.');
-      }
-
-      // Sync survey data to Supabase (separate from PDF file)
       if (features?.cloudSync) {
         await saveSurveyDataToSupabase(highlightAnnotations, spaces, selectedTemplate);
-      } else {
+      }
+
+      // --- Step 2: PDF file output (only on user-triggered save) ---
+      // Auto-saves (silent=true) NEVER write a file or prompt — cloud backup
+      // above already preserved the user's work.
+      if (!silent) {
+        // Desktop with a known local original path: standard "Save" semantics —
+        // silently overwrite the file in place. No prompt, no picker. This
+        // matches what every other desktop app does on Cmd/Ctrl+S.
+        const hasLocalOriginal = !!(
+          typeof window !== 'undefined' && window.electronAPI && pdfFilePath
+        );
+
+        if (hasLocalOriginal) {
+          await savePDFWithAnnotationsPdfLib(pdfFile, annotationsByPage, pageSizes, pdfFilePath);
+          alert('PDF saved with annotations! The file has been updated.');
+        } else {
+          // Web mode OR desktop where the PDF was opened from the cloud and
+          // there's no local file to overwrite. Ask the user before writing
+          // anything — annotations are already saved either way.
+          const wantsDownload = window.confirm(
+            'Annotations saved to your account.\n\nDo you also want to download a PDF copy with the annotations baked in?'
+          );
+          if (!wantsDownload) {
+            alert('Annotations saved. No file downloaded.');
+          } else {
+            // saveAnnotatedPDFFile picks the best available save mechanism:
+            //   1. Electron native dialog (when bridge present)
+            //   2. File System Access API picker (Chrome / Edge)
+            //   3. Legacy <a download> auto-download (Safari / Firefox)
+            // Result shape lets us phrase the toast accurately for each path.
+            const result = await saveAnnotatedPDFFile({
+              pdfFile,
+              annotationsByPage,
+              pageSizes,
+              defaultName: pdfFile.name,
+            });
+            if (result.canceled) {
+              alert('Annotations saved. Download canceled.');
+            } else if (result.error) {
+              alert('Annotations saved. Download failed: ' + result.error);
+            } else if (result.filePath) {
+              alert('Annotations saved. PDF saved to ' + result.filePath + '.');
+            } else if (result.autoDownloaded) {
+              alert('Annotations saved. PDF downloaded to your default downloads folder.');
+            } else {
+              alert('Annotations saved. PDF downloaded as "' + (result.fileName || 'file.pdf') + '".');
+            }
+          }
+        }
       }
 
       // Check if we should sync to linked Excel file
