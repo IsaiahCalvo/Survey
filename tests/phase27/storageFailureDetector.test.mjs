@@ -51,6 +51,8 @@ function buildFakeWindow() {
   };
 }
 
+// Plan 27-04 locked the public API to return { detach } per 27-RESEARCH.md Pattern 4.
+// Scaffolds aligned to that interface when the production module landed.
 test(
   'emits quota_exceeded on QuotaExceededError',
   { skip: skipReason },
@@ -60,7 +62,7 @@ test(
     );
     const fakeWindow = buildFakeWindow();
     const states = [];
-    const detach = attachStorageFailureDetector({
+    const { detach } = attachStorageFailureDetector({
       windowRef: fakeWindow,
       onState: (s) => states.push(s),
     });
@@ -80,7 +82,7 @@ test(
     );
     const fakeWindow = buildFakeWindow();
     const states = [];
-    const detach = attachStorageFailureDetector({
+    const { detach } = attachStorageFailureDetector({
       windowRef: fakeWindow,
       onState: (s) => states.push(s),
     });
@@ -100,7 +102,7 @@ test(
     );
     const fakeWindow = buildFakeWindow();
     const states = [];
-    const detach = attachStorageFailureDetector({
+    const { detach } = attachStorageFailureDetector({
       windowRef: fakeWindow,
       onState: (s) => states.push(s),
     });
@@ -119,7 +121,7 @@ test(
       '../../src/lib/collab/storageFailureDetector.js'
     );
     const fakeWindow = buildFakeWindow();
-    const detach = attachStorageFailureDetector({
+    const { detach } = attachStorageFailureDetector({
       windowRef: fakeWindow,
       onState: () => {},
     });
