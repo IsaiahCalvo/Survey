@@ -51,7 +51,24 @@ const classifyAnnotationSyncError = (error) => {
 // ============================================
 
 /**
- * Get all annotations for a document
+ * Get all HIGHLIGHT annotations for a document.
+ *
+ * 2026-04-27 — ROOT CAUSE FIX. This function used to return EVERY row in
+ * `document_annotations` regardless of `annotation_type`, which caused the
+ * cross-device data-loss bug: when a device loaded a document that had an
+ * ink stroke (annotation_type='ink') in the cloud, the row got pulled into
+ * the legacy `highlightAnnotations` state map with empty/null highlight
+ * fields. The legacy sync useEffect then immediately re-pushed the same
+ * row with `annotation_type: 'highlight'` and `bounds: {}`, OVERWRITING
+ * the ink stroke's annotation_data via the (document_id, highlight_id)
+ * upsert conflict resolution. The new cloud-sync hook on every device
+ * filters its hydrate query by NON_HIGHLIGHT_TYPES, so the now-corrupted
+ * row was excluded and devices showed empty pages on next refresh.
+ *
+ * Filtering this loader by annotation_type='highlight' keeps the legacy
+ * highlight pipeline strictly highlight-only, so ink/shape/text/callout
+ * rows owned by the new cloud-sync hook are never round-tripped through
+ * highlight format.
  */
 export async function getDocumentAnnotations(documentId) {
   if (!documentId) return { data: [], error: null };
@@ -60,6 +77,7 @@ export async function getDocumentAnnotations(documentId) {
     .from('document_annotations')
     .select('*')
     .eq('document_id', documentId)
+    .eq('annotation_type', 'highlight')
     .order('page_number', { ascending: true });
 
   if (error) {
@@ -299,6 +317,11 @@ export function subscribeToDocumentAnnotations(documentId, callbacks = {}) {
         filter: `document_id=eq.${documentId}`
       },
       (payload) => {
+        // 2026-04-27 — Skip non-highlight rows. The new cloud-sync hook
+        // owns ink/shape/text/callout/etc. via its own subscription;
+        // routing those rows through this legacy callback corrupts them
+        // (see getDocumentAnnotations comment for the data-loss chain).
+        if (payload.new?.annotation_type !== 'highlight') return;
         if (onInsert) {
           onInsert(convertToLocalFormat(payload.new));
         }
@@ -313,6 +336,7 @@ export function subscribeToDocumentAnnotations(documentId, callbacks = {}) {
         filter: `document_id=eq.${documentId}`
       },
       (payload) => {
+        if (payload.new?.annotation_type !== 'highlight') return;
         if (onUpdate) {
           onUpdate(convertToLocalFormat(payload.new), convertToLocalFormat(payload.old));
         }
@@ -327,6 +351,11 @@ export function subscribeToDocumentAnnotations(documentId, callbacks = {}) {
         filter: `document_id=eq.${documentId}`
       },
       (payload) => {
+        // DELETE payloads can carry the old row when REPLICA IDENTITY FULL
+        // is set. Only forward to the legacy handler if the deleted row
+        // was actually a highlight; otherwise the new cloud-sync hook
+        // handles it.
+        if (payload.old?.annotation_type && payload.old.annotation_type !== 'highlight') return;
         if (onDelete) {
           onDelete(payload.old.highlight_id, convertToLocalFormat(payload.old));
         }

@@ -72,6 +72,14 @@ export function useAnnotationCloudSync({
   const lastCalloutsRef = useRef(null);
   const debounceTimerRef = useRef(null);
   const hydratedRef = useRef(false);
+  // 2026-04-27 — diagnostic refs for tracking annotations state changes
+  // outside the cloud-sync hook's own setters. If something in App.jsx
+  // shrinks the state without the cloud-sync hook knowing, the next push
+  // would interpret the shrink as a delete and cascade it to the cloud
+  // before the v0.1.40 wipe brake fires (the brake only catches all-or-
+  // nothing wipes; partial shrinks slip through).
+  const prevAnnotationsByPageObsRef = useRef(undefined);
+  const prevCalloutsObsRef = useRef(undefined);
 
   // (Removed 2026-04-25: skipNextFabricPushRef / skipNextCalloutPushRef
   // suppressed the first post-hydrate push to dodge a runaway-id bug.
@@ -95,6 +103,73 @@ export function useAnnotationCloudSync({
   // The set was too aggressive — full-state bulk pushes added every id, blocking
   // legitimate cross-device edits to those ids. The service-side session-id
   // filter handles own-write echoes correctly on its own.)
+
+  // ---- 2026-04-27 — state-mutation observer ------------------------------
+  //
+  // Logs EVERY change to annotationsByPage and callouts coming from outside
+  // this hook (any setAnnotationsByPage call in App.jsx). When the state
+  // count shrinks, also captures a stack trace so the next reproduction can
+  // pinpoint exactly which call site caused the divergence. Independent of
+  // the push-debouncer logging — runs even when state===lastByPageRef so
+  // we still see "innocent" state churn for context.
+  useEffect(() => {
+    const prev = prevAnnotationsByPageObsRef.current;
+    prevAnnotationsByPageObsRef.current = annotationsByPage;
+    const prevCount = countFabricObjects(prev);
+    const currentCount = countFabricObjects(annotationsByPage);
+    if (prev === undefined) {
+      console.log('[CloudSync][hook][state-obs] annotationsByPage initial ' + JSON.stringify({
+        currentCount,
+        pages: Object.keys(annotationsByPage || {}).length,
+        hydrated: hydratedRef.current
+      }));
+      return;
+    }
+    if (prev === annotationsByPage) return;
+    const delta = currentCount - prevCount;
+    const sameRefAsLastByPage = annotationsByPage === lastByPageRef.current;
+    const baseRecord = {
+      prevCount,
+      currentCount,
+      delta,
+      hydrated: hydratedRef.current,
+      sameRefAsLastByPage
+    };
+    if (currentCount < prevCount) {
+      const stack = (new Error()).stack?.split('\n').slice(2, 8).join(' | ') || 'no-stack';
+      console.warn('[CloudSync][hook][state-obs] SHRINK ' + JSON.stringify({ ...baseRecord, stack }));
+    } else {
+      console.log('[CloudSync][hook][state-obs] change ' + JSON.stringify(baseRecord));
+    }
+  }, [annotationsByPage]);
+
+  useEffect(() => {
+    const prev = prevCalloutsObsRef.current;
+    prevCalloutsObsRef.current = callouts;
+    const prevCount = calloutCountSafe(prev);
+    const currentCount = calloutCountSafe(callouts);
+    if (prev === undefined) {
+      console.log('[CloudSync][hook][state-obs] callouts initial ' + JSON.stringify({
+        currentCount, hydrated: hydratedRef.current
+      }));
+      return;
+    }
+    if (prev === callouts) return;
+    const sameRefAsLastCallouts = callouts === lastCalloutsRef.current;
+    const baseRecord = {
+      prevCount,
+      currentCount,
+      delta: currentCount - prevCount,
+      hydrated: hydratedRef.current,
+      sameRefAsLastCallouts
+    };
+    if (currentCount < prevCount) {
+      const stack = (new Error()).stack?.split('\n').slice(2, 8).join(' | ') || 'no-stack';
+      console.warn('[CloudSync][hook][state-obs] callout SHRINK ' + JSON.stringify({ ...baseRecord, stack }));
+    } else {
+      console.log('[CloudSync][hook][state-obs] callout change ' + JSON.stringify(baseRecord));
+    }
+  }, [callouts]);
 
   // ---- Hydrate + migrate on document open --------------------------------
 
