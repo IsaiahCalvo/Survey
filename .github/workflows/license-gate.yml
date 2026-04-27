@@ -1,0 +1,36 @@
+# .github/workflows/license-gate.yml
+# Phase 27 — Hard CI block on non-permissive licenses.
+# Source: .planning/phases/27-crdt-foundation/27-RESEARCH.md § License CI gate.
+# Defends Pitfall 22 (AGPL contagion — commercially fatal in a Stripe-billed app).
+#
+# Allowlist + waivers live in scripts/check-licenses.mjs (single source of
+# truth). Allowlist: MIT/ISC/BSD-2/BSD-3/Apache-2.0/CC0-1.0/0BSD/Unlicense/
+# BlueOak-1.0.0/Python-2.0/Zlib. Waivers: @syncfusion/* (paid commercial EULA)
+# + named per-package overrides for legacy MIT-equivalent transitive deps.
+# AGPL/GPL/SSPL on any non-waived package still hard-blocks.
+name: License Gate
+
+on:
+  pull_request:
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+  push:
+    branches:
+      - main
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+
+jobs:
+  license-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: npm ci
+      - name: License check (production deps only)
+        run: node scripts/check-licenses.mjs
