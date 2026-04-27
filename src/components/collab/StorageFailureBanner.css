@@ -1,0 +1,161 @@
+/* src/components/collab/StorageFailureBanner.css
+ * Phase 27 — Storage failure banner styles.
+ * Source: .planning/phases/27-crdt-foundation/27-UI-SPEC.md Surface 2 (locked tokens).
+ * All values match the CSS variable system in src/App.css. Two type weights total:
+ * 400 (regular) for body / link / secondary, 600 (semibold) reserved for the heading.
+ */
+
+.storage-banner {
+  /* UX: sticky at top of document scroll — NOT fixed.
+     Must scroll with the PDF if the user scrolls past, matching Linear / Notion
+     graceful-degradation banner placement. Z-index sits above PDF viewer chrome
+     but below the app top bar (top bar is the ceiling per 27-UI-SPEC.md). */
+  position: sticky;
+  top: 0;
+  width: 100%;
+  z-index: 100;
+
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  /* md vertical / lg horizontal padding per spec spacing scale (xs=4 sm=8 md=16 lg=24) */
+  padding: 16px 24px;
+
+  background: var(--bg-secondary, #252525);
+  /* 4px solid red left border signals "something is broken" without screaming —
+     matches the destructive-warning convention used by Linear / Notion / Figma. */
+  border-left: 4px solid var(--accent-red, #DC3545);
+  border-bottom: 1px solid var(--border-primary, #3A3A3A);
+  box-shadow: var(--shadow-md, 0 4px 16px rgba(0, 0, 0, 0.4));
+
+  /* Reuse the app font stack so banner type matches the rest of the surface. */
+  font-family: var(--font-primary, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif);
+}
+
+.storage-banner__icon {
+  /* UX: 16x16 warning icon, vertical-align nudged 2px so it sits on the heading
+     baseline. Color inherits via `currentColor` in the SVG so the icon adopts
+     the accent-red destructive color without re-specifying it inline. */
+  flex-shrink: 0;
+  margin-top: 2px;
+  margin-right: 8px;
+  color: var(--accent-red, #DC3545);
+}
+
+.storage-banner__text {
+  /* UX: text column — heading + body + secondary metadata stack.
+     4px gap between body and secondary per 27-UI-SPEC.md spacing. */
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.storage-banner__heading {
+  /* UX: 14px / weight 600 / -0.01em letter-spacing — only weight-600 surface in
+     the banner. Matches existing .btn-lg + .btn convention in src/styles.css. */
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+  color: var(--text-primary, #FFFFFF);
+}
+
+.storage-banner__body {
+  /* UX: 13px / weight 400 — explains what broke and what is at risk. Matches
+     .btn-md (13px) and the app's body-copy size convention. */
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--text-secondary, #C8C8C8);
+}
+
+.storage-banner__secondary {
+  /* UX: 12px / weight 400 — secondary metadata at lower visual weight. Matches
+     .btn-sm (12px). 4px top margin provides the spec-required 4px gap. */
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--text-muted, #9A9A9A);
+  margin-top: 4px;
+}
+
+.storage-banner__action {
+  /* UX: action link — interactivity signaled by underline + accent color, NOT
+     by a different font weight (keeps the banner to exactly 2 weights total).
+     Matches Linear / Notion link convention. Reset native button chrome so
+     it reads as a textual link rather than a button. */
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--accent-primary, #4A90E2);
+  text-decoration: underline;
+  font-family: inherit;
+  margin-left: 8px;
+  align-self: center;
+}
+
+.storage-banner__action:focus {
+  /* UX: keyboard focus ring matching existing input focus pattern (src/styles.css).
+     2px halo at 0.4 opacity reads clearly without overpowering surrounding chrome. */
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.4);
+  border-radius: 2px;
+}
+
+.storage-banner__dismiss {
+  /* UX: 24x24 hit target with 20px glyph — meets WCAG 2.5.5 minimum target size
+     while keeping the visual `×` glyph small enough to feel secondary to the
+     action link. Hover lifts color from text-muted to text-primary so the
+     button reads as discoverable rather than disabled. */
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted, #9A9A9A);
+  font-size: 20px;
+  line-height: 1;
+  font-family: inherit;
+  margin-left: 8px;
+  align-self: flex-start;
+  transition: color 120ms ease-out;
+}
+
+.storage-banner__dismiss:hover {
+  color: var(--text-primary, #FFFFFF);
+}
+
+.storage-banner__dismiss:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.4);
+  border-radius: 2px;
+}
+
+/* Annotation fade-in classes (Surface 1, 27-UI-SPEC.md).
+ *
+ * Source of truth lives in this file so any wrapper around the SVG annotation
+ * layer can opt in by toggling the class — no changes required to
+ * SVGAnnotationLayer.jsx (Always-Protected). The wrapper-div opt-in is a
+ * deliberate design decision to keep the SVG component byte-identical.
+ *
+ * UX: 220ms ease-out matches Material Design "expressive deceleration" range.
+ * Fast enough to feel instant; slow enough to register as polished rather
+ * than jarring. cubic-bezier(0, 0, 0.2, 1) is the canonical ease-out curve. */
+.svg-annotations--hydrating {
+  opacity: 0;
+}
+
+.svg-annotations--hydrated {
+  opacity: 1;
+  transition: opacity 220ms cubic-bezier(0, 0, 0.2, 1);
+}
