@@ -6,8 +6,9 @@
 - [x] **v2.0 SVG Migration** — Phases 8-11 (shipped 2026-04-10) — [archive](milestones/v2.0-ROADMAP.md)
 - [x] **v2.1 Shape Edit Polish & Foundation Wins** — Phase 12 (shipped 2026-04-14, DONE_WITH_CONCERNS) — [archive](milestones/v2.1-ROADMAP.md)
 - [x] **v2.2 Rotation Handle Polish** — Phase 13 (shipped 2026-04-14)
-- [ ] **v2.3 Tools Polish (combined-tools rewrite)** — Phases 14-18 (planning, 26 requirements)
-- [ ] **v3.0 PDF-Native Annotations (bake-on-export)** — Phase 20 (Foundations DONE 2026-04-25), Phases 21-26 (B–G outlined; concrete tasks land per-phase) — [plan](../docs/superpowers/plans/2026-04-25-pdf-native-annotations.md)
+- [x] **v2.3 Tools Polish (combined-tools rewrite)** — Phases 14-15 shipped 2026-04-17 (CALL-10 + line/arrow curvature wiring); Phases 16-18 PARKED (mini-toolbar / callout collisions / auto-routing — superseded by v2.4 data-integrity priority); Phase 19 (AutoCAD selection) status TBD. Status: DONE_WITH_CONCERNS.
+- [ ] **v2.4 Multi-User Collaboration (CRDT Rebuild)** — Phases 27-34 (planning, 28 requirements). Yjs CRDT replaces last-write-wins simple-sync; per-user undo + offline merge + activity log + 4-role permissions + device attribution. ~2 months realistic. Highlights stay on legacy path through v2.4 (folded into v2.5). See [research summary](research/SUMMARY.md).
+- [ ] **v3.0 PDF-Native Annotations (bake-on-export)** — Phase 20 (Foundations DONE 2026-04-25), Phases 21-26 (B–G outlined; concrete tasks land per-phase) — [plan](../docs/superpowers/plans/2026-04-25-pdf-native-annotations.md). Parallel work to v2.4.
 
 ## Phases
 
@@ -64,6 +65,31 @@ See [`milestones/v2.1-ROADMAP.md`](milestones/v2.1-ROADMAP.md) for full phase de
 - [ ] **Phase 17: Callout Handle Collisions + Rollback + Resize** — 30-px collision constraints between arrowTip/knee/textbox handles, whole-callout snap-back on drop into invalid configurations, and correct corner-resize geometry at all zoom levels (fix four underlying issues enumerated in CURRENT-REPO-AUDIT.md Gap 3).
 - [ ] **Phase 18: Callout Auto-Routing + Hover Affordances + Self-Destruct** — Liang-Barsky auto-routing so the knee wraps around the textbox without the connector lines crossing the interior, hover-reveal knee/arrowTip handles with 50 ms hide delay, selection-preview hover glow, and empty-text self-destruct on edit-mode exit.
 - [ ] **Phase 19: AutoCAD Window + Crossing Selection** — Port the dormant AutoCAD-style marquee selection from the Fabric canvas layer to the SVG selection surface. Drag left-to-right draws a solid blue box that selects only annotations fully enclosed; drag right-to-left draws a dashed green box that selects any annotation the box touches. Reuses existing rectangle-intersection geometry math via a thin adapter — no changes to the geometry library itself.
+
+### v2.4 Multi-User Collaboration (CRDT Rebuild)
+
+**Phase numbering note:** Phases 19-26 were already reserved (Phase 19 = v2.3 AutoCAD selection; Phases 20-26 = v3.0 PDF-Native Annotations parallel milestone). v2.4 numbering starts at **Phase 27** to avoid collision with v3.0's reserved range.
+
+**Sequencing:**
+- Phases 27 → 28 → 29 are strict-sequential (foundation must land before transport spike, transport must be decided before Fabric↔Yjs binding).
+- Phases 30 (migration dual-write) → 31 (migration cutover seal) are sequential — cutover depends on dual-write era stability.
+- Phases 32 (multi-tab + persistence hardening) and 33 (activity log + awareness) are **parallelizable** — independent file lanes after Phase 31.
+- Phase 34 (sharing UX + revocation) is last — depends on activity log (33) and seal flag (31).
+
+**Milestone-level concerns (carry-forward to every v2.4 phase plan):**
+- Always-Protected files (`src/App.jsx`, `src/components/PageAnnotationLayer.jsx`, `src/components/FabricDrawingCanvas.jsx`, `src/components/FabricEraserCanvas.jsx`, `src/components/FabricEditCanvas.jsx`, `src/components/SVGAnnotationLayer.jsx`, `package.json`, `vite.config.js`) are protected by default. Most v2.4 phases need narrow-lane waivers for App.jsx (auth surfaces, sharing modals, activity log sidebar mounts, Cmd+Z handler rewire) and `package.json` (yjs deps land in Phase 27).
+- Top 5 critical pitfalls (any one = data loss / security breach): (1) Migration partial-state — old clients keep writing legacy rows during rollout; defended by Phase 30/31 dual-write + seal. (2) y-indexeddb multi-tab corruption (yjs/y-indexeddb#25) — defended by Web Locks election in Phase 27. (3) Y.Doc vs RLS mismatch — removed collaborator's local Y.Doc keeps accepting edits silently rejected on flush; defended by Phase 28 server-side validator + Phase 34 forced local destroy. (4) Echo loop — local Fabric event → Y.Map → observer fires → Fabric → loop; defended by mandatory transaction-origin pattern in Phase 29. (5) 1-second verify-wipe regression (the simple-sync killer in CRDT clothing) — defended by applyUpdate-only rule in Phase 27.
+- Highlights stay on legacy sync path through v2.4 (Excel-sync risk; folded into v2.5).
+- SVG-display + Fabric-edit-on-demand split is load-bearing and immutable; CRDT layer wraps under it, never replaces.
+
+- [ ] **Phase 27: CRDT Foundation (Yjs install + per-doc Y.Doc + IndexedDB persistence)** — Install `yjs@^13.6.30` + `y-protocols@^1.0.7` + `y-indexeddb@^9.0.12`, build `<YDocProvider docId>` mounted at document-open boundary, Y.Doc registry keyed by document_id, Web Locks election for multi-tab safety, snapshot architecture (`doc_yjs_state` + `doc_yjs_updates` schema design), `applyUpdate`-only-never-replace rule, license CI gate. Defends pitfalls 1, 2, 5, 10, 12, 15, 17, 20, 21, 22.
+- [ ] **Phase 28: Transport Spike + Auth + Server Validator (TIMEBOX 1 WEEK)** — Build a custom Supabase Realtime adapter (~150-300 LOC default) AND a Hocuspocus prototype side-by-side; benchmark against go/no-go criteria (binary frame stability, 2-5 concurrent peer load, server-side update validator capability). Lock the transport choice. Land RLS policies on `doc_yjs_updates` + `doc_yjs_state`. Defends pitfalls 3, 14, 15, 16.
+- [ ] **Phase 29: Fabric ↔ Yjs Binding + Per-User Undo (HIGHEST RISK)** — `crdtAnnotationBridge.js` (one-direction-at-a-time Fabric ↔ Y.Map), origin tags (`{source:'local-fabric',userId,deviceId,sessionId}`), `applyingRemote` guard, `Y.UndoManager` with `trackedOrigins: new Set([clientID])` for per-user undo, registry-based `Map<annoId, FabricObject>` lookup, `useAnnotationsCRDT` hook over `useSyncExternalStore + observeDeep`. Defends pitfalls 4, 6, 7, 8.
+- [ ] **Phase 30: Migration Phase A — Dual-Write Era** — Every new annotation writes BOTH legacy `document_annotations` row AND CRDT update; old clients read legacy column; new clients read CRDT column. Idempotent backfill keyed by `client_anno_id`. No "diff = delete" logic anywhere. Reads never bleed across paths.
+- [ ] **Phase 31: Migration Phase B — Cutover Seal** — `migrated_at` flag on `documents` row, DB trigger / RLS makes legacy table read-only post-seal, v2.3 client opening sealed doc gets "please update" gate (not corrupted data). Source-of-truth flips to Y.Doc.
+- [ ] **Phase 32: Multi-Tab + Persistence Hardening** — Web Locks stress-test with 2-tab Playwright scenarios, periodic Y.Doc compaction job, IndexedDB-quota UX, BroadcastChannel for same-user-same-doc cross-tab. Production hardening for offline + cross-device. Parallelizable with Phase 33.
+- [ ] **Phase 33: Activity Log + Awareness + Cross-Device Resume** — Server-side `update` listener writes `activity_log` (Postgres, server-authoritative timestamps), filterable sidebar UI (user / device / page / date / action type), click-to-jump, `Y.Awareness` channel for presence pill, "Where am I picking up?" cross-device resume banner, right-click "Tags" + properties three-dot "Tags" surface, sync chip clarity (offline / syncing / up-to-date). Parallelizable with Phase 32.
+- [ ] **Phase 34: Sharing UX + Permission Revocation + Legacy Decommission** — 4-role UI (Owner / Editor / Commenter / Viewer), email-invite flow, role change + revoke, `permission_revoked` realtime event → forced local Y.Doc destroy + IndexedDB wipe + "Your access has been removed" notice, decommission `useAnnotationCloudSync` / `cloudSyncMigration` / `cloudSyncQueue` legacy code. Closes v2.4.
 
 ## Phase Details
 
@@ -325,6 +351,203 @@ Plans:
   5. **v2.3 closes with all 26 requirements verified** — At phase close, the Traceability table in `.planning/REQUIREMENTS.md` shows all 26 requirements with Status = Complete, 113+/113+ baseline tests green, and the line / arrow / text callout tools pass a human UAT script at 50% / 100% / 200% zoom.
 
 **Plans**: TBD (populated by `/gsd:plan-phase 18`)
+
+
+### Phase 27: CRDT Foundation (Yjs install + per-doc Y.Doc + IndexedDB persistence)
+
+**Goal**: Establish a working single-user Yjs round-trip (Y.Doc → IndexedDB → reload → state restored) wrapped under the unchanged SVG-display + Fabric-edit-on-demand layers, with the architectural invariants that defend against the simple-sync data-loss class baked in from day one.
+
+**Depends on**: v2.3 line/arrow/callout work in stable shape (Phases 14-15 shipped; 16-18 parked). No blocking dependency on Phase 19 AutoCAD selection.
+
+**Requirements**: AUTH-03 (server-authoritative timestamp data model on every transaction)
+
+**Boundary notes (CLAUDE.md Always-Protected):**
+- `package.json` — **per-phase waiver REQUIRED.** This is the phase where `yjs@^13.6.30` + `y-protocols@^1.0.7` + `y-indexeddb@^9.0.12` install. Surgical edit; no other dep changes.
+- `src/App.jsx` — **per-phase waiver REQUIRED.** Mount `<YDocProvider>` at the document-open boundary (where `documentId` becomes non-null). Narrow lane.
+- All other Always-Protected files (PAL, FabricDrawingCanvas, FabricEraserCanvas, FabricEditCanvas, SVGAnnotationLayer) — DO NOT CHANGE. CRDT layer wraps under React state; display/edit layers don't learn about Yjs in this phase.
+
+**Success Criteria** (what must be TRUE):
+  1. **Single-user Y.Doc round-trip works** — User opens a PDF, makes annotations, closes the tab/window, reopens the PDF → annotations come back via y-indexeddb. Zero regression on single-user UX vs v2.3.
+  2. **Multi-tab safety baked in** — Two tabs of the same document in the same browser/Electron window cannot duplicate updates. Web Locks API election (`navigator.locks.request("y-doc-{docId}", { mode: "exclusive" })`) gates `IndexeddbPersistence` instantiation. Loser tab degrades to read-only via BroadcastChannel from the lock-holder. Verified via 2-tab Playwright scenario.
+  3. **Schema designed (not yet populated)** — `doc_yjs_updates (bytea append-only log)`, `doc_yjs_state (bytea snapshot)`, and `activity_log (server-authoritative)` tables exist in Supabase migrations. RLS policies stub'd (full policies in Phase 28).
+  4. **applyUpdate-only invariant enforced** — Lint rule or test prohibits `new Y.Doc()` outside the YDocProvider's first-mount path. No code path replaces Y.Doc state on rehydrate; merge-only via `Y.applyUpdate(doc, update)`.
+  5. **License CI gate green** — All three Yjs packages MIT-verified; no AGPL contamination introduced.
+
+**Plans**: 5 plans
+
+Plans:
+- [ ] 27-01-PLAN.md — Wave 0: test scaffold + license CI gate (6 node:test scaffolds + 5 Playwright scenarios + license-gate workflow + check-licenses script)
+- [ ] 27-02-PLAN.md — Wave 1: yjs trio + license-checker install + ydocRegistry.js (the ONE allowed `new Y.Doc(` site)
+- [ ] 27-03-PLAN.md — Wave 1: Supabase migration for doc_yjs_updates + doc_yjs_state + activity_log + RLS stubs (AUTH-03 server_ts column lands here)
+- [ ] 27-04-PLAN.md — Wave 2: ydocLifecycle (Web Locks election + IndexeddbPersistence + BroadcastChannel) + storageFailureDetector + crdtFeatureFlag
+- [ ] 27-05-PLAN.md — Wave 3: YDocProvider + useYDoc hook + StorageFailureBanner + App.jsx mount (per-phase narrow waiver) + UAT checkpoint
+
+### Phase 28: Transport Spike + Auth + Server Validator (TIMEBOX 1 WEEK)
+
+**Goal**: Decide the transport layer (custom Supabase Realtime adapter vs self-hosted Hocuspocus) by building both as throwaway prototypes against the Phase 27 foundation, benchmarking go/no-go criteria, and locking the choice. Land the server-side update validator that enforces RLS state on every CRDT update at write-time.
+
+**Depends on**: Phase 27 (Y.Doc foundation + schema)
+
+**Requirements**: AUTH-01 (user attribution at transaction origin), AUTH-02 (device attribution)
+
+**Boundary notes:**
+- `src/App.jsx` — narrow waiver if auth/transport wires through App-level context.
+- `package.json` — narrow waiver only IF Hocuspocus path wins (would add `@hocuspocus/provider`). Custom Supabase path adds zero new packages.
+- New files expected: `src/lib/collab/SupabaseYjsProvider.js` (default path) OR `src/lib/collab/HocuspocusYjsProvider.js` (fallback path).
+
+**Success Criteria** (what must be TRUE):
+  1. **Transport decision documented with go/no-go evidence** — Both prototypes built. Benchmark results (binary frame stability, 2-5 concurrent peer fan-out, message rate at typical drag-edit cadence). One transport chosen, the other archived as reference.
+  2. **Auth handshake gates every CRDT update** — Supabase JWT carried on Realtime channel + every Postgres write. Token refresh handled (token expiry mid-session does not break the channel).
+  3. **Server-side update validator works** — Every incoming CRDT update is run through current RLS state (Postgres function or Edge Function). Updates from a revoked collaborator are rejected with `update_rejected` event back to client.
+  4. **User + device attribution lands at transaction origin** — Every `ydoc.transact(fn, origin)` carries `{ userId, deviceId, sessionId, clientID, serverTs }`. Device label defaults to OS hostname (Electron `os.hostname()`); renameable in account settings (data path only — UI is Phase 33).
+  5. **RLS policies fully active** — `doc_yjs_updates` + `doc_yjs_state` gated on `user_can_access_document(doc_id, 'editor')` for INSERT, `'viewer'` for SELECT. Verified via SQL test from a non-collaborator JWT.
+
+**Plans**: TBD (populated by `/gsd:plan-phase 28`)
+
+### Phase 29: Fabric ↔ Yjs Binding + Per-User Undo (HIGHEST RISK)
+
+**Goal**: Wire the existing Fabric edit canvas + SVG display layer to read from / write to Y.Doc via a one-direction-at-a-time bridge (Y → Fabric on edit-mount, Fabric → Y on commit), with per-user `Y.UndoManager` scoped to local clientID. This phase carries the highest pitfall density (4 critical/high pitfalls converging) — plan accordingly.
+
+**Depends on**: Phase 28 (transport locked, server validator active)
+
+**Requirements**: COLLAB-02 (concurrent edits to two different annotations on same page never collide), COLLAB-03 (concurrent edits to same annotation merge per-property LWW), UNDO-01 (Cmd+Z undoes own most recent action), UNDO-02 (undo never erases collaborator work), UNDO-03 (undo restores original creation user + timestamp), UNDO-04 (Cmd+Shift+Z redoes own undone action)
+
+**Boundary notes:**
+- `src/App.jsx` — narrow waiver REQUIRED. Cmd+Z / Cmd+Shift+Z keyboard handlers rewire to `undoManager.undo()` / `.redo()`.
+- `src/components/FabricEditCanvas.jsx` — narrow waiver REQUIRED. Edit-canvas commit path must call into `crdtAnnotationBridge.applyFabricCommit` instead of `setAnnotationsByPage`. Surgical — preserve `zoomGeneration` signal contract.
+- `src/components/SVGAnnotationLayer.jsx` — DO NOT CHANGE. SVG layer reads JSON from React state (now derived from Y.Doc); never learns about Yjs.
+- `src/components/PageAnnotationLayer.jsx`, `src/components/FabricDrawingCanvas.jsx`, `src/components/FabricEraserCanvas.jsx` — DO NOT CHANGE.
+- New files expected: `src/lib/collab/crdtAnnotationBridge.js` (pure functions, no React, no Fabric instance), `src/lib/collab/crdtUndoManager.js`, `src/hooks/useAnnotationsCRDT.js` (useSyncExternalStore + observeDeep).
+
+**Success Criteria** (what must be TRUE):
+  1. **No echo loop** — User drags a rectangle, `object:modified` fires once, exactly one `Y.Map.set` occurs, exactly zero remote-observer fires re-trigger Fabric.set on the same object. Verified by drawing 1000 strokes; CPU stays under 30%, IndexedDB grows linearly. (Pitfall 4)
+  2. **Concurrent edits to different annotations on same page never collide** (COLLAB-02) — Two clients, same page, different shapes; both edits land cleanly. Y.Map property-level merge.
+  3. **Concurrent edits to the same annotation merge per-property** (COLLAB-03) — Two clients edit color and position simultaneously on the same shape; both properties land via per-property LWW (timestamp tiebreak in `meta.updatedAt`). No conflict modal.
+  4. **Per-user undo never erases collaborator work** (UNDO-01 + UNDO-02) — User A draws, User B draws, User A presses Cmd+Z → only User A's stroke reverts. Y.UndoManager constructed with `trackedOrigins: new Set([localClientID])`. Canonical Playwright test required. (Pitfall 7)
+  5. **Undo restores original author + creation timestamp** (UNDO-03) — Undoing a delete resurrects the annotation with all `meta.{authorId, deviceId, createdAt}` intact (Y.Map tombstone resurrection).
+  6. **Redo works** (UNDO-04) — Cmd+Shift+Z / Ctrl+Y redoes the most recently undone action without affecting collaborator work.
+  7. **SVG-Fabric-Y.Doc identity contract holds** — Annotation IDs are stable uuids; lookups across all three layers use the same key. Per-mount registry `Map<annoId, FabricObject>` populated on mount, cleared on unmount. (Pitfall 6)
+
+**Plans**: TBD (populated by `/gsd:plan-phase 29`)
+
+### Phase 30: Migration Phase A — Dual-Write Era
+
+**Goal**: Every new annotation written by a v2.4 client persists to BOTH the legacy `document_annotations` row AND the new CRDT update path. v2.3 clients still in the wild read the legacy column; v2.4 clients read the CRDT column. Reads never bleed across. Idempotent backfill keyed by `client_anno_id` runs once per (user, document) on first v2.4 open.
+
+**Depends on**: Phase 29 (Fabric ↔ Yjs bridge stable)
+
+**Requirements**: MIGRATE-01 (existing v2.3 annotations appear correctly in v2.4 with no data loss; original creation user becomes recorded author with "before-v2.4" device tag)
+
+**Boundary notes:**
+- `src/services/annotationCloudSync.js` — narrow waiver REQUIRED. Dual-write logic lands here.
+- New files expected: `src/lib/collab/crdtBackfill.js` (advisory-locked first-open import).
+- `src/components/PageAnnotationLayer.jsx` — DO NOT CHANGE.
+- All Always-Protected files except as noted — DO NOT CHANGE.
+
+**Success Criteria** (what must be TRUE):
+  1. **Dual-write works** — User on v2.4 creates a new annotation; the row appears in both `document_annotations` (legacy) and `doc_yjs_updates` (new). v2.3 client reading the same document via legacy path sees it. v2.4 client reading via CRDT path sees it. (Pitfall 1)
+  2. **Backfill is idempotent** — Running the per-document backfill twice produces no duplicates (key = `client_anno_id`; same key + deep-equal value = harmless). Verified by re-running backfill in Playwright.
+  3. **No "diff = delete" logic anywhere** — Code review + lint rule confirms migration code path replaces, never reconciles. The simple-sync killer pattern is banned by construction.
+  4. **Existing v2.3 annotations migrate cleanly** (MIGRATE-01) — Annotations created in v2.3 + earlier appear correctly in v2.4. Original `created_by` user becomes `meta.authorId`; `meta.deviceId` = `"before-v2.4"`; `meta.createdAt` preserved.
+  5. **Highlights skipped** — `annotation_type` filter excludes highlights; they stay on legacy path through v2.4 (Excel-sync risk; folded into v2.5).
+
+**Plans**: TBD (populated by `/gsd:plan-phase 30`)
+
+### Phase 31: Migration Phase B — Cutover Seal
+
+**Goal**: Flip read source-of-truth from legacy `document_annotations` to Y.Doc. Add `migrated_at` flag on `documents` row. DB trigger / RLS policy makes legacy table read-only for sealed documents. v2.3 clients opening a sealed document get a "please update the app" gate, not corrupted data.
+
+**Depends on**: Phase 30 (dual-write era proven stable in production)
+
+**Requirements**: MIGRATE-02 (v2.3 client opening migrated v2.4 document sees "please update" gate, not corrupted data)
+
+**Boundary notes:**
+- New Supabase migration files (DB triggers + RLS policies for seal enforcement).
+- `src/App.jsx` — narrow waiver REQUIRED for the v2.3-detected "please update" gate UI.
+- All Always-Protected files except App.jsx — DO NOT CHANGE.
+
+**Success Criteria** (what must be TRUE):
+  1. **`migrated_at` seal flag enforces read-only on legacy** — DB trigger blocks INSERT/UPDATE/DELETE on `document_annotations` when `documents.migrated_at IS NOT NULL` (for non-highlight rows). Verified via SQL test.
+  2. **v2.3 client gate works** (MIGRATE-02) — A v2.3 client opening a sealed document sees a "please update the app" banner with a one-click upgrade link. NO partial document, NO silent corruption.
+  3. **v2.4 read path sources from Y.Doc only** — Post-seal, `useAnnotationsCRDT` reads from Y.Doc; legacy column is dead-code for v2.4 client.
+  4. **Rollback path documented** — If seal flip causes regression, unsetting `migrated_at` restores legacy read path. Source-of-truth recoverable.
+  5. **Highlights still on legacy** — Highlight read path unchanged; seal applies only to non-highlight annotation_types.
+
+**Plans**: TBD (populated by `/gsd:plan-phase 31`)
+
+### Phase 32: Multi-Tab + Persistence Hardening
+
+**Goal**: Production-harden the offline-first + cross-device + multi-tab story. Stress-test the Phase 27 Web Locks election. Add periodic Y.Doc compaction (snapshot consolidation). Ship IndexedDB-quota UX. BroadcastChannel for same-user-same-doc cross-tab sync. Parallelizable with Phase 33 if capacity allows.
+
+**Depends on**: Phase 31 (cutover sealed; Y.Doc is canonical)
+
+**Requirements**: OFFLINE-01 (edit while disconnected; changes persist locally), OFFLINE-02 (reconnect → silent merge; no conflict modal), OFFLINE-03 (two devices both made offline changes; both merge cleanly via per-property LWW), OFFLINE-04 (sync chip shows offline-and-queued / syncing / up-to-date)
+
+**Boundary notes:**
+- New files expected: `src/lib/collab/yDocCompaction.js` (periodic snapshot job), `src/lib/collab/multiTabSync.js` (BroadcastChannel coordinator).
+- `src/App.jsx` — narrow waiver REQUIRED for sync chip mount + state wiring.
+- All other Always-Protected files — DO NOT CHANGE.
+
+**Success Criteria** (what must be TRUE):
+  1. **Offline editing works** (OFFLINE-01) — User disconnects internet, makes 10+ annotations, app stays responsive, changes persist locally in y-indexeddb, visible immediately in SVG.
+  2. **Reconnect = silent merge** (OFFLINE-02) — User reconnects; queued offline changes sync automatically; remote changes that landed during the offline window merge in. Zero conflict modals.
+  3. **Two-device offline merge** (OFFLINE-03) — Device A and Device B both edit the same document offline; both reconnect; both sets merge cleanly via per-property LWW (timestamp tiebreak).
+  4. **Sync chip clarity** (OFFLINE-04) — Corner sync chip shows clearly: "Offline — N changes queued" / "Syncing N changes…" / "Up to date" — three states are visually distinct, not subtle dot color changes.
+  5. **Multi-tab Web Locks stress test passes** — 2-tab Playwright scenario: open same doc in two tabs, make edits in tab A, switch to tab B, edits visible without IndexedDB corruption. Lock election survives 100+ tab open/close cycles.
+  6. **Compaction job runs** — After N updates (configurable, default 100), a snapshot is written to `doc_yjs_state` and old updates beyond `through_seq` are archived/pruned. Cold-load applies snapshot + recent updates instead of replaying full log.
+
+**Plans**: TBD (populated by `/gsd:plan-phase 32`)
+
+### Phase 33: Activity Log + Awareness + Cross-Device Resume
+
+**Goal**: Server-side `update` listener writes one row per CRDT transaction to `activity_log` (Postgres, server-authoritative timestamps). Sidebar UI shows full history newest-first, filterable by user / device / page / date range / action type, click-to-jump. `Y.Awareness` channel powers presence pill (avatars / names of users currently in the doc). "Pick up where you left off" cross-device resume banner highlights most recently edited annotation. Right-click "Tags" + properties three-dot "Tags" surface the per-annotation authorship metadata. Parallelizable with Phase 32.
+
+**Depends on**: Phase 31 (Y.Doc canonical; activity events flowing reliably)
+
+**Requirements**: AUTH-04 (right-click Tags entry shows author + device + last editor + timestamps), AUTH-05 (properties three-dot Tags entry surfaces same data), COLLAB-01 (two users on separate accounts see each other's changes within ~1s), COLLAB-04 (presence indicator for users currently in document), LOG-01 (Activity Log sidebar, newest first), LOG-02 (entries show user / device / action / type / page / human-readable timestamp), LOG-03 (filter by user / device / page / date range / action type), LOG-04 (click entry to jump to annotation if still exists), RESUME-01 ("pick up where you left off" banner highlights most recently edited annotation with one-click jump), AUTH-06 (renameable device label UI in account settings)
+
+**Boundary notes:**
+- `src/App.jsx` — narrow waiver REQUIRED for activity log sidebar mount, presence pill mount, resume banner mount, account settings device label rename.
+- New files expected: `src/components/ActivityLogSidebar.jsx`, `src/components/PresencePill.jsx`, `src/components/ResumeBanner.jsx`, `src/components/TagsPopover.jsx`, `src/lib/collab/awarenessProvider.js`.
+- `src/components/SVGAnnotationLayer.jsx` — narrow waiver if right-click context menu mount happens here.
+- All other Always-Protected files — DO NOT CHANGE.
+
+**Success Criteria** (what must be TRUE):
+  1. **Activity log captures every change** (LOG-01 + LOG-02) — Server-side listener on `doc_yjs_updates` INSERT writes one row per transaction to `activity_log` with `{user, device, action (create/edit/delete), annotation_type, page, server_ts}`. Sidebar shows newest-first.
+  2. **Filters work** (LOG-03) — User can filter by user, device, page, date range, and action type. Results update live.
+  3. **Click-to-jump works** (LOG-04) — Clicking an entry navigates to the annotation's page and selects it (if still exists; otherwise shows "annotation has been deleted" toast).
+  4. **Real-time collaboration visible within ~1s** (COLLAB-01) — Two users on separate accounts editing the same document see each other's creates / edits / deletes within ~1 second.
+  5. **Presence pill shows everyone on same page** (COLLAB-04) — Avatar/name pill in corner shows users currently in the document on the same page (Y.Awareness, throttled at 5Hz for selection / tool / editingAnnotationId; 30Hz for cursor).
+  6. **Tags surface on every annotation** (AUTH-04 + AUTH-05) — Right-click any annotation → Tags entry shows: created by USER on DEVICE at TIMESTAMP; last edited by USER on DEVICE at TIMESTAMP. Properties panel three-dot menu → "Tags" surfaces the same data.
+  7. **Cross-device resume works** (RESUME-01) — Opening a document on Mac that was last edited on Windows shows a banner: "Pick up where you left off — last edit 12 minutes ago on Surface, page 14, sticky note" with one-click jump.
+  8. **Renameable device label** (AUTH-06) — User can rename their device label in account settings ("Mac" → "Office iMac"); rename applies prospectively to new edits and is reflected on past edits via the renamed device id.
+
+**Plans**: TBD (populated by `/gsd:plan-phase 33`)
+
+### Phase 34: Sharing UX + Permission Revocation + Legacy Decommission
+
+**Goal**: Ship the 4-role sharing UI (Owner / Editor / Commenter / Viewer), email-invite flow, role change, revoke. On revoke, `permission_revoked` realtime event triggers forced local Y.Doc destroy + IndexedDB wipe + "Your access has been removed" notice on the revoked client. Decommission legacy non-highlight sync code (`useAnnotationCloudSync` / `cloudSyncMigration` / `cloudSyncQueue`). Closes v2.4.
+
+**Depends on**: Phase 31 (sealed cutover; activity log enables permission audit) AND Phase 33 (activity log + awareness shipped)
+
+**Requirements**: PERM-01 (share via email + assign role: Owner / Editor / Commenter / Viewer), PERM-02 (Editor + Owner can create / edit / delete annotations), PERM-03 (Commenter can view + add comments but cannot edit annotations), PERM-04 (Viewer can only see annotations), PERM-05 (Owner can change role or remove access; removed collaborator's open session immediately stops accepting edits and shows "access removed" notice with close-document button)
+
+**Boundary notes:**
+- `src/App.jsx` — narrow waiver REQUIRED for sharing modal mount + revoke notice mount.
+- New files expected: `src/components/SharingModal.jsx`, `src/components/AccessRemovedNotice.jsx`, `src/lib/collab/permissionRevocation.js`.
+- `src/services/annotationCloudSync.js` + `src/services/cloudSyncMigration.js` + `src/services/cloudSyncQueue.js` + `src/hooks/useAnnotationCloudSync.js` — DELETE in this phase. Legacy non-highlight sync decommissioned.
+- `src/services/documentAnnotationService.js` — DO NOT CHANGE. Highlights stay on legacy path.
+
+**Success Criteria** (what must be TRUE):
+  1. **4-role sharing works** (PERM-01) — User can share a document by inviting an email; recipient gets invite; on accept, role assignment lands in `document_collaborators`. Roles: Owner / Editor / Commenter / Viewer.
+  2. **Editor + Owner have full edit** (PERM-02) — Editor and Owner can create, edit, and delete any annotation.
+  3. **Commenter can view + comment-only** (PERM-03) — Commenter sees all annotations, can add comments (comment UX scaffolded; full comment threads deferred to v2.4.x or v2.5 per FEATURES.md), cannot create / edit / delete annotations. UI gates client-side; RLS gates server-side.
+  4. **Viewer is read-only** (PERM-04) — Viewer sees annotations only. No pen / shape / callout tools available; RLS rejects any write.
+  5. **Revoke is immediate and complete** (PERM-05) — Owner removes a collaborator. Revoked client's open session: (a) realtime channel emits `permission_revoked` event, (b) local Y.Doc is destroyed, (c) IndexedDB for that doc is wiped, (d) "Your access has been removed" notice appears with close-document button, (e) revoked client cannot reach the doc on next open. (Pitfall 3)
+  6. **Legacy non-highlight sync decommissioned** — `useAnnotationCloudSync` / `cloudSyncMigration` / `cloudSyncQueue` deleted from tree. `git grep useAnnotationCloudSync` returns zero matches outside historical migrations.
+  7. **v2.4 closes with all 28 requirements verified** — Traceability table in REQUIREMENTS.md shows all 28 reqs Status = Complete. Highlight-on-legacy carry-forward documented for v2.5.
+
+**Plans**: TBD (populated by `/gsd:plan-phase 34`)
 
 ## Progress
 
