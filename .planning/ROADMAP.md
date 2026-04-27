@@ -575,7 +575,7 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13 → 14 → 
 | 17. Callout Handle Collisions + Rollback + Resize | v2.3 | 0/TBD | Not started | - |
 | 18. Callout Auto-Routing + Hover Affordances + Self-Destruct | v2.3 | 0/TBD | Not started | - |
 | 20. PDF-Native Annotations — Foundations (Phase A) | v3.0 | 4/4 | Complete (DONE_WITH_CONCERNS) | 2026-04-25 |
-| 27. CRDT Foundation | 2/5 | In Progress|  | - |
+| 27. CRDT Foundation | 3/5 | In Progress|  | - |
 
 ---
-*Last updated: 2026-04-27 — v2.4 Phase 27 (CRDT Foundation) Plan 03 shipped: Supabase migration creating doc_yjs_updates + doc_yjs_state + activity_log with bytea storage, AUTH-03 server_ts NOT NULL DEFAULT NOW() columns, 3 stub deny-all RLS policies (Phase 28 replaces with full user_can_access_document() gating), encoding_version SMALLINT for forward-compat, matching reversible rollback. AUTH-03 requirement now schema-enforced. Pitfalls 1, 10, 15, 17 defended at the schema level.*
+*Last updated: 2026-04-27 — v2.4 Phase 27 (CRDT Foundation) Plan 02 shipped: yjs@13.6.30 + y-protocols@1.0.7 + y-indexeddb@9.0.12 + license-checker@25.0.1 installed at locked versions; src/lib/collab/ydocRegistry.js shipped as the single allowed `new Y.Doc(` site, HMR-safe via globalThis.__ydocRegistry__ Map, releaseYDoc deliberately never destroys (Pitfall 21). Plan 27-01's applyUpdateOnlyInvariant + ydocRegistry test scaffolds flipped from skip→green automatically. License gate stays GREEN with all 4 new deps. Pitfalls 5/20/21 now defended by code, not just convention. Test baseline 280→286 pass.*

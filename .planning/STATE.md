@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
-status: AUTH-03 schema-enforced from day one. Plan 27-01's schemaPresence.test.mjs and cryptYjsUpdatesSchema.test.mjs flip from skipped to passing once a SUPABASE_TEST_URL is supplied + this migration applied. Pitfalls 1, 10, 15, 17 defended at the schema level.
-stopped_at: Completed 27-01-PLAN.md (test scaffolds + license CI gate)
-last_updated: "2026-04-27T17:34:04.985Z"
-last_activity: "2026-04-27 — Plan 27-03 executed (2 tasks, 2 commits: 4f56d4bb / 6e8666ca)"
+status: Yjs data substrate locked in (Plan 27-02 complete). applyUpdate-only invariant enforced by automated test from this commit forward. License gate green with all 4 new deps. Plan 27-01 scaffolds for applyUpdateOnlyInvariant + ydocRegistry flipped skip→green automatically. Pitfalls 5/20/21 now defended by code; Pitfalls 1/10/15/17 schema-defended (Plan 27-03).
+stopped_at: Completed 27-02-PLAN.md (yjs trio installed; src/lib/collab/ydocRegistry.js shipped; Plan 27-01 scaffolds flipped skip→green)
+last_updated: "2026-04-27T17:41:19.508Z"
+last_activity: "2026-04-27 — Plan 27-02 executed (2 tasks, 2 commits: 3218d4c7 / 2c7f7ec1)"
 progress:
   total_phases: 14
   completed_phases: 2
   total_plans: 14
-  completed_plans: 10
+  completed_plans: 11
   percent: 64
 ---
 
@@ -26,12 +26,12 @@ See: .planning/PROJECT.md (updated 2026-04-14)
 ## Current Position
 
 Milestone: v2.4 — CRDT Foundation + Real-Time Sync (Yjs port; SVG/Fabric layers immutable)
-Phase: **Phase 27 — CRDT Foundation** (Plan 27-03 shipped 2026-04-27)
-Plan: 27-03 — complete (Supabase migration + rollback shipped: doc_yjs_updates + doc_yjs_state + activity_log with bytea storage, AUTH-03 server_ts NOT NULL DEFAULT NOW(), 3 stub deny-all RLS policies, encoding_version SMALLINT for forward-compat). Next: Plan 27-04 (`<YDocProvider>` wiring at App.jsx document-open boundary).
-Status: AUTH-03 schema-enforced from day one. Plan 27-01's schemaPresence.test.mjs and cryptYjsUpdatesSchema.test.mjs flip from skipped to passing once a SUPABASE_TEST_URL is supplied + this migration applied. Pitfalls 1, 10, 15, 17 defended at the schema level.
-Last activity: 2026-04-27 — Plan 27-03 executed (2 tasks, 2 commits: 4f56d4bb / 6e8666ca)
+Phase: **Phase 27 — CRDT Foundation** (Plan 27-02 shipped 2026-04-27)
+Plan: 27-02 — complete (yjs@13.6.30 + y-protocols@1.0.7 + y-indexeddb@9.0.12 + license-checker@25.0.1 installed at locked versions; src/lib/collab/ydocRegistry.js shipped as the single allowed `new Y.Doc(` site; HMR-safe via globalThis.__ydocRegistry__; releaseYDoc never destroys (Pitfall 21); Plan 27-01's applyUpdateOnlyInvariant + ydocRegistry scaffolds flip skip→green automatically). Next: Plan 27-04 (Web Locks election + IndexeddbPersistence + storage-failure detector).
+Status: Yjs data substrate locked in. applyUpdate-only invariant enforced by automated test from this commit forward (Pitfall 5 defended by code, not convention). License gate stays GREEN with all 4 new deps. Test baseline 280→286 pass (6 scaffolds flipped skip→green; 0 new failures; 6 pre-existing failures unchanged).
+Last activity: 2026-04-27 — Plan 27-02 executed (2 tasks, 2 commits: 3218d4c7 / 2c7f7ec1)
 
-Progress: [██████░░░░] 64% (v2.4: 9/14 plans complete; v2.3 closed at Phase 15)
+Progress: [████████░░] 79% (v2.4: 11/14 plans complete; v2.3 closed at Phase 15)
 
 ## Performance Metrics
 
@@ -60,6 +60,7 @@ Progress: [██████░░░░] 64% (v2.4: 9/14 plans complete; v2.3 
 | Phase 15 P03 | 11min | 4 tasks | 5 files |
 | Phase 27 P03 | 2min | 2 tasks | 2 files |
 | Phase 27 P01 | 11min | 3 tasks | 13 files |
+| Phase 27 P02 | 3min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -120,6 +121,7 @@ Progress: [██████░░░░] 64% (v2.4: 9/14 plans complete; v2.3 
 - [Phase 27]: Plan 27-01 Option A: license allowlist expanded with BlueOak-1.0.0/Python-2.0/Zlib + @syncfusion/* paid-EULA waiver + 6 per-package legacy waivers; AGPL/GPL/SSPL hard-block intact
 - [Phase 27]: Plan 27-01: custom JSON parser instead of license-checker --onlyAllow flag — handles compound license strings (OR=consumer-picks, AND=all-required), 12-case in-script self-test verifies AGPL still blocks under both compound forms
 - [Phase 27]: Plan 27-01: per-test existence-guard skip pattern (skip: !existsSync(file)) — Wave 0 tests auto-flip from skip to run when later plans land their respective production modules; cleaner than Phase 15's file-level describe.skip wrapper for plans owning multiple modules
+- [Phase 27]: Plan 27-02: HMR-safe registry via globalThis.__ydocRegistry__ Map stash + autoLoad:false on Y.Doc construction locks applyUpdate-only invariant at constructor; releaseYDoc never destroys (Pitfall 21); Plan 27-01's 6 scaffolds flip skip→green automatically. Test baseline 280→286 pass.
 
 ### Roadmap Evolution
 
@@ -152,8 +154,8 @@ Progress: [██████░░░░] 64% (v2.4: 9/14 plans complete; v2.3 
 
 ## Session Continuity
 
-Last session: 2026-04-27T17:34:04.982Z
-Stopped at: Completed 27-01-PLAN.md (test scaffolds + license CI gate)
+Last session: 2026-04-27T17:41:19.505Z
+Stopped at: Completed 27-02-PLAN.md (yjs trio + ydocRegistry; Plan 27-01 scaffolds flipped to green)
 
 ### Resume instructions for the next session (read carefully)
 
