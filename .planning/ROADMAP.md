@@ -575,7 +575,7 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13 → 14 → 
 | 17. Callout Handle Collisions + Rollback + Resize | v2.3 | 0/TBD | Not started | - |
 | 18. Callout Auto-Routing + Hover Affordances + Self-Destruct | v2.3 | 0/TBD | Not started | - |
 | 20. PDF-Native Annotations — Foundations (Phase A) | v3.0 | 4/4 | Complete (DONE_WITH_CONCERNS) | 2026-04-25 |
-| 27. CRDT Foundation | 5/5 | Complete   | 2026-04-27 | - |
+| 27. CRDT Foundation | 5/5 | Complete    | 2026-04-27 | - |
 
 ---
 *Last updated: 2026-04-27 — v2.4 Phase 27 (CRDT Foundation) functionally complete (5/5 plans shipped). Plan 27-05 landed the React surface: YDocProvider context provider + useYDoc hook + StorageFailureBanner with all 4 copy variants per 27-UI-SPEC.md, mounted at the App.jsx document-open boundary via per-phase narrow waiver (1 import + 1 JSX wrap around <PDFViewer>). Live UAT verified single-user round-trip — pen-stroke drawn, page refreshed, stroke reappeared. applyUpdate-only invariant remains green; license gate green; test baseline preserved (290 pass / 6 fail pre-existing / 3 skipped); always-protected files (PAL/Fabric/SVG/vite.config.js) byte-identical except the App.jsx narrow waiver. Phase 27 awaiting `/gsd:verify-work 27` + 27-RECONCILIATION.md. Next: Phase 28 (transport spike + auth + server validator).*
