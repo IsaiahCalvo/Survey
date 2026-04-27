@@ -376,9 +376,9 @@ Plans:
 **Plans**: 5 plans
 
 Plans:
-- [ ] 27-01-PLAN.md — Wave 0: test scaffold + license CI gate (6 node:test scaffolds + 5 Playwright scenarios + license-gate workflow + check-licenses script)
+- [x] 27-01-PLAN.md — Wave 0: test scaffold + license CI gate (6 node:test scaffolds + 5 Playwright scenarios + license-gate workflow + check-licenses script) — shipped 2026-04-27
 - [ ] 27-02-PLAN.md — Wave 1: yjs trio + license-checker install + ydocRegistry.js (the ONE allowed `new Y.Doc(` site)
-- [ ] 27-03-PLAN.md — Wave 1: Supabase migration for doc_yjs_updates + doc_yjs_state + activity_log + RLS stubs (AUTH-03 server_ts column lands here)
+- [x] 27-03-PLAN.md — Wave 1: Supabase migration for doc_yjs_updates + doc_yjs_state + activity_log + RLS stubs (AUTH-03 server_ts column lands here) — shipped 2026-04-27
 - [ ] 27-04-PLAN.md — Wave 2: ydocLifecycle (Web Locks election + IndexeddbPersistence + BroadcastChannel) + storageFailureDetector + crdtFeatureFlag
 - [ ] 27-05-PLAN.md — Wave 3: YDocProvider + useYDoc hook + StorageFailureBanner + App.jsx mount (per-phase narrow waiver) + UAT checkpoint
 
@@ -575,7 +575,7 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13 → 14 → 
 | 17. Callout Handle Collisions + Rollback + Resize | v2.3 | 0/TBD | Not started | - |
 | 18. Callout Auto-Routing + Hover Affordances + Self-Destruct | v2.3 | 0/TBD | Not started | - |
 | 20. PDF-Native Annotations — Foundations (Phase A) | v3.0 | 4/4 | Complete (DONE_WITH_CONCERNS) | 2026-04-25 |
-| 27. CRDT Foundation | v2.4 | 1/5 | In Progress | - |
+| 27. CRDT Foundation | 2/5 | In Progress|  | - |
 
 ---
 *Last updated: 2026-04-27 — v2.4 Phase 27 (CRDT Foundation) Plan 03 shipped: Supabase migration creating doc_yjs_updates + doc_yjs_state + activity_log with bytea storage, AUTH-03 server_ts NOT NULL DEFAULT NOW() columns, 3 stub deny-all RLS policies (Phase 28 replaces with full user_can_access_document() gating), encoding_version SMALLINT for forward-compat, matching reversible rollback. AUTH-03 requirement now schema-enforced. Pitfalls 1, 10, 15, 17 defended at the schema level.*

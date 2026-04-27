@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
 status: AUTH-03 schema-enforced from day one. Plan 27-01's schemaPresence.test.mjs and cryptYjsUpdatesSchema.test.mjs flip from skipped to passing once a SUPABASE_TEST_URL is supplied + this migration applied. Pitfalls 1, 10, 15, 17 defended at the schema level.
-stopped_at: Completed 27-03-PLAN.md (CRDT foundation schema migration + rollback)
-last_updated: "2026-04-27T17:21:29.932Z"
+stopped_at: Completed 27-01-PLAN.md (test scaffolds + license CI gate)
+last_updated: "2026-04-27T17:34:04.985Z"
 last_activity: "2026-04-27 — Plan 27-03 executed (2 tasks, 2 commits: 4f56d4bb / 6e8666ca)"
 progress:
   total_phases: 14
   completed_phases: 2
   total_plans: 14
-  completed_plans: 9
+  completed_plans: 10
   percent: 64
 ---
 
@@ -59,6 +59,7 @@ Progress: [██████░░░░] 64% (v2.4: 9/14 plans complete; v2.3 
 | Phase 15 P02 | 6min | 3 tasks | 7 files |
 | Phase 15 P03 | 11min | 4 tasks | 5 files |
 | Phase 27 P03 | 2min | 2 tasks | 2 files |
+| Phase 27 P01 | 11min | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -116,6 +117,9 @@ Progress: [██████░░░░] 64% (v2.4: 9/14 plans complete; v2.3 
 - [Phase 27]: Plan 27-03: stub deny-all RLS policies named `<table>_phase27_stub_deny_all` so Phase 28 can DROP POLICY by exact name without ambiguity. Forward migration is fully idempotent (CREATE TABLE/INDEX IF NOT EXISTS + DROP POLICY IF EXISTS before each CREATE POLICY). Defends Pitfall 1.
 - [Phase 27]: Plan 27-03: bytea-from-day-one for update + state + state_vector columns. No TEXT columns for binary data. encoding_version SMALLINT NOT NULL DEFAULT 1 ships in initial schema so future Yjs encoding versions roll forward by writing a different value, no schema migration. Defends Pitfalls 15 + 17.
 - [Phase 27]: Plan 27-03: rollback file uses defensive DROP POLICY + DROP INDEX before DROP TABLE CASCADE, all idempotent (IF EXISTS). FK ON DELETE CASCADE on documents(id) means document deletion auto-cleans Y.Doc updates, snapshots, and activity log.
+- [Phase 27]: Plan 27-01 Option A: license allowlist expanded with BlueOak-1.0.0/Python-2.0/Zlib + @syncfusion/* paid-EULA waiver + 6 per-package legacy waivers; AGPL/GPL/SSPL hard-block intact
+- [Phase 27]: Plan 27-01: custom JSON parser instead of license-checker --onlyAllow flag — handles compound license strings (OR=consumer-picks, AND=all-required), 12-case in-script self-test verifies AGPL still blocks under both compound forms
+- [Phase 27]: Plan 27-01: per-test existence-guard skip pattern (skip: !existsSync(file)) — Wave 0 tests auto-flip from skip to run when later plans land their respective production modules; cleaner than Phase 15's file-level describe.skip wrapper for plans owning multiple modules
 
 ### Roadmap Evolution
 
@@ -148,8 +152,8 @@ Progress: [██████░░░░] 64% (v2.4: 9/14 plans complete; v2.3 
 
 ## Session Continuity
 
-Last session: 2026-04-27T17:21:29.929Z
-Stopped at: Completed 27-03-PLAN.md (CRDT foundation schema migration + rollback)
+Last session: 2026-04-27T17:34:04.982Z
+Stopped at: Completed 27-01-PLAN.md (test scaffolds + license CI gate)
 
 ### Resume instructions for the next session (read carefully)
 
