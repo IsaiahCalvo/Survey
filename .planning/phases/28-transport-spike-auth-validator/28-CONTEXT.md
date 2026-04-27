@@ -28,7 +28,7 @@ The Fabric ↔ Y.Map binding stays in Phase 29. The display and edit components 
 ## Implementation Decisions
 
 ### Speed bar — what counts as transport "passing"
-- Test load: **4 to 5 concurrent peers** all editing the same document at once.
+- Test load: **4 to 5 concurrent peers** all editing the same document at once. Peers are dedicated test bot accounts in the real Supabase project (one-time exception to the project's no-bot-accounts norm, granted by the user 2026-04-27 because no human peer pool is available). Bots are tagged in `auth.users.raw_user_meta_data` for one-line cleanup after the spike. Full provisioning + cleanup contract lives in `28-04-PLAN.md` under "Peer identity provisioning (LOCKED — 2026-04-27)".
 - Worst-case action mix: **all three at the same time** — rapid pen scribbling, dragging existing shapes, and typing in text annotations across the peer set simultaneously.
 - Latency target: every remote edit must appear on every other peer's screen in **under half a second**, end to end.
 - Network conditions: the bar must pass on **normal home/office shared wifi**, not just clean lab wifi. This is the actual user environment.
