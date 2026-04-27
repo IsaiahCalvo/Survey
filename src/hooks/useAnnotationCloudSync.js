@@ -307,7 +307,27 @@ export function useAnnotationCloudSync({
           }
         }
       }
-      if (deletedIds.length > 0) {
+      // 2026-04-27 — SAFETY BRAKE on the diff-based delete-detection.
+      //
+      // The diff path is intended for single-stroke eraser deletes: state
+      // went from N rows to N-1, push the one missing id to the cloud as a
+      // delete. In practice it has been implicated in cross-device data
+      // wipes where local state went from N rows to 0 in a single tick due
+      // to a sync race we have not yet reproduced in isolation, and the
+      // diff-based path then cascaded the local 0 into a cloud-wide DELETE.
+      //
+      // The brake: when the diff implies a "go to fully empty" event, do
+      // NOT auto-fire the delete. Log loudly with the full set of ids that
+      // were spared so we can see the exact failure case in a saved log.
+      //
+      // Trade-off (intentional): erasing the very last single stroke
+      // locally will not sync the delete to peer devices via this debounce
+      // path. Workarounds: refresh the peer device (its hydrate query +
+      // verify will pick up the new state), or use multi-select + delete
+      // which goes through an explicit delete API call site, not this
+      // diff-detection branch.
+      const wouldWipeCloud = priorObjectCount > 0 && objectCount === 0 && deletedIds.length > 0;
+      if (deletedIds.length > 0 && !wouldWipeCloud) {
         console.log('[CloudSync][hook] eraser/delete detected — removing rows from cloud ' + JSON.stringify({
           count: deletedIds.length,
           firstFew: deletedIds.slice(0, 5)
@@ -322,6 +342,18 @@ export function useAnnotationCloudSync({
         } catch (err) {
           console.warn('[CloudSync][hook] cloud delete threw ' + (err?.message || String(err)));
         }
+      } else if (wouldWipeCloud) {
+        const priorPagesWithObjects = Object.keys(priorByPage || {}).filter(
+          (k) => Array.isArray(priorByPage?.[k]?.objects) && priorByPage[k].objects.length > 0
+        );
+        console.error('[CloudSync][hook][SAFETY-BRAKE] suppressing wipe-style fabric delete push ' + JSON.stringify({
+          priorObjectCount,
+          currentObjectCount: objectCount,
+          deletedCount: deletedIds.length,
+          sampleDeletedIds: deletedIds.slice(0, 10),
+          priorPagesWithObjects,
+          rationale: 'diff implies full wipe — refusing to delete every cloud row via auto-detection. peer devices keep their copy; user must explicitly bulk-delete to sync.'
+        }));
       }
 
       const result = await upsertAnnotationsByPage(annotationsByPage, { documentId, userId, clientSessionId });
@@ -393,7 +425,11 @@ export function useAnnotationCloudSync({
           if (id && !currentCalloutIds.has(id)) deletedCalloutIds.push(id);
         }
       }
-      if (deletedCalloutIds.length > 0) {
+      // 2026-04-27 — Same SAFETY BRAKE as the fabric path. See comment over
+      // the fabric delete branch for full reasoning. Refuse to wipe cloud
+      // callouts via diff-detection when we go to a fully-empty list.
+      const wouldWipeCalloutCloud = priorCalloutCount > 0 && currentCalloutCount === 0 && deletedCalloutIds.length > 0;
+      if (deletedCalloutIds.length > 0 && !wouldWipeCalloutCloud) {
         console.log('[CloudSync][hook] callout delete detected — removing rows from cloud ' + JSON.stringify({
           count: deletedCalloutIds.length,
           firstFew: deletedCalloutIds.slice(0, 5)
@@ -408,6 +444,14 @@ export function useAnnotationCloudSync({
         } catch (err) {
           console.warn('[CloudSync][hook] callout cloud delete threw ' + (err?.message || String(err)));
         }
+      } else if (wouldWipeCalloutCloud) {
+        console.error('[CloudSync][hook][SAFETY-BRAKE] suppressing wipe-style callout delete push ' + JSON.stringify({
+          priorCount: priorCalloutCount,
+          currentCount: currentCalloutCount,
+          deletedCount: deletedCalloutIds.length,
+          sampleDeletedIds: deletedCalloutIds.slice(0, 10),
+          rationale: 'diff implies full wipe — refusing to delete every cloud callout row via auto-detection.'
+        }));
       }
 
       const result = await upsertCallouts(callouts || [], { documentId, userId, clientSessionId });
