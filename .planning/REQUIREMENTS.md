@@ -9,7 +9,7 @@
 
 - [ ] **AUTH-01**: Every annotation creation, edit, and deletion records the user account that performed it.
 - [ ] **AUTH-02**: Every annotation creation, edit, and deletion records the device it was performed on (Mac, Windows, future iPhone, future Android), with a default name from the OS hostname.
-- [ ] **AUTH-03**: Every annotation creation, edit, and deletion records a server-authoritative timestamp.
+- [x] **AUTH-03**: Every annotation creation, edit, and deletion records a server-authoritative timestamp.
 - [ ] **AUTH-04**: User can right-click any annotation and see a "Tags" entry in the context menu showing who created it and on which device, who last edited it and on which device, and when each happened.
 - [ ] **AUTH-05**: The annotation properties panel exposes the same Tags information when the user opens its three-dot menu and selects "Tags".
 - [ ] **AUTH-06**: User can rename their device label (e.g. "Mac" → "Office iMac") in account settings; rename applies prospectively to new edits and is reflected on past edits via the renamed device id.
@@ -85,24 +85,47 @@
 
 ## Traceability
 
-Empty initially. Roadmapper populates this in the next step (each REQ-ID maps to exactly one phase).
+Each v1 REQ-ID maps to exactly one v2.4 phase. Populated by gsd-roadmapper 2026-04-27.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| AUTH-01..06 | TBD | Pending |
-| COLLAB-01..04 | TBD | Pending |
-| OFFLINE-01..04 | TBD | Pending |
-| UNDO-01..04 | TBD | Pending |
-| LOG-01..04 | TBD | Pending |
-| RESUME-01 | TBD | Pending |
-| PERM-01..05 | TBD | Pending |
-| MIGRATE-01..02 | TBD | Pending |
+| AUTH-01 | Phase 28 — Transport Spike + Auth + Server Validator | Pending |
+| AUTH-02 | Phase 28 — Transport Spike + Auth + Server Validator | Pending |
+| AUTH-03 | Phase 27 — CRDT Foundation | Complete |
+| AUTH-04 | Phase 33 — Activity Log + Awareness + Resume | Pending |
+| AUTH-05 | Phase 33 — Activity Log + Awareness + Resume | Pending |
+| AUTH-06 | Phase 33 — Activity Log + Awareness + Resume | Pending |
+| COLLAB-01 | Phase 33 — Activity Log + Awareness + Resume | Pending |
+| COLLAB-02 | Phase 29 — Fabric ↔ Yjs Binding + Per-User Undo | Pending |
+| COLLAB-03 | Phase 29 — Fabric ↔ Yjs Binding + Per-User Undo | Pending |
+| COLLAB-04 | Phase 33 — Activity Log + Awareness + Resume | Pending |
+| OFFLINE-01 | Phase 32 — Multi-Tab + Persistence Hardening | Pending |
+| OFFLINE-02 | Phase 32 — Multi-Tab + Persistence Hardening | Pending |
+| OFFLINE-03 | Phase 32 — Multi-Tab + Persistence Hardening | Pending |
+| OFFLINE-04 | Phase 32 — Multi-Tab + Persistence Hardening | Pending |
+| UNDO-01 | Phase 29 — Fabric ↔ Yjs Binding + Per-User Undo | Pending |
+| UNDO-02 | Phase 29 — Fabric ↔ Yjs Binding + Per-User Undo | Pending |
+| UNDO-03 | Phase 29 — Fabric ↔ Yjs Binding + Per-User Undo | Pending |
+| UNDO-04 | Phase 29 — Fabric ↔ Yjs Binding + Per-User Undo | Pending |
+| LOG-01 | Phase 33 — Activity Log + Awareness + Resume | Pending |
+| LOG-02 | Phase 33 — Activity Log + Awareness + Resume | Pending |
+| LOG-03 | Phase 33 — Activity Log + Awareness + Resume | Pending |
+| LOG-04 | Phase 33 — Activity Log + Awareness + Resume | Pending |
+| RESUME-01 | Phase 33 — Activity Log + Awareness + Resume | Pending |
+| PERM-01 | Phase 34 — Sharing UX + Revocation + Decommission | Pending |
+| PERM-02 | Phase 34 — Sharing UX + Revocation + Decommission | Pending |
+| PERM-03 | Phase 34 — Sharing UX + Revocation + Decommission | Pending |
+| PERM-04 | Phase 34 — Sharing UX + Revocation + Decommission | Pending |
+| PERM-05 | Phase 34 — Sharing UX + Revocation + Decommission | Pending |
+| MIGRATE-01 | Phase 30 — Migration Phase A: Dual-Write Era | Pending |
+| MIGRATE-02 | Phase 31 — Migration Phase B: Cutover Seal | Pending |
 
 **Coverage:**
-- v1 requirements: 28 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 28 — to be resolved by roadmapper
+- v1 requirements: 30 total (note: spec said 28; actual count from category breakdown — AUTH 6 + COLLAB 4 + OFFLINE 4 + UNDO 4 + LOG 4 + RESUME 1 + PERM 5 + MIGRATE 2 = 30)
+- Mapped to phases: 30 (100%)
+- Unmapped: 0 ✓
+- Duplicates: 0 (each REQ-ID maps to exactly one phase) ✓
 
 ---
 *Requirements defined: 2026-04-27*
-*Last updated: 2026-04-27 after initial definition for v2.4*
+*Last updated: 2026-04-27 — traceability populated by gsd-roadmapper after v2.4 phase derivation (Phases 27-34, 100% coverage).*

@@ -575,6 +575,7 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13 → 14 → 
 | 17. Callout Handle Collisions + Rollback + Resize | v2.3 | 0/TBD | Not started | - |
 | 18. Callout Auto-Routing + Hover Affordances + Self-Destruct | v2.3 | 0/TBD | Not started | - |
 | 20. PDF-Native Annotations — Foundations (Phase A) | v3.0 | 4/4 | Complete (DONE_WITH_CONCERNS) | 2026-04-25 |
+| 27. CRDT Foundation | v2.4 | 1/5 | In Progress | - |
 
 ---
-*Last updated: 2026-04-25 — v3.0 PDF-Native Annotations milestone kicked off. Phase 20 (Foundations / Phase A in the milestone plan) shipped: annotpdf installed, feature flag scaffolded with env + per-document override, coordinate-space helpers, public API surface. All Phase A code is dormant — no behavioral wiring until Phase E. Carry-forward: annotpdf 1.0.15 ships a class-based AnnotationFactory API (not the standalone create-functions the plan speculated about) — Phase B.0 fixture extraction reflects that. Manual smoke pass deferred to user.*
+*Last updated: 2026-04-27 — v2.4 Phase 27 (CRDT Foundation) Plan 03 shipped: Supabase migration creating doc_yjs_updates + doc_yjs_state + activity_log with bytea storage, AUTH-03 server_ts NOT NULL DEFAULT NOW() columns, 3 stub deny-all RLS policies (Phase 28 replaces with full user_can_access_document() gating), encoding_version SMALLINT for forward-compat, matching reversible rollback. AUTH-03 requirement now schema-enforced. Pitfalls 1, 10, 15, 17 defended at the schema level.*

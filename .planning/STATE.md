@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
-status: Plans 15-01 + 15-02 + 15-03 all shipped. Plan 15-02 landed 14 passing unit tests against buildLineRenderSpec + buildArrowheadRenderSpec, rewrote renderLine as a thin wrapper, exported renderArrowhead. Straight branch byte-identical to pre-Phase-15. 181/182 npm test baseline preserved.
-stopped_at: Phase 27 context gathered
-last_updated: "2026-04-27T16:11:54.391Z"
-last_activity: "2026-04-17 — Plan 15-02 executed (3 tasks, 3 commits: bcdcce4d / 8d9fc424 / final-docs-commit)"
+status: AUTH-03 schema-enforced from day one. Plan 27-01's schemaPresence.test.mjs and cryptYjsUpdatesSchema.test.mjs flip from skipped to passing once a SUPABASE_TEST_URL is supplied + this migration applied. Pitfalls 1, 10, 15, 17 defended at the schema level.
+stopped_at: Completed 27-03-PLAN.md (CRDT foundation schema migration + rollback)
+last_updated: "2026-04-27T17:21:29.932Z"
+last_activity: "2026-04-27 — Plan 27-03 executed (2 tasks, 2 commits: 4f56d4bb / 6e8666ca)"
 progress:
   total_phases: 14
   completed_phases: 2
-  total_plans: 9
-  completed_plans: 8
-  percent: 88
+  total_plans: 14
+  completed_plans: 9
+  percent: 64
 ---
 
 # Project State
@@ -25,13 +25,13 @@ See: .planning/PROJECT.md (updated 2026-04-14)
 
 ## Current Position
 
-Milestone: v2.3 — Tools Polish (combined-tools rewrite + unified render)
-Phase: **Phase 15 — Line/Arrow Curvature + Arrowhead Styles** (2/3 plans complete; 15-03 landed in parallel)
-Plan: 15-02 — complete (Wave 1 renderer shipped: lineRenderHelpers.js + renderLine curved branch + renderArrowhead export; 14 Plan-15-01 unit tests flipped from red-skip to green). Next: phase close via `/gsd:verify-work 15` + `15-RECONCILIATION.md`.
-Status: Plans 15-01 + 15-02 + 15-03 all shipped. Plan 15-02 landed 14 passing unit tests against buildLineRenderSpec + buildArrowheadRenderSpec, rewrote renderLine as a thin wrapper, exported renderArrowhead. Straight branch byte-identical to pre-Phase-15. 181/182 npm test baseline preserved.
-Last activity: 2026-04-17 — Plan 15-02 executed (3 tasks, 3 commits: bcdcce4d / 8d9fc424 / final-docs-commit)
+Milestone: v2.4 — CRDT Foundation + Real-Time Sync (Yjs port; SVG/Fabric layers immutable)
+Phase: **Phase 27 — CRDT Foundation** (Plan 27-03 shipped 2026-04-27)
+Plan: 27-03 — complete (Supabase migration + rollback shipped: doc_yjs_updates + doc_yjs_state + activity_log with bytea storage, AUTH-03 server_ts NOT NULL DEFAULT NOW(), 3 stub deny-all RLS policies, encoding_version SMALLINT for forward-compat). Next: Plan 27-04 (`<YDocProvider>` wiring at App.jsx document-open boundary).
+Status: AUTH-03 schema-enforced from day one. Plan 27-01's schemaPresence.test.mjs and cryptYjsUpdatesSchema.test.mjs flip from skipped to passing once a SUPABASE_TEST_URL is supplied + this migration applied. Pitfalls 1, 10, 15, 17 defended at the schema level.
+Last activity: 2026-04-27 — Plan 27-03 executed (2 tasks, 2 commits: 4f56d4bb / 6e8666ca)
 
-Progress: [█████████░] 88% (v2.3: 7/8 plans complete across Phase 14 + Phase 15)
+Progress: [██████░░░░] 64% (v2.4: 9/14 plans complete; v2.3 closed at Phase 15)
 
 ## Performance Metrics
 
@@ -58,6 +58,7 @@ Progress: [█████████░] 88% (v2.3: 7/8 plans complete across 
 | Phase 15 P01 | 7min | 3 tasks | 10 files |
 | Phase 15 P02 | 6min | 3 tasks | 7 files |
 | Phase 15 P03 | 11min | 4 tasks | 5 files |
+| Phase 27 P03 | 2min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -111,6 +112,10 @@ Progress: [█████████░] 88% (v2.3: 7/8 plans complete across 
 - [Phase 15]: Plan 15-03: Pitfall-2 defensive preserve-write in endpoint drag pointermove + pointerup using ds.originalMidpoint captured at dispatch. Auto-revert via shouldRevertEndpointCurve + getLineEndpoints(targetObj) canonical endpoint derivation (dodges stale Fabric bbox reads).
 - [Phase 15]: Plan 15-03: lineDragMath.js extracted as pure-JS helper module with zero React/DOM deps — Node --test unit-testable without JSX loader. Matches Phase 14 buildCalloutRenderSpec precedent. 5 exports (deriveMidpointFromPointer, shouldRevertEndpointCurve, applyMidpointToAnnotation, clearMidpointFromAnnotation, resolveMidpointHandlePosition) cover the full drag-commit contract.
 - [Phase 15]: Plan 15-03: 3 Playwright primary-case scenarios upgraded to real UI-driven flows with runtime-skip fallback (Phase 14 pattern); 3 secondary-case scenarios kept as test.fixme because app does not expose window.__injectAnnotation test hook. Contract locked by unit tests instead (tests/lineDragMath.test.mjs + Plan 15-02's svgLineRenderer.test.mjs + renderArrowhead.test.mjs).
+- [v2.4]: Phase 27 Plan 03 ships AUTH-03 as a schema-level enforcement (server_ts TIMESTAMPTZ NOT NULL DEFAULT NOW()) on doc_yjs_updates AND activity_log — application code physically cannot insert without it. Inline COMMENT ON COLUMN documents the AUTH-03 attribution in pg_description for Supabase Studio visibility.
+- [Phase 27]: Plan 27-03: stub deny-all RLS policies named `<table>_phase27_stub_deny_all` so Phase 28 can DROP POLICY by exact name without ambiguity. Forward migration is fully idempotent (CREATE TABLE/INDEX IF NOT EXISTS + DROP POLICY IF EXISTS before each CREATE POLICY). Defends Pitfall 1.
+- [Phase 27]: Plan 27-03: bytea-from-day-one for update + state + state_vector columns. No TEXT columns for binary data. encoding_version SMALLINT NOT NULL DEFAULT 1 ships in initial schema so future Yjs encoding versions roll forward by writing a different value, no schema migration. Defends Pitfalls 15 + 17.
+- [Phase 27]: Plan 27-03: rollback file uses defensive DROP POLICY + DROP INDEX before DROP TABLE CASCADE, all idempotent (IF EXISTS). FK ON DELETE CASCADE on documents(id) means document deletion auto-cleans Y.Doc updates, snapshots, and activity log.
 
 ### Roadmap Evolution
 
@@ -143,8 +148,8 @@ Progress: [█████████░] 88% (v2.3: 7/8 plans complete across 
 
 ## Session Continuity
 
-Last session: 2026-04-27T16:11:54.382Z
-Stopped at: Phase 27 context gathered
+Last session: 2026-04-27T17:21:29.929Z
+Stopped at: Completed 27-03-PLAN.md (CRDT foundation schema migration + rollback)
 
 ### Resume instructions for the next session (read carefully)
 
