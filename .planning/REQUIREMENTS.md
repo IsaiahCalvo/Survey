@@ -1,118 +1,108 @@
-# Requirements: v2.3 Tools Polish (combined-tools rewrite)
+# Requirements: PDF Annotation App — v2.4 Multi-User Collaboration
 
-**Defined:** 2026-04-14
-**Core Value:** Line/arrow/text-callout tools match the precision and feel of the `combined-tools` reference app. User has granted explicit rewrite permission — don't preserve the current implementations, copy combined-tools as the behavioral baseline first, then add the enhancements on top.
+**Defined:** 2026-04-27
+**Core Value:** Two users on separate accounts (and the same user across multiple devices) can edit the same document in real time or at different times without ever losing each other's work, with full audit trail of who/which device/when for every change.
 
-## Scope framing (REVISED 2026-04-14 — read before the list)
+## v1 Requirements (v2.4 — 28 requirements)
 
-User direction shift during requirements review:
+### Authorship & Attribution (AUTH)
 
-1. **Rewrite permission granted.** The current line / arrow / callout implementations are considered bad UX and bad internals. v2.3 may replace `src/components/Callout/*`, the line/arrow branches in `svgAnnotationRenderers.jsx`, the line/arrow branches in `useSVGInteraction.js`, the drawing-tool flow in `FabricDrawingCanvas.jsx` for these three tools, and any adjacent helpers. Previous "preserve existing" out-of-scope items are OBSOLETE.
-2. **Copy combined-tools first, then add.** Use combined-tools' math + behaviors + interaction logic as the baseline, then layer the additions (curve-indicator pill, mini-toolbar, etc.) on top. "Similar, not identical" — port is still feature parity, not pixel parity.
-3. **SVG display + Fabric-edit-on-demand architecture is unchanged.** Combined-tools uses an always-mounted Fabric canvas; this app uses SVG display + targeted Fabric edit. The rewrite happens *within* this repo's architecture — the ported math goes into SVG renderers + the interaction hook + on-demand Fabric edit, not into a new always-mounted canvas.
-4. **Line/arrow should "act like regular shapes"** — inherit the select-lifecycle + mini-toolbar + typed-value hover pill pattern that rect/circle/ellipse already have (v2.1/v2.2 wins).
-5. **Callout should "render similar to a text box"** — presumed to mean SVG-first (likely `<foreignObject>` for the content, mirroring how `text` annotations are rendered today), replacing the current separate HTML-overlay `src/components/Callout/` React system.
-6. **Curvature indicator mirrors the rotation-pill UX** — hover-reveal pill near the midpoint handle, shows current curvature, typeable to set a custom value, live commit with optimistic paint. Same architectural pattern as `RotationInputField` from v2.1 Phase 12 (Plan 12-02).
+- [ ] **AUTH-01**: Every annotation creation, edit, and deletion records the user account that performed it.
+- [ ] **AUTH-02**: Every annotation creation, edit, and deletion records the device it was performed on (Mac, Windows, future iPhone, future Android), with a default name from the OS hostname.
+- [ ] **AUTH-03**: Every annotation creation, edit, and deletion records a server-authoritative timestamp.
+- [ ] **AUTH-04**: User can right-click any annotation and see a "Tags" entry in the context menu showing who created it and on which device, who last edited it and on which device, and when each happened.
+- [ ] **AUTH-05**: The annotation properties panel exposes the same Tags information when the user opens its three-dot menu and selects "Tags".
+- [ ] **AUTH-06**: User can rename their device label (e.g. "Mac" → "Office iMac") in account settings; rename applies prospectively to new edits and is reflected on past edits via the renamed device id.
 
-Audits of both codebases: `.planning/research/COMBINED-TOOLS-AUDIT.md` and `.planning/research/CURRENT-REPO-AUDIT.md`.
+### Real-Time Collaboration (COLLAB)
 
-## v2.3 Requirements
+- [ ] **COLLAB-01**: Two users on separate accounts editing the same document at the same time both see the other's annotation creates, edits, and deletes within ~1 second of the action.
+- [ ] **COLLAB-02**: Concurrent edits to two different annotations on the same page never collide; both edits land cleanly.
+- [ ] **COLLAB-03**: Concurrent edits to the same annotation by two users land via per-property last-write-wins (color, position, text content, etc.) without showing a conflict modal.
+- [ ] **COLLAB-04**: User can see a presence indicator (avatar / name pill) for everyone currently in the document on the same page they are.
 
-22 requirements across 4 categories. Each maps to a roadmap phase.
+### Offline & Merge (OFFLINE)
 
-### Line Tool (6)
+- [ ] **OFFLINE-01**: User can keep editing the document while disconnected from the internet; changes persist locally and remain visible.
+- [ ] **OFFLINE-02**: When the user reconnects, every offline change syncs automatically and merges with anything that happened in the cloud while they were away — no conflict dialog.
+- [ ] **OFFLINE-03**: If two devices both made offline changes to the same document, both sets merge cleanly on reconnect via per-property last-write-wins.
+- [ ] **OFFLINE-04**: The corner sync chip clearly shows whether the user is currently in offline-and-queued mode, syncing, or fully up to date.
 
-- [x] **LINE-01**: User can select a line and drag its middle curvature handle to bend the line into a quadratic curve that visibly passes through the handle position. Curvature is stored as an absolute midpoint `(x, y)` in page coordinates.
-- [x] **LINE-02**: User can drag a curved line's middle handle back near the straight baseline and the line auto-resets to straight (10 px drag snap threshold, 1 px render hysteresis). Proximity-based reset only — no click, no keyboard.
-- [x] **LINE-03**: User can drag a curved line's start or end handle and the curve reshapes — the midpoint stays fixed in absolute coords. If the new geometry becomes naturally collinear within the snap threshold, the line auto-reverts to straight with a recomputed geometric midpoint.
-- [ ] **LINE-04**: User sees a curvature-indicator pill near the midpoint handle that appears on hover-intent (same timing as the rotation pill) and shows the current curvature magnitude. User can click to type a custom curvature value and the line updates live via optimistic paint (same pattern as v2.1 `RotationInputField` + `applyOptimisticRotation`).
-- [ ] **LINE-05**: Click-to-create with zero drag distance does not create a line — a minimum drag length is required before a new line is committed. Prevents accidental degenerate zero-length lines during tool clicks.
-- [ ] **LINE-06**: Selected line shows a mini-toolbar (color, thickness, arrowhead style picker — `NONE` by default, curvature value read-only when not hovering) at the same relative position and with the same show/hide lifecycle that rect/circle/ellipse mini-toolbars use today. Line annotations "act like regular shapes" in the select lifecycle.
+### Per-User Undo (UNDO)
 
-### Arrow Tool (7)
+- [ ] **UNDO-01**: User can press Cmd+Z / Ctrl+Z to undo their own most recent action, even when collaborators have made changes after them.
+- [ ] **UNDO-02**: A user's undo never erases or alters another collaborator's annotations or edits.
+- [ ] **UNDO-03**: Undo restores the annotation's previous state including who originally created it and the original creation timestamp.
+- [ ] **UNDO-04**: Cmd+Shift+Z / Ctrl+Y redoes the user's own most recently undone action, again without affecting collaborator work.
 
-- [x] **ARROW-01**: User can select an arrow and drag its middle curvature handle to bend it. The arrowhead rotates to match the curve's tangent at the endpoint (not the straight start-to-end angle).
-- [x] **ARROW-02**: User can drag a curved arrow's middle handle back near straight and the arrow resets to straight with the arrowhead returning to linear tangent. Same thresholds as LINE-02.
-- [x] **ARROW-03**: User can drag a curved arrow's start/end handle and the curve reshapes with the midpoint held fixed. Auto-reversion on natural collinearity applies the same way.
-- [ ] **ARROW-04**: User can choose the arrowhead style for a selected line or arrow from six options — `NONE`, `SOLID_TRIANGLE`, `V_SHAPE`, `OPEN_CIRCLE`, `OPEN_TRIANGLE`, `HORIZONTAL_LINE` — via the mini-toolbar style picker. Default: `NONE` for lines, `SOLID_TRIANGLE` for arrows. Persists across save/reload.
-- [ ] **ARROW-05**: Arrow selection shows the same curvature-indicator pill as LINE-04 (hover-reveal, typeable, live optimistic commit).
-- [ ] **ARROW-06**: Click-to-create with zero drag distance does not create an arrow. Same minimum-drag-length rule as LINE-05.
-- [ ] **ARROW-07**: Selected arrow shows the same mini-toolbar as LINE-06 (color, thickness, arrowhead style picker, curvature readout).
+### Activity Log (LOG)
 
-### Callout (10)
+- [ ] **LOG-01**: User can open an Activity Log sidebar showing every change made on the document, newest first.
+- [ ] **LOG-02**: Activity Log entries show the user, the device, the action (create / edit / delete), the annotation type, the page, and a human-readable timestamp.
+- [ ] **LOG-03**: User can filter the Activity Log by user, by device, by page, by date range, and by action type.
+- [ ] **LOG-04**: User can click an Activity Log entry to jump to that annotation on the page (if it still exists).
 
-- [ ] **CALL-01**: User cannot drag a callout's arrowTip handle within 30 px of its knee handle. Clamped live to a 30-px circle around the knee along the drag axis.
-- [ ] **CALL-02**: User cannot drag a callout's knee handle within 30 px of the closest point on the textbox border. Projected outward live along the box-to-knee axis.
-- [ ] **CALL-03**: User cannot drag a callout's textbox into a position within 30 px of the knee handle. Live pop-out along the axis away from the knee (nearest-edge pop-out for exact overlap).
-- [ ] **CALL-04**: If a callout drag ends in a visually invalid configuration (arrowTip inside the textbox plus buffer, OR knee within 24 px of arrow), the entire callout snaps back to the positions it held at drag-start — all four part positions restored together.
-- [ ] **CALL-05**: User can resize a callout's textbox from any corner at any zoom level with correct geometry. Minimum dimensions enforced consistently across zoom levels, no anchor-jitter, no stale-ref on rapid re-selection. (Bug-fix requirement — four underlying issues enumerated in `CURRENT-REPO-AUDIT.md` Gap 3.)
-- [ ] **CALL-06**: Hovering any part of an unselected callout visually reveals the arrowTip and knee handles with a 50 ms hide-delay on mouse-out to prevent flicker.
-- [ ] **CALL-07**: When the user drags a callout's textbox across the arrow's path, the knee auto-routes around the box using Liang-Barsky segment clipping so line1 and line2 never cross the textbox interior (port of combined-tools' `calculateCalloutConnection`, ~500 lines of case analysis + fallback `shouldHideLine1` when no valid route exists).
-- [ ] **CALL-08**: A newly created callout that exits edit mode with empty text is automatically deleted. Prevents orphaned empty callouts from click-drag-release without typing.
-- [ ] **CALL-09**: Hovering an unselected callout shows a selection-preview glow on the textbox border and connector lines — same visual style as the line tool's selection-hover glow, so all three tools have a consistent hover affordance.
-- [x] **CALL-10**: Callout renders via SVG (using the same `<foreignObject>`+HTML-text pattern that `text` annotations use today) instead of the current separate HTML-overlay `src/components/Callout/` React system. "Similar to a text box" architecture. The entire current Callout directory may be replaced or removed.
+### Cross-Device Resume (RESUME)
 
-### Shared Interaction (3)
+- [ ] **RESUME-01**: When user opens a document they previously edited on another device, a "pick up where you left off" banner highlights the most recently edited annotation and offers a one-click jump to it.
 
-- [x] **UX-01**: While the line, arrow, or callout tool is active and no drag is in progress, the SVG interaction layer shows a `crosshair` cursor. Default/move cursor returns when the tool deactivates or a creation drag starts.
-- [x] **KBD-01**: `Delete` or `Backspace` while a line, arrow, or callout is selected removes it from the annotation store (with undo support). Keyboard focus must not be in a text input / editing field. Same shortcut surface as combined-tools' delete handler.
-- [x] **CREATE-01**: During the initial click-drag creation of a line, arrow, or callout, a dashed preview is shown at 0.6 opacity following the pointer in real time. Preview uses the same color / thickness settings as the committed annotation will. Preview is removed on mouse-up and replaced by the committed annotation.
+### Permissions & Sharing (PERM)
+
+- [ ] **PERM-01**: User can share a document by inviting a collaborator via email and assigning a role: Owner, Editor, Commenter, or Viewer.
+- [ ] **PERM-02**: Editor and Owner can create, edit, and delete annotations.
+- [ ] **PERM-03**: Commenter can view all annotations and add comments but cannot create, edit, or delete annotations.
+- [ ] **PERM-04**: Viewer can only see annotations; cannot edit, comment, or delete.
+- [ ] **PERM-05**: Owner can change any collaborator's role or remove their access; removed collaborator's open session immediately stops accepting edits and shows a "Your access has been removed" notice with a button to close the document.
+
+### Migration & Backwards Compatibility (MIGRATE)
+
+- [ ] **MIGRATE-01**: Existing annotations created in v2.3 and earlier appear correctly in v2.4 with no data loss; original creation user becomes the recorded author with a "before-v2.4" device tag.
+- [ ] **MIGRATE-02**: A user still on v2.3 opening a document already migrated to v2.4 sees a "please update the app" gate rather than corrupted data.
+
+## v2 Requirements (deferred to v2.4.x or later)
+
+### Activity Log Power Features (LOG-EXT)
+
+- **LOG-EXT-01**: User can export Activity Log entries to CSV.
+- **LOG-EXT-02**: Right-click an annotation → "Show history" — opens a per-annotation timeline modal.
+- **LOG-EXT-03**: Sync state visible in the title bar / window chrome (in addition to the corner chip).
+
+### Comments (COMMENT)
+
+- **COMMENT-01**: Commenter role can attach comment threads to annotations (currently has no UX).
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Snap-to-angle on line/arrow (Shift-constrain, 45°/90° snap) | Not in combined-tools. User-approved drop 2026-04-14. |
-| Arrow-key nudge on selected line/arrow/callout | Not in combined-tools. Out of scope for a port. |
-| Callout tail shape variants (curved tail, rounded, multi-segment, etc.) | Not in combined-tools. User-approved drop 2026-04-14. |
-| Multiple knees per callout | Combined-tools has exactly one. |
-| Adding arrowhead styles to the existing callout tool | Already has 6 styles. Don't add scope. |
-| Upgrading Fabric.js 5.5.2 → 6.x | Fabric 5.5.2 is load-bearing. Port behavior, not engine. |
-| Changes to annotation save format / Supabase schema | SVG reads same Fabric.js JSON. Zero migration. |
-| Changes to Syncfusion PDF viewer configuration | Viewer layer untouched. |
-| Always-mounted edit canvas for line/arrow/callout (combined-tools pattern) | SVG display + Fabric-edit-on-demand is architecturally locked. Rewrite stays inside that pattern. |
-| Touching `src/App.jsx`, `src/components/PageAnnotationLayer.jsx`, `src/components/FabricEditCanvas.jsx`, `package.json`, `vite.config.js` without explicit per-phase waiver | Always-Protected per `CLAUDE.md`. |
-| PAL's curved-line code path | PAL is the ONLY live consumer of `src/utils/lineGeometry.js` today. Don't entangle PAL with the new wiring. Leave PAL alone. |
-| Polish on rect / circle / ellipse / pen / highlighter / eraser tools | v2.3 is line/arrow/callout only. |
+| Live collaborator cursors on the page | 95% of sessions are same-user-multi-device — no second cursor to show; high build cost vs near-zero value for this audience |
+| Conflict resolution modals on reconnect | Modern collab tools have abandoned these; silent merge is the standard |
+| Per-annotation locks while one user edits | Anti-pattern for survey-correction workflow — would block legitimate concurrent fixes |
+| Per-user color halos around annotations | Construction markup colors carry semantic meaning (red=revision, blue=field, green=approved); halos would corrupt the markup language |
+| Branching / suggestion mode (git-style) | Way over-scoped for a small-team annotation app; not requested |
+| Real-time character-by-character text merge inside text annotations | Per-annotation last-write-wins is sufficient; per-character CRDT inside a text annotation is its own complex subproject |
+| Migration of legacy highlight annotations into the new merge engine | Highlights have a separate Excel-sync subsystem; touching them risks cascade bugs. Stays on the legacy path through v2.4; folded into v2.5 milestone |
 
 ## Traceability
 
-Which phases cover which requirements. Populated by `gsd-roadmapper` on 2026-04-15.
+Empty initially. Roadmapper populates this in the next step (each REQ-ID maps to exactly one phase).
 
-| Requirement | Phase | Plan | Status |
-|-------------|-------|------|--------|
-| LINE-01 | Phase 15 | TBD | Pending |
-| LINE-02 | Phase 15 | TBD | Pending |
-| LINE-03 | Phase 15 | TBD | Pending |
-| LINE-04 | Phase 16 | TBD | Pending |
-| LINE-05 | Phase 16 | TBD | Pending |
-| LINE-06 | Phase 16 | TBD | Pending |
-| ARROW-01 | Phase 15 | TBD | Pending |
-| ARROW-02 | Phase 15 | TBD | Pending |
-| ARROW-03 | Phase 15 | TBD | Pending |
-| ARROW-04 | Phase 15 | TBD | Pending |
-| ARROW-05 | Phase 16 | TBD | Pending |
-| ARROW-06 | Phase 16 | TBD | Pending |
-| ARROW-07 | Phase 16 | TBD | Pending |
-| CALL-01 | Phase 17 | TBD | Pending |
-| CALL-02 | Phase 17 | TBD | Pending |
-| CALL-03 | Phase 17 | TBD | Pending |
-| CALL-04 | Phase 17 | TBD | Pending |
-| CALL-05 | Phase 17 | TBD | Pending |
-| CALL-06 | Phase 18 | TBD | Pending |
-| CALL-07 | Phase 18 | TBD | Pending |
-| CALL-08 | Phase 18 | TBD | Pending |
-| CALL-09 | Phase 18 | TBD | Pending |
-| CALL-10 | Phase 14 | 14-01, 14-03 | **Complete** — Wave 0 pure-utility (14-01) + Wave 2 end-to-end integration (14-03: filteredCallouts unwound, callout-part drag, edit-mode adapter, creation preview) |
-| UX-01 | Phase 14 | 14-02 | **Complete** — tool-crosshair CSS class + isSelectTool/isCreationTool split derivation in SVGAnnotationLayer (Plan 14-02); consumed by Plan 14-03 callout creation path |
-| KBD-01 | Phase 14 | 14-02, 14-03 | **Complete** — extended Delete/Backspace handler with callout branch + focus guard (14-02); selectedCalloutIds state + handleDeleteSelectedCallouts wired in App.jsx (14-03) |
-| CREATE-01 | Phase 14 | 14-02, 14-03 | **Complete** — line/arrow dashed preview in FabricDrawingCanvas (14-02); callout creation state machine + dashed SVG preview + tool-switch cancellation in SVGAnnotationLayer (14-03) |
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| AUTH-01..06 | TBD | Pending |
+| COLLAB-01..04 | TBD | Pending |
+| OFFLINE-01..04 | TBD | Pending |
+| UNDO-01..04 | TBD | Pending |
+| LOG-01..04 | TBD | Pending |
+| RESUME-01 | TBD | Pending |
+| PERM-01..05 | TBD | Pending |
+| MIGRATE-01..02 | TBD | Pending |
 
 **Coverage:**
-- v2.3 requirements: 26 total (6 line, 7 arrow, 10 callout, 3 shared)
-- Mapped to phases: 26 (Phase 14: 4, Phase 15: 7, Phase 16: 6, Phase 17: 5, Phase 18: 4)
-- Unmapped: 0
+- v1 requirements: 28 total
+- Mapped to phases: 0 (pending roadmap)
+- Unmapped: 28 — to be resolved by roadmapper
 
 ---
-*Requirements defined: 2026-04-14*
-*Traceability populated: 2026-04-15 by `gsd-roadmapper` — 26/26 requirements mapped across Phases 14-18.*
+*Requirements defined: 2026-04-27*
+*Last updated: 2026-04-27 after initial definition for v2.4*

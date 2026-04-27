@@ -27,7 +27,32 @@ Phase 13 shipped. EDIT-13 hover pill re-arm via event delegation, EDIT-14
 rescoped mid-plan to "no Fabric transform handles in edit mode" (Figma-style
 separation). v2.1 carry-forward gaps closed. See MILESTONES.md.
 
-## Current Milestone: v2.3 Tools Polish (combined-tools rewrite + unified render)
+## Current Milestone: v2.4 Multi-User Collaboration (CRDT Rebuild)
+
+**Goal:** Replace the current last-write-wins sync model with a Yjs-based CRDT (merge engine) so two users on separate accounts — and the same user across Mac, Windows, and future phone — can edit the same document concurrently or sequentially without ever losing each other's work, with full audit trail of who/which device/when for every change.
+
+**Target features (28 requirements — see REQUIREMENTS.md):**
+- AUTH (6): every change tags user + device + server-authoritative timestamp; right-click "Tags" entry + properties three-dot "Tags" surface
+- COLLAB (4): two separate accounts edit concurrently, presence pill, silent per-property merge
+- OFFLINE (4): edit offline, auto-merge on reconnect, no conflict modal, sync chip clarity
+- UNDO (4): per-user undo (your undo never erases collaborator work), redo
+- LOG (4): activity log sidebar with filters by user/device/page/date/type, click-to-jump
+- RESUME (1): "pick up where you left off" cross-device banner
+- PERM (5): 4-role sharing (owner/editor/commenter/viewer) + revocation flow
+- MIGRATE (2): existing v2.3 annotations migrate cleanly; v2.3 client gates on sealed docs
+
+**Stack:** `yjs@^13.6.30` + `y-protocols@^1.0.7` + `y-indexeddb@^9.0.12` (~15kB MIT). Transport TBD via Phase 2 spike — custom Supabase Realtime adapter (default) vs self-hosted Hocuspocus.
+
+**Phase ordering** (8 phases, ~2 months realistic): foundation → transport spike → Fabric↔Yjs binding + per-user undo → migration dual-write → migration cutover seal → multi-tab + persistence hardening → activity log + awareness → sharing UX + revocation. Phases 1→2→3 strict sequential. Phases 6 and 7 parallelizable. Phase 8 last.
+
+**Architectural anchors:**
+- The v2.0 SVG-display + Fabric-edit-on-demand split is load-bearing and immutable; the CRDT layer wraps under it, never replaces.
+- Highlights stay on the existing legacy sync path through v2.4 (Excel-sync risk); folded into v2.5.
+- Always-Protected files preserved by default; per-phase narrow-lane waivers required for any touch.
+
+**Research:** Full 4-dimension synthesis at `.planning/research/SUMMARY.md`. Previous v2.3 phases 17-18 (callout collision handling + auto-routing) parked to a later polish milestone.
+
+## Previous Milestone: v2.3 Tools Polish (combined-tools rewrite + unified render)
 
 **Goal:** Rewrite the line, arrow, and text callout tools using `combined-tools` as the behavioral baseline, and unify callout rendering onto the same SVG pipeline the other 7 annotation types already use. User-granted rewrite permission 2026-04-14 — don't preserve the current implementations.
 

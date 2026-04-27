@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.3
-milestone_name: Tools Polish
-status: Phase 15 closed (reconciliation 2026-04-19). Phase 16 closed as "Editing UX Cleanup" on 2026-04-20 — original curvature pill scope scrapped by user on preview; phase redirected to shipping callout glow, handles-during-edit, cursor/glyph alignment on wrapped lines, auto-delete of blank callouts, border restore on commit, and text-edit paint parity between view and edit (SVG paints both, Fabric transparent during edit, foreignObject re-key to work around a Chromium inner-HTML reflow bug). Ready to move on.
-stopped_at: Phase 16 closed with reconciliation. Next — pick next phase or dip into the feature backlog (prop-flip wins available: print, clickable links, fillable form fields, native Open/Export menu items).
-last_updated: "2026-04-20T18:50:00.000Z"
-last_activity: "2026-04-20 — Phase 16 redirected + closed. SVG-paints-during-edit restored. Chromium foreignObject re-key workaround + font-smoothing removal shipped. Callout live-bounds broadcast wired."
+milestone: v2.4
+milestone_name: Multi-User Collaboration (CRDT Rebuild)
+status: Milestone v2.4 started 2026-04-27. Research complete (4 dimensions + SUMMARY committed). REQUIREMENTS.md written and user-approved (28 reqs across 8 categories — AUTH, COLLAB, OFFLINE, UNDO, LOG, RESUME, PERM, MIGRATE). Roadmap NOT YET created — paused before spawning gsd-roadmapper to conserve context. v2.3 phases 17-18 (callout collisions / auto-routing) parked to a later milestone — superseded by data-integrity priority. Previous v2.3 requirements archived as REQUIREMENTS-v2.3.md.
+stopped_at: Requirements approved; next action is /gsd:plan-milestone or run gsd-roadmapper to derive phases from REQUIREMENTS.md. Resume with /gsd:resume-work — it should route to the roadmap step.
+last_updated: "2026-04-27T13:30:00.000Z"
+last_activity: "2026-04-27 — v2.4 milestone started. Research synthesized (Yjs CRDT, custom Supabase transport vs Hocuspocus spike-decided in Phase 2, 22 pitfalls catalogued, 8 proposed phases). REQUIREMENTS.md committed. Awaiting roadmap creation."
 progress:
-  total_phases: 6
-  completed_phases: 4
-  total_plans: 8
-  completed_plans: 8
-  percent: 95
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
