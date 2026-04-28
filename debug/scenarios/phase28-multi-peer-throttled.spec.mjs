@@ -1,59 +1,67 @@
 // debug/scenarios/phase28-multi-peer-throttled.spec.mjs
-// Phase 28 Wave 0 scaffold — runs as test.fixme until Plan 28-04 wires the production code.
-// Source: .planning/phases/28-transport-spike-auth-validator/28-CONTEXT.md § Speed bar
-//        + 28-RESEARCH.md Pitfall 5 (CDP throttling required for honest benchmark).
+// Phase 28 Plan 28-04 — Playwright wrapper for the multi-peer throttled-network benchmark.
 //
-// The bake-off speed bar (28-CONTEXT.md):
-//   - 4-5 concurrent peers (test bot accounts per 2026-04-27 decision)
+// The benchmark itself is implemented in tests/phase28/transportSpikeBenchmark.mjs as a
+// Node-driven harness that forks N peer workers, signs each in as a distinct bot, and
+// drives a mixed pen-scribble + drag + text-typing load against the chosen transport.
+// This spec wraps the harness as a Playwright test so it integrates with the project's
+// existing debug:scenario infrastructure.
+//
+// Speed bar from 28-CONTEXT.md (LOCKED):
+//   - 4-5 concurrent peers (dedicated test bot accounts per 2026-04-27 decision)
 //   - Worst-case action mix: pen scribble + shape drag + text typing simultaneously
-//   - Latency target: end-to-end propagation under 500ms (Figma/Google Docs feel)
-//   - Network conditions: normal home/office shared wifi (NOT clean lab wifi)
+//   - Latency target: end-to-end propagation under 500ms (p95)
+//   - Network conditions: throttled wifi (5 Mbps / 1 Mbps / 50ms RTT / 5% loss)
 //
-// CDP throttling profile (Pitfall 5 defense):
-//   - 5 Mbps download / 1 Mbps upload
-//   - 50ms RTT
-//   - 5% packet loss
-//   - Apply via CDPSession.send('Network.emulateNetworkConditions', ...)
+// CDP throttling note: Plan 28-04's harness uses a Node-level network simulator at
+// the channel boundary instead of CDP-level throttling because the transport providers
+// don't go through a CDP-controllable browser layer in the Node-driven harness.
+// Same simulator is applied to BOTH transports for a fair comparison. See
+// transportSpikeBenchmark.mjs header for the full architecture rationale.
 //
-// Plan 28-04 will:
-//   1. Spawn 5 browser contexts (one per peer)
-//   2. All open the same test document
-//   3. Run mixed pen-scribble + drag + text-typing concurrently
-//   4. Sample end-to-end latency for every emitted update
-//   5. Compute p50 / p95 / p99 latencies
-//   6. Assert p95 < 500ms
+// This spec is gated behind PHASE28_BENCHMARK_RUN=1 because each run takes minutes
+// and exercises real Supabase Realtime traffic; it MUST NOT fire on every CI run.
 
 import { test, expect } from '@playwright/test';
+import { spawnSync } from 'node:child_process';
+import { readFileSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 test.describe('Phase 28 — Multi-peer throttled-wifi p95 latency (speed bar)', () => {
-  test.fixme('multi-peer-throttled-wifi-p95-under-500ms', async ({ browser }) => {
-    // TODO Plan 28-04: 5-peer concurrent edit harness
-    //
-    // Step 1: spawn 5 browser contexts (peer A through peer E)
-    // Step 2: in each context, attach a CDPSession and emulate throttled wifi:
-    //           await cdpSession.send('Network.emulateNetworkConditions', {
-    //             offline: false,
-    //             downloadThroughput: 5_000_000 / 8,   // 5 Mbps in bytes/sec
-    //             uploadThroughput: 1_000_000 / 8,    // 1 Mbps in bytes/sec
-    //             latency: 50,                         // 50ms RTT
-    //             packetLoss: 0.05,                    // 5% packet loss
-    //           });
-    // Step 3: each peer signs in as a different test bot account
-    //         (per 28-CONTEXT.md test bot account decision; one-time exception)
-    // Step 4: each peer opens the same test document
-    // Step 5: each peer starts a different action concurrently:
-    //         - peer A: rapid pen scribble (50 ops/sec)
-    //         - peer B: drag an existing shape continuously
-    //         - peer C: type into a text annotation
-    //         - peer D: pen scribble on a different page
-    //         - peer E: drag a different shape
-    // Step 6: for each emitted update, capture the timestamp at originating peer
-    //         and the timestamp at every other peer when the update applies
-    // Step 7: compute p50 / p95 / p99 of (apply_ts - emit_ts) per peer
-    // Step 8: assert p95 < 500ms (the speed bar)
-    //
-    // This test is the canonical home for the multi-peer benchmark assertions.
-    // It calls into tests/phase28/transportSpikeBenchmark.mjs for the load harness.
-    expect(browser).toBeTruthy(); // placeholder — Plan 28-04 fills in
+  test.skip(
+    !process.env.PHASE28_BENCHMARK_RUN,
+    'Spike-only — set PHASE28_BENCHMARK_RUN=1 to run (each run uses real Supabase Realtime traffic)'
+  );
+
+  test('multi-peer-throttled-wifi-p95-under-500ms', async () => {
+    // Spawn the harness as a child process. We use a short --duration here
+    // (30s) so the test completes in a reasonable Playwright timeout window;
+    // the full 5-minute spike runs are driven by Plan 28-04 Task 2 directly,
+    // not via this Playwright wrapper.
+    const tmp = mkdtempSync(join(tmpdir(), 'phase28-bench-'));
+    const reportPath = join(tmp, 'supabase.json');
+
+    const result = spawnSync(
+      'node',
+      [
+        'tests/phase28/transportSpikeBenchmark.mjs',
+        '--transport=supabase',
+        '--peers=5',
+        '--duration=30',
+        '--network=throttled',
+        `--report-out=${reportPath}`,
+      ],
+      {
+        encoding: 'utf8',
+        timeout: 90_000,
+      }
+    );
+
+    expect(result.status, `harness exited ${result.status} — stderr: ${result.stderr}`).toBe(0);
+    const json = JSON.parse(readFileSync(reportPath, 'utf8'));
+    expect(json.samples_count, 'no propagation samples — bench:emit pings did not fan out').toBeGreaterThan(0);
+    expect(json.errors, `expected 0 errors, got ${json.errors}`).toBe(0);
+    expect(json.p95_ms, `p95 ${json.p95_ms}ms exceeds speed bar 500ms`).toBeLessThan(500);
   });
 });
