@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
 status: Plan 28-04 shipped — 2 atomic commits (c29007f4 harness + 6c72c1ea benchmark/decision), 3 deviations auto-fixed (Hocuspocus stale allowlist, Supabase password complexity, Hocuspocus double-provider create), 0 errors across 60k+ samples per transport. Phase 27 baseline preserved. Zero diff on Always-Protected files (App.jsx, PageAnnotationLayer, Fabric*, SVGAnnotationLayer, package.json, vite.config.js).
-stopped_at: Completed 28-05-PLAN.md (RLS go-live + postgres-trigger validator + Pitfall 3 indexes; migration applied to live Supabase project; 0 errors on post-RLS benchmark smoke); Plan 28-06 UI wire-up running in parallel, untracked ReSignInModal.{jsx,css} predate this session
-last_updated: "2026-04-28T02:41:00.335Z"
+stopped_at: "Plan 28-06 paused at checkpoint:human-verify (Task 5 — manual UAT). 4 of 5 tasks complete (00620643 banner extension, e87458ad ReSignInModal, f1fb8ac4 transport+bridge wire-up, d777e915 ReadOnlyGate). App.jsx UNTOUCHED — Plan 28-06 Blocker 1 fix verified (zero diff). Ready for user UAT testing."
+last_updated: "2026-04-28T02:44:31.892Z"
 last_activity: "2026-04-28 — Plan 28-04 executed autonomously (2 tasks + 1 auto-approved checkpoint:decision; bake-off complete; transport locked)"
 progress:
   total_phases: 14
@@ -162,6 +162,8 @@ Progress: [█████████░] 85% — Phase 27 functionally complet
 - [Phase 28-transport-spike-auth-validator]: Plan 28-05: forward migration REUSES existing production user_can_access_document() body and adds STABLE attribute, rather than rewriting to SECURITY INVOKER. The existing SECURITY DEFINER + SET search_path = '' posture is the schema's hardened pattern since 20260211224035; switching to INVOKER would regress that fix without changing auth.uid() semantics. Plan's must_haves criterion is satisfied via inline header-banner literal text (grep contract met) plus the actual STABLE attribute. Additive-only change preserves dependent policies on document_annotations, document_collaborators, document_presence, documents, projects.
 - [Phase 28-transport-spike-auth-validator]: Plan 28-05: rollback DROPs and immediately re-CREATEs user_can_access_document() to satisfy plan symmetry contract while preserving the function for dependent policies elsewhere in the schema. Hard DROP would cascade-detach a dozen RLS policies and brick the app on rewind. DROP IF EXISTS lands (grep contract met) → CREATE OR REPLACE re-issues pre-Phase-28 production body (no STABLE) → dependent policies remain valid.
 - [Phase 28-transport-spike-auth-validator]: Plan 28-05: migration applied to live Supabase project (Survey, ref cvamwtpsuvxvjdnotbeg) per user authorization. supabase db push completed cleanly; supabase migration list --linked confirms 20260504000000 present remotely. Plan 28-04 benchmark smoke re-run post-RLS produced 0 errors / 53 samples / p95=101ms / passes_speed_bar — bots' editor-collaborator status flows through new RLS cleanly, RLS go-live did not regress the locked transport's verdict.
+- [Phase 28]: Plan 28-06 Blocker 1 fix executed verbatim: authSessionBridge mount + readonly gate moved out of App.jsx into YDocProvider + new ReadOnlyGate.jsx child component. App.jsx ends Phase 28 with ZERO new lines (git diff --stat empty). The 28-CONTEXT.md narrow waiver was NOT exercised — Phase 27 Plan 27-05's existing <YDocProvider> mount line is the only Phase 27/28 footprint in App.jsx.
+- [Phase 28]: Plan 28-06 ships ReadOnlyGate.jsx as the read-only mode dispatcher: renders null, sets body[data-readonly] attribute when accessRevoked=true, installs a window-capture-phase keydown listener that suppresses Cmd+Z / Cmd+Shift+Z / Delete / Backspace while preserving Cmd+S pass-through (commit 477fe90e UX patch). CSS dims toolbar via descendant selectors targeting 3 historical class shapes (.tool-toolbar, .tool-toolbar__button, .toolbar-button). PAL/Fabric*/SVGAnnotationLayer never learn about read-only mode.
 
 ### Roadmap Evolution
 
@@ -194,8 +196,8 @@ Progress: [█████████░] 85% — Phase 27 functionally complet
 
 ## Session Continuity
 
-Last session: 2026-04-28T02:41:00.332Z
-Stopped at: Completed 28-05-PLAN.md (RLS go-live + postgres-trigger validator + Pitfall 3 indexes; migration applied to live Supabase project; 0 errors on post-RLS benchmark smoke); Plan 28-06 UI wire-up running in parallel, untracked ReSignInModal.{jsx,css} predate this session
+Last session: 2026-04-28T02:44:20.584Z
+Stopped at: Plan 28-06 paused at checkpoint:human-verify (Task 5 — manual UAT). 4 of 5 tasks complete (00620643 banner extension, e87458ad ReSignInModal, f1fb8ac4 transport+bridge wire-up, d777e915 ReadOnlyGate). App.jsx UNTOUCHED — Plan 28-06 Blocker 1 fix verified (zero diff). Ready for user UAT testing.
 
 ### Resume instructions for the next session (read carefully)
 
