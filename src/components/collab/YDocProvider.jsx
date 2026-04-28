@@ -67,6 +67,22 @@ import { createUndoManager, getLocalFabricOrigin } from '../../lib/collab/crdtUn
 import { CollaboratorOutlineOverlay } from './CollaboratorOutlineOverlay.jsx';
 import { useRemoteEditors } from '../../hooks/useRemoteEditors.js';
 
+// Phase 30 imports — backfill + dual-write retry queue + UI surfaces.
+// Mounted inside YDocProviderInner so the per-document Y.Doc + sessionId
+// + clientID are in scope. Per-(user, document) idempotency is enforced by
+// runBackfill itself via the Y.Map meta marker — Plan 30-02.
+//
+// Surgical Plan 30-06 wiring: 3 additions (backfill mount effect + drainQueue
+// 1Hz tick + useDualWriteQueue subscription) plus 2 render-tree additions
+// (sync_queue_stuck banner gate + QuarantineMarkerOverlay sibling). Existing
+// Phase 27/28/29 code is byte-identical.
+import { runBackfill } from '../../lib/collab/crdtBackfill.js';
+import { drainQueue } from '../../lib/collab/crdtDualWriteQueue.js';
+import { useDualWriteQueue } from '../../hooks/useDualWriteQueue.js';
+import { QuarantineMarkerOverlay } from './QuarantineMarkerOverlay.jsx';
+import { upsertFabricAnnotation } from '../../services/annotationCloudSync.js';
+import { applyFabricCommit } from '../../lib/collab/crdtAnnotationBridge.js';
+
 // Frozen null-shape value reused when CRDT is disabled or docId is unknown.
 // UX: useYDoc() consumers can call hooks unconditionally — the null shape lets them
 // render gracefully (no banner, no fade-in) without branching on "is the provider mounted".
@@ -569,6 +585,179 @@ function YDocProviderInner({ docId, children, closeDocument }) {
   // UX: future-facing — see comment block above for the join plan.
   void remoteEditors;
 
+  // Phase 30 — backfill mount.
+  //
+  // CONTEXT.md `<decisions>` "First-open import feel": silent migration,
+  // deferred kick-off so the PDF page paints first (Pitfall 30-7). The user
+  // never sees a banner / spinner / completion toast — annotations just
+  // appear like normal once the Y.Doc populates.
+  //
+  // Per-(user, document) idempotency lives inside runBackfill via the Y.Doc
+  // meta marker — running this effect on every re-render is harmless beyond
+  // the first run (the marker check short-circuits inside runBackfill).
+  //
+  // Effect deps: ydoc + docId + undoCtx?.userId. Re-runs on document switch
+  // (key={docId}) and on user identity change. The backfillRanRef gate
+  // prevents duplicate kickoffs within a single mount lifecycle (StrictMode
+  // double-mount safety + React effect cleanup edge cases).
+  const backfillRanRef = useRef(null);
+  useEffect(() => {
+    const userId = undoState?.undoCtx?.userId;
+    if (!ydoc || !docId || !userId) return undefined;
+    // Per-mount run-once gate. Track the (docId, userId) pair so a user-switch
+    // (rare in this app but possible via re-auth) re-runs the backfill check.
+    const runKey = `${docId}::${userId}`;
+    if (backfillRanRef.current === runKey) return undefined;
+    backfillRanRef.current = runKey;
+
+    // Test seam: e2e specs poll on window.__crdtBackfillDone to wait for
+    // backfill completion. Initial state false; set true when runBackfill
+    // resolves (Plan 30-01 phase30-backfill-roundtrip.spec.mjs reads this).
+    if (typeof window !== 'undefined') {
+      window.__crdtBackfillDone = false;
+    }
+
+    // Test seam: e2e race-window spec injects a delay so it can draw an
+    // annotation while backfill is in flight. Default 0 in production.
+    const delayMs =
+      (typeof window !== 'undefined' && Number.isFinite(window.__crdtBackfillDelayMs))
+        ? window.__crdtBackfillDelayMs
+        : 0;
+
+    // Origin factory — backfill writes carry the crdt-backfill source tag so
+    // Phase 33 activity log can render a single "Document migrated" row per
+    // migrated document. The factory shape mirrors buildOrigin but the source
+    // value itself is supplied by runBackfill at call time (this factory just
+    // freezes the shape and forwards whatever the source argument is).
+    const originPayloadFactory = ({ source, userId: rowUserId, deviceId, sessionId: sid, clientID: cid }) => Object.freeze({
+      source,
+      userId: rowUserId,
+      deviceId,
+      sessionId: sid,
+      clientID: cid,
+    });
+
+    // Pitfall 30-7 fix — defer via Promise.resolve so the PDF paint completes
+    // first. The user sees the legacy annotations render via React state
+    // (the existing useAnnotationsCRDT layer falls back to the legacy slice
+    // until the Y.Doc has data — the read path is "render whichever side
+    // has data; flip atomically when the Y.Doc populates").
+    let cancelled = false;
+    const kickoff = async () => {
+      if (delayMs > 0) {
+        await new Promise((r) => setTimeout(r, delayMs));
+      }
+      if (cancelled) return;
+      try {
+        await runBackfill({
+          ydoc,
+          supabase,
+          documentId: docId,
+          userId,
+          sessionId,
+          clientID: ydoc.clientID,
+          originPayloadFactory,
+        });
+      } catch (err) {
+        // Silent retry on partial failure per CONTEXT.md. Next first-open
+        // tries again.
+        // eslint-disable-next-line no-console
+        console.warn('[YDocProvider] backfill kickoff failed', err?.message);
+      } finally {
+        if (!cancelled && typeof window !== 'undefined') {
+          window.__crdtBackfillDone = true;
+        }
+      }
+    };
+    Promise.resolve().then(kickoff);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [ydoc, docId, undoState?.undoCtx?.userId, sessionId]);
+
+  // Phase 30 — drainQueue tick (1Hz).
+  //
+  // Retries half-failed dual-write entries silently. CONTEXT.md "Half-failed
+  // save (one of the two writes lands, the other doesn't)" — the queue retries
+  // until success OR quarantine. Pitfall 30-6 (kill-switch flip) is handled
+  // inside drainQueue itself (first-line `if (!isCRDTEnabled()) return`).
+  //
+  // Test seams (window.__crdtForceLegacyFail / window.__crdtForceFailAnnoId)
+  // let e2e specs inject failures without touching production code paths.
+  useEffect(() => {
+    const userId = undoState?.undoCtx?.userId;
+    if (!ydoc || !userId) return undefined;
+    const yMapAnnotations = ydoc.getMap('annotations');
+
+    const retryLegacyWrite = async (payload) => {
+      // Test seam — e2e phase30-stuck-queue-banner.spec.mjs sets this true.
+      if (typeof window !== 'undefined' && window.__crdtForceLegacyFail) {
+        throw new Error('test-seam: __crdtForceLegacyFail');
+      }
+      // Test seam — e2e phase30-quarantine-marker.spec.mjs uses this to fail
+      // a single annoId across many retries.
+      const annoId = payload?.fabricObj?.data?.id;
+      if (typeof window !== 'undefined' && window.__crdtForceFailAnnoId === annoId) {
+        throw new Error('test-seam: __crdtForceFailAnnoId');
+      }
+      const result = await upsertFabricAnnotation(payload.fabricObj, payload.opts);
+      if (result && result.error) throw result.error;
+      return result;
+    };
+
+    const retryCrdtWrite = async (payload) => {
+      // Test seam — same per-anno failure injection on the CRDT side.
+      const annoId = payload?.fabricObj?.data?.id;
+      if (typeof window !== 'undefined' && window.__crdtForceFailAnnoId === annoId) {
+        throw new Error('test-seam: __crdtForceFailAnnoId');
+      }
+      // Synchronous bridge call — wrap throw inside async function for the
+      // queue contract. applyFabricCommit signature:
+      //   (ydoc, yMapAnnotations, fabricObject, originPayload, ctx)
+      applyFabricCommit(
+        ydoc,
+        yMapAnnotations,
+        payload.fabricObj,
+        payload.opts?.originPayload,
+        payload.opts?.ctx,
+      );
+      return { ok: true };
+    };
+
+    const handle = setInterval(() => {
+      drainQueue({
+        userId,
+        retryLegacyWrite,
+        retryCrdtWrite,
+      }).catch(() => {
+        // drainQueue swallows per-entry errors internally; only a handler
+        // construction failure would reach here. Silent — next tick retries.
+      });
+    }, 1_000);
+
+    return () => clearInterval(handle);
+  }, [ydoc, undoState?.undoCtx?.userId]);
+
+  // Phase 30 — UI hook for banner gate + overlay.
+  // Polls localStorage queue state on a 1s tick (Plan 30-05 hook).
+  const dualWriteQueueState = useDualWriteQueue(undoState?.undoCtx?.userId);
+
+  // Phase 30 — test seam for e2e specs that need to assert Y.Doc annotation
+  // count post-backfill. Updates whenever yMapAnnotations.observe fires.
+  useEffect(() => {
+    if (!ydoc) return undefined;
+    const yMap = ydoc.getMap('annotations');
+    const updateCount = () => {
+      if (typeof window !== 'undefined') {
+        window.__ydocAnnotationCount = yMap.size;
+      }
+    };
+    updateCount();
+    yMap.observe(updateCount);
+    return () => yMap.unobserve(updateCount);
+  }, [ydoc]);
+
   const value = useMemo(() => ({
     ydoc,
     isHydrating,
@@ -695,6 +884,45 @@ function YDocProviderInner({ docId, children, closeDocument }) {
           }}
         />
       )}
+      {/* Phase 30 — sync-queue-stuck banner gate.
+          Mount only when no other storage banner is showing (avoids stacking).
+          The stuck threshold (~30s) is computed inside the queue module by
+          getStuckCount; this gate just renders the banner when the count > 0. */}
+      {dualWriteQueueState.stuckCount > 0 &&
+       (!storageState || storageState.code === 'ok') &&
+       !bannerDismissed && (
+        <StorageFailureBanner
+          code="sync_queue_stuck"
+          onDismiss={() => setBannerDismissed(true)}
+          onAction={() => {
+            // UX: "Retry now" — eager flush. Run drainQueue once outside the
+            // 1Hz interval, then let the regular tick continue. If the flush
+            // succeeds (queue drains), the gate above stops rendering the
+            // banner naturally (stuckCount reads zero on next poll).
+            const userId = undoState?.undoCtx?.userId;
+            if (!userId || !ydoc) return;
+            const yMapAnnotations = ydoc.getMap('annotations');
+            // Inline retry handlers — same shape as the interval handlers.
+            // Don't try to factor these out; the test-seam guards live there
+            // and inline keeps this banner-action self-contained.
+            const retryLegacyWrite = async (payload) => {
+              const result = await upsertFabricAnnotation(payload.fabricObj, payload.opts);
+              if (result && result.error) throw result.error;
+              return result;
+            };
+            const retryCrdtWrite = async (payload) => {
+              applyFabricCommit(
+                ydoc, yMapAnnotations,
+                payload.fabricObj,
+                payload.opts?.originPayload,
+                payload.opts?.ctx,
+              );
+              return { ok: true };
+            };
+            drainQueue({ userId, retryLegacyWrite, retryCrdtWrite }).catch(() => { /* silent */ });
+          }}
+        />
+      )}
       {reSignInModalOpen && (
         <ReSignInModal
           isOpen={reSignInModalOpen}
@@ -767,6 +995,30 @@ function YDocProviderInner({ docId, children, closeDocument }) {
           subscription is live; the data is just not yet plumbed to a per-page
           mount point. Documented as a follow-up in 29-06-SUMMARY.md. */}
       <CollaboratorOutlineOverlay editors={[]} />
+
+      {/* Phase 30 — Plan 30-06 render layer: quarantine marker overlay.
+          Mounted at YDocProvider scope so the overlay component lives inside
+          the React tree even before per-page bbox integration is wired.
+          quarantinedAnnotations=[] today because joining quarantinedAnnoIds
+          (from useDualWriteQueue) with per-page bbox + pageSize requires
+          reaching into PAL / SVGAnnotationLayer (Always-Protected). The
+          overlay gracefully renders nothing on empty input. Phase 32 hardening
+          owns the bbox feed (same lane as Phase 29's CollaboratorOutlineOverlay
+          pickup); for now we mount with stub bboxes so the wire-up is in place
+          and the markers float at origin (0,0) on every page until the bbox
+          feed lands. The visible signal user-side until Phase 32 lands is the
+          banner + the TabBar dot — the per-annotation marker requires the
+          per-page bbox plumbing.
+
+          Documented as a follow-up in 30-06-SUMMARY.md / 30-deferred-items.md. */}
+      <QuarantineMarkerOverlay
+        quarantinedAnnotations={dualWriteQueueState.quarantinedAnnoIds.map((id) => ({
+          id,
+          pageNumber: 0,  // Phase 32 hardening will plug in the real per-anno page
+          bbox: { x: 0, y: 0, w: 0, h: 0 },
+        }))}
+        pageNumber={0}
+      />
 
       {/* ReadOnlyGate is the Phase 28 read-only mode dispatcher — renders null
           but sets body[data-readonly] + a window-capture-phase keydown listener
