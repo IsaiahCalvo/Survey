@@ -1,0 +1,65 @@
+/* src/components/collab/QuarantineMarkerOverlay.css
+ *
+ * Phase 30 — quarantine marker styles per 30-UI-SPEC.md Surface 2.
+ * Locked CSS variables from src/App.css — do NOT redefine.
+ *
+ * UX: marker is informational, non-interactive. pointer-events: none on the
+ * root so click / select / right-click on the underlying annotation still
+ * works. Z-index 90 — above SVG annotation content (default 0/auto), below
+ * the storage banner (z-index 100).
+ *
+ * Modeled on Phase 29's CollaboratorOutlineOverlay.css sibling pattern.
+ */
+
+/* Container — fills its parent (typically a per-page coordinate frame).
+ * UX: pointer-events none so clicks pass straight through to the SVG annotation
+ * layer underneath. The marker is informational; never a click target. */
+.quarantine-marker-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  /* z-index 90: above SVG annotations (z 1-2) and the collaborator outline
+     overlay (z 5), but below the storage banner (z 100). */
+  z-index: 90;
+}
+
+/* Per-marker layout — flex row with the dot then the label.
+ * UX: 4px gap (xs token) so the dot and label read as one unit but stay
+ * visually distinct. */
+.quarantine-marker {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 4px;        /* xs token from 30-UI-SPEC.md */
+  pointer-events: none;
+}
+
+/* The 4px-diameter solid red dot.
+ * UX: small enough to register as a marker rather than an alert. flex-shrink 0
+ * prevents the dot from collapsing if the parent flex layout ever competes for
+ * width. */
+.quarantine-marker__dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent-red, #DC3545);
+  flex-shrink: 0;
+}
+
+/* The inline label text.
+ * UX: 11px / weight 400 / muted color so it reads as a status note rather than
+ * an alert. white-space: nowrap prevents the label from wrapping mid-phrase
+ * if the marker sits near the right edge of the page; the HTML title attribute
+ * on the label provides the hover-tooltip fallback when the label is clipped
+ * by viewport edges. */
+.quarantine-marker__label {
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.3;
+  color: var(--text-muted, #9A9A9A);
+  white-space: nowrap;
+}
+
+/* Hover tooltip fallback handled by HTML title attribute on the label —
+ * no custom tooltip styling needed. The title attribute renders the same
+ * copy as the inline label (per 30-UI-SPEC.md). */
