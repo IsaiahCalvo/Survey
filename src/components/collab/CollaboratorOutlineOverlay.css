@@ -1,0 +1,82 @@
+/* src/components/collab/CollaboratorOutlineOverlay.css
+ * Phase 29 — Sibling SVG overlay for remote-collaborator edit-canvas outlines.
+ *
+ * Source of truth: 29-UI-SPEC.md §2 — 2px solid stroke, 4px outset offset,
+ * opacity 0.7, 4px border-radius, pointer-events none, 160ms fade in/out.
+ *
+ * UX rationale: the outline is informational decoration that tells the local
+ * user "another collaborator currently has this annotation open in their edit
+ * canvas". Keeps the affordance subtle (low opacity, thin solid stroke) so it
+ * does NOT compete with the local selection ring (dashed, higher opacity, thicker).
+ * Solid (NOT dashed) prevents misreading as the local selection ring.
+ *
+ * Why a sibling overlay instead of modifying SVGAnnotationLayer:
+ *   SVGAnnotationLayer.jsx is Always-Protected per CLAUDE.md. The outline is
+ *   purely additive chrome that overlays on top — implemented as a sibling
+ *   absolute-positioned <svg> over the same per-page coordinate space. The
+ *   protected SVG layer never learns about awareness state.
+ */
+
+/* Container — fills its parent (typically a per-page coordinate frame).
+ * UX: pointer-events none so clicks pass straight through to the SVG annotation
+ * layer underneath. The outline is informational; never a click target. */
+.collaborator-outline-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  /* z-index 5: above SVG annotations (z 1-2) but below local selection ring
+     (z 10+) per UI-SPEC §2 layering rule. */
+  z-index: 5;
+}
+
+/* Per-rect outline shape.
+ * UX: starts at opacity 0 and fades to 0.7 over 160ms via the @keyframes below.
+ * stroke-width 2px and rx/ry 4 match the locked UI-SPEC §2 visual contract.
+ * stroke color is overridden inline at render time via the per-user CSS variable
+ * --user-color-N (1..6). */
+.collaborator-outline-overlay__rect {
+  fill: none;
+  stroke-width: 2px;
+  stroke: var(--user-color-1, #4A90E2);
+  opacity: 0;
+  pointer-events: none;
+  rx: 4;
+  ry: 4;
+  animation: collaborator-outline-fade-in 160ms ease-out forwards;
+}
+
+/* Exit animation — applied when the rect is unmounting.
+ * UX: in practice React unmounts the rect before this animation completes; the
+ * class is here for any future caller that wants a deliberate exit transition
+ * (e.g. a wrapper that delays unmount via a useTransition pattern). */
+.collaborator-outline-overlay__rect--exiting {
+  animation: collaborator-outline-fade-out 160ms ease-out forwards;
+}
+
+@keyframes collaborator-outline-fade-in {
+  to { opacity: 0.7; }
+}
+
+@keyframes collaborator-outline-fade-out {
+  from { opacity: 0.7; }
+  to { opacity: 0; }
+}
+
+/* Per-user color slots (UI-SPEC §"Per-user outline color" palette).
+ *
+ * UX rationale: 6 distinct colors so two collaborators on the same document
+ * almost never collide; slot 7+ wraps to slot 1 (acceptable for v2.4). Colors
+ * chosen for high contrast against both the dark app chrome and typical PDF
+ * white/cream backgrounds. Phase 33 reuses these slots for the cursor pill /
+ * presence list so the user has a continuous mental model.
+ *
+ * --user-color-1 intentionally matches --accent-primary because the local user
+ * never sees their own outline (useRemoteEditors filters self by clientID). */
+:root {
+  --user-color-1: #4A90E2;   /* same as --accent-primary; local user never sees own outline */
+  --user-color-2: #E29B4A;   /* warm orange */
+  --user-color-3: #7BC96F;   /* green */
+  --user-color-4: #C586E2;   /* lavender */
+  --user-color-5: #F25F5C;   /* coral */
+  --user-color-6: #4FB8B8;   /* teal */
+}
