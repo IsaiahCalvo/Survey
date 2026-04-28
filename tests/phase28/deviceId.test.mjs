@@ -26,14 +26,17 @@ const TARGET = resolve(REPO_ROOT, 'src/lib/collab/deviceId.js');
 // grep matches every invocation. Pattern lifted from tests/phase27/schemaPresence.test.mjs.
 
 // Each test installs its own scoped window/localStorage mock so state doesn't bleed
-// across tests. The detector restores the previous globals before returning.
-function withMockWindow(mockWindow, fn) {
+// across tests. The detector restores the previous globals AFTER fn() fully resolves
+// (await is required because fn() may be async — without await, finally runs while
+// fn's async body is still suspended on its first await, restoring window mid-call
+// and breaking any test that calls getDeviceId() across an await boundary).
+async function withMockWindow(mockWindow, fn) {
   const savedWindow = globalThis.window;
   const savedLocalStorage = globalThis.localStorage;
   globalThis.window = mockWindow;
   globalThis.localStorage = mockWindow?.localStorage;
   try {
-    return fn();
+    return await fn();
   } finally {
     if (savedWindow === undefined) delete globalThis.window;
     else globalThis.window = savedWindow;
