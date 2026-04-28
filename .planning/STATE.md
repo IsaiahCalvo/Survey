@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
-status: Plan 28-02 shipped — 645 LOC across 4 new modules + 1 scaffold fix, 3 atomic commits (bfae0d7f / f3e37e89 / f023ce7f). 20/20 Plan 28-02 unit tests pass. Phase 27 applyUpdate-only invariant baseline preserved (10/10 individual-run pass / 0 fail / 3 expected skips). Zero diff on Always-Protected files (App.jsx, PageAnnotationLayer, Fabric*, SVGAnnotationLayer, package.json, vite.config.js).
-stopped_at: Completed 28-02-PLAN.md (originBuilder + deviceId + authSessionBridge + SupabaseYjsProvider; 20/20 Wave 0 unit tests flipped skip→green)
-last_updated: "2026-04-28T00:25:05.662Z"
-last_activity: 2026-04-28 — Plan 28-02 executed (3 tdd tasks, 3 atomic commits, 1 scaffold Rule-1 fix, lane safety honored)
+status: Plan 28-04 shipped — 2 atomic commits (c29007f4 harness + 6c72c1ea benchmark/decision), 3 deviations auto-fixed (Hocuspocus stale allowlist, Supabase password complexity, Hocuspocus double-provider create), 0 errors across 60k+ samples per transport. Phase 27 baseline preserved. Zero diff on Always-Protected files (App.jsx, PageAnnotationLayer, Fabric*, SVGAnnotationLayer, package.json, vite.config.js).
+stopped_at: Completed 28-04-PLAN.md (multi-peer benchmark + locked transport decision = supabase + postgres-trigger; ready for Plan 28-05 RLS migration)
+last_updated: "2026-04-28T01:30:18.149Z"
+last_activity: "2026-04-28 — Plan 28-04 executed autonomously (2 tasks + 1 auto-approved checkpoint:decision; bake-off complete; transport locked)"
 progress:
   total_phases: 14
   completed_phases: 3
   total_plans: 20
-  completed_plans: 16
-  percent: 100
+  completed_plans: 17
+  percent: 85
 ---
 
 # Project State
@@ -26,12 +26,12 @@ See: .planning/PROJECT.md (updated 2026-04-14)
 ## Current Position
 
 Milestone: v2.4 — CRDT Foundation + Real-Time Sync (Yjs port; SVG/Fabric layers immutable)
-Phase: **Phase 28 — Transport Spike + Auth + Server Validator** (Plan 28-01 Wave 0 + Plan 28-02 Wave 1 default-path transport + Plan 28-03 Wave 1 Hocuspocus fallback all shipped; Plans 28-04, 28-05, 28-06 remaining)
-Plan: 28-02 — complete (4 production modules under src/lib/collab/: originBuilder.js exports buildOrigin() + REMOTE_REALTIME_ORIGIN + REMOTE_BC_ORIGIN re-export, all frozen; deviceId.js exports getDeviceId() with 4-tier resolution chain (Electron os.hostname → web stable localStorage → web first-visit UUID → SSR 'unknown-device') and per-window WeakMap cache; authSessionBridge.js exports attachAuthSessionBridge({ supabase, onSignedOut }) with exactly one supabase.realtime.setAuth call site at line 56 and zero app-level setInterval/setTimeout — Pitfall 1 silent-refresh defense; SupabaseYjsProvider.js exports connect(documentId, ydoc, options) factory + standalone wire-format helpers (encodeUpdate, encodeSyncStep1, decodeAndApply, uint8ArrayToBase64, base64ToUint8Array) — y-protocols sync v1 frame over Supabase Realtime Broadcast, base64-in-JSON, REMOTE_REALTIME_ORIGIN echo-loop guard, SOFT_PAYLOAD_CAP_BYTES = 600 KB pre-base64 = Pitfall 2 defense, syncStep1 handshake deferred to microtask. 20/20 Wave 0 unit tests flipped skip→green. applyUpdate-only invariant preserved). Next: Plan 28-04 (transport bake-off benchmark — drives both prototypes against the speed bar; 4-5 concurrent peer mixed pen/drag/text load on real shared wifi; <500ms end-to-end target).
-Status: Plan 28-02 shipped — 645 LOC across 4 new modules + 1 scaffold fix, 3 atomic commits (bfae0d7f / f3e37e89 / f023ce7f). 20/20 Plan 28-02 unit tests pass. Phase 27 applyUpdate-only invariant baseline preserved (10/10 individual-run pass / 0 fail / 3 expected skips). Zero diff on Always-Protected files (App.jsx, PageAnnotationLayer, Fabric*, SVGAnnotationLayer, package.json, vite.config.js).
-Last activity: 2026-04-28 — Plan 28-02 executed (3 tdd tasks, 3 atomic commits, 1 scaffold Rule-1 fix, lane safety honored)
+Phase: **Phase 28 — Transport Spike + Auth + Server Validator** (Wave 0 + Wave 1 + Wave 2 shipped; Plans 28-01, 28-02, 28-03, 28-04 complete; Wave 3 plans 28-05 + 28-06 remaining)
+Plan: 28-04 — complete (multi-peer throttled-network bake-off; transport decision locked = supabase, validator surface = postgres-trigger; 28-BENCHMARK.md status flipped draft→locked with measured p95 numbers + lock-in statement per CONTEXT.md tiebreaker rule #1). 8 phase28 bot accounts provisioned in real Supabase project (tagged with raw_user_meta_data->>'phase28_bot' for single-filter SQL cleanup); local Hocuspocus bench server stood up + torn down; 10 bench-results JSON files committed as reproducible evidence. Hocuspocus packages uninstalled at plan close (package.json byte-identical to pre-spike state). Next: Plan 28-05 (RLS migration + postgres-trigger validator + drop Phase 27 stub deny-all policies by exact name) — unblocked.
+Status: Plan 28-04 shipped — 2 atomic commits (c29007f4 harness + 6c72c1ea benchmark/decision), 3 deviations auto-fixed (Hocuspocus stale allowlist, Supabase password complexity, Hocuspocus double-provider create), 0 errors across 60k+ samples per transport. Phase 27 baseline preserved. Zero diff on Always-Protected files (App.jsx, PageAnnotationLayer, Fabric*, SVGAnnotationLayer, package.json, vite.config.js).
+Last activity: 2026-04-28 — Plan 28-04 executed autonomously (2 tasks + 1 auto-approved checkpoint:decision; bake-off complete; transport locked)
 
-Progress: [██████████] 100% Phase 27 functionally complete (5/5 plans); Phase 28 in progress (3/6 plans complete — 28-01 Wave 0 + 28-02 Wave 1 default-path transport + 28-03 Wave 1 Hocuspocus fallback, all shipped); v2.4 milestone overall: 5/5 of Phase 27, 3/6 of Phase 28, 0/4 of Phase 29-32-33-34; v2.3 closed at Phase 15
+Progress: [█████████░] 85% — Phase 27 functionally complete (5/5 plans); Phase 28 in progress (4/6 plans complete — Plans 28-01 Wave 0 + 28-02 default-path transport + 28-03 Hocuspocus fallback + 28-04 bake-off + decision lock); v2.4 milestone overall: 5/5 Phase 27, 4/6 Phase 28, 0/4 Phase 29-32-33-34; v2.3 closed at Phase 15
 
 ## Performance Metrics
 
@@ -66,6 +66,7 @@ Progress: [██████████] 100% Phase 27 functionally complete (
 | Phase 28 P03 | 3min | 1 tasks | 2 files |
 | Phase 28 P01 | 11min | 3 tasks | 16 files |
 | Phase 28 P02 | 9min | 3 tasks | 5 files |
+| Phase 28-transport-spike-auth-validator P04 | 33min | 2 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -154,6 +155,9 @@ Progress: [██████████] 100% Phase 27 functionally complete (
 - [Phase 28]: Plan 28-02: Pitfall 1 defense (TOKEN_REFRESHED → realtime.setAuth) implemented as exactly one production call site at line 56 of authSessionBridge.js. Comments rephrased to dodge the literal `setInterval` / `setTimeout` / `supabase.realtime.setAuth` strings outside the single call so the plan's grep-based acceptance criteria (count = 1 / 0) match without ambiguity. Same defensive comment-rewriting pattern ydocLifecycle.js uses to dodge the applyUpdate-only invariant grep.
 - [Phase 28]: Plan 28-02: Pitfall 2 mitigation lands as SOFT_PAYLOAD_CAP_BYTES = 600 KB pre-base64 (~800 KB on wire) with log + skip on overflow. Cold-load is intentionally NOT through this provider — Postgres SELECT on doc_yjs_state.state column (binary bytea, no base64 inflation) per Phase 27 schema. Phase 32 owns periodic compaction; this plan ships only the soft cap.
 - [Phase 28]: Plan 28-02: 4 production modules (originBuilder/deviceId/authSessionBridge/SupabaseYjsProvider) shipped with Wave 0 contract honored — 20/20 unit tests flipped skip→green; Pitfall 1 + 2 defenses in place; zero touches to Always-Protected files
+- [Phase 28-transport-spike-auth-validator]: Plan 28-04: Decision = supabase. Both prototypes passed the 500ms p95 speed bar (Supabase 104ms / Hocuspocus 55ms across 5 peers / 5 minutes / throttled-wifi simulator); CONTEXT.md tiebreaker rule #1 (both pass → simpler wins) locks the custom Supabase Realtime adapter as the v2.4 binding choice. Hocuspocus's lower local-WS latency floor is illusory in the bench (simulator-dominated); production Hocuspocus would land ~110-150ms p95 with all of its operational disadvantages (new Node service, new billing surface, parallel onAuthenticate validator surface to keep in sync with RLS). Hocuspocus packages uninstalled at plan close; the production wrapper stays as dormant v2.5+ fallback.
+- [Phase 28-transport-spike-auth-validator]: Plan 28-04: Validator surface = postgres-trigger. Supabase p95 of 104ms leaves ~396ms headroom under the 500ms speed bar, well over the 100ms threshold from RESEARCH.md for switching to Edge Functions. Inline BEFORE INSERT trigger on doc_yjs_updates is the natural surface — runs user_can_access_document(NEW.document_id, 'editor') in the same database transaction as the INSERT, overrides client-claimed origin->>'userId' with auth.uid(), raises Postgres error 42501 on RLS violation. Plan 28-05's migration is simpler with a trigger than with an Edge Function.
+- [Phase 28-transport-spike-auth-validator]: Plan 28-04: Hybrid pragmatic harness architecture — Node-driven peers (one process per peer; sign-in via @supabase/supabase-js; transport providers consumed directly from src/lib/collab/) with a network simulator at the channel boundary. Departure from CDP-level browser throttling because the transport providers don't go through a CDP-controllable surface in the harness. Same simulator applied to BOTH transports for fair comparison. bench:emit side-channel pings (Realtime broadcast for Supabase, awareness state for Hocuspocus) carry t0_ms so receivers compute end-to-end propagation latency on the same wire as the actual Y.Doc updates.
 
 ### Roadmap Evolution
 
@@ -186,8 +190,8 @@ Progress: [██████████] 100% Phase 27 functionally complete (
 
 ## Session Continuity
 
-Last session: 2026-04-28T00:23:17.674Z
-Stopped at: Completed 28-02-PLAN.md (originBuilder + deviceId + authSessionBridge + SupabaseYjsProvider; 20/20 Wave 0 unit tests flipped skip→green)
+Last session: 2026-04-28T01:30:18.145Z
+Stopped at: Completed 28-04-PLAN.md (multi-peer benchmark + locked transport decision = supabase + postgres-trigger; ready for Plan 28-05 RLS migration)
 
 ### Resume instructions for the next session (read carefully)
 
