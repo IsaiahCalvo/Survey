@@ -23,10 +23,49 @@ import {
   deserializeRowsToCallouts
 } from './annotationTypeSerializers.js';
 
-const NON_HIGHLIGHT_TYPES = [
+// Phase 30 — Migration Phase A — Dual-Write Era (narrow waiver per
+// 30-CONTEXT.md DO NOT CHANGE list). The two functions added below
+// (dualWriteFabricCommit + dualWriteFabricDelete) fan out new-annotation
+// saves to BOTH the legacy document_annotations row (existing behavior,
+// byte-identical) AND the CRDT path via the Phase 29 bridge.
+//
+// CONTEXT.md "No 'diff = delete' logic anywhere" architectural lock — these  // NO_DIFF_DELETE_OK: docstring describes the lock the file honors.
+// fan-out functions NEVER read both stores and delete the difference. If    // NO_DIFF_DELETE_OK: docstring describes what the lock forbids.
+// one side fails, the failed side enqueues for retry; the other side stays
+// as-is. Defends Pitfall 5 (the simple-sync killer in CRDT clothing).
+//
+// NO_DIFF_DELETE_OK: the only `delete` calls in this file are user-initiated
+// (deleteAnnotation / deleteAnnotations / dualWriteFabricDelete) and target
+// a single annoId. Never compare-then-delete-the-diff.  // NO_DIFF_DELETE_OK: docstring; pattern explicitly banned.
+//
+// Scanned by scripts/check-no-diff-delete.mjs.  // NO_DIFF_DELETE_OK: docstring references the gate script by name.
+import { applyFabricCommit, applyFabricDelete } from '../lib/collab/crdtAnnotationBridge.js';
+import { isCRDTEnabled } from '../lib/collab/crdtFeatureFlag.js';
+import { enqueue as enqueueDualWrite } from '../lib/collab/crdtDualWriteQueue.js';
+
+export const NON_HIGHLIGHT_TYPES = [
   'ink', 'freetext', 'square', 'circle', 'line', 'polyline', 'polygon',
   'stamp', 'sticky_note', 'callout', 'counter', 'eraser'
 ];
+
+/**
+ * Phase 30 — infer the annotation type from a Fabric object so the dual-write
+ * fan-out can apply the highlight carve-out without trusting opts.annotation_type
+ * to be passed in. Mirrors the existing serializeFabricObjectToRow logic.
+ *
+ * NOTE: this is a Phase 30 addition; existing call sites do not consume it.
+ */
+function inferAnnotationTypeForDualWrite(fabricObj, opts) {
+  // Prefer explicit opts.annotation_type when caller already knows the type.
+  if (opts && typeof opts.annotation_type === 'string' && opts.annotation_type.length > 0) {
+    return opts.annotation_type;
+  }
+  // Fall back to fabric.data.annotationType (set by serializer).
+  const fromData = fabricObj?.data?.annotationType;
+  if (typeof fromData === 'string' && fromData.length > 0) return fromData;
+  // Last resort: fabric type itself (matches existing convention).
+  return fabricObj?.type || 'unknown';
+}
 
 /**
  * Push a single Fabric object up to the cloud. Inserts or updates by
@@ -441,5 +480,167 @@ function routeRow(event, row, callbacks, currentUserId, currentSessionId) {
     } catch (err) {
       console.warn('[CloudSync] failed to deserialize fabric row: ' + (err?.message || String(err)));
     }
+  }
+}
+
+/**
+ * Phase 30 — Dual-write fan-out for a single Fabric annotation save (create/edit).
+ *
+ * Behavior:
+ *   - ALWAYS fires the legacy upsertFabricAnnotation. v2.3 clients still in the
+ *     wild read from this column; the dual-write era keeps them whole.
+ *   - If isCRDTEnabled() is false → legacy only (kill switch override; current
+ *     behavior unchanged for kill-switch-off deployments).
+ *   - If annotation_type === 'highlight' → legacy only (Excel-sync carve-out
+ *     locked by CONTEXT.md "Highlights skipped"; v2.5 owns highlight migration).
+ *   - Otherwise fires applyFabricCommit through the Phase 29 bridge.
+ *   - Each side has its own try/catch. On failure, enqueues to the retry queue
+ *     (latest-version-wins per annoId). NEVER deletes from either side to
+ *     "match" the other.
+ *
+ * @param {object} fabricObj - the Fabric annotation to save
+ * @param {object} opts
+ * @param {string} opts.documentId - document UUID (also threaded into legacy upsert opts)
+ * @param {string} opts.userId - the saving user's UUID (used for queue keying + legacy opts)
+ * @param {Y.Doc} [opts.ydoc] - per-document Y.Doc (skipped if kill switch off)
+ * @param {Y.Map} [opts.yMapAnnotations] - ydoc.getMap('annotations')
+ * @param {object} [opts.originPayload] - origin payload from originBuilder.buildOrigin (with source: 'local-fabric' for live edits)
+ * @param {object} [opts.ctx] - { userId, deviceId, sessionId, clientID } passed to bridge
+ * @param {string} [opts.annotation_type] - explicit annotation_type for highlight filter
+ * @returns {Promise<{legacy: any, crdt: { ok: boolean } | { error: any } | null}>}
+ */
+export async function dualWriteFabricCommit(fabricObj, opts = {}) {
+  const annotationType = inferAnnotationTypeForDualWrite(fabricObj, opts);
+  const isHighlight = annotationType === 'highlight';
+
+  // ALWAYS fire legacy. v2.3 clients still read this column during the
+  // dual-write era. Preserves existing behavior byte-identical when kill
+  // switch is off.
+  let legacyResult;
+  try {
+    legacyResult = await upsertFabricAnnotation(fabricObj, opts);
+    // upsertFabricAnnotation returns { data, error } — treat error truthy as
+    // a failed save and enqueue. Mirrors the existing call pattern.
+    if (legacyResult && legacyResult.error) {
+      const annoId = fabricObj?.data?.id;
+      if (opts.userId && annoId) {
+        enqueueDualWrite({
+          userId: opts.userId,
+          annoId,
+          side: 'legacy',
+          payload: { fabricObj, opts },
+        });
+      }
+    }
+  } catch (err) {
+    legacyResult = { data: null, error: err };
+    const annoId = fabricObj?.data?.id;
+    if (opts.userId && annoId) {
+      enqueueDualWrite({
+        userId: opts.userId,
+        annoId,
+        side: 'legacy',
+        payload: { fabricObj, opts },
+      });
+    }
+  }
+
+  // Skip CRDT side when kill switch off OR highlight — clean skip, no scary
+  // fallback. Returns null for the crdt side so callers can detect the skip.
+  if (!isCRDTEnabled() || isHighlight) {
+    return { legacy: legacyResult, crdt: null };
+  }
+
+  // CRDT-side write through the Phase 29 bridge. Synchronous (the bridge
+  // wraps ydoc.transact internally; no await needed).
+  if (!opts.ydoc || !opts.yMapAnnotations) {
+    // Defensive: if the caller didn't thread Yjs context through, treat as
+    // a CRDT-side miss and skip without enqueueing. The caller is responsible
+    // for threading these inside <YDocProvider>.
+    return { legacy: legacyResult, crdt: null };
+  }
+
+  try {
+    applyFabricCommit(opts.ydoc, opts.yMapAnnotations, fabricObj, opts.originPayload, opts.ctx);
+    return { legacy: legacyResult, crdt: { ok: true } };
+  } catch (err) {
+    const annoId = fabricObj?.data?.id;
+    if (opts.userId && annoId) {
+      enqueueDualWrite({
+        userId: opts.userId,
+        annoId,
+        side: 'crdt',
+        payload: { fabricObj, opts },
+      });
+    }
+    return { legacy: legacyResult, crdt: { error: err } };
+  }
+}
+
+/**
+ * Phase 30 — Dual-write fan-out for a single Fabric annotation delete.
+ *
+ * Same shape as dualWriteFabricCommit: ALWAYS fires legacy delete; conditionally
+ * fires CRDT-side delete via the bridge. Highlight carve-out preserved.
+ *
+ * @param {string} documentId
+ * @param {string} annoId - the stable per-annotation UUID (== highlight_id)
+ * @param {object} opts
+ * @param {string} opts.userId
+ * @param {Y.Doc} [opts.ydoc]
+ * @param {Y.Map} [opts.yMapAnnotations]
+ * @param {object} [opts.originPayload]
+ * @param {string} [opts.annotation_type]
+ * @returns {Promise<{legacy: any, crdt: { ok: boolean } | { error: any } | null}>}
+ */
+export async function dualWriteFabricDelete(documentId, annoId, opts = {}) {
+  const isHighlight = opts.annotation_type === 'highlight';
+
+  let legacyResult;
+  try {
+    legacyResult = await deleteAnnotation(documentId, annoId);
+    if (legacyResult && legacyResult.error) {
+      if (opts.userId && annoId) {
+        enqueueDualWrite({
+          userId: opts.userId,
+          annoId,
+          side: 'legacy',
+          payload: { op: 'delete', documentId, annoId, opts },
+        });
+      }
+    }
+  } catch (err) {
+    legacyResult = { data: null, error: err };
+    if (opts.userId && annoId) {
+      enqueueDualWrite({
+        userId: opts.userId,
+        annoId,
+        side: 'legacy',
+        payload: { op: 'delete', documentId, annoId, opts },
+      });
+    }
+  }
+
+  if (!isCRDTEnabled() || isHighlight) {
+    return { legacy: legacyResult, crdt: null };
+  }
+
+  if (!opts.ydoc || !opts.yMapAnnotations) {
+    return { legacy: legacyResult, crdt: null };
+  }
+
+  try {
+    applyFabricDelete(opts.ydoc, opts.yMapAnnotations, annoId, opts.originPayload);
+    return { legacy: legacyResult, crdt: { ok: true } };
+  } catch (err) {
+    if (opts.userId && annoId) {
+      enqueueDualWrite({
+        userId: opts.userId,
+        annoId,
+        side: 'crdt',
+        payload: { op: 'delete', documentId, annoId, opts },
+      });
+    }
+    return { legacy: legacyResult, crdt: { error: err } };
   }
 }
