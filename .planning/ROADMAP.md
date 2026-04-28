@@ -438,7 +438,15 @@ Plans:
   6. **Redo works** (UNDO-04) — Cmd+Shift+Z / Ctrl+Y redoes the most recently undone action without affecting collaborator work.
   7. **SVG-Fabric-Y.Doc identity contract holds** — Annotation IDs are stable uuids; lookups across all three layers use the same key. Per-mount registry `Map<annoId, FabricObject>` populated on mount, cleared on unmount. (Pitfall 6)
 
-**Plans**: TBD (populated by `/gsd:plan-phase 29`)
+**Plans**: 6 plans
+
+Plans:
+- [ ] 29-01-PLAN.md — Wave 0 test scaffolds (13 unit + 13 e2e existsSync skip-guarded; zero src/ changes)
+- [ ] 29-02-PLAN.md — Wave 1 crdtAnnotationBridge.js (pure module — applyFabricCommit + applyFabricDelete + applyYUpdateToFabric + isApplyingRemote belt + microtask reset)
+- [ ] 29-03-PLAN.md — Wave 1 crdtUndoManager.js (per-user Y.UndoManager with memoized origin reference equality — Pitfall 7 mitigation)
+- [ ] 29-04-PLAN.md — Wave 2 useAnnotationsCRDT hook + YDocProvider mounts UndoManager + App.jsx handleUndo/handleRedo waiver
+- [ ] 29-05-PLAN.md — Wave 2 FabricEditCanvas commit-path waiver + per-word stopCapturing + mid-drag cancel + eraser session bracket
+- [ ] 29-06-PLAN.md — Wave 2 CollaboratorOutlineOverlay + StorageFailureBanner annotation_remote_deleted variant + toast queue + restore wiring
 
 ### Phase 30: Migration Phase A — Dual-Write Era
 
