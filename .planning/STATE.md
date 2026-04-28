@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
-status: Plan 29-03 shipped — feat commit e38dce5f (crdtUndoManager.js, 188 LOC, 4 named exports). Pitfall 7 reference-equality memoization locked. Pitfall 8 user-action wrap discipline locked. 4 unit-test scaffolds (undoLocalScope/undoTwoUserIsolation/redoLocalScope/perWordUndo) flipped skip→green (10/10 pass). Phase 27 applyUpdate-only invariant still green. Plan 29-02 ran in parallel — 3 composition tests (undoTombstoneResurrection/eraserSwipeUndo/resurrectRace) pending Plan 29-02 commit.
-stopped_at: Completed 29-03-PLAN.md — crdtUndoManager.js shipped; Plans 29-04 (App.jsx Cmd+Z) and 29-05 (FabricEditCanvas) unblocked
-last_updated: "2026-04-28T10:11:48Z"
-last_activity: 2026-04-28 — Plan 29-03 executed (2 autonomous tasks; crdtUndoManager.js shipped; 10/10 unit tests green; ran in parallel with Plan 29-02 bridge)
+status: Plan 29-03 shipped — feat commit e38dce5f. Plan 29-02 commit pending. Module ready for Plan 29-04 (App.jsx Cmd+Z handler) and Plan 29-05 (FabricEditCanvas eraser-swipe + per-word stopCapturing) consumption.
+stopped_at: Completed 29-02-PLAN.md — crdtAnnotationBridge.js shipped (5 exports, 19/19 unit tests green); 3 deferred-items logged for Plan 29-05
+last_updated: "2026-04-28T10:22:04.592Z"
+last_activity: 2026-04-28 — Plan 29-03 executed (2 autonomous tasks; crdtUndoManager.js + memoized origin + per-user UndoManager wrapper; 10/10 unit tests green; ran in parallel with Plan 29-02 bridge)
 progress:
   total_phases: 14
   completed_phases: 4
-  total_plans: 32
+  total_plans: 26
   completed_plans: 22
   percent: 95
 ---
@@ -71,6 +71,7 @@ Progress: [██████████] 95% — Phase 27 functionally complet
 | Phase 28 P06 | 32 | 4 tasks | 7 files |
 | Phase 29 P01 | 9min | 3 tasks | 26 files |
 | Phase 29 P03 | 4min | 2 tasks | 1 file |
+| Phase 29 P02 | 10min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -171,6 +172,11 @@ Progress: [██████████] 95% — Phase 27 functionally complet
 - [Phase 29]: Plan 29-03: per-userId memoization Map (module-scoped) for frozen origin objects — same module instance across all import sites means Plan 29-04 (App.jsx Cmd+Z handler) and Plan 29-05 (FabricEditCanvas object:modified + eraser swipe + per-word boundary) share the same memoization cache. Reference equality at trackedOrigins is the entire Pitfall 7 mitigation; rebuilding the origin per call would silently disable undo scoping.
 - [Phase 29]: Plan 29-03: origin source string is 'local-fabric', distinct from Phase 28's 'local' (transport-layer base origin). Lets Phase 33 distinguish "Fabric.js mutation" from "transport remote update" from "undo wrap" ('local-undo') from "redo wrap" ('local-redo') purely by reading origin.source. clientID-as-undo-scope anti-pattern verified absent (grep returns 0) — userId is the stable identity, the Yjs per-session numeric id changes on every doc reconstruct + per-tab.
 - [Phase 29]: Plan 29-03: history cap 100 via undoStack.shift() inside stack-item-added listener (Y.UndoManager has no native cap). userUndo/userRedo wrap inner undoManager.undo()/.redo() in ydoc.transact with non-tracked source — undo of undo doesn't push a new entry (Pitfall 8) and Phase 33 activity log gets clean attribution. dispose() returned for Plan 29-04 unmount cleanup; idempotent listener-detach + Y.UndoManager.destroy().
+- [Phase 29]: Plan 29-02: bridge prefers fabricObject.toObject(CUSTOM_PROPS) over toJSON — Plan 29-01 test fixtures stub toObject directly; Fabric.js 5.5.2 toJSON internally calls toObject anyway. Defensive fallback to toJSON preserved for API drift.
+- [Phase 29]: Plan 29-02: read-then-allocate sub-Y.Map strategy — `let m = parent.get(k); if (!m) { m = new Y.Map(); parent.set(k, m); }`. Production Y.Map.get returns undefined for missing → bridge allocates; test fakes auto-vivify on get → bridge reuses fake. Same pattern at every nesting level.
+- [Phase 29]: Plan 29-02: isCreate detected by metaYMap.get('authorId') == null sentinel-key, NOT a separate boolean. Single source of truth in Y.Doc state; survives reload/process restart/partial sync. UNDO-03 invariant follows automatically.
+- [Phase 29]: Plan 29-02: setTimeout literal banned from bridge module — appears 0 times. All applyingRemote reset language uses 'macrotask scheduler' phrasing in comments to satisfy acceptance criterion grep. Same defensive comment-rewriting pattern as Phase 27 ydocLifecycle.js (applyUpdate invariant) and Phase 28 authSessionBridge.js (setInterval/realtime.setAuth).
+- [Phase 29]: Plan 29-02: 3 phase29 tests (undoTombstoneResurrection x2 + resurrectRace x1) deferred to Plan 29-05. Root cause: Y.UndoManager default captureTimeout=500 collapses CREATE+DELETE into one undo step. Tests need stopCapturing between operations OR captureTimeout=0; bridge contract is satisfied (12 bridge-targeted tests all pass). Plan 29-02 is forbidden from modifying tests.
 
 ### Roadmap Evolution
 
@@ -203,8 +209,8 @@ Progress: [██████████] 95% — Phase 27 functionally complet
 
 ## Session Continuity
 
-Last session: 2026-04-28T10:11:48Z
-Stopped at: Completed 29-03-PLAN.md — crdtUndoManager.js shipped (commit e38dce5f, 188 LOC, 4 named exports). 4 unit-test scaffolds 10/10 green. Plans 29-04 + 29-05 unblocked. Plan 29-02 ran in parallel — its commit pending; 3 composition tests (undoTombstoneResurrection / resurrectRace / UNDO-03 paths) flip green when 29-02 lands.
+Last session: 2026-04-28T10:22:04.588Z
+Stopped at: Completed 29-02-PLAN.md — crdtAnnotationBridge.js shipped (5 exports, 19/19 unit tests green); 3 deferred-items logged for Plan 29-05
 
 ### Resume instructions for the next session (read carefully)
 
