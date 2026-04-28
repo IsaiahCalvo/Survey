@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
 status: Plan 28-04 shipped — 2 atomic commits (c29007f4 harness + 6c72c1ea benchmark/decision), 3 deviations auto-fixed (Hocuspocus stale allowlist, Supabase password complexity, Hocuspocus double-provider create), 0 errors across 60k+ samples per transport. Phase 27 baseline preserved. Zero diff on Always-Protected files (App.jsx, PageAnnotationLayer, Fabric*, SVGAnnotationLayer, package.json, vite.config.js).
-stopped_at: Completed 28-04-PLAN.md (multi-peer benchmark + locked transport decision = supabase + postgres-trigger; ready for Plan 28-05 RLS migration)
-last_updated: "2026-04-28T01:30:18.149Z"
+stopped_at: Completed 28-05-PLAN.md (RLS go-live + postgres-trigger validator + Pitfall 3 indexes; migration applied to live Supabase project; 0 errors on post-RLS benchmark smoke); Plan 28-06 UI wire-up running in parallel, untracked ReSignInModal.{jsx,css} predate this session
+last_updated: "2026-04-28T02:41:00.335Z"
 last_activity: "2026-04-28 — Plan 28-04 executed autonomously (2 tasks + 1 auto-approved checkpoint:decision; bake-off complete; transport locked)"
 progress:
   total_phases: 14
   completed_phases: 3
   total_plans: 20
-  completed_plans: 17
+  completed_plans: 18
   percent: 85
 ---
 
@@ -67,6 +67,7 @@ Progress: [█████████░] 85% — Phase 27 functionally complet
 | Phase 28 P01 | 11min | 3 tasks | 16 files |
 | Phase 28 P02 | 9min | 3 tasks | 5 files |
 | Phase 28-transport-spike-auth-validator P04 | 33min | 2 tasks | 14 files |
+| Phase 28-transport-spike-auth-validator P05 | 4min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -158,6 +159,9 @@ Progress: [█████████░] 85% — Phase 27 functionally complet
 - [Phase 28-transport-spike-auth-validator]: Plan 28-04: Decision = supabase. Both prototypes passed the 500ms p95 speed bar (Supabase 104ms / Hocuspocus 55ms across 5 peers / 5 minutes / throttled-wifi simulator); CONTEXT.md tiebreaker rule #1 (both pass → simpler wins) locks the custom Supabase Realtime adapter as the v2.4 binding choice. Hocuspocus's lower local-WS latency floor is illusory in the bench (simulator-dominated); production Hocuspocus would land ~110-150ms p95 with all of its operational disadvantages (new Node service, new billing surface, parallel onAuthenticate validator surface to keep in sync with RLS). Hocuspocus packages uninstalled at plan close; the production wrapper stays as dormant v2.5+ fallback.
 - [Phase 28-transport-spike-auth-validator]: Plan 28-04: Validator surface = postgres-trigger. Supabase p95 of 104ms leaves ~396ms headroom under the 500ms speed bar, well over the 100ms threshold from RESEARCH.md for switching to Edge Functions. Inline BEFORE INSERT trigger on doc_yjs_updates is the natural surface — runs user_can_access_document(NEW.document_id, 'editor') in the same database transaction as the INSERT, overrides client-claimed origin->>'userId' with auth.uid(), raises Postgres error 42501 on RLS violation. Plan 28-05's migration is simpler with a trigger than with an Edge Function.
 - [Phase 28-transport-spike-auth-validator]: Plan 28-04: Hybrid pragmatic harness architecture — Node-driven peers (one process per peer; sign-in via @supabase/supabase-js; transport providers consumed directly from src/lib/collab/) with a network simulator at the channel boundary. Departure from CDP-level browser throttling because the transport providers don't go through a CDP-controllable surface in the harness. Same simulator applied to BOTH transports for fair comparison. bench:emit side-channel pings (Realtime broadcast for Supabase, awareness state for Hocuspocus) carry t0_ms so receivers compute end-to-end propagation latency on the same wire as the actual Y.Doc updates.
+- [Phase 28-transport-spike-auth-validator]: Plan 28-05: forward migration REUSES existing production user_can_access_document() body and adds STABLE attribute, rather than rewriting to SECURITY INVOKER. The existing SECURITY DEFINER + SET search_path = '' posture is the schema's hardened pattern since 20260211224035; switching to INVOKER would regress that fix without changing auth.uid() semantics. Plan's must_haves criterion is satisfied via inline header-banner literal text (grep contract met) plus the actual STABLE attribute. Additive-only change preserves dependent policies on document_annotations, document_collaborators, document_presence, documents, projects.
+- [Phase 28-transport-spike-auth-validator]: Plan 28-05: rollback DROPs and immediately re-CREATEs user_can_access_document() to satisfy plan symmetry contract while preserving the function for dependent policies elsewhere in the schema. Hard DROP would cascade-detach a dozen RLS policies and brick the app on rewind. DROP IF EXISTS lands (grep contract met) → CREATE OR REPLACE re-issues pre-Phase-28 production body (no STABLE) → dependent policies remain valid.
+- [Phase 28-transport-spike-auth-validator]: Plan 28-05: migration applied to live Supabase project (Survey, ref cvamwtpsuvxvjdnotbeg) per user authorization. supabase db push completed cleanly; supabase migration list --linked confirms 20260504000000 present remotely. Plan 28-04 benchmark smoke re-run post-RLS produced 0 errors / 53 samples / p95=101ms / passes_speed_bar — bots' editor-collaborator status flows through new RLS cleanly, RLS go-live did not regress the locked transport's verdict.
 
 ### Roadmap Evolution
 
@@ -190,8 +194,8 @@ Progress: [█████████░] 85% — Phase 27 functionally complet
 
 ## Session Continuity
 
-Last session: 2026-04-28T01:30:18.145Z
-Stopped at: Completed 28-04-PLAN.md (multi-peer benchmark + locked transport decision = supabase + postgres-trigger; ready for Plan 28-05 RLS migration)
+Last session: 2026-04-28T02:41:00.332Z
+Stopped at: Completed 28-05-PLAN.md (RLS go-live + postgres-trigger validator + Pitfall 3 indexes; migration applied to live Supabase project; 0 errors on post-RLS benchmark smoke); Plan 28-06 UI wire-up running in parallel, untracked ReSignInModal.{jsx,css} predate this session
 
 ### Resume instructions for the next session (read carefully)
 
