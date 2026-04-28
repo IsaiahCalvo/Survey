@@ -30,7 +30,8 @@
 // invariant (Pitfall 5) is grep-asserted by tests/phase27/applyUpdateOnlyInvariant.test.mjs
 // — the only allowed Y.Doc constructor site is src/lib/collab/ydocRegistry.js.
 
-import React, { createContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import * as Y from 'yjs';
 import { getOrCreateYDoc, releaseYDoc } from '../../lib/collab/ydocRegistry.js';
 import { attachLifecycle } from '../../lib/collab/ydocLifecycle.js';
 import { isCRDTEnabled } from '../../lib/collab/crdtFeatureFlag.js';
@@ -50,7 +51,13 @@ import { supabase } from '../../supabaseClient.js';
 // Phase 29 — per-user Y.UndoManager mount. createUndoManager memoizes the origin
 // reference (Pitfall 7 mitigation) so the bridge and the undo manager use the same
 // frozen object — trackedOrigins.has() identity check holds across both call sites.
-import { createUndoManager } from '../../lib/collab/crdtUndoManager.js';
+//
+// Plan 29-06 adds getLocalFabricOrigin to this import line — used by handleRestore
+// inside the toast queue effect (Warning 4 resolution: TOP-LEVEL synchronous import
+// instead of a dynamic-load form inside the callback). Same memoized origin is
+// what crdtAnnotationBridge passes to ydoc.transact, so reference-equality at
+// Y.UndoManager.trackedOrigins continues to hold across the restore call site.
+import { createUndoManager, getLocalFabricOrigin } from '../../lib/collab/crdtUndoManager.js';
 
 // Frozen null-shape value reused when CRDT is disabled or docId is unknown.
 // UX: useYDoc() consumers can call hooks unconditionally — the null shape lets them
@@ -368,6 +375,174 @@ function YDocProviderInner({ docId, children, closeDocument }) {
       try { if (dispose) dispose(); } catch { /* swallow */ }
     };
   }, [ydoc, sessionId]);
+
+  // Phase 29 — Plan 29-06: Remote-delete toast queue.
+  //
+  // Surfaces the "Removed by [name] — Restore?" toast ONLY when the local user is
+  // actively interacting with the deleted annotation. Plan 29-05 publishes the
+  // local interaction binding via window.__phase29InteractionState (selectedId,
+  // draggingId, scalingId, editCanvasId, contextMenuId) on FabricEditCanvas mount
+  // and the existing context-menu component. We read from there to gate whether
+  // a remote delete fires the toast or applies silently.
+  //
+  // Sticky (no auto-dismiss) per UI-SPEC §1: a delete-by-collaborator is a
+  // high-stakes moment — auto-dismiss would lose the chance to recover work the
+  // user was actively touching. The toast stays until the user clicks Restore,
+  // Dismiss, or the toast is superseded by a 4-or-more overflow merge.
+  //
+  // Multiple toasts: state shape is an array; render layer (Task 4) caps visible
+  // at 3 and merges overflow into a single "and N more removed" banner.
+  const [toasts, setToasts] = useState([]);
+
+  // Y.Map.observe (NOT observeDeep) on the top-level annotations Map — we only
+  // care about add/delete events at the entry level here. observeDeep would fire
+  // on every property write inside every annotation, far more noise than we need.
+  //
+  // The handler walks event.changes.keys (Map<key, {action, oldValue}>) and
+  // enqueues a toast for each remote DELETE the local user is bound to. Local
+  // writes are filtered by transaction.origin.source — 'local-fabric' (Fabric
+  // mutation), 'local-undo' (Cmd+Z wrap), 'local-redo' (Cmd+Shift+Z wrap) all
+  // skip. Remote-transport writes (whatever source Phase 28 SupabaseYjsProvider
+  // tags or absent / null origin) fall through and are evaluated against the
+  // local interaction binding.
+  useEffect(() => {
+    if (!ydoc) return undefined;
+    const yMap = ydoc.getMap('annotations');
+
+    const handler = (event, transaction) => {
+      // Skip our own writes — local-fabric / local-undo / local-redo all originate
+      // from this client and the user already saw the deletion happen on screen.
+      const src = transaction?.origin?.source;
+      if (src === 'local-fabric' || src === 'local-undo' || src === 'local-redo') {
+        return;
+      }
+
+      // UX: read the interaction binding lazily inside the handler so it picks
+      // up the latest state at the moment of delete. window may be missing in
+      // SSR / test environments; guard defensively.
+      const interactionState = (typeof window !== 'undefined' && window.__phase29InteractionState) || {};
+
+      // event.changes.keys is a Map<key, { action: 'add' | 'update' | 'delete', oldValue }>.
+      // Walk every key change in this transaction; only deletes that the local
+      // user is interacting with become toasts.
+      event.changes?.keys?.forEach((change, annoId) => {
+        if (change.action !== 'delete') return;
+
+        // CONTEXT.md "Deletion-during-interaction" — the toast surfaces only when
+        // ANY of the five interaction bindings is set to this annoId. Outside
+        // those bindings, the deletion applies silently (user did not have the
+        // shape engaged; no recovery affordance is needed).
+        const interacting = (
+          interactionState.selectedId === annoId
+          || interactionState.draggingId === annoId
+          || interactionState.scalingId === annoId
+          || interactionState.editCanvasId === annoId
+          || interactionState.contextMenuId === annoId
+        );
+        if (!interacting) return;
+
+        // Recover oldValue snapshot for the Restore handler. Y.Map.observe gives
+        // us oldValue as the prior Y.Map; toJSON() flattens it into a plain
+        // object the restore handler can re-write into the Y.Doc.
+        const snapshotJSON = change.oldValue?.toJSON?.();
+        if (!snapshotJSON) return;
+
+        // collaboratorName: pulled from the transaction origin if Phase 28 tagged
+        // it. Falls back to null → "another collaborator" in the banner heading.
+        const collaboratorName = transaction?.origin?.userName ?? null;
+
+        setToasts((prev) => [
+          ...prev,
+          {
+            id: `toast-${annoId}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+            code: 'annotation_remote_deleted',
+            collaboratorName,
+            annoId,
+            snapshotJSON,
+          },
+        ]);
+      });
+    };
+
+    yMap.observe(handler);
+    return () => {
+      yMap.unobserve(handler);
+    };
+  }, [ydoc]);
+
+  // Phase 29 — Plan 29-06: Restore handler.
+  //
+  // Wired to each toast's Restore button. Performs a direct ydoc.transact that
+  // re-creates the deleted annotation while PRESERVING the original meta block
+  // (authorId, deviceId, createdAt) per UNDO-03 contract. This is intentionally
+  // NOT routed through crdtAnnotationBridge.applyFabricCommit — that helper's
+  // CREATE branch overwrites meta.authorId/deviceId/createdAt with the current
+  // ctx (the restoring user), which would erase the original attribution.
+  //
+  // Warning 4 resolution: getLocalFabricOrigin is imported synchronously at the
+  // top of this file. The pre-revision draft of this plan used a dynamic-load
+  // form inside this callback; the synchronous form is simpler, type-safe, and
+  // avoids a microtask hop on every Restore click.
+  const handleRestore = useCallback((toast) => {
+    if (!ydoc || !undoState?.undoCtx || !toast?.snapshotJSON) return;
+    const yMap = ydoc.getMap('annotations');
+    const ctx = undoState.undoCtx;
+    const originPayload = getLocalFabricOrigin(ctx);
+
+    ydoc.transact(() => {
+      // Race guard: collaborator may have already restored the annotation
+      // (re-creation by some other client). If the entry exists, do nothing —
+      // overwriting would clobber whatever the other client wrote.
+      if (yMap.get(toast.annoId)) {
+        return;
+      }
+
+      const annoYMap = new Y.Map();
+      const fabricYMap = new Y.Map();
+      const metaYMap = new Y.Map();
+      yMap.set(toast.annoId, annoYMap);
+      annoYMap.set('id', toast.annoId);
+      annoYMap.set('type', toast.snapshotJSON.type);
+      annoYMap.set('pageNumber', toast.snapshotJSON.pageNumber);
+      annoYMap.set('fabric', fabricYMap);
+      annoYMap.set('meta', metaYMap);
+
+      // UNDO-03 contract: original CREATE-meta survives the restore. We write
+      // the snapshot's meta block as-is rather than going through the bridge's
+      // CREATE branch — the bridge would substitute ctx.userId / ctx.deviceId /
+      // Date.now() into authorId / deviceId / createdAt and erase the original
+      // attribution.
+      const oldMeta = toast.snapshotJSON.meta ?? {};
+      metaYMap.set('authorId', oldMeta.authorId);
+      metaYMap.set('deviceId', oldMeta.deviceId);
+      metaYMap.set('createdAt', oldMeta.createdAt);
+
+      // Update timestamps reflect the restore operation — the activity log
+      // (Phase 33) reads these fields to attribute "user X restored Y at time T".
+      metaYMap.set('updatedAt', Date.now());
+      metaYMap.set('lastEditorId', ctx.userId);
+      metaYMap.set('restoredBy', ctx.userId);
+
+      // Restore Fabric properties from the snapshot. Each property is written
+      // as a separate Y.Map.set call so the per-property LWW semantics
+      // (COLLAB-03) hold cleanly if a collaborator's parallel edit lands first.
+      const fabricSnapshot = toast.snapshotJSON.fabric ?? {};
+      Object.keys(fabricSnapshot).forEach((k) => {
+        fabricYMap.set(k, fabricSnapshot[k]);
+      });
+    }, originPayload);
+
+    // Remove this toast from the queue. Other queued toasts (different annoIds)
+    // remain so the user can decide on each independently.
+    setToasts((prev) => prev.filter((t) => t.id !== toast.id));
+  }, [ydoc, undoState]);
+
+  // Phase 29 — Plan 29-06: Dismiss handler. Filters the toast out of the queue
+  // without altering the Y.Doc. The deletion stays applied; the user has chosen
+  // not to recover.
+  const handleDismissToast = useCallback((toastId) => {
+    setToasts((prev) => prev.filter((t) => t.id !== toastId));
+  }, []);
 
   const value = useMemo(() => ({
     ydoc,
