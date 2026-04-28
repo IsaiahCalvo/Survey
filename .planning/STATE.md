@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
-status: Plan 30-01 shipped — Wave 0 contracts complete. 8 unit test scaffolds + 4 Playwright e2e scaffolds + check-no-diff-delete.mjs CI gate + npm-test-glob bridge. All 4 tasks executed; 4 atomic commits across executions (24c578c5 + 844c73dd + cf16bcfb + e3018af1). Phase 27/28/29 baseline preserved (350 pass, 9 baseline-fail). Always-Protected files byte-identical.
-stopped_at: Plan 30-01 shipped — Wave 0 contracts complete; 12 unit + 4 e2e scaffolds + 1 CI gate; 4 commits
-last_updated: "2026-04-28T16:55:50.000Z"
-last_activity: 2026-04-28 — Plan 30-01 executed (4 tasks; 8 unit + 4 e2e scaffolds + CI gate verified; npm test 350/394 pass + 35 skipped, no new failures vs Phase 29 baseline)
+status: Plan 30-02 shipped — runBackfill module with Web Locks + bridge integration. 1 task, 1 atomic commit (ed4b26db). 8/8 backfill tests flipped skip→green (6 from crdtBackfill.test.mjs + 2 from crdtBackfill.weblocks.test.mjs). MIGRATE-01 closed. Phase 27/28/29 baseline preserved (358 pass / 9 baseline-fail / 27 skipped — exactly 8 fewer skips than Plan 30-01 close).
+stopped_at: Completed 30-02-PLAN.md — runBackfill module shipped (8/8 backfill tests green); MIGRATE-01 closed
+last_updated: "2026-04-28T17:10:07.295Z"
+last_activity: 2026-04-28 — Plan 30-02 executed (1 task; runBackfill pure module ~280 LOC; Pitfall 30-1 + 30-2 fixes; Plan 30-01 weblocks scaffold Node-22-navigator-getter compat fix)
 progress:
   total_phases: 14
   completed_phases: 5
@@ -26,12 +26,12 @@ See: .planning/PROJECT.md (updated 2026-04-14)
 ## Current Position
 
 Milestone: v2.4 — CRDT Foundation + Real-Time Sync (Yjs port; SVG/Fabric layers immutable)
-Phase: **Phase 30 — Migration Phase A — Dual-Write Era** (in progress). Plans 30-01 + 30-03 shipped; 30-02, 30-04, 30-05, 30-06, 30-07 pending. Phase 29 functionally complete (reconciliation pending).
-Plan: 30-01 — complete (Wave 0 test scaffolds + CI gate). 8 unit test scaffolds (crdtBackfill x2 + crdtDualWriteQueue + annotationCloudSync.dualWrite + StorageFailureBanner.syncQueueStuck + 3 hook scaffolds for Plan 30-05/30-07) + 4 Playwright e2e scaffolds (test.fixme'd; SEAMS documented inline) + scripts/check-no-diff-delete.mjs CI grep gate (Pitfall 5 mitigation, NO_DIFF_DELETE_OK escape hatch) + tests/phase30/phase30-unit-suite.test.mjs npm-test-glob bridge. All 4 tasks executed across 4 atomic commits.
-Status: Plan 30-01 shipped — Wave 0 contracts complete (12 unit + 4 e2e scaffolds + 1 CI gate). 4 commits: 24c578c5 + 844c73dd + cf16bcfb + e3018af1. Phase 27/28/29 baseline preserved (350 pass / 9 baseline-fail / 35 skipped — +29 new skip lines). Always-Protected files byte-identical (App.jsx, PAL, Fabric*, SVG, package.json, vite.config.js).
-Last activity: 2026-04-28 — Plan 30-01 executed (4 tasks; 8 unit + 4 e2e scaffolds + CI gate verified)
+Phase: **Phase 30 — Migration Phase A — Dual-Write Era** (in progress). Plans 30-01 + 30-02 + 30-03 shipped; 30-04, 30-05, 30-06, 30-07 pending. Phase 29 functionally complete (reconciliation pending).
+Plan: 30-02 — complete (runBackfill pure module). New file `src/lib/collab/crdtBackfill.js` (~280 LOC) implements per-(user, document) idempotent backfill from legacy `document_annotations` rows into the Y.Doc. Web-Locks-arbitrated election on `y-doc-backfill-${userId}-${documentId}`. Pitfall 30-1 fix via post-create override pass (second ydoc.transact tagged with backfill origin). Pitfall 30-2 fix via per-row ctx.userId = row.user_id. Per-user `backfill_done:${userId}` marker stored INSIDE Y.Doc. Origin source 'crdt-backfill' on every transact() for Phase 33 attribution. 1 task, 1 atomic commit (ed4b26db).
+Status: Plan 30-02 shipped — 8/8 Plan 30-01 backfill tests flipped skip→green (6 from crdtBackfill.test.mjs + 2 from crdtBackfill.weblocks.test.mjs). MIGRATE-01 closed. CI gate (scripts/check-no-diff-delete.mjs) exits 0; Phase 27 applyUpdate-only invariant test still green; Always-Protected files byte-identical (App.jsx, PAL, Fabric*, SVG, package.json, vite.config.js). Test baseline 358 pass / 9 baseline-fail / 27 skipped vs Plan 30-01 close 350/9/35 — exactly 8 tests flipped.
+Last activity: 2026-04-28 — Plan 30-02 executed (1 task; runBackfill pure module + Plan 30-01 weblocks scaffold Node-22-navigator-getter compat fix)
 
-Progress: [████████▌░] 85% — Phase 27 functionally complete (5/5 plans); Phase 28 functionally complete (6/6 plans); Phase 29 functionally complete (6/6 plans, reconciliation pending); **Phase 30 in progress: Plans 30-01 + 30-03 shipped (2/7); 5 plans remaining (30-02/04/05/06/07)**; v2.4 milestone overall: 5/5 Phase 27, 6/6 Phase 28, 6/6 Phase 29 (modulo reconciliation), 2/7 Phase 30, 0 Phase 31/32/33/34; v2.3 closed at Phase 15
+Progress: [████████▌░] 85% — Phase 27 functionally complete (5/5 plans); Phase 28 functionally complete (6/6 plans); Phase 29 functionally complete (6/6 plans, reconciliation pending); **Phase 30 in progress: Plans 30-01 + 30-02 + 30-03 shipped (3/7); 4 plans remaining (30-04/05/06/07)**; v2.4 milestone overall: 5/5 Phase 27, 6/6 Phase 28, 6/6 Phase 29 (modulo reconciliation), 3/7 Phase 30, 0 Phase 31/32/33/34; v2.3 closed at Phase 15
 
 ## Performance Metrics
 
@@ -77,6 +77,7 @@ Progress: [████████▌░] 85% — Phase 27 functionally complet
 | Phase 29 P06 | 13 | 5 tasks | 10 files |
 | Phase 30-migration-dual-write P03 | 8 | 1 tasks | 3 files |
 | Phase 30-migration-dual-write P01 | 15 | 4 tasks | 13 files |
+| Phase 30-migration-dual-write P02 | 4 | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -202,6 +203,10 @@ Progress: [████████▌░] 85% — Phase 27 functionally complet
 - [Phase 30-migration-dual-write]: Plan 30-01: source-grep contract testing for React hook scaffolds (useDualWriteQueue, useAnnotationCloudSync.dualWrite, useTabPendingDualWrite) — node:test cannot mount React/JSX without test-deps that would touch package.json; Phase 14 buildCalloutRenderSpec data-spec helper precedent. Hook scaffolds readFileSync the production .js source and assert substring + regex contracts (export signatures, useSyncExternalStore-or-setInterval pattern, proximity checks). Plan 30-05/30-07 ships runtime integration coverage; scaffolds lock the shape.
 - [Phase 30-migration-dual-write]: Plan 30-01: two-stage skip pattern for inner-symbol gating — annotationCloudSync.js + useAnnotationCloudSync.js exist today but the new symbols (dualWriteFabricCommit / dualWriteFabricDelete) only land in Plan 30-04/30-07. Tests use outer existsSync to gate file presence + inner readFileSync grep to gate symbol presence so they auto-flip skip→green precisely when the wiring lands.
 - [Phase 30-migration-dual-write]: Plan 30-01: skip-message Plan reference convention — every skip reason references the Plan number that lands the unblocking module ('crdtBackfill.js not yet present (Plan 30-02)', 'dualWriteFabricCommit not yet exported (Plan 30-04)', etc). Future-Claude executing those plans can grep for the Plan number to find the test scaffolds that auto-flip when the module lands.
+- [Phase 30-migration-dual-write]: Plan 30-02: Pitfall 30-1 fix via post-create override pass — second ydoc.transact tagged with backfill origin overwrites bridge's hardcoded Date.now() createdAt with legacy timestamp; both writes attributed to single 'crdt-backfill' source for Phase 33.
+- [Phase 30-migration-dual-write]: Plan 30-02: Pitfall 30-2 fix via per-row ctx.userId = row.user_id; bridge writes meta.authorId from ctx so MIGRATE-01 author attribution is preserved by passing legacy creator at call time (NOT importing user).
+- [Phase 30-migration-dual-write]: Plan 30-02: defensive deserialization helper instead of importing annotationTypeSerializers — handles both production {fabricObject} shape and Plan 30-01 test-fixture flat-JSON-string shape; injects stable data.id from row.highlight_id when missing.
+- [Phase 30-migration-dual-write]: Plan 30-02: Web Locks pattern divergence from Phase 27 — Phase 27 holds lock for tab lifetime via never-resolving Promise; Plan 30-02 RESOLVES callback after backfill completes (lock is for serialization, not lifetime ownership). Loser tabs short-circuit on backfill_done marker.
 
 ### Roadmap Evolution
 
@@ -234,8 +239,8 @@ Progress: [████████▌░] 85% — Phase 27 functionally complet
 
 ## Session Continuity
 
-Last session: 2026-04-28T16:55:50.000Z
-Stopped at: Plan 30-01 shipped — Wave 0 contracts complete; 12 unit + 4 e2e scaffolds + 1 CI gate; 4 atomic commits
+Last session: 2026-04-28T17:10:07.292Z
+Stopped at: Completed 30-02-PLAN.md — runBackfill module shipped (8/8 backfill tests green)
 
 ### Resume instructions for the next session (read carefully)
 
