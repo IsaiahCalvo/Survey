@@ -254,6 +254,36 @@ const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onPag
                   {tab.name}
                 </span>
 
+                {/* Phase 30 — red 'unsaved dual-write' dot per 30-UI-SPEC.md Surface 3.
+                    UX: 6px-diameter solid red dot — distinct from the existing blue 5px
+                    'unsaved annotations' dot at the left of the tab. Blue = "you have
+                    local edits not yet committed via Cmd+S to the legacy save path";
+                    Red = "your dual-write retry queue has pending entries (one side of
+                    a save failed and the queue is still retrying)". The two are
+                    independent — both can appear on the same tab.
+                    Per 30-UI-SPEC.md Surface 3: 6px diameter, var(--accent-red) (#DC3545),
+                    8px gap (sm token) before the close button — matches macOS "modified
+                    document" indicator convention. Per-user (queue is local); only the
+                    affected user sees the dot on their own client. role=status +
+                    aria-label so screen readers announce; does NOT steal focus or
+                    affect Tab keyboard navigation. */}
+                {!isHome && tab.hasPendingDualWrite && (
+                  <span
+                    role="status"
+                    aria-label="This document has unsaved changes"
+                    title="This document has unsaved changes"
+                    style={{
+                      width: '6px',
+                      height: '6px',
+                      borderRadius: '50%',
+                      background: '#DC3545',
+                      display: 'inline-block',
+                      marginRight: '8px',
+                      flexShrink: 0
+                    }}
+                  />
+                )}
+
                 {/* Close button - hidden for home tab */}
                 {!isHome && (
                   <button
