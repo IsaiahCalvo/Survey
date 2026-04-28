@@ -1,0 +1,61 @@
+/* src/components/collab/ReadOnlyGate.css
+ * Phase 28 — Read-only mode visual treatment.
+ * Source: .planning/phases/28-transport-spike-auth-validator/28-UI-SPEC.md
+ *         Component Inventory section 3.
+ *
+ * UX: kicked-out collaborator can still see the toolbar but every edit
+ * affordance dims. Document scroll, zoom, page-navigation, Cmd+S — all
+ * UNCHANGED (full functionality). SVG annotation rendering — UNCHANGED
+ * (annotations remain visible at full opacity). Only the forward-mutation
+ * affordances dim.
+ *
+ * Why body-attribute, not React class:
+ *   The toolbar lives in App.jsx (or one of its child components) which we
+ *   do not modify in this phase per the App.jsx narrow waiver — and Plan
+ *   28-06's Blocker 1 fix moves the readonly gate out of App.jsx entirely.
+ *   A body-attribute selector reaches the toolbar from above without
+ *   React state plumbing or DOM-tree changes.
+ *
+ * Selector matrix: covers the three toolbar class shapes the project uses
+ * historically (.tool-toolbar, .tool-toolbar__button, .toolbar-button) so
+ * whichever shape ships at the time of read-only activation gets dimmed.
+ * Adding a new toolbar class in the future → add a line here, not a code
+ * change in this file.
+ */
+
+/* UX: tool toolbar dims to opacity 0.5; pointer-events:none prevents
+ * click-through (the user cannot accidentally trigger a tool selection
+ * even if their click lands on the dimmed button); cursor:not-allowed
+ * signals the disabled state on hover. Matches UI-SPEC Component Inventory
+ * section 3 exactly. */
+body[data-readonly="true"] .tool-toolbar,
+body[data-readonly="true"] .tool-toolbar__button,
+body[data-readonly="true"] .toolbar-button {
+  opacity: 0.5;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
+/* UX: Cmd+S still works at the keyboard level (ReadOnlyGate.jsx explicitly
+ * passes Cmd+S through). Save UI affordances — if any exist at button level
+ * — need to remain interactive too. Class escape hatch: any element that
+ * needs to stay clickable while body[data-readonly] is set can opt in by
+ * adding the .readonly-allowed class.
+ *
+ * Currently unused by any production code; reserved for the Phase 32 / 33
+ * sync-chip + activity-log surfaces that may want a "View activity" button
+ * to remain clickable while kicked out. Documented escape hatch up front
+ * so future readers know the contract without grepping CSS history. */
+body[data-readonly="true"] .tool-toolbar .readonly-allowed,
+body[data-readonly="true"] .toolbar-button.readonly-allowed,
+body[data-readonly="true"] .readonly-allowed {
+  opacity: 1;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+/* UX note (by omission): SVG annotations stay at full opacity — no rule
+ * here targets .svg-annotation, .annotation-overlay, .pdf-page, or any
+ * scroll/zoom/page-nav surface. The absence of those selectors IS the
+ * contract: read this file as the full list of what dims under read-only,
+ * and trust by omission that all other surfaces are untouched. */

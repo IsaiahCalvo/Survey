@@ -36,6 +36,7 @@ import { attachLifecycle } from '../../lib/collab/ydocLifecycle.js';
 import { isCRDTEnabled } from '../../lib/collab/crdtFeatureFlag.js';
 import StorageFailureBanner from './StorageFailureBanner.jsx';
 import ReSignInModal from './ReSignInModal.jsx';
+import ReadOnlyGate from './ReadOnlyGate.jsx';
 
 // Phase 28 — locked transport provider per 28-BENCHMARK.md (custom Supabase
 // Realtime adapter wins; Hocuspocus path remains as dormant v2.5+ fallback).
@@ -423,6 +424,11 @@ function YDocProviderInner({ docId, children, closeDocument }) {
           onCloseDocument={() => value.closeDocument()}
         />
       )}
+      {/* ReadOnlyGate is the Phase 28 read-only mode dispatcher — renders null
+          but sets body[data-readonly] + a window-capture-phase keydown listener
+          when accessRevoked is true. Mounted as a sibling here so App.jsx
+          stays untouched (Plan 28-06 Blocker 1 fix). */}
+      <ReadOnlyGate />
       {children}
     </YDocContext.Provider>
   );
