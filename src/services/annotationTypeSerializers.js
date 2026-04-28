@@ -71,6 +71,67 @@ const SUPPORTED_DB_TYPES = new Set([
   'eraser'
 ]);
 
+function hasFabricObjectPayload(row) {
+  return !!(row?.annotation_data && row.annotation_data.fabricObject);
+}
+
+function isLegacyFabricHighlightRow(row) {
+  return row?.annotation_type === 'highlight' && hasFabricObjectPayload(row);
+}
+
+function shouldDeserializeAsFabricObject(row) {
+  if (!row) return false;
+  if (row.annotation_type === 'callout') return false;
+  if (row.annotation_type === 'highlight') return isLegacyFabricHighlightRow(row);
+  return true;
+}
+
+function getPdfImportDedupeKey(row) {
+  const fabricObject = row?.annotation_data?.fabricObject;
+  const pdfAnnotationId = fabricObject?.pdfAnnotationId;
+  if (!fabricObject?.isPdfImported || !pdfAnnotationId) return null;
+  const pageNumber = row?.annotation_data?.pageNumber ?? row?.page_number;
+  return `${pageNumber}:${pdfAnnotationId}`;
+}
+
+function preferFabricRow(candidate, current) {
+  if (!current) return candidate;
+  if (current.annotation_type === 'highlight' && candidate.annotation_type !== 'highlight') {
+    return candidate;
+  }
+  if (candidate.annotation_type === 'highlight' && current.annotation_type !== 'highlight') {
+    return current;
+  }
+  const candidateTime = Date.parse(candidate.updated_at || candidate.created_at || '');
+  const currentTime = Date.parse(current.updated_at || current.created_at || '');
+  if (Number.isFinite(candidateTime) && Number.isFinite(currentTime)) {
+    return candidateTime >= currentTime ? candidate : current;
+  }
+  return current;
+}
+
+export function normalizeFabricAnnotationRows(rows) {
+  if (!Array.isArray(rows)) return [];
+  const out = [];
+  const pdfImportRowsByKey = new Map();
+
+  for (const row of rows) {
+    if (!shouldDeserializeAsFabricObject(row)) continue;
+    const dedupeKey = getPdfImportDedupeKey(row);
+    if (!dedupeKey) {
+      out.push(row);
+      continue;
+    }
+    pdfImportRowsByKey.set(
+      dedupeKey,
+      preferFabricRow(row, pdfImportRowsByKey.get(dedupeKey))
+    );
+  }
+
+  out.push(...pdfImportRowsByKey.values());
+  return out;
+}
+
 /**
  * Map a Fabric object to its DB annotation_type.
  * Group objects use `data.type` to disambiguate (counter, callout, sticky_note).
@@ -197,7 +258,7 @@ export function serializeFabricObjectToRow(fabricObj, opts = {}) {
  */
 export function deserializeRowToFabricObject(row) {
   if (!row) throw new Error('row required');
-  if (row.annotation_type === 'highlight') {
+  if (row.annotation_type === 'highlight' && !isLegacyFabricHighlightRow(row)) {
     throw new Error(
       'deserializeRowToFabricObject: highlight rows are not Fabric objects — '
       + 'use the highlight-specific deserializer instead.'
@@ -211,6 +272,14 @@ export function deserializeRowToFabricObject(row) {
       `Row ${row.highlight_id} has no annotation_data.fabricObject — `
       + 'cannot reconstruct shape.'
     );
+  }
+  if (row.highlight_id) {
+    if (!fabricObject.data || typeof fabricObject.data !== 'object') {
+      fabricObject.data = {};
+    }
+    if (!fabricObject.id && !fabricObject.data.id) {
+      fabricObject.data.id = row.highlight_id;
+    }
   }
 
   return {
@@ -363,9 +432,7 @@ export function serializeAnnotationsByPage(annotationsByPage, opts = {}) {
 export function deserializeRowsToAnnotationsByPage(rows) {
   if (!Array.isArray(rows)) return {};
   const out = {};
-  for (const row of rows) {
-    if (row.annotation_type === 'highlight') continue; // not a Fabric object
-    if (row.annotation_type === 'callout') continue;   // separate state
+  for (const row of normalizeFabricAnnotationRows(rows)) {
     try {
       const { fabricObject, pageNumber } = deserializeRowToFabricObject(row);
       const key = pageNumber ?? row.page_number;

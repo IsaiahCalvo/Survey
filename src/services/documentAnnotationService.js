@@ -6,6 +6,11 @@
 
 import { supabase } from '../supabaseClient';
 
+const SUPABASE_PAGE_SIZE = 1000;
+
+const isLegacyFabricHighlightRow = (row) =>
+  row?.annotation_type === 'highlight' && !!row.annotation_data?.fabricObject;
+
 const classifyAnnotationSyncError = (error) => {
   const message = error?.message || '';
   const code = error?.code || null;
@@ -73,19 +78,26 @@ const classifyAnnotationSyncError = (error) => {
 export async function getDocumentAnnotations(documentId) {
   if (!documentId) return { data: [], error: null };
 
-  const { data, error } = await supabase
-    .from('document_annotations')
-    .select('*')
-    .eq('document_id', documentId)
-    .eq('annotation_type', 'highlight')
-    .order('page_number', { ascending: true });
+  const rows = [];
+  for (let from = 0; ; from += SUPABASE_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('document_annotations')
+      .select('*')
+      .eq('document_id', documentId)
+      .eq('annotation_type', 'highlight')
+      .order('page_number', { ascending: true })
+      .range(from, from + SUPABASE_PAGE_SIZE - 1);
 
-  if (error) {
-    console.error('[AnnotationSync] Error fetching annotations:', error);
-    return { data: [], error };
+    if (error) {
+      console.error('[AnnotationSync] Error fetching annotations:', error);
+      return { data: [], error };
+    }
+
+    rows.push(...(data || []));
+    if (!data || data.length < SUPABASE_PAGE_SIZE) break;
   }
 
-  return { data: data || [], error: null };
+  return { data: rows.filter((row) => !isLegacyFabricHighlightRow(row)), error: null };
 }
 
 /**
@@ -322,6 +334,7 @@ export function subscribeToDocumentAnnotations(documentId, callbacks = {}) {
         // routing those rows through this legacy callback corrupts them
         // (see getDocumentAnnotations comment for the data-loss chain).
         if (payload.new?.annotation_type !== 'highlight') return;
+        if (isLegacyFabricHighlightRow(payload.new)) return;
         if (onInsert) {
           onInsert(convertToLocalFormat(payload.new));
         }
@@ -337,6 +350,7 @@ export function subscribeToDocumentAnnotations(documentId, callbacks = {}) {
       },
       (payload) => {
         if (payload.new?.annotation_type !== 'highlight') return;
+        if (isLegacyFabricHighlightRow(payload.new)) return;
         if (onUpdate) {
           onUpdate(convertToLocalFormat(payload.new), convertToLocalFormat(payload.old));
         }
@@ -356,6 +370,7 @@ export function subscribeToDocumentAnnotations(documentId, callbacks = {}) {
         // was actually a highlight; otherwise the new cloud-sync hook
         // handles it.
         if (payload.old?.annotation_type && payload.old.annotation_type !== 'highlight') return;
+        if (isLegacyFabricHighlightRow(payload.old)) return;
         if (onDelete) {
           onDelete(payload.old.highlight_id, convertToLocalFormat(payload.old));
         }

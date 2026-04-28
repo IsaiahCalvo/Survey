@@ -48,6 +48,7 @@ import { resolveMidpointHandlePosition } from '../utils/lineDragMath.js';
 import { buildArrowheadRenderSpec } from '../utils/lineRenderHelpers.js';
 import { getCurvedPath, distanceToLineSegment, getCurveEndAngle } from '../utils/lineGeometry.js';
 import { ARROWHEAD_STYLES } from './Callout/types';
+import { renderPathToSvgAttrs, renderPathToSvgD } from '../utils/svgPathAttrs.js';
 import {
   ANNOTATION_VISIBILITY_SCOPE,
   getAnnotationVisibilityScope,
@@ -2812,7 +2813,13 @@ const SVGAnnotationLayer = memo(({
             // from the shape. Hit-area stays as the bbox rect (same behavior
             // as before this change) so click target is unchanged; only the
             // visual glow is stroke-shaped.
-            const pathD = renderObj.path.map((seg) => seg.join(' ')).join(' ');
+            const pathAttrs = renderPathToSvgAttrs(renderObj);
+            const pathD = renderPathToSvgD(renderObj, pathAttrs);
+            const isFilledPdfInkOutline =
+              pathAttrs.smoothClosedOutline === true &&
+              pathAttrs.stroke === 'none' &&
+              pathAttrs.fill &&
+              pathAttrs.fill !== 'none';
             const pathLeft = renderObj.left ?? 0;
             const pathTop = renderObj.top ?? 0;
             const pathAngle = renderObj.angle ?? 0;
@@ -2852,6 +2859,9 @@ const SVGAnnotationLayer = memo(({
             if (pathScaleX !== 1 || pathScaleY !== 1) pathTransform += ` scale(${pathScaleX}, ${pathScaleY})`;
             pathTransform += ` translate(${-pathOffsetX}, ${-pathOffsetY})`;
             const sw = renderObj.strokeWidth || 1;
+            const hoverStrokeWidth = isFilledPdfInkOutline
+              ? Math.max(1.25 * inverseScale, Math.min(2 * inverseScale, sw + 0.5))
+              : Math.max(6, sw + 4);
             return (
               <g>
                 {annotationIsHovered && (
@@ -2860,10 +2870,9 @@ const SVGAnnotationLayer = memo(({
                     transform={pathTransform}
                     stroke="#4a90e2"
                     strokeOpacity={0.4}
-                    // UX: match line-hover width formula — Math.max(6, sw + 4).
-                    // Ensures thin strokes still get a visible halo floor.
-                    strokeWidth={Math.max(6, sw + 4)}
-                    fill="none"
+                    strokeWidth={hoverStrokeWidth}
+                    fill={isFilledPdfInkOutline ? '#4a90e2' : 'none'}
+                    fillOpacity={isFilledPdfInkOutline ? 0.12 : undefined}
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     vectorEffect={renderObj.strokeUniform ? 'non-scaling-stroke' : undefined}

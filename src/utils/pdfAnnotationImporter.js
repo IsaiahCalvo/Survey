@@ -1517,20 +1517,86 @@ function convertPdfRectToViewportRect(rect, viewport, scale = 1) {
   };
 }
 
+const FILLED_PDF_INK_MODE = 'filled-outline';
+
+function getInkPathEndpoint(seg) {
+  if (!Array.isArray(seg) || seg.length === 0) return null;
+  if (seg[0] === 'M' || seg[0] === 'L') return { x: seg[1], y: seg[2] };
+  if (seg[0] === 'Q') return { x: seg[3], y: seg[4] };
+  if (seg[0] === 'C') return { x: seg[5], y: seg[6] };
+  return null;
+}
+
+function distanceBetweenPoints(a, b) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function pathSubpathsAreClosed(pathData, width, height) {
+  if (!Array.isArray(pathData) || pathData.length === 0 || width <= 0 || height <= 0) {
+    return false;
+  }
+
+  const closeThreshold = Math.max(0.75, Math.min(width, height) * 0.25);
+  let start = null;
+  let current = null;
+  let hasDrawableSubpath = false;
+  let currentClosed = false;
+
+  const closeCurrent = () => {
+    if (!start || !current || !hasDrawableSubpath) return true;
+    return currentClosed || distanceBetweenPoints(start, current) <= closeThreshold;
+  };
+
+  for (const seg of pathData) {
+    if (!Array.isArray(seg) || seg.length === 0) continue;
+
+    if (seg[0] === 'M') {
+      if (start && !closeCurrent()) return false;
+      start = getInkPathEndpoint(seg);
+      current = start;
+      hasDrawableSubpath = false;
+      currentClosed = false;
+      continue;
+    }
+
+    if (seg[0] === 'Z') {
+      currentClosed = true;
+      current = start;
+      continue;
+    }
+
+    const endpoint = getInkPathEndpoint(seg);
+    if (endpoint) {
+      current = endpoint;
+      hasDrawableSubpath = true;
+    }
+  }
+
+  return Boolean(start && hasDrawableSubpath && closeCurrent());
+}
+
 export function convertInkToFabricPath(annotation, viewport, scale = 1) {
   const appearance = annotation?._appearance || null;
-  // UX 2026-04-21: Prefer /InkList pen points over the /AP appearance path.
-  // Drawboard (and some other editors) emit /AP as a closed, filled polygon
-  // that traces the OUTLINE of the stroked ink — so using the appearance
-  // path gave us a thin outlined shape with a hollow interior instead of a
-  // single stroked line. /InkList holds the raw centerline points the user
-  // actually drew; stroking those with /BS width matches spec and restores
-  // the expected look. Fall back to the appearance path only when inkList
-  // is missing or empty.
+  // Drawboard/Adobe use two Ink encodings in the wild: open /InkList
+  // centerlines for normal strokes, and filled zero-width appearance
+  // outlines for pressure strokes / colored marker dots. Use the /AP
+  // geometry only for that filled-outline case; otherwise keep /InkList
+  // so regular strokes remain editable centerlines.
   const hasInkList = Array.isArray(annotation.inkLists) && annotation.inkLists.length > 0;
+  const borderWidth = getBorderWidth(annotation, 0);
+  const appearancePathData = convertAppearancePathToFabricPath(appearance?.path, viewport, scale);
+  const useFilledAppearancePath =
+    Array.isArray(appearancePathData) &&
+    appearancePathData.length > 0 &&
+    appearance?.hasFill === true &&
+    borderWidth <= 0;
   let pathData = null;
 
-  if (hasInkList) {
+  if (useFilledAppearancePath) {
+    pathData = appearancePathData;
+  } else if (hasInkList) {
     pathData = [];
     annotation.inkLists.forEach((inkList) => {
       if (!inkList || inkList.length < 2) return;
@@ -1581,7 +1647,7 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
   if (!pathData || pathData.length === 0) {
     // Fall back to the /AP appearance path only when we truly have no raw
     // pen points — e.g. an Ink annotation that shipped without /InkList.
-    pathData = convertAppearancePathToFabricPath(appearance?.path, viewport, scale);
+    pathData = appearancePathData;
   }
 
   if (!pathData || pathData.length === 0) {
@@ -1635,7 +1701,6 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
   const strokeColorHex = pdfColorToHex(annotation.color, annotation);
   const strokeOpacity = extractAnnotationOpacity(annotation, 1);
 
-  const borderWidth = getBorderWidth(annotation, 0);
   let strokeWidth = 0;
   if (borderWidth > 0) {
     // Slightly reduce imported ink stroke width so external annotations remain legible.
@@ -1646,6 +1711,10 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
     // Zero-width strokes with no fill fallback need a visible width for editability.
     strokeWidth = 0.9 * scale;
   }
+  const fillsClosedOutline =
+    (useFilledAppearancePath || borderWidth <= 0) &&
+    pathSubpathsAreClosed(pathData, importedWidth, importedHeight);
+  const inkPaint = hexToRgba(strokeColorHex, strokeOpacity);
 
   // UX 2026-04-21: Ink is by PDF spec a stroked freeform scribble — never
   // filled. Drawboard (and other editors) sometimes emit an /AP appearance
@@ -1679,9 +1748,9 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
     top: importedTop,
     width: importedWidth,
     height: importedHeight,
-    stroke: hexToRgba(strokeColorHex, strokeOpacity),
+    stroke: fillsClosedOutline ? null : inkPaint,
     strokeWidth,
-    fill: null,
+    fill: fillsClosedOutline ? inkPaint : null,
     strokeLineCap: appearance?.lineCap || 'round',
     strokeLineJoin: appearance?.lineJoin || 'round',
     // strokeUniform intentionally omitted — matches internal pen-stroke
@@ -1702,6 +1771,10 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
     isPdfImported: true,
     pdfAnnotationId: annotation.id,
     pdfAnnotationType: 'Ink',
+    ...(fillsClosedOutline ? {
+      pdfInkRenderMode: FILLED_PDF_INK_MODE,
+      data: { pdfInkRenderMode: FILLED_PDF_INK_MODE },
+    } : {}),
     layer: 'pdf-annotations'
   };
 

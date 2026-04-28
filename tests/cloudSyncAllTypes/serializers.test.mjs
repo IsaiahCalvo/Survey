@@ -15,7 +15,8 @@ import {
   deserializeRowsToAnnotationsByPage,
   serializeCalloutToRow,
   deserializeRowToCallout,
-  deserializeRowsToCallouts
+  deserializeRowsToCallouts,
+  normalizeFabricAnnotationRows
 } from '../../src/services/annotationTypeSerializers.js';
 
 const DOC_ID = '11111111-1111-1111-1111-111111111111';
@@ -292,6 +293,27 @@ test('deserializeRowToFabricObject: rejects highlight rows', () => {
   assert.throws(() => deserializeRowToFabricObject(row), /highlight rows are not Fabric objects/);
 });
 
+test('deserializeRowToFabricObject: recovers legacy highlight rows with Fabric payloads', () => {
+  const row = {
+    annotation_type: 'highlight',
+    page_number: 6,
+    highlight_id: 'ink-legacy',
+    annotation_data: {
+      pageNumber: 6,
+      fabricObject: {
+        type: 'path',
+        path: [['M', 0, 0], ['L', 1, 1]],
+        isPdfImported: true,
+        pdfAnnotationId: '3409R'
+      }
+    }
+  };
+  const restored = deserializeRowToFabricObject(row);
+  assert.equal(restored.pageNumber, 6);
+  assert.equal(restored.fabricObject.pdfAnnotationId, '3409R');
+  assert.equal(restored.fabricObject.data.id, 'ink-legacy');
+});
+
 test('deserializeRowToFabricObject: rejects rows missing annotation_data.fabricObject', () => {
   const row = {
     annotation_type: 'ink',
@@ -379,7 +401,7 @@ test('deserializeRowsToAnnotationsByPage: round-trip through page store', () => 
   assert.equal(restored['3'].objects[1].text, 'A');
 });
 
-test('deserializeRowsToAnnotationsByPage: skips highlight and callout rows', () => {
+test('deserializeRowsToAnnotationsByPage: skips plain highlight and callout rows', () => {
   const rows = [
     { annotation_type: 'highlight', annotation_data: {}, page_number: 1, highlight_id: 'h1' },
     { annotation_type: 'callout', annotation_data: { callout: { id: 'cb', anchor: { x: 0, y: 0 } } }, page_number: 1, highlight_id: 'cb' },
@@ -393,6 +415,51 @@ test('deserializeRowsToAnnotationsByPage: skips highlight and callout rows', () 
   const restored = deserializeRowsToAnnotationsByPage(rows);
   assert.equal(restored['1'].objects.length, 1);
   assert.equal(restored['1'].objects[0].type, 'rect');
+});
+
+test('normalizeFabricAnnotationRows: dedupes repeated PDF imports and prefers corrected non-highlight rows', () => {
+  const legacy = {
+    annotation_type: 'highlight',
+    page_number: 6,
+    updated_at: '2026-04-28T10:00:00.000Z',
+    annotation_data: {
+      pageNumber: 6,
+      fabricObject: {
+        type: 'path',
+        data: { id: 'legacy' },
+        path: [['M', 0, 0]],
+        isPdfImported: true,
+        pdfAnnotationId: '3409R',
+        stroke: 'red'
+      }
+    },
+    highlight_id: 'legacy'
+  };
+  const corrected = {
+    annotation_type: 'ink',
+    page_number: 6,
+    updated_at: '2026-04-28T09:00:00.000Z',
+    annotation_data: {
+      pageNumber: 6,
+      fabricObject: {
+        type: 'path',
+        data: { id: 'corrected' },
+        path: [['M', 1, 1]],
+        isPdfImported: true,
+        pdfAnnotationId: '3409R',
+        stroke: 'blue'
+      }
+    },
+    highlight_id: 'corrected'
+  };
+
+  const normalized = normalizeFabricAnnotationRows([legacy, corrected]);
+  assert.equal(normalized.length, 1);
+  assert.equal(normalized[0].annotation_type, 'ink');
+
+  const restored = deserializeRowsToAnnotationsByPage([legacy, corrected]);
+  assert.equal(restored['6'].objects.length, 1);
+  assert.equal(restored['6'].objects[0].stroke, 'blue');
 });
 
 // ----------------------------------------------------------------------------

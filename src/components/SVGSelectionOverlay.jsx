@@ -7,14 +7,18 @@
  * All handle sizes are multiplied by inverseScale to remain a constant
  * visual pixel size regardless of zoom level.
  *
- * Visual specs match fabricCustomization.js (Phase 8 Canvas handles)
- * so users see no difference between SVG display and Canvas edit modes.
+ * Handles use compact, zoom-aware sizing so small annotations stay editable
+ * without the chrome crowding the mark itself.
  *
  * Phase 9 Plan 01: Selection overlay foundation.
  */
 import React, { memo } from 'react';
 import { getCursorForHandle } from '../utils/svgTransformMath';
 import { getHandlePositions } from '../utils/svgBoundingBox';
+import {
+  getAdaptiveSelectionHandleSpec,
+  getSelectionHandleVisualMetrics,
+} from '../utils/selectionHandleVisibility.js';
 import rotateIconSvg from '../assets/rotate-icon.svg';
 
 const SVGSelectionOverlay = memo(({
@@ -47,10 +51,25 @@ const SVGSelectionOverlay = memo(({
   if (!bbox) return null;
 
   const { left, top, width, height, angle } = bbox;
-  const handles = getHandlePositions(bbox, padding);
   // Dampened inverse scale: sqrt curve softens handle sizing at extreme zooms
   // so handles don't balloon at low zoom or vanish at high zoom.
   const is = Math.sqrt(inverseScale);
+  const handleMetrics = getSelectionHandleVisualMetrics(inverseScale);
+  const handleSpec = getAdaptiveSelectionHandleSpec({
+    bboxWidth: width,
+    bboxHeight: height,
+    inverseScale,
+    padding,
+  });
+  const visibleResizeHandles = new Set(handleSpec.resizeHandles);
+  const baseHandles = getHandlePositions(bbox, padding);
+  const handles = {
+    ...baseHandles,
+    mtr: {
+      x: baseHandles.mt.x,
+      y: baseHandles.mt.y - handleSpec.rotationOffset,
+    },
+  };
 
   // Center of the bounding box for rotation transform. `rotationCenter`
   // (when supplied) overrides the geometric center so the rotation
@@ -75,11 +94,11 @@ const SVGSelectionOverlay = memo(({
   const cornerHandles = ['tl', 'tr', 'bl', 'br'];
 
   // Pill dimensions
-  const hPillW = 36 * is;  // Horizontal pill width
-  const hPillH = 10 * is;  // Horizontal pill height
-  const vPillW = 10 * is;  // Vertical pill width
-  const vPillH = 36 * is;  // Vertical pill height
-  const pillRx = 5 * is;   // Corner radius (fully rounded ends)
+  const hPillW = handleMetrics.hPillW;
+  const hPillH = handleMetrics.hPillH;
+  const vPillW = handleMetrics.vPillW;
+  const vPillH = handleMetrics.vPillH;
+  const pillRx = handleMetrics.pillRx;
 
   return (
     <g
@@ -108,17 +127,18 @@ const SVGSelectionOverlay = memo(({
       {!isGroupSelection && !moveOnly && (
         <>
           {/* Corner handles (tl, tr, bl, br) - circles */}
-          {!hideResizeHandles && cornerHandles.map((id) => {
+          {!hideResizeHandles && cornerHandles.filter((id) => visibleResizeHandles.has(id)).map((id) => {
             const pos = handles[id];
             return (
               <circle
                 key={`corner-${id}`}
+                data-resize-handle={id}
                 cx={pos.x}
                 cy={pos.y}
-                r={7 * is}
+                r={handleMetrics.cornerR}
                 fill="#ffffff"
                 stroke="#d1d1d1"
-                strokeWidth={1 * is}
+                strokeWidth={handleMetrics.cornerStrokeWidth}
                 style={{
                   filter: cornerShadow,
                   cursor: getCursorForHandle(id, angle || 0),
@@ -133,11 +153,12 @@ const SVGSelectionOverlay = memo(({
           })}
 
           {/* Horizontal pills (mt, mb) */}
-          {!hideResizeHandles && ['mt', 'mb'].map((id) => {
+          {!hideResizeHandles && ['mt', 'mb'].filter((id) => visibleResizeHandles.has(id)).map((id) => {
             const pos = handles[id];
             return (
               <rect
                 key={`pill-${id}`}
+                data-resize-handle={id}
                 x={pos.x - hPillW / 2}
                 y={pos.y - hPillH / 2}
                 width={hPillW}
@@ -160,11 +181,12 @@ const SVGSelectionOverlay = memo(({
           })}
 
           {/* Vertical pills (ml, mr) */}
-          {!hideResizeHandles && ['ml', 'mr'].map((id) => {
+          {!hideResizeHandles && ['ml', 'mr'].filter((id) => visibleResizeHandles.has(id)).map((id) => {
             const pos = handles[id];
             return (
               <rect
                 key={`pill-${id}`}
+                data-resize-handle={id}
                 x={pos.x - vPillW / 2}
                 y={pos.y - vPillH / 2}
                 width={vPillW}
@@ -202,7 +224,7 @@ const SVGSelectionOverlay = memo(({
             <circle
               cx={handles.mtr.x}
               cy={handles.mtr.y}
-              r={12 * is}
+              r={handleMetrics.rotationR}
               fill="#ffffff"
               stroke="#e0e0e0"
               strokeWidth={1 * is}
@@ -219,10 +241,10 @@ const SVGSelectionOverlay = memo(({
             {/* Rotation icon image (70% of circle diameter) */}
             <image
               href={rotateIconSvg}
-              x={handles.mtr.x - (16.8 * is) / 2}
-              y={handles.mtr.y - (16.8 * is) / 2}
-              width={16.8 * is}
-              height={16.8 * is}
+              x={handles.mtr.x - handleMetrics.rotationIconSize / 2}
+              y={handles.mtr.y - handleMetrics.rotationIconSize / 2}
+              width={handleMetrics.rotationIconSize}
+              height={handleMetrics.rotationIconSize}
               style={{ pointerEvents: 'none' }}
             />
           </g>

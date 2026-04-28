@@ -48,6 +48,58 @@ export const NON_HIGHLIGHT_TYPES = [
   'stamp', 'sticky_note', 'callout', 'counter', 'eraser'
 ];
 
+const SUPABASE_PAGE_SIZE = 1000;
+const UPSERT_BATCH_SIZE = 250;
+
+function isAllTypesOwnedRow(row) {
+  if (!row) return false;
+  if (NON_HIGHLIGHT_TYPES.includes(row.annotation_type)) return true;
+  return row.annotation_type === 'highlight' && !!row.annotation_data?.fabricObject;
+}
+
+async function loadPagedAnnotationRows(documentId, applyFilters) {
+  const rows = [];
+  for (let from = 0; ; from += SUPABASE_PAGE_SIZE) {
+    const to = from + SUPABASE_PAGE_SIZE - 1;
+    let query = supabase
+      .from('document_annotations')
+      .select('*')
+      .eq('document_id', documentId)
+      .order('page_number', { ascending: true });
+    query = applyFilters ? applyFilters(query) : query;
+    const { data, error } = await query.range(from, to);
+    if (error) return { rows, error };
+    rows.push(...(data || []));
+    if (!data || data.length < SUPABASE_PAGE_SIZE) break;
+  }
+  return { rows, error: null };
+}
+
+async function loadAllTypesOwnedRowsForDocument(documentId) {
+  const nonHighlight = await loadPagedAnnotationRows(
+    documentId,
+    (query) => query.in('annotation_type', NON_HIGHLIGHT_TYPES)
+  );
+  if (nonHighlight.error) return nonHighlight;
+
+  const legacyFabricHighlights = await loadPagedAnnotationRows(
+    documentId,
+    (query) => query
+      .eq('annotation_type', 'highlight')
+      .not('annotation_data->fabricObject', 'is', null)
+  );
+  if (legacyFabricHighlights.error) return legacyFabricHighlights;
+
+  return {
+    rows: [...nonHighlight.rows, ...legacyFabricHighlights.rows],
+    error: null,
+    scanned: {
+      nonHighlight: nonHighlight.rows.length,
+      legacyFabricHighlights: legacyFabricHighlights.rows.length
+    }
+  };
+}
+
 /**
  * Phase 30 — infer the annotation type from a Fabric object so the dual-write
  * fan-out can apply the highlight carve-out without trusting opts.annotation_type
@@ -111,10 +163,20 @@ export async function upsertAnnotationsByPage(annotationsByPage, opts = {}) {
     rowsByType: byType,
     pages: Object.keys(annotationsByPage || {}).length
   }));
-  const { data, error } = await supabase
-    .from('document_annotations')
-    .upsert(rows, { onConflict: 'document_id,highlight_id', ignoreDuplicates: false })
-    .select();
+  const data = [];
+  let error = null;
+  for (let i = 0; i < rows.length; i += UPSERT_BATCH_SIZE) {
+    const batch = rows.slice(i, i + UPSERT_BATCH_SIZE);
+    const result = await supabase
+      .from('document_annotations')
+      .upsert(batch, { onConflict: 'document_id,highlight_id', ignoreDuplicates: false })
+      .select();
+    if (result.error) {
+      error = result.error;
+      break;
+    }
+    data.push(...(result.data || []));
+  }
   const elapsedMs = Date.now() - t0;
   if (error) {
     console.error('[CloudSync][push] upsertAnnotationsByPage failed ' + JSON.stringify({
@@ -218,12 +280,7 @@ export async function loadAllNonHighlightAnnotations(documentId) {
   }
   const t0 = Date.now();
   console.log('[CloudSync][hydrate] loadAllNonHighlightAnnotations start ' + JSON.stringify({ documentId }));
-  const { data, error } = await supabase
-    .from('document_annotations')
-    .select('*')
-    .eq('document_id', documentId)
-    .in('annotation_type', NON_HIGHLIGHT_TYPES)
-    .order('page_number', { ascending: true });
+  const { rows: allRows, error, scanned } = await loadAllTypesOwnedRowsForDocument(documentId);
   const elapsedMs = Date.now() - t0;
   if (error) {
     console.error('[CloudSync][hydrate] loadAllNonHighlightAnnotations failed ' + JSON.stringify({
@@ -232,7 +289,7 @@ export async function loadAllNonHighlightAnnotations(documentId) {
     }));
     return { annotationsByPage: {}, callouts: [], error };
   }
-  const rows = data || [];
+  const rows = (allRows || []).filter(isAllTypesOwnedRow);
   const byType = rows.reduce((acc, r) => {
     acc[r.annotation_type] = (acc[r.annotation_type] || 0) + 1;
     return acc;
@@ -241,6 +298,8 @@ export async function loadAllNonHighlightAnnotations(documentId) {
   const callouts = deserializeRowsToCallouts(rows);
   console.log('[CloudSync][hydrate] loadAllNonHighlightAnnotations ok ' + JSON.stringify({
     elapsedMs,
+    totalRowsScanned: allRows?.length || 0,
+    scanned,
     totalRows: rows.length,
     rowsByType: byType,
     pagesWithObjects: Object.keys(annotationsByPage).length,

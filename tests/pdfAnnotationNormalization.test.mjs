@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { convertInkToFabricPath } from '../src/utils/pdfAnnotationImporter.js';
 import { makeInternalPenPathSpec } from '../src/utils/nativeShapeFactory.js';
-import { renderPathToSvgAttrs } from '../src/utils/svgPathAttrs.js';
+import { renderPathToSvgAttrs, renderPathToSvgD } from '../src/utils/svgPathAttrs.js';
 
 // UX 2026-04-21 (import-normalization Chunk 2): the imported Ink Fabric
 // spec must be field-for-field identical to an internally-drawn pen
@@ -102,7 +102,14 @@ test('imported Ink path is normalized to local coords with left/top carrying wor
   }
 });
 
-test('renderPathToSvgAttrs produces identical attrs for imported vs internal paths with same inputs', () => {
+test('renderPathToSvgAttrs preserves stroke / fill / cap / join parity for imported vs internal paths', () => {
+  // Behavior parity guarantee: stroke color, fill, line caps, line joins,
+  // and opacity must NOT diverge based on provenance — the user-visible
+  // ink/cap/color identity is the same whether the stroke came from PDF
+  // import or from an internal pen-down. Width and vector-effect ARE
+  // expected to diverge (see the next test) because the source PDF's
+  // hairline widths must be promoted for visibility while internal pens
+  // keep their toolbar-specified width verbatim.
   const base = {
     type: 'path',
     path: [
@@ -121,16 +128,100 @@ test('renderPathToSvgAttrs produces identical attrs for imported vs internal pat
   const a = renderPathToSvgAttrs(imported);
   const b = renderPathToSvgAttrs(internal);
 
-  const keys = [
-    'stroke',
-    'strokeWidth',
-    'fill',
-    'vectorEffect',
-    'strokeLinecap',
-    'strokeLinejoin',
-    'opacity',
-  ];
-  for (const key of keys) {
+  const sharedKeys = ['stroke', 'fill', 'strokeLinecap', 'strokeLinejoin', 'opacity'];
+  for (const key of sharedKeys) {
     assert.equal(a[key], b[key], `attr drift on ${key}: imported=${a[key]}, internal=${b[key]}`);
   }
+});
+
+test('renderPathToSvgAttrs promotes thin imported paths to visible width + non-scaling-stroke', () => {
+  // 2026-04-28 visibility fix: thin PDF strokes (typical /BS borderWidth
+  // 0.5-1.1pt) become sub-pixel under the SVG viewBox transform and
+  // can fade out at low zoom. Imported open paths get clamped to a
+  // visible user-unit floor AND vector-effect:
+  // non-scaling-stroke so they stay at-least-one-device-pixel at every
+  // zoom — matches Adobe / Drawboard behavior. Internal pen strokes are
+  // unaffected because the user picks their width directly.
+  const thin = {
+    type: 'path',
+    path: [['M', 0, 0], ['L', 1, 1]],
+    stroke: '#000',
+    strokeWidth: 0.9,
+    fill: null,
+  };
+  const importedThin = { ...thin, isPdfImported: true, pdfAnnotationType: 'Ink', pdfAnnotationId: 'p1' };
+  const internalThin = { ...thin };
+
+  const importedAttrs = renderPathToSvgAttrs(importedThin);
+  const internalAttrs = renderPathToSvgAttrs(internalThin);
+
+  // Imported: clamped + non-scaling. Floor lives in svgPathAttrs.js
+  // (IMPORTED_PATH_MIN_STROKE_WIDTH); this test asserts the *behavior*
+  // (clamp activates, value is well above 0.9, vector-effect on) without
+  // hard-coding the floor number, so visual tuning doesn't break tests.
+  assert.ok(importedAttrs.strokeWidth >= 1.5, `imported thin stroke clamps up (got ${importedAttrs.strokeWidth})`);
+  assert.ok(importedAttrs.strokeWidth > 0.9, 'imported thin stroke is wider than its raw input');
+  assert.equal(importedAttrs.vectorEffect, 'non-scaling-stroke', 'imported gets non-scaling-stroke');
+
+  // Internal: passthrough.
+  assert.equal(internalAttrs.strokeWidth, 0.9, 'internal stroke width passes through unchanged');
+  assert.equal(internalAttrs.vectorEffect, undefined, 'internal stroke has no vector-effect by default');
+
+  // Already-thick imported strokes are NOT shrunk.
+  const thickImported = renderPathToSvgAttrs({
+    ...importedThin,
+    strokeWidth: 4,
+  });
+  assert.equal(thickImported.strokeWidth, 4, 'thick imported stroke retains its width');
+});
+
+test('closed zero-width PDF Ink imports as a filled outline, not a hollow stroke', () => {
+  const closedInk = {
+    id: 'ink-filled-outline-1',
+    subtype: 'Ink',
+    inkLists: [[10, 10, 20, 10, 20, 20, 10, 20, 10.1, 10.1]],
+    color: [164, 103, 243],
+    borderWidth: 0,
+    rect: [0, 0, 100, 100],
+  };
+
+  const imported = convertInkToFabricPath(closedInk, viewport, 1);
+  assert.ok(imported);
+  assert.equal(imported.pdfInkRenderMode, 'filled-outline');
+  assert.ok(imported.fill?.startsWith('rgba(164, 103, 243'), `fill should use ink color, got ${imported.fill}`);
+
+  const attrs = renderPathToSvgAttrs(imported);
+  assert.equal(attrs.stroke, 'none');
+  assert.equal(attrs.strokeWidth, 0);
+  assert.equal(attrs.fill, imported.fill);
+  assert.equal(attrs.fillRule, 'nonzero');
+});
+
+test('legacy closed thin imported Ink rows render filled even without new import marker', () => {
+  const legacyCloudRow = {
+    type: 'path',
+    path: [
+      ['M', 0, 0],
+      ['L', 10, 0],
+      ['L', 10, 10],
+      ['L', 0, 10],
+      ['L', 0.1, 0.1],
+    ],
+    stroke: 'rgba(164, 103, 243, 0.301961)',
+    strokeWidth: 0.9,
+    fill: null,
+    isPdfImported: true,
+    pdfAnnotationType: 'Ink',
+    pdfAnnotationId: 'legacy-outline',
+  };
+
+  const attrs = renderPathToSvgAttrs(legacyCloudRow);
+  assert.equal(attrs.stroke, 'none');
+  assert.equal(attrs.strokeWidth, 0);
+  assert.equal(attrs.fill, legacyCloudRow.stroke);
+  assert.equal(attrs.vectorEffect, undefined);
+
+  const d = renderPathToSvgD(legacyCloudRow, attrs);
+  assert.match(d, /\bC\b/, 'closed outline should render with smoothed cubic curves');
+  assert.match(d, /\bZ\b/, 'closed outline should stay closed for fill rendering');
 });

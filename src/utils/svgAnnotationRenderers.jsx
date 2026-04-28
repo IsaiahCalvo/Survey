@@ -42,7 +42,7 @@ import {
 // can import it without the JSX loader. The renderer uses it too to
 // guarantee import vs internal paths produce byte-identical SVG output
 // when their Fabric input fields match.
-import { renderPathToSvgAttrs } from './svgPathAttrs.js';
+import { renderPathToSvgAttrs, renderPathToSvgD } from './svgPathAttrs.js';
 
 const __shapeClick = (e) => __captureShape(e.currentTarget, e);
 
@@ -124,7 +124,8 @@ export const isErasedOutline = (obj) =>
 export const renderPath = (obj, index) => {
   if (!Array.isArray(obj.path) || obj.path.length === 0) return null;
 
-  const d = obj.path.map((seg) => seg.join(' ')).join(' ');
+  const attrs = renderPathToSvgAttrs(obj);
+  const d = renderPathToSvgD(obj, attrs);
 
   const left = obj.left ?? 0;
   const top = obj.top ?? 0;
@@ -181,8 +182,6 @@ export const renderPath = (obj, index) => {
   // via renderPathToSvgAttrs so imported Ink and internal pen strokes
   // produce byte-identical <path> output given identical Fabric inputs.
   // No branch on isPdfImported/pdfAnnotationType — those are metadata only.
-  const attrs = renderPathToSvgAttrs(obj);
-
   // UX 2026-04-21: diagnostic log gated behind window.__INK_NORM_DIAG = true.
   // Dumps the actual render attrs per draw call alongside the import-time
   // log in convertInkToFabricPath — together they give the user a full
@@ -194,15 +193,23 @@ export const renderPath = (obj, index) => {
         JSON.stringify(
           {
             pdfAnnotationId: obj.pdfAnnotationId,
-            isPdfImported: obj.isPdfImported === true,
-            attrs: {
-              stroke: obj.stroke,
-              strokeWidth: obj.strokeWidth,
-              fill: obj.fill,
-              strokeUniform: obj.strokeUniform,
-              strokeLineCap: obj.strokeLineCap,
-              strokeLineJoin: obj.strokeLineJoin,
+            // Source-of-truth fields the renderer keys off of for the
+            // 2026-04-28 visibility fix — surfaced together with the
+            // computed visual attrs so the user can confirm whether the
+            // import flag survived the cloud round-trip.
+            sourceFlags: {
+              isPdfImported: obj.isPdfImported,
+              pdfAnnotationType: obj.pdfAnnotationType,
+              rawStrokeWidth: obj.strokeWidth,
+            },
+            renderedAttrs: {
+              stroke: attrs.stroke,
+              strokeWidth: attrs.strokeWidth,
+              fill: attrs.fill,
+              strokeLinecap: attrs.strokeLinecap,
+              strokeLinejoin: attrs.strokeLinejoin,
               vectorEffect: attrs.vectorEffect ?? 'none',
+              opacity: attrs.opacity,
             },
           },
           null,
@@ -221,8 +228,8 @@ export const renderPath = (obj, index) => {
       transform={transform}
       stroke={erased ? 'none' : attrs.stroke}
       strokeWidth={erased ? 0 : attrs.strokeWidth}
-      fill={erased ? obj.fill : 'none'}
-      fillRule={erased ? 'evenodd' : undefined}
+      fill={erased ? obj.fill : attrs.fill}
+      fillRule={erased ? 'evenodd' : attrs.fillRule}
       opacity={attrs.opacity}
       strokeLinecap={attrs.strokeLinecap}
       strokeLinejoin={attrs.strokeLinejoin}

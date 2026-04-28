@@ -64,6 +64,24 @@ function markMigrated(userId, documentId) {
   }
 }
 
+function getPdfImportKeyForObject(obj, pageNumber) {
+  const pdfAnnotationId = obj?.pdfAnnotationId;
+  if (!obj?.isPdfImported || !pdfAnnotationId) return null;
+  return `${pageNumber}:${pdfAnnotationId}`;
+}
+
+function getPdfImportKeyForRow(row) {
+  const obj = row?.annotation_data?.fabricObject;
+  const pageNumber = row?.annotation_data?.pageNumber ?? row?.page_number;
+  return getPdfImportKeyForObject(obj, pageNumber);
+}
+
+function ensureLocalObjectId(obj, fallbackId) {
+  if (!obj || !fallbackId) return;
+  if (!obj.data || typeof obj.data !== 'object') obj.data = {};
+  if (!obj.id && !obj.data.id) obj.data.id = fallbackId;
+}
+
 /**
  * Run the one-time migration if it hasn't run yet for this (user, document).
  *
@@ -102,8 +120,13 @@ export async function migrateLocalAnnotationsToCloud(ctx) {
   const cloudIds = new Set(
     (cloudResult.rawRows || []).map((r) => r.highlight_id).filter(Boolean)
   );
+  const cloudPdfImportKeys = new Set(
+    (cloudResult.rawRows || []).map(getPdfImportKeyForRow).filter(Boolean)
+  );
 
-  // Filter local objects that aren't in cloud yet, keyed on highlight_id (id).
+  // Filter local objects that aren't in cloud yet. Imported PDF annotations
+  // also key by the source PDF annotation id so legacy local snapshots with
+  // missing/generated client ids do not reinsert duplicate cloud rows.
   const filteredByPage = {};
   let totalLocal = 0;
   let totalToPush = 0;
@@ -113,7 +136,12 @@ export async function migrateLocalAnnotationsToCloud(ctx) {
     for (const obj of page.objects) {
       totalLocal += 1;
       const id = obj.id || obj.data?.id;
-      if (!id || !cloudIds.has(id)) {
+      const pdfImportKey = getPdfImportKeyForObject(obj, Number.parseInt(pageKey, 10) || 1);
+      if (id) ensureLocalObjectId(obj, id);
+      if (
+        (!id || !cloudIds.has(id)) &&
+        (!pdfImportKey || !cloudPdfImportKeys.has(pdfImportKey))
+      ) {
         newObjects.push(obj);
         totalToPush += 1;
       }
