@@ -65,3 +65,17 @@ The two failing test files appear to have missed this pattern.
 **Date logged:** 2026-04-28
 **Surfaced by:** Plan 29-02 (executor session)
 **Owner:** Plan 29-05 (or Plan 29-03 amendment / test fix in a separate plan)
+
+---
+
+## Phase-close review item — January 13 stash
+
+**Status:** REVIEW AT PHASE 29 CLOSE
+
+During Wave 1 of Phase 29 (2026-04-28) the working tree was found in a partial-merge state from a `git stash apply` attempt of `stash@{0}` ("WIP on Layer-Revamp: 6e8d31c Backup: 2026-01-13 23:04:08"). The apply had failed mid-way and left conflict markers in `src/App.jsx` and `src/PageAnnotationLayer.jsx`, plus stash-residue index entries for `1.log` and `.cursor/debug.log`. The cleanup (commit landed with this Phase 29 phase-close docs commit) restored the HEAD copies of both source files and cleared the index entries. **The stash itself was preserved** — it is still at `stash@{0}`.
+
+**Action at phase close:** Inspect `git stash show -p stash@{0}` and decide whether the January 13 "Layer-Revamp" work is still relevant. The stash diff scope was ~154,210 insertions across the four files listed above. Either reapply selectively, save the diff as a patch file for later, or `git stash drop stash@{0}`.
+
+**Date logged:** 2026-04-28
+**Surfaced by:** Phase 29 execute-phase orchestrator (Wave 1 → Wave 2 transition)
+**Owner:** User decision at Phase 29 close (after VERIFICATION.md passes)
