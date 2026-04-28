@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
-status: Plan 29-05 shipped — feat commit 24e30dcc + test commit 773caec9. FabricEditCanvas waiver landed: bridge wire + per-word + mid-drag + registry + awareness + interaction-state. CLAUDE.md invariants byte-identical. Eraser-swipe DEFERRED to Phase 33+. 5 e2e specs unfixme'd with runtime-skip on missing seams. Phase 29 plans 29-01/02/03/04/05/06 all functionally landed (per git log); reconciliation pending.
-stopped_at: Completed 29-05-PLAN.md — FabricEditCanvas waiver (bridge wire + per-word + mid-drag + registry + awareness + interaction-state); 5 e2e specs unfixme'd with runtime-skip; eraser-swipe deferred to Phase 33+
-last_updated: "2026-04-28T10:44:17.814Z"
-last_activity: 2026-04-28 — Plan 29-05 executed (3 tasks committed in 2 commits; FabricEditCanvas narrow waiver +348 lines; CLAUDE.md invariants byte-identical; 5 e2e specs unfixme'd; eraser-swipe deferred to Phase 33+)
+status: Plan 29-05 shipped — feat commit 24e30dcc + test commit 773caec9. CLAUDE.md invariants byte-identical. App.jsx untouched in this plan (pre-existing WIP from another lane logged as deferred-item for reconciliation).
+stopped_at: Completed 29-04-PLAN.md — useAnnotationsCRDT hook + per-user UndoManager mount + App.jsx handleUndo/handleRedo rewire + cross-page-undo + 5 e2e specs unfixme'd; 31/34 phase29 unit suite preserved
+last_updated: "2026-04-28T10:46:05.230Z"
+last_activity: 2026-04-28 — Plan 29-05 executed (3 tasks; FabricEditCanvas narrow waiver; 5 e2e specs unfixme'd; eraser-swipe deferred)
 progress:
   total_phases: 14
   completed_phases: 4
   total_plans: 26
-  completed_plans: 23
+  completed_plans: 24
   percent: 88
 ---
 
@@ -73,6 +73,7 @@ Progress: [█████████░] 88% — Phase 27 functionally complet
 | Phase 29 P03 | 4min | 2 tasks | 1 file |
 | Phase 29 P02 | 10min | 2 tasks | 2 files |
 | Phase 29 P05 | 80 | 3 tasks | 6 files |
+| Phase 29 P04 | 12 | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -183,6 +184,11 @@ Progress: [█████████░] 88% — Phase 27 functionally complet
 - [Phase 29]: Plan 29-05: Mid-drag Cmd+Z capture-phase keydown listener pre-empts App.jsx handleUndoRedoKey via window.addEventListener('keydown', handler, true) + e.stopPropagation() — App.jsx untouched per plan scope.
 - [Phase 29]: Plan 29-05: Eraser-swipe transact bracketing DEFERRED to Phase 33+ follow-up. Pre-flight grep confirmed FabricEraserCanvas.jsx (DO NOT CHANGE) owns eraser exclusively; FEC has zero eraser surface. eraser-swipe-undo.spec.mjs STAYS test.fixme'd.
 - [Phase 29]: Plan 29-05: 5 e2e specs use runtime-skip pattern (test.skip with descriptive reason on missing seam) instead of staying fixme'd. Bodies document full e2e flow inline; bridge contracts locked at unit-test level.
+- [Phase 29]: Plan 29-04: useAnnotationsCRDT subscribes via useSyncExternalStore + per-Y.Map observeDeep (NEVER root ydoc — anti-pattern); frozen EMPTY_BY_PAGE during ydoc=null OR isHydrating prevents spurious re-renders; snapshotRef memoization runs Y.Map → byPage materialization once per Y.Doc transaction batch
+- [Phase 29]: Plan 29-04: YDocProvider per-user UndoManager mount reuses existing per-mount sessionId useMemo so trackedOrigins reference equality holds across bridge transact origin AND undo manager trackedOrigins entry — Pitfall 7 mitigation locked at three call sites (bridge, manager, getOriginContext)
+- [Phase 29]: Plan 29-04: App.jsx handleUndo/handleRedo bodies REPLACED (not augmented). Legacy undoHistory snapshot stack lingers in component tree but no longer drained by Cmd+Z / Home-tab Undo. Phase 30+ owns retiring the legacy checkpoint sites that still write into it
+- [Phase 29]: Plan 29-04: Cross-page-undo via stack-item-popped listener with goToPageRef + currentPageRef refs (sidesteps temporal-dead-zone — goToPage declared 5000+ lines after the cross-page-undo effect). Listener silently no-ops when stackItem.meta.pageNumber missing — Plan 29-05 owns the bridge stack-item-added listener that writes meta.pageNumber
+- [Phase 29]: Plan 29-04: window.__navigateToPage wraps goToPage with explicit { fallback: 'nearest' } so e2e seams produce predictable behavior even with active-space scope clamping. window.__currentPageNumber is the symmetric read seam. Both cleaned up on effect teardown
 
 ### Roadmap Evolution
 
@@ -215,8 +221,8 @@ Progress: [█████████░] 88% — Phase 27 functionally complet
 
 ## Session Continuity
 
-Last session: 2026-04-28T10:44:14.971Z
-Stopped at: Completed 29-05-PLAN.md — FabricEditCanvas waiver (bridge wire + per-word + mid-drag + registry + awareness + interaction-state); 5 e2e specs unfixme'd with runtime-skip; eraser-swipe deferred to Phase 33+
+Last session: 2026-04-28T10:46:05.226Z
+Stopped at: Completed 29-04-PLAN.md — useAnnotationsCRDT hook + per-user UndoManager mount + App.jsx handleUndo/handleRedo rewire + cross-page-undo + 5 e2e specs unfixme'd; 31/34 phase29 unit suite preserved
 
 ### Resume instructions for the next session (read carefully)
 
