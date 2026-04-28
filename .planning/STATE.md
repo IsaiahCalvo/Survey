@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
 status: Plan 28-06 shipped — 4 atomic feat commits (00620643 banner, e87458ad modal, f1fb8ac4 transport+bridge wire-up, d777e915 ReadOnlyGate). Phase 27 + Phase 28 unit suites green (33 / 30 pass / 3 skipped / 0 fail). applyUpdate-only invariant green. App.jsx + all Always-Protected files untouched. AUTH-01 + AUTH-02 hard-closed.
-stopped_at: Phase 29 context gathered
-last_updated: "2026-04-28T03:57:05.907Z"
+stopped_at: Completed 29-01-PLAN.md — Wave 0 scaffolds shipped; ready for Plan 29-02 (crdtAnnotationBridge.js)
+last_updated: "2026-04-28T10:05:04.875Z"
 last_activity: 2026-04-28 — Plan 28-06 executed (4 autonomous tasks; banner extension + ReSignInModal + transport/bridge wire-up + ReadOnlyGate; App.jsx zero diff verified; UAT deferred to Phase 34)
 progress:
   total_phases: 14
   completed_phases: 4
-  total_plans: 20
-  completed_plans: 19
+  total_plans: 26
+  completed_plans: 20
   percent: 95
 ---
 
@@ -69,6 +69,7 @@ Progress: [██████████] 95% — Phase 27 functionally complet
 | Phase 28-transport-spike-auth-validator P04 | 33min | 2 tasks | 14 files |
 | Phase 28-transport-spike-auth-validator P05 | 4min | 2 tasks | 2 files |
 | Phase 28 P06 | 32 | 4 tasks | 7 files |
+| Phase 29 P01 | 9min | 3 tasks | 26 files |
 
 ## Accumulated Context
 
@@ -165,6 +166,7 @@ Progress: [██████████] 95% — Phase 27 functionally complet
 - [Phase 28-transport-spike-auth-validator]: Plan 28-05: migration applied to live Supabase project (Survey, ref cvamwtpsuvxvjdnotbeg) per user authorization. supabase db push completed cleanly; supabase migration list --linked confirms 20260504000000 present remotely. Plan 28-04 benchmark smoke re-run post-RLS produced 0 errors / 53 samples / p95=101ms / passes_speed_bar — bots' editor-collaborator status flows through new RLS cleanly, RLS go-live did not regress the locked transport's verdict.
 - [Phase 28]: Plan 28-06 Blocker 1 fix executed verbatim: authSessionBridge mount + readonly gate moved out of App.jsx into YDocProvider + new ReadOnlyGate.jsx child component. App.jsx ends Phase 28 with ZERO new lines (git diff --stat empty). The 28-CONTEXT.md narrow waiver was NOT exercised — Phase 27 Plan 27-05's existing <YDocProvider> mount line is the only Phase 27/28 footprint in App.jsx.
 - [Phase 28]: Plan 28-06 ships ReadOnlyGate.jsx as the read-only mode dispatcher: renders null, sets body[data-readonly] attribute when accessRevoked=true, installs a window-capture-phase keydown listener that suppresses Cmd+Z / Cmd+Shift+Z / Delete / Backspace while preserving Cmd+S pass-through (commit 477fe90e UX patch). CSS dims toolbar via descendant selectors targeting 3 historical class shapes (.tool-toolbar, .tool-toolbar__button, .toolbar-button). PAL/Fabric*/SVGAnnotationLayer never learn about read-only mode.
+- [Phase 29]: Plan 29-01: per-test existsSync skip-guard pattern reused verbatim from Phase 27/28 — 13 unit test scaffolds + 13 e2e fixme'd Playwright specs land Wave 0 with zero src/ changes. Multi-target tests (eraserSwipeUndo, undoTombstoneResurrection, resurrectRace) use TARGET = primary path alias + separate BRIDGE / UNDO_MGR consts to keep grep contracts green.
 
 ### Roadmap Evolution
 
@@ -197,8 +199,8 @@ Progress: [██████████] 95% — Phase 27 functionally complet
 
 ## Session Continuity
 
-Last session: 2026-04-28T03:57:05.902Z
-Stopped at: Phase 29 context gathered
+Last session: 2026-04-28T10:05:04.871Z
+Stopped at: Completed 29-01-PLAN.md — Wave 0 scaffolds shipped; ready for Plan 29-02 (crdtAnnotationBridge.js)
 
 ### Resume instructions for the next session (read carefully)
 

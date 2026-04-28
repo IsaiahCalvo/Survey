@@ -17,8 +17,8 @@
 ### Real-Time Collaboration (COLLAB)
 
 - [ ] **COLLAB-01**: Two users on separate accounts editing the same document at the same time both see the other's annotation creates, edits, and deletes within ~1 second of the action.
-- [ ] **COLLAB-02**: Concurrent edits to two different annotations on the same page never collide; both edits land cleanly.
-- [ ] **COLLAB-03**: Concurrent edits to the same annotation by two users land via per-property last-write-wins (color, position, text content, etc.) without showing a conflict modal.
+- [x] **COLLAB-02**: Concurrent edits to two different annotations on the same page never collide; both edits land cleanly.
+- [x] **COLLAB-03**: Concurrent edits to the same annotation by two users land via per-property last-write-wins (color, position, text content, etc.) without showing a conflict modal.
 - [ ] **COLLAB-04**: User can see a presence indicator (avatar / name pill) for everyone currently in the document on the same page they are.
 
 ### Offline & Merge (OFFLINE)
@@ -30,10 +30,10 @@
 
 ### Per-User Undo (UNDO)
 
-- [ ] **UNDO-01**: User can press Cmd+Z / Ctrl+Z to undo their own most recent action, even when collaborators have made changes after them.
-- [ ] **UNDO-02**: A user's undo never erases or alters another collaborator's annotations or edits.
-- [ ] **UNDO-03**: Undo restores the annotation's previous state including who originally created it and the original creation timestamp.
-- [ ] **UNDO-04**: Cmd+Shift+Z / Ctrl+Y redoes the user's own most recently undone action, again without affecting collaborator work.
+- [x] **UNDO-01**: User can press Cmd+Z / Ctrl+Z to undo their own most recent action, even when collaborators have made changes after them.
+- [x] **UNDO-02**: A user's undo never erases or alters another collaborator's annotations or edits.
+- [x] **UNDO-03**: Undo restores the annotation's previous state including who originally created it and the original creation timestamp.
+- [x] **UNDO-04**: Cmd+Shift+Z / Ctrl+Y redoes the user's own most recently undone action, again without affecting collaborator work.
 
 ### Activity Log (LOG)
 
@@ -96,17 +96,17 @@ Each v1 REQ-ID maps to exactly one v2.4 phase. Populated by gsd-roadmapper 2026-
 | AUTH-05 | Phase 33 — Activity Log + Awareness + Resume | Pending |
 | AUTH-06 | Phase 33 — Activity Log + Awareness + Resume | Pending |
 | COLLAB-01 | Phase 33 — Activity Log + Awareness + Resume | Pending |
-| COLLAB-02 | Phase 29 — Fabric ↔ Yjs Binding + Per-User Undo | Pending |
-| COLLAB-03 | Phase 29 — Fabric ↔ Yjs Binding + Per-User Undo | Pending |
+| COLLAB-02 | Phase 29 — Fabric ↔ Yjs Binding + Per-User Undo | Complete |
+| COLLAB-03 | Phase 29 — Fabric ↔ Yjs Binding + Per-User Undo | Complete |
 | COLLAB-04 | Phase 33 — Activity Log + Awareness + Resume | Pending |
 | OFFLINE-01 | Phase 32 — Multi-Tab + Persistence Hardening | Pending |
 | OFFLINE-02 | Phase 32 — Multi-Tab + Persistence Hardening | Pending |
 | OFFLINE-03 | Phase 32 — Multi-Tab + Persistence Hardening | Pending |
 | OFFLINE-04 | Phase 32 — Multi-Tab + Persistence Hardening | Pending |
-| UNDO-01 | Phase 29 — Fabric ↔ Yjs Binding + Per-User Undo | Pending |
-| UNDO-02 | Phase 29 — Fabric ↔ Yjs Binding + Per-User Undo | Pending |
-| UNDO-03 | Phase 29 — Fabric ↔ Yjs Binding + Per-User Undo | Pending |
-| UNDO-04 | Phase 29 — Fabric ↔ Yjs Binding + Per-User Undo | Pending |
+| UNDO-01 | Phase 29 — Fabric ↔ Yjs Binding + Per-User Undo | Complete |
+| UNDO-02 | Phase 29 — Fabric ↔ Yjs Binding + Per-User Undo | Complete |
+| UNDO-03 | Phase 29 — Fabric ↔ Yjs Binding + Per-User Undo | Complete |
+| UNDO-04 | Phase 29 — Fabric ↔ Yjs Binding + Per-User Undo | Complete |
 | LOG-01 | Phase 33 — Activity Log + Awareness + Resume | Pending |
 | LOG-02 | Phase 33 — Activity Log + Awareness + Resume | Pending |
 | LOG-03 | Phase 33 — Activity Log + Awareness + Resume | Pending |
