@@ -4,7 +4,7 @@ milestone: v2.3
 milestone_name: Tools Polish
 status: Plan 29-05 shipped — feat commit 24e30dcc + test commit 773caec9. CLAUDE.md invariants byte-identical. App.jsx untouched in this plan (pre-existing WIP from another lane logged as deferred-item for reconciliation).
 stopped_at: Completed 29-06-PLAN.md — CollaboratorOutlineOverlay + StorageFailureBanner extension + YDocProvider toast queue / Y.Map.observe / restore handler shipped; 2 e2e specs unfixme'd; 2 deferrals logged (contextMenuId publisher + per-page bbox feed)
-last_updated: "2026-04-28T10:48:12.845Z"
+last_updated: "2026-04-28T10:55:34.127Z"
 last_activity: 2026-04-28 — Plan 29-05 executed (3 tasks; FabricEditCanvas narrow waiver; 5 e2e specs unfixme'd; eraser-swipe deferred)
 progress:
   total_phases: 14
