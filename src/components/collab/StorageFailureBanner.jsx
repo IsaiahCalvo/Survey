@@ -106,6 +106,23 @@ const COPY = {
     body: "They deleted this while you had it open. You can bring it back — or leave it gone.",
     action: null,
   },
+
+  // ---- Phase 30 code (new — per 30-UI-SPEC.md Surface 1) ------------------
+  // UX: sync-queue-stuck surfaces when a half-failed dual-write retry queue
+  // has been pending > 30 seconds. CONTEXT.md "Honesty-over-silent-fallback":
+  // transient blips stay silent (under 30s), persistent failures get this
+  // explicit honesty surface. Body copy is calm — Linear / Notion / Figma
+  // graceful-degradation tone — never says "queue", "sync queue", "Y.Doc",
+  // "CRDT" to the user (memory/feedback_plain_english).
+  //
+  // Action link wires to a manual-retry entry point (Plan 30-06's YDocProvider
+  // exposes onAction handler that calls drainQueue once eagerly). Banner
+  // stays mounted on action click; on success → fade-out and unmount; on
+  // failure → banner remains.
+  sync_queue_stuck: {
+    body: "A few of your recent edits are still trying to save. Keep this tab open and check your connection — they'll keep retrying in the background.",
+    action: 'Retry now',
+  },
 };
 
 // Phase 28 — per-variant headings (Phase 27 originally used a single shared
@@ -131,6 +148,8 @@ const HEADING_BY_CODE = {
   // map stays a literal-prefix string the way Phase 27 + 28 entries are.
   // Fallback "another collaborator" lands when collaboratorName is null.
   annotation_remote_deleted: 'Removed by',
+  // Phase 30 — sync-queue-stuck per 30-UI-SPEC.md Surface 1.
+  sync_queue_stuck: "Some changes haven't saved yet",
 };
 
 // Phase 28 — per-variant secondary metadata. Phase 27 codes share the original
@@ -153,6 +172,8 @@ const SECONDARY_BY_CODE = {
   // 29-UI-SPEC.md §"Toast secondary metadata: (none)"). The body copy +
   // two-action button row is the entire toast.
   annotation_remote_deleted: null,
+  // Phase 30 — sync-queue-stuck per 30-UI-SPEC.md Surface 1.
+  sync_queue_stuck: 'Pending changes will keep retrying · Stay on this page to keep your edits queued',
 };
 
 // Inline 16x16 warning icon — matches existing project pattern (AuthModal.jsx,
@@ -183,7 +204,7 @@ const WarningIcon = () => (
  * any future CRDT-layer failure mode that wants the same chrome.
  *
  * @param {object} props
- * @param {'quota_exceeded'|'invalid_state'|'version_mismatch'|'blocked'|'transport_offline'|'permission_revoked'|'login_expiry_failure'|'annotation_remote_deleted'} props.code
+ * @param {'quota_exceeded'|'invalid_state'|'version_mismatch'|'blocked'|'transport_offline'|'permission_revoked'|'login_expiry_failure'|'annotation_remote_deleted'|'sync_queue_stuck'} props.code
  * @param {() => void} props.onDismiss - hides banner for this session only.
  *   IGNORED for `permission_revoked` — kicked-out is a permanent state for
  *   the session; banner stays until the user closes the document.
