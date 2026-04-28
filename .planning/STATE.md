@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
 status: Plan 28-06 shipped — 4 atomic feat commits (00620643 banner, e87458ad modal, f1fb8ac4 transport+bridge wire-up, d777e915 ReadOnlyGate). Phase 27 + Phase 28 unit suites green (33 / 30 pass / 3 skipped / 0 fail). applyUpdate-only invariant green. App.jsx + all Always-Protected files untouched. AUTH-01 + AUTH-02 hard-closed.
-stopped_at: "Plan 28-06 complete (4/4 autonomous tasks; UAT Task 5 deferred to Phase 34 close per user instruction). Phase 28 ready for /gsd:verify-work + 28-RECONCILIATION.md (DONE_WITH_CONCERNS — UAT cross-account portion blocked by sharing-UX gap)."
-last_updated: "2026-04-28T03:20:05.074Z"
+stopped_at: Phase 29 context gathered
+last_updated: "2026-04-28T03:57:05.907Z"
 last_activity: 2026-04-28 — Plan 28-06 executed (4 autonomous tasks; banner extension + ReSignInModal + transport/bridge wire-up + ReadOnlyGate; App.jsx zero diff verified; UAT deferred to Phase 34)
 progress:
   total_phases: 14
@@ -197,8 +197,8 @@ Progress: [██████████] 95% — Phase 27 functionally complet
 
 ## Session Continuity
 
-Last session: 2026-04-28T03:09:48.906Z
-Stopped at: Plan 28-06 complete (4/4 autonomous tasks; UAT Task 5 deferred to Phase 34 close per user instruction). Phase 28 ready for /gsd:verify-work + 28-RECONCILIATION.md (DONE_WITH_CONCERNS — UAT cross-account portion blocked by sharing-UX gap).
+Last session: 2026-04-28T03:57:05.902Z
+Stopped at: Phase 29 context gathered
 
 ### Resume instructions for the next session (read carefully)
 
