@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
-status: Plan 29-05 shipped — feat commit 24e30dcc + test commit 773caec9. CLAUDE.md invariants byte-identical. App.jsx untouched in this plan (pre-existing WIP from another lane logged as deferred-item for reconciliation).
-stopped_at: Phase 30 context gathered
-last_updated: "2026-04-28T14:48:53.298Z"
-last_activity: 2026-04-28 — Plan 29-05 executed (3 tasks; FabricEditCanvas narrow waiver; 5 e2e specs unfixme'd; eraser-swipe deferred)
+status: Plan 30-03 shipped — feat commit 0640d1c0; production module crdtDualWriteQueue.js (259 LOC, 6 exports, 3 locked constants); 7/7 tests pass; CI gate exits 0; Always-Protected files byte-identical. Out-of-order Plan 30-01 scaffold + CI gate landed inline as Rule 3 deviation (commit 24c578c5).
+stopped_at: Plan 30-03 shipped — feat commit 0640d1c0; test scaffold + CI gate landed inline as Rule 3 (commit 24c578c5)
+last_updated: "2026-04-28T16:48:00.000Z"
+last_activity: 2026-04-28 — Plan 30-03 executed (1 task + 1 inline Plan 30-01 scaffold; pure retry queue module with quarantine + stuck-threshold + kill-switch guard)
 progress:
   total_phases: 14
   completed_phases: 5
-  total_plans: 26
-  completed_plans: 25
-  percent: 88
+  total_plans: 33
+  completed_plans: 27
+  percent: 82
 ---
 
 # Project State
@@ -26,12 +26,12 @@ See: .planning/PROJECT.md (updated 2026-04-14)
 ## Current Position
 
 Milestone: v2.4 — CRDT Foundation + Real-Time Sync (Yjs port; SVG/Fabric layers immutable)
-Phase: **Phase 29 — Fabric ↔ Y.Map Binding + Per-User Undo** (Wave 0 + Wave 1 + Wave 2 functionally landed). Plan 29-01 Wave 0 scaffolds shipped (13 unit + 13 e2e). Plan 29-02 (crdtAnnotationBridge.js) and Plan 29-03 (crdtUndoManager.js) shipped Wave 1. Plans 29-04 (useAnnotationsCRDT + YDocProvider undo wiring), 29-05 (FabricEditCanvas waiver), and 29-06 (CollaboratorOutlineOverlay + remote-delete toast) all have production commits in git log; reconciliation pending.
-Plan: 29-05 — complete (FabricEditCanvas waiver shipped, +348 lines, narrow waiver scope). Bridge wire + isApplyingRemote echo-loop belt + per-word stopCapturing + mid-drag Cmd+Z capture-phase keydown + identity-contract registry (Pitfall 6 mitigation; Warning 3 lifecycle resolution) + awareness publish + interaction-state publish. Eraser-swipe transact bracketing DEFERRED to Phase 33+ per Info 2 resolution (FabricEraserCanvas.jsx exclusively owns eraser per CLAUDE.md). CLAUDE.md invariants verified BYTE-IDENTICAL via grep parity. 5 e2e specs unfixme'd with runtime-skip on missing seams.
-Status: Plan 29-05 shipped — feat commit 24e30dcc + test commit 773caec9. CLAUDE.md invariants byte-identical. App.jsx untouched in this plan (pre-existing WIP from another lane logged as deferred-item for reconciliation).
-Last activity: 2026-04-28 — Plan 29-05 executed (3 tasks; FabricEditCanvas narrow waiver; 5 e2e specs unfixme'd; eraser-swipe deferred)
+Phase: **Phase 30 — Migration Phase A — Dual-Write Era** (in progress). Plan 30-03 shipped; Plans 30-01 partial (queue scaffold + CI gate landed inline by 30-03 as Rule 3); 30-02, 30-04, 30-05, 30-06, 30-07 pending. Phase 29 functionally complete (reconciliation pending).
+Plan: 30-03 — complete (crdtDualWriteQueue.js pure module, +259 LOC, 6 exports + 3 constants). Pitfall 30-5 (queue starvation) + Pitfall 30-6 (stale queue replay after kill-switch flip) both mitigated. Latest-version-wins replacement; 30s stuck threshold; 10-attempt quarantine; 6-step exponential backoff capped at 30s. localStorage persistence with defensive guards. Listener errors swallowed defensively. Out-of-order Plan 30-01 scaffold (queue test + CI gate) landed inline as Rule 3 blocking deviation so Plan 30-03 had verifiable contract.
+Status: Plan 30-03 shipped — feat commit 0640d1c0 + test scaffold/CI gate commit 24c578c5. 7/7 tests pass; CI gate exits 0; Phase 27/28/29 baseline (20 pass + 8 skipped) preserved; Always-Protected files byte-identical (App.jsx, PAL, Fabric*, SVG, package.json, vite.config.js).
+Last activity: 2026-04-28 — Plan 30-03 executed (1 task + 1 inline Plan 30-01 scaffold; pure retry queue module)
 
-Progress: [█████████░] 88% — Phase 27 functionally complete (5/5 plans); Phase 28 functionally complete (6/6 plans); **Phase 29 functionally complete (29-01/02/03/04/05/06 production commits all in git log; reconciliation pending — eraser-swipe deferred to Phase 33+, 3 unit tests deferred per Plan 29-02 deferred-items #1)**; v2.4 milestone overall: 5/5 Phase 27, 6/6 Phase 28, 6/6 Phase 29 (modulo reconciliation), 0/3 Phase 30-32-33-34; v2.3 closed at Phase 15
+Progress: [████████░░] 82% — Phase 27 functionally complete (5/5 plans); Phase 28 functionally complete (6/6 plans); Phase 29 functionally complete (6/6 plans, reconciliation pending); **Phase 30 in progress: Plan 30-03 shipped (1/7), Plan 30-01 partially landed (2 of 10 scaffolds via Rule 3 inline); 5 plans remaining (30-01 reconciliation + 30-02/04/05/06/07)**; v2.4 milestone overall: 5/5 Phase 27, 6/6 Phase 28, 6/6 Phase 29 (modulo reconciliation), 1/7 Phase 30, 0 Phase 31/32/33/34; v2.3 closed at Phase 15
 
 ## Performance Metrics
 
@@ -75,6 +75,7 @@ Progress: [█████████░] 88% — Phase 27 functionally complet
 | Phase 29 P05 | 80 | 3 tasks | 6 files |
 | Phase 29 P04 | 12 | 3 tasks | 10 files |
 | Phase 29 P06 | 13 | 5 tasks | 10 files |
+| Phase 30-migration-dual-write P03 | 8 | 1 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -194,6 +195,8 @@ Progress: [█████████░] 88% — Phase 27 functionally complet
 - [Phase 29]: Plan 29-06: top-level synchronous import of getLocalFabricOrigin (Warning 4 resolution) extends the Plan 29-04 import line. Comments rephrased to dodge literal 'await import' grep — same defensive comment-rewriting Phase 27 ydocLifecycle.js and Phase 28 authSessionBridge.js used.
 - [Phase 29]: Plan 29-06: restore handler does direct ydoc.transact preserving snapshot meta (authorId/deviceId/createdAt) per UNDO-03 — bypasses applyFabricCommit's CREATE branch which would overwrite meta with restoring user's ctx.
 - [Phase 29]: Plan 29-06: contextMenuId interaction-state publisher deferred — App.jsx Always-Protected and Plan 29-06 forbids extending Plan 29-04's narrow waiver. Coverage of the other 4 interaction bindings (selectedId/draggingId/scalingId/editCanvasId) ships via Plan 29-05 FabricEditCanvas waiver. Logged in 29-deferred-items.md item 1.
+- [Phase 30-migration-dual-write]: Plan 30-03: Pure module crdtDualWriteQueue.js with 6 named exports + locked constants (QUARANTINE_THRESHOLD=10, STUCK_THRESHOLD_MS=30_000, BACKOFF_MS 6-step exponential cap at 30s). Per-user storage key. Latest-version-wins preserves queuedAt/attempts/quarantined. Drain handlers injected by caller (Plan 30-06). isCRDTEnabled() first-line guard mitigates Pitfall 30-6; quarantined-skip mitigates Pitfall 30-5.
+- [Phase 30-migration-dual-write]: Plan 30-03: out-of-order Plan 30-01 partial-completion (Rule 3 deviation) — landed crdtDualWriteQueue.test.mjs (7 tests) + scripts/check-no-diff-delete.mjs (CI gate) inline so Plan 30-03 had verifiable contract. Plan 30-01 Task 1 + Task 3 should detect both files already present when it eventually runs.
 
 ### Roadmap Evolution
 
@@ -226,8 +229,8 @@ Progress: [█████████░] 88% — Phase 27 functionally complet
 
 ## Session Continuity
 
-Last session: 2026-04-28T14:48:53.287Z
-Stopped at: Phase 30 context gathered
+Last session: 2026-04-28T16:47:21.900Z
+Stopped at: Plan 30-03 shipped — feat commit 0640d1c0; test scaffold + CI gate landed inline as Rule 3 (commit 24c578c5)
 
 ### Resume instructions for the next session (read carefully)
 
