@@ -405,12 +405,14 @@ Plans:
 **Plans**: 6 plans
 
 Plans:
-- [ ] 28-01-PLAN.md — Wave 0 test scaffolds + benchmark harness skeleton + 28-BENCHMARK.md shell (zero src/ changes)
-- [ ] 28-02-PLAN.md — SupabaseYjsProvider (default-path) + originBuilder + deviceId + authSessionBridge (AUTH-01/02 data path; Pitfall 1 defense)
-- [ ] 28-03-PLAN.md — HocuspocusYjsProvider (fallback-path wrapper, package.json waiver gated on spike outcome)
-- [ ] 28-04-PLAN.md — Multi-peer throttled-network benchmark + 28-BENCHMARK.md decision lock + checkpoint:decision (transport + validator surface)
-- [ ] 28-05-PLAN.md — Supabase migration: drop Phase 27 stub policies, real RLS + user_can_access_document helper + BEFORE INSERT trigger + Pitfall 3 indexes
-- [ ] 28-06-PLAN.md — Wire chosen transport into YDocProvider + extend StorageFailureBanner (3 new copy variants) + ReSignInModal + read-only mode gate + App.jsx narrow waiver + UAT checkpoint
+- [x] 28-01-PLAN.md — Wave 0 test scaffolds + benchmark harness skeleton + 28-BENCHMARK.md shell (zero src/ changes) — shipped 2026-04-27
+- [x] 28-02-PLAN.md — SupabaseYjsProvider (default-path) + originBuilder + deviceId + authSessionBridge (AUTH-01/02 data path; Pitfall 1 defense) — shipped 2026-04-28
+- [x] 28-03-PLAN.md — HocuspocusYjsProvider (fallback-path wrapper, package.json waiver gated on spike outcome; uninstalled at 28-04 close because Supabase won) — shipped 2026-04-27
+- [x] 28-04-PLAN.md — Multi-peer throttled-network benchmark + 28-BENCHMARK.md decision lock = supabase + checkpoint:decision (validator surface = postgres-trigger) — shipped 2026-04-28
+- [x] 28-05-PLAN.md — Supabase migration: drop Phase 27 stub policies, real RLS + user_can_access_document helper + BEFORE INSERT trigger + Pitfall 3 indexes — shipped 2026-04-28
+- [x] 28-06-PLAN.md — Wire chosen transport into YDocProvider + extend StorageFailureBanner (3 new copy variants) + ReSignInModal + ReadOnlyGate (Blocker 1 fix: App.jsx UNTOUCHED, gate moved into child component); UAT Task 5 DEFERRED to Phase 34 close per user instruction (cross-account testing blocked by sharing-UX gap: dashboard query filters by user_id only + Supabase Storage RLS scopes binary to owner's user_id prefix) — shipped 2026-04-28
+
+**Phase 28 status:** All 6 plans landed. Ready for `/gsd:verify-work 28` + 28-RECONCILIATION.md (DONE_WITH_CONCERNS — UAT cross-account portion deferred to Phase 34). 8 phase28 bot accounts in real Supabase project (`cvamwtpsuvxvjdnotbeg`) + `.bot-credentials.json` LEFT IN PLACE pending the deferred UAT.
 
 ### Phase 29: Fabric ↔ Yjs Binding + Per-User Undo (HIGHEST RISK)
 
@@ -584,6 +586,7 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13 → 14 → 
 | 18. Callout Auto-Routing + Hover Affordances + Self-Destruct | v2.3 | 0/TBD | Not started | - |
 | 20. PDF-Native Annotations — Foundations (Phase A) | v3.0 | 4/4 | Complete (DONE_WITH_CONCERNS) | 2026-04-25 |
 | 27. CRDT Foundation | 5/5 | Complete    | 2026-04-27 | - |
+| 28. Transport Spike + Auth + Server Validator | v2.4 | 6/6 | Complete (DONE_WITH_CONCERNS — UAT deferred to Phase 34) | 2026-04-28 |
 
 ---
-*Last updated: 2026-04-27 — v2.4 Phase 27 (CRDT Foundation) functionally complete (5/5 plans shipped). Plan 27-05 landed the React surface: YDocProvider context provider + useYDoc hook + StorageFailureBanner with all 4 copy variants per 27-UI-SPEC.md, mounted at the App.jsx document-open boundary via per-phase narrow waiver (1 import + 1 JSX wrap around <PDFViewer>). Live UAT verified single-user round-trip — pen-stroke drawn, page refreshed, stroke reappeared. applyUpdate-only invariant remains green; license gate green; test baseline preserved (290 pass / 6 fail pre-existing / 3 skipped); always-protected files (PAL/Fabric/SVG/vite.config.js) byte-identical except the App.jsx narrow waiver. Phase 27 awaiting `/gsd:verify-work 27` + 27-RECONCILIATION.md. Next: Phase 28 (transport spike + auth + server validator).*
+*Last updated: 2026-04-28 — v2.4 Phase 28 (Transport Spike + Auth + Server Validator) functionally complete (6/6 plans shipped). Plan 28-06 landed the user-facing surface: StorageFailureBanner extended with 3 new copy variants (transport_offline, permission_revoked, login_expiry_failure); ReSignInModal shipped as the only new component (inline re-sign-in form on document page, no fullscreen takeover); ReadOnlyGate shipped as the kicked-collaborator read-only mode dispatcher (body[data-readonly] + window-capture-phase keydown listener; renders null); locked transport (custom Supabase Realtime adapter per 28-BENCHMARK.md tiebreaker rule #1) + authSessionBridge mounted inside YDocProvider's existing useEffect. **Plan 28-06 Blocker 1 fix executed verbatim — App.jsx ZERO diff for all of Phase 28** (28-CONTEXT.md narrow waiver NOT exercised; the only Phase 27/28 footprint in App.jsx is the existing Plan 27-05 <YDocProvider> mount line). Manual UAT (Task 5) DEFERRED to Phase 34 close per user instruction — cross-account testing blocked by a sharing-UX gap: the document dashboard query filters by user_id = auth.uid() only (so shared docs don't appear in collaborator file lists) AND Supabase Storage RLS scopes the PDF binary to the OWNER's user_id prefix path (so non-owner collaborators cannot fetch the binary). 8 phase28 bot accounts + .bot-credentials.json LEFT IN PLACE pending the deferred UAT. Phase 27 + Phase 28 unit suites green (33 / 30 pass / 3 skipped / 0 fail); applyUpdate-only invariant green; license CI green; package.json restored to pre-spike state (Hocuspocus packages uninstalled when Supabase won the bake-off). Phase 28 awaiting `/gsd:verify-work 28` + 28-RECONCILIATION.md. Next: Phase 29 (Fabric ↔ Yjs Binding + Per-User Undo).*

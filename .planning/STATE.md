@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
-status: Plan 28-04 shipped — 2 atomic commits (c29007f4 harness + 6c72c1ea benchmark/decision), 3 deviations auto-fixed (Hocuspocus stale allowlist, Supabase password complexity, Hocuspocus double-provider create), 0 errors across 60k+ samples per transport. Phase 27 baseline preserved. Zero diff on Always-Protected files (App.jsx, PageAnnotationLayer, Fabric*, SVGAnnotationLayer, package.json, vite.config.js).
-stopped_at: "Plan 28-06 paused at checkpoint:human-verify (Task 5 — manual UAT). 4 of 5 tasks complete (00620643 banner extension, e87458ad ReSignInModal, f1fb8ac4 transport+bridge wire-up, d777e915 ReadOnlyGate). App.jsx UNTOUCHED — Plan 28-06 Blocker 1 fix verified (zero diff). Ready for user UAT testing."
-last_updated: "2026-04-28T02:44:31.892Z"
-last_activity: "2026-04-28 — Plan 28-04 executed autonomously (2 tasks + 1 auto-approved checkpoint:decision; bake-off complete; transport locked)"
+status: Plan 28-06 shipped — 4 atomic feat commits (00620643 banner extension, e87458ad ReSignInModal, f1fb8ac4 transport+bridge wire-up, d777e915 ReadOnlyGate). Plan 28-06 Blocker 1 fix verified — App.jsx ZERO diff for all of Phase 28. UAT Task 5 deferred to Phase 34 close (sharing-UX gap blocks live cross-account testing: dashboard query filters by user_id only + Supabase Storage RLS scopes binary to owner's user_id prefix). Phase 28 6/6 plans landed; ready for /gsd:verify-work + 28-RECONCILIATION.md (DONE_WITH_CONCERNS).
+stopped_at: "Plan 28-06 complete (4/4 autonomous tasks; UAT Task 5 deferred to Phase 34 close per user instruction). Phase 28 ready for /gsd:verify-work + 28-RECONCILIATION.md (DONE_WITH_CONCERNS — UAT cross-account portion blocked by sharing-UX gap)."
+last_updated: "2026-04-28T03:09:48.909Z"
+last_activity: "2026-04-28 — Plan 28-06 executed (4 autonomous tasks + 1 deferred manual UAT; banner extension + ReSignInModal + transport/bridge wire-up + ReadOnlyGate; App.jsx zero diff verified)"
 progress:
   total_phases: 14
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 20
-  completed_plans: 18
+  completed_plans: 19
   percent: 85
 ---
 
@@ -26,12 +26,12 @@ See: .planning/PROJECT.md (updated 2026-04-14)
 ## Current Position
 
 Milestone: v2.4 — CRDT Foundation + Real-Time Sync (Yjs port; SVG/Fabric layers immutable)
-Phase: **Phase 28 — Transport Spike + Auth + Server Validator** (Wave 0 + Wave 1 + Wave 2 shipped; Plans 28-01, 28-02, 28-03, 28-04 complete; Wave 3 plans 28-05 + 28-06 remaining)
-Plan: 28-04 — complete (multi-peer throttled-network bake-off; transport decision locked = supabase, validator surface = postgres-trigger; 28-BENCHMARK.md status flipped draft→locked with measured p95 numbers + lock-in statement per CONTEXT.md tiebreaker rule #1). 8 phase28 bot accounts provisioned in real Supabase project (tagged with raw_user_meta_data->>'phase28_bot' for single-filter SQL cleanup); local Hocuspocus bench server stood up + torn down; 10 bench-results JSON files committed as reproducible evidence. Hocuspocus packages uninstalled at plan close (package.json byte-identical to pre-spike state). Next: Plan 28-05 (RLS migration + postgres-trigger validator + drop Phase 27 stub deny-all policies by exact name) — unblocked.
-Status: Plan 28-04 shipped — 2 atomic commits (c29007f4 harness + 6c72c1ea benchmark/decision), 3 deviations auto-fixed (Hocuspocus stale allowlist, Supabase password complexity, Hocuspocus double-provider create), 0 errors across 60k+ samples per transport. Phase 27 baseline preserved. Zero diff on Always-Protected files (App.jsx, PageAnnotationLayer, Fabric*, SVGAnnotationLayer, package.json, vite.config.js).
-Last activity: 2026-04-28 — Plan 28-04 executed autonomously (2 tasks + 1 auto-approved checkpoint:decision; bake-off complete; transport locked)
+Phase: **Phase 28 — Transport Spike + Auth + Server Validator** (ALL 6 PLANS COMPLETE; ready for `/gsd:verify-work 28` + 28-RECONCILIATION.md). Plan 28-05 (RLS go-live + postgres-trigger validator) and Plan 28-06 (UI wire-up) ran in parallel; Plan 28-06 closed 2026-04-28 with 4/4 autonomous tasks + UAT deferred to Phase 34.
+Plan: 28-06 — complete (StorageFailureBanner extended with 3 new copy variants per UI-SPEC; ReSignInModal + ReadOnlyGate shipped as new components; locked transport SupabaseYjsProvider + authSessionBridge mounted inside YDocProvider per Plan 28-06 Blocker 1 fix; App.jsx ZERO diff verified — narrow waiver NOT exercised). Manual UAT Task 5 deferred to Phase 34 close per user instruction (cross-account testing blocked by sharing-UX gap: dashboard document-list query filters by user_id = auth.uid() only AND Supabase Storage RLS scopes PDF binary to owner's user_id prefix path). 8 phase28 bot accounts + .bot-credentials.json LEFT IN PLACE pending Phase 34 UAT.
+Status: Plan 28-06 shipped — 4 atomic feat commits (00620643 banner, e87458ad modal, f1fb8ac4 transport+bridge wire-up, d777e915 ReadOnlyGate). Phase 27 + Phase 28 unit suites green (33 / 30 pass / 3 skipped / 0 fail). applyUpdate-only invariant green. App.jsx + all Always-Protected files untouched. AUTH-01 + AUTH-02 hard-closed.
+Last activity: 2026-04-28 — Plan 28-06 executed (4 autonomous tasks; banner extension + ReSignInModal + transport/bridge wire-up + ReadOnlyGate; App.jsx zero diff verified; UAT deferred to Phase 34)
 
-Progress: [█████████░] 85% — Phase 27 functionally complete (5/5 plans); Phase 28 in progress (4/6 plans complete — Plans 28-01 Wave 0 + 28-02 default-path transport + 28-03 Hocuspocus fallback + 28-04 bake-off + decision lock); v2.4 milestone overall: 5/5 Phase 27, 4/6 Phase 28, 0/4 Phase 29-32-33-34; v2.3 closed at Phase 15
+Progress: [██████████] 95% — Phase 27 functionally complete (5/5 plans); **Phase 28 functionally complete (6/6 plans — 28-01 Wave 0 + 28-02 default-path transport + 28-03 Hocuspocus fallback + 28-04 bake-off + decision lock + 28-05 RLS go-live + 28-06 UI wire-up)**; v2.4 milestone overall: 5/5 Phase 27, 6/6 Phase 28, 0/4 Phase 29-32-33-34; v2.3 closed at Phase 15
 
 ## Performance Metrics
 
@@ -68,6 +68,7 @@ Progress: [█████████░] 85% — Phase 27 functionally complet
 | Phase 28 P02 | 9min | 3 tasks | 5 files |
 | Phase 28-transport-spike-auth-validator P04 | 33min | 2 tasks | 14 files |
 | Phase 28-transport-spike-auth-validator P05 | 4min | 2 tasks | 2 files |
+| Phase 28 P06 | 32 | 4 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -196,8 +197,8 @@ Progress: [█████████░] 85% — Phase 27 functionally complet
 
 ## Session Continuity
 
-Last session: 2026-04-28T02:44:20.584Z
-Stopped at: Plan 28-06 paused at checkpoint:human-verify (Task 5 — manual UAT). 4 of 5 tasks complete (00620643 banner extension, e87458ad ReSignInModal, f1fb8ac4 transport+bridge wire-up, d777e915 ReadOnlyGate). App.jsx UNTOUCHED — Plan 28-06 Blocker 1 fix verified (zero diff). Ready for user UAT testing.
+Last session: 2026-04-28T03:09:48.906Z
+Stopped at: Plan 28-06 complete (4/4 autonomous tasks; UAT Task 5 deferred to Phase 34 close per user instruction). Phase 28 ready for /gsd:verify-work + 28-RECONCILIATION.md (DONE_WITH_CONCERNS — UAT cross-account portion blocked by sharing-UX gap).
 
 ### Resume instructions for the next session (read carefully)
 
