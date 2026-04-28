@@ -31565,7 +31565,11 @@ ${pageBlocks}
                 }}
                 title="Highlight Area"
               >
-                <Icon name="highlighter" size={20} />
+                <Icon
+                  name="highlighter"
+                  size={20}
+                  color={activeTool === 'highlight' ? 'currentColor' : 'rgba(255, 255, 255, 1)'}
+                />
               </button>
             )}
           </div>
