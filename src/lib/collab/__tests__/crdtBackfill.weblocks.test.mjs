@@ -62,19 +62,37 @@ function makeSupabaseMock(rows) {
   };
 }
 
+// Node 22+ exposes a built-in `globalThis.navigator` as a getter-only property,
+// so plain assignment `globalThis.navigator = {...}` throws TypeError. Use
+// Object.defineProperty (the descriptor is configurable) for the override and
+// restore the original descriptor on cleanup. SSR-safe: when navigator is
+// genuinely undefined (older Node, browser shims), defineProperty still works
+// because there is no existing getter to clash with.
+function installMockNavigator(t, mockNavigator) {
+  const originalDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  Object.defineProperty(globalThis, 'navigator', {
+    value: mockNavigator,
+    writable: true,
+    configurable: true,
+    enumerable: true,
+  });
+  t.after(() => {
+    if (originalDescriptor) {
+      Object.defineProperty(globalThis, 'navigator', originalDescriptor);
+    } else {
+      delete globalThis.navigator;
+    }
+  });
+}
+
 test(
   'crdtBackfill weblocks #1: second concurrent runBackfill no-ops via Web Locks election (1 leader + 1 loser)',
   { skip: !existsSync(TARGET) ? 'crdtBackfill.js not yet present (Plan 30-02)' : (skipReason() || false) },
   async (t) => {
     const Y = await import('yjs');
     const mod = await import(TARGET);
-    const originalNavigator = globalThis.navigator;
     const locks = makeWebLocksMock();
-    globalThis.navigator = { locks };
-    t.after(() => {
-      if (originalNavigator === undefined) delete globalThis.navigator;
-      else globalThis.navigator = originalNavigator;
-    });
+    installMockNavigator(t, { locks });
 
     const ydoc = new Y.Doc();
     const yMapAnnotations = ydoc.getMap('annotations');
@@ -104,13 +122,8 @@ test(
   async (t) => {
     const Y = await import('yjs');
     const mod = await import(TARGET);
-    const originalNavigator = globalThis.navigator;
     const locks = makeWebLocksMock();
-    globalThis.navigator = { locks };
-    t.after(() => {
-      if (originalNavigator === undefined) delete globalThis.navigator;
-      else globalThis.navigator = originalNavigator;
-    });
+    installMockNavigator(t, { locks });
 
     const ydoc = new Y.Doc();
     const yMapAnnotations = ydoc.getMap('annotations');
