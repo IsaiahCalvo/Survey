@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
-status: Plan 28-06 shipped — 4 atomic feat commits (00620643 banner, e87458ad modal, f1fb8ac4 transport+bridge wire-up, d777e915 ReadOnlyGate). Phase 27 + Phase 28 unit suites green (33 / 30 pass / 3 skipped / 0 fail). applyUpdate-only invariant green. App.jsx + all Always-Protected files untouched. AUTH-01 + AUTH-02 hard-closed.
-stopped_at: Completed 29-01-PLAN.md — Wave 0 scaffolds shipped; ready for Plan 29-02 (crdtAnnotationBridge.js)
-last_updated: "2026-04-28T10:05:04.875Z"
-last_activity: 2026-04-28 — Plan 28-06 executed (4 autonomous tasks; banner extension + ReSignInModal + transport/bridge wire-up + ReadOnlyGate; App.jsx zero diff verified; UAT deferred to Phase 34)
+status: Plan 29-03 shipped — feat commit e38dce5f (crdtUndoManager.js, 188 LOC, 4 named exports). Pitfall 7 reference-equality memoization locked. Pitfall 8 user-action wrap discipline locked. 4 unit-test scaffolds (undoLocalScope/undoTwoUserIsolation/redoLocalScope/perWordUndo) flipped skip→green (10/10 pass). Phase 27 applyUpdate-only invariant still green. Plan 29-02 ran in parallel — 3 composition tests (undoTombstoneResurrection/eraserSwipeUndo/resurrectRace) pending Plan 29-02 commit.
+stopped_at: Completed 29-03-PLAN.md — crdtUndoManager.js shipped; Plans 29-04 (App.jsx Cmd+Z) and 29-05 (FabricEditCanvas) unblocked
+last_updated: "2026-04-28T10:11:48Z"
+last_activity: 2026-04-28 — Plan 29-03 executed (2 autonomous tasks; crdtUndoManager.js shipped; 10/10 unit tests green; ran in parallel with Plan 29-02 bridge)
 progress:
   total_phases: 14
   completed_phases: 4
-  total_plans: 26
-  completed_plans: 20
+  total_plans: 32
+  completed_plans: 22
   percent: 95
 ---
 
@@ -26,12 +26,12 @@ See: .planning/PROJECT.md (updated 2026-04-14)
 ## Current Position
 
 Milestone: v2.4 — CRDT Foundation + Real-Time Sync (Yjs port; SVG/Fabric layers immutable)
-Phase: **Phase 28 — Transport Spike + Auth + Server Validator** (ALL 6 PLANS COMPLETE; ready for `/gsd:verify-work 28` + 28-RECONCILIATION.md). Plan 28-05 (RLS go-live + postgres-trigger validator) and Plan 28-06 (UI wire-up) ran in parallel; Plan 28-06 closed 2026-04-28 with 4/4 autonomous tasks + UAT deferred to Phase 34.
-Plan: 28-06 — complete (StorageFailureBanner extended with 3 new copy variants per UI-SPEC; ReSignInModal + ReadOnlyGate shipped as new components; locked transport SupabaseYjsProvider + authSessionBridge mounted inside YDocProvider per Plan 28-06 Blocker 1 fix; App.jsx ZERO diff verified — narrow waiver NOT exercised). Manual UAT Task 5 deferred to Phase 34 close per user instruction (cross-account testing blocked by sharing-UX gap: dashboard document-list query filters by user_id = auth.uid() only AND Supabase Storage RLS scopes PDF binary to owner's user_id prefix path). 8 phase28 bot accounts + .bot-credentials.json LEFT IN PLACE pending Phase 34 UAT.
-Status: Plan 28-06 shipped — 4 atomic feat commits (00620643 banner, e87458ad modal, f1fb8ac4 transport+bridge wire-up, d777e915 ReadOnlyGate). Phase 27 + Phase 28 unit suites green (33 / 30 pass / 3 skipped / 0 fail). applyUpdate-only invariant green. App.jsx + all Always-Protected files untouched. AUTH-01 + AUTH-02 hard-closed.
-Last activity: 2026-04-28 — Plan 28-06 executed (4 autonomous tasks; banner extension + ReSignInModal + transport/bridge wire-up + ReadOnlyGate; App.jsx zero diff verified; UAT deferred to Phase 34)
+Phase: **Phase 29 — Fabric ↔ Y.Map Binding + Per-User Undo** (Wave 0 + Wave 1 in flight). Plan 29-01 Wave 0 scaffolds shipped (13 unit + 13 e2e). Plan 29-02 (crdtAnnotationBridge.js) ran in parallel with Plan 29-03 — Plan 29-03 shipped 2026-04-28 with 2/2 autonomous tasks.
+Plan: 29-03 — complete (crdtUndoManager.js shipped, 188 LOC, 4 named exports). Pitfall 7 reference-equality memoization locked. Pitfall 8 user-action wrap discipline locked. 4 unit-test scaffolds (undoLocalScope/undoTwoUserIsolation/redoLocalScope/perWordUndo) flipped skip→green: 10/10 pass. UNDO-01, UNDO-02, UNDO-04 closed at the module level; UNDO-03 awaiting Plan 29-02 bridge composition.
+Status: Plan 29-03 shipped — feat commit e38dce5f. Plan 29-02 commit pending. Module ready for Plan 29-04 (App.jsx Cmd+Z handler) and Plan 29-05 (FabricEditCanvas eraser-swipe + per-word stopCapturing) consumption.
+Last activity: 2026-04-28 — Plan 29-03 executed (2 autonomous tasks; crdtUndoManager.js + memoized origin + per-user UndoManager wrapper; 10/10 unit tests green; ran in parallel with Plan 29-02 bridge)
 
-Progress: [██████████] 95% — Phase 27 functionally complete (5/5 plans); **Phase 28 functionally complete (6/6 plans — 28-01 Wave 0 + 28-02 default-path transport + 28-03 Hocuspocus fallback + 28-04 bake-off + decision lock + 28-05 RLS go-live + 28-06 UI wire-up)**; v2.4 milestone overall: 5/5 Phase 27, 6/6 Phase 28, 0/4 Phase 29-32-33-34; v2.3 closed at Phase 15
+Progress: [██████████] 95% — Phase 27 functionally complete (5/5 plans); Phase 28 functionally complete (6/6 plans); **Phase 29 in flight (1/6 plans complete — 29-01 Wave 0 shipped; 29-02 + 29-03 Wave 1 running parallel; 29-03 shipped 2026-04-28)**; v2.4 milestone overall: 5/5 Phase 27, 6/6 Phase 28, 1/6 Phase 29 (+1 in flight), 0/3 Phase 30-32-33-34; v2.3 closed at Phase 15
 
 ## Performance Metrics
 
@@ -70,6 +70,7 @@ Progress: [██████████] 95% — Phase 27 functionally complet
 | Phase 28-transport-spike-auth-validator P05 | 4min | 2 tasks | 2 files |
 | Phase 28 P06 | 32 | 4 tasks | 7 files |
 | Phase 29 P01 | 9min | 3 tasks | 26 files |
+| Phase 29 P03 | 4min | 2 tasks | 1 file |
 
 ## Accumulated Context
 
@@ -167,6 +168,9 @@ Progress: [██████████] 95% — Phase 27 functionally complet
 - [Phase 28]: Plan 28-06 Blocker 1 fix executed verbatim: authSessionBridge mount + readonly gate moved out of App.jsx into YDocProvider + new ReadOnlyGate.jsx child component. App.jsx ends Phase 28 with ZERO new lines (git diff --stat empty). The 28-CONTEXT.md narrow waiver was NOT exercised — Phase 27 Plan 27-05's existing <YDocProvider> mount line is the only Phase 27/28 footprint in App.jsx.
 - [Phase 28]: Plan 28-06 ships ReadOnlyGate.jsx as the read-only mode dispatcher: renders null, sets body[data-readonly] attribute when accessRevoked=true, installs a window-capture-phase keydown listener that suppresses Cmd+Z / Cmd+Shift+Z / Delete / Backspace while preserving Cmd+S pass-through (commit 477fe90e UX patch). CSS dims toolbar via descendant selectors targeting 3 historical class shapes (.tool-toolbar, .tool-toolbar__button, .toolbar-button). PAL/Fabric*/SVGAnnotationLayer never learn about read-only mode.
 - [Phase 29]: Plan 29-01: per-test existsSync skip-guard pattern reused verbatim from Phase 27/28 — 13 unit test scaffolds + 13 e2e fixme'd Playwright specs land Wave 0 with zero src/ changes. Multi-target tests (eraserSwipeUndo, undoTombstoneResurrection, resurrectRace) use TARGET = primary path alias + separate BRIDGE / UNDO_MGR consts to keep grep contracts green.
+- [Phase 29]: Plan 29-03: per-userId memoization Map (module-scoped) for frozen origin objects — same module instance across all import sites means Plan 29-04 (App.jsx Cmd+Z handler) and Plan 29-05 (FabricEditCanvas object:modified + eraser swipe + per-word boundary) share the same memoization cache. Reference equality at trackedOrigins is the entire Pitfall 7 mitigation; rebuilding the origin per call would silently disable undo scoping.
+- [Phase 29]: Plan 29-03: origin source string is 'local-fabric', distinct from Phase 28's 'local' (transport-layer base origin). Lets Phase 33 distinguish "Fabric.js mutation" from "transport remote update" from "undo wrap" ('local-undo') from "redo wrap" ('local-redo') purely by reading origin.source. clientID-as-undo-scope anti-pattern verified absent (grep returns 0) — userId is the stable identity, the Yjs per-session numeric id changes on every doc reconstruct + per-tab.
+- [Phase 29]: Plan 29-03: history cap 100 via undoStack.shift() inside stack-item-added listener (Y.UndoManager has no native cap). userUndo/userRedo wrap inner undoManager.undo()/.redo() in ydoc.transact with non-tracked source — undo of undo doesn't push a new entry (Pitfall 8) and Phase 33 activity log gets clean attribution. dispose() returned for Plan 29-04 unmount cleanup; idempotent listener-detach + Y.UndoManager.destroy().
 
 ### Roadmap Evolution
 
@@ -199,8 +203,8 @@ Progress: [██████████] 95% — Phase 27 functionally complet
 
 ## Session Continuity
 
-Last session: 2026-04-28T10:05:04.871Z
-Stopped at: Completed 29-01-PLAN.md — Wave 0 scaffolds shipped; ready for Plan 29-02 (crdtAnnotationBridge.js)
+Last session: 2026-04-28T10:11:48Z
+Stopped at: Completed 29-03-PLAN.md — crdtUndoManager.js shipped (commit e38dce5f, 188 LOC, 4 named exports). 4 unit-test scaffolds 10/10 green. Plans 29-04 + 29-05 unblocked. Plan 29-02 ran in parallel — its commit pending; 3 composition tests (undoTombstoneResurrection / resurrectRace / UNDO-03 paths) flip green when 29-02 lands.
 
 ### Resume instructions for the next session (read carefully)
 
