@@ -1,0 +1,272 @@
+/* src/components/collab/ReSignInModal.css
+ * Phase 28 — Inline re-sign-in modal styles.
+ * Source: .planning/phases/28-transport-spike-auth-validator/28-UI-SPEC.md
+ *         Component Inventory section 2 (locked layout + spacing + typography).
+ *
+ * UX: this modal is the visible recovery affordance for the login_expiry_failure
+ * banner. It mounts INLINE on the document scroll container — no fullscreen overlay,
+ * no backdrop. The document remains visible behind the modal so the user can see
+ * their work and feel anchored to the same page they were already on. Per
+ * 28-CONTEXT.md decision: "don't make them lose their place."
+ *
+ * Class naming mirrors .storage-banner__* convention so future readers see the
+ * banner + modal as a coordinated CRDT-layer recovery surface.
+ *
+ * All values use the locked CSS variable system from src/App.css. Two type
+ * weights only (400 + 600), matching the Phase 27 banner type scale.
+ */
+
+.re-signin-modal {
+  /* UX: position absolute inside the document scroll container — NOT fixed.
+   * The modal stays anchored to the document area, not the viewport, so the
+   * user retains visual context with the page they were editing.
+   * top:32px (xl spacing token) keeps the modal off the very top so the
+   * storage-failure / login-expiry banner above can still be seen.
+   * left:50% + translateX(-50%) horizontal-center inside the document area.
+   * width: min(400px, 90vw) — narrower than AuthModal's 440px so it reads
+   * as a peer of the banners, not a fullscreen takeover. */
+  position: absolute;
+  top: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(400px, 90vw);
+
+  /* UX: 24px (lg spacing token) padding on all sides. Generous breathing
+   * room without bloating the modal beyond the 400px width. */
+  padding: 24px;
+
+  /* UX: same secondary surface as the banner (#252525 dark gray) — modal
+   * reads as a peer of the banner above it, not a different visual system. */
+  background: var(--bg-secondary, #252525);
+
+  /* UX: 1px border in the design token's primary border color — quietly
+   * separates the modal from the document underneath. Border-radius 8px
+   * matches the banner pattern (smaller than AuthModal's 12px so it reads
+   * as inline + lightweight, not a fullscreen system overlay). */
+  border: 1px solid var(--border-primary, #3A3A3A);
+  border-radius: 8px;
+
+  /* UX: shadow-lg drop shadow — heavier than the banner's shadow-md so the
+   * modal floats over the document with clear depth, signaling "this is an
+   * interactive surface above your content." */
+  box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.6));
+
+  /* UX: z-index 200 — above the banner (z-index 100) so the modal that the
+   * banner action opens covers the banner; below AuthModal's 10000 so any
+   * future fullscreen auth flow still wins layer order. */
+  z-index: 200;
+
+  /* UX: mount animation — opacity 0→1 + translateY(-8px)→0 over 220ms.
+   * Same easing curve as the Phase 27 banner hydration animation
+   * (cubic-bezier(0,0,0.2,1)). 220ms is fast enough to feel instant,
+   * slow enough to register as polished rather than abrupt. */
+  opacity: 0;
+  animation: re-signin-modal-enter 220ms cubic-bezier(0, 0, 0.2, 1) forwards;
+
+  /* Reuse the app font stack so modal type matches the rest of the surface. */
+  font-family: var(
+    --font-primary,
+    -apple-system,
+    BlinkMacSystemFont,
+    "SF Pro Display",
+    "SF Pro Text",
+    "Helvetica Neue",
+    "Segoe UI",
+    Roboto,
+    Ubuntu,
+    "Noto Sans",
+    Arial,
+    sans-serif
+  );
+}
+
+@keyframes re-signin-modal-enter {
+  /* The from-translate keeps the X centering (-50%) while easing in the Y. */
+  from {
+    opacity: 0;
+    transform: translate(-50%, -8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.re-signin-modal__heading {
+  /* UX: 14px / weight 600 / -0.01em letter-spacing — same as banner heading.
+   * Modal feels like a peer of the banner that opened it. */
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+  color: var(--text-primary, #FFFFFF);
+  margin: 0 0 16px 0;
+}
+
+.re-signin-modal__subtitle {
+  /* UX: 13px / weight 400 — subtitle copy that anchors the user (their edits
+   * are safe; they're going right back to where they were). */
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--text-secondary, #C8C8C8);
+  margin: 0 0 16px 0;
+}
+
+.re-signin-modal__error {
+  /* UX: error message slot — only renders when errorCode is set. Red text on
+   * transparent background (no chrome / no banner border) so the error reads
+   * as inline status, not a separate alert layer. */
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--accent-red, #DC3545);
+  margin: 0 0 16px 0;
+}
+
+.re-signin-modal__form {
+  /* UX: vertical stack with 16px gap (md spacing token) — consistent
+   * inter-section rhythm. */
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.re-signin-modal__label {
+  /* UX: 12px / weight 400 — small descriptive label above each input.
+   * --text-muted (#9A9A9A) keeps the label visually subordinate to the
+   * input value. */
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--text-muted, #9A9A9A);
+  margin-bottom: 4px;
+}
+
+.re-signin-modal__input {
+  /* UX: 13px text input on tertiary background. Border in primary border
+   * color so it reads as a peer of other dark-mode form inputs. 6px radius
+   * is smaller than the modal's 8px (children rounder than parents pulls
+   * the eye into the form). 8px×12px padding matches existing project
+   * input convention. */
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--text-primary, #FFFFFF);
+  background: var(--bg-tertiary, #2D2D2D);
+  border: 1px solid var(--border-primary, #3A3A3A);
+  border-radius: 6px;
+  padding: 8px 12px;
+  outline: none;
+  font-family: inherit;
+}
+
+.re-signin-modal__input:focus {
+  /* UX: 2px focus halo at 0.4 opacity — same pattern as banner action button.
+   * Visible keyboard focus without overpowering the surrounding chrome. */
+  box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.4);
+}
+
+.re-signin-modal__input:disabled {
+  /* UX: while submitting, inputs visually dim to 0.6 opacity so the user
+   * sees the form is locked. Cursor:not-allowed reinforces the disabled
+   * state on hover. */
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.re-signin-modal__cta {
+  /* UX: full-width primary CTA in accent-primary blue. Single-color
+   * destination button — interactivity signaled by background color, not
+   * weight (still 400 to keep the modal at the 2-weights-total contract).
+   * Hover lifts to a slightly brighter blue (#5A9FE8) — perceptible
+   * without screaming. */
+  width: 100%;
+  background: var(--accent-primary, #4A90E2);
+  color: #FFFFFF;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background-color 120ms ease-out;
+}
+
+.re-signin-modal__cta:hover:not(:disabled) {
+  /* UX: hover slightly lighter — Linear / Notion convention. */
+  background: #5A9FE8;
+}
+
+.re-signin-modal__cta:focus {
+  /* UX: keyboard focus halo matches input focus pattern for visual consistency. */
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.4);
+}
+
+.re-signin-modal__cta:disabled {
+  /* UX: disabled state — opacity 0.5 + cursor:not-allowed signals the button
+   * isn't actionable yet (waiting for both fields to fill, or a submit is
+   * already in flight). Matches UI-SPEC contract verbatim. */
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.re-signin-modal__secondary {
+  /* UX: secondary actions row — split between forgot-password (primary
+   * link, accent color) on the left and switch-account (secondary link,
+   * muted color) on the right. 16px top margin (md spacing token) keeps
+   * the row visually separated from the CTA above it. */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 16px;
+}
+
+.re-signin-modal__link-primary {
+  /* UX: Forgot password? — accent color + underline. Interactivity signal
+   * matches the banner action link convention. */
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--accent-primary, #4A90E2);
+  text-decoration: underline;
+  font-family: inherit;
+}
+
+.re-signin-modal__link-primary:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.4);
+  border-radius: 2px;
+}
+
+.re-signin-modal__link-secondary {
+  /* UX: Sign in with a different account — quieter visual weight in
+   * --text-muted color. Underline appears only on hover so the link reads
+   * as secondary at rest. Reset native button chrome so it looks like a
+   * link rather than a button. */
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--text-muted, #9A9A9A);
+  text-decoration: none;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.re-signin-modal__link-secondary:hover {
+  /* UX: underline-on-hover — reads as a discoverable link without competing
+   * with the primary "Forgot password?" link visually. */
+  text-decoration: underline;
+}
+
+.re-signin-modal__link-secondary:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.4);
+  border-radius: 2px;
+}
