@@ -33,6 +33,34 @@ import { useFabricCanvas } from '../hooks/useFabricCanvas';
 import { TEXT_PADDING } from '../utils/svgAnnotationRenderers';
 // measureTextBounds removed — edit canvas uses Textbox wrapping width, not tight text bounds
 
+// Phase 29 Plan 29-05 — Bridge wiring imports (narrow waiver per 29-CONTEXT.md).
+// FabricEditCanvas commits via crdtAnnotationBridge (Y.Doc as source of truth)
+// instead of routing through onEditCommit (legacy React state path) when the
+// CRDT layer is enabled. Echo-loop belt + memoized origin + kill-switch fallback
+// are all covered below.
+//
+// Phase 29 — Eraser-swipe transact bracketing DEFERRED to Phase 33+ follow-up.
+// Pre-flight grep at plan revision iteration 1 (2026-04-28) confirmed
+// FabricEraserCanvas.jsx (DO NOT CHANGE per CLAUDE.md "Always Protected") owns
+// eraser exclusively. FabricEditCanvas has ZERO eraser surface — only two
+// documentation comments referencing FabricEraserCanvas. To bracket an eraser
+// swipe as one logical undo step we would need either to modify
+// FabricEraserCanvas to fire eraser:session:start / eraser:delete /
+// eraser:session:end events that a sibling could subscribe to, OR to wrap the
+// eraser tool's session model in a higher-order component that exposes the
+// bracket — both require waivering FabricEraserCanvas. Both are out of scope
+// for v2.4. tests/phase29-e2e/eraser-swipe-undo.spec.mjs STAYS test.fixme'd
+// and the Phase 29 reconciliation acknowledges the gap.
+import {
+  applyFabricCommit,
+  applyFabricDelete,
+  applyYUpdateToFabric,
+  isApplyingRemote,
+} from '../lib/collab/crdtAnnotationBridge.js';
+import { getLocalFabricOrigin } from '../lib/collab/crdtUndoManager.js';
+import { isCRDTEnabled as readCRDTEnabledFlag } from '../lib/collab/crdtFeatureFlag.js';
+import { useYDoc } from '../hooks/useYDoc.js';
+
 // Fix Fabric.js 5.x cursor overlap bug: cursor was centered on character boundary
 // with `- cursorWidth / 2`, causing leftward drift at fractional zoom.
 // Patch: place cursor at the right edge of the boundary instead of centering.
@@ -1076,6 +1104,19 @@ const FabricEditCanvas = memo(({
   // -------------------------------------------------------------------------
   const [isLoading, setIsLoading] = useState(true);
   const [containerStyle, setContainerStyle] = useState({ visibility: 'hidden' });
+
+  // -------------------------------------------------------------------------
+  // Phase 29 Plan 29-05 — Bridge wiring context read (narrow waiver).
+  // useYDoc returns NULL_VALUE when called outside <YDocProvider> (Phase 27
+  // contract) — every field destructured below is null-safe in test harnesses
+  // and when CRDT is killed via the localStorage / env kill switch. undoManager
+  // and undoCtx come from Plan 29-04 once that plan lands; until then they are
+  // null and the per-word stopCapturing / mid-drag handlers gracefully no-op
+  // their stopCapturing call. The bridge write itself does NOT depend on those
+  // fields — applyFabricCommit only needs ydoc + a memoized origin payload.
+  // -------------------------------------------------------------------------
+  const { ydoc, undoManager, undoCtx } = useYDoc();
+  const crdtEnabled = readCRDTEnabledFlag();
 
   // -------------------------------------------------------------------------
   // Refs
@@ -2489,7 +2530,16 @@ const FabricEditCanvas = memo(({
         }
       });
 
-      canvas.on('object:modified', () => {
+      canvas.on('object:modified', (e) => {
+        // Phase 29 — Echo-loop belt (Pitfall 8 from 29-RESEARCH.md).
+        // Bridge sets applyingRemote=true synchronously before applying remote
+        // Y.Doc updates. If we are mid-apply, this object:modified was triggered
+        // by Fabric.js's internal handling of obj.set() (Fabric 5.5.2 occasionally
+        // fires object:modified during programmatic .set() on shapes with the
+        // CLAUDE.md uniform-stroke invariant set). Short-circuit here so we do
+        // not echo the remote update back to Y.
+        if (isApplyingRemote()) return;
+
         // Finalize an in-flight scale (if any): obj.left/top were left at the
         // Fabric-computed offset during the drag so handles stayed aligned
         // with the SVG shape. Now atomically:
@@ -2528,6 +2578,32 @@ const FabricEditCanvas = memo(({
             top: newTop,
           }));
           canvas.renderAll();
+        }
+
+        // Phase 29 — Bridge write path. CRDT layer is the source of truth when
+        // enabled. When disabled (kill switch via localStorage CRDT_LAYER_DISABLED
+        // or VITE_CRDT_LAYER_DISABLED) the rest of the existing edit-canvas
+        // commit path (commitAndClose / onEditCommit) remains unchanged — the
+        // legacy React-state pipeline carries on as it did pre-Phase-29.
+        //
+        // UX rationale: this handler only runs on shape edits (move / scale /
+        // rotate / property change). Final commit on edit-mode exit happens
+        // through commitAndClose() which still calls onEditCommitRef.current.
+        // The bridge call here streams interim shape updates into Y.Doc so
+        // remote clients see live changes during editing.
+        const target = e?.target;
+        if (crdtEnabled && ydoc && target && target.__dragCancelled !== true) {
+          const annoIdForCommit = target?.data?.id ?? target?.data?.annoId;
+          if (annoIdForCommit && undoCtx) {
+            const originPayload = getLocalFabricOrigin(undoCtx);
+            applyFabricCommit(
+              ydoc,
+              ydoc.getMap('annotations'),
+              target,
+              originPayload,
+              undoCtx,
+            );
+          }
         }
       });
 
@@ -2707,6 +2783,277 @@ const FabricEditCanvas = memo(({
   useEffect(() => { onEditCancelRef.current = onEditCancel; }, [onEditCancel]);
   useEffect(() => { editTypeRef.current = editType; }, [editType]);
   useEffect(() => { annotationDataRef.current = annotationData; }, [annotationData]);
+
+  // =========================================================================
+  // Phase 29 Plan 29-05 — UI-SPEC contract handlers (narrow waiver, additive).
+  // Section purpose: implement per-word undo boundary, mid-drag Cmd+Z cancel,
+  // identity-contract registry lifecycle, awareness publish, interaction-state
+  // publish. Eraser-swipe transact bracketing is DEFERRED (FabricEraserCanvas
+  // owns eraser exclusively per pre-flight grep at plan revision iteration 1).
+  // =========================================================================
+
+  // -------------------------------------------------------------------------
+  // Phase 29 — Per-word undo boundary (UI-SPEC §"Cmd+Z in text annotation").
+  // Yjs default captureTimeout=500ms collapses all keystrokes within 500ms
+  // into a single undo step. CONTEXT.md decision: one Cmd+Z = back to last
+  // whitespace, matching Word / Google Docs / Notion convention.
+  //
+  // Detection: text:changed fires after every keystroke during text edit. We
+  // inspect the most recent character; if whitespace, call
+  // undoManager.stopCapturing() to force the next captured op to start a fresh
+  // stack-item. Graceful no-op when undoManager is null (Plan 29-04 hasn't
+  // landed yet, or kill switch is active).
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    const onTextChanged = (e) => {
+      const text = e?.target?.text;
+      if (typeof text !== 'string' || text.length === 0) return;
+      const lastChar = text[text.length - 1];
+      // UX: tab and newline are also word boundaries — typing into a multi-line
+      // text annotation should reset the capture window when the user moves to
+      // the next line, same as a space.
+      if (lastChar === ' ' || lastChar === '\t' || lastChar === '\n') {
+        if (undoManager) {
+          try { undoManager.stopCapturing(); } catch (_) { /* graceful */ }
+        }
+      }
+    };
+    canvas.on('text:changed', onTextChanged);
+    return () => {
+      canvas.off('text:changed', onTextChanged);
+    };
+  }, [undoManager, isLoading]);
+
+  // -------------------------------------------------------------------------
+  // Phase 29 — Mid-drag Cmd+Z cancellation (UI-SPEC §"Cmd+Z mid-drag").
+  // CONTEXT.md decision: drag cancels, shape snaps back to drag-start, Cmd+Z
+  // otherwise ignored (does NOT propagate to App.jsx's handleUndoRedoKey).
+  // Contract: bridge.applyFabricCommit no-ops when fabricObject.__dragCancelled
+  // is true (Plan 29-02 verified by midDragCancel.test.mjs); the object:modified
+  // handler above also short-circuits on the same flag for redundancy.
+  // -------------------------------------------------------------------------
+  const isDraggingRef = useRef(false);
+  const dragStartPosRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    const onMouseDown = () => {
+      const obj = canvas.getActiveObject();
+      if (!obj) return;
+      isDraggingRef.current = true;
+      // Snapshot drag-start position so the keydown handler can snap back.
+      dragStartPosRef.current = { obj, left: obj.left, top: obj.top };
+      // Reset cancel flag — a fresh drag starts a fresh commit window.
+      obj.__dragCancelled = false;
+    };
+    const onMouseUp = () => {
+      isDraggingRef.current = false;
+      dragStartPosRef.current = null;
+    };
+    canvas.on('mouse:down', onMouseDown);
+    canvas.on('mouse:up', onMouseUp);
+    return () => {
+      canvas.off('mouse:down', onMouseDown);
+      canvas.off('mouse:up', onMouseUp);
+    };
+  }, [isLoading]);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      // UX: Cmd+Z (Mac) or Ctrl+Z (Win/Linux) without Shift = undo target.
+      // Cmd+Shift+Z is redo; we deliberately leave that alone — redoing a
+      // mid-drag would be a noop anyway because the drag never produced a
+      // committed Y.Doc op.
+      const isUndoKey = (e.metaKey || e.ctrlKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z');
+      if (!isUndoKey) return;
+      if (!isDraggingRef.current) return;
+      // Mid-drag: cancel + swallow.
+      const snapshot = dragStartPosRef.current;
+      if (snapshot?.obj) {
+        // Set the cancel flag BEFORE moving so any object:modified that fires
+        // during the snap-back set() short-circuits in the bridge.
+        snapshot.obj.__dragCancelled = true;
+        snapshot.obj.set({ left: snapshot.left, top: snapshot.top });
+        if (typeof snapshot.obj.setCoords === 'function') {
+          snapshot.obj.setCoords();
+        }
+        if (snapshot.obj.canvas && typeof snapshot.obj.canvas.requestRenderAll === 'function') {
+          snapshot.obj.canvas.requestRenderAll();
+        }
+      }
+      // Use capture phase + stopPropagation/preventDefault so App.jsx's
+      // handleUndoRedoKey listener (registered at the same window event but
+      // in non-capture phase or otherwise after this) does NOT also fire its
+      // handleUndo for this keystroke.
+      e.stopPropagation();
+      e.preventDefault();
+    };
+    // capture=true: run BEFORE App.jsx's keydown listener.
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, []);
+
+  // -------------------------------------------------------------------------
+  // Phase 29 — Identity-contract registry (Pitfall 6 mitigation; Warning 3
+  // resolution from plan revision iteration 1).
+  //
+  // CONTEXT.md line 96: "Per-mount registry: Map<annoId, FabricObject> populated
+  // when the edit canvas mounts, cleared when it unmounts."
+  //
+  // Why FEC owns this: the edit canvas mount/unmount IS the natural binding for
+  // this resource. Downstream consumers (bridge.applyYUpdateToFabric per
+  // Plan 29-02) accept a registry parameter; FEC passes its own
+  // registryRef.current via wiring landed by Plan 29-04 / 29-06.
+  //
+  // Why useRef (not useState): Map mutation should not trigger re-render. The
+  // Map IS the side-effecting state; readers consume it imperatively.
+  // -------------------------------------------------------------------------
+  const registryRef = useRef(new Map());
+
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+
+    const onObjectAdded = (e) => {
+      const obj = e?.target ?? e;
+      const annoId = obj?.data?.id ?? obj?.data?.annoId;
+      if (!annoId) return;
+      registryRef.current.set(annoId, obj);
+    };
+
+    const onObjectRemoved = (e) => {
+      const obj = e?.target ?? e;
+      const annoId = obj?.data?.id ?? obj?.data?.annoId;
+      if (!annoId) return;
+      registryRef.current.delete(annoId);
+    };
+
+    // Pre-populate from any objects already on the canvas at mount — covers
+    // the case where load*Annotation has already enlivened objects before the
+    // first run of this effect.
+    canvas.getObjects().forEach((obj) => {
+      const annoId = obj?.data?.id ?? obj?.data?.annoId;
+      if (annoId) registryRef.current.set(annoId, obj);
+    });
+
+    canvas.on('object:added', onObjectAdded);
+    canvas.on('object:removed', onObjectRemoved);
+
+    return () => {
+      canvas.off('object:added', onObjectAdded);
+      canvas.off('object:removed', onObjectRemoved);
+      // CRITICAL — clear ALL entries on unmount (CONTEXT.md line 96).
+      // The Map instance survives unmount because the ref persists, but its
+      // entries MUST be dropped so the next FEC mount starts clean.
+      registryRef.current.clear();
+    };
+  }, [isLoading]);
+
+  // -------------------------------------------------------------------------
+  // Phase 29 — Awareness publish (Info 3 resolution).
+  // Plan 29-06's CollaboratorOutlineOverlay reads remote users'
+  // editingAnnotationId via useRemoteEditors. The local user must publish their
+  // own editingAnnotationId for OTHER clients' overlays to render.
+  //
+  // Awareness reference: prefer ydoc.awareness (transport provider attaches it)
+  // or globalThis.__crdtAwareness (fallback path documented in 29-06's
+  // useRemoteEditors). Graceful no-op when awareness is unavailable.
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    const editAnnoId = annotationData?.data?.id ?? annotationData?.data?.annoId ?? null;
+    const awareness = (ydoc && ydoc.awareness)
+      || (typeof globalThis !== 'undefined' ? globalThis.__crdtAwareness : null)
+      || null;
+    if (!awareness || typeof awareness.setLocalStateField !== 'function') return;
+    if (editAnnoId) {
+      try { awareness.setLocalStateField('editingAnnotationId', editAnnoId); } catch (_) { /* graceful */ }
+    }
+    return () => {
+      try { awareness.setLocalStateField('editingAnnotationId', null); } catch (_) { /* graceful */ }
+    };
+  }, [ydoc, annotationData]);
+
+  // -------------------------------------------------------------------------
+  // Phase 29 — Interaction-state publish (Info 3 resolution).
+  // Plan 29-06's YDocProvider Y.Map.observe handler reads
+  // window.__phase29InteractionState to decide whether to enqueue a
+  // remote-delete toast for the local user.
+  //
+  // We update the global on Fabric event lifecycle: selection / drag / scale /
+  // edit-canvas mount. contextMenuId is NOT updated here because the right-click
+  // context menu lives at the App.jsx / ContextMenu component layer (out of FEC
+  // scope). Plan 29-06 owns the context-menu publisher.
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    if (typeof window === 'undefined') return;
+
+    // Initialize if absent — first FEC mount in this tab seeds the shape.
+    if (!window.__phase29InteractionState) {
+      window.__phase29InteractionState = {
+        selectedId: null,
+        draggingId: null,
+        scalingId: null,
+        editCanvasId: null,
+        contextMenuId: null,
+      };
+    }
+
+    const state = window.__phase29InteractionState;
+
+    const readAnnoId = (obj) => obj?.data?.id ?? obj?.data?.annoId ?? null;
+
+    const onSelectionCreated = (e) => {
+      const obj = (Array.isArray(e?.selected) ? e.selected[0] : null) ?? e?.target ?? null;
+      state.selectedId = readAnnoId(obj);
+    };
+    const onSelectionUpdated = onSelectionCreated;
+    const onSelectionCleared = () => { state.selectedId = null; };
+
+    const onMouseDownInteract = (e) => {
+      const obj = e?.target;
+      const annoId = readAnnoId(obj);
+      const action = e?.transform?.action;
+      if (action === 'scale' || action === 'scaleX' || action === 'scaleY') {
+        state.scalingId = annoId;
+      } else {
+        state.draggingId = annoId;
+      }
+    };
+    const onMouseUpInteract = () => {
+      state.draggingId = null;
+      state.scalingId = null;
+    };
+
+    canvas.on('selection:created', onSelectionCreated);
+    canvas.on('selection:updated', onSelectionUpdated);
+    canvas.on('selection:cleared', onSelectionCleared);
+    canvas.on('mouse:down', onMouseDownInteract);
+    canvas.on('mouse:up', onMouseUpInteract);
+
+    // Mark editCanvasId for the duration FEC is mounted with a target.
+    state.editCanvasId = annotationData?.data?.id ?? annotationData?.data?.annoId ?? null;
+
+    return () => {
+      canvas.off('selection:created', onSelectionCreated);
+      canvas.off('selection:updated', onSelectionUpdated);
+      canvas.off('selection:cleared', onSelectionCleared);
+      canvas.off('mouse:down', onMouseDownInteract);
+      canvas.off('mouse:up', onMouseUpInteract);
+      // Clear FEC-owned interaction state on unmount. Direct global write keeps
+      // the public surface explicit for any debugger snapshot at unmount time.
+      if (window.__phase29InteractionState) {
+        window.__phase29InteractionState.editCanvasId = null;
+        window.__phase29InteractionState.selectedId = null;
+        window.__phase29InteractionState.draggingId = null;
+        window.__phase29InteractionState.scalingId = null;
+      }
+    };
+  }, [annotationData, isLoading]);
 
   // -------------------------------------------------------------------------
   // Text editing exited event -- commit on blur
