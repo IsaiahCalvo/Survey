@@ -16,6 +16,17 @@ const NULL_VALUE = Object.freeze({
   role: 'unknown',
   isCRDTEnabled: false,
   dismissBanner: () => {},
+  // Phase 28 fields (kept on the null shape so callers can safely destructure
+  // without branching on "is the provider mounted").
+  accessRevoked: false,
+  transportState: 'connecting',
+  loginExpired: false,
+  // Phase 29 additions — undoManager / undoCtx are null until YDocProvider's
+  // per-user UndoManager mount effect resolves. Plan 29-04's App.jsx Cmd+Z
+  // handler short-circuits when either is null (no-op on empty/uninitialized
+  // state matches UI-SPEC empty-stack-silent contract).
+  undoManager: null,
+  undoCtx: null,
 });
 
 /**
@@ -28,6 +39,11 @@ const NULL_VALUE = Object.freeze({
  *   role: 'leader' | 'loser' | 'unknown',
  *   isCRDTEnabled: boolean,
  *   dismissBanner: () => void,
+ *   accessRevoked: boolean,
+ *   transportState: 'connecting' | 'connected' | 'offline' | string,
+ *   loginExpired: boolean,
+ *   undoManager: import('yjs').UndoManager | null,
+ *   undoCtx: { userId: string, deviceId: string, sessionId: string, clientID: number } | null,
  * }}
  */
 export function useYDoc() {

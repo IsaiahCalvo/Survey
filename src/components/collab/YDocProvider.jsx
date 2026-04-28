@@ -47,6 +47,10 @@ import { attachAuthSessionBridge } from '../../lib/collab/authSessionBridge.js';
 import { buildOrigin } from '../../lib/collab/originBuilder.js';
 import { getDeviceId } from '../../lib/collab/deviceId.js';
 import { supabase } from '../../supabaseClient.js';
+// Phase 29 — per-user Y.UndoManager mount. createUndoManager memoizes the origin
+// reference (Pitfall 7 mitigation) so the bridge and the undo manager use the same
+// frozen object — trackedOrigins.has() identity check holds across both call sites.
+import { createUndoManager } from '../../lib/collab/crdtUndoManager.js';
 
 // Frozen null-shape value reused when CRDT is disabled or docId is unknown.
 // UX: useYDoc() consumers can call hooks unconditionally — the null shape lets them
@@ -68,6 +72,10 @@ const NULL_CTX_DISABLED = Object.freeze({
   setLoginExpired: () => {},
   closeDocument: () => {},
   getOriginContext: () => Object.freeze({ source: 'local' }),
+  // Phase 29 additions — null shape for kill-switch path so consumers can safely
+  // destructure undoManager / undoCtx from useYDoc() without branching.
+  undoManager: null,
+  undoCtx: null,
 });
 
 export const YDocContext = createContext(null);
@@ -129,6 +137,22 @@ function YDocProviderInner({ docId, children, closeDocument }) {
   const [transportState, setTransportState] = useState(null);
   const [loginExpired, setLoginExpired] = useState(false);
   const [reSignInModalOpen, setReSignInModalOpen] = useState(false);
+
+  // Phase 29 — per-user Y.UndoManager mount.
+  //
+  // Constructed once per (ydoc, userId) tuple; disposed on Y.Doc unmount or userId
+  // change. CONTEXT.md decision: history fresh per Y.Doc mount (no cross-session
+  // persistence), capped at 100 actions matching Figma defaults.
+  //
+  // sessionId reuses the per-mount sessionId useMemo above — the same identity
+  // already feeds getOriginContext, so the bridge's transact origin and the
+  // undo manager's trackedOrigins entry share the exact memoized origin object.
+  // Reference equality at trackedOrigins is the entire Pitfall 7 mitigation.
+  //
+  // supabase reference: uses the EXISTING import at the top of this file
+  // (line 49 confirmed at plan revision iteration 1). Same `await
+  // supabase.auth.getSession()` shape used by Phase 28's authSessionBridge.
+  const [undoState, setUndoState] = useState(null);
 
   // Ref-mirror of storageState so the transport provider's async callbacks can
   // read the latest code without stale-closure bugs. Updated via the effect below.
@@ -286,6 +310,65 @@ function YDocProviderInner({ docId, children, closeDocument }) {
     };
   }, [ydoc, docId]);
 
+  // Phase 29 — Per-user UndoManager mount effect (additive — Plan 29-04 narrow waiver).
+  //
+  // Reads userId via the existing supabase import (line 49). Builds the manager via
+  // createUndoManager which memoizes the frozen origin object per userId. The same
+  // memoized reference is what crdtAnnotationBridge passes to ydoc.transact, so
+  // Y.UndoManager.trackedOrigins.has(origin) holds across both call sites — Pitfall 7
+  // mitigation locked. dispose() detaches the stack-item-added cap listener and calls
+  // Y.UndoManager.destroy(); idempotent so the cancellation path is safe.
+  useEffect(() => {
+    if (!ydoc) {
+      setUndoState(null);
+      return undefined;
+    }
+    let cancelled = false;
+    let dispose = null;
+
+    (async () => {
+      let userId = null;
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        userId = session?.user?.id ?? null;
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[YDocProvider] Phase 29 undoManager: failed to read auth session', err?.message);
+      }
+      if (cancelled) return;
+      if (!userId) {
+        setUndoState(null);
+        return;
+      }
+
+      const deviceId = getDeviceId();
+      const clientID = ydoc.clientID;
+      const ctx = { userId, deviceId, sessionId, clientID };
+
+      const result = createUndoManager({
+        ydoc,
+        userId,
+        deviceId,
+        sessionId,
+        clientID,
+        captureTimeout: 500,
+        historyCap: 100,
+      });
+      dispose = result.dispose;
+
+      if (cancelled) {
+        try { dispose(); } catch { /* swallow */ }
+        return;
+      }
+      setUndoState({ undoManager: result.undoManager, origin: result.origin, undoCtx: ctx });
+    })();
+
+    return () => {
+      cancelled = true;
+      try { if (dispose) dispose(); } catch { /* swallow */ }
+    };
+  }, [ydoc, sessionId]);
+
   const value = useMemo(() => ({
     ydoc,
     isHydrating,
@@ -327,6 +410,13 @@ function YDocProviderInner({ docId, children, closeDocument }) {
       sessionId,
       clientID: ydoc?.clientID,
     }),
+    // Phase 29 additions — per-user Y.UndoManager + the ctx object the bridge
+    // and the App.jsx Cmd+Z handler both need. undoCtx carries the same identity
+    // payload (userId/deviceId/sessionId/clientID) that getOriginContext seeds,
+    // so Plan 29-04's userUndo / userRedo wrappers can attribute the undo
+    // transaction in the Phase 33 activity log without re-deriving identity.
+    undoManager: undoState?.undoManager ?? null,
+    undoCtx: undoState?.undoCtx ?? null,
   }), [
     ydoc,
     isHydrating,
@@ -338,6 +428,7 @@ function YDocProviderInner({ docId, children, closeDocument }) {
     reSignInModalOpen,
     closeDocument,
     sessionId,
+    undoState,
   ]);
 
   // Banner gates: must have a non-ok storage state AND user has not dismissed yet
