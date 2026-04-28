@@ -2326,6 +2326,17 @@ const SVGAnnotationLayer = memo(({
         key={`wrapper-${obj.id || i}`}
         data-annotation-index={i}
         data-annotation-id={obj.id || ''}
+        // Phase 29 (Plan 29-04 Info 1 resolution) — e2e test seams.
+        // data-anno-id mirrors the CRDT-side annoId (Plan 29-02 bridge writes
+        // the same key into Y.Map), giving Playwright a stable selector that
+        // survives Fabric.js internal handle churn. data-author-id surfaces
+        // meta.authorId from the Y.Map sidecar (Plan 29-06 awareness consumer
+        // reads this attribute too) so two-clients-undo-isolation can verify
+        // per-user attribution without scraping internal state. Pure attribute
+        // pass-through — ZERO behavior change. CLAUDE.md SVG rule honored
+        // (viewBox owns all zoom; no JS coordination added).
+        data-anno-id={obj?.data?.id || obj?.id || ''}
+        data-author-id={obj?.__meta?.authorId ?? obj?.data?.authorId ?? ''}
         style={{
           cursor: annotationIsSelected ? 'move' : (annotationIsHovered ? 'pointer' : undefined),
           opacity: hideForEdit ? 0 : undefined,

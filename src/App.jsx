@@ -79,6 +79,11 @@ import TemplateOverwriteWarningModal from './components/TemplateOverwriteWarning
 import ExcelSyncConfirmModal from './components/ExcelSyncConfirmModal';
 import SyncfusionPDFContainer from './components/SyncfusionPDFContainer';
 import YDocProvider from './components/collab/YDocProvider.jsx';
+// Phase 29 — per-user Y.UndoManager hook + user-action wrappers. handleUndo and
+// handleRedo bodies route through these so trackedOrigins reference equality
+// (Pitfall 7) holds across the bridge and the keyboard handler call sites.
+import { useYDoc } from './hooks/useYDoc.js';
+import { userUndo, userRedo } from './lib/collab/crdtUndoManager.js';
 import SaveLogBanner from './components/SaveLogBanner';
 import PrintPanel from './components/PrintPanel';
 import LightweightAnnotationOverlay from './components/LightweightAnnotationOverlay';
@@ -15678,6 +15683,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
   }, [pdfId, pageNames, bookmarks, spaces, activeSpaceId, pageTransformations]);
 
+  // Phase 29 — read the per-user Y.UndoManager + ctx from the YDocProvider context.
+  // Y.Doc here is the per-document Y.Doc the SupabaseYjsProvider streams updates
+  // through. handleUndo / handleRedo route through userUndo / userRedo so the
+  // undo transaction is attributable in the Phase 33 activity log and the
+  // 'local-undo' / 'local-redo' source strings stay outside trackedOrigins
+  // (Pitfall 8 mitigation — undo of undo is redo, never a new undo entry).
+  // Returns null shape (ydoc/undoManager/undoCtx all null) when CRDT is disabled
+  // or before the provider's per-user UndoManager mount effect resolves.
+  const { ydoc: yjsDoc, undoManager: yjsUndoManager, undoCtx: yjsUndoCtx } = useYDoc();
+
   // Undo/Redo history state
   const [undoHistory, setUndoHistory] = useState([]); // Array of { annotationsByPage, highlightAnnotations, spaces }
   const [redoHistory, setRedoHistory] = useState([]); // Array of { annotationsByPage, highlightAnnotations, spaces }
@@ -16468,170 +16483,95 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     handleRequestCalloutEditMode(pending.calloutId, pending.pageNumber);
   }, [callouts, handleRequestCalloutEditMode]);
 
-  // Undo function
+  // Undo function — Phase 29 narrow waiver (Plan 29-04).
+  //
+  // Routes through the per-user Y.UndoManager (Plan 29-03) instead of the legacy
+  // undoHistory snapshot stack. Same callback name, same useCallback wrapper, same
+  // signature — handleUndoRef forwarding at the existing line below + the keyboard
+  // handler at ~10934 + the Home-tab Undo button at ~28191 stay byte-identical.
+  //
+  // CONTEXT.md decision (Phase 29): same surface, new internals. The legacy
+  // undoHistory state lingers in the component tree (referenced by checkpoint-
+  // capturing call sites) but the keyboard / button surface no longer drains it —
+  // Phase 30+ migrations are responsible for retiring those checkpoint sites.
+  //
+  // Empty-stack silent (UI-SPEC §"Empty-undo-stack press"): Y.UndoManager.undo()
+  // is a clean no-op when undoStack is empty. No toast, no flash, no console — for
+  // free. Matches every desktop app.
+  //
+  // Cross-page-jump-on-undo (CONTEXT.md acceptance + Plan 29-04 Warning 1
+  // resolution): the listener registered below in the stack-item-popped useEffect
+  // fires synchronously after userUndo applies the inverse op; if the popped
+  // item's pageNumber differs from the current view, the listener calls goToPage
+  // before the user-visible repaint completes, so the page jump and the revert
+  // appear as one continuous transition.
+  //
+  // Mid-drag Cmd+Z cancellation (UI-SPEC + CONTEXT.md): handled at the bridge
+  // layer via fabricObject.__dragCancelled flag (Plan 29-05). handleUndo is
+  // called unconditionally; the flag-check short-circuits the bridge commit.
+  //
+  // Null-shape guard: ydoc / undoManager / undoCtx are null until the
+  // YDocProvider's per-user UndoManager mount effect resolves the Supabase
+  // session. During that brief window (and when CRDT is off) Cmd+Z is a no-op,
+  // matching the empty-stack-silent contract.
   const handleUndo = useCallback(() => {
-    if (undoHistory.length === 0) {
-      pushHistoryDebugEvent('undo_noop_empty_stack', {
-        undoDepth: undoHistoryRef.current.length,
-        redoDepth: redoHistoryRef.current.length
-      });
-      return;
-    }
+    if (!yjsUndoManager || !yjsDoc || !yjsUndoCtx) return;
+    userUndo(yjsDoc, yjsUndoManager, yjsUndoCtx);
+  }, [yjsDoc, yjsUndoManager, yjsUndoCtx]);
 
-    isUndoingRef.current = true;
-    const previousUndoDepth = undoHistoryRef.current.length;
-    const previousRedoDepth = redoHistoryRef.current.length;
-    const predictedUndoDepth = Math.max(0, previousUndoDepth - 1);
-    const predictedRedoDepth = previousRedoDepth + 1;
-    const stateToRestore = undoHistory[undoHistory.length - 1];
-    const nextUndoCheckpoint = undoHistory.length > 1 ? undoHistory[undoHistory.length - 2] : null;
-    const currentState = getHistorySnapshot();
-    const currentFingerprint = getHistoryFingerprint(currentState);
-    const restoreFingerprint = getHistoryFingerprint(stateToRestore);
-    const undoDelta = summarizeHistoryDelta(currentState, stateToRestore);
-    const noEffect = currentFingerprint.serialized === restoreFingerprint.serialized;
-    const changedObjectsCount = Array.isArray(undoDelta?.changedPageTransitionsPreview)
-      ? undoDelta.changedPageTransitionsPreview.reduce((total, transition) => total + (transition?.changedObjectsCount || 0), 0)
-      : 0;
-    const checkpointMeta = undoHistoryMetaRef.current[undoHistoryMetaRef.current.length - 1] || null;
-    const redoMeta = createHistoryMeta(
-      currentState,
-      'redo_buffer_from_undo',
-      {
-        sourceCheckpointId: checkpointMeta?.checkpointId || null,
-        sourceReason: checkpointMeta?.reason || null
-      },
-      stateToRestore
-    );
-    historyCheckpointSeqRef.current = redoMeta.checkpointId;
-
-    // Save current live state so redo can restore it
-    setRedoHistory(prev => [currentState, ...prev]);
-    redoHistoryRef.current = [currentState, ...redoHistoryRef.current];
-    redoHistoryMetaRef.current = [redoMeta, ...redoHistoryMetaRef.current];
-
-    // Restore checkpoint state
-    restoreHistoryState(stateToRestore);
-
-    // Remove from undo history
-    setUndoHistory(prev => {
-      const nextHistory = prev.slice(0, -1);
-      undoHistoryRef.current = nextHistory;
-      return nextHistory;
-    });
-    undoHistoryMetaRef.current = undoHistoryMetaRef.current.slice(0, -1);
-    lastCheckpointHashRef.current = nextUndoCheckpoint ? getHistoryFingerprint(nextUndoCheckpoint).hash : null;
-
-    pushHistoryDebugEvent('undo_applied', {
-      checkpointId: checkpointMeta?.checkpointId || null,
-      undoneReason: checkpointMeta?.reason || 'unknown',
-      context: checkpointMeta?.context || null,
-      source: checkpointMeta?.context?.source || null,
-      pageNumber: checkpointMeta?.context?.pageNumber ?? null,
-      changedObjectsCount,
-      noEffect,
-      undoDepth: predictedUndoDepth,
-      redoDepth: predictedRedoDepth,
-      restoreSummary: checkpointMeta?.summary || summarizeHistorySnapshot(stateToRestore),
-      delta: undoDelta,
-      currentSnapshotHash: currentFingerprint.hash,
-      restoreSnapshotHash: restoreFingerprint.hash
-    });
-
-    setTimeout(() => {
-      isUndoingRef.current = false;
-    }, 150);
-  }, [createHistoryMeta, getHistoryFingerprint, getHistorySnapshot, pushHistoryDebugEvent, restoreHistoryState, summarizeHistoryDelta, summarizeHistorySnapshot, undoHistory]);
-
-  // Redo function
+  // Redo function — Phase 29 narrow waiver (Plan 29-04).
+  //
+  // Routes through the per-user Y.UndoManager (Plan 29-03) parallel to handleUndo
+  // above. Same callback name, same wrapper, same signature. Empty-stack silent
+  // for the redo direction (UI-SPEC §"Cmd+Shift+Z pressed, redo stack empty"):
+  // Y.UndoManager.redo() is a no-op when redoStack is empty.
+  //
+  // Cross-page-jump-on-redo: the same stack-item-popped useEffect handles the
+  // redo direction (event.type === 'redo'). One listener, both directions.
+  //
+  // Null-shape guard mirrors handleUndo above.
   const handleRedo = useCallback(() => {
-    if (redoHistory.length === 0) {
-      pushHistoryDebugEvent('redo_noop_empty_stack', {
-        undoDepth: undoHistoryRef.current.length,
-        redoDepth: redoHistoryRef.current.length
-      });
-      return;
-    }
-
-    isUndoingRef.current = true;
-    const previousUndoDepth = undoHistoryRef.current.length;
-    const previousRedoDepth = redoHistoryRef.current.length;
-    const predictedUndoDepth = Math.min(50, previousUndoDepth + 1);
-    const predictedRedoDepth = Math.max(0, previousRedoDepth - 1);
-    const currentState = getHistorySnapshot();
-    const stateToRestore = redoHistory[0];
-    const currentFingerprint = getHistoryFingerprint(currentState);
-    const restoreFingerprint = getHistoryFingerprint(stateToRestore);
-    const redoDelta = summarizeHistoryDelta(currentState, stateToRestore);
-    const noEffect = currentFingerprint.serialized === restoreFingerprint.serialized;
-    const changedObjectsCount = Array.isArray(redoDelta?.changedPageTransitionsPreview)
-      ? redoDelta.changedPageTransitionsPreview.reduce((total, transition) => total + (transition?.changedObjectsCount || 0), 0)
-      : 0;
-    const redoMeta = redoHistoryMetaRef.current[0] || null;
-    const undoMeta = createHistoryMeta(
-      currentState,
-      'undo_buffer_from_redo',
-      {
-        sourceCheckpointId: redoMeta?.checkpointId || null,
-        sourceReason: redoMeta?.reason || null
-      },
-      stateToRestore
-    );
-    historyCheckpointSeqRef.current = undoMeta.checkpointId;
-
-    // Save current state to undo history before redoing
-    setUndoHistory(prev => {
-      const newHistory = [...prev, currentState];
-      const newMeta = [...undoHistoryMetaRef.current, undoMeta];
-      if (newHistory.length > 50) {
-        const trimmedHistory = newHistory.slice(1);
-        undoHistoryRef.current = trimmedHistory;
-        undoHistoryMetaRef.current = newMeta.slice(1);
-        return trimmedHistory;
-      }
-      undoHistoryRef.current = newHistory;
-      undoHistoryMetaRef.current = newMeta;
-      return newHistory;
-    });
-    lastCheckpointHashRef.current = currentFingerprint.hash;
-
-    // Restore state
-    restoreHistoryState(stateToRestore);
-
-    // Remove from redo history
-    setRedoHistory(prev => {
-      const nextHistory = prev.slice(1);
-      redoHistoryRef.current = nextHistory;
-      return nextHistory;
-    });
-    redoHistoryMetaRef.current = redoHistoryMetaRef.current.slice(1);
-
-    pushHistoryDebugEvent('redo_applied', {
-      checkpointId: redoMeta?.checkpointId || null,
-      redoReason: redoMeta?.reason || 'unknown',
-      context: redoMeta?.context || null,
-      source: redoMeta?.context?.source || null,
-      pageNumber: redoMeta?.context?.pageNumber ?? null,
-      changedObjectsCount,
-      noEffect,
-      undoDepth: predictedUndoDepth,
-      redoDepth: predictedRedoDepth,
-      restoreSummary: redoMeta?.summary || summarizeHistorySnapshot(stateToRestore),
-      delta: redoDelta,
-      currentSnapshotHash: currentFingerprint.hash,
-      restoreSnapshotHash: restoreFingerprint.hash
-    });
-
-    setTimeout(() => {
-      isUndoingRef.current = false;
-    }, 150);
-  }, [createHistoryMeta, getHistoryFingerprint, getHistorySnapshot, pushHistoryDebugEvent, redoHistory, restoreHistoryState, summarizeHistoryDelta, summarizeHistorySnapshot]);
+    if (!yjsUndoManager || !yjsDoc || !yjsUndoCtx) return;
+    userRedo(yjsDoc, yjsUndoManager, yjsUndoCtx);
+  }, [yjsDoc, yjsUndoManager, yjsUndoCtx]);
 
   // Refs for undo/redo to avoid stale closures in keyboard shortcut handler
   const handleUndoRef = useRef(handleUndo);
   const handleRedoRef = useRef(handleRedo);
   useEffect(() => { handleUndoRef.current = handleUndo; }, [handleUndo]);
   useEffect(() => { handleRedoRef.current = handleRedo; }, [handleRedo]);
+
+  // Phase 29 — Cross-page-jump-on-undo (Plan 29-04 Warning 1 resolution).
+  //
+  // CONTEXT.md acceptance: "view jumps to the page where the change is" on Cmd+Z
+  // when the popped action affected a page different from the current view.
+  //
+  // Mechanism: Y.UndoManager fires 'stack-item-popped' synchronously after undo()
+  // or redo() applies the inverse op. The bridge stores the affected page number
+  // on stackItem.meta via a stack-item-added listener (companion change in
+  // crdtAnnotationBridge / crdtUndoManager — Plan 29-05 owns that wiring; until
+  // it lands, this listener silently no-ops when meta.pageNumber is missing,
+  // which is the safe fallback per UI-SPEC empty-stack-silent contract).
+  //
+  // Refs (goToPageRef + currentPageRef) sidestep the temporal-dead-zone problem
+  // — goToPage is declared further down in PDFViewer's body; the listener body
+  // reads via the ref at fire time, by which point the ref is populated.
+  const goToPageRef = useRef(null);
+  const currentPageRef = useRef(1);
+  useEffect(() => {
+    if (!yjsUndoManager) return undefined;
+    const onStackPopped = ({ stackItem }) => {
+      const affectedPage = stackItem?.meta?.get?.('pageNumber');
+      if (typeof affectedPage !== 'number') return;
+      if (affectedPage === currentPageRef.current) return;
+      const nav = goToPageRef.current;
+      if (typeof nav === 'function') {
+        try { nav(affectedPage); } catch { /* swallow — navigation can fail mid-tear-down */ }
+      }
+    };
+    yjsUndoManager.on('stack-item-popped', onStackPopped);
+    return () => yjsUndoManager.off('stack-item-popped', onStackPopped);
+  }, [yjsUndoManager]);
 
   // Check if undo is possible
   const canUndo = undoHistory.length > 0;
@@ -21877,6 +21817,34 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
     }
   }, [numPages, scrollMode, activeSpaceId, activeSpacePages, useSyncfusionRenderer]);
+
+  // Phase 29 — sync goToPage + current page state into refs the cross-page-undo
+  // listener (above) reads at fire time. Refs sidestep the temporal-dead-zone
+  // ordering problem (the listener is registered earlier in the component body,
+  // before goToPage / pageNum are declared).
+  //
+  // window.__navigateToPage / window.__currentPageNumber are e2e test seams
+  // (Plan 29-04 Info 1 resolution). Production code never reads them; they exist
+  // so Playwright specs can drive page changes deterministically without scraping
+  // the Syncfusion DOM (UI-SPEC test-seams contract).
+  useEffect(() => {
+    goToPageRef.current = goToPage;
+    if (typeof window !== 'undefined') {
+      window.__navigateToPage = (page) => goToPage(page, { fallback: 'nearest' });
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        try { delete window.__navigateToPage; } catch { /* swallow — defineProperty edge */ }
+      }
+    };
+  }, [goToPage]);
+
+  useEffect(() => {
+    currentPageRef.current = pageNum;
+    if (typeof window !== 'undefined') {
+      window.__currentPageNumber = pageNum;
+    }
+  }, [pageNum]);
 
   const getSyncfusionThumbnail = useCallback((pageNumber) => {
     const viewer = syncfusionViewerRef.current;
