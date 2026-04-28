@@ -1,0 +1,733 @@
+diff --git a/src/App.jsx b/src/App.jsx
+index 54d661de..15d020d3 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -8237,16 +8237,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
+   const [eraserMode, setEraserMode] = useState(() => {
+     try {
+       const saved = localStorage.getItem('eraserMode');
+-      return saved || 'partial';
++      // Only allow 'entire' mode, default to 'entire' if saved value is 'partial'
++      return 'entire';
+     } catch (e) {
+-      return 'partial';
++      return 'entire';
+     }
+-  }); // 'partial' | 'entire'
++  }); // 'entire' only
+   const [eraserSize, setEraserSize] = useState(20); // Default 20px radius
+   const [eraserCursorPos, setEraserCursorPos] = useState({ visible: false });
+   const eraserCursorRef = useRef(null);
+-  const [showEraserMenu, setShowEraserMenu] = useState(false);
+-  const eraserMenuRef = useRef(null);
+ 
+   // Spacebar Pan state
+   const previousToolRef = useRef(null);
+@@ -8336,13 +8335,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
+     }
+   }, [activeTool]);
+ 
+-  // Close eraser menu when tool changes
+-  useEffect(() => {
+-    if (activeTool !== 'eraser') {
+-      setShowEraserMenu(false);
+-    }
+-  }, [activeTool]);
+-
+   // Close secondary toolbar when pan or select tools are active
+   useEffect(() => {
+     if (activeTool === 'pan' || activeTool === 'select') {
+@@ -8357,22 +8349,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
+       if (exportMenuRef.current && !exportMenuRef.current.contains(event.target)) {
+         setShowExportMenu(false);
+       }
+-      // Close eraser menu
+-      // Don't close if clicking on the eraser button itself (let the button handler manage it)
+-      const isEraserButton = event.target.closest('[data-eraser-button]');
+-      if (eraserMenuRef.current && !eraserMenuRef.current.contains(event.target) && !isEraserButton) {
+-        setShowEraserMenu(false);
+-      }
+     };
+ 
+-    if (showExportMenu || showEraserMenu) {
++    if (showExportMenu) {
+       document.addEventListener('mousedown', handleClickOutside);
+     }
+ 
+     return () => {
+       document.removeEventListener('mousedown', handleClickOutside);
+     };
+-  }, [showExportMenu, showEraserMenu]);
++  }, [showExportMenu]);
+ 
+   // Persist eraser mode
+   useEffect(() => {
+@@ -13383,17 +13369,31 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
+ 
+   // Check if a region overlay is enabled
+   const isRegionOverlayEnabled = useCallback((spaceId, pageId, page) => {
++    const DEBUG_OVERLAY = false; // Toggle for debug logs
++
+     // If space is not active, overlay is not shown regardless
+     if (!activeSpaceId || activeSpaceId !== spaceId) {
++      if (DEBUG_OVERLAY) console.log(`[isRegionOverlayEnabled] Page ${pageId}: FALSE - space not active`, { activeSpaceId, spaceId });
+       return false;
+     }
+     // If page has no valid regions, overlay cannot be enabled
+     if (!hasValidRegionAreas(page)) {
++      if (DEBUG_OVERLAY) console.log(`[isRegionOverlayEnabled] Page ${pageId}: FALSE - no valid regions`);
+       return false;
+     }
+     // Default to enabled (true) if not explicitly disabled
+     const key = `${spaceId}-${pageId}`;
+-    return regionOverlayDisabled.get(key) !== true;
++    const isDisabled = regionOverlayDisabled.get(key) === true;
++    const result = !isDisabled;
++    if (DEBUG_OVERLAY) {
++      console.log(`[isRegionOverlayEnabled] Page ${pageId}:`, {
++        key,
++        isDisabled,
++        result,
++        regionOverlayDisabledMap: Array.from(regionOverlayDisabled.entries())
++      });
++    }
++    return result;
+   }, [activeSpaceId, regionOverlayDisabled, hasValidRegionAreas]);
+ 
+   // Check if toggle should be interactive
+@@ -15185,20 +15185,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
+         return;
+       }
+ 
+-      // 'Shift+E' key to switch to Partial Erase Tool
+-      if ((e.key === 'e' || e.key === 'E') && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+-        // Don't trigger if user is focused on an input field, textbox, or callout
+-        if (isFormField) {
+-          return; // Don't trigger tool switch if focused on input
+-        }
+-
+-        // Prevent default behavior, switch to eraser tool, and set mode to partial
+-        e.preventDefault();
+-        setActiveTool('eraser');
+-        setEraserMode('partial');
+-        return;
+-      }
+-
+       // 'T' key to switch to Text Tool (only when no modifiers are pressed)
+       if ((e.key === 't' || e.key === 'T') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+         // Don't trigger if user is focused on an input field, textbox, or callout
+@@ -16278,6 +16264,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
+     if (!assignedPage.regions || assignedPage.regions.length === 0) {
+       return null;
+     }
++
++    // Return regions data regardless of toggle state
++    // The toggle state is tracked separately via activeRegionId
++    // This allows the survey toggle button to access region.showBackgroundAnnotations
++    // even when the region toggle is OFF
++
+     // Requirement: "A region can contain multiple areas (polygons) within it"
+     // Return all regions as they represent multiple areas within the same logical region
+     // The overlay component will process all of them to show the combined visible areas
+@@ -16310,16 +16302,37 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
+ 
+   // Helper function to get region lightbulb state for a specific region
+   const getRegionLightbulbState = useCallback((spaceId, pageId) => {
++    const DEBUG_LIGHTBULB = false;
++
+     const space = spaces.find(s => s.id === spaceId);
+-    if (!space) return true;
++    if (!space) {
++      if (DEBUG_LIGHTBULB) console.log('[getRegionLightbulbState] Space not found:', { spaceId, pageId });
++      return true;
++    }
+ 
+     const page = space.assignedPages?.find(p => p.pageId === pageId);
+-    if (!page) return true;
++    if (!page) {
++      if (DEBUG_LIGHTBULB) console.log('[getRegionLightbulbState] Page not found:', { spaceId, pageId });
++      return true;
++    }
+ 
+     const region = page.regions?.[0];
+-    if (!region) return true;
++    if (!region) {
++      if (DEBUG_LIGHTBULB) console.log('[getRegionLightbulbState] No regions on page:', { spaceId, pageId });
++      return true;
++    }
+ 
+-    return region.showBackgroundAnnotations !== false;
++    const result = region.showBackgroundAnnotations !== false;
++    if (DEBUG_LIGHTBULB) {
++      console.log('[getRegionLightbulbState] Result:', {
++        spaceId,
++        pageId,
++        regionId: region.regionId,
++        showBackgroundAnnotations: region.showBackgroundAnnotations,
++        result
++      });
++    }
++    return result;
+   }, [spaces]);
+ 
+   // Helper function to set region lightbulb state
+@@ -17144,20 +17157,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
+                 ].map(t => (
+                   <div key={t.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                     <button
+-                      data-eraser-button={t.id === 'eraser' ? 'true' : undefined}
+                       onClick={() => {
+                         if (t.id === 'eraser') {
+-                          if (activeTool === 'eraser') {
+-                            // If eraser is already active, toggle the menu
+-                            setShowEraserMenu(!showEraserMenu);
+-                          } else {
+-                            // If eraser is not active, set it as active and open the menu
+-                            setActiveTool(t.id);
+-                            setShowEraserMenu(true);
+-                          }
++                          // Set eraser tool and mode to 'entire' directly
++                          setActiveTool(t.id);
++                          setEraserMode('entire');
+                         } else {
+                           setActiveTool(t.id);
+-                          if (t.id !== 'eraser') setShowEraserMenu(false);
+                         }
+                       }}
+                       onMouseEnter={(e) => {
+@@ -17179,159 +17185,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
+                       title={t.label}
+                     >
+                       <Icon name={t.iconName} size={20} />
+-                      {t.id === 'eraser' && activeTool === 'eraser' && (
+-                        <div
+-                          data-eraser-button="true"
+-                          onClick={(e) => {
+-                            e.stopPropagation();
+-                            setShowEraserMenu(!showEraserMenu);
+-                          }}
+-                          style={{
+-                            position: 'absolute',
+-                            left: '50%',
+-                            top: '50%',
+-                            transform: 'translate(12px, -50%)',
+-                            display: 'flex',
+-                            alignItems: 'center',
+-                            justifyContent: 'center',
+-                            padding: '2px',
+-                            pointerEvents: 'auto'
+-                          }}
+-                        >
+-                          <Icon name="chevronUp" size={12} />
+-                        </div>
+-                      )}
+                     </button>
+-
+-                    {/* Eraser Mode Popup specific to the Eraser tool in sub-toolbar */}
+-                    {t.id === 'eraser' && activeTool === 'eraser' && showEraserMenu && (
+-                      <div
+-                        ref={eraserMenuRef}
+-                        style={{
+-                          position: 'absolute',
+-                          bottom: '100%',
+-                          left: '50%',
+-                          transform: 'translateX(-50%)',
+-                          marginBottom: '6px',
+-                          background: '#1e1e1e',
+-                          border: '1px solid #333',
+-                          borderRadius: '6px',
+-                          boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
+-                          zIndex: 1000,
+-                          display: 'flex',
+-                          flexDirection: 'column',
+-                          padding: '4px',
+-                          minWidth: '140px'
+-                        }}
+-                      >
+-                        <div style={{
+-                          padding: '4px 8px',
+-                          fontSize: '10px',
+-                          color: '#888',
+-                          textTransform: 'uppercase',
+-                          fontWeight: 600,
+-                          borderBottom: '1px solid #333',
+-                          marginBottom: '4px'
+-                        }}>
+-                          Eraser Type
+-                        </div>
+-                        <button
+-                          onClick={(e) => {
+-                            e.stopPropagation();
+-                            setEraserMode('partial');
+-                            setShowEraserMenu(false);
+-                          }}
+-                          className={`btn ${eraserMode === 'partial' ? 'btn-active' : 'btn-ghost'}`}
+-                          style={{ justifyContent: 'flex-start', textAlign: 'left', padding: '6px 10px', fontSize: '12px' }}
+-                        >
+-                          Partial Eraser
+-                        </button>
+-                        <button
+-                          onClick={(e) => {
+-                            e.stopPropagation();
+-                            setEraserMode('entire');
+-                            setShowEraserMenu(false);
+-                          }}
+-                          className={`btn ${eraserMode === 'entire' ? 'btn-active' : 'btn-ghost'}`}
+-                          style={{ justifyContent: 'flex-start', textAlign: 'left', padding: '6px 10px', fontSize: '12px' }}
+-                        >
+-                          Entire Eraser
+-                        </button>
+-                      </div>
+-                    )}
+                   </div>
+                 ))}
+               </>
+             )}
+ 
+-            {activeCategoryDropdown === 'shape' && (
+-              <>
+-                {[
+-                  { id: 'rect', label: 'Rectangle', iconName: 'rect' },
+-                  { id: 'ellipse', label: 'Ellipse', iconName: 'ellipse' },
+-                  { id: 'line', label: 'Line', iconName: 'line' },
+-                  { id: 'arrow', label: 'Arrow', iconName: 'arrow' }
+-                ].map(t => (
+-                  <button
+-                    key={t.id}
+-                    onClick={() => setActiveTool(t.id)}
+-                    onMouseEnter={(e) => {
+-                      const rect = e.currentTarget.getBoundingClientRect();
+-                      setTooltip({ visible: true, text: t.label, x: rect.left + rect.width / 2, y: rect.top - 10 });
+-                    }}
+-                    onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
+-                    className={`btn ${activeTool === t.id ? 'btn-active' : 'btn-ghost'}`}
+-                    style={{
+-                      display: 'flex',
+-                      alignItems: 'center',
+-                      justifyContent: 'center',
+-                      padding: '6px',
+-                      gap: '4px',
+-                      minWidth: '40px'
+-                    }}
+-                    title={t.label}
+-                  >
+-                    <Icon name={t.iconName} size={20} />
+-                  </button>
+-                ))}
+-              </>
+-            )}
+-
+-            {activeCategoryDropdown === 'review' && (
+-              <>
+-                {[
+-                  { id: 'text', label: 'Text', iconName: 'text' },
+-                  { id: 'callout', label: 'Callout', iconName: 'callout' },
+-                  { id: 'note', label: 'Note', iconName: 'note' },
+-                  { id: 'underline', label: 'Underline', iconName: 'underline' },
+-                  { id: 'strikeout', label: 'Strikeout', iconName: 'strikeout' },
+-                  { id: 'squiggly', label: 'Squiggly', iconName: 'squiggly' }
+-                ].map(t => (
+-                  <button
+-                    key={t.id}
+-                    onClick={() => setActiveTool(t.id)}
+-                    onMouseEnter={(e) => {
+-                      const rect = e.currentTarget.getBoundingClientRect();
+-                      setTooltip({ visible: true, text: t.label, x: rect.left + rect.width / 2, y: rect.top - 10 });
+-                    }}
+-                    onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
+-                    className={`btn ${activeTool === t.id ? 'btn-active' : 'btn-ghost'}`}
+-                    style={{
+-                      display: 'flex',
+-                      alignItems: 'center',
+-                      justifyContent: 'center',
+-                      padding: '6px',
+-                      gap: '4px',
+-                      minWidth: '40px'
+-                    }}
+-                    title={t.label}
+-                  >
+-                    <Icon name={t.iconName} size={20} />
+-                  </button>
+-                ))}
+-              </>
+-            )}
+-
+             {activeCategoryDropdown === 'survey' && (
+               <button
+                 onClick={() => setActiveTool('highlight')}
+@@ -17430,56 +17289,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
+               <Icon name="pen" size={22} />
+             </button>
+ 
+-            {/* Shape Category */}
+-            {/* Shape Category Button */}
+-            {/* Shape Category Button */}
+-            <button
+-              onClick={() => {
+-                const isActive = activeCategoryDropdown === 'shape';
+-                setActiveCategoryDropdown(isActive ? null : 'shape');
+-                if (!isActive) {
+-                  if (!['rect', 'ellipse', 'line', 'arrow'].includes(activeTool)) {
+-                    setActiveTool(lastShapeTool);
+-                  }
+-                }
+-              }}
+-              onMouseEnter={(e) => {
+-                const rect = e.currentTarget.getBoundingClientRect();
+-                setTooltip({ visible: true, text: 'Shape', x: rect.left + rect.width / 2, y: rect.top - 10 });
+-              }}
+-              onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
+-              className={`btn btn-md ${activeTool !== 'pan' && activeTool !== 'select' && (activeCategoryDropdown === 'shape' || ['rect', 'ellipse', 'line', 'arrow'].includes(activeTool)) ? 'btn-active' : 'btn-default'}`}
+-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
+-              title="Shape"
+-            >
+-              <Icon name="rect" size={16} />
+-            </button>
+-
+-            {/* Review Category */}
+-            {/* Review Category Button */}
+-            {/* Review Category Button */}
+-            <button
+-              onClick={() => {
+-                const isActive = activeCategoryDropdown === 'review';
+-                setActiveCategoryDropdown(isActive ? null : 'review');
+-                if (!isActive) {
+-                  if (!['text', 'callout', 'note', 'underline', 'strikeout', 'squiggly'].includes(activeTool)) {
+-                    setActiveTool(lastReviewTool);
+-                  }
+-                }
+-              }}
+-              onMouseEnter={(e) => {
+-                const rect = e.currentTarget.getBoundingClientRect();
+-                setTooltip({ visible: true, text: 'Review', x: rect.left + rect.width / 2, y: rect.top - 10 });
+-              }}
+-              onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
+-              className={`btn btn-md ${activeTool !== 'pan' && activeTool !== 'select' && (activeCategoryDropdown === 'review' || ['text', 'callout', 'note', 'underline', 'strikeout', 'squiggly'].includes(activeTool)) ? 'btn-active' : 'btn-default'}`}
+-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
+-              title="Review"
+-            >
+-              <Icon name="text" size={16} />
+-            </button>
+-
+             {/* Survey Category Button (Conditional) */}
+             {showSurveyPanel && (
+               <button
+diff --git a/src/PageAnnotationLayer.jsx b/src/PageAnnotationLayer.jsx
+index 0c7537bd..9ac0a5cd 100644
+--- a/src/PageAnnotationLayer.jsx
++++ b/src/PageAnnotationLayer.jsx
+@@ -3996,27 +3996,39 @@ const PageAnnotationLayer = memo(({
+           let isVisible = true;
+           let isInteractive = true;
+ 
+-          // Three-layer visibility logic:
+-          // - Base layer (no moduleId, no regionId): hidden when survey mode is active with a module selected
+-          // - Middle layer (has moduleId, no regionId): visible only when survey mode is active AND module matches
+-          // - Top layer (has regionId): visible when space is active
++          // Survey mode visibility logic:
++          // - Survey annotations (has moduleId): visible only when survey mode is active AND module matches
++          // - Regular annotations (no moduleId): hidden when survey mode is active with a module selected
+           if (isSurveyAnnotation) {
+             // Survey annotation: visible only when survey panel is open AND module matches
+             if (!showSurveyPanelRef.current || currentModuleId !== objModuleId) {
+               isVisible = false;
+             }
+-          } else if (!isRegionScoped) {
+-            // Regular annotation (base layer): hidden when survey mode is active with a module selected
++          } else {
++            // Regular annotation (with OR without regionId): hidden when survey mode is active with a module selected
+             if (showSurveyPanelRef.current && currentModuleId !== null) {
+               isVisible = false;
+             }
+           }
+-          // Region-scoped annotations (top layer) always pass the survey check
+ 
+-          // Region-scoped annotations: only visible when their space is active
+-          if (isRegionScoped && isVisible) {
+-            // Get space for this regionId (simplified check - rely on main useEffect for full logic)
+-            if (!currentActiveSpaceId) {
++          // Region-scoped survey annotations: only visible when their space is active AND region overlay toggle is ON
++          // This applies ONLY to survey annotations (with both moduleId AND regionId)
++          // The region overlay toggle should only affect survey annotations with both moduleId and regionId
++          if (isSurveyAnnotation && isRegionScoped && isVisible) {
++            // Check if space is active AND region overlay is enabled (hasActiveRegions)
++            // We need to compute hasActiveRegions similar to the main visibility useEffect
++            let hasActiveRegions = false;
++            if (currentActiveSpaceId && isRegionOverlayEnabledRef.current) {
++              const space = spacesRef.current?.find(s => s.id === currentActiveSpaceId);
++              if (space) {
++                const page = space.assignedPages?.find(p => p.pageId === pageNumber);
++                if (page && activeRegionIdRef.current) {
++                  // Check if overlay is enabled for this page
++                  hasActiveRegions = isRegionOverlayEnabledRef.current(currentActiveSpaceId, pageNumber, page);
++                }
++              }
++            }
++            if (!currentActiveSpaceId || !hasActiveRegions) {
+               isVisible = false;
+             }
+           }
+@@ -6861,8 +6873,9 @@ const PageAnnotationLayer = memo(({
+         }
+       }
+ 
+-      // Also remove any existing highlights with matching bounds (regardless of highlightId)
++      // Also remove any existing highlights with matching bounds AND identity (moduleId + regionId)
+       // This ensures old colors are removed when ball in court changes
++      // CRITICAL: We match by identity to prevent different highlights at the same location from interfering
+       const tolerance = 1.0; // Tolerance for floating point precision and coordinate system differences
+       // Convert PDF coordinates to canvas coordinates for comparison
+       // Use actual canvas zoom for consistency
+@@ -6890,7 +6903,20 @@ const PageAnnotationLayer = memo(({
+           Math.abs(obj.width - highlightCanvasWidth) < tolerance &&
+           Math.abs(obj.height - highlightCanvasHeight) < tolerance;
+ 
+-        return boundsMatch;
++        if (!boundsMatch) return false;
++
++        // CRITICAL: Also match by identity (moduleId + regionId)
++        // This prevents background highlights (moduleId, no regionId) from being conflated
++        // with region-scoped highlights (moduleId + regionId) at the same location
++        const objModuleId = obj.moduleId || null;
++        const objRegionId = obj.regionId || null;
++        const highlightModuleId = highlight.moduleId || null;
++        const highlightRegionId = highlight.regionId || null;
++
++        // Must have matching moduleId AND regionId to be considered the same highlight
++        const identityMatch = (objModuleId === highlightModuleId) && (objRegionId === highlightRegionId);
++
++        return identityMatch;
+       });
+ 
+       // Remove matching highlights, but capture regionId if we haven't already
+@@ -7147,6 +7173,8 @@ const PageAnnotationLayer = memo(({
+   useEffect(() => {
+     if (!canvasRef.current || !fabric) return;
+ 
++    const DEBUG_VISIBILITY = false; // Toggle to enable/disable debug logs
++
+     const canvas = fabricRef.current;
+     const objects = canvas.getObjects();
+     // FIX: When region selection is active, preserve regions even if activeRegions is null temporarily
+@@ -7155,7 +7183,39 @@ const PageAnnotationLayer = memo(({
+     const regions = (Array.isArray(activeRegions) && activeRegions.length > 0)
+       ? activeRegions
+       : (isRegionSelectionActive ? [] : null);
+-    const hasActiveRegions = regions !== null; // null = no regions mode, [] or [...] = regions mode active
++
++    // Check if overlay is enabled for THIS specific page (per-page toggle state)
++    // Need to find the page in spaces to pass to isRegionOverlayEnabled
++    let isOverlayEnabledForThisPage = false;
++    if (regions !== null && selectedSpaceId && isRegionOverlayEnabledRef.current) {
++      const space = spacesRef.current?.find(s => s.id === selectedSpaceId);
++      if (space) {
++        const page = space.assignedPages?.find(p => p.pageId === pageNumber);
++        if (page) {
++          isOverlayEnabledForThisPage = isRegionOverlayEnabledRef.current(selectedSpaceId, pageNumber, page);
++        }
++      }
++    }
++
++    // hasActiveRegions should be true only when regions exist AND region toggle is ON for THIS page
++    const hasActiveRegions = regions !== null && isOverlayEnabledForThisPage;
++    // #region agent log
++    fetch('http://127.0.0.1:9006/ingest/0e3ca1f5-cf74-49f4-a243-6179244dcd57',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:7173',message:'hasActiveRegions computed',data:{regions:regions!==null,isOverlayEnabledForThisPage,hasActiveRegions,selectedSpaceId,pageNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
++    // #endregion
++
++    if (DEBUG_VISIBILITY) {
++      console.log(`[Page ${pageNumber}] Visibility useEffect START:`, {
++        regionsExist: regions !== null,
++        regionsLength: regions?.length,
++        selectedSpaceId,
++        activeSpaceId,
++        isOverlayEnabledForThisPage,
++        hasActiveRegions,
++        showSurveyPanel,
++        selectedModuleId,
++        totalObjects: objects.length
++      });
++    }
+ 
+     let visibleCount = 0;
+     let hiddenCount = 0;
+@@ -7206,39 +7266,56 @@ const PageAnnotationLayer = memo(({
+       // Filter by module: if selectedModuleId is set, object must match
+       const matchesModule = selectedModuleId === null || objModuleId === selectedModuleId;
+ 
+-      // Three-layer visibility logic:
+-      // - Base layer (no moduleId, no regionId): hidden when survey mode is active with a module selected
+-      // - Middle layer (has moduleId, no regionId): visible only when survey mode is active AND module matches
+-      // - Top layer (has regionId): handled by scopedRegionAnnotationVisible below
++      // Survey mode visibility logic:
++      // - Survey annotations (has moduleId): visible only when survey mode is active AND module matches
++      // - Regular annotations (no moduleId): hidden when survey mode is active with a module selected, regardless of regionId
+       let surveyAnnotationVisible = true;
+       if (isSurveyAnnotation) {
+         // Survey annotation: visible only when survey panel is open AND module matches
+         surveyAnnotationVisible = showSurveyPanel && selectedModuleId !== null && objModuleId === selectedModuleId;
+-      } else if (!isScopedRegionAnnotation) {
+-        // Regular annotation (base layer): hidden when survey mode is active with a module selected
++        if (DEBUG_VISIBILITY && objModuleId) {
++          console.log(`[Page ${pageNumber}] Survey annotation visibility:`, {
++            objModuleId,
++            objRegionId,
++            showSurveyPanel,
++            selectedModuleId,
++            moduleMatches: objModuleId === selectedModuleId,
++            surveyAnnotationVisible
++          });
++        }
++      } else {
++        // Regular annotation (with OR without regionId): hidden when survey mode is active with a module selected
+         surveyAnnotationVisible = !(showSurveyPanel && selectedModuleId !== null);
+       }
+-      // Region-scoped annotations (top layer) always pass this check - visibility controlled by scopedRegionAnnotationVisible
+ 
+       // Scoped region annotations should only be visible when their region is active
+       // Annotations created while a region is active should persist after region edits,
+       // regardless of whether they remain within the updated region geometry
+       // Requirement: "When no space is active: Region-scoped annotations: Hidden (no regions are active)"
+       let scopedRegionAnnotationVisible = true;
++      // #region agent log
++      if (isScopedRegionAnnotation) {
++        fetch('http://127.0.0.1:9006/ingest/0e3ca1f5-cf74-49f4-a243-6179244dcd57',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:7265',message:'scopedRegionAnnotation check',data:{objModuleId,objRegionId,isScopedRegionAnnotation,hasActiveRegions,activeRegionId,activeSpaceId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
++      }
++      // #endregion
+       if (isScopedRegionAnnotation && objRegionId !== null) {
+         // First check: if no space is active, hide all region-scoped annotations
+         if (activeSpaceId === null) {
+           scopedRegionAnnotationVisible = false;
+-        } else if (hasActiveRegions) {
+-          // If there are active regions and a space is active, always show annotations that were created while a region was active
++          if (DEBUG_VISIBILITY) console.log(`[Page ${pageNumber}] Scoped annotation HIDDEN: no active space`, { objRegionId });
++        } else if (hasActiveRegions && activeRegionId !== null) {
++          // If there are active regions and a space is active AND region toggle is ON, show annotations that were created while a region was active
+           // This ensures they persist even after region boundaries are modified
+           scopedRegionAnnotationVisible = true;
++          if (DEBUG_VISIBILITY) console.log(`[Page ${pageNumber}] Scoped annotation VISIBLE: hasActiveRegions`, { objRegionId, hasActiveRegions, activeRegionId });
+         } else if (activeRegionId !== null) {
+           // Fallback: if only activeRegionId is set (backward compatibility)
+           scopedRegionAnnotationVisible = objRegionId === activeRegionId;
++          if (DEBUG_VISIBILITY) console.log(`[Page ${pageNumber}] Scoped annotation fallback check:`, { objRegionId, activeRegionId, visible: scopedRegionAnnotationVisible });
+         } else {
+-          // No active regions, hide scoped annotations
++          // No active regions OR region toggle is OFF, hide scoped annotations
+           scopedRegionAnnotationVisible = false;
++          if (DEBUG_VISIBILITY) console.log(`[Page ${pageNumber}] Scoped annotation HIDDEN: toggle OFF`, { objRegionId, hasActiveRegions, activeRegionId });
+         }
+       }
+ 
+@@ -7250,14 +7327,50 @@ const PageAnnotationLayer = memo(({
+       // Only apply to background annotations (not scoped region annotations)
+       if (!isScopedRegionAnnotation && objRegionId === null) {
+         // This is a background annotation (made outside any space/region)
+-        if (selectedSpaceId !== null && getRegionLightbulbStateRef.current) {
+-          // A space is active: check the per-region lightbulb state for this page
+-          const lightbulbResult = getRegionLightbulbStateRef.current(selectedSpaceId, pageNumber);
+-          backgroundAnnotationVisible = lightbulbResult;
++        const regionsExist = regions !== null;
++        const spaceActive = activeSpaceId !== null;
++        const lightbulbFnExists = !!getRegionLightbulbStateRef.current;
++        const shouldCheckLightbulb = regionsExist && spaceActive && lightbulbFnExists;
++
++        if (DEBUG_VISIBILITY && objModuleId) {
++          console.log(`[Page ${pageNumber}] Background annotation check START:`, {
++            objModuleId,
++            objRegionId,
++            isScopedRegionAnnotation,
++            regionsExist,
++            spaceActive,
++            lightbulbFnExists,
++            shouldCheckLightbulb
++          });
++        }
+ 
++        if (shouldCheckLightbulb) {
++          // Regions exist on this page: check the per-region lightbulb state
++          // The lightbulb controls background annotation visibility when regions exist
++          const lightbulbResult = getRegionLightbulbStateRef.current(activeSpaceId, pageNumber);
++          backgroundAnnotationVisible = lightbulbResult;
++          // #region agent log
++          if (isSurveyAnnotation) {
++            fetch('http://127.0.0.1:9006/ingest/0e3ca1f5-cf74-49f4-a243-6179244dcd57',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:7304',message:'background annotation lightbulb check',data:{objModuleId,objRegionId,activeSpaceId,pageNumber,regionsExist,lightbulbResult,backgroundAnnotationVisible},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
++          }
++          // #endregion
++          if (DEBUG_VISIBILITY && objModuleId) {
++            console.log(`[Page ${pageNumber}] Background annotation lightbulb APPLIED:`, {
++              objModuleId,
++              activeSpaceId,
++              lightbulbResult,
++              backgroundAnnotationVisible
++            });
++          }
+         } else {
+-          // No space is active: background annotations should always be visible
++          // No regions on this page: background annotations should always be visible
+           backgroundAnnotationVisible = true;
++          if (DEBUG_VISIBILITY && objModuleId) {
++            console.log(`[Page ${pageNumber}] Background annotation NO lightbulb check (always visible):`, {
++              objModuleId,
++              reason: !regionsExist ? 'no regions' : !spaceActive ? 'no active space' : 'no lightbulb function'
++            });
++          }
+         }
+       }
+ 
+@@ -7266,14 +7379,24 @@ const PageAnnotationLayer = memo(({
+       // 2. Survey annotations are visible (if applicable)
+       // 3. Scoped region annotations are visible (if applicable)
+       // 4. Background annotations respect the per-region lightbulb toggle
++      // #region agent log
++      const scopedRegionVisibleValue = (isScopedRegionAnnotation ? scopedRegionAnnotationVisible : true);
++      const backgroundVisibleValue = (isScopedRegionAnnotation ? true : backgroundAnnotationVisible);
++      fetch('http://127.0.0.1:9006/ingest/0e3ca1f5-cf74-49f4-a243-6179244dcd57',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:7317',message:'visibility calculation',data:{objModuleId,objRegionId,isScopedRegionAnnotation,isSurveyAnnotation,matchesSpace,matchesModule,surveyAnnotationVisible,scopedRegionAnnotationVisible,scopedRegionVisibleValue,backgroundAnnotationVisible,backgroundVisibleValue,hasActiveRegions},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
++      // #endregion
+       const isVisible = matchesSpace &&
+         matchesModule &&
+         surveyAnnotationVisible &&
+-        scopedRegionAnnotationVisible &&
+-        (isScopedRegionAnnotation ? true : backgroundAnnotationVisible);
++        scopedRegionVisibleValue &&
++        backgroundVisibleValue;
++      // #region agent log
++      if (isSurveyAnnotation) {
++        fetch('http://127.0.0.1:9006/ingest/0e3ca1f5-cf74-49f4-a243-6179244dcd57',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PageAnnotationLayer.jsx:7340',message:'final isVisible for survey annotation',data:{objModuleId,objRegionId,isScopedRegionAnnotation,isVisible,matchesSpace,matchesModule,surveyAnnotationVisible,scopedRegionVisibleValue,backgroundVisibleValue},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
++      }
++      // #endregion
+ 
+       // Interaction logic:
+-      // - When a space is active (activeSpaceId !== null), background annotations (objRegionId === null) 
++      // - When a space is active (activeSpaceId !== null), background annotations (objRegionId === null)
+       //   should NOT be interactive, regardless of visibility
+       // - Region-scoped annotations can be interactive when their space is active
+       // - Background annotations can only be interactive when no space is active
+@@ -7295,6 +7418,20 @@ const PageAnnotationLayer = memo(({
+         }
+       }
+ 
++      if (DEBUG_VISIBILITY && objModuleId) {
++        console.log(`[Page ${pageNumber}] FINAL visibility for survey annotation:`, {
++          objModuleId,
++          objRegionId,
++          matchesSpace,
++          matchesModule,
++          surveyAnnotationVisible,
++          scopedRegionAnnotationVisible,
++          backgroundAnnotationVisible,
++          isVisible,
++          isInteractive
++        });
++      }
++
+       obj.set({
+         visible: isVisible,
+         selectable: isInteractive,
+@@ -7308,7 +7445,7 @@ const PageAnnotationLayer = memo(({
+     });
+ 
+     canvas.renderAll();
+-  }, [selectedSpaceId, activeSpaceId, selectedModuleId, selectedCategoryId, showSurveyPanel, activeRegions, scale, activeRegionId, isRegionSelectionActive, layerVisibility, tool, pageNumber, spaces, getSpaceIdForRegion]);
++  }, [selectedSpaceId, activeSpaceId, selectedModuleId, selectedCategoryId, showSurveyPanel, activeRegions, scale, activeRegionId, isRegionSelectionActive, layerVisibility, tool, pageNumber, spaces]);
+ 
+   // Keyboard handler for deleting selected annotations
+   useEffect(() => {

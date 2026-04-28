@@ -1,0 +1,5 @@
+ .cursor/debug.log           |  47864 +++-----------
+ 1.log                       | 144552 ++++++++++++++++++++++++++++++++++++++++-
+ src/App.jsx                 |    301 +-
+ src/PageAnnotationLayer.jsx |    203 +-
+ 4 files changed, 154210 insertions(+), 38710 deletions(-)
