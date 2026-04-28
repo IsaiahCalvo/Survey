@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
 status: completed
-stopped_at: Completed 28-03-PLAN.md (HocuspocusYjsProvider fallback wrapper + Wave 0 scaffold inline)
-last_updated: "2026-04-28T00:01:24.118Z"
-last_activity: "2026-04-27 — Plan 27-05 executed (2 auto tasks + 1 checkpoint:human-verify, 2 commits: fe100060 / ae91f9fb; user approved after live UAT round-trip)"
+stopped_at: Completed 28-01-PLAN.md (Wave 0 scaffolds — 5 unit tests + 4 RLS SQL tests + 4 Playwright fixme specs + benchmark skeleton + 28-BENCHMARK.md shell)
+last_updated: "2026-04-28T00:06:00.000Z"
+last_activity: "2026-04-27 — Plan 28-01 executed (3 auto/tdd tasks, 3 commits: 5dc096f9 / 1c15922b / 59265ca7; lane safety honored — zero src/ touches)"
 progress:
   total_phases: 14
   completed_phases: 3
   total_plans: 20
-  completed_plans: 14
+  completed_plans: 15
   percent: 100
 ---
 
@@ -26,12 +26,12 @@ See: .planning/PROJECT.md (updated 2026-04-14)
 ## Current Position
 
 Milestone: v2.4 — CRDT Foundation + Real-Time Sync (Yjs port; SVG/Fabric layers immutable)
-Phase: **Phase 27 — CRDT Foundation** (5/5 plans shipped 2026-04-27; functionally complete, awaiting `/gsd:verify-work 27` + 27-RECONCILIATION.md)
-Plan: 27-05 — complete (src/components/collab/YDocProvider.jsx shipped — React context provider mounting ydocLifecycle for the active doc; src/hooks/useYDoc.js shipped — context-consumer hook returning the locked shape; src/components/collab/StorageFailureBanner.jsx shipped — banner with all 4 copy variants per 27-UI-SPEC.md, role=alert, aria-live=polite, dismiss button; src/components/collab/StorageFailureBanner.css shipped — locked CSS variables + 2 type weights + .svg-annotations--hydrating/--hydrated fade-in classes for the deferred wrapper-div opt-in; src/App.jsx — per-phase narrow waiver: 1 import + 1 JSX wrap around <PDFViewer> with docId={tab.file?.id}, all other Always-Protected files byte-identical, zoomGeneration signal preserved; live UAT verified single-user round-trip — pen-stroke drawn, page refreshed, stroke reappeared). Next: `/gsd:verify-work 27` to run the full Phase 27 verification baseline, then write 27-RECONCILIATION.md per CLAUDE.md phase discipline rules, then `/gsd:discuss-phase 28` for the transport spike + auth + server validator.
-Status: Plan 27-05 shipped — React surface + App.jsx mount landed. Phase 27 functionally complete (5/5 plans); CRDT foundation end-to-end functional for single-user persistence. applyUpdate-only invariant remains green; license gate green; test baseline preserved (290 pass / 6 fail pre-existing / 3 skipped — identical to pre-Plan-27-05). Always-Protected file scope honored — only the per-phase narrow App.jsx waiver was used (1 import + 1 JSX wrap; +27 / -24 lines, 24 deletions = re-indentation of wrapped block, NOT logical removals).
-Last activity: 2026-04-27 — Plan 27-05 executed (2 auto tasks + 1 checkpoint:human-verify, 2 commits: fe100060 / ae91f9fb; user approved after live UAT round-trip)
+Phase: **Phase 28 — Transport Spike + Auth + Server Validator** (Plan 28-01 Wave 0 scaffold complete; Plan 28-03 already shipped via prior-session out-of-order execution committed in 82fd7e51; Plans 28-02, 28-04, 28-05, 28-06 remaining)
+Plan: 28-01 — complete (5 unit test scaffolds at tests/phase28/*.test.mjs covering originBuilder/deviceId/authSessionBridge/SupabaseYjsProvider/HocuspocusYjsProvider with the per-test existsSync skip-guard pattern from Phase 27 Plan 27-01; 4 RLS pgTAP-style SQL test files at tests/phase28/rls/ + run-all.sql aggregator + README.md, all using BEGIN/ROLLBACK + DO $$ skip-guards on pg_proc/pg_tables — flip skip→PASS when Plan 28-05's migration applies; 4 Playwright fixme specs at debug/scenarios/phase28-*.spec.mjs covering revoke flow + kicked-out banner + login-expired + multi-peer throttled; transportSpikeBenchmark.mjs harness skeleton accepting --transport/--peers/--duration/--network with strict superset of fields Plan 28-04 asserts on (samples_count required key); 28-BENCHMARK.md decision shell with Speed Bar + Prototype A/B + Tiebreaker Rules + Decision: pending). Next: Plan 28-02 (Wave 1 — auth/origin helpers + SupabaseYjsProvider implementation). Plan 28-02 will flip 4 unit test scaffolds skip→green simultaneously.
+Status: Plan 28-01 shipped — Wave 0 contract honored (zero src/ touches). 16 scaffold files committed across 3 atomic commits (5dc096f9 / 1c15922b / 59265ca7). Phase 27 baseline preserved (applyUpdateOnlyInvariant.test.mjs still 1/1 green). Phase 28 unit tests run as 25 total / 23 skipped / 2 pass / 0 fail — the 2 passing are HocuspocusYjsProvider tests 1+5 because src/lib/collab/HocuspocusYjsProvider.js already exists (committed in 82fd7e51 by Plan 28-03 out-of-order execution).
+Last activity: 2026-04-27 — Plan 28-01 executed (3 auto/tdd tasks, 3 atomic commits, lane safety honored)
 
-Progress: [██████████] 100% Phase 27 functionally complete (5/5 plans); v2.4 milestone overall: 5/5 of Phase 27, 0/4 of Phase 28-29-32-33-34 (those phases not yet planned/executed); v2.3 closed at Phase 15
+Progress: [██████████] 100% Phase 27 functionally complete (5/5 plans); Phase 28 in progress (2/6 plans complete — 28-01 Wave 0 + 28-03 Hocuspocus, both shipped); v2.4 milestone overall: 5/5 of Phase 27, 2/6 of Phase 28, 0/4 of Phase 29-32-33-34; v2.3 closed at Phase 15
 
 ## Performance Metrics
 
@@ -64,6 +64,7 @@ Progress: [██████████] 100% Phase 27 functionally complete (
 | Phase 27 P04 | 4min | 3 tasks | 5 files |
 | Phase 27 P05 | 3min | 3 tasks | 5 files |
 | Phase 28 P03 | 3min | 1 tasks | 2 files |
+| Phase 28 P01 | 11min | 3 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -140,6 +141,10 @@ Progress: [██████████] 100% Phase 27 functionally complete (
 - [Phase 28]: Plan 28-03: HocuspocusYjsProvider async factory wraps dynamic import of @hocuspocus/provider with explicit conditional-waiver error message. Token thunk pattern (token: () => supabase.auth.getSession()) is the Pitfall 1 defense reuse for the fallback path — Hocuspocus calls the thunk on every reconnect attempt, parallel to authSessionBridge's TOKEN_REFRESHED → realtime.setAuth wiring on the default path.
 - [Phase 28]: Plan 28-03: Async factory asymmetry vs SupabaseYjsProvider (sync) — accepted because dynamic import requires await. Plan 28-04's benchmark and Plan 28-06's wire-up MUST await both factory call sites uniformly (no-op for the sync one). Documented in 28-03-SUMMARY.md.
 - [Phase 28]: Plan 28-03: Wave 0 scaffold for HocuspocusYjsProvider.test.mjs created inline (Rule 3 blocking-fix) because Plan 28-01 had not been executed yet. Scaffold matches 28-01-PLAN.md spec verbatim — when 28-01 eventually runs, its task should detect the file already exists.
+- [Phase 28]: Plan 28-01: Adopted Phase 27 Plan 27-01's per-test existsSync skip-guard pattern verbatim — 4 new unit test scaffolds (originBuilder, deviceId, authSessionBridge, SupabaseYjsProvider) at tests/phase28/*.test.mjs each with 5 tests inline-guarded by `{ skip: !existsSync(TARGET) ? '... not yet present (Plan NN-NN)' : false }`. Lower risk than inventing a new convention; same mechanic that landed cleanly across all 5 Phase 27 plans.
+- [Phase 28]: Plan 28-01: RLS test suite uses plain psql DO blocks with RAISE EXCEPTION instead of pgTAP. pgTAP is not installed in this project and existing supabase/migrations/ already use the DO block style. Adding pgTAP would introduce a Postgres extension install for a tiny test suite — not worth the operational complexity. 4 numbered tests + run-all.sql aggregator + README at tests/phase28/rls/. Each file uses pg_proc / pg_tables existence checks as skip-guards; flips skip→PASS when Plan 28-05's migration applies the helper function and trigger.
+- [Phase 28]: Plan 28-01: Honored Plan 28-03 out-of-order execution from prior session. Commit 82fd7e51 had ALREADY landed both src/lib/collab/HocuspocusYjsProvider.js (production module) AND tests/phase28/HocuspocusYjsProvider.test.mjs (Wave 0 scaffold) BEFORE Plan 28-01 ran. Plan 28-01 verified the pre-existing test file meets all acceptance criteria (HAS_HOCUSPOCUS guard present 5 places, 5 tests defined) and committed only the OTHER 4 unit test scaffolds. No conflict, no rework.
+- [Phase 28]: Plan 28-01: Benchmark skeleton emits the FULL output contract (samples_count, p50_ms, p95_ms, p99_ms, msgs_per_sec, errors all present in skeleton JSON with placeholder values) so Plan 28-04's verify step runs cleanly the moment the harness body lands. Both --network=fast and --network=throttled accepted in skeleton (no-op) so Plan 28-04's smoke test (uses --network=fast) doesn't break before the throttling logic ships.
 
 ### Roadmap Evolution
 
@@ -172,8 +177,8 @@ Progress: [██████████] 100% Phase 27 functionally complete (
 
 ## Session Continuity
 
-Last session: 2026-04-28T00:01:24.114Z
-Stopped at: Completed 28-03-PLAN.md (HocuspocusYjsProvider fallback wrapper + Wave 0 scaffold inline)
+Last session: 2026-04-28T00:06:00.000Z
+Stopped at: Completed 28-01-PLAN.md (Wave 0 scaffolds — 5 unit tests + 4 RLS SQL tests + 4 Playwright fixme specs + benchmark skeleton + 28-BENCHMARK.md shell)
 
 ### Resume instructions for the next session (read carefully)
 
