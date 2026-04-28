@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
-status: Plan 30-03 shipped — feat commit 0640d1c0; production module crdtDualWriteQueue.js (259 LOC, 6 exports, 3 locked constants); 7/7 tests pass; CI gate exits 0; Always-Protected files byte-identical. Out-of-order Plan 30-01 scaffold + CI gate landed inline as Rule 3 deviation (commit 24c578c5).
-stopped_at: Plan 30-03 shipped — feat commit 0640d1c0; test scaffold + CI gate landed inline as Rule 3 (commit 24c578c5)
-last_updated: "2026-04-28T16:48:00.000Z"
-last_activity: 2026-04-28 — Plan 30-03 executed (1 task + 1 inline Plan 30-01 scaffold; pure retry queue module with quarantine + stuck-threshold + kill-switch guard)
+status: Plan 30-01 shipped — Wave 0 contracts complete. 8 unit test scaffolds + 4 Playwright e2e scaffolds + check-no-diff-delete.mjs CI gate + npm-test-glob bridge. All 4 tasks executed; 4 atomic commits across executions (24c578c5 + 844c73dd + cf16bcfb + e3018af1). Phase 27/28/29 baseline preserved (350 pass, 9 baseline-fail). Always-Protected files byte-identical.
+stopped_at: Plan 30-01 shipped — Wave 0 contracts complete; 12 unit + 4 e2e scaffolds + 1 CI gate; 4 commits
+last_updated: "2026-04-28T16:55:50.000Z"
+last_activity: 2026-04-28 — Plan 30-01 executed (4 tasks; 8 unit + 4 e2e scaffolds + CI gate verified; npm test 350/394 pass + 35 skipped, no new failures vs Phase 29 baseline)
 progress:
   total_phases: 14
   completed_phases: 5
   total_plans: 33
-  completed_plans: 27
-  percent: 82
+  completed_plans: 28
+  percent: 85
 ---
 
 # Project State
@@ -26,12 +26,12 @@ See: .planning/PROJECT.md (updated 2026-04-14)
 ## Current Position
 
 Milestone: v2.4 — CRDT Foundation + Real-Time Sync (Yjs port; SVG/Fabric layers immutable)
-Phase: **Phase 30 — Migration Phase A — Dual-Write Era** (in progress). Plan 30-03 shipped; Plans 30-01 partial (queue scaffold + CI gate landed inline by 30-03 as Rule 3); 30-02, 30-04, 30-05, 30-06, 30-07 pending. Phase 29 functionally complete (reconciliation pending).
-Plan: 30-03 — complete (crdtDualWriteQueue.js pure module, +259 LOC, 6 exports + 3 constants). Pitfall 30-5 (queue starvation) + Pitfall 30-6 (stale queue replay after kill-switch flip) both mitigated. Latest-version-wins replacement; 30s stuck threshold; 10-attempt quarantine; 6-step exponential backoff capped at 30s. localStorage persistence with defensive guards. Listener errors swallowed defensively. Out-of-order Plan 30-01 scaffold (queue test + CI gate) landed inline as Rule 3 blocking deviation so Plan 30-03 had verifiable contract.
-Status: Plan 30-03 shipped — feat commit 0640d1c0 + test scaffold/CI gate commit 24c578c5. 7/7 tests pass; CI gate exits 0; Phase 27/28/29 baseline (20 pass + 8 skipped) preserved; Always-Protected files byte-identical (App.jsx, PAL, Fabric*, SVG, package.json, vite.config.js).
-Last activity: 2026-04-28 — Plan 30-03 executed (1 task + 1 inline Plan 30-01 scaffold; pure retry queue module)
+Phase: **Phase 30 — Migration Phase A — Dual-Write Era** (in progress). Plans 30-01 + 30-03 shipped; 30-02, 30-04, 30-05, 30-06, 30-07 pending. Phase 29 functionally complete (reconciliation pending).
+Plan: 30-01 — complete (Wave 0 test scaffolds + CI gate). 8 unit test scaffolds (crdtBackfill x2 + crdtDualWriteQueue + annotationCloudSync.dualWrite + StorageFailureBanner.syncQueueStuck + 3 hook scaffolds for Plan 30-05/30-07) + 4 Playwright e2e scaffolds (test.fixme'd; SEAMS documented inline) + scripts/check-no-diff-delete.mjs CI grep gate (Pitfall 5 mitigation, NO_DIFF_DELETE_OK escape hatch) + tests/phase30/phase30-unit-suite.test.mjs npm-test-glob bridge. All 4 tasks executed across 4 atomic commits.
+Status: Plan 30-01 shipped — Wave 0 contracts complete (12 unit + 4 e2e scaffolds + 1 CI gate). 4 commits: 24c578c5 + 844c73dd + cf16bcfb + e3018af1. Phase 27/28/29 baseline preserved (350 pass / 9 baseline-fail / 35 skipped — +29 new skip lines). Always-Protected files byte-identical (App.jsx, PAL, Fabric*, SVG, package.json, vite.config.js).
+Last activity: 2026-04-28 — Plan 30-01 executed (4 tasks; 8 unit + 4 e2e scaffolds + CI gate verified)
 
-Progress: [████████░░] 82% — Phase 27 functionally complete (5/5 plans); Phase 28 functionally complete (6/6 plans); Phase 29 functionally complete (6/6 plans, reconciliation pending); **Phase 30 in progress: Plan 30-03 shipped (1/7), Plan 30-01 partially landed (2 of 10 scaffolds via Rule 3 inline); 5 plans remaining (30-01 reconciliation + 30-02/04/05/06/07)**; v2.4 milestone overall: 5/5 Phase 27, 6/6 Phase 28, 6/6 Phase 29 (modulo reconciliation), 1/7 Phase 30, 0 Phase 31/32/33/34; v2.3 closed at Phase 15
+Progress: [████████▌░] 85% — Phase 27 functionally complete (5/5 plans); Phase 28 functionally complete (6/6 plans); Phase 29 functionally complete (6/6 plans, reconciliation pending); **Phase 30 in progress: Plans 30-01 + 30-03 shipped (2/7); 5 plans remaining (30-02/04/05/06/07)**; v2.4 milestone overall: 5/5 Phase 27, 6/6 Phase 28, 6/6 Phase 29 (modulo reconciliation), 2/7 Phase 30, 0 Phase 31/32/33/34; v2.3 closed at Phase 15
 
 ## Performance Metrics
 
@@ -76,6 +76,7 @@ Progress: [████████░░] 82% — Phase 27 functionally complet
 | Phase 29 P04 | 12 | 3 tasks | 10 files |
 | Phase 29 P06 | 13 | 5 tasks | 10 files |
 | Phase 30-migration-dual-write P03 | 8 | 1 tasks | 3 files |
+| Phase 30-migration-dual-write P01 | 15 | 4 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -197,6 +198,10 @@ Progress: [████████░░] 82% — Phase 27 functionally complet
 - [Phase 29]: Plan 29-06: contextMenuId interaction-state publisher deferred — App.jsx Always-Protected and Plan 29-06 forbids extending Plan 29-04's narrow waiver. Coverage of the other 4 interaction bindings (selectedId/draggingId/scalingId/editCanvasId) ships via Plan 29-05 FabricEditCanvas waiver. Logged in 29-deferred-items.md item 1.
 - [Phase 30-migration-dual-write]: Plan 30-03: Pure module crdtDualWriteQueue.js with 6 named exports + locked constants (QUARANTINE_THRESHOLD=10, STUCK_THRESHOLD_MS=30_000, BACKOFF_MS 6-step exponential cap at 30s). Per-user storage key. Latest-version-wins preserves queuedAt/attempts/quarantined. Drain handlers injected by caller (Plan 30-06). isCRDTEnabled() first-line guard mitigates Pitfall 30-6; quarantined-skip mitigates Pitfall 30-5.
 - [Phase 30-migration-dual-write]: Plan 30-03: out-of-order Plan 30-01 partial-completion (Rule 3 deviation) — landed crdtDualWriteQueue.test.mjs (7 tests) + scripts/check-no-diff-delete.mjs (CI gate) inline so Plan 30-03 had verifiable contract. Plan 30-01 Task 1 + Task 3 should detect both files already present when it eventually runs.
+- [Phase 30-migration-dual-write]: Plan 30-01: tests/phase30/phase30-unit-suite.test.mjs npm-test-glob bridge — single file under tests/**/*.test.mjs that re-imports each co-located src/__tests__ scaffold; node:test discovers test() registrations through transitive imports. Solves the test-glob-doesn't-include-src restriction without touching package.json (DO NOT CHANGE). Cleaner than Phase 27's file-duplication pattern (tests/phase27/<name> mirrors src/lib/collab/__tests__/<name>).
+- [Phase 30-migration-dual-write]: Plan 30-01: source-grep contract testing for React hook scaffolds (useDualWriteQueue, useAnnotationCloudSync.dualWrite, useTabPendingDualWrite) — node:test cannot mount React/JSX without test-deps that would touch package.json; Phase 14 buildCalloutRenderSpec data-spec helper precedent. Hook scaffolds readFileSync the production .js source and assert substring + regex contracts (export signatures, useSyncExternalStore-or-setInterval pattern, proximity checks). Plan 30-05/30-07 ships runtime integration coverage; scaffolds lock the shape.
+- [Phase 30-migration-dual-write]: Plan 30-01: two-stage skip pattern for inner-symbol gating — annotationCloudSync.js + useAnnotationCloudSync.js exist today but the new symbols (dualWriteFabricCommit / dualWriteFabricDelete) only land in Plan 30-04/30-07. Tests use outer existsSync to gate file presence + inner readFileSync grep to gate symbol presence so they auto-flip skip→green precisely when the wiring lands.
+- [Phase 30-migration-dual-write]: Plan 30-01: skip-message Plan reference convention — every skip reason references the Plan number that lands the unblocking module ('crdtBackfill.js not yet present (Plan 30-02)', 'dualWriteFabricCommit not yet exported (Plan 30-04)', etc). Future-Claude executing those plans can grep for the Plan number to find the test scaffolds that auto-flip when the module lands.
 
 ### Roadmap Evolution
 
@@ -229,8 +234,8 @@ Progress: [████████░░] 82% — Phase 27 functionally complet
 
 ## Session Continuity
 
-Last session: 2026-04-28T16:47:21.900Z
-Stopped at: Plan 30-03 shipped — feat commit 0640d1c0; test scaffold + CI gate landed inline as Rule 3 (commit 24c578c5)
+Last session: 2026-04-28T16:55:50.000Z
+Stopped at: Plan 30-01 shipped — Wave 0 contracts complete; 12 unit + 4 e2e scaffolds + 1 CI gate; 4 atomic commits
 
 ### Resume instructions for the next session (read carefully)
 

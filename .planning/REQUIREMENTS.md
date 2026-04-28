@@ -56,7 +56,7 @@
 
 ### Migration & Backwards Compatibility (MIGRATE)
 
-- [ ] **MIGRATE-01**: Existing annotations created in v2.3 and earlier appear correctly in v2.4 with no data loss; original creation user becomes the recorded author with a "before-v2.4" device tag.
+- [ ] **MIGRATE-01**: Existing annotations created in v2.3 and earlier appear correctly in v2.4 with no data loss; original creation user becomes the recorded author with a "before-v2.4" device tag. _(Phase 30 binding requirement; covered by all 7 plans; Plan 30-01 ships test contract scaffolds, Plan 30-02 lands the backfill module, 30-03 the retry queue, 30-04 the dual-write fan-out, 30-05 the banner + queue hook + quarantine marker, 30-06 the YDocProvider mount, 30-07 the call-site wire — closes when all 7 land)_
 - [ ] **MIGRATE-02**: A user still on v2.3 opening a document already migrated to v2.4 sees a "please update the app" gate rather than corrupted data.
 
 ## v2 Requirements (deferred to v2.4.x or later)
@@ -117,7 +117,7 @@ Each v1 REQ-ID maps to exactly one v2.4 phase. Populated by gsd-roadmapper 2026-
 | PERM-03 | Phase 34 — Sharing UX + Revocation + Decommission | Pending |
 | PERM-04 | Phase 34 — Sharing UX + Revocation + Decommission | Pending |
 | PERM-05 | Phase 34 — Sharing UX + Revocation + Decommission | Pending |
-| MIGRATE-01 | Phase 30 — Migration Phase A: Dual-Write Era | Pending |
+| MIGRATE-01 | Phase 30 — Migration Phase A: Dual-Write Era | In Progress (Plans 30-01 + 30-03 of 7 shipped) |
 | MIGRATE-02 | Phase 31 — Migration Phase B: Cutover Seal | Pending |
 
 **Coverage:**
