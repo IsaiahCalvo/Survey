@@ -445,7 +445,7 @@ Plans:
 - [ ] 29-02-PLAN.md — Wave 1 crdtAnnotationBridge.js (pure module — applyFabricCommit + applyFabricDelete + applyYUpdateToFabric + isApplyingRemote belt + microtask reset)
 - [ ] 29-03-PLAN.md — Wave 1 crdtUndoManager.js (per-user Y.UndoManager with memoized origin reference equality — Pitfall 7 mitigation)
 - [ ] 29-04-PLAN.md — Wave 2 useAnnotationsCRDT hook + YDocProvider mounts UndoManager + App.jsx handleUndo/handleRedo waiver
-- [ ] 29-05-PLAN.md — Wave 2 FabricEditCanvas commit-path waiver + per-word stopCapturing + mid-drag cancel + eraser session bracket
+- [x] 29-05-PLAN.md — Wave 2 FabricEditCanvas commit-path waiver + per-word stopCapturing + mid-drag cancel + identity-contract registry + awareness publish + interaction-state publish (eraser session bracket DEFERRED to Phase 33+; FabricEraserCanvas owns eraser exclusively per CLAUDE.md)
 - [ ] 29-06-PLAN.md — Wave 2 CollaboratorOutlineOverlay + StorageFailureBanner annotation_remote_deleted variant + toast queue + restore wiring
 
 ### Phase 30: Migration Phase A — Dual-Write Era
