@@ -7,8 +7,8 @@
 
 ### Authorship & Attribution (AUTH)
 
-- [ ] **AUTH-01**: Every annotation creation, edit, and deletion records the user account that performed it.
-- [ ] **AUTH-02**: Every annotation creation, edit, and deletion records the device it was performed on (Mac, Windows, future iPhone, future Android), with a default name from the OS hostname.
+- [x] **AUTH-01**: Every annotation creation, edit, and deletion records the user account that performed it.
+- [x] **AUTH-02**: Every annotation creation, edit, and deletion records the device it was performed on (Mac, Windows, future iPhone, future Android), with a default name from the OS hostname.
 - [x] **AUTH-03**: Every annotation creation, edit, and deletion records a server-authoritative timestamp.
 - [ ] **AUTH-04**: User can right-click any annotation and see a "Tags" entry in the context menu showing who created it and on which device, who last edited it and on which device, and when each happened.
 - [ ] **AUTH-05**: The annotation properties panel exposes the same Tags information when the user opens its three-dot menu and selects "Tags".
@@ -89,8 +89,8 @@ Each v1 REQ-ID maps to exactly one v2.4 phase. Populated by gsd-roadmapper 2026-
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| AUTH-01 | Phase 28 — Transport Spike + Auth + Server Validator | Pending |
-| AUTH-02 | Phase 28 — Transport Spike + Auth + Server Validator | Pending |
+| AUTH-01 | Phase 28 — Transport Spike + Auth + Server Validator | Complete |
+| AUTH-02 | Phase 28 — Transport Spike + Auth + Server Validator | Complete |
 | AUTH-03 | Phase 27 — CRDT Foundation | Complete |
 | AUTH-04 | Phase 33 — Activity Log + Awareness + Resume | Pending |
 | AUTH-05 | Phase 33 — Activity Log + Awareness + Resume | Pending |

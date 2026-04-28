@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
 status: completed
-stopped_at: Phase 28 context gathered
-last_updated: "2026-04-27T21:07:26.564Z"
+stopped_at: Completed 28-03-PLAN.md (HocuspocusYjsProvider fallback wrapper + Wave 0 scaffold inline)
+last_updated: "2026-04-28T00:01:24.118Z"
 last_activity: "2026-04-27 — Plan 27-05 executed (2 auto tasks + 1 checkpoint:human-verify, 2 commits: fe100060 / ae91f9fb; user approved after live UAT round-trip)"
 progress:
   total_phases: 14
   completed_phases: 3
-  total_plans: 14
-  completed_plans: 13
+  total_plans: 20
+  completed_plans: 14
   percent: 100
 ---
 
@@ -63,6 +63,7 @@ Progress: [██████████] 100% Phase 27 functionally complete (
 | Phase 27 P02 | 3min | 2 tasks | 4 files |
 | Phase 27 P04 | 4min | 3 tasks | 5 files |
 | Phase 27 P05 | 3min | 3 tasks | 5 files |
+| Phase 28 P03 | 3min | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -136,6 +137,9 @@ Progress: [██████████] 100% Phase 27 functionally complete (
 - [Phase 27]: Plan 27-05: Wrapper-div fade-in opt-in deliberately deferred. .svg-annotations--hydrating / --hydrated CSS classes ship in StorageFailureBanner.css (single source of truth for Phase 27 visual polish), but no wrapper applies them yet because doing so would either touch SVGAnnotationLayer.jsx (Always-Protected) or extend the App.jsx waiver beyond "mount only". Phase 32 hardening can pick this up; for now annotations appear instantly, which Plan 27-05 UAT step 1 explicitly accepts.
 - [Phase 27]: Plan 27-05: Manual storage-banner UAT replaced with automated test coverage. Modern browsers (Chrome incognito included) permit IndexedDB by default so the banner does not fire under the planned scenario. User accepted Plan 27-01's 4 scaffold tests + Plan 27-04's 8 co-located tests as sufficient coverage. Banner code reviewed against 27-UI-SPEC.md verbatim (all 4 codes, role=alert, aria-live=polite, dismiss button, sticky positioning, locked CSS variables, 2 type weights).
 - [Phase 27]: Plan 27-05: Banner uses exactly 2 type weights (400 / 600), zero deviation from 27-UI-SPEC.md. font-weight: 600 reserved for the heading; body, action link, secondary metadata, dismiss button all 400. Action link interactivity signaled by underline + accent color (#4A90E2), NOT by font weight — matches Linear / Notion link convention.
+- [Phase 28]: Plan 28-03: HocuspocusYjsProvider async factory wraps dynamic import of @hocuspocus/provider with explicit conditional-waiver error message. Token thunk pattern (token: () => supabase.auth.getSession()) is the Pitfall 1 defense reuse for the fallback path — Hocuspocus calls the thunk on every reconnect attempt, parallel to authSessionBridge's TOKEN_REFRESHED → realtime.setAuth wiring on the default path.
+- [Phase 28]: Plan 28-03: Async factory asymmetry vs SupabaseYjsProvider (sync) — accepted because dynamic import requires await. Plan 28-04's benchmark and Plan 28-06's wire-up MUST await both factory call sites uniformly (no-op for the sync one). Documented in 28-03-SUMMARY.md.
+- [Phase 28]: Plan 28-03: Wave 0 scaffold for HocuspocusYjsProvider.test.mjs created inline (Rule 3 blocking-fix) because Plan 28-01 had not been executed yet. Scaffold matches 28-01-PLAN.md spec verbatim — when 28-01 eventually runs, its task should detect the file already exists.
 
 ### Roadmap Evolution
 
@@ -168,8 +172,8 @@ Progress: [██████████] 100% Phase 27 functionally complete (
 
 ## Session Continuity
 
-Last session: 2026-04-27T21:07:26.559Z
-Stopped at: Phase 28 context gathered
+Last session: 2026-04-28T00:01:24.114Z
+Stopped at: Completed 28-03-PLAN.md (HocuspocusYjsProvider fallback wrapper + Wave 0 scaffold inline)
 
 ### Resume instructions for the next session (read carefully)
 
