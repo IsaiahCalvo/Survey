@@ -7,6 +7,28 @@
 // from ydocRegistry.getOrCreateYDoc(). The applyUpdateOnlyInvariant.test.mjs
 // grep-asserts this — the only allowed Y.Doc constructor site is ydocRegistry.js.
 // Any cross-tab updates are merged via Y.applyUpdate, never by replacing the doc.
+//
+// Phase 28 extension: the onStorageState channel codes expand beyond the Phase 27
+// set. The Phase 27 codes (`'ok' | 'quota_exceeded' | 'invalid_state' |
+// 'version_mismatch' | 'blocked'`) come from this file via attachStorageFailureDetector.
+// Phase 28 adds four new codes that plumb through the SAME onStorageState callback
+// signature so YDocProvider's banner gating logic continues to work unchanged:
+//
+//   - 'transport_offline'    — emitted by SupabaseYjsProvider's onTransportState
+//                              callback (wired in YDocProvider.jsx)
+//   - 'transport_online'     — provider reconnected; YDocProvider clears the
+//                              transport-side banner by re-emitting code 'ok'
+//   - 'permission_revoked'   — emitted by provider's onUpdateRejected callback
+//                              when reason === 'permission_revoked' or starts
+//                              with 'authentication_failed'
+//   - 'login_expiry_failure' — emitted by authSessionBridge's onSignedOut hook
+//                              (mounted inside YDocProvider per Plan 28-06
+//                              Blocker 1 fix — keeps App.jsx untouched)
+//
+// No code change is required in this file for Phase 28: the existing
+// onStorageState callback already accepts an arbitrary `code` string. This
+// header documents the channel-extension contract so future readers see the
+// full set of codes flowing through one callback rather than parallel surfaces.
 
 import { IndexeddbPersistence } from 'y-indexeddb';
 import * as Y from 'yjs';
