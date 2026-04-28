@@ -58,6 +58,14 @@ import { supabase } from '../../supabaseClient.js';
 // what crdtAnnotationBridge passes to ydoc.transact, so reference-equality at
 // Y.UndoManager.trackedOrigins continues to hold across the restore call site.
 import { createUndoManager, getLocalFabricOrigin } from '../../lib/collab/crdtUndoManager.js';
+// Phase 29 — Plan 29-06 render layer: per-collaborator outline overlay + the
+// awareness state hook that feeds it. Mounted at YDocProvider scope so the
+// overlay is available to any descendant rendering inside the YDocContext.
+// Receives empty editors initially because per-page bbox positioning depends
+// on PAL / SVGAnnotationLayer integration (Always-Protected files); follow-up
+// Phase 32 hardening can wire the bbox feed without touching protected files.
+import { CollaboratorOutlineOverlay } from './CollaboratorOutlineOverlay.jsx';
+import { useRemoteEditors } from '../../hooks/useRemoteEditors.js';
 
 // Frozen null-shape value reused when CRDT is disabled or docId is unknown.
 // UX: useYDoc() consumers can call hooks unconditionally — the null shape lets them
@@ -544,6 +552,23 @@ function YDocProviderInner({ docId, children, closeDocument }) {
     setToasts((prev) => prev.filter((t) => t.id !== toastId));
   }, []);
 
+  // Phase 29 — Plan 29-06 Task 4: awareness state for the collaborator outline
+  // overlay. Returns Map<annoId, { userId, colorSlot, name }>. When awareness is
+  // unwired (no Phase 28 awareness publisher attached), the hook returns an
+  // empty Map and the overlay renders nothing — graceful degradation.
+  //
+  // The hook call itself is what wires the awareness subscription into this
+  // React tree. The returned Map is currently unused because per-page bbox
+  // joining lives in PAL / SVGAnnotationLayer (Always-Protected); a follow-up
+  // hook will join `remoteEditors` (keyed on annoId) with bbox data from
+  // useAnnotationsCRDT to produce the per-page editors array the overlay
+  // consumes. Until then the live subscription is still useful: it primes the
+  // awareness data path so DevTools shows real values when verifying.
+  const remoteEditors = useRemoteEditors();
+  // Reference so the linter does not flag the awareness subscription as dead.
+  // UX: future-facing — see comment block above for the join plan.
+  void remoteEditors;
+
   const value = useMemo(() => ({
     ydoc,
     isHydrating,
@@ -690,6 +715,59 @@ function YDocProviderInner({ docId, children, closeDocument }) {
           onCloseDocument={() => value.closeDocument()}
         />
       )}
+      {/* Phase 29 — Plan 29-06 Task 4 render layer: remote-delete toast stack.
+          UX (UI-SPEC §"Multiple-toast handling"): up to 3 toasts visible at
+          once stacked vertically with 8px gap (the .storage-banner sticky
+          position + their natural flow handles the layout); the 4th and beyond
+          merge into a single "and N more" banner so the user is never buried
+          under a wall of red. Equal weight for both Restore and Dismiss in
+          each toast — neither choice is the "right" one in the abstract. */}
+      {toasts.slice(0, 3).map((toast) => (
+        <StorageFailureBanner
+          key={toast.id}
+          code={toast.code}
+          collaboratorName={toast.collaboratorName}
+          onRestore={() => handleRestore(toast)}
+          onDismiss={() => handleDismissToast(toast.id)}
+        />
+      ))}
+      {toasts.length > 3 && (
+        <StorageFailureBanner
+          key="merged"
+          code="annotation_remote_deleted"
+          // UX: collaboratorName here is repurposed as the overflow indicator.
+          // Reads as "Removed by and N more removed" — slightly off-grammar but
+          // unambiguous; user's mental model: "more deletes than I can review
+          // individually". Restore-all bulk-restores; Dismiss-all clears all.
+          collaboratorName={`and ${toasts.length - 3} more removed`}
+          onRestore={() => {
+            // Bulk restore the overflow set. Each restore runs in its own
+            // ydoc.transact so per-annotation race guards apply individually.
+            toasts.slice(3).forEach(handleRestore);
+          }}
+          onDismiss={() => {
+            // Drop the overflow but keep the first three toasts visible. User
+            // still sees the toasts they had time to engage with.
+            setToasts((prev) => prev.slice(0, 3));
+          }}
+        />
+      )}
+
+      {/* Phase 29 — Plan 29-06 Task 4 render layer: collaborator outline overlay.
+          Mounted at YDocProvider scope so the overlay component lives inside
+          the React tree even before per-page bbox integration is wired.
+          editors=[] today because joining the awareness Map (remoteEditors,
+          keyed on annoId) with per-page bbox + pageSize requires reaching
+          into PAL / SVGAnnotationLayer (Always-Protected). The overlay
+          gracefully renders nothing on empty editors. Phase 32 hardening can
+          add the bbox feed via either:
+            - extending useAnnotationsCRDT to include bbox per anno, or
+            - a sibling hook joining useRemoteEditors with useAnnotationsCRDT.
+          remoteEditors is computed inside this component so the awareness
+          subscription is live; the data is just not yet plumbed to a per-page
+          mount point. Documented as a follow-up in 29-06-SUMMARY.md. */}
+      <CollaboratorOutlineOverlay editors={[]} />
+
       {/* ReadOnlyGate is the Phase 28 read-only mode dispatcher — renders null
           but sets body[data-readonly] + a window-capture-phase keydown listener
           when accessRevoked is true. Mounted as a sibling here so App.jsx

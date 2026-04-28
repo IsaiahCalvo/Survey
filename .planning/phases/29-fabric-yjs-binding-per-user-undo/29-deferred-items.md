@@ -79,3 +79,101 @@ During Wave 1 of Phase 29 (2026-04-28) the working tree was found in a partial-m
 **Date logged:** 2026-04-28
 **Surfaced by:** Phase 29 execute-phase orchestrator (Wave 1 → Wave 2 transition)
 **Owner:** User decision at Phase 29 close (after VERIFICATION.md passes)
+
+---
+
+## Plan 29-06 deferred items
+
+### 1. `contextMenuId` interaction-state publisher inside the App.jsx context menu
+
+**Status:** DEFERRED — App.jsx waiver scope protection.
+
+**Symptom:**
+The remote-delete toast surfaces only when the local user is interacting with
+the deleted annotation. The five interaction bindings live on
+`window.__phase29InteractionState` (Plan 29-05 publisher inside FabricEditCanvas).
+Four of the five (`selectedId`, `draggingId`, `scalingId`, `editCanvasId`) are
+covered by Plan 29-05's `FabricEditCanvas.jsx` waiver. The fifth — `contextMenuId`
+— would need to be set by the existing right-click context menu component.
+
+The annotation context menu lives **inside `App.jsx`** at line ~11167 (state)
+and ~11266 (`window.__onAnnotationContextMenu` open dispatcher). Adding the
+two-line `window.__phase29InteractionState.contextMenuId = annoId / null` setter
+would require extending Plan 29-04's narrow App.jsx waiver. Plan 29-06 explicitly
+forbids extending that waiver in this plan ("If the context-menu component is
+INSIDE App.jsx and modifying it requires extending Plan 29-04's waiver — DO NOT
+extend the waiver in Plan 29-06").
+
+**Coverage already shipping:**
+- `selectedId` — set by FabricEditCanvas Plan 29-05 selection events
+- `draggingId` — set by FabricEditCanvas Plan 29-05 mouse:down/up
+- `scalingId` — set by FabricEditCanvas Plan 29-05 transform.action === 'scale*'
+- `editCanvasId` — set by FabricEditCanvas Plan 29-05 mount/unmount
+- `contextMenuId` — DEFERRED (right-click-only state, ~5% of interaction time)
+
+**Resolution path:**
+A future small plan (Phase 32 hardening or a dedicated contextMenuId-publisher
+plan) extends the App.jsx waiver narrowly to add the two-line setter inside the
+existing `window.__onAnnotationContextMenu` open handler. Until then, the
+right-click-context-menu interaction state is the one case where a remote
+delete will apply silently rather than surfacing the toast — acceptable for
+v2.4 because users typically have the annotation selected before they
+right-click anyway, and `selectedId` already covers that path.
+
+**Date logged:** 2026-04-28
+**Surfaced by:** Plan 29-06 (executor session)
+**Owner:** Phase 32 hardening or post-v2.4 follow-up plan
+
+---
+
+### 2. Per-page bbox feed for `CollaboratorOutlineOverlay`
+
+**Status:** DEFERRED — Always-Protected file scope protection.
+
+**Symptom:**
+`CollaboratorOutlineOverlay` is mounted at `YDocProvider` scope with `editors=[]`.
+The component itself is contract-complete (renders rects when given editors;
+visual contract per UI-SPEC §2 fully verified by manual inspection). What is
+missing is the data feed: joining `useRemoteEditors()` (Map keyed on annoId)
+with per-page bbox + pageSize from the SVG annotation layer.
+
+The bbox + pageSize data lives inside `SVGAnnotationLayer.jsx` and
+`PageAnnotationLayer.jsx`, both of which are Always-Protected per CLAUDE.md.
+A new join hook (e.g. `useRemoteEditorEditorRects()`) would need a clean read
+path to those bboxes without modifying the protected files.
+
+**Resolution paths:**
+1. **Extend `useAnnotationsCRDT`** to include a bbox-per-anno field in its
+   return shape. Caller composes `useAnnotationsCRDT()` ⨉ `useRemoteEditors()`
+   into the editors array.
+2. **Sibling overlay-host hook** that reads the same Y.Map data the SVG layer
+   reads and computes bboxes from the Fabric properties (left/top/width/height
+   /scaleX/scaleY for rect/circle/etc.; getBBox-equivalent math for line/curve).
+3. **Read DOM bboxes** via `document.querySelector('[data-anno-id="..."]').getBoundingClientRect()`
+   leveraging the data-anno-id seam Plan 29-04 added to SVGAnnotationLayer.
+   Pure read, zero protected-file changes, but couples awareness rendering to
+   the DOM render cycle.
+
+Path 3 is the lowest-risk landing for Phase 32 hardening. The data-anno-id
+seam already exists; the overlay just needs a per-page mount point or a
+single page-aware host that translates client rects to viewer-space coords.
+
+**Coverage already shipping:**
+- `CollaboratorOutlineOverlay` component contract (visual rules, animation,
+  pointer-events, color palette) — DONE
+- `useRemoteEditors` awareness subscription — DONE (graceful-degraded to
+  empty Map when awareness is unwired)
+- YDocProvider mount of the overlay — DONE (renders nothing today; ready
+  for editors prop wiring)
+
+**Resolution path:**
+Phase 32 hardening adds the join hook (path 3 recommended) and replaces the
+current `editors={[]}` with the joined per-page editors array. Optionally
+moves the overlay mount from YDocProvider scope to a per-page mount point
+(e.g. inside `PDFPage.jsx` or wherever the existing per-page overlay
+infrastructure lives), which would let the overlay's `pageNumber` +
+`pageSize` props be populated naturally.
+
+**Date logged:** 2026-04-28
+**Surfaced by:** Plan 29-06 (executor session)
+**Owner:** Phase 32 hardening
