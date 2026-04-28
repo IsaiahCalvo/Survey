@@ -1,12 +1,14 @@
 // src/components/collab/StorageFailureBanner.jsx
-// Phase 27 — Storage-failure banner. Phase 28 EXTENSION (in place — same component,
-// same CSS, same render tree; only the COPY map + per-variant heading/secondary
-// maps grow with 3 new codes).
+// Phase 27 — Storage-failure banner. Phase 28 + 29 EXTENSION (in place — same
+// component, same CSS, same render tree; only the COPY map + per-variant
+// heading/secondary maps grow with new codes).
 //
 // Sources:
 //   - .planning/phases/27-crdt-foundation/27-UI-SPEC.md Surface 2 (locked Phase 27 copy)
 //   - .planning/phases/28-transport-spike-auth-validator/28-UI-SPEC.md Component
 //     Inventory section 1 (Phase 28 — three new copy variants reusing the same shape)
+//   - .planning/phases/29-fabric-yjs-binding-per-user-undo/29-UI-SPEC.md §1 (Phase 29 —
+//     annotation_remote_deleted code with the two-action Restore + Dismiss variant)
 //
 // UX: CONTEXT.md decision is anti-silent-fallback. When local saving breaks the
 // user MUST be told — banner sits at the top of the document, role="alert" so
@@ -16,12 +18,17 @@
 // risk, no exclamation marks, calm factual register matching Linear / Notion /
 // Figma graceful-degradation tone.
 //
-// Phase 28 contract (single source of truth for all 7 codes):
+// Phase 29 contract (8 codes total — single source of truth):
 //   - 'quota_exceeded' / 'invalid_state' / 'version_mismatch' / 'blocked' — Phase 27;
 //     all four codes resolve to the original Phase 27 storage-offline heading
-//   - 'transport_offline'    — Phase 28, live-sync-offline heading per UI-SPEC
-//   - 'permission_revoked'   — Phase 28, access-removed heading per UI-SPEC (NO dismiss button)
-//   - 'login_expiry_failure' — Phase 28, sign-in-expired heading per UI-SPEC
+//   - 'transport_offline'        — Phase 28, live-sync-offline heading per UI-SPEC
+//   - 'permission_revoked'       — Phase 28, access-removed heading per UI-SPEC (NO dismiss button)
+//   - 'login_expiry_failure'     — Phase 28, sign-in-expired heading per UI-SPEC
+//   - 'annotation_remote_deleted' — Phase 29, NEW; renders TWO inline action links
+//     (Restore + Dismiss) instead of the single action + × dismiss pattern. Sticky
+//     (no auto-dismiss). Surfaces only when local user is interacting with the
+//     deleted annotation (selected / dragging / scaling / edit-canvas open / context
+//     menu open) — Plan 29-06 YDocProvider toast queue handles the gating.
 //
 // Why per-variant heading + secondary maps (instead of shared constants like
 // Phase 27 used): the new variants are not "Local saving is offline" stories —
@@ -80,6 +87,25 @@ const COPY = {
     body: "We can't keep saving your changes until you sign in again. Your recent edits are safe on this device while you sign back in.",
     action: 'Click here to sign in again',
   },
+
+  // ---- Phase 29 code (new — per 29-UI-SPEC.md §1) -------------------------
+  // UX: annotation-remote-deleted toast surfaces ONLY when the local user was
+  // actively interacting with the deleted annotation (selected / dragging /
+  // scaling / edit-canvas open / context menu open). Outside those interaction
+  // states, the deletion applies silently — no toast. Sticky (no auto-dismiss):
+  // a delete-by-collaborator is a high-stakes moment, an auto-dismiss would
+  // lose the chance to recover work the user was actively touching. Body copy
+  // gives the user permission to walk away ("or leave it gone") so the prompt
+  // does not feel coercive — Linear / Notion graceful-degradation tone.
+  //
+  // Render path uses two inline action links (Restore + Dismiss) instead of
+  // the standard single-action + × dismiss pattern. The COPY action field is
+  // null because the heading + body + two-button layout is rendered by a
+  // dedicated branch in the component below.
+  annotation_remote_deleted: {
+    body: "They deleted this while you had it open. You can bring it back — or leave it gone.",
+    action: null,
+  },
 };
 
 // Phase 28 — per-variant headings (Phase 27 originally used a single shared
@@ -100,6 +126,11 @@ const HEADING_BY_CODE = {
   transport_offline:    'Live sync is offline',
   permission_revoked:   'Access removed',
   login_expiry_failure: 'Your sign-in expired',
+  // Phase 29 — annotation_remote_deleted heading is dynamic on collaboratorName.
+  // Render path interpolates at the call site (see resolveHeading below) so the
+  // map stays a literal-prefix string the way Phase 27 + 28 entries are.
+  // Fallback "another collaborator" lands when collaboratorName is null.
+  annotation_remote_deleted: 'Removed by',
 };
 
 // Phase 28 — per-variant secondary metadata. Phase 27 codes share the original
@@ -118,6 +149,10 @@ const SECONDARY_BY_CODE = {
   transport_offline:    'Trying to reconnect · Stay on this page to keep your edits queued',
   permission_revoked:   'Document open in read-only mode · Close when ready',
   login_expiry_failure: 'Click below to sign in without losing your place',
+  // Phase 29 — annotation_remote_deleted has no secondary metadata (per
+  // 29-UI-SPEC.md §"Toast secondary metadata: (none)"). The body copy +
+  // two-action button row is the entire toast.
+  annotation_remote_deleted: null,
 };
 
 // Inline 16x16 warning icon — matches existing project pattern (AuthModal.jsx,
@@ -144,11 +179,11 @@ const WarningIcon = () => (
 );
 
 /**
- * Storage-failure banner. Single component, 7 codes — extension surface for
+ * Storage-failure banner. Single component, 8 codes — extension surface for
  * any future CRDT-layer failure mode that wants the same chrome.
  *
  * @param {object} props
- * @param {'quota_exceeded'|'invalid_state'|'version_mismatch'|'blocked'|'transport_offline'|'permission_revoked'|'login_expiry_failure'} props.code
+ * @param {'quota_exceeded'|'invalid_state'|'version_mismatch'|'blocked'|'transport_offline'|'permission_revoked'|'login_expiry_failure'|'annotation_remote_deleted'} props.code
  * @param {() => void} props.onDismiss - hides banner for this session only.
  *   IGNORED for `permission_revoked` — kicked-out is a permanent state for
  *   the session; banner stays until the user closes the document.
@@ -156,12 +191,30 @@ const WarningIcon = () => (
  *   Per-code wiring is the caller's responsibility (see YDocProvider.jsx for
  *   the canonical Phase 28 mappings: transport_offline → retry/reconnect,
  *   permission_revoked → close document, login_expiry_failure → open ReSignInModal).
+ *   IGNORED for `annotation_remote_deleted` — that code uses onRestore + onDismiss
+ *   (two inline action links).
+ * @param {string|null} [props.collaboratorName] - Phase 29 only; used when code
+ *   === 'annotation_remote_deleted' to render "Removed by [name]". When null,
+ *   falls back to "Removed by another collaborator".
+ * @param {() => void} [props.onRestore] - Phase 29 only; required when code
+ *   === 'annotation_remote_deleted'. Click handler for the inline "Restore" link
+ *   (calls back into YDocProvider's restore handler which does a direct
+ *   ydoc.transact preserving meta.authorId / meta.deviceId / meta.createdAt
+ *   per UNDO-03 contract).
  */
-export function StorageFailureBanner({ code, onDismiss, onAction }) {
+export function StorageFailureBanner({
+  code,
+  onDismiss,
+  onAction,
+  // Phase 29 — used only when code === 'annotation_remote_deleted'.
+  collaboratorName = null,
+  onRestore,
+}) {
   const copy = COPY[code];
   // Defensive: render nothing on unrecognized codes rather than show empty chrome.
   // UX: this branch should never trigger in practice — storageFailureDetector +
-  // SupabaseYjsProvider + authSessionBridge emit only the seven codes COPY knows.
+  // SupabaseYjsProvider + authSessionBridge + YDocProvider toast queue emit
+  // only the eight codes COPY knows.
   if (!copy) return null;
 
   // UX: per UI-SPEC, the dismiss button is hidden when code === 'permission_revoked'
@@ -173,6 +226,18 @@ export function StorageFailureBanner({ code, onDismiss, onAction }) {
   // not announce a dismiss affordance that would lie about the user's options.
   const showDismiss = code !== 'permission_revoked';
 
+  // Phase 29 — annotation_remote_deleted renders TWO inline action links
+  // (Restore + Dismiss) instead of the single-action + × pattern. We branch
+  // here so the existing render tree for Phase 27 + 28 codes is byte-identical.
+  const isRemoteDelete = code === 'annotation_remote_deleted';
+
+  // UX: the heading for annotation_remote_deleted interpolates the collaborator
+  // name. Fallback "another collaborator" when the awareness state did not
+  // include a user name (anonymous collaborator, or stale awareness).
+  const heading = isRemoteDelete
+    ? `${HEADING_BY_CODE[code]} ${collaboratorName || 'another collaborator'}`
+    : HEADING_BY_CODE[code];
+
   return (
     <div
       className="storage-banner"
@@ -183,18 +248,48 @@ export function StorageFailureBanner({ code, onDismiss, onAction }) {
     >
       <WarningIcon />
       <div className="storage-banner__text">
-        <div className="storage-banner__heading">{HEADING_BY_CODE[code]}</div>
+        <div className="storage-banner__heading">{heading}</div>
         <div className="storage-banner__body">{copy.body}</div>
-        <div className="storage-banner__secondary">{SECONDARY_BY_CODE[code]}</div>
+        {SECONDARY_BY_CODE[code] && (
+          <div className="storage-banner__secondary">{SECONDARY_BY_CODE[code]}</div>
+        )}
       </div>
-      <button
-        type="button"
-        className="storage-banner__action"
-        onClick={onAction}
-      >
-        {copy.action}
-      </button>
-      {showDismiss && (
+      {isRemoteDelete ? (
+        // Phase 29 — two-action variant. Both links use the same .storage-banner__action
+        // class so they render at the same visual weight; --secondary class adds an
+        // 8px left margin to the second link per UI-SPEC spacing scale (sm token).
+        // UX: equal-weight Restore + Dismiss because both are valid choices for
+        // the user — recovering the work AND walking away are both legitimate.
+        // Putting them at the same weight prevents the toast from feeling coercive.
+        <span className="storage-banner__actions">
+          <button
+            type="button"
+            className="storage-banner__action"
+            onClick={onRestore}
+            aria-label="Restore annotation"
+          >
+            Restore
+          </button>
+          <button
+            type="button"
+            className="storage-banner__action storage-banner__action--secondary"
+            onClick={onDismiss}
+            aria-label="Dismiss"
+          >
+            Dismiss
+          </button>
+        </span>
+      ) : (
+        // Phase 27 + 28 single-action render — preserved verbatim.
+        <button
+          type="button"
+          className="storage-banner__action"
+          onClick={onAction}
+        >
+          {copy.action}
+        </button>
+      )}
+      {showDismiss && !isRemoteDelete && (
         <button
           type="button"
           className="storage-banner__dismiss"

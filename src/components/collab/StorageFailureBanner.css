@@ -141,6 +141,33 @@
   border-radius: 2px;
 }
 
+/* Phase 29 — Two-action variant for annotation_remote_deleted code.
+ *
+ * UX: Restore + Dismiss links render side-by-side with an 8px gap (sm token in
+ * UI-SPEC spacing scale) so they read as a paired choice. Both use the existing
+ * .storage-banner__action class so they share font, color, underline, and focus
+ * ring behavior with the existing single-action surfaces — only the secondary
+ * link gets a left margin to separate the two.
+ *
+ * Why a wrapper span (.storage-banner__actions): keeps the two buttons grouped
+ * for flexbox sibling rules (otherwise the existing flex container would treat
+ * them as separate flex items and the layout would shift). The wrapper itself
+ * is inline-flex so it integrates with the existing .storage-banner flex chain.
+ */
+.storage-banner__actions {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.storage-banner__action--secondary {
+  /* sm token (8px) per UI-SPEC spacing scale. UX: small enough that Restore +
+     Dismiss feel paired; large enough that the user does not misclick the wrong
+     one when the toast lands during an active interaction. */
+  margin-left: 8px;
+}
+
 /* Annotation fade-in classes (Surface 1, 27-UI-SPEC.md).
  *
  * Source of truth lives in this file so any wrapper around the SVG annotation
