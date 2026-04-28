@@ -16,3 +16,6 @@ import '../../src/lib/collab/__tests__/crdtBackfill.weblocks.test.mjs';
 import '../../src/lib/collab/__tests__/crdtDualWriteQueue.test.mjs';
 import '../../src/services/__tests__/annotationCloudSync.dualWrite.test.mjs';
 import '../../src/components/collab/__tests__/StorageFailureBanner.syncQueueStuck.test.mjs';
+import '../../src/hooks/__tests__/useDualWriteQueue.test.mjs';
+import '../../src/hooks/__tests__/useAnnotationCloudSync.dualWrite.test.mjs';
+import '../../src/hooks/__tests__/useTabPendingDualWrite.test.mjs';
