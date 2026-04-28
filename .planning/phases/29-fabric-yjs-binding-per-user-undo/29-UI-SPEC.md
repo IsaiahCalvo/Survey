@@ -1,10 +1,11 @@
 ---
 phase: 29
 slug: fabric-yjs-binding-per-user-undo
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-04-28
+reviewed_at: 2026-04-28T00:00:00Z
 ---
 
 # Phase 29 — UI Design Contract
@@ -339,11 +340,11 @@ No shadcn registry entries. No third-party UI blocks. Toast variant is an extens
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: FLAG (non-blocking — single-word CTAs "Restore" / "Dismiss" inherit object noun from toast heading)
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: FLAG (non-blocking — 14/13/12 size scale is tight; weight 600 compensates; locked by Phase 27 precedent)
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** approved 2026-04-28
