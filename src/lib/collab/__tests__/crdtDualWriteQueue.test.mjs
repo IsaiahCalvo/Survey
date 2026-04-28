@@ -20,16 +20,12 @@
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { test, beforeEach, afterEach } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const TARGET = resolve(__dirname, '../crdtDualWriteQueue.js');
-
-const SKIP_REASON = !existsSync(TARGET)
-  ? 'crdtDualWriteQueue.js not yet present (Plan 30-03)'
-  : false;
 
 // --- Test fixtures -----------------------------------------------------------
 //
@@ -65,7 +61,7 @@ function restoreLocalStorage() {
 // --- Test 1: enqueue stores entry keyed by annoId in localStorage -----------
 
 test('enqueue stores entry keyed by annoId in localStorage[`crdt_dual_write_queue:${userId}`]',
-  { skip: SKIP_REASON },
+  { skip: !existsSync(TARGET) ? 'crdtDualWriteQueue.js not yet present (Plan 30-03)' : false },
   async () => {
     const fake = installFakeLocalStorage();
     try {
@@ -93,7 +89,7 @@ test('enqueue stores entry keyed by annoId in localStorage[`crdt_dual_write_queu
 // --- Test 2: re-edit replaces queued entry (latest-version-wins) ------------
 
 test('re-edit replaces queued entry (latest-version-wins, never appends)',
-  { skip: SKIP_REASON },
+  { skip: !existsSync(TARGET) ? 'crdtDualWriteQueue.js not yet present (Plan 30-03)' : false },
   async () => {
     const fake = installFakeLocalStorage();
     try {
@@ -116,7 +112,7 @@ test('re-edit replaces queued entry (latest-version-wins, never appends)',
 // --- Test 3: drainQueue retries entries past their backoff window ----------
 
 test('drainQueue retries entries whose backoff window has elapsed',
-  { skip: SKIP_REASON },
+  { skip: !existsSync(TARGET) ? 'crdtDualWriteQueue.js not yet present (Plan 30-03)' : false },
   async () => {
     const fake = installFakeLocalStorage();
     try {
@@ -160,7 +156,7 @@ test('drainQueue retries entries whose backoff window has elapsed',
 // --- Test 4: quarantines entry after 10 failed attempts --------------------
 
 test('quarantines entry after QUARANTINE_THRESHOLD attempts and emits onQuarantine',
-  { skip: SKIP_REASON },
+  { skip: !existsSync(TARGET) ? 'crdtDualWriteQueue.js not yet present (Plan 30-03)' : false },
   async () => {
     const fake = installFakeLocalStorage();
     try {
@@ -204,7 +200,7 @@ test('quarantines entry after QUARANTINE_THRESHOLD attempts and emits onQuaranti
 // --- Test 5: drain skips quarantined entries (Pitfall 30-5) ---------------
 
 test('drain skips quarantined entries; rest of queue keeps moving (Pitfall 30-5)',
-  { skip: SKIP_REASON },
+  { skip: !existsSync(TARGET) ? 'crdtDualWriteQueue.js not yet present (Plan 30-03)' : false },
   async () => {
     const fake = installFakeLocalStorage();
     try {
@@ -261,7 +257,7 @@ test('drain skips quarantined entries; rest of queue keeps moving (Pitfall 30-5)
 // --- Test 6: stuck threshold fires onStuck after 30s ----------------------
 
 test('stuck threshold fires onStuck({ stuckCount }) for entries pending > STUCK_THRESHOLD_MS',
-  { skip: SKIP_REASON },
+  { skip: !existsSync(TARGET) ? 'crdtDualWriteQueue.js not yet present (Plan 30-03)' : false },
   async () => {
     const fake = installFakeLocalStorage();
     try {
@@ -304,7 +300,7 @@ test('stuck threshold fires onStuck({ stuckCount }) for entries pending > STUCK_
 // --- Test 7: queue persists across module reloads -------------------------
 
 test('queue persists across module reloads (localStorage round-trip survives import cache reset)',
-  { skip: SKIP_REASON },
+  { skip: !existsSync(TARGET) ? 'crdtDualWriteQueue.js not yet present (Plan 30-03)' : false },
   async () => {
     const fake = installFakeLocalStorage();
     try {
