@@ -43,7 +43,10 @@ const REPO_ROOT = resolve(__dirname, '..', '..');
 const PROJECT_REF = 'cvamwtpsuvxvjdnotbeg';
 const SUPABASE_URL = `https://${PROJECT_REF}.supabase.co`;
 const TEST_DOCUMENT_ID = '70dadd86-35f0-432b-925f-c59e919a4e4d'; // Package 2 - Rev 4 -- IC.pdf
-const BOT_COUNT = 5;
+// 5 bots is the locked count from CONTEXT.md ("4-5 concurrent peers"). Plan 28-04
+// authorized higher peer counts (7-8) for fan-out characterization sweeps; we
+// provision the upper bound so the harness can run those sweeps without re-provisioning.
+const BOT_COUNT = 8;
 const BOT_EMAIL_PREFIX = 'phase28-bot';
 const BOT_EMAIL_DOMAIN = 'betasafes2.test'; // RFC-2606 reserved
 const BOT_PASSWORD_LEN = 32;
@@ -78,13 +81,25 @@ function pullServiceRoleKey() {
 }
 
 function generatePassword(len) {
-  // 32-char random alphanumeric — strong enough for bot accounts, no special
-  // chars to dodge URL-encoding edge cases when these are loaded into Playwright.
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let out = '';
-  // Use Math.random — these are throwaway test bots, not production secrets.
-  for (let i = 0; i < len; i++) out += alphabet[Math.floor(Math.random() * alphabet.length)];
-  return out;
+  // 32-char random with at least one char from each of: lower / upper / digit / symbol.
+  // Supabase project enforces all-four character classes on password updates.
+  const lower = 'abcdefghijklmnopqrstuvwxyz';
+  const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const digit = '0123456789';
+  const symbol = '!@#$%^&*-_=+';
+  const alphabet = lower + upper + digit + symbol;
+  // Force one of each class to satisfy the policy regardless of random chance.
+  let out =
+    lower[Math.floor(Math.random() * lower.length)] +
+    upper[Math.floor(Math.random() * upper.length)] +
+    digit[Math.floor(Math.random() * digit.length)] +
+    symbol[Math.floor(Math.random() * symbol.length)];
+  for (let i = out.length; i < len; i++) out += alphabet[Math.floor(Math.random() * alphabet.length)];
+  // Shuffle so the forced chars aren't always at the front.
+  return out
+    .split('')
+    .sort(() => Math.random() - 0.5)
+    .join('');
 }
 
 async function findBotByEmail(adminClient, email) {

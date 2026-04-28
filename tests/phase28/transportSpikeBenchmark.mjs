@@ -218,38 +218,30 @@ async function runWorker() {
       setTimeout(subResolve, 5000);
     });
   } else if (transport === 'hocuspocus') {
-    const providerMod = await import('../../src/lib/collab/HocuspocusYjsProvider.js');
-    providerHandle = await providerMod.createHocuspocusYjsProvider({
-      documentId,
-      ydoc,
-      supabase: supabaseClient,
-      url: hocuspocusUrl,
-      onUpdateRejected: (reason) => {
-        errors++;
-        process.send({ type: 'error', peerIndex, message: `update_rejected: ${reason}` });
-      },
-      onTransportState: (state) => {
-        if (state === 'offline') {
-          process.send({ type: 'log', peerIndex, message: `transport_state: ${state}` });
-        }
-      },
-    });
-
     // Hocuspocus doesn't provide a sibling channel; we use the Y.Doc's awareness
     // states as a sample-carrying side channel. Each peer writes its own
-    // awareness state to { peerId, seq, t0_ms } and other peers read each
-    // remote awareness change as the propagation sample.
-    // (Awareness updates flow through the same WebSocket as Y.Doc updates.)
-    // Since we didn't pass an awareness arg, we wire one up locally:
+    // awareness state to { benchEmit: { peerId, seq, t0_ms } } and other peers
+    // read each remote awareness change as the propagation sample. Awareness
+    // updates flow through the same WebSocket as Y.Doc updates.
     const awarenessProtocol = await import('y-protocols/awareness');
     const awareness = new awarenessProtocol.Awareness(ydoc);
+    awareness.on('change', ({ added, updated }) => {
+      const changedClients = [...added, ...updated];
+      for (const clientId of changedClients) {
+        if (clientId === awareness.clientID) continue;
+        const state = awareness.getStates().get(clientId);
+        if (!state || !state.benchEmit) continue;
+        const observedLatency = Date.now() - state.benchEmit.t0_ms + netDelay;
+        if (observedLatency >= 0 && observedLatency < 60000) {
+          samples.push(observedLatency);
+          benchEventsReceived++;
+        }
+      }
+    });
+    // Stash awareness for the action loop.
+    config._awareness = awareness;
 
-    // Re-create the provider WITH awareness so it broadcasts our awareness state.
-    try {
-      providerHandle.disconnect();
-    } catch {
-      /* swallow */
-    }
+    const providerMod = await import('../../src/lib/collab/HocuspocusYjsProvider.js');
     providerHandle = await providerMod.createHocuspocusYjsProvider({
       documentId,
       ydoc,
@@ -266,23 +258,6 @@ async function runWorker() {
         }
       },
     });
-
-    // Listen for awareness changes from other peers — the bench:emit ping rides here.
-    awareness.on('change', ({ added, updated }) => {
-      const changedClients = [...added, ...updated];
-      for (const clientId of changedClients) {
-        if (clientId === awareness.clientID) continue;
-        const state = awareness.getStates().get(clientId);
-        if (!state || !state.benchEmit) continue;
-        const observedLatency = Date.now() - state.benchEmit.t0_ms + netDelay;
-        if (observedLatency >= 0 && observedLatency < 60000) {
-          samples.push(observedLatency);
-          benchEventsReceived++;
-        }
-      }
-    });
-    // Stash awareness for the action loop.
-    config._awareness = awareness;
   }
 
   // ---- Outbound action loop -----------------------------------------------

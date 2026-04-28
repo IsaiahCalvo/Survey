@@ -1,0 +1,14 @@
+{
+  "transport": "supabase",
+  "peers": 8,
+  "duration_s": 62,
+  "network": "throttled",
+  "p50_ms": 72,
+  "p95_ms": 113,
+  "p99_ms": 214,
+  "msgs_per_sec": 38.5,
+  "errors": 0,
+  "samples_count": 15806,
+  "verdict": "passes_speed_bar",
+  "speed_bar_threshold_p95_ms": 500
+}

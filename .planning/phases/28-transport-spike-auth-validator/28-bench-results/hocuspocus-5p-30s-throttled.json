@@ -1,0 +1,14 @@
+{
+  "transport": "hocuspocus",
+  "peers": 5,
+  "duration_s": 32,
+  "network": "throttled",
+  "p50_ms": 53,
+  "p95_ms": 55,
+  "p99_ms": 57,
+  "msgs_per_sec": 23.8,
+  "errors": 0,
+  "samples_count": 2852,
+  "verdict": "passes_speed_bar",
+  "speed_bar_threshold_p95_ms": 500
+}
