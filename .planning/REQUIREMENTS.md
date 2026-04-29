@@ -117,7 +117,7 @@ Each v1 REQ-ID maps to exactly one v2.4 phase. Populated by gsd-roadmapper 2026-
 | PERM-03 | Phase 34 — Sharing UX + Revocation + Decommission | Pending |
 | PERM-04 | Phase 34 — Sharing UX + Revocation + Decommission | Pending |
 | PERM-05 | Phase 34 — Sharing UX + Revocation + Decommission | Pending |
-| MIGRATE-01 | Phase 30 — Migration Phase A: Dual-Write Era | In Progress (Plans 30-01 + 30-02 + 30-03 + 30-04 + 30-05 of 7 shipped) |
+| MIGRATE-01 | Phase 30 — Migration Phase A: Dual-Write Era | Complete (all 7 plans shipped 2026-04-28..29; Phase 30 functionally complete pending UAT + reconciliation) |
 | MIGRATE-02 | Phase 31 — Migration Phase B: Cutover Seal | Pending |
 
 **Coverage:**

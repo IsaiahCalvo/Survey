@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
-status: Plan 30-06 closed. Code landed 2026-04-28 in commit cf437356 (single atomic commit, deviation from plan's 2-task structure — 252-line surgical extension to src/components/collab/YDocProvider.jsx purely additive; existing Phase 27/28/29 logic byte-identical). YDocProvider now mounts runBackfill (deferred via Promise.resolve().then per Pitfall 30-7) + 1Hz drainQueue interval with retryLegacyWrite/retryCrdtWrite handlers + useDualWriteQueue subscription + sync_queue_stuck banner gate (composes with existing storage banner — never stacks) + QuarantineMarkerOverlay sibling mount (stub bboxes; per-annotation bbox feed deferred to Phase 32). 5 e2e test seams installed: __crdtBackfillDone, __ydocAnnotationCount, __crdtForceLegacyFail, __crdtBackfillDelayMs, __crdtForceFailAnnoId. Silent migration UAT step PASSED (PDF opens at Page 6 of Package 2 - Rev 4 -- IC.pdf with v2.3 annotations rendering immediately, no migration banner — confirms backfill mount works). Failure-banner + quarantine UAT steps DEFERRED to post-30-07 (the live Fabric save path doesn't yet route through the dual-write fan-out — Plan 30-07 wave 4 closes that gap). Side-trip pen-stroke visibility regression unblocked UAT verification — fixed via src/utils/svgPathAttrs.js (provenance-aware vector-effect + 2.5 user-unit floor for imports) + tests/pdfAnnotationNormalization.test.mjs (5/5 passing); second AI extended fix with closed-outline detection for Drawboard marker dots; commits affc8cf8/63c4f761/eeff3bf2; OUT-OF-SCOPE for Plan 30-06 but shipped because it blocked UAT. Cloud sync slowness flagged out-of-scope for Phase 30 (each hydrate downloads ~21K rows, 30-50s, window focus retriggers — follow-up phase candidate). Always-Protected files byte-identical for cf437356 changeset (App.jsx/PAL/Fabric*/SVG/package.json/vite.config.js). Phase 30 6/7 plans complete (30-01, 30-02, 30-03, 30-04, 30-05, 30-06); 1 remaining (30-07 live wiring + per-tab dot prop wiring). Phase 30 NOT YET functionally complete — safety net exists but live save path bypasses it; Plan 30-07 closes the gap.
-stopped_at: Completed 30-06-PLAN.md — YDocProvider mount of backfill + dual-write retry queue + UI surfaces shipped (commit cf437356); silent migration UAT passed; failure-banner + quarantine UAT deferred to post-30-07; side-trip pen-stroke visibility regression fixed
-last_updated: "2026-04-29T20:30:00.000Z"
-last_activity: 2026-04-29 — Plan 30-06 closed (SUMMARY + STATE + ROADMAP updates; code already landed 2026-04-28 in cf437356)
+status: completed
+stopped_at: Completed 30-07-PLAN.md — Phase 30 live wiring complete; UAT pending for failure-banner + quarantine flows
+last_updated: "2026-04-29T21:04:28.437Z"
+last_activity: 2026-04-29 — Plan 30-07 closed (Phase 30 live wiring complete; useAnnotationCloudSync routes through dual-write fan-out; useTabPendingDualWrite hook drives per-tab dot live; UAT pending)
 progress:
   total_phases: 14
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 33
-  completed_plans: 31
-  percent: 94
+  completed_plans: 32
+  percent: 97
 ---
 
 # Project State
@@ -26,12 +26,12 @@ See: .planning/PROJECT.md (updated 2026-04-14)
 ## Current Position
 
 Milestone: v2.4 — CRDT Foundation + Real-Time Sync (Yjs port; SVG/Fabric layers immutable)
-Phase: **Phase 30 — Migration Phase A — Dual-Write Era** (in progress). Plans 30-01 + 30-02 + 30-03 + 30-04 + 30-05 + 30-06 shipped; 30-07 pending. Phase 29 functionally complete (reconciliation pending).
-Plan: 30-06 — complete (YDocProvider mount of backfill + dual-write retry queue + UI surfaces). Single atomic commit cf437356 (2026-04-28; deviation from plan's 2-task structure — 252-line surgical extension to src/components/collab/YDocProvider.jsx purely additive). YDocProvider now mounts runBackfill (deferred via Promise.resolve().then per Pitfall 30-7; per-(docId, userId) didRunRef gate) + 1Hz drainQueue interval with retryLegacyWrite (re-fires upsertFabricAnnotation) and retryCrdtWrite (re-fires applyFabricCommit) handlers + useDualWriteQueue subscription + sync_queue_stuck StorageFailureBanner gate (composes with existing storage banner — never stacks; only renders when storageState.code === 'ok' OR nullish AND !bannerDismissed) + QuarantineMarkerOverlay sibling mount next to CollaboratorOutlineOverlay (stub bboxes pageNumber:0 + x/y/w/h:0 — per-annotation bbox feed deferred to Phase 32 hardening, same lane as Phase 29's CollaboratorOutlineOverlay bbox feed). 5 e2e test seams installed on window for Plan 30-01's 4 fixme'd Playwright specs: __crdtBackfillDone, __ydocAnnotationCount, __crdtForceLegacyFail, __crdtBackfillDelayMs, __crdtForceFailAnnoId. Plan 30-07 (Wave 4 live wiring) is the next and final Phase 30 plan.
-Status: Plan 30-06 closed 2026-04-29 (SUMMARY + STATE + ROADMAP). Silent migration UAT PASSED (PDF opens at Page 6 of Package 2 - Rev 4 -- IC.pdf with v2.3 annotations rendering immediately, no migration banner, no spinner — confirms backfill mount works end-to-end). Failure-banner + quarantine UAT steps DEFERRED to post-30-07 (the live Fabric save path doesn't yet route through dualWriteFabricCommit/dualWriteFabricDelete — it still calls upsertFabricAnnotation directly via useAnnotationCloudSync push loop; Plan 30-07 closes that gap). Side-trip pen-stroke visibility regression fixed via src/utils/svgPathAttrs.js (provenance-aware vector-effect + 2.5 user-unit floor for imports) + tests/pdfAnnotationNormalization.test.mjs (5/5 passing); second AI extended fix with closed-outline detection for Drawboard marker dots; commits affc8cf8 / 63c4f761 / eeff3bf2; OUT-OF-SCOPE for Plan 30-06 but shipped because it blocked UAT verification (the v2.3 annotations weren't visually verifiable without it). Cloud sync slowness flagged out-of-scope for Phase 30 (each hydrate downloads ~21K rows, takes 30-50 seconds; window focus retriggers — follow-up phase candidate). Always-Protected files byte-identical for cf437356 changeset (App.jsx, PAL, FabricDrawingCanvas, FabricEraserCanvas, FabricEditCanvas, SVGAnnotationLayer, package.json, vite.config.js).
-Last activity: 2026-04-29 — Plan 30-06 closed (SUMMARY + STATE + ROADMAP updates; code already landed 2026-04-28 in cf437356)
+Phase: **Phase 30 — Migration Phase A — Dual-Write Era** (functionally complete pending UAT). All 7 plans shipped (30-01..30-07). Phase 29 functionally complete (reconciliation pending). Phase 30 verifier next.
+Plan: 30-07 — complete (live wiring of dual-write fan-out + per-tab dot signal). Two atomic commits: 8f8f2025 (Task 1: dualWriteFabricCommit/Delete fan-out at 4 fabric call sites in useAnnotationCloudSync.js — bulk upsert + delete diff + queue-flush + forceFlush; imports useYDoc + isCRDTEnabled + NON_HIGHLIGHT_TYPES; two fan-out helpers fanOutCrdtForAnnotationsByPage + fanOutCrdtForDeletedIds; two-layer Pitfall 30-4 highlight defense; CONTEXT.md AC-15 kill-switch fallback intact via useYDoc null-shape contract) + 64ea2a9a (Task 2: NEW src/hooks/useTabPendingDualWrite.js — per-document subscription to crdtDualWriteQueue with 1Hz polling tick + negative-quarantined filter + cancelled-flag cleanup + payload?.opts?.documentId per-doc filter; TabBar.jsx imports the hook + calls it inside .map() body via const hasPendingDualWrite = useTabPendingDualWrite(tab.documentId || tab.id); render branch swapped from tab.hasPendingDualWrite to local const). Plan 30-04 helper accepts opts.skipLegacy: true — surgical 2-block addition (one to dualWriteFabricCommit, one to dualWriteFabricDelete); existing 5 tests preserved byte-identical. Plan 30-01 contract scaffolds flipped skip→green: 5 useAnnotationCloudSync.dualWrite + 3 useTabPendingDualWrite tests. Test baseline 393 pass / 8 fail / 6 skip (vs Plan 30-06's 371/9/14 — +22 passes, -8 skips, -1 fail; no NEW failures, all 8 remaining are the same baseline failures Plan 30-06 documented). CI gate scripts/check-no-diff-delete.mjs exits 0. Always-Protected files byte-identical for the Plan 30-07 changeset (App.jsx, PAL, FabricDrawingCanvas, FabricEraserCanvas, FabricEditCanvas, SVGAnnotationLayer, package.json, vite.config.js). Phase 30 functionally complete after this plan + UAT (failure-banner 'Some changes haven't saved yet' + quarantine 'didn't save, please try redrawing' flows verified via window.__crdtForceLegacyFail = true / window.__crdtForceFailAnnoId seam).
+Status: Plan 30-07 closed 2026-04-29 (SUMMARY + STATE + ROADMAP). Live v2.4 fabric save path now writes to BOTH legacy document_annotations row AND CRDT doc_yjs_updates row when isCRDTEnabled() AND ydoc mounted. Per-tab 6px red dot fires live for documents with non-quarantined queue entries. Phase 30 functionally complete pending UAT — user must paste window.__crdtForceLegacyFail = true into DevTools console, draw a stroke, wait ~30s, and confirm the new yellow sync_queue_stuck banner fires (NOT the old red Offline indicator). Reconciliation owed before Phase 31 starts.
+Last activity: 2026-04-29 — Plan 30-07 closed (Phase 30 live wiring complete; useAnnotationCloudSync routes through dual-write fan-out; useTabPendingDualWrite hook drives per-tab dot live; UAT pending)
 
-Progress: [█████████▌] 94% — Phase 27 functionally complete (5/5 plans); Phase 28 functionally complete (6/6 plans); Phase 29 functionally complete (6/6 plans, reconciliation pending); **Phase 30 in progress: Plans 30-01 + 30-02 + 30-03 + 30-04 + 30-05 + 30-06 shipped (6/7); 1 plan remaining (30-07 live wiring)**; v2.4 milestone overall: 5/5 Phase 27, 6/6 Phase 28, 6/6 Phase 29 (modulo reconciliation), 6/7 Phase 30, 0 Phase 31/32/33/34; v2.3 closed at Phase 15
+Progress: [██████████] 97% — Phase 27 functionally complete (5/5 plans); Phase 28 functionally complete (6/6 plans); Phase 29 functionally complete (6/6 plans, reconciliation pending); **Phase 30 functionally complete (7/7 plans shipped); reconciliation + UAT pending before Phase 31**; v2.4 milestone overall: 5/5 Phase 27, 6/6 Phase 28, 6/6 Phase 29 (modulo reconciliation), 7/7 Phase 30 (modulo reconciliation + UAT), 0 Phase 31/32/33/34; v2.3 closed at Phase 15
 
 ## Performance Metrics
 
@@ -81,6 +81,7 @@ Progress: [█████████▌] 94% — Phase 27 functionally complet
 | Phase 30-migration-dual-write P04 | 3 | 1 tasks | 1 files |
 | Phase 30-migration-dual-write P05 | 4 | 3 tasks | 5 files |
 | Phase 30-migration-dual-write P06 | 12 | 1 tasks | 1 files |
+| Phase 30-migration-dual-write P07 | 6 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -224,6 +225,9 @@ Progress: [█████████▌] 94% — Phase 27 functionally complet
 - [Phase 30-migration-dual-write]: Plan 30-06: Silent migration UAT step PASSED (PDF opens at Page 6 of Package 2 - Rev 4 -- IC.pdf with v2.3 annotations rendering immediately, no migration banner, no spinner) — verifies backfill mount works end-to-end. Failure-banner + quarantine UAT steps DEFERRED to post-30-07 because the live Fabric save path (useAnnotationCloudSync push loop) still calls upsertFabricAnnotation directly; without that routing through dualWriteFabricCommit/dualWriteFabricDelete, no entry is enqueued in crdtDualWriteQueue, so __crdtForceLegacyFail and __crdtForceFailAnnoId have nothing to act on. Plan 30-07 (Wave 4) closes the gap.
 - [Phase 30-migration-dual-write]: Plan 30-06: Side-trip pen-stroke visibility regression fixed in same session via src/utils/svgPathAttrs.js (provenance-aware vector-effect + 2.5 user-unit floor for imports) + tests/pdfAnnotationNormalization.test.mjs (5/5 passing). Second AI extended fix with closed-outline detection for Drawboard marker dots. Commits: affc8cf8 (refactor), 63c4f761 (bbox diagnostics fix), eeff3bf2 (final fix + adaptive handles). OUT-OF-SCOPE for Plan 30-06 but shipped because it blocked the silent-migration UAT step — without visible imported strokes, the backfill mount could not be confirmed. Logged as Rule 3 deviation (blocking issue prevented completing current task).
 - [Phase 30-migration-dual-write]: Plan 30-06: Cloud sync hydrate slowness flagged out-of-scope for Phase 30 (each hydrate downloads ~21K rows, takes 30-50 seconds, window focus retriggers). Capture as a follow-up phase candidate; do not bundle into Phase 30. User flagged during UAT.
+- [Phase 30-migration-dual-write]: Plan 30-07: opts.skipLegacy: true caller seam — surgical 2-block addition to Plan 30-04's dualWriteFabricCommit + dualWriteFabricDelete; useAnnotationCloudSync's bulk path fires legacy once, then per-row CRDT fan-out short-circuits the per-row legacy write. Existing 5 default-path tests preserved byte-identical.
+- [Phase 30-migration-dual-write]: Plan 30-07: useYDoc null-shape contract enables unconditional hook call at top of useAnnotationCloudSync — rules-of-hooks safe per Phase 27/28/29 precedent; fan-out helpers gate on isCRDTEnabled() && phase30Ydoc so kill-switch-off behavior is byte-identical to pre-Phase-30 (CONTEXT.md AC-15).
+- [Phase 30-migration-dual-write]: Plan 30-07: hook-inside-.map() pattern accepted in TabBar — iteration order stable across renders (React reconciles by key={tab.id}, useDragToReorder keeps tabVirtualOrder deterministic). useTabPendingDualWrite called per-tab inside .map() body; <TabItem> child split deferred to Phase 32 if a future linter complains.
 
 ### Roadmap Evolution
 
@@ -256,8 +260,8 @@ Progress: [█████████▌] 94% — Phase 27 functionally complet
 
 ## Session Continuity
 
-Last session: 2026-04-29T20:30:00.000Z
-Stopped at: Completed 30-06-PLAN.md close — YDocProvider mount of backfill + dual-write retry queue + UI surfaces (commit cf437356 from 2026-04-28) documented in 30-06-SUMMARY.md; STATE + ROADMAP updated; .continue-here.md cleared
+Last session: 2026-04-29T21:04:28.434Z
+Stopped at: Completed 30-07-PLAN.md — Phase 30 live wiring complete; UAT pending for failure-banner + quarantine flows
 
 ### Resume instructions for the next session (read carefully)
 
