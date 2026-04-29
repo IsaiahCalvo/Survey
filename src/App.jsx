@@ -26165,6 +26165,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         const statusBarHeight = statusBarRef.current.getBoundingClientRect().height;
         const combinedBottomHeight = bottomToolbarHeight + statusBarHeight;
         setToolbarHeights({ top: topHeight, bottom: combinedBottomHeight });
+        // 2026-04-29: publish the chrome height so StorageFailureBanner's
+        // fixed-position top anchor stays below the tab bar (40px) + top
+        // toolbar without ever covering home/undo/redo or the open-PDF tabs.
+        if (typeof document !== 'undefined' && document.documentElement) {
+          document.documentElement.style.setProperty('--app-chrome-top', `${40 + topHeight}px`);
+        }
       }
 
       if (middleAreaRef.current) {
