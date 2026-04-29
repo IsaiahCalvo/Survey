@@ -1,6 +1,10 @@
 import React, { useState, useRef, useCallback } from 'react';
 import Icon from './Icons';
 import { useDragToReorder } from './utils/useDragToReorder';
+// Phase 30 — per-tab subscription to the dual-write retry queue. Each tab
+// renders its own dot independently when its documentId has at least one
+// non-quarantined queue entry. CONTEXT.md AC-13 / 30-UI-SPEC.md Surface 3.
+import { useTabPendingDualWrite } from './hooks/useTabPendingDualWrite.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -139,6 +143,17 @@ const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onPag
             return a.index - b.index;
           })
           .map(({ item: tab }) => {
+            // Phase 30 — per-tab dual-write queue subscription. The hook is
+            // safe to call inside .map() because the iteration is stable
+            // across renders (React reconciles by key={tab.id} and
+            // useDragToReorder's tabVirtualOrder keeps the order
+            // deterministic during a render). Each tab gets its own polling
+            // subscription scoped to its documentId. Falls back to tab.id if
+            // a tab descriptor predates the documentId field — most PDF
+            // tabs in the current codebase use the document UUID as tab.id
+            // anyway. UX: dot lights up within ~1s of an entry being
+            // enqueued; clears within ~1s of the queue draining.
+            const hasPendingDualWrite = useTabPendingDualWrite(tab.documentId || tab.id);
             const isActive = tab.id === activeTabId;
             const isDragging = tabDraggingState?.itemId === tab.id;
             const isHome = tab.isHome;
@@ -267,7 +282,7 @@ const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onPag
                     affected user sees the dot on their own client. role=status +
                     aria-label so screen readers announce; does NOT steal focus or
                     affect Tab keyboard navigation. */}
-                {!isHome && tab.hasPendingDualWrite && (
+                {!isHome && hasPendingDualWrite && (
                   <span
                     role="status"
                     aria-label="This document has unsaved changes"
