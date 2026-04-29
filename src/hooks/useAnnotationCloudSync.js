@@ -23,7 +23,19 @@ import {
   loadAllNonHighlightAnnotations,
   subscribeToAllNonHighlightAnnotations,
   deleteAnnotation,
-  deleteAnnotations
+  deleteAnnotations,
+  // Phase 30 — dual-write fan-out. Live v2.4 fabric saves write to BOTH the
+  // legacy document_annotations row (preserved here for v2.3 reader compat
+  // during the dual-write era) AND the CRDT path via the Phase 29 bridge.
+  //
+  // CONTEXT.md `<decisions>` "Highlights skipped" + Pitfall 30-4 two-layer
+  // defense: highlight bypass at THIS call site AND inside the helper.
+  //
+  // CONTEXT.md AC-15 kill-switch fallback: when isCRDTEnabled() returns false,
+  // this hook's behavior is byte-identical to pre-Phase-30 (legacy-only path).
+  dualWriteFabricCommit,
+  dualWriteFabricDelete,
+  NON_HIGHLIGHT_TYPES
 } from '../services/annotationCloudSync.js';
 import { migrateLocalAnnotationsToCloud, hasMigrationRun } from '../services/cloudSyncMigration.js';
 import {
@@ -32,6 +44,8 @@ import {
   getQueueSize
 } from '../services/cloudSyncQueue.js';
 import { getAuthSnapshot } from '../supabaseClient.js';
+import { isCRDTEnabled } from '../lib/collab/crdtFeatureFlag.js';
+import { useYDoc } from './useYDoc.js';
 
 const DEFAULT_DEBOUNCE_MS = 800; // mid-drag pushes are coalesced into one upsert
 // 2026-04-26 — How long to wait before re-asking the cloud when the first read
@@ -39,6 +53,7 @@ const DEFAULT_DEBOUNCE_MS = 800; // mid-drag pushes are coalesced into one upser
 // transient auth/replica race to finish; short enough that it does not feel
 // like a stall when the device legitimately has nothing.
 const EMPTY_CLOUD_VERIFY_DELAY_MS = 1000;
+const RECENT_CLOUD_REFRESH_SKIP_MS = 15000;
 
 /**
  * @param {object} args
@@ -68,10 +83,26 @@ export function useAnnotationCloudSync({
   const [status, setStatus] = useState({ stage: 'idle' });
   const [queueSize, setQueueSize] = useState(0);
 
+  // Phase 30 — read the per-document Y.Doc + originBuilder factory + per-user
+  // undo ctx from the YDocProvider context (Plan 27-05 mount point; rules-of-
+  // hooks safe because useYDoc returns a frozen null-shape when CRDT is off,
+  // so the hook is safe to call unconditionally per Phase 27/28/29 precedent).
+  // When phase30Ydoc is null (kill switch off OR provider not mounted yet),
+  // every fan-out site short-circuits before calling dualWriteFabricCommit —
+  // the legacy upsertAnnotationsByPage / deleteAnnotations behavior is
+  // byte-identical to pre-Phase-30 (CONTEXT.md AC-15 kill-switch fallback).
+  const {
+    ydoc: phase30Ydoc,
+    getOriginContext: phase30OriginCtx,
+    undoCtx: phase30UndoCtx
+  } = useYDoc();
+
   const lastByPageRef = useRef(null);
   const lastCalloutsRef = useRef(null);
   const debounceTimerRef = useRef(null);
   const hydratedRef = useRef(false);
+  const startupSyncInFlightRef = useRef(false);
+  const lastCloudRefreshAtRef = useRef(0);
   // 2026-04-27 — diagnostic refs for tracking annotations state changes
   // outside the cloud-sync hook's own setters. If something in App.jsx
   // shrinks the state without the cloud-sync hook knowing, the next push
@@ -103,6 +134,92 @@ export function useAnnotationCloudSync({
   // The set was too aggressive — full-state bulk pushes added every id, blocking
   // legitimate cross-device edits to those ids. The service-side session-id
   // filter handles own-write echoes correctly on its own.)
+
+  // ---- Phase 30 — CRDT-side fan-out helpers ------------------------------
+  //
+  // Per-annotation CRDT-side fan-out called AFTER each legacy bulk upsert /
+  // delete lands. Runs only when the kill switch is on AND a Y.Doc is mounted
+  // (CONTEXT.md AC-15 kill-switch fallback: when isCRDTEnabled() returns false
+  // OR phase30Ydoc is null, the fan-out is a no-op and the hook's pre-Phase-30
+  // legacy-only behavior is byte-identical).
+  //
+  // Each fabric object is dispatched through dualWriteFabricCommit with
+  // skipLegacy: true so the legacy row is not double-written (the bulk
+  // upsertAnnotationsByPage already fired before this fan-out runs).
+  //
+  // Pitfall 30-4 two-layer highlight defense:
+  //   - Layer 1 (HERE): the call site filters out annotation_type === 'highlight'
+  //     AND annotation_type === 'callout' AND non-NON_HIGHLIGHT_TYPES — never
+  //     even invokes the dual-write helper for them.
+  //   - Layer 2 (helper): annotationCloudSync.js dualWriteFabricCommit also
+  //     internally checks isHighlight and returns { crdt: null }.
+  //
+  // Callouts: ride the legacy upsertCallouts path unchanged through Phase 30.
+  // Callout migration is v2.5 scope; out of Phase 30 boundary.
+  const fanOutCrdtForAnnotationsByPage = async (annotationsByPageArg, opts) => {
+    if (!isCRDTEnabled() || !phase30Ydoc) return;
+    let yMapAnnotations;
+    try {
+      yMapAnnotations = phase30Ydoc.getMap('annotations');
+    } catch (_e) {
+      return;
+    }
+    const originPayload = (typeof phase30OriginCtx === 'function') ? phase30OriginCtx() : null;
+    const ctx = phase30UndoCtx || null;
+    for (const page of Object.values(annotationsByPageArg || {})) {
+      if (!page || !Array.isArray(page.objects)) continue;
+      for (const fabricObj of page.objects) {
+        const annotation_type = fabricObj?.data?.annotationType || fabricObj?.type;
+        // Layer 1 highlight bypass + callout bypass at the call site.
+        if (annotation_type === 'highlight') continue;
+        if (annotation_type === 'callout') continue;
+        if (!NON_HIGHLIGHT_TYPES.includes(annotation_type)) continue;
+        try {
+          await dualWriteFabricCommit(fabricObj, {
+            ...(opts || {}),
+            ydoc: phase30Ydoc,
+            yMapAnnotations,
+            originPayload,
+            ctx,
+            annotation_type,
+            skipLegacy: true,  // legacy bulk upsert already fired before this fan-out
+          });
+        } catch (_err) {
+          // Helper enqueues failures internally — no further action needed here.
+        }
+      }
+    }
+  };
+
+  const fanOutCrdtForDeletedIds = async (documentId, deletedIds, opts) => {
+    if (!isCRDTEnabled() || !phase30Ydoc) return;
+    if (!Array.isArray(deletedIds) || deletedIds.length === 0) return;
+    let yMapAnnotations;
+    try {
+      yMapAnnotations = phase30Ydoc.getMap('annotations');
+    } catch (_e) {
+      return;
+    }
+    const originPayload = (typeof phase30OriginCtx === 'function') ? phase30OriginCtx() : null;
+    for (const annoId of deletedIds) {
+      try {
+        await dualWriteFabricDelete(documentId, annoId, {
+          ...(opts || {}),
+          ydoc: phase30Ydoc,
+          yMapAnnotations,
+          originPayload,
+          // Generic 'fabric' tag; helper does not filter by this on deletes
+          // (highlight bypass on delete is opt-in via opts.annotation_type).
+          // Callouts ride legacy and use deleteAnnotations directly, so this
+          // helper is never called for them.
+          annotation_type: 'fabric',
+          skipLegacy: true,  // legacy bulk delete already fired before this fan-out
+        });
+      } catch (_err) {
+        // Helper enqueues failures internally.
+      }
+    }
+  };
 
   // ---- 2026-04-27 — state-mutation observer ------------------------------
   //
@@ -185,119 +302,128 @@ export function useAnnotationCloudSync({
     }
     let cancelled = false;
     hydratedRef.current = false;
+    startupSyncInFlightRef.current = true;
 
     (async () => {
-      setStatus({ stage: 'hydrating' });
-      console.log('[CloudSync][hook] stage=hydrating');
-      // 2026-04-26 — capture local counts at fire time so the verify helper
-      // can decide whether an empty cloud read should be trusted on its own
-      // or re-asked once. annotationsByPage / callouts here are the closure
-      // values React handed us when the effect committed.
-      const localFabricAtHydrate = countFabricObjects(annotationsByPage);
-      const localCalloutAtHydrate = calloutCountSafe(callouts);
-      const cloud = await loadCloudWithEmptyVerify(documentId, {
-        localFabricCount: localFabricAtHydrate,
-        localCalloutCount: localCalloutAtHydrate,
-        contextLabel: 'initial-hydrate'
-      });
-      if (cancelled) {
-        console.log('[CloudSync][hook] hydrate cancelled mid-flight');
-        return;
-      }
-      if (cloud.error) {
-        console.error('[CloudSync][hook] hydrate error ' + (cloud.error?.message || String(cloud.error)));
-        setStatus({ stage: 'error', error: cloud.error, phase: 'hydrate' });
-      } else {
-        // 2026-04-26 — Cloud is the source of truth on hydrate. Previously
-        // the merge was additive (only added cloud rows that weren't in
-        // local), which meant deletions made on another device came back
-        // when this device opened the doc — local cache still had the
-        // deleted rows. Now we REPLACE local state with cloud's state on
-        // hydrate. Local-only annotations that were never pushed are still
-        // safe because the migration step below will push them up before
-        // any subsequent state changes hit. Empty cloud falls through to
-        // the existing migration helper which pushes localStorage to
-        // cloud, so the "first time on this device" boot still works.
-        // 2026-04-25 — Fully authoritative replacement only AFTER the
-        // one-time local→cloud migration has run for this (user, doc).
-        // Before migration runs, local may hold rows that have never
-        // reached the cloud, so we must preserve them; the migration
-        // step below will push them up. After migration, an empty cloud
-        // snapshot means "the user truly has nothing here" and we
-        // unconditionally replace local — this is what fixes the bug
-        // where a callout deleted on another device kept reappearing on
-        // a fresh boot because cloud was empty and the old guard
-        // (`if (cloudHas…)`) skipped the replace.
-        const migrationDone = hasMigrationRun(userId, documentId);
-        const cloudFabricPages = cloud.annotationsByPage
-          ? Object.keys(cloud.annotationsByPage).length : 0;
-        const cloudCalloutCount = Array.isArray(cloud.callouts)
-          ? cloud.callouts.length : 0;
-        const replaceFabric = migrationDone || cloudFabricPages > 0;
-        const replaceCallouts = migrationDone || cloudCalloutCount > 0;
-        if (replaceFabric) {
-          console.log('[CloudSync][hook] replacing local fabric state with cloud (cloud is authoritative) ' + JSON.stringify({
-            pages: cloudFabricPages, migrationDone
-          }));
-          setAnnotationsByPage(() => {
-            // Update lastByPageRef.current synchronously inside the setter
-            // so the push useEffect's identity check (state === lastRef)
-            // returns true and we don't echo the cloud snapshot right back
-            // up as if it were a local change.
-            const next = cloud.annotationsByPage || {};
-            lastByPageRef.current = next;
-            return next;
-          });
+      let cloud = null;
+      try {
+        setStatus({ stage: 'hydrating' });
+        console.log('[CloudSync][hook] stage=hydrating');
+        // 2026-04-26 — capture local counts at fire time so the verify helper
+        // can decide whether an empty cloud read should be trusted on its own
+        // or re-asked once. annotationsByPage / callouts here are the closure
+        // values React handed us when the effect committed.
+        const localFabricAtHydrate = countFabricObjects(annotationsByPage);
+        const localCalloutAtHydrate = calloutCountSafe(callouts);
+        cloud = await loadCloudWithEmptyVerify(documentId, {
+          localFabricCount: localFabricAtHydrate,
+          localCalloutCount: localCalloutAtHydrate,
+          contextLabel: 'initial-hydrate'
+        });
+        lastCloudRefreshAtRef.current = Date.now();
+        if (cancelled) {
+          console.log('[CloudSync][hook] hydrate cancelled mid-flight');
+          return;
         }
-        if (replaceCallouts) {
-          console.log('[CloudSync][hook] replacing local callouts with cloud (cloud is authoritative) ' + JSON.stringify({
-            count: cloudCalloutCount, migrationDone
-          }));
-          setCallouts(() => {
-            const next = Array.isArray(cloud.callouts) ? cloud.callouts : [];
-            lastCalloutsRef.current = next;
-            return next;
-          });
-        }
-      }
-
-      setStatus({ stage: 'migrating' });
-      console.log('[CloudSync][hook] stage=migrating (one-time local→cloud push)');
-      const migration = await migrateLocalAnnotationsToCloud({
-        documentId,
-        userId,
-        pdfId,
-        onStatus: (s) => {
-          if (!cancelled) {
-            console.log('[CloudSync][hook] migration progress ' + JSON.stringify(s));
-            setStatus({ stage: 'migrating', ...s });
+        if (cloud.error) {
+          console.error('[CloudSync][hook] hydrate error ' + (cloud.error?.message || String(cloud.error)));
+          setStatus({ stage: 'error', error: cloud.error, phase: 'hydrate' });
+        } else {
+          // 2026-04-26 — Cloud is the source of truth on hydrate. Previously
+          // the merge was additive (only added cloud rows that weren't in
+          // local), which meant deletions made on another device came back
+          // when this device opened the doc — local cache still had the
+          // deleted rows. Now we REPLACE local state with cloud's state on
+          // hydrate. Local-only annotations that were never pushed are still
+          // safe because the migration step below will push them up before
+          // any subsequent state changes hit. Empty cloud falls through to
+          // the existing migration helper which pushes localStorage to
+          // cloud, so the "first time on this device" boot still works.
+          // 2026-04-25 — Fully authoritative replacement only AFTER the
+          // one-time local→cloud migration has run for this (user, doc).
+          // Before migration runs, local may hold rows that have never
+          // reached the cloud, so we must preserve them; the migration
+          // step below will push them up. After migration, an empty cloud
+          // snapshot means "the user truly has nothing here" and we
+          // unconditionally replace local — this is what fixes the bug
+          // where a callout deleted on another device kept reappearing on
+          // a fresh boot because cloud was empty and the old guard
+          // (`if (cloudHas…)`) skipped the replace.
+          const migrationDone = hasMigrationRun(userId, documentId);
+          const cloudFabricPages = cloud.annotationsByPage
+            ? Object.keys(cloud.annotationsByPage).length : 0;
+          const cloudCalloutCount = Array.isArray(cloud.callouts)
+            ? cloud.callouts.length : 0;
+          const replaceFabric = migrationDone || cloudFabricPages > 0;
+          const replaceCallouts = migrationDone || cloudCalloutCount > 0;
+          if (replaceFabric) {
+            console.log('[CloudSync][hook] replacing local fabric state with cloud (cloud is authoritative) ' + JSON.stringify({
+              pages: cloudFabricPages, migrationDone
+            }));
+            setAnnotationsByPage(() => {
+              // Update lastByPageRef.current synchronously inside the setter
+              // so the push useEffect's identity check (state === lastRef)
+              // returns true and we don't echo the cloud snapshot right back
+              // up as if it were a local change.
+              const next = cloud.annotationsByPage || {};
+              lastByPageRef.current = next;
+              return next;
+            });
+          }
+          if (replaceCallouts) {
+            console.log('[CloudSync][hook] replacing local callouts with cloud (cloud is authoritative) ' + JSON.stringify({
+              count: cloudCalloutCount, migrationDone
+            }));
+            setCallouts(() => {
+              const next = Array.isArray(cloud.callouts) ? cloud.callouts : [];
+              lastCalloutsRef.current = next;
+              return next;
+            });
           }
         }
-      });
-      if (cancelled) return;
-      if (migration.error) {
-        console.error('[CloudSync][hook] migration error ' + (migration.error?.message || String(migration.error)));
-        setStatus({ stage: 'error', error: migration.error, phase: 'migrate' });
-      } else {
-        hydratedRef.current = true;
-        // 2026-04-25 (revised): we used to set skipNext*PushRef here to
-        // avoid pushing the merged state back to cloud on first open,
-        // which was a workaround for an old runaway-id bug. Now that the
-        // serializer stamps stable ids, that push is safe and necessary
-        // — without it, anything in localStorage that doesn't yet exist
-        // in cloud never reaches the other devices. Let the normal
-        // push effect fire so local catches up to cloud at open time.
-        console.log('[CloudSync][hook] hydrate+migrate complete — push gate OPEN ' + JSON.stringify({
-          migrationPushed: migration.pushed
-        }));
-        setStatus({ stage: 'idle', migrationPushed: migration.pushed });
-      }
 
-      setQueueSize(getQueueSize(documentId));
+        setStatus({ stage: 'migrating' });
+        console.log('[CloudSync][hook] stage=migrating (one-time local→cloud push)');
+        const migration = await migrateLocalAnnotationsToCloud({
+          documentId,
+          userId,
+          pdfId,
+          existingCloudResult: cloud,
+          onStatus: (s) => {
+            if (!cancelled) {
+              console.log('[CloudSync][hook] migration progress ' + JSON.stringify(s));
+              setStatus({ stage: 'migrating', ...s });
+            }
+          }
+        });
+        if (cancelled) return;
+        if (migration.error) {
+          console.error('[CloudSync][hook] migration error ' + (migration.error?.message || String(migration.error)));
+          setStatus({ stage: 'error', error: migration.error, phase: 'migrate' });
+        } else {
+          hydratedRef.current = true;
+          // 2026-04-25 (revised): we used to set skipNext*PushRef here to
+          // avoid pushing the merged state back to cloud on first open,
+          // which was a workaround for an old runaway-id bug. Now that the
+          // serializer stamps stable ids, that push is safe and necessary
+          // — without it, anything in localStorage that doesn't yet exist
+          // in cloud never reaches the other devices. Let the normal
+          // push effect fire so local catches up to cloud at open time.
+          console.log('[CloudSync][hook] hydrate+migrate complete — push gate OPEN ' + JSON.stringify({
+            migrationPushed: migration.pushed
+          }));
+          setStatus({ stage: 'idle', migrationPushed: migration.pushed });
+        }
+
+        setQueueSize(getQueueSize(documentId));
+      } finally {
+        if (!cancelled) startupSyncInFlightRef.current = false;
+      }
     })();
 
     return () => {
       cancelled = true;
+      startupSyncInFlightRef.current = false;
     };
   }, [enabled, documentId, userId, pdfId, setAnnotationsByPage, setCallouts]);
 
@@ -413,6 +539,11 @@ export function useAnnotationCloudSync({
             console.warn('[CloudSync][hook] cloud delete failed ' + JSON.stringify({
               error: delResult.error?.message || String(delResult.error)
             }));
+          } else {
+            // Phase 30 — CRDT-side delete fan-out per annoId. Runs only when
+            // kill switch is on AND Y.Doc is mounted. skipLegacy: true (legacy
+            // bulk delete just succeeded above).
+            await fanOutCrdtForDeletedIds(documentId, deletedIds, { userId });
           }
         } catch (err) {
           console.warn('[CloudSync][hook] cloud delete threw ' + (err?.message || String(err)));
@@ -444,6 +575,11 @@ export function useAnnotationCloudSync({
         setQueueSize(getQueueSize(documentId));
         setStatus({ stage: 'queued', error: result.error });
       } else {
+        // Phase 30 — CRDT-side fan-out per annotation. Runs only when kill
+        // switch is on AND Y.Doc is mounted. Highlight bypass + callout bypass
+        // happen at the call site (Pitfall 30-4 layer 1) and again inside the
+        // helper (layer 2). skipLegacy: true (legacy bulk upsert just succeeded).
+        await fanOutCrdtForAnnotationsByPage(annotationsByPage, { documentId, userId });
         console.log('[CloudSync][hook] fabric push synced ' + JSON.stringify({
           count: result.data?.length || 0
         }));
@@ -666,6 +802,14 @@ export function useAnnotationCloudSync({
         // overwritten with the same data).
         onSubscribed: () => {
           if (!documentId) return;
+          if (startupSyncInFlightRef.current || !hydratedRef.current) {
+            console.log('[CloudSync][hook] post-subscribe catch-up skipped — startup sync already in flight');
+            return;
+          }
+          if (Date.now() - lastCloudRefreshAtRef.current < RECENT_CLOUD_REFRESH_SKIP_MS) {
+            console.log('[CloudSync][hook] post-subscribe catch-up skipped — cloud snapshot is fresh');
+            return;
+          }
           (async () => {
             try {
               // 2026-04-26 — flip the corner chip to 'syncing' for the whole
@@ -682,6 +826,7 @@ export function useAnnotationCloudSync({
                 localCalloutCount: calloutCountSafe(lastCalloutsRef.current),
                 contextLabel: 'post-subscribe-catchup'
               });
+              lastCloudRefreshAtRef.current = Date.now();
               if (fresh.error) {
                 setStatus({ stage: 'error', error: fresh.error, phase: 'subscribe-catchup' });
                 return;
@@ -736,6 +881,14 @@ export function useAnnotationCloudSync({
     // Cheap: one query, idempotent merge.
     const onFocus = () => {
       if (!documentId) return;
+      if (startupSyncInFlightRef.current || !hydratedRef.current) {
+        console.log('[CloudSync][hook] focus rehydrate skipped — startup sync already in flight');
+        return;
+      }
+      if (Date.now() - lastCloudRefreshAtRef.current < RECENT_CLOUD_REFRESH_SKIP_MS) {
+        console.log('[CloudSync][hook] focus rehydrate skipped — cloud snapshot is fresh');
+        return;
+      }
       (async () => {
         try {
           // 2026-04-26 — pulse the corner chip to 'syncing' for the focus
@@ -752,6 +905,7 @@ export function useAnnotationCloudSync({
             localCalloutCount: calloutCountSafe(lastCalloutsRef.current),
             contextLabel: 'focus-rehydrate'
           });
+          lastCloudRefreshAtRef.current = Date.now();
           if (fresh.error) {
             setStatus({ stage: 'error', error: fresh.error, phase: 'focus-rehydrate' });
             return;
@@ -805,14 +959,26 @@ export function useAnnotationCloudSync({
       const { kind, payload, opts } = entry;
       if (kind === 'fabric-bulk') {
         const r = await upsertAnnotationsByPage(payload, opts);
+        // Phase 30 — CRDT-side mirror after the queued legacy write lands.
+        // Highlight + callout bypass at the call site; helper enqueues internal
+        // failures to crdtDualWriteQueue (separate from this legacy queue).
+        if (!r.error) {
+          await fanOutCrdtForAnnotationsByPage(payload, opts);
+        }
         return { success: !r.error };
       }
       if (kind === 'callout-bulk') {
+        // UNCHANGED — callouts ride legacy through Phase 30. Callout migration
+        // is v2.5 scope; out of Phase 30 boundary.
         const r = await upsertCallouts(payload, opts);
         return { success: !r.error };
       }
       if (kind === 'delete') {
         const r = await deleteAnnotation(opts.documentId, opts.highlightId);
+        // Phase 30 — CRDT-side mirror after the queued legacy delete lands.
+        if (r?.success) {
+          await fanOutCrdtForDeletedIds(opts.documentId, [opts.highlightId], { userId: opts.userId });
+        }
         return { success: !!r.success };
       }
       return { success: false };
@@ -846,8 +1012,13 @@ export function useAnnotationCloudSync({
     if (!documentId || !userId) return;
     if (lastByPageRef.current) {
       await upsertAnnotationsByPage(lastByPageRef.current, { documentId, userId, clientSessionId });
+      // Phase 30 — CRDT-side mirror after the forceFlush legacy upsert lands.
+      // Highlight + callout bypass at the call site; helper enqueues internal
+      // failures to crdtDualWriteQueue.
+      await fanOutCrdtForAnnotationsByPage(lastByPageRef.current, { documentId, userId });
     }
     if (lastCalloutsRef.current) {
+      // UNCHANGED — callouts ride legacy through Phase 30.
       await upsertCallouts(lastCalloutsRef.current, { documentId, userId, clientSessionId });
     }
   };

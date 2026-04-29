@@ -572,15 +572,41 @@ export async function dualWriteFabricCommit(fabricObj, opts = {}) {
   const annotationType = inferAnnotationTypeForDualWrite(fabricObj, opts);
   const isHighlight = annotationType === 'highlight';
 
-  // ALWAYS fire legacy. v2.3 clients still read this column during the
+  // Plan 30-07 caller seam: when useAnnotationCloudSync's bulk upsert path
+  // already fired the legacy write before this fan-out runs (per-page bulk
+  // succeeded), skipping the per-row legacy write here avoids double-writing
+  // the same document_annotations row. The CRDT-side fan-out still proceeds.
+  // NO_DIFF_DELETE_OK: skipping the legacy write is NOT a delete-to-reconcile
+  // — it's avoiding a duplicate upsert of an identical row that just succeeded.
+  const skipLegacy = opts && opts.skipLegacy === true;
+
+  // ALWAYS fire legacy (unless caller already did via the bulk path; see
+  // skipLegacy above). v2.3 clients still read this column during the
   // dual-write era. Preserves existing behavior byte-identical when kill
   // switch is off.
-  let legacyResult;
-  try {
-    legacyResult = await upsertFabricAnnotation(fabricObj, opts);
-    // upsertFabricAnnotation returns { data, error } — treat error truthy as
-    // a failed save and enqueue. Mirrors the existing call pattern.
-    if (legacyResult && legacyResult.error) {
+  let legacyResult = null;
+  if (skipLegacy) {
+    // Legacy write already occurred upstream — no-op here. Return shape
+    // preserves the { legacy: null, crdt: ... } contract so callers can
+    // detect the skip if they need to.
+  } else {
+    try {
+      legacyResult = await upsertFabricAnnotation(fabricObj, opts);
+      // upsertFabricAnnotation returns { data, error } — treat error truthy as
+      // a failed save and enqueue. Mirrors the existing call pattern.
+      if (legacyResult && legacyResult.error) {
+        const annoId = fabricObj?.data?.id;
+        if (opts.userId && annoId) {
+          enqueueDualWrite({
+            userId: opts.userId,
+            annoId,
+            side: 'legacy',
+            payload: { fabricObj, opts },
+          });
+        }
+      }
+    } catch (err) {
+      legacyResult = { data: null, error: err };
       const annoId = fabricObj?.data?.id;
       if (opts.userId && annoId) {
         enqueueDualWrite({
@@ -590,17 +616,6 @@ export async function dualWriteFabricCommit(fabricObj, opts = {}) {
           payload: { fabricObj, opts },
         });
       }
-    }
-  } catch (err) {
-    legacyResult = { data: null, error: err };
-    const annoId = fabricObj?.data?.id;
-    if (opts.userId && annoId) {
-      enqueueDualWrite({
-        userId: opts.userId,
-        annoId,
-        side: 'legacy',
-        payload: { fabricObj, opts },
-      });
     }
   }
 
@@ -655,10 +670,34 @@ export async function dualWriteFabricCommit(fabricObj, opts = {}) {
 export async function dualWriteFabricDelete(documentId, annoId, opts = {}) {
   const isHighlight = opts.annotation_type === 'highlight';
 
-  let legacyResult;
-  try {
-    legacyResult = await deleteAnnotation(documentId, annoId);
-    if (legacyResult && legacyResult.error) {
+  // Plan 30-07 caller seam: same pattern as dualWriteFabricCommit.
+  // useAnnotationCloudSync's bulk delete (deleteAnnotations) already removed
+  // the legacy row before this fan-out runs, so skipping the per-row legacy
+  // delete here avoids issuing a redundant DELETE on a row that's already gone.
+  // The CRDT-side fan-out still proceeds.
+  // NO_DIFF_DELETE_OK: this is a caller-coordinated dedup, not a "diff = delete"
+  // — we are NOT comparing two stores and deleting the difference; we are
+  // skipping a duplicate of a delete that already succeeded upstream.
+  const skipLegacy = opts && opts.skipLegacy === true;
+
+  let legacyResult = null;
+  if (skipLegacy) {
+    // Legacy delete already occurred upstream — no-op here.
+  } else {
+    try {
+      legacyResult = await deleteAnnotation(documentId, annoId);
+      if (legacyResult && legacyResult.error) {
+        if (opts.userId && annoId) {
+          enqueueDualWrite({
+            userId: opts.userId,
+            annoId,
+            side: 'legacy',
+            payload: { op: 'delete', documentId, annoId, opts },
+          });
+        }
+      }
+    } catch (err) {
+      legacyResult = { data: null, error: err };
       if (opts.userId && annoId) {
         enqueueDualWrite({
           userId: opts.userId,
@@ -667,16 +706,6 @@ export async function dualWriteFabricDelete(documentId, annoId, opts = {}) {
           payload: { op: 'delete', documentId, annoId, opts },
         });
       }
-    }
-  } catch (err) {
-    legacyResult = { data: null, error: err };
-    if (opts.userId && annoId) {
-      enqueueDualWrite({
-        userId: opts.userId,
-        annoId,
-        side: 'legacy',
-        payload: { op: 'delete', documentId, annoId, opts },
-      });
     }
   }
 
