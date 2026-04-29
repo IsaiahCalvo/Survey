@@ -574,23 +574,30 @@ export function useAnnotationCloudSync({
         // next session. By keying on the delta, a fresh app start with no new
         // user activity enqueues nothing.
         if (isCRDTEnabled()) {
-          // Build a Set of ids present in priorByPage so the delta filter is O(1).
+          // Resolve the stable per-annotation id. Pen strokes / shapes /
+          // text expose it as either fabricObj.id (Fabric's own field) or
+          // fabricObj.data.id (the app's metadata wrapper). The hook's own
+          // delete-detection diff at line 498 uses (obj?.id || obj?.data?.id)
+          // — same precedence applied here so the delta filter doesn't miss
+          // strokes that only carry the Fabric id.
+          const idOf = (obj) => obj?.id || obj?.data?.id || null;
           const priorIds = new Set();
           for (const page of Object.values(priorByPage || {})) {
             if (!page || !Array.isArray(page.objects)) continue;
             for (const obj of page.objects) {
-              const id = obj?.data?.id || obj?.id;
+              const id = idOf(obj);
               if (id) priorIds.add(id);
             }
           }
           let enqueuedCount = 0;
           let skippedExisting = 0;
           let skippedImportedOrFiltered = 0;
+          let skippedNoId = 0;
           for (const page of Object.values(annotationsByPage || {})) {
             if (!page || !Array.isArray(page.objects)) continue;
             for (const fabricObj of page.objects) {
-              const annoId = fabricObj?.data?.id;
-              if (!annoId) continue;
+              const annoId = idOf(fabricObj);
+              if (!annoId) { skippedNoId++; continue; }
               if (priorIds.has(annoId)) { skippedExisting++; continue; }
               const isImported = fabricObj?.type === 'path' && fabricObj.left == null && Array.isArray(fabricObj.path);
               if (isImported) { skippedImportedOrFiltered++; continue; }
@@ -607,7 +614,7 @@ export function useAnnotationCloudSync({
           }
           console.warn('[CloudSync][hook] legacy bulk push failed → delta-enqueued into CRDT dual-write queue ' + JSON.stringify({
             pdfId, documentId, userId,
-            enqueuedCount, skippedExisting, skippedImportedOrFiltered,
+            enqueuedCount, skippedExisting, skippedImportedOrFiltered, skippedNoId,
             priorBaselineSize: priorIds.size,
             error: result.error?.message || String(result.error)
           }));
