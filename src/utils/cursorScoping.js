@@ -27,8 +27,13 @@
   if (window.__cursorScopingInstalled) return;
   window.__cursorScopingInstalled = true;
 
+  // 2026-04-29: silenced by default — fired on every mouse move and flooded
+  // the diagnostic log. Re-enable for cursor-scoping debug work by setting
+  // window.__DIAG_CURSOR_SCOPE = true in DevTools.
   const log = (line) => {
-    try { console.log(`[CursorScope] ${line}`); } catch { /* ignore */ }
+    if (typeof window !== 'undefined' && window.__DIAG_CURSOR_SCOPE) {
+      try { console.log(`[CursorScope] ${line}`); } catch { /* ignore */ }
+    }
   };
 
   const isOnPage = (e) => {

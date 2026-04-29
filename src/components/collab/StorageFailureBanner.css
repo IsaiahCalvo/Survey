@@ -6,14 +6,18 @@
  */
 
 .storage-banner {
-  /* UX: sticky at top of document scroll — NOT fixed.
-     Must scroll with the PDF if the user scrolls past, matching Linear / Notion
-     graceful-degradation banner placement. Z-index sits above PDF viewer chrome
-     but below the app top bar (top bar is the ceiling per 27-UI-SPEC.md). */
-  position: sticky;
+  /* UX 2026-04-29: fixed overlay so the banner never pushes other layout out
+     of the viewport. Bottom-anchored sync status + active users stay visible
+     when the banner appears. Floats over PDF chrome at a high z-index;
+     content beneath stays fully readable since the banner is a thin strip
+     and dismissable. Replaces the prior sticky-top placement which clipped
+     the sidebar's bottom footer when banner height was added to layout. */
+  position: fixed;
   top: 0;
+  left: 0;
+  right: 0;
   width: 100%;
-  z-index: 100;
+  z-index: 1000;
 
   display: flex;
   align-items: flex-start;

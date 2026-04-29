@@ -107,11 +107,15 @@ export function resolveAnnotationAt(e) {
       // be inspected directly. This is the data needed to confirm
       // whether the page-canvas rect is actually page-sized or
       // container-wide.
-      try {
-        const pdRect = pageDiv?.getBoundingClientRect();
-        const pcRect = pageCanvas?.getBoundingClientRect();
-        console.log(`[HitTest pageDiv-bounds] sfIndex=${sfIndex} cursor=(${Math.round(e.clientX)},${Math.round(e.clientY)}) pageDiv=${pdRect ? JSON.stringify({l:Math.round(pdRect.left), t:Math.round(pdRect.top), r:Math.round(pdRect.right), b:Math.round(pdRect.bottom), w:Math.round(pdRect.width), h:Math.round(pdRect.height)}) : 'null'} pageCanvas=${pcRect ? JSON.stringify({l:Math.round(pcRect.left), t:Math.round(pcRect.top), r:Math.round(pcRect.right), b:Math.round(pcRect.bottom), w:Math.round(pcRect.width), h:Math.round(pcRect.height)}) : 'null'} canvasIntrinsic=${pageCanvas ? `${pageCanvas.width}x${pageCanvas.height}` : 'n/a'}`);
-      } catch { /* ignore */ }
+      // 2026-04-29: silenced — fires on every mouse move. Re-enable per session
+      // by setting window.__DIAG_HIT_TEST = true in DevTools.
+      if (typeof window !== 'undefined' && window.__DIAG_HIT_TEST) {
+        try {
+          const pdRect = pageDiv?.getBoundingClientRect();
+          const pcRect = pageCanvas?.getBoundingClientRect();
+          console.log(`[HitTest pageDiv-bounds] sfIndex=${sfIndex} cursor=(${Math.round(e.clientX)},${Math.round(e.clientY)}) pageDiv=${pdRect ? JSON.stringify({l:Math.round(pdRect.left), t:Math.round(pdRect.top), r:Math.round(pdRect.right), b:Math.round(pdRect.bottom), w:Math.round(pdRect.width), h:Math.round(pdRect.height)}) : 'null'} pageCanvas=${pcRect ? JSON.stringify({l:Math.round(pcRect.left), t:Math.round(pcRect.top), r:Math.round(pcRect.right), b:Math.round(pcRect.bottom), w:Math.round(pcRect.width), h:Math.round(pcRect.height)}) : 'null'} canvasIntrinsic=${pageCanvas ? `${pageCanvas.width}x${pageCanvas.height}` : 'n/a'}`);
+        } catch { /* ignore */ }
+      }
       // 2026-04-25 — Two reference rects we can use for the page bounds:
       // (1) the inner page-canvas's CSS rect, and (2) the pageDiv's own
       // bounding rect. The canvas rect is more accurate (it's exactly
@@ -127,9 +131,12 @@ export function resolveAnnotationAt(e) {
       if (refRect && refRect.width > 0 && refRect.height > 0) {
         insidePage = e.clientX >= refRect.left && e.clientX <= refRect.right
           && e.clientY >= refRect.top && e.clientY <= refRect.bottom;
-        try {
-          console.log(`[HitTest ref-rect] usingCanvas=${canvasUsable} ref=(${Math.round(refRect.left)},${Math.round(refRect.top)})-(${Math.round(refRect.right)},${Math.round(refRect.bottom)}) inside=${insidePage}`);
-        } catch { /* ignore */ }
+        // 2026-04-29: silenced — see HitTest pageDiv-bounds note above.
+        if (typeof window !== 'undefined' && window.__DIAG_HIT_TEST) {
+          try {
+            console.log(`[HitTest ref-rect] usingCanvas=${canvasUsable} ref=(${Math.round(refRect.left)},${Math.round(refRect.top)})-(${Math.round(refRect.right)},${Math.round(refRect.bottom)}) inside=${insidePage}`);
+          } catch { /* ignore */ }
+        }
       }
       if (!insidePage) {
         pageNumber = null;

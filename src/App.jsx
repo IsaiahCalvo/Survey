@@ -222,7 +222,7 @@ const HISTORY_DEBUG_CONSOLE_KEY = 'pdf_history_debug_console';
 const HISTORY_DEBUG_TRACE_LIMIT = 250;
 const HISTORY_PAGE_PREVIEW_LIMIT = 12;
 const HISTORY_OBJECT_CHANGE_PREVIEW_LIMIT = 10;
-const PHASE_2_DEBUG_INDICATORS = true; // Phase 2 debug: visual tint on overlay divs. Set false in Phase 3.
+const PHASE_2_DEBUG_INDICATORS = false; // 2026-04-29 user-waived flip: removes the leftover blue debug tint over the PDF overlay div that was used during Phase 2 development.
 
 const roundHistoryDebugNumber = (value, digits = 2) => {
   const numeric = Number(value);
@@ -21545,7 +21545,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         ? legacyCompensationRoot.style.transform
         : '';
 
-      console.log(`[ZoomLive ${branch} p${currentPage}]`, {
+      // 2026-04-29: silenced per-zoom-frame; re-enable via window.__DIAG_ZOOM_LIVE = true.
+      if (typeof window !== 'undefined' && window.__DIAG_ZOOM_LIVE) console.log(`[ZoomLive ${branch} p${currentPage}]`, {
         interactionPhase: syncfusionInteractionPhase,
         zoomOverlayTransformActive: zoomOverlayTransformActiveRef.current,
         viewerScale: roundOverlayRecorderValue(viewerScale, 5),
@@ -26938,7 +26939,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Diagnostic logs use the `[PrintPanel]` prefix so the whole lifecycle
   // can be traced in a Save Log dump. We log every panel event we can see.
   useEffect(() => {
-    console.log('[PrintPanel] mount — binding Cmd/Ctrl+P listeners. electronAPI available:', !!window.electronAPI, 'onPrintPdf available:', !!window.electronAPI?.onPrintPdf);
+    // 2026-04-29: silenced — repeated on every component mount (every render path with React StrictMode). Re-enable via window.__DIAG_PRINT_PANEL_MOUNT = true.
+    if (typeof window !== 'undefined' && window.__DIAG_PRINT_PANEL_MOUNT) console.log('[PrintPanel] mount — binding Cmd/Ctrl+P listeners. electronAPI available:', !!window.electronAPI, 'onPrintPdf available:', !!window.electronAPI?.onPrintPdf);
 
     // UX 2026-04-24: custom Print Panel temporarily disabled while we
     // ship the rest of the app. Cmd/Ctrl+P and File → Print now go
@@ -28647,7 +28649,12 @@ ${pageBlocks}
                         : resolvedMeasuredPageScale;
 
                       // [DEBUG] Log props being passed to PAL
-                      if (pageNumber === (Number(pageNumRef.current) || 1)) {
+                      // 2026-04-29: silenced — fires on every frame and floods
+                      // the diag log. Re-enable per session via window.__DIAG_PAL_RENDER = true.
+                      if (
+                        pageNumber === (Number(pageNumRef.current) || 1)
+                        && typeof window !== 'undefined' && window.__DIAG_PAL_RENDER
+                      ) {
                         console.log(`[App-Debug p${pageNumber}] PAL render — pageSize={w:${pageSize.width}, h:${pageSize.height}}, layerScale=${layerScale}, measuredPageScale=${resolvedMeasuredPageScale}, committedPageScale=${hasCommittedPageScale ? committedPageScale : 'none'}, legacyCommitCompensationPending=${legacyCommitCompensationPending}, legacyCommitCompensationScale=${legacyCommitCompensationScale}, overlayContentTransformScale=${overlayContentTransformScale}, storedOverlayTransformScale=${storedOverlayTransformScale}, syncfusionViewerScale=${syncfusionViewerScale}, overlayDiv=${!!overlayDiv}, overlayDivW=${overlayDiv?.offsetWidth}, overlayDivH=${overlayDiv?.offsetHeight}, overlayDivTransform=${overlayDiv?.style?.transform || 'none'}, overlayContentTransform=${overlayContentTransform || 'none'}`);
                       }
 
