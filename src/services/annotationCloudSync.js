@@ -145,16 +145,24 @@ export async function upsertFabricAnnotation(fabricObj, opts = {}) {
 export async function upsertAnnotationsByPage(annotationsByPage, opts = {}) {
   if (!supabase) return { data: [], error: new Error('Supabase unavailable') };
 
+  // Serialize FIRST — the serializer mints + stamps a stable id onto every
+  // fabric object that didn't have one (data.id <-> highlight_id). Without
+  // running this step the caller's annotationsByPage holds id-less strokes
+  // and any downstream queue-on-failure logic sees no id and silently drops
+  // the entry. UAT 2026-04-29 surfaced this exact mode: stroke drawn,
+  // delta-enqueue logged enqueuedCount: 0 / skippedNoId: 1.
+  const rows = serializeAnnotationsByPage(annotationsByPage, opts);
+
   // Live-path test seam (Plan 30-07 fix 2026-04-29). Lets a tester inject a
   // legacy bulk-upload failure without touching production code paths so the
-  // sync_queue_stuck banner UAT can actually run on a clean PDF.
+  // sync_queue_stuck banner UAT can actually run on a clean PDF. Placed
+  // AFTER serialization so id-assignment side effects have already landed.
   if (typeof window !== 'undefined' && window.__crdtForceLegacyFail) {
     const err = new Error('test-seam: __crdtForceLegacyFail (live upsertAnnotationsByPage)');
-    console.warn('[CloudSync][push] upsertAnnotationsByPage SHORT-CIRCUITED by __crdtForceLegacyFail test seam');
+    console.warn('[CloudSync][push] upsertAnnotationsByPage SHORT-CIRCUITED by __crdtForceLegacyFail test seam (post-serialize)');
     return { data: [], error: err };
   }
 
-  const rows = serializeAnnotationsByPage(annotationsByPage, opts);
   if (rows.length === 0) {
     console.log('[CloudSync][push] upsertAnnotationsByPage: nothing to push (0 rows) ' + JSON.stringify({
       documentId: opts.documentId, pdfId: opts.pdfId
