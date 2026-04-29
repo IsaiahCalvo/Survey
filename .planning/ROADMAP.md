@@ -472,12 +472,12 @@ Plans:
 **Plans**: 7 plans
 
 Plans:
-- [ ] 30-01-PLAN.md — Wave 0 test scaffolds (8 unit + 4 e2e fixme'd + scripts/check-no-diff-delete.mjs CI gate; per-test existsSync skip-guards) — revised in iteration 1 to add 3 hook scaffolds (useDualWriteQueue, useAnnotationCloudSync.dualWrite, useTabPendingDualWrite)
-- [ ] 30-02-PLAN.md — Wave 1 crdtBackfill.js (Web Locks election + bridge applyFabricCreate per row + createdAt override pass; idempotent per-(user, document); MIGRATE-01 author/device/timestamp preservation)
-- [ ] 30-03-PLAN.md — Wave 1 crdtDualWriteQueue.js (localStorage-backed retry queue; latest-version-wins replacement; quarantine after 10 attempts; 30-second stuck threshold; isCRDTEnabled() guard against Pitfall 30-6)
-- [ ] 30-04-PLAN.md — Wave 2 annotationCloudSync.js narrow waiver — dualWriteFabricCommit + dualWriteFabricDelete fan-out; highlight carve-out filter; half-failed-save enqueue (revision iteration 1 also adds skipLegacy: true opts flag for caller-side dedup)
-- [ ] 30-05-PLAN.md — Wave 2 UI surfaces — StorageFailureBanner code='sync_queue_stuck' + useDualWriteQueue hook + QuarantineMarkerOverlay component + TabBar red dot capability
-- [ ] 30-06-PLAN.md — Wave 3 YDocProvider mount — runBackfill kickoff (deferred via Promise.resolve.then) + 1Hz drainQueue tick + sync_queue_stuck banner gate + QuarantineMarkerOverlay sibling render at (0,0) (per-annotation bbox feed deferred to Phase 32) + manual UAT checkpoint
+- [x] 30-01-PLAN.md — Wave 0 test scaffolds (8 unit + 4 e2e fixme'd + scripts/check-no-diff-delete.mjs CI gate; per-test existsSync skip-guards) — revised in iteration 1 to add 3 hook scaffolds (useDualWriteQueue, useAnnotationCloudSync.dualWrite, useTabPendingDualWrite) _(complete 2026-04-28)_
+- [x] 30-02-PLAN.md — Wave 1 crdtBackfill.js (Web Locks election + bridge applyFabricCreate per row + createdAt override pass; idempotent per-(user, document); MIGRATE-01 author/device/timestamp preservation) _(complete 2026-04-28)_
+- [x] 30-03-PLAN.md — Wave 1 crdtDualWriteQueue.js (localStorage-backed retry queue; latest-version-wins replacement; quarantine after 10 attempts; 30-second stuck threshold; isCRDTEnabled() guard against Pitfall 30-6) _(complete 2026-04-28)_
+- [x] 30-04-PLAN.md — Wave 2 annotationCloudSync.js narrow waiver — dualWriteFabricCommit + dualWriteFabricDelete fan-out; highlight carve-out filter; half-failed-save enqueue (revision iteration 1 also adds skipLegacy: true opts flag for caller-side dedup) _(complete 2026-04-28)_
+- [x] 30-05-PLAN.md — Wave 2 UI surfaces — StorageFailureBanner code='sync_queue_stuck' + useDualWriteQueue hook + QuarantineMarkerOverlay component + TabBar red dot capability _(complete 2026-04-28)_
+- [x] 30-06-PLAN.md — Wave 3 YDocProvider mount — runBackfill kickoff (deferred via Promise.resolve.then) + 1Hz drainQueue tick + sync_queue_stuck banner gate + QuarantineMarkerOverlay sibling render at (0,0) (per-annotation bbox feed deferred to Phase 32) + manual UAT checkpoint _(complete 2026-04-29; code in cf437356 from 2026-04-28; silent migration UAT passed; failure-banner + quarantine UAT deferred to post-30-07)_
 - [ ] 30-07-PLAN.md — Wave 4 live wiring — useAnnotationCloudSync fans out dualWriteFabricCommit + dualWriteFabricDelete at all 4 fabric call sites (CONTEXT.md AC-1) + useTabPendingDualWrite hook + TabBar tab item render wires the per-tab dot via the hook (CONTEXT.md AC-13). App.jsx untouched.
 
 ### Phase 31: Migration Phase B — Cutover Seal
