@@ -45,6 +45,7 @@ import {
 } from '../services/cloudSyncQueue.js';
 import { getAuthSnapshot } from '../supabaseClient.js';
 import { isCRDTEnabled } from '../lib/collab/crdtFeatureFlag.js';
+import { enqueue as enqueueDualWrite } from '../lib/collab/crdtDualWriteQueue.js';
 import { useYDoc } from './useYDoc.js';
 
 const DEFAULT_DEBOUNCE_MS = 800; // mid-drag pushes are coalesced into one upsert
@@ -562,15 +563,51 @@ export function useAnnotationCloudSync({
         }));
       }
 
-      const result = await upsertAnnotationsByPage(annotationsByPage, { documentId, userId, clientSessionId });
+      const result = await upsertAnnotationsByPage(annotationsByPage, { documentId, userId, pdfId, clientSessionId });
       if (result.error) {
+        // Phase 30 fix (2026-04-29): when the legacy bulk upsert fails, surface
+        // it through the new dual-write queue too so the sync_queue_stuck banner
+        // can fire on real legacy failures (Supabase timeouts, RLS rejects,
+        // network drops). Pre-fix, the new queue stayed empty on legacy failure
+        // because the CRDT fan-out only ran in the success branch — meaning the
+        // banner could only ever surface CRDT-side failures, defeating its
+        // purpose. Each user-drawn fabric object becomes its own queue entry
+        // tagged side='legacy' so drainQueue retries the exact write.
+        // Imported PDF rows are skipped (they can't be re-drawn by the user;
+        // they get re-pushed automatically on the next bulk save attempt).
+        if (isCRDTEnabled()) {
+          let enqueuedCount = 0;
+          for (const page of Object.values(annotationsByPage || {})) {
+            if (!page || !Array.isArray(page.objects)) continue;
+            for (const fabricObj of page.objects) {
+              const annoId = fabricObj?.data?.id;
+              if (!annoId) continue;
+              const isImported = fabricObj?.type === 'path' && fabricObj.left == null && Array.isArray(fabricObj.path);
+              if (isImported) continue;
+              const annType = fabricObj?.data?.annotationType || fabricObj?.type;
+              if (annType === 'highlight' || annType === 'callout') continue;
+              enqueueDualWrite({
+                userId,
+                annoId,
+                side: 'legacy',
+                payload: { fabricObj, opts: { documentId, userId, pdfId, clientSessionId } }
+              });
+              enqueuedCount++;
+            }
+          }
+          console.warn('[CloudSync][hook] legacy bulk push failed → enqueued into CRDT dual-write queue ' + JSON.stringify({
+            pdfId, documentId, userId, enqueuedCount,
+            error: result.error?.message || String(result.error)
+          }));
+        }
         console.warn('[CloudSync][hook] fabric push failed → queued ' + JSON.stringify({
+          pdfId, documentId,
           error: result.error?.message || String(result.error)
         }));
         enqueueSync(documentId, {
           kind: 'fabric-bulk',
           payload: annotationsByPage,
-          opts: { documentId, userId, clientSessionId }
+          opts: { documentId, userId, pdfId, clientSessionId }
         });
         setQueueSize(getQueueSize(documentId));
         setStatus({ stage: 'queued', error: result.error });
@@ -1011,7 +1048,7 @@ export function useAnnotationCloudSync({
     }
     if (!documentId || !userId) return;
     if (lastByPageRef.current) {
-      await upsertAnnotationsByPage(lastByPageRef.current, { documentId, userId, clientSessionId });
+      await upsertAnnotationsByPage(lastByPageRef.current, { documentId, userId, pdfId, clientSessionId });
       // Phase 30 — CRDT-side mirror after the forceFlush legacy upsert lands.
       // Highlight + callout bypass at the call site; helper enqueues internal
       // failures to crdtDualWriteQueue.

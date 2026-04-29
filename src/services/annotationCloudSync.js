@@ -144,22 +144,52 @@ export async function upsertFabricAnnotation(fabricObj, opts = {}) {
  */
 export async function upsertAnnotationsByPage(annotationsByPage, opts = {}) {
   if (!supabase) return { data: [], error: new Error('Supabase unavailable') };
+
+  // Live-path test seam (Plan 30-07 fix 2026-04-29). Lets a tester inject a
+  // legacy bulk-upload failure without touching production code paths so the
+  // sync_queue_stuck banner UAT can actually run on a clean PDF.
+  if (typeof window !== 'undefined' && window.__crdtForceLegacyFail) {
+    const err = new Error('test-seam: __crdtForceLegacyFail (live upsertAnnotationsByPage)');
+    console.warn('[CloudSync][push] upsertAnnotationsByPage SHORT-CIRCUITED by __crdtForceLegacyFail test seam');
+    return { data: [], error: err };
+  }
+
   const rows = serializeAnnotationsByPage(annotationsByPage, opts);
   if (rows.length === 0) {
-    console.log('[CloudSync][push] upsertAnnotationsByPage: nothing to push (0 rows)');
+    console.log('[CloudSync][push] upsertAnnotationsByPage: nothing to push (0 rows) ' + JSON.stringify({
+      documentId: opts.documentId, pdfId: opts.pdfId
+    }));
     return { data: [], error: null };
   }
   const byType = rows.reduce((acc, r) => {
     acc[r.annotation_type] = (acc[r.annotation_type] || 0) + 1;
     return acc;
   }, {});
+
+  // Split rows into user-drawn vs PDF-imported so noisy bulk pushes don't
+  // confuse the user when reading logs. An imported path has no Fabric
+  // positioning props (left == null) and a path array — same heuristic
+  // SVGAnnotationLayer uses to decide rendering behavior.
+  let importedCount = 0;
+  let userDrawnCount = 0;
+  for (const page of Object.values(annotationsByPage || {})) {
+    if (!page || !Array.isArray(page.objects)) continue;
+    for (const obj of page.objects) {
+      const isImported = obj?.type === 'path' && obj.left == null && Array.isArray(obj.path);
+      if (isImported) importedCount++; else userDrawnCount++;
+    }
+  }
+
   const t0 = Date.now();
   // JSON.stringify so values survive Windows DevTools "Save as..." export,
   // which collapses live object refs to the literal string "Object".
   console.log('[CloudSync][push] upsertAnnotationsByPage start ' + JSON.stringify({
     documentId: opts.documentId,
+    pdfId: opts.pdfId,
     userId: opts.userId,
     totalRows: rows.length,
+    userDrawnObjects: userDrawnCount,
+    importedObjects: importedCount,
     rowsByType: byType,
     pages: Object.keys(annotationsByPage || {}).length
   }));
@@ -181,12 +211,18 @@ export async function upsertAnnotationsByPage(annotationsByPage, opts = {}) {
   if (error) {
     console.error('[CloudSync][push] upsertAnnotationsByPage failed ' + JSON.stringify({
       elapsedMs,
+      pdfId: opts.pdfId,
+      documentId: opts.documentId,
+      totalRows: rows.length,
+      userDrawnObjects: userDrawnCount,
+      importedObjects: importedCount,
       error: error?.message || String(error)
     }));
     return { data: [], error };
   }
   console.log('[CloudSync][push] upsertAnnotationsByPage ok ' + JSON.stringify({
     elapsedMs,
+    pdfId: opts.pdfId,
     rowsReturned: data?.length || 0
   }));
   return { data: data || [], error: null };
