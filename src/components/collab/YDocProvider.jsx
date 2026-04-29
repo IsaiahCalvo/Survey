@@ -886,9 +886,14 @@ function YDocProviderInner({ docId, children, closeDocument }) {
       )}
       {/* Phase 30 — sync-queue-stuck banner gate.
           Mount only when no other storage banner is showing (avoids stacking).
-          The stuck threshold (~30s) is computed inside the queue module by
-          getStuckCount; this gate just renders the banner when the count > 0. */}
-      {dualWriteQueueState.stuckCount > 0 &&
+          2026-04-29 fix: also keep the banner up while there are quarantined
+          entries (entries that hit 10 retry failures and stopped trying). The
+          previous gate ONLY watched stuckCount, which drops to zero the moment
+          an entry quarantines — the banner would silently disappear even
+          though the user's data was still unsaved. The banner now persists
+          until the user dismisses it or every entry actually reaches the
+          cloud. */}
+      {(dualWriteQueueState.stuckCount > 0 || dualWriteQueueState.quarantinedAnnoIds.length > 0) &&
        (!storageState || storageState.code === 'ok') &&
        !bannerDismissed && (
         <StorageFailureBanner
