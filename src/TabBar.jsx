@@ -4,14 +4,21 @@ import { useDragToReorder } from './utils/useDragToReorder';
 // Phase 30 — per-tab subscription to the dual-write retry queue. Each tab
 // renders its own dot independently when its documentId has at least one
 // non-quarantined queue entry. CONTEXT.md AC-13 / 30-UI-SPEC.md Surface 3.
-import { useTabPendingDualWrite } from './hooks/useTabPendingDualWrite.js';
+import { useDocsPendingDualWrite } from './hooks/useTabPendingDualWrite.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
 const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onPageDrop }) => {
   const [dragOverTabId, setDragOverTabId] = useState(null);
   const tabBarRef = useRef(null);
-  
+
+  // Phase 30 — fix 2026-04-29: previously each tab in the .map() loop called
+  // useTabPendingDualWrite individually; the hook count changed when a tab
+  // was closed, triggering React's "Rendered fewer hooks than expected"
+  // crash on every PDF close. Now we call the hook ONCE at the top with no
+  // arguments and get back a Set of documentIds with stuck queue entries.
+  // The .map() consults the Set — no hooks inside the loop.
+  const pendingDualWriteDocIds = useDocsPendingDualWrite();
 
   // Use drag-to-reorder for tabs (excluding home tab)
   const pdfTabs = tabs.filter(t => !t.isHome);
@@ -143,17 +150,11 @@ const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onPag
             return a.index - b.index;
           })
           .map(({ item: tab }) => {
-            // Phase 30 — per-tab dual-write queue subscription. The hook is
-            // safe to call inside .map() because the iteration is stable
-            // across renders (React reconciles by key={tab.id} and
-            // useDragToReorder's tabVirtualOrder keeps the order
-            // deterministic during a render). Each tab gets its own polling
-            // subscription scoped to its documentId. Falls back to tab.id if
-            // a tab descriptor predates the documentId field — most PDF
-            // tabs in the current codebase use the document UUID as tab.id
-            // anyway. UX: dot lights up within ~1s of an entry being
-            // enqueued; clears within ~1s of the queue draining.
-            const hasPendingDualWrite = useTabPendingDualWrite(tab.documentId || tab.id);
+            // Phase 30 — per-tab dual-write dot. We do NOT call a hook here
+            // (closing a tab would change the hook count and crash render).
+            // Consult the Set computed once at the top of TabBar instead.
+            const tabDocId = tab.documentId || tab.id;
+            const hasPendingDualWrite = pendingDualWriteDocIds.has(tabDocId);
             const isActive = tab.id === activeTabId;
             const isDragging = tabDraggingState?.itemId === tab.id;
             const isHome = tab.isHome;

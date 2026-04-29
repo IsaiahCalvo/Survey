@@ -43,6 +43,68 @@ const POLL_INTERVAL_MS = 1_000;
  * @param {string|null|undefined} documentId
  * @returns {boolean}
  */
+/**
+ * Hook variant that returns the FULL set of documentIds with at least one
+ * non-quarantined entry in the dual-write queue. Used by TabBar where calling
+ * a per-tab hook inside .map() violated React's rules-of-hooks (the hook
+ * count changed when a tab was closed, causing a "Rendered fewer hooks than
+ * expected" crash). The TabBar calls this once at the top and consults the
+ * Set per tab in the render loop — no hook calls inside .map().
+ *
+ * @returns {Set<string>}
+ */
+export function useDocsPendingDualWrite() {
+  const [pendingDocIds, setPendingDocIds] = useState(() => new Set());
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function tick() {
+      let userId = null;
+      try {
+        const auth = await getAuthSnapshot();
+        userId = auth?.sessionUserId ?? null;
+      } catch (_e) {
+        userId = null;
+      }
+      if (cancelled) return;
+
+      const next = new Set();
+      if (userId) {
+        const queue = readQueue(userId) || {};
+        for (const annoId of Object.keys(queue)) {
+          const entry = queue[annoId];
+          if (!entry || entry.quarantined) continue;
+          const docId =
+            entry.payload?.opts?.documentId
+            ?? entry.payload?.documentId
+            ?? entry.documentId
+            ?? null;
+          if (docId) next.add(docId);
+        }
+      }
+      if (cancelled) return;
+      setPendingDocIds((prev) => {
+        if (prev.size === next.size) {
+          let same = true;
+          for (const id of next) { if (!prev.has(id)) { same = false; break; } }
+          if (same) return prev;
+        }
+        return next;
+      });
+    }
+
+    tick();
+    const handle = setInterval(tick, POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(handle);
+    };
+  }, []);
+
+  return pendingDocIds;
+}
+
 export function useTabPendingDualWrite(documentId) {
   const [hasPending, setHasPending] = useState(false);
 
