@@ -565,27 +565,37 @@ export function useAnnotationCloudSync({
 
       const result = await upsertAnnotationsByPage(annotationsByPage, { documentId, userId, pdfId, clientSessionId });
       if (result.error) {
-        // Phase 30 fix (2026-04-29): when the legacy bulk upsert fails, surface
-        // it through the new dual-write queue too so the sync_queue_stuck banner
-        // can fire on real legacy failures (Supabase timeouts, RLS rejects,
-        // network drops). Pre-fix, the new queue stayed empty on legacy failure
-        // because the CRDT fan-out only ran in the success branch — meaning the
-        // banner could only ever surface CRDT-side failures, defeating its
-        // purpose. Each user-drawn fabric object becomes its own queue entry
-        // tagged side='legacy' so drainQueue retries the exact write.
-        // Imported PDF rows are skipped (they can't be re-drawn by the user;
-        // they get re-pushed automatically on the next bulk save attempt).
+        // Phase 30 fix (2026-04-29 v2): when the legacy bulk upsert fails,
+        // surface it through the new dual-write queue too so sync_queue_stuck
+        // can fire on real legacy failures. ONLY enqueue annotations that are
+        // newly-added vs the prior baseline (priorByPage) — never the whole
+        // document. A first-open bulk-fail with thousands of imported PDF rows
+        // would otherwise flood the queue and pop the banner instantly on the
+        // next session. By keying on the delta, a fresh app start with no new
+        // user activity enqueues nothing.
         if (isCRDTEnabled()) {
+          // Build a Set of ids present in priorByPage so the delta filter is O(1).
+          const priorIds = new Set();
+          for (const page of Object.values(priorByPage || {})) {
+            if (!page || !Array.isArray(page.objects)) continue;
+            for (const obj of page.objects) {
+              const id = obj?.data?.id || obj?.id;
+              if (id) priorIds.add(id);
+            }
+          }
           let enqueuedCount = 0;
+          let skippedExisting = 0;
+          let skippedImportedOrFiltered = 0;
           for (const page of Object.values(annotationsByPage || {})) {
             if (!page || !Array.isArray(page.objects)) continue;
             for (const fabricObj of page.objects) {
               const annoId = fabricObj?.data?.id;
               if (!annoId) continue;
+              if (priorIds.has(annoId)) { skippedExisting++; continue; }
               const isImported = fabricObj?.type === 'path' && fabricObj.left == null && Array.isArray(fabricObj.path);
-              if (isImported) continue;
+              if (isImported) { skippedImportedOrFiltered++; continue; }
               const annType = fabricObj?.data?.annotationType || fabricObj?.type;
-              if (annType === 'highlight' || annType === 'callout') continue;
+              if (annType === 'highlight' || annType === 'callout') { skippedImportedOrFiltered++; continue; }
               enqueueDualWrite({
                 userId,
                 annoId,
@@ -595,8 +605,10 @@ export function useAnnotationCloudSync({
               enqueuedCount++;
             }
           }
-          console.warn('[CloudSync][hook] legacy bulk push failed → enqueued into CRDT dual-write queue ' + JSON.stringify({
-            pdfId, documentId, userId, enqueuedCount,
+          console.warn('[CloudSync][hook] legacy bulk push failed → delta-enqueued into CRDT dual-write queue ' + JSON.stringify({
+            pdfId, documentId, userId,
+            enqueuedCount, skippedExisting, skippedImportedOrFiltered,
+            priorBaselineSize: priorIds.size,
             error: result.error?.message || String(result.error)
           }));
         }
