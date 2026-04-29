@@ -45,7 +45,7 @@ import {
 } from '../services/cloudSyncQueue.js';
 import { getAuthSnapshot } from '../supabaseClient.js';
 import { isCRDTEnabled } from '../lib/collab/crdtFeatureFlag.js';
-import { enqueue as enqueueDualWrite } from '../lib/collab/crdtDualWriteQueue.js';
+import { enqueue as enqueueDualWrite, readQueue as readDualWriteQueue } from '../lib/collab/crdtDualWriteQueue.js';
 import { useYDoc } from './useYDoc.js';
 
 const DEFAULT_DEBOUNCE_MS = 800; // mid-drag pushes are coalesced into one upsert
@@ -974,13 +974,42 @@ export function useAnnotationCloudSync({
           const focusMigrationDone = hasMigrationRun(userId, documentId);
           const focusFresh = fresh.annotationsByPage || {};
           const focusFreshCallouts = Array.isArray(fresh.callouts) ? fresh.callouts : [];
-          if (focusMigrationDone || Object.keys(focusFresh).length > 0) {
+
+          // 2026-04-29 fix — skip the cloud-authoritative replace when there
+          // are unpushed local edits sitting in either retry queue. The
+          // previous behavior would overwrite the user's freshly-drawn stroke
+          // because the cloud snapshot doesn't contain it yet (its save
+          // failed and is still queued). Surfaced by UAT: paste forceLegacyFail,
+          // draw stroke, switch focus, stroke disappears.
+          const localFabricCount = countFabricObjects(lastByPageRef.current);
+          const cloudFabricCount = countFabricObjects(focusFresh);
+          const hasUnpushedLegacyQueue = (getQueueSize(documentId) || 0) > 0;
+          let hasUnpushedDualWriteQueue = false;
+          try {
+            const dwQueue = readDualWriteQueue(userId) || {};
+            hasUnpushedDualWriteQueue = Object.keys(dwQueue).some((aid) => !dwQueue[aid]?.quarantined);
+          } catch (_e) {
+            // If readDualWriteQueue throws, fall back to queue-presence-unknown
+            // and skip the replace defensively (better to keep local than wipe).
+            hasUnpushedDualWriteQueue = false;
+          }
+          const localAhead = localFabricCount > cloudFabricCount;
+          const skipReplace = hasUnpushedLegacyQueue || hasUnpushedDualWriteQueue || localAhead;
+
+          if (skipReplace) {
+            console.warn('[CloudSync][hook] focus-rehydrate REPLACE SKIPPED — unpushed local edits ' + JSON.stringify({
+              pdfId, documentId,
+              localFabricCount, cloudFabricCount,
+              hasUnpushedLegacyQueue, hasUnpushedDualWriteQueue,
+              localAhead
+            }));
+          } else if (focusMigrationDone || Object.keys(focusFresh).length > 0) {
             setAnnotationsByPage(() => {
               lastByPageRef.current = focusFresh;
               return focusFresh;
             });
           }
-          if (focusMigrationDone || focusFreshCallouts.length > 0) {
+          if (!skipReplace && (focusMigrationDone || focusFreshCallouts.length > 0)) {
             setCallouts(() => {
               lastCalloutsRef.current = focusFreshCallouts;
               return focusFreshCallouts;
