@@ -574,13 +574,14 @@ export function useAnnotationCloudSync({
         // next session. By keying on the delta, a fresh app start with no new
         // user activity enqueues nothing.
         if (isCRDTEnabled()) {
-          // Resolve the stable per-annotation id. Pen strokes / shapes /
-          // text expose it as either fabricObj.id (Fabric's own field) or
-          // fabricObj.data.id (the app's metadata wrapper). The hook's own
-          // delete-detection diff at line 498 uses (obj?.id || obj?.data?.id)
-          // — same precedence applied here so the delta filter doesn't miss
-          // strokes that only carry the Fabric id.
-          const idOf = (obj) => obj?.id || obj?.data?.id || null;
+          // Resolve the stable per-annotation id. Same precedence as the
+          // canonical serializeFabricObjectToRow: highlightId beats Fabric's
+          // own id, which beats the app metadata id. Without highlightId in
+          // this list, freshly-drawn pen strokes (which carry only
+          // fabricObj.highlightId until first push) fall through every check
+          // and get silently dropped from the queue — verified in the
+          // 2026-04-29 UAT log: skippedNoId: 1, enqueuedCount: 0.
+          const idOf = (obj) => obj?.highlightId || obj?.id || obj?.data?.id || null;
           const priorIds = new Set();
           for (const page of Object.values(priorByPage || {})) {
             if (!page || !Array.isArray(page.objects)) continue;
