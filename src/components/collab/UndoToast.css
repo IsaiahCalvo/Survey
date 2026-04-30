@@ -1,0 +1,102 @@
+/* src/components/collab/UndoToast.css
+ * Phase 35 Plan 04 — bottom-anchored undo toast styles.
+ *
+ * UX: positioned at the bottom of the viewport (NOT bottom of PDF area —
+ * the sync-status banner already lives there and CONTEXT.md says the toast
+ * "must sit below any active sync-status banner"). 8px gap from the bottom
+ * edge keeps it floating clear of the OS chrome / dock.
+ *
+ * z-index 100 sits above the StorageFailureBanner stack (~50) but below
+ * any modal backdrop (200) — the ConfirmDeleteModal in this same plan uses
+ * 200 so the toast doesn't peek through the modal scrim mid-delete.
+ *
+ * Reuses StorageFailureBanner.css color tokens (bg-secondary, border-primary,
+ * text-primary, accent-primary) for visual consistency with the existing
+ * banner family.
+ *
+ * 160ms ease-out fade-in keeps the entry calm — same Material "expressive
+ * deceleration" pattern used elsewhere (see StorageFailureBanner.css fade-in).
+ */
+
+.undo-toast {
+  /* UX: fixed bottom-center anchor. transform centers horizontally without
+     a flex parent. 8px above the viewport bottom keeps the toast floating
+     clear of the OS chrome. */
+  position: fixed;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+  /* sm/md spacing (8/16) — vertical breathing room enough that the message
+     and Undo button never feel cramped. */
+  padding: 12px 16px;
+
+  /* Same surface palette as the storage-failure banner so the toast reads
+     as part of the same status family. */
+  background: var(--bg-secondary, #252525);
+  border: 1px solid var(--border-primary, #3A3A3A);
+  border-radius: 6px;
+  box-shadow: var(--shadow-md, 0 4px 16px rgba(0, 0, 0, 0.4));
+
+  font-family: var(--font-primary, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif);
+
+  /* UX: 160ms ease-out fade-in keeps the entrance calm. cubic-bezier(0,0,0.2,1)
+     is the canonical ease-out curve (matches StorageFailureBanner annotation
+     fade-in timing). */
+  animation: undo-toast-fade-in 160ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+@keyframes undo-toast-fade-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.undo-toast__message {
+  /* UX: 13px / weight 400 — same body-copy size as StorageFailureBanner. */
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--text-primary, #FFFFFF);
+}
+
+.undo-toast__action {
+  /* UX: action link — interactivity signaled by underline + accent color
+     (matches StorageFailureBanner.__action convention). Reset native button
+     chrome so it reads as a textual link rather than a chunky button. */
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--accent-primary, #4A90E2);
+  text-decoration: underline;
+  font-family: inherit;
+}
+
+.undo-toast__action:hover {
+  /* UX: subtle text-color lift on hover. Matches the link convention used
+     elsewhere — no background change so the toast doesn't feel like a card
+     with a button on it. */
+  color: var(--accent-primary-hover, #6FA8E8);
+}
+
+.undo-toast__action:focus {
+  /* UX: keyboard focus ring matching the existing input focus pattern
+     (src/styles.css). 2px halo at 0.4 opacity reads clearly without
+     overpowering surrounding chrome. */
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.4);
+  border-radius: 2px;
+}
