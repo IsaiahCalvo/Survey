@@ -26160,16 +26160,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   useEffect(() => {
     const updateDimensions = () => {
       if (topToolbarRef.current && bottomToolbarRef.current && statusBarRef.current) {
-        const topHeight = topToolbarRef.current.getBoundingClientRect().height;
+        const topRect = topToolbarRef.current.getBoundingClientRect();
+        const topHeight = topRect.height;
         const bottomToolbarHeight = bottomToolbarRef.current.getBoundingClientRect().height;
         const statusBarHeight = statusBarRef.current.getBoundingClientRect().height;
         const combinedBottomHeight = bottomToolbarHeight + statusBarHeight;
         setToolbarHeights({ top: topHeight, bottom: combinedBottomHeight });
-        // 2026-04-29: publish the chrome height so StorageFailureBanner's
-        // fixed-position top anchor stays below the tab bar (40px) + top
-        // toolbar without ever covering home/undo/redo or the open-PDF tabs.
+        // 2026-04-29 v2: anchor banner at the literal bottom edge of the top
+        // toolbar so it hugs the chrome without any gap, regardless of how
+        // tall the toolbar actually renders. topRect.bottom is in viewport
+        // coordinates, exactly the y where the banner should start.
         if (typeof document !== 'undefined' && document.documentElement) {
-          document.documentElement.style.setProperty('--app-chrome-top', `${40 + topHeight}px`);
+          document.documentElement.style.setProperty('--app-chrome-top', `${Math.round(topRect.bottom)}px`);
         }
       }
 
