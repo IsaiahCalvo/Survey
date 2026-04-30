@@ -104,19 +104,19 @@ export function useAnnotationCloudSync({
   const hydratedRef = useRef(false);
   const startupSyncInFlightRef = useRef(false);
   const lastCloudRefreshAtRef = useRef(0);
-  // 2026-04-30 — per-session set of annotation IDs the user has explicitly
-  // removed locally (whether the cloud delete was actually issued or the wipe
-  // safety brake suppressed it). The focus rehydrate consults this set to
-  // avoid resurrecting annotations the user just deleted. Reset on document
-  // change.
-  const userDeletedFabricIdsRef = useRef(new Set());
-  const userDeletedCalloutIdsRef = useRef(new Set());
+  // 2026-04-30 (Phase 35 Plan 05) — RETIRED: per-session "user just deleted
+  // these IDs" sets (formerly fabric + callout). Their job was to stop the
+  // focus-rehydrate from resurrecting annotations the user had just deleted
+  // locally while the diff-detection delete suppression block held back the
+  // cloud delete. With per-user delete authority shipped (Phase 35 Plans
+  // 03/04) the suppression block itself is gone and deletes propagate to the
+  // cloud unconditionally — there is no longer a "deleted locally, still in
+  // the cloud" gap to paper over. See Phase 35 CONTEXT.md "Brake retirement"
+  // decision.
   // 2026-04-27 — diagnostic refs for tracking annotations state changes
   // outside the cloud-sync hook's own setters. If something in App.jsx
   // shrinks the state without the cloud-sync hook knowing, the next push
-  // would interpret the shrink as a delete and cascade it to the cloud
-  // before the v0.1.40 wipe brake fires (the brake only catches all-or-
-  // nothing wipes; partial shrinks slip through).
+  // would interpret the shrink as a delete and cascade it to the cloud.
   const prevAnnotationsByPageObsRef = useRef(undefined);
   const prevCalloutsObsRef = useRef(undefined);
 
@@ -311,10 +311,9 @@ export function useAnnotationCloudSync({
     let cancelled = false;
     hydratedRef.current = false;
     startupSyncInFlightRef.current = true;
-    // 2026-04-30 — reset the per-session "user deleted these" sets when a new
-    // document is being hydrated so we don't carry stale ids across PDF opens.
-    userDeletedFabricIdsRef.current = new Set();
-    userDeletedCalloutIdsRef.current = new Set();
+    // 2026-04-30 (Phase 35 Plan 05) — REMOVED: userDeleted*IdsRef resets here
+    // (the refs themselves are gone — see brake-retirement comment over the
+    // ref declarations above).
 
     (async () => {
       let cloud = null;
@@ -520,34 +519,16 @@ export function useAnnotationCloudSync({
           }
         }
       }
-      // 2026-04-27 — SAFETY BRAKE on the diff-based delete-detection.
-      //
-      // The diff path is intended for single-stroke eraser deletes: state
-      // went from N rows to N-1, push the one missing id to the cloud as a
-      // delete. In practice it has been implicated in cross-device data
-      // wipes where local state went from N rows to 0 in a single tick due
-      // to a sync race we have not yet reproduced in isolation, and the
-      // diff-based path then cascaded the local 0 into a cloud-wide DELETE.
-      //
-      // The brake: when the diff implies a "go to fully empty" event, do
-      // NOT auto-fire the delete. Log loudly with the full set of ids that
-      // were spared so we can see the exact failure case in a saved log.
-      //
-      // Trade-off (intentional): erasing the very last single stroke
-      // locally will not sync the delete to peer devices via this debounce
-      // path. Workarounds: refresh the peer device (its hydrate query +
-      // verify will pick up the new state), or use multi-select + delete
-      // which goes through an explicit delete API call site, not this
-      // diff-detection branch.
-      const wouldWipeCloud = priorObjectCount > 0 && objectCount === 0 && deletedIds.length > 0;
-      // 2026-04-30 — record every locally-deleted id (whether the cloud delete
-      // is actually issued below or suppressed by the wipe brake). Focus
-      // rehydrate uses this set to skip resurrecting annotations the user
-      // intentionally removed.
+      // 2026-04-30 (Phase 35 Plan 05) — RETIRED: 2026-04-27 diff-detection
+      // delete-suppression block. The block suppressed cloud deletes when
+      // local state went from N>0 to 0 in a single tick. With per-user delete
+      // authority shipped (Phase 35 Plans 03/04) a single user can no longer
+      // remove other users' work — selection / eraser / marquee gestures are
+      // scoped to the viewer's own annotations and bulk-delete-of-mixed-
+      // authors goes through a confirmation modal. The original cross-device
+      // race concern is resolved by permission scoping, not suppression.
+      // Deletes now propagate unconditionally on diff detection.
       if (deletedIds.length > 0) {
-        for (const id of deletedIds) userDeletedFabricIdsRef.current.add(id);
-      }
-      if (deletedIds.length > 0 && !wouldWipeCloud) {
         console.log('[CloudSync][hook] eraser/delete detected — removing rows from cloud ' + JSON.stringify({
           count: deletedIds.length,
           firstFew: deletedIds.slice(0, 5)
@@ -579,24 +560,6 @@ export function useAnnotationCloudSync({
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('crdt:deletions-pending'));
           }
-        }
-      } else if (wouldWipeCloud) {
-        const priorPagesWithObjects = Object.keys(priorByPage || {}).filter(
-          (k) => Array.isArray(priorByPage?.[k]?.objects) && priorByPage[k].objects.length > 0
-        );
-        console.error('[CloudSync][hook][SAFETY-BRAKE] suppressing wipe-style fabric delete push ' + JSON.stringify({
-          priorObjectCount,
-          currentObjectCount: objectCount,
-          deletedCount: deletedIds.length,
-          sampleDeletedIds: deletedIds.slice(0, 10),
-          priorPagesWithObjects,
-          rationale: 'diff implies full wipe — refusing to delete every cloud row via auto-detection. peer devices keep their copy; user must explicitly bulk-delete to sync.'
-        }));
-        // 2026-04-30 — the user removed annotations locally, but we refused to
-        // propagate the wipe. Tell them via the banner so they know peer devices
-        // / focus rehydrate may resurrect what they just deleted.
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('crdt:deletions-pending'));
         }
       }
 
@@ -730,16 +693,11 @@ export function useAnnotationCloudSync({
           if (id && !currentCalloutIds.has(id)) deletedCalloutIds.push(id);
         }
       }
-      // 2026-04-27 — Same SAFETY BRAKE as the fabric path. See comment over
-      // the fabric delete branch for full reasoning. Refuse to wipe cloud
-      // callouts via diff-detection when we go to a fully-empty list.
-      const wouldWipeCalloutCloud = priorCalloutCount > 0 && currentCalloutCount === 0 && deletedCalloutIds.length > 0;
-      // 2026-04-30 — record locally-deleted callout ids for the focus-rehydrate
-      // skip set, same as the fabric branch above.
+      // 2026-04-30 (Phase 35 Plan 05) — RETIRED: 2026-04-27 callout wipe
+      // brake (mirror of the fabric brake removed above). Per-user delete
+      // authority replaces the brake's purpose; cloud callout deletes now
+      // propagate unconditionally on diff detection.
       if (deletedCalloutIds.length > 0) {
-        for (const id of deletedCalloutIds) userDeletedCalloutIdsRef.current.add(id);
-      }
-      if (deletedCalloutIds.length > 0 && !wouldWipeCalloutCloud) {
         console.log('[CloudSync][hook] callout delete detected — removing rows from cloud ' + JSON.stringify({
           count: deletedCalloutIds.length,
           firstFew: deletedCalloutIds.slice(0, 5)
@@ -765,18 +723,6 @@ export function useAnnotationCloudSync({
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('crdt:deletions-pending'));
           }
-        }
-      } else if (wouldWipeCalloutCloud) {
-        console.error('[CloudSync][hook][SAFETY-BRAKE] suppressing wipe-style callout delete push ' + JSON.stringify({
-          priorCount: priorCalloutCount,
-          currentCount: currentCalloutCount,
-          deletedCount: deletedCalloutIds.length,
-          sampleDeletedIds: deletedCalloutIds.slice(0, 10),
-          rationale: 'diff implies full wipe — refusing to delete every cloud callout row via auto-detection.'
-        }));
-        // 2026-04-30 — same banner trigger as the fabric safety brake above.
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('crdt:deletions-pending'));
         }
       }
 
@@ -1066,36 +1012,24 @@ export function useAnnotationCloudSync({
               localAhead
             }));
           } else if (focusMigrationDone || Object.keys(focusFresh).length > 0) {
-            // 2026-04-30 — strip annotations the user explicitly deleted in
-            // this session before applying the cloud snapshot, so a focus
-            // rehydrate doesn't resurrect them. Done in-place per page.
-            const deletedSet = userDeletedFabricIdsRef.current;
-            const filteredFresh = deletedSet.size === 0
-              ? focusFresh
-              : Object.fromEntries(Object.entries(focusFresh).map(([pageKey, page]) => {
-                  if (!page || !Array.isArray(page.objects)) return [pageKey, page];
-                  const kept = page.objects.filter((obj) => {
-                    const id = obj?.id || obj?.data?.id;
-                    return !id || !deletedSet.has(id);
-                  });
-                  return [pageKey, { ...page, objects: kept }];
-                }));
+            // 2026-04-30 (Phase 35 Plan 05) — RETIRED: per-session
+            // user-deleted-id filter that stripped freshly-cloud-fetched
+            // annotations against a local "deleted this session" set. With
+            // per-user delete authority shipped, the cloud delete fires
+            // unconditionally on the original gesture, so the cloud snapshot
+            // already reflects the user's local deletes — there's nothing to
+            // strip. Apply the cloud snapshot directly.
             setAnnotationsByPage(() => {
-              lastByPageRef.current = filteredFresh;
-              return filteredFresh;
+              lastByPageRef.current = focusFresh;
+              return focusFresh;
             });
           }
           if (!skipReplace && (focusMigrationDone || focusFreshCallouts.length > 0)) {
-            const deletedCalloutSet = userDeletedCalloutIdsRef.current;
-            const filteredCallouts = deletedCalloutSet.size === 0
-              ? focusFreshCallouts
-              : focusFreshCallouts.filter((c) => {
-                  const id = c?.id || c?.callout_id || c?.data?.id;
-                  return !id || !deletedCalloutSet.has(id);
-                });
+            // 2026-04-30 (Phase 35 Plan 05) — same retirement as the fabric
+            // branch directly above. Apply cloud callout snapshot directly.
             setCallouts(() => {
-              lastCalloutsRef.current = filteredCallouts;
-              return filteredCallouts;
+              lastCalloutsRef.current = focusFreshCallouts;
+              return focusFreshCallouts;
             });
           }
           // Focus catch-up done — back to a calm "synced" state.
