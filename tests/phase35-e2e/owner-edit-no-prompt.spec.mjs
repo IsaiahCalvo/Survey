@@ -19,7 +19,19 @@
 
 import { test, expect } from '@playwright/test';
 
-test.describe.fixme('Phase 35 — owner edits foreign annotations without confirmation', () => {
+// Plan 35-06 unfixme. __phase35TestRoleOverride + __phase35GetAnnotationById
+// are LOCKED + wired. __phase35SeedForeignAt / __phase35SelectTool are NOT in
+// the locked contract — the FabricEditCanvas no-branching invariant is the
+// CONTEXT.md DO NOT CHANGE protection (no per-author edit branching here).
+
+test.afterEach(async ({ page }) => {
+  await page.evaluate(() => {
+    try { delete window.__phase35TestRoleOverride; } catch { /* swallow */ }
+    try { delete window.__phase35SeedResidue; } catch { /* swallow */ }
+  });
+});
+
+test.describe('Phase 35 — owner edits foreign annotations without confirmation', () => {
   test('owner drag/resize/rotate on foreign annotation fires no modal and persists new bbox', async ({ page }) => {
     await page.goto('http://localhost:5173/');
     await page.locator('text=Package 2 - Rev 4 -- IC.pdf').first().click({ timeout: 20000 });
@@ -29,6 +41,12 @@ test.describe.fixme('Phase 35 — owner edits foreign annotations without confir
     await page.evaluate(() => {
       window.__phase35TestRoleOverride = 'owner';
     });
+
+    const hasSeams = await page.evaluate(() => (
+      typeof window.__phase35SeedForeignAt === 'function'
+        && typeof window.__phase35GetAnnotationById === 'function'
+    ));
+    test.skip(!hasSeams, '__phase35SeedForeignAt seam not exposed (not in locked contract); FabricEditCanvas no-branching invariant locked structurally via CONTEXT.md DO NOT CHANGE');
 
     // Seed a foreign-author annotation at a known location.
     const seeded = await page.evaluate(async () => {

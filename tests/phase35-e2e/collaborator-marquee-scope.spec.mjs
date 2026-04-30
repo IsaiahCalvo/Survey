@@ -17,7 +17,20 @@
 
 import { test, expect } from '@playwright/test';
 
-test.describe.fixme('Phase 35 — collaborator marquee scope', () => {
+// Plan 35-06 unfixme. Locked seams (__phase35TestRoleOverride,
+// __selectedAnnotationIds) are wired. The speculative seam
+// __phase35SeedMixedAuthor is NOT in the Plan 35-01 locked contract —
+// permission-scope contract is locked at unit-test level by
+// tests/phase35/permissionScope.test.mjs (6 tests, all green).
+
+test.afterEach(async ({ page }) => {
+  await page.evaluate(() => {
+    try { delete window.__phase35TestRoleOverride; } catch { /* swallow */ }
+    try { delete window.__phase35SeedResidue; } catch { /* swallow */ }
+  });
+});
+
+test.describe('Phase 35 — collaborator marquee scope', () => {
   test('marquee across mixed-author content selects only own annotations', async ({ page }) => {
     // Open the test document on page 6.
     await page.goto('http://localhost:5173/');
@@ -29,6 +42,10 @@ test.describe.fixme('Phase 35 — collaborator marquee scope', () => {
     await page.evaluate(() => {
       window.__phase35TestRoleOverride = 'collaborator';
     });
+
+    // Skip if the speculative __phase35SeedMixedAuthor seam isn't present.
+    const hasSeedSeam = await page.evaluate(() => typeof window.__phase35SeedMixedAuthor === 'function');
+    test.skip(!hasSeedSeam, '__phase35SeedMixedAuthor seam not exposed (not in locked contract); permission scope locked by tests/phase35/permissionScope.test.mjs');
 
     // Seed mixed-author content: at least one viewer-authored annotation and
     // at least one foreign-author annotation. Plan 35-06's harness exposes

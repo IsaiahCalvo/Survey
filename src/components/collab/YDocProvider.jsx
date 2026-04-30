@@ -931,17 +931,20 @@ function YDocProviderInner({ docId, children, closeDocument }) {
       // Plan 35-06 e2e flips can write window.__phase35SeedResidue =
       // ['id1', 'id2', ...] OR true (auto-seed first 3 owner-authored rows).
       let seededIds = null;
+      let seedAutoPick = false;
       if (import.meta.env.MODE !== 'production' && typeof window !== 'undefined') {
         const seed = window.__phase35SeedResidue;
         if (Array.isArray(seed)) {
           seededIds = seed.filter((id) => typeof id === 'string');
+        } else if (seed === true) {
+          seedAutoPick = true;
         }
       }
 
       if (seededIds && seededIds.length > 0) {
-        // UX: seam path — bypass the audit and surface the seeded ids
-        // directly so e2e specs can verify the banner + Review + Cleanup
-        // chain without engineering a real brake-suppression race.
+        // UX: seam path (explicit ids) — bypass the audit and surface the
+        // seeded ids directly so e2e specs can verify the banner + Review +
+        // Cleanup chain without engineering a real brake-suppression race.
         setCleanupResidueIds(seededIds);
         return;
       }
@@ -978,6 +981,22 @@ function YDocProviderInner({ docId, children, closeDocument }) {
         authorId: row.user_id,
         lastEditedAt: row.updated_at ? Date.parse(row.updated_at) : null,
       })).filter((a) => typeof a.id === 'string');
+
+      if (seedAutoPick) {
+        // UX: seam path (auto-pick) — per Plan 35-01 locked contract, the
+        // seed === true variant auto-picks the first 3 viewer-authored cloud
+        // annotations as the residue set. Lets e2e specs verify the banner
+        // + Review + Cleanup chain against real cloud data without locking
+        // specific ids. Production-stripped via the env check above. If
+        // there are fewer than 3 viewer-authored rows, surface whatever
+        // exists (the spec's runtime-skip handles the empty case).
+        const viewerOwn = cloudAnnotations
+          .filter((a) => a.authorId === viewerId)
+          .slice(0, 3)
+          .map((a) => a.id);
+        setCleanupResidueIds(viewerOwn);
+        return;
+      }
 
       // localUserDeletedSet is empty in production post-brake-retirement
       // (the in-memory ref was removed in Task 1). The audit returns empty

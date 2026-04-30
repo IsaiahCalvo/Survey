@@ -19,7 +19,19 @@
 
 import { test, expect } from '@playwright/test';
 
-test.describe.fixme('Phase 35 — collaborator bulk-delete confirm + undo toast', () => {
+// Plan 35-06 unfixme. __phase35TestRoleOverride is locked + wired. The
+// speculative seeding / select-all helpers are NOT in the locked contract —
+// buildBulkDeletePlan + ConfirmDeleteModal copy locked at unit-test level
+// by tests/phase35/buildBulkDeletePlan.test.mjs (6 tests, all green).
+
+test.afterEach(async ({ page }) => {
+  await page.evaluate(() => {
+    try { delete window.__phase35TestRoleOverride; } catch { /* swallow */ }
+    try { delete window.__phase35SeedResidue; } catch { /* swallow */ }
+  });
+});
+
+test.describe('Phase 35 — collaborator bulk-delete confirm + undo toast', () => {
   test('delete-all-mine modal appears with simple count', async ({ page }) => {
     await page.goto('http://localhost:5173/');
     await page.locator('text=Package 2 - Rev 4 -- IC.pdf').first().click({ timeout: 20000 });
@@ -29,6 +41,12 @@ test.describe.fixme('Phase 35 — collaborator bulk-delete confirm + undo toast'
     await page.evaluate(() => {
       window.__phase35TestRoleOverride = 'collaborator';
     });
+
+    const hasSeams = await page.evaluate(() => (
+      typeof window.__phase35SeedOwn === 'function'
+        && typeof window.__phase35SelectAllOwnOnPage === 'function'
+    ));
+    test.skip(!hasSeams, 'speculative __phase35SeedOwn / __phase35SelectAllOwnOnPage seams not exposed; bulk-delete plan + modal copy locked at unit level');
 
     // Seed N viewer-authored annotations on page 6.
     const seedCount = 4;

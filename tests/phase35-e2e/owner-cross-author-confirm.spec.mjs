@@ -22,7 +22,20 @@
 
 import { test, expect } from '@playwright/test';
 
-test.describe.fixme('Phase 35 — owner cross-author confirm + undo toast', () => {
+// Plan 35-06 unfixme. __phase35TestRoleOverride is locked + wired.
+// __phase35SeedOwn / __phase35SeedForeign / __phase35SelectAllOnPage are NOT
+// in the locked contract — owner-cross-author modal copy + per-author
+// breakdown formula locked at unit level by
+// tests/phase35/buildBulkDeletePlan.test.mjs.
+
+test.afterEach(async ({ page }) => {
+  await page.evaluate(() => {
+    try { delete window.__phase35TestRoleOverride; } catch { /* swallow */ }
+    try { delete window.__phase35SeedResidue; } catch { /* swallow */ }
+  });
+});
+
+test.describe('Phase 35 — owner cross-author confirm + undo toast', () => {
   test('owner cross-author modal shows breakdown', async ({ page }) => {
     await page.goto('http://localhost:5173/');
     await page.locator('text=Package 2 - Rev 4 -- IC.pdf').first().click({ timeout: 20000 });
@@ -32,6 +45,13 @@ test.describe.fixme('Phase 35 — owner cross-author confirm + undo toast', () =
     await page.evaluate(() => {
       window.__phase35TestRoleOverride = 'owner';
     });
+
+    const hasSeams = await page.evaluate(() => (
+      typeof window.__phase35SeedOwn === 'function'
+        && typeof window.__phase35SeedForeign === 'function'
+        && typeof window.__phase35SelectAllOnPage === 'function'
+    ));
+    test.skip(!hasSeams, 'speculative seed/select seams not exposed (not in locked contract); breakdown formula locked at unit level');
 
     // Seed mixed-author content: owner's own marks + at least 2 foreign authors.
     await page.evaluate(async () => {

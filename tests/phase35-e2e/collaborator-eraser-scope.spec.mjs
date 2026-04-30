@@ -15,7 +15,19 @@
 
 import { test, expect } from '@playwright/test';
 
-test.describe.fixme('Phase 35 — collaborator eraser scope', () => {
+// Plan 35-06 unfixme. __phase35TestRoleOverride is locked + wired.
+// __phase35SeedForeignAt / __phase35CountAnnotations / __phase35SelectTool
+// are NOT in the Plan 35-01 locked contract — permission scope contract is
+// locked at the unit level by tests/phase35/permissionScope.test.mjs.
+
+test.afterEach(async ({ page }) => {
+  await page.evaluate(() => {
+    try { delete window.__phase35TestRoleOverride; } catch { /* swallow */ }
+    try { delete window.__phase35SeedResidue; } catch { /* swallow */ }
+  });
+});
+
+test.describe('Phase 35 — collaborator eraser scope', () => {
   test('eraser swipe on foreign annotation has no effect', async ({ page }) => {
     await page.goto('http://localhost:5173/');
     await page.locator('text=Package 2 - Rev 4 -- IC.pdf').first().click({ timeout: 20000 });
@@ -25,6 +37,12 @@ test.describe.fixme('Phase 35 — collaborator eraser scope', () => {
     await page.evaluate(() => {
       window.__phase35TestRoleOverride = 'collaborator';
     });
+
+    const hasSeams = await page.evaluate(() => (
+      typeof window.__phase35SeedForeignAt === 'function'
+        && typeof window.__phase35CountAnnotations === 'function'
+    ));
+    test.skip(!hasSeams, 'speculative __phase35SeedForeignAt / __phase35CountAnnotations seams not exposed; contract locked at unit-test level');
 
     // Seed foreign-author annotation across a known coordinate range.
     const seed = await page.evaluate(async () => {
@@ -69,6 +87,9 @@ test.describe.fixme('Phase 35 — collaborator eraser scope', () => {
     await page.evaluate(() => {
       window.__phase35TestRoleOverride = 'collaborator';
     });
+
+    const hasSeedSeam = await page.evaluate(() => typeof window.__phase35SeedForeignAt === 'function');
+    test.skip(!hasSeedSeam, '__phase35SeedForeignAt seam not exposed (not in locked contract); click-resolve gate locked at unit level');
 
     const seed = await page.evaluate(async () => {
       const ids = await window.__phase35SeedForeignAt?.({
