@@ -21118,9 +21118,26 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // local-only File picked from disk before sharing lands), the gate falls
   // through to legacy behavior because canModify's boot guard requires both
   // viewerId AND documentOwnerId.
+  //
+  // Phase 35 Plan 06 test seam — window.__phase35TestRoleOverride lets e2e
+  // specs flip the viewer role between 'collaborator' and 'owner' without
+  // needing two real Supabase accounts. Production-stripped by Vite tree-shake
+  // on the import.meta.env.MODE check (production bundle never sees this
+  // branch). 'collaborator' returns a fake UUID owner so canModify treats the
+  // viewer as a non-owner. 'owner' returns the viewer's own user.id so
+  // canModify treats them as owner.
   const documentOwnerId = useMemo(() => {
+    if (import.meta.env.MODE !== 'production' && typeof window !== 'undefined') {
+      const override = window.__phase35TestRoleOverride;
+      if (override === 'collaborator') {
+        return '00000000-0000-0000-0000-000000000001';
+      }
+      if (override === 'owner') {
+        return user?.id || null;
+      }
+    }
     return pdfFile?.user_id || null;
-  }, [pdfFile?.user_id]);
+  }, [pdfFile?.user_id, user?.id]);
 
   // Phase 35 Plan 04 — bulk-delete modal + undo toast layer.
   //
@@ -21977,6 +21994,29 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       window.__currentPageNumber = pageNum;
     }
   }, [pageNum]);
+
+  // Phase 35 Plan 06 test seam — annotation lookup helper for the
+  // owner-edit-no-prompt e2e spec to verify bbox / angle persistence after
+  // owner drag/resize/rotate on a foreign-author annotation. Walks
+  // annotationsByPage to find the annotation with matching id. Production-
+  // stripped via the same import.meta.env.MODE check as the other Phase 35
+  // seams; production bundle never installs this helper.
+  useEffect(() => {
+    if (import.meta.env.MODE === 'production') return undefined;
+    if (typeof window === 'undefined') return undefined;
+    window.__phase35GetAnnotationById = (id) => {
+      for (const pageNum of Object.keys(annotationsByPage || {})) {
+        const objs = annotationsByPage[pageNum]?.objects || [];
+        for (const obj of objs) {
+          if (obj?.id === id) return obj;
+        }
+      }
+      return null;
+    };
+    return () => {
+      try { delete window.__phase35GetAnnotationById; } catch { /* swallow */ }
+    };
+  }, [annotationsByPage]);
 
   const getSyncfusionThumbnail = useCallback((pageNumber) => {
     const viewer = syncfusionViewerRef.current;

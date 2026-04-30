@@ -307,6 +307,25 @@ export function useSVGInteraction({
     setPersistedGroupTransform(null);
   }, [selectedIds, selectedCalloutIds, computeSelectionSig]);
 
+  // Phase 35 Plan 06 test seam — read-only mirror of selectedIds for e2e
+  // assertion. Mirrors the per-page selection by resolving each index to the
+  // stable annotation.id at write time (Sets of indices are unstable across
+  // re-renders; ids stay stable). Production-stripped via the
+  // import.meta.env.MODE check so the production bundle drops the seam via
+  // Vite tree-shake. Colocated here because useSVGInteraction owns the
+  // selectedIds state — bubbling it up to App.jsx via a callback prop would
+  // be more code for the same observable surface.
+  useEffect(() => {
+    if (import.meta.env.MODE === 'production') return undefined;
+    if (typeof window === 'undefined') return undefined;
+    const ids = Array.from(selectedIds || []).map((idx) => {
+      const obj = annotations?.objects?.[idx];
+      return obj?.id || null;
+    }).filter(Boolean);
+    window.__selectedAnnotationIds = ids;
+    return undefined;
+  }, [selectedIds, annotations]);
+
   // ---------------------------------------------------------------------------
   // Clear selection when annotations prop identity changes
   // (new page loaded or external edit) — but NOT during active drag
