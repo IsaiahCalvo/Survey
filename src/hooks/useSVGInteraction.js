@@ -103,6 +103,22 @@ export function useSVGInteraction({
   // mount sites byte-identical until App.jsx threads the new props.
   viewerId,
   documentOwnerId,
+  // Phase 35 Plan 04 — page number for the bulk-delete interceptor's
+  // snapshot (so App.jsx's onUndo can restore on the right page). Optional;
+  // when missing, deleteSelected still fires the existing onSaveAnnotations
+  // unchanged. SVGAnnotationLayer already passes its own pageNumber prop
+  // through but does not currently forward it into useSVGInteraction —
+  // Plan 35-04 forwards it via SVGAnnotationLayer's prop pass-through.
+  pageNumber,
+  // Phase 35 Plan 04 — bulk-delete interceptor. Optional callback. When
+  // App.jsx provides it, deleteSelected invokes it with
+  // ({ candidateIds, snapshotObjects, pageNumber, runDelete }) BEFORE
+  // firing the existing onSaveAnnotations. App.jsx decides modal vs
+  // direct-fire and invokes runDelete (the existing delete code path) when
+  // ready. When the prop is absent (e.g. boot, test harness without
+  // App.jsx's mount), deleteSelected falls through to runDelete unconditionally
+  // — preserves legacy behavior byte-identical.
+  onRequestBulkDelete,
 }) {
   // ---------------------------------------------------------------------------
   // State
@@ -3911,25 +3927,84 @@ export function useSVGInteraction({
 
   // ---------------------------------------------------------------------------
   // Group delete (Plan 03): remove all selected annotations
+  //
+  // Phase 35 Plan 04 per-user delete authority — the parent (App.jsx) can
+  // intercept the bulk-delete fire by providing an onRequestBulkDelete prop.
+  // When provided, deleteSelected:
+  //   1. Captures a closure-bound snapshot of the deleted objects + the
+  //      current page number at request time (so an Undo click 5-6 seconds
+  //      later restores exactly what was deleted regardless of state changes
+  //      in the interim — modal/toast keeps the user from making competing
+  //      edits during that window).
+  //   2. Builds runDelete as a closure capturing indicesToDelete + the
+  //      same snapshot (saveContext fields propagate snapshot/count/page so
+  //      App.jsx's handleSaveAnnotations can layer the single-delete toast
+  //      and onUndo restoration cleanly).
+  //   3. Calls onRequestBulkDelete({ candidateIds, snapshotObjects,
+  //      pageNumber, runDelete }). The parent (App.jsx) builds the
+  //      BulkDeletePlan in scope of viewerId/documentOwnerId, decides
+  //      modal vs direct-fire, and invokes runDelete when ready.
+  //
+  // When onRequestBulkDelete is absent, deleteSelected runs runDelete
+  // unconditionally — legacy behavior byte-identical for boot-time and test
+  // harnesses that don't mount App.jsx.
   // ---------------------------------------------------------------------------
   const deleteSelected = useCallback(() => {
     if (selectedIds.size === 0) return;
 
-    const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
-    // Iterate indices in reverse (highest first) to avoid index shifting during splice
+    // Capture snapshot at request time — closure over CURRENT state. The
+    // bulk-delete planner reads from snapshotObjects (NOT from a ref in
+    // App.jsx) which dodges the stale-closure bug from prior revisions
+    // (Plan 35-04 frontmatter checker I13).
     const indicesToDelete = Array.from(selectedIds).sort((a, b) => b - a);
-    for (const idx of indicesToDelete) {
-      updatedAnnotations.objects.splice(idx, 1);
+    const snapshotObjects = indicesToDelete
+      .map((idx) => {
+        const obj = annotations?.objects?.[idx];
+        return obj ? JSON.parse(JSON.stringify(obj)) : null;
+      })
+      .filter(Boolean);
+
+    // Build runDelete closure — this is the existing delete code path,
+    // with three new saveContext fields so App.jsx's handleSaveAnnotations
+    // can layer the single-delete toast (deletedCount===1) and the
+    // bulk-delete onUndo restoration (deletedSnapshot + deletedPageNumber).
+    const runDelete = () => {
+      const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
+      for (const idx of indicesToDelete) {
+        updatedAnnotations.objects.splice(idx, 1);
+      }
+      onSaveAnnotations(updatedAnnotations, {
+        source: 'object:modified',
+        action: 'delete',
+        deletedCount: snapshotObjects.length,
+        deletedSnapshot: snapshotObjects,
+        deletedPageNumber: pageNumber,
+        checkpointPolicy: 'normal',
+      });
+      deselectAll();
+    };
+
+    // Phase 35 Plan 04: route through the parent's bulk-delete planner when
+    // it provides one. When absent (legacy / boot / test harness), fall
+    // through to runDelete unconditionally — preserves prior behavior.
+    if (typeof onRequestBulkDelete !== 'function') {
+      runDelete();
+      return;
     }
 
-    onSaveAnnotations(updatedAnnotations, {
-      source: 'object:modified',
-      action: 'delete',
-      checkpointPolicy: 'normal',
+    // Build candidate ids from the snapshot so the parent receives a
+    // fully-resolved id list (consistent between what the modal shows and
+    // what runDelete will actually remove). Parent owns viewerId +
+    // documentOwnerId — it builds the BulkDeletePlan and decides modal vs
+    // direct-fire.
+    const candidateIds = snapshotObjects.map((o) => o?.id).filter(Boolean);
+    onRequestBulkDelete({
+      candidateIds,
+      snapshotObjects,
+      pageNumber,
+      runDelete,
     });
-
-    deselectAll();
-  }, [selectedIds, annotations, onSaveAnnotations, deselectAll]);
+  }, [selectedIds, annotations, onSaveAnnotations, deselectAll, onRequestBulkDelete, pageNumber]);
 
   // ---------------------------------------------------------------------------
   // EDIT-12 Gap 1 fix (Plan 12-03): optimistic rotation paint

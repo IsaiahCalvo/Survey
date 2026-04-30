@@ -85,6 +85,13 @@ import YDocProvider from './components/collab/YDocProvider.jsx';
 // (Pitfall 7) holds across the bridge and the keyboard handler call sites.
 import { useYDoc } from './hooks/useYDoc.js';
 import { userUndo, userRedo } from './lib/collab/crdtUndoManager.js';
+// Phase 35 Plan 04 — bulk-delete modals + undo toast layer. The planner
+// builds the BulkDeletePlan in scope of viewerId/documentOwnerId; the modal
+// branches on plan.mode; the toast hook owns the 5/6s auto-dismiss.
+import { buildBulkDeletePlan } from './lib/collab/bulkDeletePlan.js';
+import { ConfirmDeleteModal } from './components/collab/ConfirmDeleteModal.jsx';
+import { UndoToast } from './components/collab/UndoToast.jsx';
+import { useUndoToast } from './hooks/useUndoToast.js';
 import SaveLogBanner from './components/SaveLogBanner';
 import PrintPanel from './components/PrintPanel';
 import LightweightAnnotationOverlay from './components/LightweightAnnotationOverlay';
@@ -21114,6 +21121,97 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const documentOwnerId = useMemo(() => {
     return pdfFile?.user_id || null;
   }, [pdfFile?.user_id]);
+
+  // Phase 35 Plan 04 — bulk-delete modal + undo toast layer.
+  //
+  // Architecture: useSVGInteraction's deleteSelected captures a snapshot at
+  // request time and calls onRequestBulkDelete with
+  // { candidateIds, snapshotObjects, pageNumber, runDelete }. We:
+  //   1. Build the BulkDeletePlan here (where viewerId + documentOwnerId
+  //      already live in scope) using buildBulkDeletePlan.
+  //   2. For mode 'no-op' → bail (selection is empty after canModify).
+  //   3. For mode 'owner-own-only' → no modal; runDelete fires immediately
+  //      (the bulk-toast still fires for symmetry with cross-author flow).
+  //   4. For mode 'collaborator-all-mine' / 'owner-cross-author' → set
+  //      pendingDeletePlan to open the modal; on confirm, the runner
+  //      stashed in pendingDeleteRunnerRef invokes runDelete + enqueues
+  //      the bulk-toast with snapshot-restore onUndo.
+  // Single-delete toast is layered separately in handleSaveAnnotations
+  // below — every delete that goes through this save pipeline with
+  // saveContext.deletedCount===1 enqueues the 'single' toast.
+  const {
+    toast: undoToast,
+    enqueue: enqueueUndoToast,
+    dismiss: dismissUndoToast,
+  } = useUndoToast();
+  const [pendingDeletePlan, setPendingDeletePlan] = useState(null);
+  const pendingDeleteRunnerRef = useRef(null);
+
+  const handleRequestBulkDelete = useCallback(
+    ({ candidateIds, snapshotObjects, pageNumber, runDelete }) => {
+      // Flatten the current page's annotations so the planner can resolve
+      // per-author breakdown across what the user actually sees.
+      const pageAnnotations = annotationsByPage?.[pageNumber]?.objects || [];
+
+      const plan = buildBulkDeletePlan({
+        candidateIds,
+        annotations: pageAnnotations,
+        viewerId: user?.id ?? null,
+        documentOwnerId,
+      });
+
+      if (plan.mode === 'no-op') return;
+
+      // Wrap runDelete with the toast enqueue. Both the direct-fire path
+      // (owner-own-only) and the modal-confirm path use this wrapped runner
+      // so the undo restoration is identical regardless of which branch
+      // fires.
+      const wrappedRunDelete = () => {
+        runDelete();
+        // Snapshot restoration: re-add the deleted objects to
+        // annotationsByPage. Functional setter ensures we read the latest
+        // state at undo time (closure-captured snapshot is the source of
+        // truth for what was deleted).
+        const onUndo = () => {
+          setAnnotationsByPage((prev) => {
+            const prevPage = prev?.[pageNumber] || { objects: [] };
+            const restoredObjects = [
+              ...(prevPage.objects || []),
+              ...snapshotObjects,
+            ];
+            return {
+              ...prev,
+              [pageNumber]: { ...prevPage, objects: restoredObjects },
+            };
+          });
+        };
+        const message =
+          plan.mode === 'owner-cross-author'
+            ? `Deleted ${plan.count} annotations from ${
+                Object.keys(plan.byAuthor || {}).length
+              } people`
+            : `${plan.count} annotations deleted`;
+        // eslint-disable-next-line max-len
+        enqueueUndoToast({ kind: 'bulk', message, count: plan.count, onUndo });
+      };
+
+      if (plan.mode === 'owner-own-only') {
+        // CONTEXT.md: owner with no foreign-author marks does NOT see the
+        // modal — just the bulk-toast (still gives them the 6s undo window).
+        wrappedRunDelete();
+        return;
+      }
+
+      // Modal-required path (collaborator-all-mine OR owner-cross-author).
+      // Stash the runner in a ref so the modal's onConfirm can fire it
+      // without rebuilding the closure (and without holding state that
+      // captures snapshotObjects in a way that survives plan reset).
+      pendingDeleteRunnerRef.current = wrappedRunDelete;
+      setPendingDeletePlan(plan);
+    },
+    [annotationsByPage, user, documentOwnerId, enqueueUndoToast],
+  );
+
   const { status: cloudSyncStatus, queueSize: cloudSyncQueueSize, forceFlush: cloudSyncForceFlush } = useAnnotationCloudSync({
     documentId: pdfFile?.id || null,
     userId: user?.id || null,
@@ -24868,13 +24966,43 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       ...(annotationsByPageRef.current || {}),
       [pageNumber]: normalizedIncomingAnnotations
     });
+
+    // Phase 35 Plan 04 — single-delete undo toast. Triggered by every delete
+    // that goes through this save pipeline with deletedCount===1. The
+    // bulk-delete path uses deletedCount > 1 and goes through
+    // handleRequestBulkDelete's wrappedRunDelete (which enqueues the bulk
+    // toast there). This single-delete branch is the only path that fires
+    // the 'single' kind 5s toast. saveContext fields are populated by
+    // useSVGInteraction's deleteSelected (Plan 35-04 interceptor).
+    if (
+      saveContext?.action === 'delete' &&
+      saveContext?.deletedCount === 1
+    ) {
+      const deletedSnapshot = saveContext.deletedSnapshot || [];
+      const deletedPageNumber = saveContext.deletedPageNumber ?? pageNumber;
+      const onUndo = () => {
+        setAnnotationsByPage((prev) => {
+          const prevPage = prev?.[deletedPageNumber] || { objects: [] };
+          const restoredObjects = [
+            ...(prevPage.objects || []),
+            ...deletedSnapshot,
+          ];
+          return {
+            ...prev,
+            [deletedPageNumber]: { ...prevPage, objects: restoredObjects },
+          };
+        });
+      };
+      enqueueUndoToast({ kind: 'single', message: 'Annotation deleted', onUndo });
+    }
   }, [
     addHistoryCheckpoint,
     getHistoryFingerprint,
     normalizeCanvasJsonForHistory,
     normalizeHistoryReason,
     pushHistoryDebugEvent,
-    summarizeAnnotationPageTransitionForDebug
+    summarizeAnnotationPageTransitionForDebug,
+    enqueueUndoToast
   ]);
 
   // [COUNTER STEP 7] Group propagation hook. Called from the counter mini-
@@ -29212,6 +29340,11 @@ ${pageBlocks}
                                   // click hit-test gate inside useSVGInteraction.
                                   viewerId={user?.id ?? null}
                                   documentOwnerId={documentOwnerId}
+                                  // Phase 35 Plan 04 — bulk-delete interceptor. Routes
+                                  // deleteSelected through buildBulkDeletePlan so the
+                                  // ConfirmDeleteModal/UndoToast layer can confirm and
+                                  // restore.
+                                  onRequestBulkDelete={handleRequestBulkDelete}
                                 />
                               </div>
 
@@ -29991,6 +30124,8 @@ ${pageBlocks}
                                       // Phase 35 Plan 03 — per-user delete authority.
                                       viewerId={user?.id ?? null}
                                       documentOwnerId={documentOwnerId}
+                                      // Phase 35 Plan 04 — bulk-delete interceptor.
+                                      onRequestBulkDelete={handleRequestBulkDelete}
                                     />
                                     </div>
 
@@ -30569,6 +30704,8 @@ ${pageBlocks}
                                       // Phase 35 Plan 03 — per-user delete authority.
                                       viewerId={user?.id ?? null}
                                       documentOwnerId={documentOwnerId}
+                                      // Phase 35 Plan 04 — bulk-delete interceptor.
+                                      onRequestBulkDelete={handleRequestBulkDelete}
                                     />
                                   </div>
 
@@ -38202,6 +38339,28 @@ ${pageBlocks}
         }}
         fileName={selectedTemplate?.linkedExcelPath?.split('/').pop() || 'Excel file'}
       />
+
+      {/* Phase 35 Plan 04 — bulk-delete confirmation modal + undo toast layer.
+          Modal opens when handleRequestBulkDelete sets pendingDeletePlan to a
+          collaborator-all-mine or owner-cross-author plan; cancel resets,
+          confirm fires the runner stashed in pendingDeleteRunnerRef which
+          calls runDelete + enqueues the bulk-toast with snapshot-restore
+          onUndo. Single-delete toast is layered in handleSaveAnnotations
+          (deletedCount===1 branch). */}
+      <ConfirmDeleteModal
+        plan={pendingDeletePlan}
+        onCancel={() => {
+          setPendingDeletePlan(null);
+          pendingDeleteRunnerRef.current = null;
+        }}
+        onConfirm={() => {
+          const runner = pendingDeleteRunnerRef.current;
+          setPendingDeletePlan(null);
+          pendingDeleteRunnerRef.current = null;
+          if (runner) runner();
+        }}
+      />
+      <UndoToast toast={undoToast} onDismiss={dismissUndoToast} />
 
       {/* Renderer toggle badge (hidden dev tool — Ctrl+Shift+V to toggle, ?renderer=canvas to force) */}
     </>
