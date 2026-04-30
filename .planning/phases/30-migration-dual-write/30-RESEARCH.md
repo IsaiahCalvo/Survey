@@ -640,12 +640,12 @@ Source: pattern from `src/components/collab/StorageFailureBanner.jsx`. Phase 30 
 ```javascript
 // Add to COPY map (line ~45):
 sync_queue_stuck: {
-  body: "Some changes haven't saved yet. We'll keep retrying — you can keep working. If this stays for a while, try refreshing or check your connection.",
+  body: "A few of your recent edits are still trying to save. Keep this tab open and check your connection — they'll keep retrying in the background.",
   action: 'Retry now',
 },
 
 // Add to HEADING_BY_CODE map (line ~117):
-sync_queue_stuck: 'Saving is catching up',
+sync_queue_stuck: "Some changes haven't saved yet",
 
 // Add to SECONDARY_BY_CODE map (line ~139):
 sync_queue_stuck: 'Your edits are safe on this device · Stay online to finish syncing',
@@ -772,7 +772,7 @@ Add `// NO_DIFF_DELETE_OK: explanation` as the documented escape hatch for legit
 | Phase 30 retry queue | Queue persists to localStorage; reading queue from localStorage on app boot returns the same entries | unit | `node --test src/lib/collab/__tests__/crdtDualWriteQueue.test.mjs` | ❌ Wave 0 |
 | Phase 30 retry queue (e2e) | Inject network failure on legacy write; verify banner appears after 30s; verify queue drains on network restore | e2e | `npx playwright test --grep "phase30-stuck-queue-banner"` | ❌ Wave 0 |
 | Phase 30 lint guard | "Diff = delete" CI grep returns 0 hits across the 3 migration files | smoke | `node scripts/check-no-diff-delete.mjs` (NEW) | ❌ Wave 0 |
-| Phase 30 banner | StorageFailureBanner with `code='sync_queue_stuck'` renders heading "Saving is catching up", body matches CONTEXT.md, action link "Retry now" | unit | `node --test src/components/collab/__tests__/StorageFailureBanner.syncQueueStuck.test.mjs` (or extend existing test file) | ❌ Wave 0 |
+| Phase 30 banner | StorageFailureBanner with `code='sync_queue_stuck'` renders heading "Some changes haven't saved yet", body matches CONTEXT.md, action link "Retry now" | unit | `node --test src/components/collab/__tests__/StorageFailureBanner.syncQueueStuck.test.mjs` (or extend existing test file) | ❌ Wave 0 |
 | Phase 30 Web Locks | Two concurrent `runBackfill(...)` calls on same `(userId, documentId)` produce ONE leader path + ONE no-op loser path | unit (with browser-API mock) | `node --test src/lib/collab/__tests__/crdtBackfill.weblocks.test.mjs` | ❌ Wave 0 |
 | Phase 30 race window | Edit during backfill — user creates a new annotation while backfill is in flight; both annotations land in Y.Map without collision | e2e | `npx playwright test --grep "phase30-edit-during-backfill"` | ❌ Wave 0 |
 

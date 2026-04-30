@@ -335,6 +335,19 @@ build order, not strict dependency.
   answer to "what does the user do when sync fails — just hope?"
   Phase scope: large. Probably belongs near the end of v2.4 or in
   v2.5 alongside the highlight migration. `[PDF-App]`
+- [ ] **Per-user delete authority + confirm-before-wipe** — captured
+  2026-04-30. Match the Drawboard / Lumin pattern. By default a
+  collaborator can only delete the marks they themselves drew; the
+  document author/owner is the only role that can delete other
+  users' marks. When a user triggers a "delete all of mine" gesture
+  they see an "Are you sure?" modal; when an owner triggers a
+  "delete everyone's marks on this page/doc" gesture they see a
+  stronger confirm with explicit body copy ("This will remove every
+  collaborator's annotations from this page"). Replaces the current
+  diff-detection wipe brake as the long-term safety. Phase scope:
+  medium — author/owner identity already lands per Phase 28 origin
+  payload, this is mostly UI plumbing + confirmation modals +
+  scoped delete API. Likely v2.4 close-out or early v2.5. `[PDF-App]`
 
 ---
 
