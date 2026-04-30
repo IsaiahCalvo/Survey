@@ -280,6 +280,24 @@ export function deserializeRowToFabricObject(row) {
     if (!fabricObject.id && !fabricObject.data.id) {
       fabricObject.data.id = row.highlight_id;
     }
+    // Bug 1 fix (2026-04-30): stamp highlightId onto the fabric object itself
+    // when the row IS a legacy survey highlight (fabric-carrying highlight row).
+    // SVGAnnotationLayer.jsx ~line 1248 has a skip-guard `if (obj.highlightId)
+    // continue;` that exists to prevent double-render: survey highlights are
+    // supposed to render ONLY through the dedicated `surveyHighlightElements`
+    // memo, NOT through the main fabric annotations loop. The skip-guard
+    // depends on `obj.highlightId` being set on the fabric object — which it
+    // wasn't, after a cloud-roundtrip deserialization, so the same highlight
+    // got rendered TWICE on the second device (once via the survey memo, once
+    // via the main loop). Two semi-transparent yellow rects compositing to a
+    // darker yellow is exactly what the user reported. Conditional on
+    // isLegacyFabricHighlightRow so we don't accidentally stamp `.highlightId`
+    // onto regular fabric annotations (pen, shape, text — they share the
+    // `highlight_id` column as their generic annotation ID, but their fabric
+    // objects must NOT be skipped by the SVG layer's main loop).
+    if (isLegacyFabricHighlightRow(row)) {
+      fabricObject.highlightId = row.highlight_id;
+    }
   }
 
   return {

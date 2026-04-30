@@ -1216,6 +1216,13 @@ const SVGAnnotationLayer = memo(({
       pageScopedHidden: [],
       noElementDispatched: [],
       maxPreviewCap: [],
+      // Bug 1 diag (2026-04-30): track every fabric object that the skip-guard
+      // dropped because it carries a highlightId. This bucket should match the
+      // count of survey highlights rendered through the dedicated memo. If a
+      // survey highlight ID appears in the layer WITHOUT an entry here, it
+      // means the deserializer-stamp regression is back and the same highlight
+      // is rendering twice. Inspect via window.__diagSVGFilterStats[page].
+      surveyHighlightSkip: [],
     };
 
     // UX: in eraser mode the SVG layer renders every imported annotation,
@@ -1246,6 +1253,11 @@ const SVGAnnotationLayer = memo(({
       // surveyHighlightElements memo below so highlightAnnotations state stays
       // the single source of truth for survey highlights.
       if (obj.highlightId) {
+        // Bug 1 diag — track every skip so the user can compare against the
+        // surveyHighlightElements render set; a mismatch means the de-
+        // serializer regression is back and the same highlight is rendering
+        // twice (darker on second device).
+        dropReasons.surveyHighlightSkip.push({ i, highlightId: obj.highlightId });
         continue;
       }
       // obj.visible is a transient Fabric runtime flag used by PAL to hide
@@ -1423,6 +1435,7 @@ const SVGAnnotationLayer = memo(({
           pageScopedHidden: dropReasons.pageScopedHidden.length,
           noElementDispatched: dropReasons.noElementDispatched.length,
           maxPreviewCap: dropReasons.maxPreviewCap.length,
+          surveyHighlightSkip: dropReasons.surveyHighlightSkip.length,
         },
         dropDetails: dropReasons,
       };

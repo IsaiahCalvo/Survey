@@ -6,6 +6,7 @@
 
 import { supabase } from '../supabaseClient';
 import { diffDeletedHighlightIds } from './highlightSyncDiff.js';
+import { highlightSyncDiag } from './highlightSyncDiag.js';
 
 const SUPABASE_PAGE_SIZE = 1000;
 
@@ -98,7 +99,19 @@ export async function getDocumentAnnotations(documentId) {
     if (!data || data.length < SUPABASE_PAGE_SIZE) break;
   }
 
-  return { data: rows.filter((row) => !isLegacyFabricHighlightRow(row)), error: null };
+  const filteredRows = rows.filter((row) => !isLegacyFabricHighlightRow(row));
+  // Bug 1/2 diag — count what the legacy hydrate kept versus dropped. If a
+  // highlight ever shows up DARKER on the second device, this log + the SVG
+  // layer's surveyHighlightSkip log answer "did the same row come through
+  // both legacy and new paths" in a single paste.
+  highlightSyncDiag('load.legacy', {
+    documentId,
+    totalRows: rows.length,
+    fabricCarryingDropped: rows.length - filteredRows.length,
+    keptCount: filteredRows.length,
+    keptIds: filteredRows.map((r) => r.highlight_id),
+  });
+  return { data: filteredRows, error: null };
 }
 
 /**
@@ -244,6 +257,20 @@ export async function syncAnnotationsToSupabase(documentId, userId, highlightAnn
     const deletedIds = diffDeletedHighlightIds(priorHighlightAnnotations, highlightAnnotations);
     if (deletedIds.length > 0) {
       const { success: deleteSuccess, error: deleteError } = await deleteAnnotations(documentId, deletedIds);
+      // Bug 2 diag — log every delete-diff push so the user can confirm that
+      // erases on this device generate cloud DELETE events. If a peer never
+      // gets the DELETE, this log is the smoking gun (this device WAS told
+      // about it; sync upstream is at fault).
+      highlightSyncDiag('push.delete-diff', {
+        documentId,
+        userId,
+        deletedIds,
+        deletedCount: deletedIds.length,
+        priorCount: Object.keys(priorHighlightAnnotations).length,
+        currentCount: Object.keys(highlightAnnotations || {}).length,
+        cloudResult: deleteSuccess ? 'OK' : 'FAILED',
+        cloudError: deleteSuccess ? null : (deleteError?.message || String(deleteError)),
+      });
       if (!deleteSuccess) {
         console.warn('[AnnotationSync] delete-diff failed (continuing with upsert):', deleteError, deletedIds);
       }
