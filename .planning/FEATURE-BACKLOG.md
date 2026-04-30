@@ -80,12 +80,12 @@ with almost zero risk.
 
 - [/] **Thumbnail panel** — custom `PagesPanel.jsx` exists and works, but needs a side-by-side comparison against Syncfusion's built-in panel and the `[PDF2]`/`[PDF-App]` implementations to identify gaps and polish opportunities `[PDF2][PDF-App]`
 - [/] **Full-text PDF search** — custom `SearchTextPanel.jsx` + `SearchContext` exists and works, but needs a side-by-side comparison against Syncfusion's built-in search and the `[PDF2]`/`[PDF-App]` implementations to identify gaps and polish opportunities `[PDF2][PDF-App]`
-- [ ] **Print button** — flip `enablePrint={true}` in the viewer (or wire Electron `win.webContents.print()`) `[PDF-App]`
-- [ ] **Clickable PDF link annotations** — flip `enableHyperlink={true}`; IPC `shell:openExternal` handler is already in `electron-main.js` `[PDF2]`
-- [ ] **Fillable form fields** — flip `enableFormFields={true}`; Syncfusion renders and collects field values natively `[PDF2][PDF-App]`
+- [x] **Print button** — DONE (verified 2026-04-30; `enablePrint={true}` active in `SyncfusionPDFContainer.jsx`, Electron Cmd+P + "Print with Markup" wired) `[PDF-App]`
+- [x] **Clickable PDF link annotations** — DONE (verified 2026-04-30; `enableHyperlink={true}` active, `hyperlinkClick` routes to `electronAPI.openExternal()`) `[PDF2]`
+- [x] **Fillable form fields** — DONE (verified 2026-04-30; `enableFormFields={true}` active, FormFields service injected) `[PDF2][PDF-App]`
 - [ ] **Form designer** — flip `enableFormDesigner={true}`; creates/edits form fields in-app `[PDF2][PDF-App]`
-- [ ] **"Open PDF..." native menu** — `dialog:openFile` IPC handler already exists; just add the File menu item in `electron-main.js` `[PDF-App]`
-- [ ] **"Export Annotated PDF" native menu** — `dialog:saveFile` IPC + export function already exist; add Cmd+Shift+E menu item `[PDF-App]`
+- [x] **"Open PDF..." native menu** — DONE (verified 2026-04-30; File menu has "Open PDF…" with Cmd+O sending `menu:open-pdf` IPC) `[PDF-App]`
+- [x] **"Export Annotated PDF" native menu** — DONE (verified 2026-04-30; File menu has "Export Annotated PDF…" with Cmd+Shift+E) `[PDF-App]`
 
 ---
 
@@ -104,7 +104,7 @@ items pay for themselves by catching regressions early.
 Polish the surfaces that every feature will touch. Build these before adding more
 features so new features feel finished from day one.
 
-- [ ] **"Loading document..." state** — spinner/message while a PDF is opening `[PDF2]`
+- [x] **"Loading document..." state** — DONE (verified 2026-04-30; "Loading document…" message + icon spinner in `App.jsx` when `isLoading` is true) `[PDF2]`
 - [ ] **"Failed to render PDF" error state** — clean error when a PDF is corrupted `[PDF2]`
 - [ ] **Empty dashboard state** — "Upload a PDF to get started" prompt `[PDF-App]`
 - [ ] **Empty comments state** — "No comments yet" message `[PDF-App]`
@@ -270,28 +270,25 @@ inline without diving into menus.
 Captured from session work to ensure nothing slips. Order is recommended
 build order, not strict dependency.
 
-- [/] **Eraser cross-device sync** — fixed in v0.1.24 (delete diff + remote-
-  echo loop). Awaiting user soak test on Windows + Mac. `[PDF-App]`
+- [x] **Eraser cross-device sync** — DONE (v0.1.24 — delete diff + remote-echo
+  loop closure; commits `dc1758bd` + `63479fb1`; user-confirmed in soak) `[PDF-App]`
 - [ ] **Windows catch-up on document open** — small race window between
   hydrate and realtime subscribe means recently-pushed Mac marks can fall
   through the gap until the user refreshes. Fix: subscribe first, queue
   events, then hydrate, then drain queued events (or re-hydrate on focus).
   `[PDF-App]`
-- [ ] **Sync status indicator (top-right corner)** — replaces current
-  survey icon position. Three states: green dot "Up to date" · orange
-  spinner "Syncing…" · red dot "Offline · N saved locally". See mockup at
-  `/tmp/sync-indicator-mockup.html`. `[PDF-App]`
+- [x] **Sync status indicator** — DONE (verified 2026-04-30; `SyncStatusChip.jsx`
+  mounted in `PDFSidebar.jsx` bottom-left footer — NOT top-right as originally
+  planned; green/orange/red states correct). User moved this to bottom-left
+  along with presence avatars. `[PDF-App]`
 - [ ] **Survey icon move** — relocate the top-right survey button under
   the left rail divider, beneath Spaces, so the four navigation tabs
   (Pages / Search / Marks / Spaces) stay visually grouped and Survey
   reads as a separate tool. `[PDF-App]`
-- [ ] **Live presence row (multi-user avatars)** — Microsoft Excel /
-  Google Docs pattern: stacked overlapping circles in the top-right
-  corner showing every user currently viewing the document, with a tiny
-  "N viewing" count tucked beneath. Cap visible avatars at ~4 with a
-  "+N" pill for overflow. Anyone with the doc open shows up — viewers
-  AND editors. Initials avatar already exists for the local user; this
-  expands to show remote users via the existing presence channel.
+- [x] **Live presence row (multi-user avatars)** — DONE (verified 2026-04-30;
+  `PresenceAvatars.jsx` mounted in `PDFSidebar.jsx` bottom-left footer alongside
+  the sync status chip — NOT top-right as originally planned. Stacked overlapping
+  circles, ~4 visible cap with "+N" overflow pill, viewers + editors both shown).
   `[PDF-App]`
 - [ ] **Cloud sync tier gate** — the auth context already exposes a
   `features.cloudSync` flag for Pro/Enterprise/Developer, but the sync
@@ -335,19 +332,14 @@ build order, not strict dependency.
   answer to "what does the user do when sync fails — just hope?"
   Phase scope: large. Probably belongs near the end of v2.4 or in
   v2.5 alongside the highlight migration. `[PDF-App]`
-- [ ] **Per-user delete authority + confirm-before-wipe** — captured
-  2026-04-30. Match the Drawboard / Lumin pattern. By default a
-  collaborator can only delete the marks they themselves drew; the
-  document author/owner is the only role that can delete other
-  users' marks. When a user triggers a "delete all of mine" gesture
-  they see an "Are you sure?" modal; when an owner triggers a
-  "delete everyone's marks on this page/doc" gesture they see a
-  stronger confirm with explicit body copy ("This will remove every
-  collaborator's annotations from this page"). Replaces the current
-  diff-detection wipe brake as the long-term safety. Phase scope:
-  medium — author/owner identity already lands per Phase 28 origin
-  payload, this is mostly UI plumbing + confirmation modals +
-  scoped delete API. Likely v2.4 close-out or early v2.5. `[PDF-App]`
+- [x] **Per-user delete authority + confirm-before-wipe** — SHIPPED
+  2026-04-30 as Phase 35. All 6 plans landed across 5 waves; 23/23 unit
+  tests green; wipe brake retired; `wouldWipeCloud` grep = 0; production
+  bundle clean. Permission gates wired across selection / hover / eraser /
+  marquee / bulk-delete; collaborator + owner confirmation modals + 5-6
+  second undo toast + one-shot cleanup banner all mounted. Phase closed
+  DONE_WITH_CONCERNS — 6 live UAT steps deferred to a 2nd-account session
+  (resumption guide in `memory/project_phase35_uat_pending.md`). `[PDF-App]`
 
 ---
 
