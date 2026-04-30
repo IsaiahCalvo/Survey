@@ -21159,7 +21159,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         return user?.id || null;
       }
     }
-    return pdfFile?.user_id || null;
+    // Bug fix (2026-04-30): when pdfFile.user_id is missing (some load paths
+    // never resolve it — e.g. opening a PDF outside the Dashboard fetch flow),
+    // FALL BACK to the current user's id rather than null. Returning null
+    // makes canModify reject every delete because isOwner needs both args to
+    // be strings, and old annotations lack authorId, so the bulk-delete planner
+    // returns 'no-op' and the user gets a silent broken delete. Treating the
+    // viewer as the owner when ownership is unknown matches pre-Phase-35
+    // behavior (where every user could delete everything in their own session)
+    // and preserves the safety model: the only viewer who could be wrong about
+    // ownership is the doc opener, who already has full local access anyway.
+    return pdfFile?.user_id || user?.id || null;
   }, [pdfFile?.user_id, user?.id]);
 
   // Phase 35 Plan 04 — bulk-delete modal + undo toast layer.
