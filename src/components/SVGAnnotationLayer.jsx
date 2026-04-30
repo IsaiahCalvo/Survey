@@ -1138,26 +1138,30 @@ const SVGAnnotationLayer = memo(({
     // DIAG: log what the SVG layer receives for each page so we can
     // cross-reference with the [PDF-IMPORT] log. Only log when there's
     // a PDF-imported object to avoid noise on non-imported pages.
-    try {
-      const hasPdfImported = objects.some((o) => o?.isPdfImported);
-      if (hasPdfImported) {
-        console.log(`[SVG-RENDER] Page ${pageNumber} received ${objects.length} objects`,
-          objects.map((o, i) => ({
-            i,
-            type: o?.type,
-            pdfId: o?.pdfAnnotationId,
-            text: typeof o?.text === 'string' ? o.text.slice(0, 30) : undefined,
-            visible: o?.visible,
-            isPdfImported: o?.isPdfImported,
-            left: o?.left,
-            top: o?.top,
-            width: o?.width,
-            height: o?.height,
-          }))
-        );
+    // 2026-04-30: silenced — fires per-page on every memo recompute.
+    // Re-enable per session via window.__DIAG_SVG_IMPORT_RECV = true.
+    if (typeof window !== 'undefined' && window.__DIAG_SVG_IMPORT_RECV) {
+      try {
+        const hasPdfImported = objects.some((o) => o?.isPdfImported);
+        if (hasPdfImported) {
+          console.log(`[SVG-RENDER] Page ${pageNumber} received ${objects.length} objects`,
+            objects.map((o, i) => ({
+              i,
+              type: o?.type,
+              pdfId: o?.pdfAnnotationId,
+              text: typeof o?.text === 'string' ? o.text.slice(0, 30) : undefined,
+              visible: o?.visible,
+              isPdfImported: o?.isPdfImported,
+              left: o?.left,
+              top: o?.top,
+              width: o?.width,
+              height: o?.height,
+            }))
+          );
+        }
+      } catch (e) {
+        console.warn('[SVG-RENDER] diag log failed', e);
       }
-    } catch (e) {
-      console.warn('[SVG-RENDER] diag log failed', e);
     }
 
     if (objects.length === 0) return [];
@@ -2082,10 +2086,14 @@ const SVGAnnotationLayer = memo(({
   );
 
   // Log mount/unmount
+  // 2026-04-30: silenced — re-fires on every objectCount/calloutCount/size
+  // change, not just true mount. Re-enable via window.__DIAG_SVG_MOUNT = true.
   useEffect(() => {
-    console.log(
-      `[SVG p${pageNumber}] MOUNT — ${objectCount} annotations, ${calloutCount} callouts, viewBox=${width}x${height}`
-    );
+    if (typeof window !== 'undefined' && window.__DIAG_SVG_MOUNT) {
+      console.log(
+        `[SVG p${pageNumber}] MOUNT — ${objectCount} annotations, ${calloutCount} callouts, viewBox=${width}x${height}`
+      );
+    }
     return () => {
       // Cleanup on unmount
     };
@@ -2097,9 +2105,13 @@ const SVGAnnotationLayer = memo(({
       return;
     }
     if (importedDebugRef.current !== importedDebugSignature) {
-      console.log(
-        `[SVG-Imported p${pageNumber}] renderSummary — imported=${importedDebugRows.length}, activeSpaceId=${activeSpaceId}, selectedSpaceId=${selectedSpaceId}, activeRegionId=${activeRegionId}, showSurveyPanel=${showSurveyPanel}, rows=${JSON.stringify(importedDebugRows.slice(0, 12))}`
-      );
+      // 2026-04-30: silenced — emits a JSON blob per page on every imported
+      // annotation change. Re-enable via window.__DIAG_SVG_RENDER_SUMMARY = true.
+      if (typeof window !== 'undefined' && window.__DIAG_SVG_RENDER_SUMMARY) {
+        console.log(
+          `[SVG-Imported p${pageNumber}] renderSummary — imported=${importedDebugRows.length}, activeSpaceId=${activeSpaceId}, selectedSpaceId=${selectedSpaceId}, activeRegionId=${activeRegionId}, showSurveyPanel=${showSurveyPanel}, rows=${JSON.stringify(importedDebugRows.slice(0, 12))}`
+        );
+      }
       importedDebugRef.current = importedDebugSignature;
     }
   }, [
@@ -2113,9 +2125,13 @@ const SVGAnnotationLayer = memo(({
   ]);
 
   // Log every render (to detect re-renders during zoom)
-  console.log(
-    `[SVG p${pageNumber}] render — ${objectCount} objs, viewBox=${width}x${height}`
-  );
+  // 2026-04-30: silenced — fires on EVERY render of every page. Re-enable
+  // per session via window.__DIAG_SVG_RENDER = true.
+  if (typeof window !== 'undefined' && window.__DIAG_SVG_RENDER) {
+    console.log(
+      `[SVG p${pageNumber}] render — ${objectCount} objs, viewBox=${width}x${height}`
+    );
+  }
 
   // ---------------------------------------------------------------------------
   // Render: wrap each annotation with hit-area, hover, and interaction handlers
@@ -2806,13 +2822,9 @@ const SVGAnnotationLayer = memo(({
           }
 
           if (objTypeLower === 'path' && Array.isArray(renderObj.path) && renderObj.path.length > 0) {
-            // UX: pen-stroke hover halo traces the actual stroke geometry
-            // (soft blue glow along the squiggle), not the surrounding bbox
-            // rectangle — matches the line hover pattern above at :1360-1369.
-            // A bbox-rect halo around a freehand stroke looks disconnected
-            // from the shape. Hit-area stays as the bbox rect (same behavior
-            // as before this change) so click target is unchanged; only the
-            // visual glow is stroke-shaped.
+            // UX: pen-stroke hover halo and hit target both trace the actual
+            // path geometry, not the surrounding bbox. Small marks like an
+            // "i" dot and its stem must remain independently selectable.
             const pathAttrs = renderPathToSvgAttrs(renderObj);
             const pathD = renderPathToSvgD(renderObj, pathAttrs);
             const isFilledPdfInkOutline =
@@ -2862,6 +2874,12 @@ const SVGAnnotationLayer = memo(({
             const hoverStrokeWidth = isFilledPdfInkOutline
               ? Math.max(1.25 * inverseScale, Math.min(2 * inverseScale, sw + 0.5))
               : Math.max(6, sw + 4);
+            const hitStrokeWidth = isFilledPdfInkOutline
+              ? Math.max(0.75 * inverseScale, 0.75)
+              : Math.max(pathAttrs.strokeWidth || sw || 1, 1.5 * inverseScale);
+            const pathPointerEvents = isSelectTool && isObjectInteractive
+              ? (isFilledPdfInkOutline ? 'fill' : 'stroke')
+              : 'none';
             return (
               <g>
                 {annotationIsHovered && (
@@ -2879,16 +2897,17 @@ const SVGAnnotationLayer = memo(({
                     style={{ pointerEvents: 'none' }}
                   />
                 )}
-                {/* Bbox hit area — unchanged from generic branch. Keeps the
-                    click target identical so hover-swap is purely visual. */}
-                <rect
-                  x={bbox.left}
-                  y={bbox.top}
-                  width={Math.max(bbox.width, 10)}
-                  height={Math.max(bbox.height, 10)}
-                  fill="transparent"
-                  stroke="none"
-                  pointerEvents={isSelectTool && isObjectInteractive ? 'all' : 'none'}
+                <path
+                  d={pathD}
+                  transform={pathTransform}
+                  fill={isFilledPdfInkOutline ? 'rgba(0,0,0,0.001)' : 'none'}
+                  stroke={isFilledPdfInkOutline ? 'none' : 'rgba(0,0,0,0.001)'}
+                  strokeWidth={hitStrokeWidth}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  vectorEffect={pathAttrs.vectorEffect}
+                  pointerEvents={pathPointerEvents}
+                  data-path-hit-target="true"
                   onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
                   onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
                   onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}

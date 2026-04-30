@@ -95,7 +95,7 @@ function ensureLocalObjectId(obj, fallbackId) {
  * @returns {Promise<{ migrated: boolean, pushed: number, skipped: number, error?: object }>}
  */
 export async function migrateLocalAnnotationsToCloud(ctx) {
-  const { documentId, userId, pdfId, onStatus } = ctx || {};
+  const { documentId, userId, pdfId, onStatus, existingCloudResult = null } = ctx || {};
   if (!documentId || !userId || !pdfId) {
     return { migrated: false, pushed: 0, skipped: 0, error: new Error('missing ctx fields') };
   }
@@ -111,8 +111,12 @@ export async function migrateLocalAnnotationsToCloud(ctx) {
   const localByPage = readLocalAnnotationsByPage(pdfId);
   const localCallouts = readLocalCallouts(pdfId);
 
-  // Fetch existing cloud rows so we only push what's missing.
-  const cloudResult = await loadAllNonHighlightAnnotations(documentId);
+  // Fetch existing cloud rows so we only push what's missing. When hydrate
+  // already loaded the same snapshot, reuse it instead of running another
+  // full-table read during startup.
+  const cloudResult = existingCloudResult && !existingCloudResult.error
+    ? existingCloudResult
+    : await loadAllNonHighlightAnnotations(documentId);
   if (cloudResult.error) {
     if (onStatus) onStatus({ stage: 'error', error: cloudResult.error });
     return { migrated: false, pushed: 0, skipped: 0, error: cloudResult.error };

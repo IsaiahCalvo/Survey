@@ -119,17 +119,22 @@ function allSubpathsAreClosed(path) {
 }
 
 function shouldFillPdfInkOutline(obj) {
-  if (!isPdfImportedPath(obj) || obj?.pdfAnnotationType !== 'Ink') return false;
+  const isPdfInk =
+    isPdfImportedPath(obj) ||
+    obj?.layer === 'pdf-annotations' ||
+    obj?.data?.pdfAnnotationType === 'Ink' ||
+    obj?.data?.pdfInkRenderMode === FILLED_PDF_INK_MODE;
+  if (!isPdfInk) return false;
   if (obj?.pdfInkRenderMode === FILLED_PDF_INK_MODE || obj?.data?.pdfInkRenderMode === FILLED_PDF_INK_MODE) {
     return true;
   }
-  if (isVisiblePaint(obj?.fill)) return false;
 
   // Drawboard/Adobe often save marker dots and pressure ink as closed
   // zero-width outlines. Existing cloud rows may only have our 0.9 fallback
-  // width, so detect the geometry too instead of relying only on new imports.
+  // width, and some rows may already have a fill but lack the marker, so
+  // detect the geometry too instead of relying only on new imports.
   const rawWidth = Number(obj?.strokeWidth ?? 1);
-  return rawWidth <= 1.1 && allSubpathsAreClosed(obj?.path);
+  return rawWidth <= 1.1 && hasSubstantiveClosedSubpath(obj?.path);
 }
 
 function formatPathCommand(seg) {
@@ -146,11 +151,12 @@ function collectSubpaths(path) {
     if (seg[0] === 'M') {
       if (current?.points?.length > 0) subpaths.push(current);
       const point = getPathEndpoint(seg);
-      current = { points: point ? [point] : [], hasCubic: false };
+      current = { points: point ? [point] : [], commands: [seg], hasCubic: false };
       continue;
     }
 
     if (!current) continue;
+    current.commands.push(seg);
 
     if (seg[0] === 'Q') {
       current.points.push({ x: seg[1], y: seg[2] });
@@ -174,6 +180,35 @@ function collectSubpaths(path) {
 
   if (current?.points?.length > 0) subpaths.push(current);
   return subpaths;
+}
+
+function getPointBounds(points) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const point of points || []) {
+    if (!point || typeof point.x !== 'number' || typeof point.y !== 'number') continue;
+    minX = Math.min(minX, point.x);
+    minY = Math.min(minY, point.y);
+    maxX = Math.max(maxX, point.x);
+    maxY = Math.max(maxY, point.y);
+  }
+  if (!Number.isFinite(minX) || !Number.isFinite(minY)) return null;
+  return { width: maxX - minX, height: maxY - minY };
+}
+
+function isClosedSubpath(points) {
+  const bounds = getPointBounds(points);
+  if (!bounds || bounds.width <= 0 || bounds.height <= 0) return false;
+  const closeThreshold = Math.max(0.75, Math.min(bounds.width, bounds.height) * 0.25);
+  return distance(points[0], points[points.length - 1]) <= closeThreshold;
+}
+
+function hasSubstantiveClosedSubpath(path) {
+  return collectSubpaths(path).some((subpath) => {
+    if (!subpath.points || subpath.points.length < 3) return false;
+    const bounds = getPointBounds(subpath.points);
+    if (!bounds || bounds.width < 0.5 || bounds.height < 0.5) return false;
+    return isClosedSubpath(subpath.points);
+  });
 }
 
 function dedupeAdjacentPoints(points) {
@@ -221,9 +256,10 @@ function smoothClosedOutlinePathD(path) {
 
   for (const subpath of subpaths) {
     if (subpath.hasCubic) return null;
-    const d = closedCatmullRomToCubicPath(subpath.points);
-    if (!d) return null;
-    smoothed.push(d);
+    const d = subpath.points.length >= 3
+      ? closedCatmullRomToCubicPath(subpath.points)
+      : null;
+    smoothed.push(d || subpath.commands.map(formatPathCommand).join(' '));
   }
 
   return smoothed.join(' ');

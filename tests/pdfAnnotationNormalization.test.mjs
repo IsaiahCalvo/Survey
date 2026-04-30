@@ -225,3 +225,81 @@ test('legacy closed thin imported Ink rows render filled even without new import
   assert.match(d, /\bC\b/, 'closed outline should render with smoothed cubic curves');
   assert.match(d, /\bZ\b/, 'closed outline should stay closed for fill rendering');
 });
+
+test('filled legacy imported Ink rows keep smoothing even if marker metadata is missing', () => {
+  const legacyFilledRow = {
+    type: 'path',
+    path: [
+      ['M', 0, 0],
+      ['L', 10, 0],
+      ['L', 10, 10],
+      ['L', 0, 10],
+      ['L', 0.1, 0.1],
+    ],
+    stroke: null,
+    strokeWidth: 0,
+    fill: 'rgba(255, 225, 58, 0.301961)',
+    isPdfImported: true,
+    pdfAnnotationType: 'Ink',
+    pdfAnnotationId: 'legacy-filled-outline',
+  };
+
+  const attrs = renderPathToSvgAttrs(legacyFilledRow);
+  assert.equal(attrs.stroke, 'none');
+  assert.equal(attrs.fill, legacyFilledRow.fill);
+  assert.equal(attrs.smoothClosedOutline, true);
+
+  const d = renderPathToSvgD(legacyFilledRow, attrs);
+  assert.match(d, /\bC\b/, 'filled legacy outline should still render with smoothed cubic curves');
+});
+
+test('synced PDF-layer filled Ink rows keep smoothing even if import flags are missing', () => {
+  const syncedRow = {
+    type: 'path',
+    path: [
+      ['M', 0, 0],
+      ['L', 12, 0],
+      ['L', 12, 12],
+      ['L', 0, 12],
+      ['L', 0.1, 0.1],
+    ],
+    stroke: null,
+    strokeWidth: 0,
+    fill: 'rgba(87, 142, 255, 0.301961)',
+    layer: 'pdf-annotations',
+  };
+
+  const attrs = renderPathToSvgAttrs(syncedRow);
+  assert.equal(attrs.stroke, 'none');
+  assert.equal(attrs.fill, syncedRow.fill);
+  assert.equal(attrs.smoothClosedOutline, true);
+
+  const d = renderPathToSvgD(syncedRow, attrs);
+  assert.match(d, /\bC\b/, 'metadata-stripped synced PDF outline should stay smooth');
+});
+
+test('synced filled Ink rows with tiny open subpaths still smooth the main outline', () => {
+  const syncedRow = {
+    type: 'path',
+    path: [
+      ['M', 0, 0],
+      ['Q', 4, 0, 6, 2],
+      ['Q', 8, 4, 6, 6],
+      ['Q', 4, 8, 0, 6],
+      ['Q', -2, 4, 0, 0],
+      ['M', 2, 2],
+      ['L', 2.1, 2.1],
+    ],
+    stroke: null,
+    strokeWidth: 0,
+    fill: 'rgba(255, 0, 0, 1)',
+    layer: 'pdf-annotations',
+  };
+
+  const attrs = renderPathToSvgAttrs(syncedRow);
+  assert.equal(attrs.smoothClosedOutline, true);
+
+  const d = renderPathToSvgD(syncedRow, attrs);
+  assert.match(d, /\bC\b/, 'main outline should be converted to cubic curves');
+  assert.match(d, /M 2 2 L 2.1 2.1/, 'tiny open subpath should be preserved');
+});

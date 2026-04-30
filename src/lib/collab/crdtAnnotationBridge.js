@@ -101,7 +101,7 @@ const FABRIC_CUSTOM_PROPS = [
   'strokeUniform', 'spaceId', 'moduleId', 'regionId',
   'data', 'name', 'highlightId', 'needsBIC',
   'globalCompositeOperation', 'layer',
-  'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType',
+  'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode',
 ];
 
 /**
