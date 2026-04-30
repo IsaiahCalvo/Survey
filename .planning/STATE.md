@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.4
-milestone_name: CRDT Foundation + Real-Time Sync
-status: executing
-stopped_at: Completed 35-01-PLAN.md (Wave 0 test scaffolds — Plans 35-02..35-06 unblocked)
-last_updated: "2026-04-30T16:55:10.456Z"
-last_activity: "2026-04-30 16:53 — Phase 35 Plan 01 shipped (4 unit + 7 e2e Wave 0 scaffolds; baseline 393p/8f/29s preserved; +23 new skips)"
+milestone: v2.3
+milestone_name: Tools Polish
+status: completed
+stopped_at: Completed 35-02-PLAN.md (3 pure-JS helpers; 17 Wave 0 unit tests green)
+last_updated: "2026-04-30T17:03:48.449Z"
+last_activity: "2026-04-30 17:01 — Phase 35 Plan 02 shipped (3 pure-JS helpers; 17 Wave 0 unit tests skip → green; baseline 410p/8f/12s)"
 progress:
   total_phases: 15
   completed_phases: 6
   total_plans: 39
-  completed_plans: 33
+  completed_plans: 34
   percent: 97
 ---
 
@@ -21,15 +21,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-14)
 
 **Core value:** Line/arrow/text-callout tools match the precision and feel of the `combined-tools` reference app, AND all annotations render through the same SVG pipeline for a unified select / edit / erase / undo story.
-**Current focus:** Milestone v2.4 — Phase 35 (Per-User Delete Authority + Confirm-Before-Wipe) executing. Plan 35-01 shipped 2026-04-30; Plans 35-02..35-06 unblocked.
+**Current focus:** Milestone v2.4 — Phase 35 (Per-User Delete Authority + Confirm-Before-Wipe) executing. Plans 35-01 + 35-02 shipped 2026-04-30; Plans 35-03..35-06 unblocked.
 
 ## Current Position
 
 Milestone: v2.4 — CRDT Foundation + Real-Time Sync (Yjs port; SVG/Fabric layers immutable). Phase 35 retires the 2026-04-27 wipe brake and ships the Drawboard/Lumin permission model.
-Phase: **Phase 35 EXECUTING** — Plan 35-01 (Wave 0 test scaffolds) shipped 2026-04-30 16:53. Plans 35-02 (permission helper) / 35-03 (selection scope filter) / 35-04 (modals + undo toast) / 35-05 (brake retirement + cleanup banner) / 35-06 (e2e flip green) unblocked.
-Plan: Plan 35-01 closed 2026-04-30 16:53 — 4 unit test scaffolds (permissionScope / buildBulkDeletePlan / undoToastQueue / cleanupResidueAudit) + 7 e2e specs (collaborator-marquee-scope / collaborator-eraser-scope / collaborator-bulk-delete-confirm / owner-cross-author-confirm / owner-edit-no-prompt / single-delete-undo-toast / cleanup-banner-one-shot). 23 unit-test cases all skip cleanly today via per-test existsSync skip-guard pattern lifted verbatim from Phase 27/28/29; 7 e2e specs land as test.describe.fixme with full UAT bodies inline so Plan 35-06 unwraps in one diff. Locked enqueue signature `{ kind, message, count?, onUndo }` for undo toast queue, locked test seam contract (window.__phase35TestRoleOverride / __phase35SeedResidue / __selectedAnnotationIds + per-spec __phase35Seed* / __phase35SelectTool / __phase35GetAnnotationById / __phase35SnapshotAnnotation helpers). Owner-edit-no-prompt spec added per checker W7 covers AC #6 directly. Test baseline preserved exactly: 393 pass / 8 fail / 29 skip (was 6; +23 new Phase 35 skips). Zero src/ changes; commits b6b7e5e4 + fe135058 + the metadata commit.
-Status: Plan 35-01 DONE. Next: Plan 35-02 (lands `src/lib/collab/permissionScope.js` — flips 6 unit tests skip → green automatically).
-Last activity: 2026-04-30 16:53 — Phase 35 Plan 01 shipped (4 unit + 7 e2e Wave 0 scaffolds; baseline 393p/8f/29s preserved; +23 new skips)
+Phase: **Phase 35 EXECUTING** — Plans 35-01 + 35-02 shipped 2026-04-30. Plans 35-03 (selection scope filter) / 35-04 (modals + undo toast) / 35-05 (brake retirement + cleanup banner) / 35-06 (e2e flip green) unblocked.
+Plan: Plan 35-02 closed 2026-04-30 17:01 — 3 pure-JS helper modules: `src/lib/collab/permissionScope.js` (4 exports: isOwner / getAnnotationAuthorId / canModify / filterByAuthor), `src/lib/collab/bulkDeletePlan.js` (1 export: buildBulkDeletePlan emitting 4-mode plan), `src/lib/collab/cleanupResidueAudit.js` (1 export: auditResidue with sticky-per-doc dismissal). 17 Wave 0 unit tests (6 + 6 + 5) flipped skip → green automatically via the existsSync skip-guard pattern. Test baseline: 393 pass / 8 fail / 29 skip → 410 pass / 8 fail / 12 skip (+17 pass exactly equals new green tests; failures unchanged). Cross-imports verified — bulkDeletePlan + cleanupResidueAudit both import from permissionScope (single ownership source of truth). Two Rule-3 deviations auto-fixed and documented: function signatures reconciled with Plan 35-01 test contract (destructured options vs PLAN positional sketch; localUserDeletedSet array vs PLAN residueCandidateIds Set sketch). Commits 6a797b9e + 46445b79 + 981db77f + the metadata commit.
+Status: Plan 35-02 DONE. Next: Plan 35-03 (wires selection / hover / marquee / eraser scope through `permissionScope.canModify` + `filterByAuthor` — collaborator role becomes visible-but-locked for foreign-author marks).
+Last activity: 2026-04-30 17:01 — Phase 35 Plan 02 shipped (3 pure-JS helpers; 17 Wave 0 unit tests skip → green; baseline 410p/8f/12s)
 
 Progress: [██████████] 97% — Phase 27 functionally complete (5/5 plans, reconciliation pending); Phase 28 functionally complete (6/6 plans); Phase 29 functionally complete (6/6 plans, 29-RECONCILIATION.md DONE_WITH_CONCERNS); **Phase 30 CLOSED (7/7 plans, verifier 19/19, reconciliation DONE)**; v2.4 milestone overall: 4 of 8 phases shipped (27 modulo reconciliation, 28, 29, 30); 0 Phase 31/32/33/34; v2.3 closed at Phase 15
 
@@ -83,6 +83,7 @@ Progress: [██████████] 97% — Phase 27 functionally complet
 | Phase 30-migration-dual-write P06 | 12 | 1 tasks | 1 files |
 | Phase 30-migration-dual-write P07 | 6 | 2 tasks | 4 files |
 | Phase 35 P01 | 8 | 2 tasks | 11 files |
+| Phase 35-per-user-delete-authority-confirm-before-wipe P02 | 3 min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -233,6 +234,11 @@ Progress: [██████████] 97% — Phase 27 functionally complet
 - [Phase 35]: Plan 35-01: Locked enqueue signature { kind, message, count?, onUndo } for undo toast queue across all 6 tests in undoToastQueue.test.mjs (15 distinct sites). Production hook for Plan 35-04 must split into useUndoToast default export + createUndoToastQueue named export so tests advance time deterministically without React renderer.
 - [Phase 35]: Plan 35-01: Test seam contract locked in plan frontmatter and consumed verbatim by 7 e2e specs — window.__phase35TestRoleOverride / __phase35SeedResidue / __selectedAnnotationIds + per-spec helpers (__phase35Seed* / __phase35SelectTool / __phase35GetAnnotationById / __phase35SnapshotAnnotation). Plans 35-03 / 35-04 / 35-05 / 35-06 attach at the same spelling.
 - [Phase 35]: Plan 35-01: owner-edit-no-prompt.spec.mjs added per checker W7 — covers AC #6 (owner editing foreign annotations without confirmation) directly via dialog-count assertions during drag/resize/rotate. Defends FabricEditCanvas no-branching invariant from CONTEXT.md DO NOT CHANGE.
+- [Phase 35-per-user-delete-authority-confirm-before-wipe]: Plan 35-02: permissionScope.canModify and filterByAuthor use destructured options shape ({ annotation, viewerId, documentOwnerId } / { annotations, viewerId, documentOwnerId }) — locked by Plan 35-01 test scaffold (designated <read_first> contract source of truth), not the PLAN's positional-args sketch
+- [Phase 35-per-user-delete-authority-confirm-before-wipe]: Plan 35-02: auditResidue takes localUserDeletedSet (Array<{id, deletedAt}>) and isViewerOwner (boolean) directly — locked by Plan 35-01 test scaffold; cutoff is strict-less-than against the most-recent deletedAt timestamp; boundary case (lastEditedAt === cutoff) is treated as legitimate, not residue
+- [Phase 35-per-user-delete-authority-confirm-before-wipe]: Plan 35-02: author resolution chain is meta.authorId > top-level annotation.authorId > data.authorId > data.userId — top-level was added vs PLAN sketch because Plan 35-01 fixtures put authorId at top level of annotation object; supporting both shapes is one fallback line with zero downstream cost
+- [Phase 35-per-user-delete-authority-confirm-before-wipe]: Plan 35-02: owner-mode filterByAuthor returns the input array REFERENCE unchanged (not a copy) — preserves React reference-equality memoization in the SVG-layer hot path that runs every render; per-render filter copy would invalidate memos and force every annotation to re-render even when ownership unchanged
+- [Phase 35-per-user-delete-authority-confirm-before-wipe]: Plan 35-02: byAuthor breakdown excludes owner's own marks — modal copy reads 'X yours, Y from Z other people'; own-mark count is reported via ownIds.length not as a byAuthor entry (test #5 explicitly asserts byAuthor[OWNER_ID] === undefined)
 
 ### Roadmap Evolution
 
@@ -266,8 +272,8 @@ Progress: [██████████] 97% — Phase 27 functionally complet
 
 ## Session Continuity
 
-Last session: 2026-04-30T16:54:53.416Z
-Stopped at: Completed 35-01-PLAN.md (Wave 0 test scaffolds)
+Last session: 2026-04-30T17:03:48.445Z
+Stopped at: Completed 35-02-PLAN.md (3 pure-JS helpers; 17 Wave 0 unit tests green)
 
 ### Resume instructions for the next session (read carefully)
 
