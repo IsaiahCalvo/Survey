@@ -351,6 +351,21 @@ build order, not strict dependency.
 
 ---
 
+## Deferred UAT — needs a 2nd account
+
+- [ ] **Phase 35 UAT walkthrough — 6 live tests on a mixed-author PDF.**
+  Phase 35 (Per-User Delete Authority + Confirm-Before-Wipe) shipped
+  2026-04-30 as DONE_WITH_CONCERNS. Code is structurally verified (23/23
+  unit tests, grep + tree-shake checks all green). The 6 deferred tests
+  cover marquee scope, eraser scope, click no-chrome, collaborator bulk
+  modal, owner cross-author modal, and cleanup banner one-shot. Most need
+  at least one foreign-author annotation on the test PDF — likely a 2nd
+  Supabase account or a temporary fake-authorId seam. Diag logger and
+  role-override seam are pre-wired; resumption guide lives at
+  `memory/project_phase35_uat_pending.md` in the auto-memory store. When
+  user says "let's test phase 35" or similar, follow that guide step by
+  step.
+
 ## How to use this file
 
 When the user says "what's next to work on" or "what else do we have to add",
