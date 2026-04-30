@@ -159,6 +159,10 @@ function YDocProviderInner({ docId, children, closeDocument }) {
   const [role, setRole] = useState('unknown');
   const [isHydrating, setIsHydrating] = useState(true);
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  // 2026-04-29 — when SyncStatusChip's manual retry exhausts (4 failed attempts),
+  // it dispatches a window event so the banner surfaces immediately rather than
+  // waiting the 30s stuck-queue threshold. Reset on document mount.
+  const [manualRetryExhausted, setManualRetryExhausted] = useState(false);
 
   // Phase 28 state additions — accessRevoked drives ReadOnlyGate; transportState
   // is exposed for any future status surfaces (sync chip in Phase 33);
@@ -194,6 +198,7 @@ function YDocProviderInner({ docId, children, closeDocument }) {
     // Fresh mount → reset banner-dismiss state. Subsequent storage failures
     // re-show the banner; user can dismiss again per session.
     setBannerDismissed(false);
+    setManualRetryExhausted(false);
     setIsHydrating(true);
 
     const handle = attachLifecycle(ydoc, docId, {
@@ -743,6 +748,16 @@ function YDocProviderInner({ docId, children, closeDocument }) {
   // Polls localStorage queue state on a 1s tick (Plan 30-05 hook).
   const dualWriteQueueState = useDualWriteQueue(undoState?.undoCtx?.userId);
 
+  // 2026-04-29 — listen for the SyncStatusChip "all retries failed" event so the
+  // banner can pop immediately on manual-retry exhaustion. Resets when the user
+  // dismisses the banner (so they aren't trapped on a banner they just hid).
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const handler = () => setManualRetryExhausted(true);
+    window.addEventListener('crdt:manual-retry-failed', handler);
+    return () => window.removeEventListener('crdt:manual-retry-failed', handler);
+  }, []);
+
   // Phase 30 — test seam for e2e specs that need to assert Y.Doc annotation
   // count post-backfill. Updates whenever yMapAnnotations.observe fires.
   useEffect(() => {
@@ -893,12 +908,12 @@ function YDocProviderInner({ docId, children, closeDocument }) {
           though the user's data was still unsaved. The banner now persists
           until the user dismisses it or every entry actually reaches the
           cloud. */}
-      {(dualWriteQueueState.stuckCount > 0 || dualWriteQueueState.quarantinedAnnoIds.length > 0) &&
+      {(dualWriteQueueState.stuckCount > 0 || dualWriteQueueState.quarantinedAnnoIds.length > 0 || (manualRetryExhausted && dualWriteQueueState.hasPending)) &&
        (!storageState || storageState.code === 'ok') &&
        !bannerDismissed && (
         <StorageFailureBanner
           code="sync_queue_stuck"
-          onDismiss={() => setBannerDismissed(true)}
+          onDismiss={() => { setBannerDismissed(true); setManualRetryExhausted(false); }}
           onAction={() => {
             // UX: "Retry now" — eager flush. Run drainQueue once outside the
             // 1Hz interval, then let the regular tick continue. If the flush

@@ -265,6 +265,79 @@ inline without diving into menus.
 
 ---
 
+## v0.2 Cloud Sync + Collaboration Polish (active — 2026-04-25)
+
+Captured from session work to ensure nothing slips. Order is recommended
+build order, not strict dependency.
+
+- [/] **Eraser cross-device sync** — fixed in v0.1.24 (delete diff + remote-
+  echo loop). Awaiting user soak test on Windows + Mac. `[PDF-App]`
+- [ ] **Windows catch-up on document open** — small race window between
+  hydrate and realtime subscribe means recently-pushed Mac marks can fall
+  through the gap until the user refreshes. Fix: subscribe first, queue
+  events, then hydrate, then drain queued events (or re-hydrate on focus).
+  `[PDF-App]`
+- [ ] **Sync status indicator (top-right corner)** — replaces current
+  survey icon position. Three states: green dot "Up to date" · orange
+  spinner "Syncing…" · red dot "Offline · N saved locally". See mockup at
+  `/tmp/sync-indicator-mockup.html`. `[PDF-App]`
+- [ ] **Survey icon move** — relocate the top-right survey button under
+  the left rail divider, beneath Spaces, so the four navigation tabs
+  (Pages / Search / Marks / Spaces) stay visually grouped and Survey
+  reads as a separate tool. `[PDF-App]`
+- [ ] **Live presence row (multi-user avatars)** — Microsoft Excel /
+  Google Docs pattern: stacked overlapping circles in the top-right
+  corner showing every user currently viewing the document, with a tiny
+  "N viewing" count tucked beneath. Cap visible avatars at ~4 with a
+  "+N" pill for overflow. Anyone with the doc open shows up — viewers
+  AND editors. Initials avatar already exists for the local user; this
+  expands to show remote users via the existing presence channel.
+  `[PDF-App]`
+- [ ] **Cloud sync tier gate** — the auth context already exposes a
+  `features.cloudSync` flag for Pro/Enterprise/Developer, but the sync
+  feature isn't actually checking it. Wire the gate so free accounts
+  can't sync (still get local-only annotations). Pair with an upsell
+  hint when a free user opens a doc that has cloud annotations from a
+  paid collaborator. `[PDF-App]`
+- [ ] **Save Log double-push cleanup** — every press of Save Log
+  produces two log files in the GitHub logs branch ~20ms apart.
+  Functional but wasteful and confused the user when the first attempt
+  felt like it failed. Trace the press → push pipeline and dedupe.
+  `[PDF-App]`
+- [ ] **Yellow highlighter sync bugs** — highlighter strokes duplicate
+  on top of themselves, and partial erases don't propagate cross-device.
+  Highlights still ride the legacy single-type sync path; today's all-
+  types fixes do not touch them. Bring highlighter onto the new path
+  or replicate the diff-and-delete logic on the legacy path.
+  `[PDF-App]`
+- [ ] **Callout fixes** — user flagged outstanding callout issues
+  during cloud sync session; specifics to be enumerated next session.
+  Likely candidates: visual selection chrome (no dashed box per
+  2026-04-16 feedback), knee handle hit zones, label edit boundary,
+  rotation behavior. `[PDF-App]`
+- [ ] **Print pipeline (v3.0 milestone)** — the bigger printing
+  rewrite was deferred when cloud sync was prioritized. Parent plan
+  in `docs/superpowers/plans/2026-04-25-pdf-native-annotations.md`.
+  Resume after cloud sync polish lands. `[PDF-App]`
+- [ ] **Share PDF with other users (view / edit)** — generate a link
+  that another signed-in user can open. Free tier can only share for
+  view; Pro and above can share for edit. Pairs with the existing
+  share-link infrastructure listed in Stage 7. `[PDF2][PDF-App]`
+- [ ] **Sync-fail fallback: local copy + merge resolution** —
+  captured 2026-04-30. When the cloud sync fails (network out, RLS
+  reject, deadlock, safety-brake-suppressed delete, etc.) the app
+  should save a local copy of the user's edits to disk, named like
+  `<pdf-name> <date> <time> <user>.local`. On next open, detect the
+  divergence between cloud and local copy and offer the user three
+  choices: merge changes (need to design merge UX — Excel "compare
+  and merge" is one reference), keep local copy and overwrite cloud,
+  or discard local copy and pull from cloud. This is the long-term
+  answer to "what does the user do when sync fails — just hope?"
+  Phase scope: large. Probably belongs near the end of v2.4 or in
+  v2.5 alongside the highlight migration. `[PDF-App]`
+
+---
+
 ## How to use this file
 
 When the user says "what's next to work on" or "what else do we have to add",

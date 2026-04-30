@@ -104,6 +104,13 @@ export function useAnnotationCloudSync({
   const hydratedRef = useRef(false);
   const startupSyncInFlightRef = useRef(false);
   const lastCloudRefreshAtRef = useRef(0);
+  // 2026-04-30 — per-session set of annotation IDs the user has explicitly
+  // removed locally (whether the cloud delete was actually issued or the wipe
+  // safety brake suppressed it). The focus rehydrate consults this set to
+  // avoid resurrecting annotations the user just deleted. Reset on document
+  // change.
+  const userDeletedFabricIdsRef = useRef(new Set());
+  const userDeletedCalloutIdsRef = useRef(new Set());
   // 2026-04-27 — diagnostic refs for tracking annotations state changes
   // outside the cloud-sync hook's own setters. If something in App.jsx
   // shrinks the state without the cloud-sync hook knowing, the next push
@@ -304,6 +311,10 @@ export function useAnnotationCloudSync({
     let cancelled = false;
     hydratedRef.current = false;
     startupSyncInFlightRef.current = true;
+    // 2026-04-30 — reset the per-session "user deleted these" sets when a new
+    // document is being hydrated so we don't carry stale ids across PDF opens.
+    userDeletedFabricIdsRef.current = new Set();
+    userDeletedCalloutIdsRef.current = new Set();
 
     (async () => {
       let cloud = null;
@@ -529,6 +540,13 @@ export function useAnnotationCloudSync({
       // which goes through an explicit delete API call site, not this
       // diff-detection branch.
       const wouldWipeCloud = priorObjectCount > 0 && objectCount === 0 && deletedIds.length > 0;
+      // 2026-04-30 — record every locally-deleted id (whether the cloud delete
+      // is actually issued below or suppressed by the wipe brake). Focus
+      // rehydrate uses this set to skip resurrecting annotations the user
+      // intentionally removed.
+      if (deletedIds.length > 0) {
+        for (const id of deletedIds) userDeletedFabricIdsRef.current.add(id);
+      }
       if (deletedIds.length > 0 && !wouldWipeCloud) {
         console.log('[CloudSync][hook] eraser/delete detected — removing rows from cloud ' + JSON.stringify({
           count: deletedIds.length,
@@ -697,6 +715,11 @@ export function useAnnotationCloudSync({
       // the fabric delete branch for full reasoning. Refuse to wipe cloud
       // callouts via diff-detection when we go to a fully-empty list.
       const wouldWipeCalloutCloud = priorCalloutCount > 0 && currentCalloutCount === 0 && deletedCalloutIds.length > 0;
+      // 2026-04-30 — record locally-deleted callout ids for the focus-rehydrate
+      // skip set, same as the fabric branch above.
+      if (deletedCalloutIds.length > 0) {
+        for (const id of deletedCalloutIds) userDeletedCalloutIdsRef.current.add(id);
+      }
       if (deletedCalloutIds.length > 0 && !wouldWipeCalloutCloud) {
         console.log('[CloudSync][hook] callout delete detected — removing rows from cloud ' + JSON.stringify({
           count: deletedCalloutIds.length,
@@ -1008,15 +1031,36 @@ export function useAnnotationCloudSync({
               localAhead
             }));
           } else if (focusMigrationDone || Object.keys(focusFresh).length > 0) {
+            // 2026-04-30 — strip annotations the user explicitly deleted in
+            // this session before applying the cloud snapshot, so a focus
+            // rehydrate doesn't resurrect them. Done in-place per page.
+            const deletedSet = userDeletedFabricIdsRef.current;
+            const filteredFresh = deletedSet.size === 0
+              ? focusFresh
+              : Object.fromEntries(Object.entries(focusFresh).map(([pageKey, page]) => {
+                  if (!page || !Array.isArray(page.objects)) return [pageKey, page];
+                  const kept = page.objects.filter((obj) => {
+                    const id = obj?.id || obj?.data?.id;
+                    return !id || !deletedSet.has(id);
+                  });
+                  return [pageKey, { ...page, objects: kept }];
+                }));
             setAnnotationsByPage(() => {
-              lastByPageRef.current = focusFresh;
-              return focusFresh;
+              lastByPageRef.current = filteredFresh;
+              return filteredFresh;
             });
           }
           if (!skipReplace && (focusMigrationDone || focusFreshCallouts.length > 0)) {
+            const deletedCalloutSet = userDeletedCalloutIdsRef.current;
+            const filteredCallouts = deletedCalloutSet.size === 0
+              ? focusFreshCallouts
+              : focusFreshCallouts.filter((c) => {
+                  const id = c?.id || c?.callout_id || c?.data?.id;
+                  return !id || !deletedCalloutSet.has(id);
+                });
             setCallouts(() => {
-              lastCalloutsRef.current = focusFreshCallouts;
-              return focusFreshCallouts;
+              lastCalloutsRef.current = filteredCallouts;
+              return filteredCallouts;
             });
           }
           // Focus catch-up done — back to a calm "synced" state.
@@ -1094,22 +1138,74 @@ export function useAnnotationCloudSync({
     };
   }, [enabled, documentId, userId]);
 
+  // 2026-04-29 — Throw on first detected failure so the manual-retry caller
+  // (SyncStatusChip) can actually see the failure and run its retry loop.
+  // Previously upsertAnnotationsByPage's `{ error }` return value was awaited
+  // but never inspected, so the test seam (and real-world push errors) looked
+  // like success to the chip's retry loop.
+  // 2026-04-30 — Also drain the legacy offline queue. Without this, an earlier
+  // bulk-push failure (e.g. a Postgres deadlock during initial migration) sat
+  // queued and the chip's "Click to sync now" did nothing visible because the
+  // current local state had already been overwritten to match the failed push.
   const forceFlush = async () => {
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = null;
     }
     if (!documentId || !userId) return;
+
+    // Drain the legacy offline queue first — same flush dispatcher as the
+    // online-event drainer effect. Each entry retries via its appropriate
+    // backend call; failures stay in the queue. If anything is left after
+    // the drain pass, throw so the chip's retry loop can re-attempt.
+    const flush = async (entry) => {
+      const { kind, payload, opts } = entry;
+      if (kind === 'fabric-bulk') {
+        const r = await upsertAnnotationsByPage(payload, opts);
+        if (!r?.error) {
+          await fanOutCrdtForAnnotationsByPage(payload, opts);
+        }
+        return { success: !r?.error };
+      }
+      if (kind === 'callout-bulk') {
+        const r = await upsertCallouts(payload, opts);
+        return { success: !r?.error };
+      }
+      if (kind === 'delete') {
+        const r = await deleteAnnotation(opts.documentId, opts.highlightId);
+        if (r?.success) {
+          await fanOutCrdtForDeletedIds(opts.documentId, [opts.highlightId], { userId: opts.userId });
+        }
+        return { success: !!r?.success };
+      }
+      return { success: false };
+    };
+    const { remaining: remainingAfterDrain } = await drainQueue(documentId, flush);
+    setQueueSize(remainingAfterDrain);
+
     if (lastByPageRef.current) {
-      await upsertAnnotationsByPage(lastByPageRef.current, { documentId, userId, pdfId, clientSessionId });
-      // Phase 30 — CRDT-side mirror after the forceFlush legacy upsert lands.
-      // Highlight + callout bypass at the call site; helper enqueues internal
-      // failures to crdtDualWriteQueue.
+      const upRes = await upsertAnnotationsByPage(
+        lastByPageRef.current,
+        { documentId, userId, pdfId, clientSessionId }
+      );
+      if (upRes?.error) {
+        const msg = upRes.error?.message || String(upRes.error);
+        throw new Error(`forceFlush: legacy upsertAnnotationsByPage failed — ${msg}`);
+      }
       await fanOutCrdtForAnnotationsByPage(lastByPageRef.current, { documentId, userId });
     }
     if (lastCalloutsRef.current) {
-      // UNCHANGED — callouts ride legacy through Phase 30.
-      await upsertCallouts(lastCalloutsRef.current, { documentId, userId, clientSessionId });
+      const calloutRes = await upsertCallouts(
+        lastCalloutsRef.current,
+        { documentId, userId, clientSessionId }
+      );
+      if (calloutRes?.error) {
+        const msg = calloutRes.error?.message || String(calloutRes.error);
+        throw new Error(`forceFlush: legacy upsertCallouts failed — ${msg}`);
+      }
+    }
+    if (remainingAfterDrain > 0) {
+      throw new Error(`forceFlush: ${remainingAfterDrain} entr${remainingAfterDrain === 1 ? 'y' : 'ies'} still queued after drain`);
     }
   };
 

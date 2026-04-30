@@ -87,6 +87,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   pushLogToGithub: (content, fallbackToken) =>
     ipcRenderer.invoke('logs:pushToGithub', { content, fallbackToken }),
 
+  // 2026-04-29 — Local snapshot save. Each Cmd+Shift+L additionally writes a
+  // dated subfolder under <project>/Logs/ containing console.log, network.json,
+  // and summary.json. Caller hands over the captured payload; main does the
+  // path math + prune-to-20 cleanup. Returns { ok, dir, error }.
+  saveLogSnapshot: (payload) => ipcRenderer.invoke('logs:saveSnapshot', payload),
+
   // UX 2026-04-23: Custom Print Panel — list installed printers and fire a
   // real print job with the panel's settings. `printJob` forwards the
   // renderer's webContents.print() options (deviceName, copies, duplex, etc.)

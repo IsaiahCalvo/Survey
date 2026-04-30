@@ -1151,6 +1151,66 @@ ipcMain.handle('logs:pushToGithub', async (event, payload = {}) => {
   }
 });
 
+// 2026-04-29 — Local snapshot save fired alongside the GitHub push. Each invocation
+// creates a dated subfolder under <project-root>/Logs/ containing console.log,
+// network.json, and summary.json. After writing, prunes the Logs folder to the
+// 20 most-recent snapshots — older folders get fully removed (recursive rmSync).
+ipcMain.handle('logs:saveSnapshot', async (event, payload = {}) => {
+  const MAX_SNAPSHOTS = 20;
+  try {
+    const { consoleText = '', network = [], summary = {} } = payload;
+    // app.getAppPath() returns the project root in dev (where electron-main.js lives)
+    // and the asar root in packaged builds. We anchor Logs to the project root so
+    // dev sessions write where the user expects; packaged builds will write inside
+    // the resources path which is fine for capture purposes.
+    const projectRoot = app.getAppPath();
+    const logsRoot = path.join(projectRoot, 'Logs');
+    if (!fs.existsSync(logsRoot)) fs.mkdirSync(logsRoot, { recursive: true });
+
+    const now = new Date();
+    const stamp = now.toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
+    const snapshotDir = path.join(logsRoot, stamp);
+    fs.mkdirSync(snapshotDir, { recursive: true });
+
+    fs.writeFileSync(path.join(snapshotDir, 'console.log'), String(consoleText), 'utf8');
+    fs.writeFileSync(
+      path.join(snapshotDir, 'network.json'),
+      JSON.stringify(Array.isArray(network) ? network : [], null, 2),
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(snapshotDir, 'summary.json'),
+      JSON.stringify({ ...summary, savedAtIso: now.toISOString(), snapshotName: stamp }, null, 2),
+      'utf8'
+    );
+
+    // Prune to MAX_SNAPSHOTS most-recent dated subfolders. Anything that isn't a
+    // dated stamp is left alone so the existing top-level "1.log" file the user
+    // already has is untouched.
+    const STAMP_RE = /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$/;
+    const entries = fs.readdirSync(logsRoot, { withFileTypes: true })
+      .filter((d) => d.isDirectory() && STAMP_RE.test(d.name))
+      .map((d) => d.name)
+      .sort(); // ISO-like stamp sorts oldest-first lexicographically.
+    const removed = [];
+    while (entries.length > MAX_SNAPSHOTS) {
+      const oldest = entries.shift();
+      try {
+        fs.rmSync(path.join(logsRoot, oldest), { recursive: true, force: true });
+        removed.push(oldest);
+      } catch (rmErr) {
+        console.warn('[logs:saveSnapshot] failed to remove old snapshot', oldest, rmErr?.message);
+      }
+    }
+
+    console.log(`[logs:saveSnapshot] wrote ${snapshotDir} (pruned ${removed.length} old)`);
+    return { ok: true, dir: snapshotDir, pruned: removed };
+  } catch (error) {
+    console.error('[logs:saveSnapshot] unexpected error:', error);
+    return { ok: false, error: error?.message || String(error) };
+  }
+});
+
 // OAuth window handler for Microsoft authentication
 // Opens a separate window for OAuth flow, captures the redirect, and returns the result
 ipcMain.handle('oauth:openWindow', async (event, { authUrl, redirectUri }) => {

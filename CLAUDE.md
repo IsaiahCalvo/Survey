@@ -15,22 +15,29 @@ When creating or editing a phase CONTEXT.md in this project, **always** include:
 
 Never close a phase without writing `<phase>/<phase>-RECONCILIATION.md`.
 
-### Always Protected (project-wide DO NOT CHANGE unless explicitly in scope)
+### High-Risk Files (handle with care; standing waiver granted 2026-04-29)
 
-These files are load-bearing for v2.0 and must NEVER be modified without an
-explicit user waiver. Include them in every phase's DO NOT CHANGE list by default,
-then remove only the ones the phase explicitly owns.
+These files are load-bearing for v2.0 and remain high-risk. The user has granted
+a standing waiver to edit them without per-edit approval — see
+`memory/feedback_protected_files_waiver.md`. Treat them as high-risk: keep edits
+small, scoped, and never refactor while you're in there. Always run `npm test`
+after touching them and report baseline state before declaring done.
+
+The Enforced Rules in the next section still bind regardless of the waiver:
+container-aware canvas sizing, single-name fontFamily, `zoomGeneration` signal
+contract, no JavaScript zoom coordination in `SVGAnnotationLayer.jsx`. Those are
+not protection-list items — they are correctness invariants.
 
 - `src/App.jsx` — ~1.3MB main file, zoom logic, portal host resolution, render
-  loop. Edits here are high-risk; any change requires explicit approval.
+  loop. Edits here are high-risk; minimum viable diff only.
 - `src/components/PageAnnotationLayer.jsx` — per-page Fabric.js canvas overlay
-  (~9,858 lines). Only touch when the phase explicitly owns PAL changes.
+  (~9,858 lines). Only touch when actually needed for the current task.
 - `src/components/FabricDrawingCanvas.jsx` / `FabricEraserCanvas.jsx` /
   `FabricEditCanvas.jsx` — all use the `zoomGeneration` signal contract; do not
   remove or rename that signal.
 - `src/components/SVGAnnotationLayer.jsx` — SVG viewBox owns all zoom scaling.
   Never reintroduce JavaScript zoom coordination here.
-- `package.json` / `vite.config.js` — infra. Touching requires explicit approval.
+- `package.json` / `vite.config.js` — infra. Touch sparingly and document the why.
 
 ### Session Moments
 

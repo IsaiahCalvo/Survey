@@ -36,7 +36,7 @@
 // secondary metadata. Phase 27's HEADING / SECONDARY constants are folded into
 // HEADING_BY_CODE / SECONDARY_BY_CODE to avoid two parallel sources of truth.
 
-import React from 'react';
+import React, { useState } from 'react';
 import './StorageFailureBanner.css';
 
 // Locked copy per 27-UI-SPEC.md Surface 2 + 28-UI-SPEC.md Component Inventory
@@ -120,7 +120,10 @@ const COPY = {
   // stays mounted on action click; on success → fade-out and unmount; on
   // failure → banner remains.
   sync_queue_stuck: {
-    body: "A few of your recent edits are still trying to save. Keep this tab open and check your connection — they'll keep retrying in the background.",
+    // UX: explicit reassurance that the X dismiss button is purely a visual mute.
+    // Without this line, users worry that closing the banner also gives up on the
+    // unsaved edits — feedback from 2026-04-29 UAT session.
+    body: "A few of your recent edits are still trying to save. Keep this tab open and check your connection — they'll keep retrying in the background. Closing this banner doesn't stop those retries.",
     action: 'Retry now',
   },
 };
@@ -252,6 +255,28 @@ export function StorageFailureBanner({
   // here so the existing render tree for Phase 27 + 28 codes is byte-identical.
   const isRemoteDelete = code === 'annotation_remote_deleted';
 
+  // UX: confirm-before-close intercept on the X button — only for sync_queue_stuck.
+  // Reason: the user can lose track of unsaved annotations if they hastily close the
+  // banner. Prompt them once before the banner disappears. Other codes keep the
+  // immediate-dismiss behavior (their failure modes don't carry "data may be lost"
+  // weight in the same way). Feedback from 2026-04-29 UAT session.
+  const [confirmingDismiss, setConfirmingDismiss] = useState(false);
+  const requiresConfirmDismiss = code === 'sync_queue_stuck';
+  const handleDismissClick = () => {
+    if (requiresConfirmDismiss) {
+      setConfirmingDismiss(true);
+    } else if (onDismiss) {
+      onDismiss();
+    }
+  };
+  const handleConfirmHide = () => {
+    setConfirmingDismiss(false);
+    if (onDismiss) onDismiss();
+  };
+  const handleConfirmKeep = () => {
+    setConfirmingDismiss(false);
+  };
+
   // UX: the heading for annotation_remote_deleted interpolates the collaborator
   // name. Fallback "another collaborator" when the awareness state did not
   // include a user name (anonymous collaborator, or stale awareness).
@@ -269,13 +294,42 @@ export function StorageFailureBanner({
     >
       <WarningIcon />
       <div className="storage-banner__text">
-        <div className="storage-banner__heading">{heading}</div>
-        <div className="storage-banner__body">{copy.body}</div>
-        {SECONDARY_BY_CODE[code] && (
+        <div className="storage-banner__heading">
+          {confirmingDismiss ? 'Hide this warning?' : heading}
+        </div>
+        <div className="storage-banner__body">
+          {confirmingDismiss
+            ? "You may lose track of edits that haven't saved yet. Saves keep retrying either way — this just hides the reminder."
+            : copy.body}
+        </div>
+        {!confirmingDismiss && SECONDARY_BY_CODE[code] && (
           <div className="storage-banner__secondary">{SECONDARY_BY_CODE[code]}</div>
         )}
       </div>
-      {isRemoteDelete ? (
+      {confirmingDismiss ? (
+        // UX: confirmation row mirrors the Phase 29 two-action shape (Restore + Dismiss).
+        // "Keep showing" is intentionally the secondary-tone button so the visual default
+        // is "yes hide" — but the user must still take an explicit action. Both buttons
+        // are equal weight in tab order so keyboard users can pick freely.
+        <span className="storage-banner__actions">
+          <button
+            type="button"
+            className="storage-banner__action"
+            onClick={handleConfirmHide}
+            aria-label="Hide warning"
+          >
+            Hide
+          </button>
+          <button
+            type="button"
+            className="storage-banner__action storage-banner__action--secondary"
+            onClick={handleConfirmKeep}
+            aria-label="Keep warning showing"
+          >
+            Keep showing
+          </button>
+        </span>
+      ) : isRemoteDelete ? (
         // Phase 29 — two-action variant. Both links use the same .storage-banner__action
         // class so they render at the same visual weight; --secondary class adds an
         // 8px left margin to the second link per UI-SPEC spacing scale (sm token).
@@ -310,14 +364,14 @@ export function StorageFailureBanner({
           {copy.action}
         </button>
       )}
-      {showDismiss && !isRemoteDelete && (
+      {showDismiss && !isRemoteDelete && !confirmingDismiss && (
         <button
           type="button"
           className="storage-banner__dismiss"
           // aria-label is required (27-UI-SPEC.md accessibility) — the visual `×`
           // glyph alone isn't a screen-readable label.
           aria-label="Dismiss banner"
-          onClick={onDismiss}
+          onClick={handleDismissClick}
         >
           ×
         </button>

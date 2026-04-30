@@ -76,6 +76,7 @@ const PDFSidebar = React.forwardRef(({
   cloudSyncStatus = null,
   cloudSyncQueueSize = 0,
   cloudSyncEnabled = false,
+  cloudSyncOnRetry = null,
   presence = [],
   currentUserId = null,
   currentUserEmail = null,
@@ -487,6 +488,7 @@ const PDFSidebar = React.forwardRef(({
             queueSize={cloudSyncQueueSize}
             enabled
             compact={isCollapsed}
+            onRetry={cloudSyncOnRetry}
           />
           <PresenceAvatars
             presence={presence}

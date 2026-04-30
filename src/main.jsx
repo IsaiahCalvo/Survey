@@ -39,6 +39,10 @@ import './utils/shapeBleedDiagnostics';
 // onContextMenu handler. Remove once wiring is fixed.
 import './utils/contextMenuDiagnostics';
 import './utils/cursorScoping';
+// Lightweight global network logger. Wraps fetch + XHR with a ring-buffer
+// observer so Cmd+Shift+L can ship a network trace alongside the console log.
+import { installNetworkLogger } from './utils/networkLogger';
+installNetworkLogger();
 import '@syncfusion/ej2-base/styles/material.css';
 import '@syncfusion/ej2-buttons/styles/material.css';
 import '@syncfusion/ej2-inputs/styles/material.css';

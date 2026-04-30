@@ -26,6 +26,7 @@ import { saveAnnotatedPDFFile } from './utils/saveAnnotatedPDFFile';
 import { importAnnotationsFromPdf } from './utils/pdfAnnotationImporter';
 import { resolveAnnotationAt } from './utils/annotationHitTest';
 import { splitImportedCalloutsFromPage } from './utils/calloutImportAdapter';
+import { getNetworkLogSnapshot } from './utils/networkLogger';
 import {
   generateGroupId,
   getAnnotationGroupId,
@@ -21082,8 +21083,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Pro-tier gate is wired here (free accounts skip the cloud sync entirely
   // and rely on local-only annotations); the chip is hidden for those users
   // since there's nothing to sync.
-  const cloudSyncEnabled = !!documentSyncEnabled && !!features?.cloudSync;
-  const { status: cloudSyncStatus, queueSize: cloudSyncQueueSize } = useAnnotationCloudSync({
+  // 2026-04-29 — Split into two flags. `cloudSyncEnabled` reflects entitlement
+  // only (does this account get cloud sync at all?) and drives the sidebar
+  // footer's visibility — sync status + active-user avatars must stay on
+  // screen for every signed-in user with a PDF open, even when the sync hook
+  // has auto-disabled itself after a structural error. The chip's offline
+  // state is exactly the right thing to show in that case. `cloudSyncActive`
+  // is the operational flag — adds the auto-disable kill-switch on top of
+  // entitlement and is used by the sync hooks themselves.
+  const cloudSyncEnabled = !!features?.cloudSync;
+  const cloudSyncActive = cloudSyncEnabled && !!documentSyncEnabled;
+  const { status: cloudSyncStatus, queueSize: cloudSyncQueueSize, forceFlush: cloudSyncForceFlush } = useAnnotationCloudSync({
     documentId: pdfFile?.id || null,
     userId: user?.id || null,
     pdfId,
@@ -21091,14 +21101,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     callouts,
     setAnnotationsByPage,
     setCallouts,
-    enabled: cloudSyncEnabled
+    enabled: cloudSyncActive
   });
   // Live presence list — feeds the stacked-avatars row in the toolbar.
-  // Pro tier gate is shared with cloud sync since presence is part of the
-  // collaboration package, not the free local-only experience.
+  // Uses cloudSyncActive (operational flag) so presence stops fetching when
+  // the sync layer auto-disables, but the row stays mounted via cloudSyncEnabled
+  // (entitlement flag) — even if the list is empty, the user's own avatar still
+  // renders so the user knows the surface is alive.
   const documentPresenceList = useDocumentPresenceList({
     documentId: pdfFile?.id || null,
-    enabled: cloudSyncEnabled
+    enabled: cloudSyncActive
   });
 
   // Update presence when page changes
@@ -27585,6 +27597,7 @@ ${pageBlocks}
           cloudSyncStatus={cloudSyncStatus}
           cloudSyncQueueSize={cloudSyncQueueSize}
           cloudSyncEnabled={cloudSyncEnabled}
+          cloudSyncOnRetry={cloudSyncForceFlush}
           presence={documentPresenceList}
           currentUserId={user?.id || null}
           currentUserEmail={user?.email || null}
@@ -28416,6 +28429,7 @@ ${pageBlocks}
             cloudSyncStatus={cloudSyncStatus}
             cloudSyncQueueSize={cloudSyncQueueSize}
             cloudSyncEnabled={cloudSyncEnabled}
+            cloudSyncOnRetry={cloudSyncForceFlush}
             presence={documentPresenceList}
             currentUserId={user?.id || null}
             currentUserEmail={user?.email || null}
@@ -38183,6 +38197,30 @@ export default function App() {
       const consoleText = Array.isArray(buf) && buf.length > 0
         ? buf.join('\n')
         : '(no console output captured)';
+      // 2026-04-29 — Cmd+Shift+L now also writes a dated local snapshot under
+      // <project>/Logs/ alongside the GitHub push. Snapshot includes console
+      // text + a network trace + a small summary block. Best-effort — if the
+      // electron bridge isn't there (web build) we silently skip.
+      try {
+        const api = window.electronAPI;
+        if (api && typeof api.saveLogSnapshot === 'function') {
+          api.saveLogSnapshot({
+            consoleText,
+            network: getNetworkLogSnapshot(),
+            summary: {
+              triggeredBy: 'cmd-shift-l',
+              userAgent: navigator?.userAgent || null,
+              screen: { w: window.innerWidth, h: window.innerHeight },
+              consoleLineCount: Array.isArray(buf) ? buf.length : 0,
+            },
+          }).then((res) => {
+            if (res?.ok) console.log('[SaveLog] local snapshot saved at', res.dir);
+            else console.warn('[SaveLog] local snapshot failed', res?.error);
+          }).catch((err) => console.warn('[SaveLog] local snapshot threw', err?.message || err));
+        }
+      } catch (snapErr) {
+        console.warn('[SaveLog] snapshot trigger error', snapErr?.message || snapErr);
+      }
       window.dispatchEvent(new CustomEvent('save-log-banner-start', {
         detail: { consoleText }
       }));
@@ -38213,6 +38251,26 @@ export default function App() {
           console.log(`[SaveLog] wrote ${Array.isArray(buf) ? buf.length : 0} lines locally`);
         } catch (wErr) {
           console.warn('[SaveLog] local write failed:', wErr?.message || wErr);
+        }
+      }
+
+      // 2026-04-29 — same dated-snapshot save as the keyboard path.
+      if (api && typeof api.saveLogSnapshot === 'function') {
+        try {
+          const res = await api.saveLogSnapshot({
+            consoleText,
+            network: getNetworkLogSnapshot(),
+            summary: {
+              triggeredBy: 'menu',
+              userAgent: navigator?.userAgent || null,
+              screen: { w: window.innerWidth, h: window.innerHeight },
+              consoleLineCount: Array.isArray(buf) ? buf.length : 0,
+            },
+          });
+          if (res?.ok) console.log('[SaveLog] local snapshot saved at', res.dir);
+          else console.warn('[SaveLog] local snapshot failed', res?.error);
+        } catch (snapErr) {
+          console.warn('[SaveLog] snapshot trigger error', snapErr?.message || snapErr);
         }
       }
 

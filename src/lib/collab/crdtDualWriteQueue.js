@@ -257,3 +257,35 @@ export function hasPendingForUser(userId) {
   }
   return false;
 }
+
+/**
+ * Dev/test helper exposed on window: clear ALL persisted dual-write queues across
+ * every user and clear the test-seam failure flags. Lets a tester paste a single
+ * line in DevTools to escape "stuck banner won't go away" mode after running the
+ * __crdtForceLegacyFail test seam. Not intended as a user-facing feature.
+ *
+ * UX: noisy console message so a user who pastes this knows what was cleared.
+ */
+export function clearAllDualWriteQueuesAndFlags() {
+  if (typeof window === 'undefined' || !window.localStorage) return { cleared: 0, flagsReset: 0 };
+  let cleared = 0;
+  const toRemove = [];
+  for (let i = 0; i < window.localStorage.length; i++) {
+    const key = window.localStorage.key(i);
+    if (key && key.startsWith(STORAGE_KEY_PREFIX)) toRemove.push(key);
+  }
+  for (const key of toRemove) {
+    window.localStorage.removeItem(key);
+    cleared++;
+  }
+  let flagsReset = 0;
+  if (window.__crdtForceLegacyFail) { delete window.__crdtForceLegacyFail; flagsReset++; }
+  if (window.__crdtForceFailAnnoId) { delete window.__crdtForceFailAnnoId; flagsReset++; }
+  console.warn(`[CRDT] Cleared ${cleared} dual-write queue(s); reset ${flagsReset} test-seam flag(s). Refresh the page to reset banner state.`);
+  return { cleared, flagsReset };
+}
+
+if (typeof window !== 'undefined') {
+  // Exposed for manual paste in DevTools — see clearAllDualWriteQueuesAndFlags above.
+  window.__clearDualWriteQueue = clearAllDualWriteQueuesAndFlags;
+}
