@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
 status: completed
-stopped_at: Completed 35-04-PLAN.md (bulk-delete modals + undo toast + interceptor wiring; 5 new files + 3 modified; 416p/8f/6s; 9min)
-last_updated: "2026-04-30T17:37:34.552Z"
+stopped_at: Completed 35-05-PLAN.md (brake retirement + cleanup banner + Review surface + audit wiring; 2 new files + 3 modified; 66-line net deletion in cloud-sync hook; 416p/8f/6s; ~13min)
+last_updated: "2026-04-30T17:53:32.819Z"
 last_activity: "2026-04-30 17:33 — Phase 35 Plan 04 shipped (bulk-delete modals + undo toast + closure-bound deleteSelected interceptor; 5 new files + 3 modified; 416p/8f/6s; 9min)"
 progress:
   total_phases: 15
   completed_phases: 6
   total_plans: 39
-  completed_plans: 36
+  completed_plans: 37
   percent: 97
 ---
 
@@ -26,12 +26,12 @@ See: .planning/PROJECT.md (updated 2026-04-14)
 ## Current Position
 
 Milestone: v2.4 — CRDT Foundation + Real-Time Sync (Yjs port; SVG/Fabric layers immutable). Phase 35 retires the 2026-04-27 wipe brake and ships the Drawboard/Lumin permission model.
-Phase: **Phase 35 EXECUTING** — Plans 35-01 + 35-02 + 35-03 + 35-04 shipped 2026-04-30. Plans 35-05 (brake retirement + cleanup banner) / 35-06 (e2e flip green) unblocked.
-Plan: Plan 35-04 closed 2026-04-30 17:33 — 5 new files (useUndoToast.js with pure factory + React hook, UndoToast.jsx + .css, ConfirmDeleteModal.jsx + .css; 633 LOC) + 3 modified (App.jsx +108 lines with 4 imports + handleRequestBulkDelete callback + ConfirmDeleteModal/UndoToast mount + single-delete toast hook in handleSaveAnnotations; useSVGInteraction.js +78 lines with closure-bound snapshot + onRequestBulkDelete interceptor; SVGAnnotationLayer.jsx +8-line additive prop pass-through). useUndoToast hook is a thin wrapper over a pure-JS createUndoToastQueue factory — engine-agnostic so Wave 0 6/6 unit tests skip→green with a fake clock; locked enqueue signature `{ kind, message, count?, onUndo }`. ConfirmDeleteModal renders two locked-copy variants: collaborator simple-count ("Delete all N of your annotations on this page?") and owner cross-author with comma-joined inline byAuthor breakdown ("Alice — 18, Bob — 12, Carol — 5") per checker W6, NOT a stacked list. deleteSelected captures snapshotObjects + builds runDelete closure that propagates deletedCount/deletedSnapshot/deletedPageNumber through saveContext; App.jsx's handleRequestBulkDelete builds the BulkDeletePlan in scope of viewerId/documentOwnerId, branches on plan.mode (no-op bails; owner-own-only fires direct + bulk-toast; modal variants stash runner in pendingDeleteRunnerRef and open the modal). Single-delete toast layered at handleSaveAnnotations.saveContext.deletedCount===1 — every single delete fires the 5s 'Annotation deleted' toast with snapshot-restore onUndo. Test baseline: 410p/8f/12s → 416p/8f/6s (+6 from Wave 0 flips; failures unchanged). Build green. 2 Rule-1 deviations auto-fixed: literal `<ul>` in a comment failed grep AC — rephrased without semantic change; multi-line `enqueueUndoToast({ kind: ... })` failed literal grep AC — inlined to satisfy contract. Commits 48f70918 + 18e530c4 + 61eb4577.
-Status: Plan 35-04 DONE. Next: Plan 35-05 (brake retirement + cleanup banner — independent surface; imports auditResidue from Plan 35-02).
+Phase: **Phase 35 EXECUTING** — Plans 35-01 + 35-02 + 35-03 + 35-04 + 35-05 shipped 2026-04-30. Plan 35-06 (e2e flip green) unblocked.
+Plan: Plan 35-05 closed 2026-04-30 17:51 — 2 new files (CleanupResidueReviewPanel.jsx + .css; 300 LOC) + 3 modified (useAnnotationCloudSync.js -66 lines net via 4 surgical excisions of the 2026-04-27 wipe-brake / per-session userDeletedFabricIdsRef + userDeletedCalloutIdsRef / focus-rehydrate filter / doc-change reset; StorageFailureBanner.jsx +68 lines with 11th code sync_residue_cleanup + optional onReview prop + two-action render branch; YDocProvider.jsx +282 lines with audit useEffect + 3 handlers + banner mount + Review panel mount + localStorage helpers for sticky-per-document dismissal). CI gate scripts/check-no-diff-delete.mjs left UNCHANGED — re-read confirms it's a Phase 30 dual-write contract banning diff/reconcile/sync near delete in dual-write paths, NOT the 2026-04-27 brake regression guard. CleanupResidueReviewPanel ships per W5 (modal-adjacent 400px max-width, count + first 5 monospaced IDs + "…and N more" tail + Close + 'Clean up all N'). YDocProvider audit resolves documentOwnerId via single-row supabase documents-table query inside useEffect rather than prop drilling — keeps App.jsx out of files_modified scope. Adapted to actual auditResidue signature (isViewerOwner boolean + localUserDeletedSet array, NOT documentOwnerId + residueCandidateIds — plan signature was stale per Plan 35-02 test scaffold). rawRows mapped to audit-contract shape (id = highlight_id, authorId = user_id, lastEditedAt = Date.parse(updated_at)) before dispatch — supabase row shape ≠ getAnnotationAuthorId chain. Sticky-per-document dismissal in localStorage 'phase35.dismissedCleanupBanners' as JSON array. Production-stripped test seam window.__phase35SeedResidue ready for Plan 35-06 e2e flips. Test baseline 416p/8f/6s preserved exactly. Build green. 3 Rule-3 deviations auto-fixed (signature mismatch + missing prop + row-shape mismatch); 1 comment-rephrasing for AC literal-grep compliance. Commits db00d7f5 + 1a585ada + 055ae765 + 31494712.
+Status: Plan 35-05 DONE. Next: Plan 35-06 (e2e flip green for cleanup banner — uses window.__phase35SeedResidue test seam to assert banner + Review panel + Cleanup flow without engineering a real brake-suppression race).
 Last activity: 2026-04-30 17:33 — Phase 35 Plan 04 shipped (bulk-delete modals + undo toast + closure-bound deleteSelected interceptor; 5 new files + 3 modified; 416p/8f/6s; 9min)
 
-Progress: [██████████] 97% — Phase 27 functionally complete (5/5 plans, reconciliation pending); Phase 28 functionally complete (6/6 plans); Phase 29 functionally complete (6/6 plans, 29-RECONCILIATION.md DONE_WITH_CONCERNS); **Phase 30 CLOSED (7/7 plans, verifier 19/19, reconciliation DONE)**; Phase 35 4 of 6 plans shipped (35-01..35-04); v2.4 milestone overall: 4 of 8 phases shipped (27 modulo reconciliation, 28, 29, 30); 0 Phase 31/32/33/34; v2.3 closed at Phase 15
+Progress: [██████████] 95% — Phase 27 functionally complete (5/5 plans, reconciliation pending); Phase 28 functionally complete (6/6 plans); Phase 29 functionally complete (6/6 plans, 29-RECONCILIATION.md DONE_WITH_CONCERNS); **Phase 30 CLOSED (7/7 plans, verifier 19/19, reconciliation DONE)**; Phase 35 5 of 6 plans shipped (35-01..35-05); v2.4 milestone overall: 4 of 8 phases shipped (27 modulo reconciliation, 28, 29, 30); 0 Phase 31/32/33/34; v2.3 closed at Phase 15
 
 ## Performance Metrics
 
@@ -86,6 +86,7 @@ Progress: [██████████] 97% — Phase 27 functionally complet
 | Phase 35-per-user-delete-authority-confirm-before-wipe P02 | 3 min | 3 tasks | 3 files |
 | Phase 35-per-user-delete-authority-confirm-before-wipe P03 | 13 min | 3 tasks | 5 files |
 | Phase 35-per-user-delete-authority-confirm-before-wipe P04 | 9 min | 3 tasks | 8 files |
+| Phase 35-per-user-delete-authority-confirm-before-wipe P05 | 13 | 4 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -250,6 +251,7 @@ Progress: [██████████] 97% — Phase 27 functionally complet
 - [Phase 35]: Plan 35-04 single-delete toast layered at handleSaveAnnotations.saveContext.deletedCount===1, NOT inside deleteSelected. Every delete that goes through the save pipeline with deletedCount===1 fires the 'single' 5s toast — cleanest insertion point because every delete (single or bulk) flows through handleSaveAnnotations. Bulk deletes use deletedCount > 1 and go through the modal+wrappedRunDelete path which enqueues the 'bulk' toast there.
 - [Phase 35]: Plan 35-04 byAuthor breakdown rendered as comma-joined inline <p> per checker W6, NOT stacked unordered list. CONTEXT.md example 'Alice — 18, Bob — 12, Carol — 5' is single inline string + em dash + single paragraph. Reads as supplementary metadata to the body line, not a checklist of items the user must scan vertically.
 - [Phase 35]: Plan 35-04 engine-agnostic createUndoToastQueue factory + thin useUndoToast React hook split for testability. Wave 0 unit tests drive the factory directly with a fake clock; production app uses the React wrapper. Same testability split as Phase 14 buildCalloutRenderSpec / Phase 15 lineDragMath — pure helper precedes React wiring.
+- [Phase 35-per-user-delete-authority-confirm-before-wipe]: [Phase 35 Plan 05] Wipe brake retired (66-line net deletion in useAnnotationCloudSync.js, 4 surgical excisions); CI gate scripts/check-no-diff-delete.mjs left UNCHANGED (re-read confirms it's a Phase 30 dual-write contract, not the 2026-04-27 brake guard); StorageFailureBanner extended with 11th code sync_residue_cleanup + optional onReview prop for two-action chrome; CleanupResidueReviewPanel ships per W5 (modal-adjacent, 400px max-width, count + first 5 IDs + Clean up + Close); YDocProvider audit + Review/Cleanup wiring resolves documentOwnerId via supabase documents-table query rather than prop drilling — keeps App.jsx out of files_modified scope; adapted to actual auditResidue signature (isViewerOwner + localUserDeletedSet, NOT documentOwnerId + residueCandidateIds — plan signature was stale); rawRows mapped to audit-contract shape (id/authorId/lastEditedAt) before dispatch; sticky-per-document dismissal via localStorage 'phase35.dismissedCleanupBanners'; production-stripped test seam window.__phase35SeedResidue ready for Plan 35-06 e2e flips; 416p/8f/6s baseline preserved; build green.
 
 ### Roadmap Evolution
 
@@ -283,8 +285,8 @@ Progress: [██████████] 97% — Phase 27 functionally complet
 
 ## Session Continuity
 
-Last session: 2026-04-30T17:36:00.408Z
-Stopped at: Completed 35-04-PLAN.md (bulk-delete modals + undo toast + interceptor wiring; 5 new files + 3 modified; 416p/8f/6s; 9min)
+Last session: 2026-04-30T17:53:32.815Z
+Stopped at: Completed 35-05-PLAN.md (brake retirement + cleanup banner + Review surface + audit wiring; 2 new files + 3 modified; 66-line net deletion in cloud-sync hook; 416p/8f/6s; ~13min)
 
 ### Resume instructions for the next session (read carefully)
 
