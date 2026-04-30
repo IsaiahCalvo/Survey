@@ -80,7 +80,17 @@ with almost zero risk.
 
 - [/] **Thumbnail panel** — custom `PagesPanel.jsx` exists and works, but needs a side-by-side comparison against Syncfusion's built-in panel and the `[PDF2]`/`[PDF-App]` implementations to identify gaps and polish opportunities `[PDF2][PDF-App]`
 - [/] **Full-text PDF search** — custom `SearchTextPanel.jsx` + `SearchContext` exists and works, but needs a side-by-side comparison against Syncfusion's built-in search and the `[PDF2]`/`[PDF-App]` implementations to identify gaps and polish opportunities `[PDF2][PDF-App]`
-- [x] **Print button** — DONE (verified 2026-04-30; `enablePrint={true}` active in `SyncfusionPDFContainer.jsx`, Electron Cmd+P + "Print with Markup" wired) `[PDF-App]`
+- [/] **Print button** — Basic Syncfusion print is on (`enablePrint={true}`, Cmd+P,
+  "Print with Markup" menu item). The full **Custom Print Panel** is built and
+  committed behind the `PRINT_PANEL_ENABLED` feature flag — verification soak
+  was paused 2026-04-24 with one fix in flight (empty Pages field = "all
+  pages"); user never came back to test mirror / rotate / orientation /
+  markups end-to-end before pivoting to cloud sync (Phases 30-35). See
+  `docs/handoffs/2026-04-24-print-panel.md` for the full handoff and the open
+  verification list. Bigger v3.0 print rewrite (PDF-Native Annotations bake-
+  on-export — instant print + Adobe-compatible exports) drafted at
+  `docs/superpowers/plans/2026-04-25-pdf-native-annotations.md`, 7 phases
+  outlined, none started. `[PDF-App]`
 - [x] **Clickable PDF link annotations** — DONE (verified 2026-04-30; `enableHyperlink={true}` active, `hyperlinkClick` routes to `electronAPI.openExternal()`) `[PDF2]`
 - [x] **Fillable form fields** — DONE (verified 2026-04-30; `enableFormFields={true}` active, FormFields service injected) `[PDF2][PDF-App]`
 - [ ] **Form designer** — flip `enableFormDesigner={true}`; creates/edits form fields in-app `[PDF2][PDF-App]`
@@ -312,10 +322,18 @@ build order, not strict dependency.
   Likely candidates: visual selection chrome (no dashed box per
   2026-04-16 feedback), knee handle hit zones, label edit boundary,
   rotation behavior. `[PDF-App]`
-- [ ] **Print pipeline (v3.0 milestone)** — the bigger printing
-  rewrite was deferred when cloud sync was prioritized. Parent plan
-  in `docs/superpowers/plans/2026-04-25-pdf-native-annotations.md`.
-  Resume after cloud sync polish lands. `[PDF-App]`
+- [ ] **Print pipeline rewrite (v3.0 milestone) — PAUSED 2026-04-25.**
+  The full PDF-Native Annotations bake-on-export rewrite (instant print +
+  Adobe-compatible exports + downloadable PDFs that round-trip with Acrobat).
+  Parent plan with 7 phases (A–G) at
+  `docs/superpowers/plans/2026-04-25-pdf-native-annotations.md`; nothing
+  implemented yet. Why paused: cloud sync took priority (Phases 30→35
+  shipped instead). Why important: today's print rasterizes every page,
+  which is slow on 99-page docs and means exported PDFs lose annotation
+  fidelity in Adobe. Open verification items from the Custom Print Panel
+  soak (predecessor work, complete but unverified) live in
+  `docs/handoffs/2026-04-24-print-panel.md` — those should close out
+  before starting the v3.0 milestone. `[PDF-App]`
 - [ ] **Share PDF with other users (view / edit)** — generate a link
   that another signed-in user can open. Free tier can only share for
   view; Pro and above can share for edit. Pairs with the existing
