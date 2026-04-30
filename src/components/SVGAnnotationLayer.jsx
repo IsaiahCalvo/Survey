@@ -234,6 +234,13 @@ const SVGAnnotationLayer = memo(({
   // so the layer stays mountable from older sites that haven't wired it.
   onGroupSelected,
   onUngroupSelected,
+  // Phase 35 Plan 03 — per-user delete authority. Forwarded into
+  // useSVGInteraction below so the marquee post-filter + click hit-test gate
+  // resolve ownership against the same identity App.jsx uses for cloud sync.
+  // Visible-but-locked rendering still rides the existing isInteractive prop
+  // pattern (CONTEXT.md DO NOT CHANGE) — no render-logic touch in this layer.
+  viewerId,
+  documentOwnerId,
 }) => {
   // ---------------------------------------------------------------------------
   // Refs
@@ -300,6 +307,10 @@ const SVGAnnotationLayer = memo(({
     onUpdateCallout,
     // UX: Phase 19 — marquee only activates when tool === 'select'.
     activeTool,
+    // Phase 35 Plan 03 — forward per-user delete authority props to the
+    // hook's marquee post-filter + click hit-test gate.
+    viewerId,
+    documentOwnerId,
   });
 
   // UX: apply a pan-mode quick-click selection command from App.jsx. Matches

@@ -3940,6 +3940,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         if (doc.id && !doc.file.id) {
           doc.file.id = doc.id;
           doc.file.projectId = doc.projectId || doc.project_id;
+          // Phase 35 Plan 03 — attach document owner so PDFViewer's per-user
+          // delete authority gate can resolve documentOwnerId without a
+          // documents-table lookup (the documents array is Dashboard-scoped).
+          doc.file.user_id = doc.user_id || doc.userId || null;
         }
         onDocumentSelect(doc.file);
         return;
@@ -3966,6 +3970,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         file.id = doc.id;  // Supabase document ID
         file.projectId = doc.projectId || doc.project_id;  // Project ID
         file.supabaseFilePath = filePath;  // Storage path
+        // Phase 35 Plan 03 — owner identity for the per-user delete authority
+        // gate (resolved in PDFViewer's documentOwnerId useMemo).
+        file.user_id = doc.user_id || doc.userId || null;
 
         onDocumentSelect(file);
       } else if (doc.dataUrl) {
@@ -3977,6 +3984,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         // Attach Supabase metadata
         file.id = doc.id;
         file.projectId = doc.projectId || doc.project_id;
+        // Phase 35 Plan 03 — owner identity for delete authority gate.
+        file.user_id = doc.user_id || doc.userId || null;
 
         onDocumentSelect(file);
       } else {
@@ -21093,6 +21102,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // entitlement and is used by the sync hooks themselves.
   const cloudSyncEnabled = !!features?.cloudSync;
   const cloudSyncActive = cloudSyncEnabled && !!documentSyncEnabled;
+
+  // Phase 35 Plan 03 — per-user delete authority. documentOwnerId comes from
+  // the documents-table user_id attached to pdfFile at Dashboard load time
+  // (see handleDocumentClick / file.user_id sites). pdfFile is a File-like
+  // blob and doesn't carry user_id natively — Dashboard threads it on the
+  // file object alongside id and projectId. When user_id is missing (e.g.
+  // local-only File picked from disk before sharing lands), the gate falls
+  // through to legacy behavior because canModify's boot guard requires both
+  // viewerId AND documentOwnerId.
+  const documentOwnerId = useMemo(() => {
+    return pdfFile?.user_id || null;
+  }, [pdfFile?.user_id]);
   const { status: cloudSyncStatus, queueSize: cloudSyncQueueSize, forceFlush: cloudSyncForceFlush } = useAnnotationCloudSync({
     documentId: pdfFile?.id || null,
     userId: user?.id || null,
@@ -29186,6 +29207,11 @@ ${pageBlocks}
                                   pendingSelection={pendingSvgSelection}
                                   // UX: pan-mode hover glow broadcast — see pendingSvgHover state.
                                   pendingHover={pendingSvgHover}
+                                  // Phase 35 Plan 03 — per-user delete authority. viewerId
+                                  // + documentOwnerId thread the marquee post-filter and
+                                  // click hit-test gate inside useSVGInteraction.
+                                  viewerId={user?.id ?? null}
+                                  documentOwnerId={documentOwnerId}
                                 />
                               </div>
 
@@ -29228,6 +29254,9 @@ ${pageBlocks}
                                   activeSpaceId={activeSpaceId}
                                   spaces={spaces}
                                   zoomGeneration={zoomGeneration}
+                                  // Phase 35 Plan 03 — per-user delete authority gate.
+                                  viewerId={user?.id ?? null}
+                                  documentOwnerId={documentOwnerId}
                                 />
                               )}
 
@@ -29959,6 +29988,9 @@ ${pageBlocks}
                                       pendingSelection={pendingSvgSelection}
                                       // UX: pan-mode hover glow — see first mount site.
                                       pendingHover={pendingSvgHover}
+                                      // Phase 35 Plan 03 — per-user delete authority.
+                                      viewerId={user?.id ?? null}
+                                      documentOwnerId={documentOwnerId}
                                     />
                                     </div>
 
@@ -30001,6 +30033,9 @@ ${pageBlocks}
                                         activeSpaceId={activeSpaceId}
                                         spaces={spaces}
                                         zoomGeneration={zoomGeneration}
+                                        // Phase 35 Plan 03 — per-user delete authority gate.
+                                        viewerId={user?.id ?? null}
+                                        documentOwnerId={documentOwnerId}
                                       />
                                     )}
 
@@ -30531,6 +30566,9 @@ ${pageBlocks}
                                       pendingSelection={pendingSvgSelection}
                                       // UX: pan-mode hover glow — see first mount site.
                                       pendingHover={pendingSvgHover}
+                                      // Phase 35 Plan 03 — per-user delete authority.
+                                      viewerId={user?.id ?? null}
+                                      documentOwnerId={documentOwnerId}
                                     />
                                   </div>
 
@@ -30571,6 +30609,9 @@ ${pageBlocks}
                                       activeSpaceId={activeSpaceId}
                                       spaces={spaces}
                                       zoomGeneration={zoomGeneration}
+                                      // Phase 35 Plan 03 — per-user delete authority gate.
+                                      viewerId={user?.id ?? null}
+                                      documentOwnerId={documentOwnerId}
                                     />
                                   )}
 
