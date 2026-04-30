@@ -168,6 +168,13 @@ their own roadmap).
 - **Given** a non-owner hovering on another user's annotation, **when**
   the hover registers, **then** a tiny tooltip shows the author name and
   "Read-only" microcopy, with no selection chrome.
+  *Amendment 2026-04-30 (planner discretion):* The negative half ("no
+  selection chrome") is in scope for Phase 35 and covered by Plan 35-03's
+  click-resolve gate. The affirmative tooltip rendering (author name +
+  "Read-only" microcopy) is deferred to a follow-up phase per planner
+  discretion — adding a new hover surface (tooltip element + positioning +
+  show/hide logic) is real scope that is not load-bearing for the
+  permission model. See deferred-ideas section.
 - **Given** the per-user authority is in place, **when** the cloud-sync
   layer processes any annotation delete, **then** that delete carries
   the deleting user's identity and the row removal succeeds without
@@ -337,6 +344,18 @@ diff and no refactors.
   delete and ownership behaviors and are out of scope here.
 - Sync-fail fallback (local copy + merge resolution on disk) — already
   captured separately in the feature backlog as its own large phase.
+- Read-only hover tooltip for locked annotations (AC #11 affirmative half).
+  The negative half — "no selection chrome on hover/click" — ships in
+  Phase 35 via Plan 35-03's click-resolve gate. The affirmative half — a
+  tiny tooltip showing the author name and "Read-only" microcopy on hover —
+  is deferred per planner discretion 2026-04-30. Adding a new hover surface
+  is real scope (tooltip element, positioning relative to the SVG bounding
+  box, fade-in/out timing, accessibility) that is not load-bearing for the
+  permission model. The owner already gets a hover-author-label per
+  decisions section ("The owner sees a small unobtrusive author label /
+  avatar on hover for any annotation they didn't draw") — that surface
+  could be extended to non-owners with the "Read-only" microcopy in the
+  follow-up phase, reusing the same tooltip chrome.
 
 </deferred>
 

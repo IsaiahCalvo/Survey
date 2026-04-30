@@ -607,13 +607,18 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13 → 14 → 
 
 ### Phase 35: Per-User Delete Authority + Confirm-Before-Wipe
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** Replace the interim 2026-04-27 diff-detection wipe brake with a permission-based delete-authority model (Drawboard / Lumin pattern). Two roles — collaborator (default) and document author/owner — gate selection, hover, eraser, marquee, and bulk-delete. Two confirmation modals (collaborator's "delete all of mine" + owner's "delete cross-author with breakdown") plus a 5-6 second undo toast on every delete. One-time owner-only cleanup banner for brake-suppressed residue. Brake retired; per-session "user-deleted IDs" filter retired.
+**Requirements**: 12 acceptance criteria locked in 35-CONTEXT.md (no traceability IDs; phase added mid-milestone outside the original requirement plan)
 **Depends on:** Phase 34
-**Plans:** 0 plans
+**Plans:** 6 plans
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 35 to break down)
+- [ ] 35-01-PLAN.md — Wave 0 test scaffolds (4 unit + 6 e2e fixme'd)
+- [ ] 35-02-PLAN.md — Permission helper modules (permissionScope + bulkDeletePlan + cleanupResidueAudit, pure JS)
+- [ ] 35-03-PLAN.md — Selection / hover / marquee / eraser scope wiring
+- [ ] 35-04-PLAN.md — ConfirmDeleteModal + UndoToast + bulk-delete interceptor
+- [ ] 35-05-PLAN.md — Wipe brake retirement + sync_residue_cleanup banner
+- [ ] 35-06-PLAN.md — e2e fixme flip + verification pass
 
 ---
 *Last updated: 2026-04-28 — v2.4 Phase 28 (Transport Spike + Auth + Server Validator) functionally complete (6/6 plans shipped). Plan 28-06 landed the user-facing surface: StorageFailureBanner extended with 3 new copy variants (transport_offline, permission_revoked, login_expiry_failure); ReSignInModal shipped as the only new component (inline re-sign-in form on document page, no fullscreen takeover); ReadOnlyGate shipped as the kicked-collaborator read-only mode dispatcher (body[data-readonly] + window-capture-phase keydown listener; renders null); locked transport (custom Supabase Realtime adapter per 28-BENCHMARK.md tiebreaker rule #1) + authSessionBridge mounted inside YDocProvider's existing useEffect. **Plan 28-06 Blocker 1 fix executed verbatim — App.jsx ZERO diff for all of Phase 28** (28-CONTEXT.md narrow waiver NOT exercised; the only Phase 27/28 footprint in App.jsx is the existing Plan 27-05 <YDocProvider> mount line). Manual UAT (Task 5) DEFERRED to Phase 34 close per user instruction — cross-account testing blocked by a sharing-UX gap: the document dashboard query filters by user_id = auth.uid() only (so shared docs don't appear in collaborator file lists) AND Supabase Storage RLS scopes the PDF binary to the OWNER's user_id prefix path (so non-owner collaborators cannot fetch the binary). 8 phase28 bot accounts + .bot-credentials.json LEFT IN PLACE pending the deferred UAT. Phase 27 + Phase 28 unit suites green (33 / 30 pass / 3 skipped / 0 fail); applyUpdate-only invariant green; license CI green; package.json restored to pre-spike state (Hocuspocus packages uninstalled when Supabase won the bake-off). Phase 28 awaiting `/gsd:verify-work 28` + 28-RECONCILIATION.md. Next: Phase 29 (Fabric ↔ Yjs Binding + Per-User Undo).*
