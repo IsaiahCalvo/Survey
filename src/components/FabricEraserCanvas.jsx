@@ -21,6 +21,9 @@ import React, { memo, useState, useEffect, useRef } from 'react';
 import { fabric } from 'fabric';
 import { useFabricCanvas } from '../hooks/useFabricCanvas';
 import { booleanErasePath } from '../utils/geometryEraser';
+// Phase 35 Plan 03 — eraser hit-test gate (AC #2: non-owner eraser swipe
+// across a foreign-author mark has no effect; owner short-circuits inside).
+import { canModify } from '../lib/collab/permissionScope.js';
 
 // Custom properties to include in object serialization (matches PAL / FabricDrawingCanvas pattern)
 // UX 2026-04-25: 'tool' added so arrows survive an erase commit. Without it,
@@ -49,6 +52,10 @@ const FabricEraserCanvas = memo(({
   activeSpaceId,
   spaces,
   zoomGeneration,
+  // Phase 35 Plan 03 — per-user delete authority gate (boot-guarded; legacy
+  // mount sites without these props fall through to today's behavior).
+  viewerId,
+  documentOwnerId,
 }) => {
   // ---------------------------------------------------------------------------
   // State
@@ -82,6 +89,11 @@ const FabricEraserCanvas = memo(({
   const activeSpaceIdRef = useRef(activeSpaceId);
   const spacesRef = useRef(spaces);
   const initialZoomGenRef = useRef(zoomGeneration);
+  // Phase 35 Plan 03 — closure-safe refs for the per-user delete authority
+  // gate inside applyEraserAndCommit (the loop reads via .current to dodge
+  // stale closures, matching every other prop ref above).
+  const viewerIdRef = useRef(viewerId);
+  const documentOwnerIdRef = useRef(documentOwnerId);
 
   const getSpaceIdForRegion = (regionId) => {
     if (!regionId) return null;
@@ -169,6 +181,19 @@ const FabricEraserCanvas = memo(({
     let changed = false;
 
     for (const obj of objects) {
+      // Phase 35 Plan 03 — AC #2 eraser gate. canModify reads authorId via
+      // its meta > authorId > data.authorId > data.userId chain, so the shim
+      // forwards every surface Fabric might carry it on. Owner short-circuits.
+      const _vId = viewerIdRef.current;
+      const _oId = documentOwnerIdRef.current;
+      if (_vId && _oId && !canModify({
+        annotation: { id: obj.id, authorId: obj.authorId, data: obj.data, meta: obj.meta },
+        viewerId: _vId,
+        documentOwnerId: _oId,
+      })) {
+        continue;
+      }
+
       const objSpaceId = obj.spaceId || null;
       const objRegionId = obj.regionId || null;
       let shouldSkip = false;
@@ -811,6 +836,10 @@ const FabricEraserCanvas = memo(({
   useEffect(() => {
     spacesRef.current = spaces;
   }, [spaces]);
+
+  // Phase 35 Plan 03 — sync gate refs.
+  useEffect(() => { viewerIdRef.current = viewerId; }, [viewerId]);
+  useEffect(() => { documentOwnerIdRef.current = documentOwnerId; }, [documentOwnerId]);
 
   // ---------------------------------------------------------------------------
   // Container-aware resize: keep Canvas sized to container after zoom changes.
