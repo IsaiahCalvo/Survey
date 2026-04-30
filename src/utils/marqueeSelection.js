@@ -30,6 +30,11 @@
 import { getAnnotationBBox } from './svgBoundingBox.js';
 import { doesRectIntersectObject } from './geometryHitTest.js';
 import { toFabricShape } from './svgToFabricShape.js';
+// Phase 35 Plan 03 — owner-aware post-filter on marquee hit-test results.
+// Pulled from the single permission-scope source of truth so the marquee
+// uses the same canModify chain as click hit-test, eraser hit-test, and
+// the bulk-delete planner. No per-call-site fallback drift.
+import { canModify } from '../lib/collab/permissionScope.js';
 
 export const MIN_DRAG_PX = 5;
 
@@ -149,4 +154,47 @@ export function resolveMarqueeHits({
   }
 
   return { annotationIndices, calloutIds };
+}
+
+/**
+ * Phase 35 Plan 03 — owner-aware post-filter wrapping resolveMarqueeHits.
+ *
+ * Drops foreign-author hits from the marquee result when the viewer is a
+ * collaborator. Owner-mode is a same-reference passthrough: when every hit
+ * passes canModify (which is unconditionally true for the document owner),
+ * the input array reference is returned unchanged. UX-comment-grade decision —
+ * this preserves React reference-equality memoization downstream so the
+ * SVG-layer hot path doesn't re-render every annotation on every pointermove
+ * while a marquee is tracking. Boot-guard (missing viewerId / documentOwnerId)
+ * also returns the input reference unchanged so legacy mount sites that
+ * haven't yet threaded the new props behave identically to today.
+ *
+ * AC mapping (CONTEXT.md): Acceptance Criterion #1 — "non-owner marquee
+ * across mixed-author content only catches own annotations".
+ *
+ * @param {Array<number>} hitIndices  result of resolveMarqueeHits
+ * @param {{ objects: Array<object> } | undefined} annotations  Fabric JSON
+ * @param {string|null|undefined} viewerId
+ * @param {string|null|undefined} documentOwnerId
+ * @returns {Array<number>}  owner-mode: same reference; collab-mode: filtered new array
+ */
+export function filterMarqueeHits(hitIndices, annotations, viewerId, documentOwnerId) {
+  if (!Array.isArray(hitIndices) || hitIndices.length === 0) return hitIndices;
+  // Boot guard — props not yet resolved at the mount site. Return same ref so
+  // legacy behavior is byte-identical.
+  if (!viewerId || !documentOwnerId) return hitIndices;
+  const objects = annotations?.objects || [];
+  let allOwn = true;
+  const filtered = hitIndices.filter((i) => {
+    const a = objects[i];
+    if (!a) return false;
+    const ok = canModify({ annotation: a, viewerId, documentOwnerId });
+    if (!ok) allOwn = false;
+    return ok;
+  });
+  // Owner-mode (or all-own collab session): everything passed → return same
+  // reference for React memoization. canModify short-circuits to true for the
+  // owner regardless of authorId, so this branch is the owner hot path.
+  if (allOwn && filtered.length === hitIndices.length) return hitIndices;
+  return filtered;
 }

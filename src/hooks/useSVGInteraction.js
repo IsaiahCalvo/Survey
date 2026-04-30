@@ -35,7 +35,13 @@ import {
   getMarqueeDirection,
   getMarqueeRect,
   resolveMarqueeHits,
+  filterMarqueeHits,
 } from '../utils/marqueeSelection.js';
+// Phase 35 Plan 03 — owner-aware click hit-test gate. Selection chrome must
+// not appear when a collaborator clicks a foreign-author annotation, per
+// CONTEXT.md AC #3. canModify is the single source of truth for ownership
+// and is shared with the marquee post-filter and the eraser hit-test gate.
+import { canModify } from '../lib/collab/permissionScope.js';
 // Phase 15 UAT-3 Issue 3 (2026-04-17) — distance rules for callout-part drag.
 // Values match combined-tools FabricPDFCanvas collision logic (reference at
 // ~/Desktop/combined-tools/src/lib/calloutGeometry.ts). See isCalloutDragSafe
@@ -88,6 +94,15 @@ export function useSVGInteraction({
   onUpdateCallout,
   // Phase 19 — current tool. Marquee only activates when tool === 'select'.
   activeTool,
+  // Phase 35 Plan 03 — per-user delete authority. Threads the current Supabase
+  // auth user id and the active document's owner id through to canModify at
+  // every selection-resolve site (marquee post-filter + click hit-test gates).
+  // Both are optional — when either is null/undefined the legacy behavior is
+  // preserved (the click-hit gate returns true / the marquee filter returns
+  // the input reference unchanged). This keeps boot-time renders and legacy
+  // mount sites byte-identical until App.jsx threads the new props.
+  viewerId,
+  documentOwnerId,
 }) {
   // ---------------------------------------------------------------------------
   // State
@@ -332,6 +347,29 @@ export function useSVGInteraction({
     return selectedIds.has(index);
   }, [selectedIds]);
 
+  // Phase 35 Plan 03 — per-user delete authority click hit-test gate.
+  //
+  // Returns true when a click on `annotations.objects[index]` should produce
+  // selection chrome (owner role, OR collaborator clicking their own mark);
+  // returns false when the click should be a silent no-op (collaborator
+  // clicking a foreign-author mark) per CONTEXT.md AC #3 — no selection
+  // chrome, no hover halo, no context menu; the active-tool cursor stays in
+  // its original mode.
+  //
+  // Boot guard: when either viewerId or documentOwnerId is missing (App.jsx
+  // not yet threaded the new props, or the user signed out mid-session) the
+  // gate returns true so legacy behavior is byte-identical. The gate engages
+  // once both props resolve.
+  //
+  // canModify short-circuits to true for the document owner regardless of
+  // authorId, so the owner hot path stays branch-free past the helper call.
+  const canSelectAnnotationByIndex = useCallback((index) => {
+    const a = annotations?.objects?.[index];
+    if (!a) return false;
+    if (!viewerId || !documentOwnerId) return true;
+    return canModify({ annotation: a, viewerId, documentOwnerId });
+  }, [annotations, viewerId, documentOwnerId]);
+
   // ---------------------------------------------------------------------------
   // Pointer event handlers
   // ---------------------------------------------------------------------------
@@ -352,6 +390,17 @@ export function useSVGInteraction({
         objSnapshot: obj ? { left: obj.left, top: obj.top, width: obj.width, height: obj.height, angle: obj.angle, scaleX: obj.scaleX, scaleY: obj.scaleY, x1: obj.x1, y1: obj.y1, x2: obj.x2, y2: obj.y2 } : null,
       }));
     } catch (err) { /* swallow log errors */ }
+
+    // Phase 35 Plan 03 — per-user delete authority click hit-test gate.
+    // CONTEXT.md AC #3: non-owner click on a foreign-author annotation is a
+    // silent no-op — no selection chrome, no hover halo, no context menu, no
+    // counter-orbit dragstate, no group expansion, no plain-select. Cursor
+    // stays in the active-tool mode (early-return preserves all other
+    // handlers downstream). Owner-mode short-circuits inside canModify so
+    // this is branch-free for the document owner.
+    if (!canSelectAnnotationByIndex(index)) {
+      return;
+    }
 
     // UX 2026-04-20: Shift + pointerdown on a single-selected committed
     // counter enters orbit mode BEFORE the multi-select Shift-click toggle
@@ -401,6 +450,17 @@ export function useSVGInteraction({
     }
 
     if (e.shiftKey) {
+      // Phase 35 Plan 03 — explicit per-user delete authority gate at the
+      // Shift-click toggle add site. The handler-entry gate above already
+      // covers this path; this redundant check is a defense-in-depth marker
+      // that documents the boundary at the actual setSelectedIds call site
+      // (CONTEXT.md AC #3: non-owner Shift-click on foreign mark must not
+      // add the index to the selection set). canModify short-circuits to
+      // true for the document owner so this branch is byte-identical for
+      // owner-role sessions.
+      if (!canSelectAnnotationByIndex(index)) {
+        return;
+      }
       // Toggle in selection set (multi-select, Plan 03)
       setSelectedIds((prev) => {
         const next = new Set(prev);
@@ -431,7 +491,19 @@ export function useSVGInteraction({
       const pageCallouts = (callouts || []); // already page-scoped per layer mount
       const members = findGroupMembers(annotations, pageCallouts, [_clickedGid]);
       if (members.annotationIndices.length > 0 || members.calloutIds.length > 0) {
-        setSelectedIds(new Set(members.annotationIndices));
+        // Phase 35 Plan 03 — per-user delete authority filter on group expand.
+        // When a non-owner clicks an own annotation that shares a groupId with
+        // foreign-author members, only the viewer's own members enter the
+        // selection. The hit-test gate short-circuits to true for the owner
+        // role (canModify owner short-circuit), so owner-side group expand is
+        // byte-identical to today. Same gate is applied to the parallel
+        // callout-side group-expand path below (annotation-side filter only —
+        // callouts have their own ownership semantics owned by the callout
+        // pipeline).
+        const ownAnnotationIndices = members.annotationIndices.filter((mi) =>
+          canSelectAnnotationByIndex(mi),
+        );
+        setSelectedIds(new Set(ownAnnotationIndices));
         if (typeof onSelectedCalloutIdsChange === 'function') {
           onSelectedCalloutIdsChange(new Set(members.calloutIds));
         }
@@ -2400,7 +2472,7 @@ export function useSVGInteraction({
 
       const marqueeRect = getMarqueeRect(mq);
       const direction = getMarqueeDirection(mq);
-      const { annotationIndices, calloutIds } = resolveMarqueeHits({
+      const rawHits = resolveMarqueeHits({
         marqueeRect,
         direction,
         annotations,
@@ -2408,14 +2480,39 @@ export function useSVGInteraction({
         pageWidth,
         pageHeight,
       });
+      // Phase 35 Plan 03 — owner-aware marquee post-filter. CONTEXT.md AC #1:
+      // a non-owner marquee across mixed-author content only catches the
+      // viewer's own annotations — foreign-author marks are dropped before
+      // selection state updates. Owner-mode is a same-reference passthrough
+      // inside filterMarqueeHits (canModify short-circuits to true for the
+      // document owner), so the owner hot path stays React-memoization-clean.
+      // Callout hits are not filtered here — callout ownership semantics live
+      // in App.jsx's callout pipeline; the marquee passes the raw callout ids
+      // through unchanged for now.
+      const annotationIndices = filterMarqueeHits(
+        rawHits.annotationIndices,
+        annotations,
+        viewerId,
+        documentOwnerId,
+      );
+      const calloutIds = rawHits.calloutIds;
 
       if (mq.altHeld) {
         // Subtract: remove marquee hits from the existing selection.
         // Alt wins over Shift if both held. Empty result is a no-op.
-        if (annotationIndices.length > 0) {
+        // Phase 35 Plan 03 — defense-in-depth gate at the Alt subtract site.
+        // annotationIndices is already filtered by filterMarqueeHits above,
+        // so for the document owner this is a same-reference passthrough.
+        // Each remaining hit is re-checked through the click-hit gate so a
+        // stale annotation lookup (e.g. annotation deleted between marquee
+        // resolve and pointerup commit) cannot leave a foreign-author index
+        // in the subtract set. CONTEXT.md AC: collaborator alt-marquee never
+        // touches foreign-author selection state.
+        const ownAltHits = annotationIndices.filter((i) => canSelectAnnotationByIndex(i));
+        if (ownAltHits.length > 0) {
           setSelectedIds((prev) => {
             const nextSet = new Set(prev);
-            for (const i of annotationIndices) nextSet.delete(i);
+            for (const i of ownAltHits) nextSet.delete(i);
             return nextSet;
           });
         }
@@ -2576,6 +2673,17 @@ export function useSVGInteraction({
         }
         justDraggedAtRef.current = Date.now();
       } else {
+        // Phase 35 Plan 03 — per-user delete authority gate at the
+        // counter-orbit Shift-click toggle alternate path. The handler-entry
+        // gate in handleAnnotationPointerDown already covered the click that
+        // initiated this drag, but the dragstate persists across the move so
+        // the toggle commit needs an explicit re-check at pointerup. AC #3:
+        // a sub-threshold release on a foreign-author counter must NOT add
+        // the index to the selection set. Owner-mode short-circuits inside
+        // canModify so this is byte-identical for owner sessions.
+        if (!canSelectAnnotationByIndex(ds.annotationIndex)) {
+          return;
+        }
         // Treat as Shift-click selection toggle.
         setSelectedIds((prev) => {
           const next = new Set(prev);
