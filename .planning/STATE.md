@@ -237,6 +237,7 @@ Progress: [██████████] 97% — Phase 27 functionally complet
 - v2.1 Phase 12 shipped 3 requirements + 9 scope-expansion gap fixes
 - v2.2 Phase 13 shipped 2 requirements (one rescoped mid-plan)
 - v2.3 Phases 14-18 defined 2026-04-15 for 26 requirements (100% coverage)
+- Phase 35 added 2026-04-30: Per-User Delete Authority + Confirm-Before-Wipe — replaces interim wipe brake with Drawboard/Lumin-style permission model
 
 ### Pending Todos
 
