@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase, isSupabaseAvailable, isSchemaError, isConnectedServicesAvailable, setConnectedServicesAvailable } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
+import { buildDocumentProvenance } from '../utils/documentProvenance.js';
 
 const isSupabaseNotFoundError = (error) => {
   if (!error) return false;
@@ -180,7 +181,7 @@ export const useProjects = () => {
 // ============================================
 
 export const useDocuments = (projectId = null) => {
-  const { user } = useAuth();
+  const { user, tier } = useAuth();
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -222,10 +223,22 @@ export const useDocuments = (projectId = null) => {
   const createDocument = async (documentData) => {
     if (!user || !isSupabaseAvailable()) return;
 
+    // 2026-04-30 — stamp provenance metadata into every new document row:
+    // device the upload happened on (mac / windows / web / dev / mobile),
+    // the user's tier at upload time (free / pro / enterprise), and the app
+    // version that produced this row. Columns added by the
+    // 20260430000001_add_document_provenance migration. Caller-supplied
+    // documentData keys WIN if they collide (rare; mostly used for tests).
+    const provenance = buildDocumentProvenance({ subscriptionTier: tier });
+
     try {
       const { data, error } = await supabase
         .from('documents')
-        .insert({ user_id: user.id, ...documentData })
+        .insert({
+          user_id: user.id,
+          ...provenance,
+          ...documentData,
+        })
         .select()
         .single();
 

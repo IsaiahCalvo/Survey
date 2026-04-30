@@ -2690,6 +2690,11 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         perfUpload.mark('electron-dialog', 'Creating File object');
         const fileData = new Uint8Array(result.data);
         const file = new File([fileData], result.fileName, { type: 'application/pdf' });
+        // 2026-04-30 fix: stamp the uploader's identity onto the in-memory File
+        // so the per-user delete authority gate can resolve documentOwnerId
+        // before the Supabase row's id round-trips back. Without this, a quick
+        // delete after upload silently failed.
+        if (user?.id) file.user_id = user.id;
         // Store the file path separately (File.path is read-only)
         const filePath = result.filePath;
         perfUpload.mark('electron-dialog', 'File object created');
@@ -2797,6 +2802,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         event.target.value = '';
         return;
       }
+
+      // 2026-04-30 fix: stamp the uploader's identity onto the in-memory File
+      // so the per-user delete authority gate can resolve documentOwnerId
+      // before the Supabase row's id round-trips back. Without this, a quick
+      // delete right after browser-input upload silently failed.
+      file.user_id = user.id;
 
       // Determine Project ID
       let projectId = null;
@@ -16631,6 +16642,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       // Save the modified PDF
       const pdfBytes = await pdfDoc.save();
       const newFile = new File([pdfBytes], pdfFile.name, { type: 'application/pdf' });
+      // 2026-04-30 fix: preserve all Supabase metadata across page-mutation
+      // round-trips so the per-user delete authority gate keeps resolving
+      // documentOwnerId on the next render. Pre-fix, every page op (duplicate
+      // / delete / paste / reorder) reconstructed the File without these
+      // fields, leaving pdfFile.user_id null and silently blocking deletes.
+      newFile.id = pdfFile.id;
+      newFile.projectId = pdfFile.projectId;
+      newFile.supabaseFilePath = pdfFile.supabaseFilePath;
+      newFile.user_id = pdfFile.user_id || null;
 
       // Update the PDF file
       onUpdatePDFFile(newFile);
@@ -16660,6 +16680,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       // Save the modified PDF
       const pdfBytes = await pdfDoc.save();
       const newFile = new File([pdfBytes], pdfFile.name, { type: 'application/pdf' });
+      // 2026-04-30 fix: preserve all Supabase metadata across page-mutation
+      // round-trips so the per-user delete authority gate keeps resolving
+      // documentOwnerId on the next render. Pre-fix, every page op (duplicate
+      // / delete / paste / reorder) reconstructed the File without these
+      // fields, leaving pdfFile.user_id null and silently blocking deletes.
+      newFile.id = pdfFile.id;
+      newFile.projectId = pdfFile.projectId;
+      newFile.supabaseFilePath = pdfFile.supabaseFilePath;
+      newFile.user_id = pdfFile.user_id || null;
 
       // Update the PDF file
       onUpdatePDFFile(newFile);
@@ -16714,6 +16743,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       // Save the modified PDF
       const pdfBytes = await pdfDoc.save();
       const newFile = new File([pdfBytes], pdfFile.name, { type: 'application/pdf' });
+      // 2026-04-30 fix: preserve all Supabase metadata across page-mutation
+      // round-trips so the per-user delete authority gate keeps resolving
+      // documentOwnerId on the next render. Pre-fix, every page op (duplicate
+      // / delete / paste / reorder) reconstructed the File without these
+      // fields, leaving pdfFile.user_id null and silently blocking deletes.
+      newFile.id = pdfFile.id;
+      newFile.projectId = pdfFile.projectId;
+      newFile.supabaseFilePath = pdfFile.supabaseFilePath;
+      newFile.user_id = pdfFile.user_id || null;
 
       // Update the PDF file
       onUpdatePDFFile(newFile);
@@ -16807,6 +16845,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       // Save the modified PDF
       const pdfBytes = await pdfDoc.save();
       const newFile = new File([pdfBytes], pdfFile.name, { type: 'application/pdf' });
+      // 2026-04-30 fix: preserve all Supabase metadata across page-mutation
+      // round-trips so the per-user delete authority gate keeps resolving
+      // documentOwnerId on the next render. Pre-fix, every page op (duplicate
+      // / delete / paste / reorder) reconstructed the File without these
+      // fields, leaving pdfFile.user_id null and silently blocking deletes.
+      newFile.id = pdfFile.id;
+      newFile.projectId = pdfFile.projectId;
+      newFile.supabaseFilePath = pdfFile.supabaseFilePath;
+      newFile.user_id = pdfFile.user_id || null;
 
       onUpdatePDFFile(newFile);
     } catch (error) {
@@ -16834,6 +16881,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       // Save the modified PDF
       const pdfBytes = await pdfDoc.save();
       const newFile = new File([pdfBytes], pdfFile.name, { type: 'application/pdf' });
+      // 2026-04-30 fix: preserve all Supabase metadata across page-mutation
+      // round-trips so the per-user delete authority gate keeps resolving
+      // documentOwnerId on the next render. Pre-fix, every page op (duplicate
+      // / delete / paste / reorder) reconstructed the File without these
+      // fields, leaving pdfFile.user_id null and silently blocking deletes.
+      newFile.id = pdfFile.id;
+      newFile.projectId = pdfFile.projectId;
+      newFile.supabaseFilePath = pdfFile.supabaseFilePath;
+      newFile.user_id = pdfFile.user_id || null;
 
       onUpdatePDFFile(newFile);
     } catch (error) {
@@ -16862,6 +16918,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       // Save the modified PDF
       const pdfBytes = await pdfDoc.save();
       const newFile = new File([pdfBytes], pdfFile.name, { type: 'application/pdf' });
+      // 2026-04-30 fix: preserve all Supabase metadata across page-mutation
+      // round-trips so the per-user delete authority gate keeps resolving
+      // documentOwnerId on the next render. Pre-fix, every page op (duplicate
+      // / delete / paste / reorder) reconstructed the File without these
+      // fields, leaving pdfFile.user_id null and silently blocking deletes.
+      newFile.id = pdfFile.id;
+      newFile.projectId = pdfFile.projectId;
+      newFile.supabaseFilePath = pdfFile.supabaseFilePath;
+      newFile.user_id = pdfFile.user_id || null;
 
       onUpdatePDFFile(newFile);
     } catch (error) {
