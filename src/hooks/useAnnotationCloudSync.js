@@ -558,14 +558,27 @@ export function useAnnotationCloudSync({
             console.warn('[CloudSync][hook] cloud delete failed ' + JSON.stringify({
               error: delResult.error?.message || String(delResult.error)
             }));
+            // 2026-04-30 — surface unsaved deletion to the user via the banner.
+            // YDocProvider listens and flips on the deletion-warning copy.
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('crdt:deletions-pending'));
+            }
           } else {
             // Phase 30 — CRDT-side delete fan-out per annoId. Runs only when
             // kill switch is on AND Y.Doc is mounted. skipLegacy: true (legacy
             // bulk delete just succeeded above).
             await fanOutCrdtForDeletedIds(documentId, deletedIds, { userId });
+            // 2026-04-30 — clear any prior deletion-warning banner. A subsequent
+            // delete made it through, so the user's earlier failure was transient.
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('crdt:deletions-resolved'));
+            }
           }
         } catch (err) {
           console.warn('[CloudSync][hook] cloud delete threw ' + (err?.message || String(err)));
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('crdt:deletions-pending'));
+          }
         }
       } else if (wouldWipeCloud) {
         const priorPagesWithObjects = Object.keys(priorByPage || {}).filter(
@@ -579,6 +592,12 @@ export function useAnnotationCloudSync({
           priorPagesWithObjects,
           rationale: 'diff implies full wipe — refusing to delete every cloud row via auto-detection. peer devices keep their copy; user must explicitly bulk-delete to sync.'
         }));
+        // 2026-04-30 — the user removed annotations locally, but we refused to
+        // propagate the wipe. Tell them via the banner so they know peer devices
+        // / focus rehydrate may resurrect what they just deleted.
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('crdt:deletions-pending'));
+        }
       }
 
       const result = await upsertAnnotationsByPage(annotationsByPage, { documentId, userId, pdfId, clientSessionId });
@@ -731,9 +750,21 @@ export function useAnnotationCloudSync({
             console.warn('[CloudSync][hook] callout cloud delete failed ' + JSON.stringify({
               error: delResult.error?.message || String(delResult.error)
             }));
+            // 2026-04-30 — same banner trigger as the fabric path above.
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('crdt:deletions-pending'));
+            }
+          } else {
+            // 2026-04-30 — callout delete made it through; clear any pending banner.
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('crdt:deletions-resolved'));
+            }
           }
         } catch (err) {
           console.warn('[CloudSync][hook] callout cloud delete threw ' + (err?.message || String(err)));
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('crdt:deletions-pending'));
+          }
         }
       } else if (wouldWipeCalloutCloud) {
         console.error('[CloudSync][hook][SAFETY-BRAKE] suppressing wipe-style callout delete push ' + JSON.stringify({
@@ -743,6 +774,10 @@ export function useAnnotationCloudSync({
           sampleDeletedIds: deletedCalloutIds.slice(0, 10),
           rationale: 'diff implies full wipe — refusing to delete every cloud callout row via auto-detection.'
         }));
+        // 2026-04-30 — same banner trigger as the fabric safety brake above.
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('crdt:deletions-pending'));
+        }
       }
 
       const result = await upsertCallouts(callouts || [], { documentId, userId, clientSessionId });

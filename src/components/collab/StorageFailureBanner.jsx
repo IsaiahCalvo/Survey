@@ -126,6 +126,16 @@ const COPY = {
     body: "A few of your recent edits are still trying to save. Keep this tab open and check your connection — they'll keep retrying in the background. Closing this banner doesn't stop those retries.",
     action: 'Retry now',
   },
+
+  // 2026-04-30 — deletion-warning variant. Fires when a delete failed to push to
+  // the cloud or the wipe-style safety brake suppressed it. The user removed
+  // something locally, but the cloud still holds the row, so a focus rehydrate
+  // (or a peer device re-fetch) could resurrect it. Wording locked by the user
+  // in the Phase 30 close-out handoff.
+  sync_deletions_pending: {
+    body: "Some of your changes haven't been saved yet — including any deletions, which may reappear if you close this file. Check your connection or try the sync button again.",
+    action: 'Retry now',
+  },
 };
 
 // Phase 28 — per-variant headings (Phase 27 originally used a single shared
@@ -153,6 +163,9 @@ const HEADING_BY_CODE = {
   annotation_remote_deleted: 'Removed by',
   // Phase 30 — sync-queue-stuck per 30-UI-SPEC.md Surface 1.
   sync_queue_stuck: "Some changes haven't saved yet",
+  // 2026-04-30 — deletion-warning variant. Same heading as sync_queue_stuck
+  // (the body copy carries the deletion-specific detail).
+  sync_deletions_pending: "Some changes haven't saved yet",
 };
 
 // Phase 28 — per-variant secondary metadata. Phase 27 codes share the original
@@ -177,6 +190,8 @@ const SECONDARY_BY_CODE = {
   annotation_remote_deleted: null,
   // Phase 30 — sync-queue-stuck per 30-UI-SPEC.md Surface 1.
   sync_queue_stuck: 'Pending changes will keep retrying · Stay on this page to keep your edits queued',
+  // 2026-04-30 — deletion-warning variant. Same secondary line — same retry posture.
+  sync_deletions_pending: 'Pending changes will keep retrying · Stay on this page to keep your edits queued',
 };
 
 // Inline 16x16 warning icon — matches existing project pattern (AuthModal.jsx,
@@ -207,7 +222,7 @@ const WarningIcon = () => (
  * any future CRDT-layer failure mode that wants the same chrome.
  *
  * @param {object} props
- * @param {'quota_exceeded'|'invalid_state'|'version_mismatch'|'blocked'|'transport_offline'|'permission_revoked'|'login_expiry_failure'|'annotation_remote_deleted'|'sync_queue_stuck'} props.code
+ * @param {'quota_exceeded'|'invalid_state'|'version_mismatch'|'blocked'|'transport_offline'|'permission_revoked'|'login_expiry_failure'|'annotation_remote_deleted'|'sync_queue_stuck'|'sync_deletions_pending'} props.code
  * @param {() => void} props.onDismiss - hides banner for this session only.
  *   IGNORED for `permission_revoked` — kicked-out is a permanent state for
  *   the session; banner stays until the user closes the document.
@@ -261,7 +276,7 @@ export function StorageFailureBanner({
   // immediate-dismiss behavior (their failure modes don't carry "data may be lost"
   // weight in the same way). Feedback from 2026-04-29 UAT session.
   const [confirmingDismiss, setConfirmingDismiss] = useState(false);
-  const requiresConfirmDismiss = code === 'sync_queue_stuck';
+  const requiresConfirmDismiss = code === 'sync_queue_stuck' || code === 'sync_deletions_pending';
   const handleDismissClick = () => {
     if (requiresConfirmDismiss) {
       setConfirmingDismiss(true);

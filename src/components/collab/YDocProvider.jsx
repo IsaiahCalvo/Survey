@@ -164,6 +164,13 @@ function YDocProviderInner({ docId, children, closeDocument }) {
   // waiting the 30s stuck-queue threshold. Reset on document mount.
   const [manualRetryExhausted, setManualRetryExhausted] = useState(false);
 
+  // 2026-04-30 — deletion-warning gate. Flips true when the cloud-sync hook
+  // suppresses or fails a delete (wipe-style safety brake OR the legacy bulk
+  // delete returns an error). Drives the sync_deletions_pending banner so the
+  // user is told that deletions may reappear on close. Reset on document mount,
+  // banner dismiss, or full queue clear.
+  const [deletionsPending, setDeletionsPending] = useState(false);
+
   // Phase 28 state additions — accessRevoked drives ReadOnlyGate; transportState
   // is exposed for any future status surfaces (sync chip in Phase 33);
   // loginExpired tracks the failed-refresh signal from authSessionBridge;
@@ -199,6 +206,7 @@ function YDocProviderInner({ docId, children, closeDocument }) {
     // re-show the banner; user can dismiss again per session.
     setBannerDismissed(false);
     setManualRetryExhausted(false);
+    setDeletionsPending(false);
     setIsHydrating(true);
 
     const handle = attachLifecycle(ydoc, docId, {
@@ -758,6 +766,28 @@ function YDocProviderInner({ docId, children, closeDocument }) {
     return () => window.removeEventListener('crdt:manual-retry-failed', handler);
   }, []);
 
+  // 2026-04-30 — listen for deletion-failure events from useAnnotationCloudSync
+  // (fires whenever a cloud delete fails or the wipe-style safety brake
+  // suppresses one). Boolean stays true until the user dismisses the banner OR
+  // the dual-write queue reports fully clean — that's the "all caught up" signal.
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const handler = () => setDeletionsPending(true);
+    window.addEventListener('crdt:deletions-pending', handler);
+    return () => window.removeEventListener('crdt:deletions-pending', handler);
+  }, []);
+
+  // 2026-04-30 — auto-clear deletion-warning the moment a subsequent delete
+  // actually lands in the cloud. The cloud-sync hook fires this on every
+  // successful deleteAnnotations call, so a flaky-network delete that later
+  // succeeds clears the banner naturally without needing user dismiss.
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const handler = () => setDeletionsPending(false);
+    window.addEventListener('crdt:deletions-resolved', handler);
+    return () => window.removeEventListener('crdt:deletions-resolved', handler);
+  }, []);
+
   // Phase 30 — test seam for e2e specs that need to assert Y.Doc annotation
   // count post-backfill. Updates whenever yMapAnnotations.observe fires.
   useEffect(() => {
@@ -908,12 +938,14 @@ function YDocProviderInner({ docId, children, closeDocument }) {
           though the user's data was still unsaved. The banner now persists
           until the user dismisses it or every entry actually reaches the
           cloud. */}
-      {(dualWriteQueueState.stuckCount > 0 || dualWriteQueueState.quarantinedAnnoIds.length > 0 || (manualRetryExhausted && dualWriteQueueState.hasPending)) &&
+      {(deletionsPending || dualWriteQueueState.stuckCount > 0 || dualWriteQueueState.quarantinedAnnoIds.length > 0 || (manualRetryExhausted && dualWriteQueueState.hasPending)) &&
        (!storageState || storageState.code === 'ok') &&
        !bannerDismissed && (
         <StorageFailureBanner
-          code="sync_queue_stuck"
-          onDismiss={() => { setBannerDismissed(true); setManualRetryExhausted(false); }}
+          // 2026-04-30 — deletion-warning copy takes priority when a delete is
+          // unsaved. Otherwise the existing sync_queue_stuck copy stands.
+          code={deletionsPending ? 'sync_deletions_pending' : 'sync_queue_stuck'}
+          onDismiss={() => { setBannerDismissed(true); setManualRetryExhausted(false); setDeletionsPending(false); }}
           onAction={() => {
             // UX: "Retry now" — eager flush. Run drainQueue once outside the
             // 1Hz interval, then let the regular tick continue. If the flush
