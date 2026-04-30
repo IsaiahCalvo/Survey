@@ -21023,13 +21023,30 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     const runSync = async () => {
       if (cancelled || syncStructuralAutoDisabledRef.current) return;
+      // Bug 2 fix (2026-04-30): pass the last-synced state as priorHighlight-
+      // Annotations so the service can detect erases / removals and push DELETE
+      // events to the cloud BEFORE the upsert. Without this, peers keep
+      // rendering highlights the user already erased on this device. We parse
+      // the cached JSON string defensively — if parse fails (corrupt cache),
+      // priorHighlightAnnotations is null and the service falls back to upsert-
+      // only behavior (no regression vs pre-fix).
+      let priorHighlightAnnotations = null;
+      if (lastSyncedAnnotationsRef.current) {
+        try {
+          priorHighlightAnnotations = JSON.parse(lastSyncedAnnotationsRef.current);
+        } catch (_) {
+          priorHighlightAnnotations = null;
+        }
+      }
       const {
         success,
         error,
         errorClass,
         nonRetryable,
         isRLSError
-      } = await syncAnnotationsToSupabase(documentId, user.id, highlightAnnotations);
+      } = await syncAnnotationsToSupabase(documentId, user.id, highlightAnnotations, {
+        priorHighlightAnnotations,
+      });
 
       if (cancelled) return;
 

@@ -5,6 +5,7 @@
  */
 
 import { supabase } from '../supabaseClient';
+import { diffDeletedHighlightIds } from './highlightSyncDiff.js';
 
 const SUPABASE_PAGE_SIZE = 1000;
 
@@ -210,13 +211,43 @@ export async function deleteAnnotations(documentId, highlightIds) {
 // SYNC OPERATIONS
 // ============================================
 
+// Re-export the pure diff helper so existing callers that import it from
+// this module keep working. Implementation lives in `highlightSyncDiff.js`
+// to keep the helper Supabase-free for unit tests under `node --test`.
+export { diffDeletedHighlightIds };
+
 /**
  * Sync all local annotations to Supabase
  * Compares local state with remote and reconciles
+ *
+ * @param {string} documentId
+ * @param {string} userId
+ * @param {object} highlightAnnotations  Current highlightAnnotations dict
+ * @param {object} [options]
+ * @param {object|null} [options.priorHighlightAnnotations]  Last-synced state.
+ *   When provided, the function diffs prior vs current to find deleted IDs and
+ *   calls `deleteAnnotations()` for them BEFORE the upsert. Without this, the
+ *   legacy path leaks cloud rows on every erase and peers keep drawing stale
+ *   highlights (Bug 2 fix, 2026-04-30).
  */
-export async function syncAnnotationsToSupabase(documentId, userId, highlightAnnotations) {
+export async function syncAnnotationsToSupabase(documentId, userId, highlightAnnotations, options = {}) {
   if (!documentId || !userId) {
     return { success: false, error: 'Missing documentId or userId' };
+  }
+
+  // Bug 2 fix: detect erases / removals against the prior synced state and
+  // push deletes to the cloud BEFORE the upsert so peers stop rendering
+  // erased highlights. Best-effort — a failed delete logs a warning but does
+  // not abort the upsert (the upsert remains the more critical write path).
+  const priorHighlightAnnotations = options?.priorHighlightAnnotations;
+  if (priorHighlightAnnotations) {
+    const deletedIds = diffDeletedHighlightIds(priorHighlightAnnotations, highlightAnnotations);
+    if (deletedIds.length > 0) {
+      const { success: deleteSuccess, error: deleteError } = await deleteAnnotations(documentId, deletedIds);
+      if (!deleteSuccess) {
+        console.warn('[AnnotationSync] delete-diff failed (continuing with upsert):', deleteError, deletedIds);
+      }
+    }
   }
 
   const annotations = Object.entries(highlightAnnotations || {}).map(([highlightId, annotation]) => ({
