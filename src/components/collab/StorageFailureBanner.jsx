@@ -136,6 +136,22 @@ const COPY = {
     body: "Some of your changes haven't been saved yet — including any deletions, which may reappear if you close this file. Check your connection or try the sync button again.",
     action: 'Retry now',
   },
+
+  // 2026-04-30 (Phase 35 Plan 05) — sync_residue_cleanup. One-shot per
+  // document for owners only. Surfaced when an audit detects annotations the
+  // 2026-04-27 diff-detection delete-suppression block left in the cloud
+  // before per-user authority shipped. Two affordances per CONTEXT.md +
+  // checker W5: 'Review' (opens CleanupResidueReviewPanel — owned by
+  // YDocProvider's reviewPanelOpen state, lists count + first 5 annotation
+  // IDs) and 'Clean up' (deleteAnnotations on the audit's residueIds).
+  // Banner appears once per document; sticky dismissal stored in
+  // localStorage under 'phase35.dismissedCleanupBanners'. Calm choice — NOT
+  // confirm-before-close (cleanup is the user's call, not data-loss).
+  sync_residue_cleanup: {
+    body: "We found some annotations that were left over from an earlier sync issue. Review them, or clean them up now.",
+    action: 'Clean up',
+    reviewLabel: 'Review',
+  },
 };
 
 // Phase 28 — per-variant headings (Phase 27 originally used a single shared
@@ -166,6 +182,8 @@ const HEADING_BY_CODE = {
   // 2026-04-30 — deletion-warning variant. Same heading as sync_queue_stuck
   // (the body copy carries the deletion-specific detail).
   sync_deletions_pending: "Some changes haven't saved yet",
+  // 2026-04-30 (Phase 35 Plan 05) — owner-only cleanup banner heading.
+  sync_residue_cleanup: 'Old annotations to clean up',
 };
 
 // Phase 28 — per-variant secondary metadata. Phase 27 codes share the original
@@ -192,6 +210,10 @@ const SECONDARY_BY_CODE = {
   sync_queue_stuck: 'Pending changes will keep retrying · Stay on this page to keep your edits queued',
   // 2026-04-30 — deletion-warning variant. Same secondary line — same retry posture.
   sync_deletions_pending: 'Pending changes will keep retrying · Stay on this page to keep your edits queued',
+  // 2026-04-30 (Phase 35 Plan 05) — secondary line clarifies owner-only scope
+  // so collaborators (who never see this banner) and the owner both understand
+  // the audience.
+  sync_residue_cleanup: 'Only you (the document owner) see this notice',
 };
 
 // Inline 16x16 warning icon — matches existing project pattern (AuthModal.jsx,
@@ -222,7 +244,7 @@ const WarningIcon = () => (
  * any future CRDT-layer failure mode that wants the same chrome.
  *
  * @param {object} props
- * @param {'quota_exceeded'|'invalid_state'|'version_mismatch'|'blocked'|'transport_offline'|'permission_revoked'|'login_expiry_failure'|'annotation_remote_deleted'|'sync_queue_stuck'|'sync_deletions_pending'} props.code
+ * @param {'quota_exceeded'|'invalid_state'|'version_mismatch'|'blocked'|'transport_offline'|'permission_revoked'|'login_expiry_failure'|'annotation_remote_deleted'|'sync_queue_stuck'|'sync_deletions_pending'|'sync_residue_cleanup'} props.code
  * @param {() => void} props.onDismiss - hides banner for this session only.
  *   IGNORED for `permission_revoked` — kicked-out is a permanent state for
  *   the session; banner stays until the user closes the document.
@@ -240,6 +262,11 @@ const WarningIcon = () => (
  *   (calls back into YDocProvider's restore handler which does a direct
  *   ydoc.transact preserving meta.authorId / meta.deviceId / meta.createdAt
  *   per UNDO-03 contract).
+ * @param {() => void} [props.onReview] - Phase 35 Plan 05 only; opens the
+ *   CleanupResidueReviewPanel when code === 'sync_residue_cleanup'. When this
+ *   prop is provided AND code is 'sync_residue_cleanup', the banner renders
+ *   BOTH a 'Review' link AND the 'Clean up' primary action. When omitted, the
+ *   banner falls back to the standard single-action chrome.
  */
 export function StorageFailureBanner({
   code,
@@ -248,6 +275,12 @@ export function StorageFailureBanner({
   // Phase 29 — used only when code === 'annotation_remote_deleted'.
   collaboratorName = null,
   onRestore,
+  // Phase 35 Plan 05 — used only when code === 'sync_residue_cleanup'. When
+  // provided, surfaces a secondary 'Review' button alongside the primary
+  // 'Clean up' action. UX: equal-weight presentation (same as Phase 29
+  // Restore/Dismiss) so neither affordance feels coercive — the owner can
+  // safely inspect before deleting.
+  onReview,
 }) {
   const copy = COPY[code];
   // Defensive: render nothing on unrecognized codes rather than show empty chrome.
@@ -269,6 +302,15 @@ export function StorageFailureBanner({
   // (Restore + Dismiss) instead of the single-action + × pattern. We branch
   // here so the existing render tree for Phase 27 + 28 codes is byte-identical.
   const isRemoteDelete = code === 'annotation_remote_deleted';
+
+  // Phase 35 Plan 05 — sync_residue_cleanup renders TWO action buttons
+  // (Review + Clean up) when onReview is provided. The Review button opens
+  // CleanupResidueReviewPanel (mounted in YDocProvider). When onReview is
+  // omitted, the banner falls back to single-action chrome with just
+  // 'Clean up'. Equal-weight presentation per checker W5: shipping an
+  // actual Review surface, not paper-over with copy.
+  const isCleanupResidue = code === 'sync_residue_cleanup';
+  const showReviewButton = isCleanupResidue && typeof onReview === 'function';
 
   // UX: confirm-before-close intercept on the X button — only for sync_queue_stuck.
   // Reason: the user can lose track of unsaved annotations if they hastily close the
@@ -367,6 +409,31 @@ export function StorageFailureBanner({
             aria-label="Dismiss"
           >
             Dismiss
+          </button>
+        </span>
+      ) : showReviewButton ? (
+        // Phase 35 Plan 05 — sync_residue_cleanup two-action variant.
+        // UX: Review (secondary) + Clean up (primary). Same equal-weight
+        // chrome as Phase 29 to keep the surface non-coercive — the owner
+        // can inspect the residue list before deleting. Review opens the
+        // CleanupResidueReviewPanel mounted in YDocProvider; Clean up
+        // dispatches deleteAnnotations on the audited residueIds.
+        <span className="storage-banner__actions">
+          <button
+            type="button"
+            className="storage-banner__action storage-banner__action--secondary"
+            onClick={onReview}
+            aria-label="Review old annotations"
+          >
+            {copy.reviewLabel || 'Review'}
+          </button>
+          <button
+            type="button"
+            className="storage-banner__action"
+            onClick={onAction}
+            aria-label="Clean up old annotations"
+          >
+            {copy.action}
           </button>
         </span>
       ) : (
