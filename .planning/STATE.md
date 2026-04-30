@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
 status: completed
-stopped_at: Completed 35-02-PLAN.md (3 pure-JS helpers; 17 Wave 0 unit tests green)
-last_updated: "2026-04-30T17:03:48.449Z"
-last_activity: "2026-04-30 17:01 — Phase 35 Plan 02 shipped (3 pure-JS helpers; 17 Wave 0 unit tests skip → green; baseline 410p/8f/12s)"
+stopped_at: Completed 35-03-PLAN.md (selection scope wiring; marquee + click + eraser gates; 410p/8f/12s preserved)
+last_updated: "2026-04-30T17:18:48.000Z"
+last_activity: "2026-04-30 17:18 — Phase 35 Plan 03 shipped (selection scope wiring at 5 click sites + marquee + eraser; 410p/8f/12s preserved; 13min)"
 progress:
   total_phases: 15
   completed_phases: 6
   total_plans: 39
-  completed_plans: 34
+  completed_plans: 35
   percent: 97
 ---
 
@@ -26,10 +26,10 @@ See: .planning/PROJECT.md (updated 2026-04-14)
 ## Current Position
 
 Milestone: v2.4 — CRDT Foundation + Real-Time Sync (Yjs port; SVG/Fabric layers immutable). Phase 35 retires the 2026-04-27 wipe brake and ships the Drawboard/Lumin permission model.
-Phase: **Phase 35 EXECUTING** — Plans 35-01 + 35-02 shipped 2026-04-30. Plans 35-03 (selection scope filter) / 35-04 (modals + undo toast) / 35-05 (brake retirement + cleanup banner) / 35-06 (e2e flip green) unblocked.
-Plan: Plan 35-02 closed 2026-04-30 17:01 — 3 pure-JS helper modules: `src/lib/collab/permissionScope.js` (4 exports: isOwner / getAnnotationAuthorId / canModify / filterByAuthor), `src/lib/collab/bulkDeletePlan.js` (1 export: buildBulkDeletePlan emitting 4-mode plan), `src/lib/collab/cleanupResidueAudit.js` (1 export: auditResidue with sticky-per-doc dismissal). 17 Wave 0 unit tests (6 + 6 + 5) flipped skip → green automatically via the existsSync skip-guard pattern. Test baseline: 393 pass / 8 fail / 29 skip → 410 pass / 8 fail / 12 skip (+17 pass exactly equals new green tests; failures unchanged). Cross-imports verified — bulkDeletePlan + cleanupResidueAudit both import from permissionScope (single ownership source of truth). Two Rule-3 deviations auto-fixed and documented: function signatures reconciled with Plan 35-01 test contract (destructured options vs PLAN positional sketch; localUserDeletedSet array vs PLAN residueCandidateIds Set sketch). Commits 6a797b9e + 46445b79 + 981db77f + the metadata commit.
-Status: Plan 35-02 DONE. Next: Plan 35-03 (wires selection / hover / marquee / eraser scope through `permissionScope.canModify` + `filterByAuthor` — collaborator role becomes visible-but-locked for foreign-author marks).
-Last activity: 2026-04-30 17:01 — Phase 35 Plan 02 shipped (3 pure-JS helpers; 17 Wave 0 unit tests skip → green; baseline 410p/8f/12s)
+Phase: **Phase 35 EXECUTING** — Plans 35-01 + 35-02 + 35-03 shipped 2026-04-30. Plans 35-04 (modals + undo toast) / 35-05 (brake retirement + cleanup banner) / 35-06 (e2e flip green) unblocked.
+Plan: Plan 35-03 closed 2026-04-30 17:18 — 5 modified files (4 from PLAN + Dashboard scope expansion). marqueeSelection.js gains `filterMarqueeHits` owner-aware post-filter (same-reference passthrough for owner role). useSVGInteraction.js threads viewerId + documentOwnerId through to marquee commit + applies `canSelectAnnotationByIndex` gate at exactly 5 add-from-click sites (handler-entry covering all annotation pointerdown paths, Shift-toggle, group expand member filter, marquee Alt subtract defensive re-check, counter-orbit Shift-toggle). FabricEraserCanvas.jsx adds closure-safe refs (viewerIdRef + documentOwnerIdRef synced via useEffect — applyEraserAndCommit lives in a useRef stash, direct reads would capture stale init values) + continue-gate at top of per-object erase loop. App.jsx threads file.user_id at 3 Dashboard load paths (handleDocumentClick optimistic, downloadFromStorage, dataUrl legacy) so PDFViewer can resolve documentOwnerId without crossing scope boundaries; useMemo derivation pulls from pdfFile?.user_id; 6 mount-site prop additions (3 SVGAnnotationLayer + 3 FabricEraserCanvas). SVGAnnotationLayer.jsx gets 4-line additive prop pass-through (destructure + useSVGInteraction forward; render logic untouched per CONTEXT.md DO NOT CHANGE). Test baseline preserved exactly: 410p/8f/12s. Build green. 3 Rule-deviations auto-fixed: closure-safe refs in eraser (Rule 3 vs 20-line diff target — structural requirement), Dashboard file.user_id attachment (Rule 3 vs `documents.find()` plan hint — Dashboard scope unreachable from PDFViewer), and one Rule 1 grep-pattern false-match in comments (rephrased without changing semantics). All exact-count grep ACs pass: canSelectAnnotationByIndex = 6, viewerId={user = 6, documentOwnerId={documentOwnerId} = 6. Commits a4543cd8 + cd854061 + c324ad46 + the metadata commit.
+Status: Plan 35-03 DONE. Next: Plan 35-04 (bulk-delete modals + undo toast — imports buildBulkDeletePlan from Plan 35-02; selection state from Plan 35-03 feeds the planner's candidate-ids input).
+Last activity: 2026-04-30 17:18 — Phase 35 Plan 03 shipped (selection scope wiring; 5 click gates + marquee + eraser; baseline 410p/8f/12s; 13min)
 
 Progress: [██████████] 97% — Phase 27 functionally complete (5/5 plans, reconciliation pending); Phase 28 functionally complete (6/6 plans); Phase 29 functionally complete (6/6 plans, 29-RECONCILIATION.md DONE_WITH_CONCERNS); **Phase 30 CLOSED (7/7 plans, verifier 19/19, reconciliation DONE)**; v2.4 milestone overall: 4 of 8 phases shipped (27 modulo reconciliation, 28, 29, 30); 0 Phase 31/32/33/34; v2.3 closed at Phase 15
 
@@ -84,6 +84,7 @@ Progress: [██████████] 97% — Phase 27 functionally complet
 | Phase 30-migration-dual-write P07 | 6 | 2 tasks | 4 files |
 | Phase 35 P01 | 8 | 2 tasks | 11 files |
 | Phase 35-per-user-delete-authority-confirm-before-wipe P02 | 3 min | 3 tasks | 3 files |
+| Phase 35-per-user-delete-authority-confirm-before-wipe P03 | 13 min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -239,6 +240,11 @@ Progress: [██████████] 97% — Phase 27 functionally complet
 - [Phase 35-per-user-delete-authority-confirm-before-wipe]: Plan 35-02: author resolution chain is meta.authorId > top-level annotation.authorId > data.authorId > data.userId — top-level was added vs PLAN sketch because Plan 35-01 fixtures put authorId at top level of annotation object; supporting both shapes is one fallback line with zero downstream cost
 - [Phase 35-per-user-delete-authority-confirm-before-wipe]: Plan 35-02: owner-mode filterByAuthor returns the input array REFERENCE unchanged (not a copy) — preserves React reference-equality memoization in the SVG-layer hot path that runs every render; per-render filter copy would invalidate memos and force every annotation to re-render even when ownership unchanged
 - [Phase 35-per-user-delete-authority-confirm-before-wipe]: Plan 35-02: byAuthor breakdown excludes owner's own marks — modal copy reads 'X yours, Y from Z other people'; own-mark count is reported via ownIds.length not as a byAuthor entry (test #5 explicitly asserts byAuthor[OWNER_ID] === undefined)
+- [Phase 35-per-user-delete-authority-confirm-before-wipe]: Plan 35-03: handler-entry gate at handleAnnotationPointerDown covers all annotation pointerdown paths (counter-orbit, Shift-toggle, group expand, plain click, drag init) in a single early-return; 4 explicit defense-in-depth gates at the actual setSelectedIds call sites satisfy the AC's exact-count grep (1 helper + 5 call sites = 6) and serve as visible anchor points so the precedent doesn't drift when future contributors add new click-resolve paths
+- [Phase 35-per-user-delete-authority-confirm-before-wipe]: Plan 35-03: filterMarqueeHits owner-mode same-reference passthrough is the React memoization invariant — returns the input array REFERENCE unchanged when every hit passes canModify; per-render filter copy would invalidate downstream reference-equality memoization in the SVG-layer hot path
+- [Phase 35-per-user-delete-authority-confirm-before-wipe]: Plan 35-03: closure-safe refs (viewerIdRef + documentOwnerIdRef) required in FabricEraserCanvas because applyEraserAndCommit lives in a useRef stash and never re-evaluates; direct prop reads inside the loop would capture initial-render values forever; refs sync via useEffect matching the existing pattern (eraserSizeRef, viewerScaleRef, spacesRef, etc.); Rule 3 deviation against the plan's 20-line diff target — final diff 30 lines, mostly comments documenting the closure-safety contract
+- [Phase 35-per-user-delete-authority-confirm-before-wipe]: Plan 35-03: file.user_id at Dashboard load is the owner-identity carrier — the plan's documents.find(d=>d.id===pdfFile?.id)?.user_id hint wasn't viable from PDFViewer scope (documents lives in Dashboard, line 38304); solution extends the existing convention that already threads file.id / file.projectId / file.supabaseFilePath onto the File object at load time; pure additive (3 single-line additions in Dashboard at the optimistic / downloadFromStorage / dataUrl load paths)
+- [Phase 35-per-user-delete-authority-confirm-before-wipe]: Plan 35-03: SVGAnnotationLayer prop pass-through is the absolute minimum touch — 2 lines in destructure + 2 lines forwarding to existing useSVGInteraction({...}) call; render logic untouched per CONTEXT.md DO NOT CHANGE; visible-but-locked rendering rides existing isInteractive prop pattern; waiver in plan frontmatter explicitly authorized this 4-line additive prop-pass-through
 
 ### Roadmap Evolution
 
