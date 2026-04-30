@@ -1,0 +1,1121 @@
+===== SurveyApp Save Log =====
+version:   0.1.41
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1203x826
+locale:    en-US
+timestamp: 2026-04-30T04:21:41.351Z (4/30/2026, 12:21:41 AM)
+==============================
+[dev-auto-login] boot {"hasDevEmail":true,"devEmailHint":"isai***","hasDevPassword":true,"hasCachedSession":true,"cachedSessionEmail":"isaiahcalvo123@gmail.com","cachedSessionExpiresAt":1777526317}
+[dev-auto-login] cached session matches dev email, keeping it
+[dev-auto-login] decision {"needsAutoLogin":false,"willAttemptSignIn":false}
+[CloudSync][hook] session id minted {"sessionId":"53938022-6143-4660-974f-6ab972855d42"}
+[AnnotPerf] finalize idle (forced-reset) — deferring CSS transform removal, waiting for PAL confirmation
+[DebugBridge +2189.5ms] zoom_start {"scale":0.8926767676767676,"targetScale":1,"source":"keyboard_toolbar"}
+[CloudSync][hook][state-obs] annotationsByPage initial {"currentCount":0,"pages":0,"hydrated":false}
+[CloudSync][hook][state-obs] callouts initial {"currentCount":0,"hydrated":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":null}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":false}
+[CSeries wipe] doc=sync-test.pdf-2489 totalCounters=0 legacyRemoved=0 — nothing to wipe.
+[CloudSync][hook][state-obs] change {"prevCount":0,"currentCount":0,"delta":0,"hydrated":false,"sameRefAsLastByPage":false}
+[CloudSync][hook][state-obs] callout change {"prevCount":0,"currentCount":0,"delta":0,"hydrated":false,"sameRefAsLastCallouts":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"sync-test.pdf-2489"}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":true}
+console.warn @ Realtime send() is automatically falling back to REST API. This behavior will be deprecated in the future. Please use httpSend() explicitly for REST delivery.
+[CloudSync][hook] hydrate effect fired {"enabled":true,"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"sync-test.pdf-2489"}
+[CloudSync][hook] stage=hydrating
+[CloudSync][hydrate] loadAllNonHighlightAnnotations start {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3"}
+[CloudSync][hook] fabric push skipped — not hydrated yet
+[CloudSync][hook] callout push skipped — not hydrated yet
+[CloudSync][realtime] subscribing {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","currentUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","currentSessionId":"53938022-6143-4660-974f-6ab972855d42","hasFabricInsert":true,"hasFabricUpdate":true,"hasFabricDelete":true,"hasCalloutInsert":true,"hasCalloutUpdate":true,"hasCalloutDelete":true}
+[CloudSync][realtime] subscribe status {"status":"SUBSCRIBED","error":null}
+[CloudSync][hook] post-subscribe catch-up skipped — startup sync already in flight
+[PrintPanel] RENDER — panel closed
+[CloudSync][hook][state-obs] change {"prevCount":0,"currentCount":0,"delta":0,"hydrated":false,"sameRefAsLastByPage":false}
+[CloudSync][hook][state-obs] callout change {"prevCount":0,"currentCount":0,"delta":0,"hydrated":false,"sameRefAsLastCallouts":false}
+[CloudSync][hook] fabric push skipped — not hydrated yet
+[CloudSync][hook] callout push skipped — not hydrated yet
+[CloudSync][hydrate] loadAllNonHighlightAnnotations ok {"elapsedMs":360,"totalRowsScanned":122,"scanned":{"nonHighlight":122,"legacyFabricHighlights":0},"totalRows":122,"rowsByType":{"ink":63,"freetext":11,"line":22,"square":11,"circle":11,"counter":4},"pagesWithObjects":1,"calloutCount":0}
+[CloudSync][verify] first read summary {"contextLabel":"initial-hydrate","documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","elapsedMs":361,"firstFabricPages":1,"firstFabricObjects":122,"firstCallouts":0,"firstEmpty":false,"localFabricCount":0,"localCalloutCount":0,"localHasData":false,"willVerify":false}
+[CloudSync][hook] replacing local fabric state with cloud (cloud is authoritative) {"pages":1,"migrationDone":true}
+[CloudSync][hook] replacing local callouts with cloud (cloud is authoritative) {"count":0,"migrationDone":true}
+[CloudSync][hook] stage=migrating (one-time local→cloud push)
+[CloudSync][hook] hydrate+migrate complete — push gate OPEN {"migrationPushed":0}
+[CloudSync][hook][state-obs] change {"prevCount":0,"currentCount":122,"delta":122,"hydrated":true,"sameRefAsLastByPage":true}
+[CloudSync][hook][state-obs] callout change {"prevCount":0,"currentCount":0,"delta":0,"hydrated":true,"sameRefAsLastCallouts":true}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:55.920Z","objId":null,"index":16,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:55.921Z","objId":null,"index":19,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:55.921Z","objId":null,"index":20,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:55.921Z","objId":null,"index":22,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:55.922Z","objId":null,"index":35,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:55.922Z","objId":null,"index":48,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:55.923Z","objId":null,"index":64,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:55.923Z","objId":null,"index":66,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:55.923Z","objId":null,"index":69,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:55.923Z","objId":null,"index":73,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:55.924Z","objId":null,"index":78,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[Counter SVG p1] dispatching renderCounter — i=84, displayNumber=1, fill=#ef4444, numberColor=unset, left=389.68, top=661.32, radius=14
+[Counter SVG p1] dispatching renderCounter — i=87, displayNumber=1, fill=#ef4444, numberColor=unset, left=469.29, top=462.37, radius=14
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:55.925Z","objId":null,"index":91,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:55.925Z","objId":null,"index":92,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[Counter SVG p1] dispatching renderCounter — i=95, displayNumber=3, fill=#ef4444, numberColor=unset, left=470.94, top=558.85, radius=14
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:55.925Z","objId":null,"index":98,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:55.925Z","objId":null,"index":105,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[Counter SVG p1] dispatching renderCounter — i=106, displayNumber=2, fill=#ef4444, numberColor=unset, left=470.05, top=499.76, radius=14
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:55.926Z","objId":null,"index":108,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:55.926Z","objId":null,"index":109,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:55.926Z","objId":null,"index":110,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:55.926Z","objId":null,"index":111,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:55.926Z","objId":null,"index":114,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:55.927Z","objId":null,"index":116,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:55.927Z","objId":null,"index":120,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[SVG p1] render — 122 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVG p1] MOUNT — 122 annotations, 0 callouts, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[DebugBridge +3405.9ms] pdf_loaded {"pageCount":3,"currentPage":1}
+[SVG p1] render — 122 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVG p1] render — 122 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[HyperlinkDiag] post-load scan {"hyperlinkCount":0,"samples":[]}
+[HyperlinkDiag] page 1 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","DIV","e-pv-annotation-canvas","e-pv-text-layer"]}
+[HyperlinkDiag] page 2 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","DIV","e-pv-annotation-canvas","e-pv-text-layer"]}
+[HyperlinkDiag] page 3 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","DIV","e-pv-annotation-canvas","e-pv-text-layer"]}
+[DebugBridge +4730.2ms] zoom_end {"source":"zoomChange_settle"}
+[SVG p1] render — 122 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVG p1] render — 122 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:59.040Z","objId":null,"index":16,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:59.040Z","objId":null,"index":19,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:59.041Z","objId":null,"index":20,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:59.041Z","objId":null,"index":22,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:59.041Z","objId":null,"index":35,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:59.041Z","objId":null,"index":48,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:59.042Z","objId":null,"index":64,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:59.042Z","objId":null,"index":66,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:59.042Z","objId":null,"index":69,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:59.042Z","objId":null,"index":73,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:59.042Z","objId":null,"index":78,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[Counter SVG p1] dispatching renderCounter — i=84, displayNumber=1, fill=#ef4444, numberColor=unset, left=389.68, top=661.32, radius=14
+[Counter SVG p1] dispatching renderCounter — i=87, displayNumber=1, fill=#ef4444, numberColor=unset, left=469.29, top=462.37, radius=14
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:59.043Z","objId":null,"index":91,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:59.043Z","objId":null,"index":92,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[Counter SVG p1] dispatching renderCounter — i=95, displayNumber=3, fill=#ef4444, numberColor=unset, left=470.94, top=558.85, radius=14
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:59.043Z","objId":null,"index":98,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:59.043Z","objId":null,"index":105,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[Counter SVG p1] dispatching renderCounter — i=106, displayNumber=2, fill=#ef4444, numberColor=unset, left=470.05, top=499.76, radius=14
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:59.044Z","objId":null,"index":108,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:59.044Z","objId":null,"index":109,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:59.044Z","objId":null,"index":110,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:59.044Z","objId":null,"index":111,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:59.044Z","objId":null,"index":114,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:59.044Z","objId":null,"index":116,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:19:59.044Z","objId":null,"index":120,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[SVG p1] render — 122 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[Diag] tool-switch DETECTED → select (scheduling t+1000ms capture)
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVG p1] render — 122 objs, viewBox=612x792
+[Diag select] screenshot saved (219 KB) → /Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/TestLogs/testlog-screenshot-select.png
+[Diag select] CAPTURED @ t+1005ms — annotations=122 callouts=0 svgWrappers=1 svgVis=[visible] svgElems=122 svgVisElems=122 eraserCanvases=0 svgMarkupBytes=896339
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 122 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVG p1] render — 122 objs, viewBox=612x792
+[SVG p1] render — 0 objs, viewBox=612x792
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVG p1] MOUNT — 0 annotations, 0 callouts, viewBox=612x792
+console.warn @ [CloudSync][hook][state-obs] SHRINK {"prevCount":122,"currentCount":0,"delta":-122,"hydrated":true,"sameRefAsLastByPage":false,"stack":"    at commitHookEffectListMount (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=d338d6e7:23793:34) |     at commitPassiveMountOnFiber (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=d338d6e7:25034:19) |     at commitPassiveMountEffects_complete (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=d338d6e7:25007:17) |     at commitPassiveMountEffects_begin (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=d338d6e7:24997:15) |     at commitPassiveMountEffects (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=d338d6e7:24987:11) |     at flushPassiveEffectsImpl (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=d338d6e7:26368:11)"}
+console.warn @ [CloudSync][hook][SUSPICIOUS] fabric push scheduled with WIPE diff {"priorObjects":122,"currentObjects":0,"priorPages":1,"currentPages":1,"priorRef":"object","currentRef":"object"}
+[CloudSync][hook] fabric state changed — debounce push scheduled {"pageCount":1,"objectCount":0,"priorObjectCount":122,"isWipePush":true,"debounceMs":800}
+[SVG p1] render — 0 objs, viewBox=612x792
+[CloudSync][hook] fabric push debounce elapsed — pushing now
+console.error @ [CloudSync][hook][SAFETY-BRAKE] suppressing wipe-style fabric delete push {"priorObjectCount":122,"currentObjectCount":0,"deletedCount":122,"sampleDeletedIds":["ink-1777156601307-st86q2eib","ink-1777157875903-f6d17fgh2","ink-1777508763198-a9zbg8dnj","freetext-1777160619985-gir1p2bhj","ink-1777518448594-cnx3o5dwl","ink-1777518801880-tbc90f39i","ink-1777518815271-kxf5xt45q","ink-1777154309060-ppce21fbp","ink-1777154331610-zhh0qv6dq","ink-1777155878665-5boy8huih"],"priorPagesWithObjects":["1"],"rationale":"diff implies full wipe — refusing to delete every cloud row via auto-detection. peer devices keep their copy; user must explicitly bulk-delete to sync."}
+[CloudSync][push] upsertAnnotationsByPage: nothing to push (0 rows) {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","pdfId":"sync-test.pdf-2489"}
+[CloudSync][hook] fabric push synced {"count":0}
+[SVG p1] render — 0 objs, viewBox=612x792
+[SVG p1] render — 0 objs, viewBox=612x792
+[SVG p1] render — 0 objs, viewBox=612x792
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVG p1] render — 0 objs, viewBox=612x792
+console.warn @ [SyncChip] manual retry attempt 1/4
+[CloudSync][push] upsertAnnotationsByPage: nothing to push (0 rows) {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","pdfId":"sync-test.pdf-2489"}
+[CloudSync][push] upsertCallouts: nothing to push (empty list)
+console.warn @ [SyncChip] manual retry attempt 1 succeeded
+console.warn @ [SyncChip] manual retry attempt 1/4
+[CloudSync][push] upsertAnnotationsByPage: nothing to push (0 rows) {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","pdfId":"sync-test.pdf-2489"}
+[CloudSync][push] upsertCallouts: nothing to push (empty list)
+console.warn @ [SyncChip] manual retry attempt 1 succeeded
+console.warn @ [SyncChip] manual retry attempt 1/4
+[CloudSync][push] upsertAnnotationsByPage: nothing to push (0 rows) {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","pdfId":"sync-test.pdf-2489"}
+[CloudSync][push] upsertCallouts: nothing to push (empty list)
+console.warn @ [SyncChip] manual retry attempt 1 succeeded
+console.warn @ [SyncChip] manual retry attempt 1/4
+[CloudSync][push] upsertAnnotationsByPage: nothing to push (0 rows) {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","pdfId":"sync-test.pdf-2489"}
+[CloudSync][push] upsertCallouts: nothing to push (empty list)
+console.warn @ [SyncChip] manual retry attempt 1 succeeded
+console.warn @ [SyncChip] manual retry attempt 1/4
+[CloudSync][push] upsertAnnotationsByPage: nothing to push (0 rows) {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","pdfId":"sync-test.pdf-2489"}
+[CloudSync][push] upsertCallouts: nothing to push (empty list)
+console.warn @ [SyncChip] manual retry attempt 1 succeeded
+console.warn @ [SyncChip] manual retry attempt 1/4
+[CloudSync][push] upsertAnnotationsByPage: nothing to push (0 rows) {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","pdfId":"sync-test.pdf-2489"}
+[CloudSync][push] upsertCallouts: nothing to push (empty list)
+console.warn @ [SyncChip] manual retry attempt 1 succeeded
+[SVG p1] render — 0 objs, viewBox=612x792
+[SVG p1] render — 0 objs, viewBox=612x792
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVG p1] render — 0 objs, viewBox=612x792
+[SVG p1] render — 0 objs, viewBox=612x792
+[DrawCanvas p1] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p1] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[SVG p1] render — 0 objs, viewBox=612x792
+[SVG p1] render — 0 objs, viewBox=612x792
+[SVG p1] render — 1 objs, viewBox=612x792
+[SVG p1] MOUNT — 1 annotations, 0 callouts, viewBox=612x792
+[CloudSync][hook][state-obs] change {"prevCount":0,"currentCount":1,"delta":1,"hydrated":true,"sameRefAsLastByPage":false}
+[CloudSync][hook] fabric state changed — debounce push scheduled {"pageCount":1,"objectCount":1,"priorObjectCount":0,"isWipePush":false,"debounceMs":800}
+[SVG p1] render — 1 objs, viewBox=612x792
+[CloudSync][hook] fabric push debounce elapsed — pushing now
+[CloudSync][push] upsertAnnotationsByPage start {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","pdfId":"sync-test.pdf-2489","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","totalRows":1,"userDrawnObjects":1,"importedObjects":0,"rowsByType":{"ink":1},"pages":1}
+[SVG p1] render — 1 objs, viewBox=612x792
+[CloudSync][push] upsertAnnotationsByPage ok {"elapsedMs":164,"pdfId":"sync-test.pdf-2489","rowsReturned":1}
+[CloudSync][hook] fabric push synced {"count":1}
+[SVG p1] render — 1 objs, viewBox=612x792
+[CloudSync][realtime] echo-filtered INSERT {"highlightId":"ink-1777522815027-u4uvzuf7h","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"53938022-6143-4660-974f-6ab972855d42","currentSessionId":"53938022-6143-4660-974f-6ab972855d42","reason":"same-session"}
+[SVG p1] render — 1 objs, viewBox=612x792
+[SVG p1] render — 1 objs, viewBox=612x792
+[SVG p1] render — 2 objs, viewBox=612x792
+[SVG p1] MOUNT — 2 annotations, 0 callouts, viewBox=612x792
+[CloudSync][hook][state-obs] change {"prevCount":1,"currentCount":2,"delta":1,"hydrated":true,"sameRefAsLastByPage":false}
+[CloudSync][hook] fabric state changed — debounce push scheduled {"pageCount":1,"objectCount":2,"priorObjectCount":1,"isWipePush":false,"debounceMs":800}
+[SVG p1] render — 2 objs, viewBox=612x792
+[CloudSync][hook] fabric push debounce elapsed — pushing now
+[CloudSync][push] upsertAnnotationsByPage start {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","pdfId":"sync-test.pdf-2489","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","totalRows":2,"userDrawnObjects":2,"importedObjects":0,"rowsByType":{"ink":2},"pages":1}
+[SVG p1] render — 2 objs, viewBox=612x792
+[CloudSync][push] upsertAnnotationsByPage ok {"elapsedMs":74,"pdfId":"sync-test.pdf-2489","rowsReturned":2}
+[CloudSync][hook] fabric push synced {"count":2}
+[SVG p1] render — 2 objs, viewBox=612x792
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"ink-1777522815027-u4uvzuf7h","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"53938022-6143-4660-974f-6ab972855d42","currentSessionId":"53938022-6143-4660-974f-6ab972855d42","reason":"same-session"}
+[CloudSync][realtime] echo-filtered INSERT {"highlightId":"ink-1777522820485-a1m6tjwtl","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"53938022-6143-4660-974f-6ab972855d42","currentSessionId":"53938022-6143-4660-974f-6ab972855d42","reason":"same-session"}
+[SVG p1] render — 2 objs, viewBox=612x792
+[SVG p1] render — 2 objs, viewBox=612x792
+[CloudSync][hydrate] loadAllNonHighlightAnnotations start {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3"}
+[SVG p1] render — 2 objs, viewBox=612x792
+[SVG p1] render — 2 objs, viewBox=612x792
+[CloudSync][hydrate] loadAllNonHighlightAnnotations ok {"elapsedMs":339,"totalRowsScanned":124,"scanned":{"nonHighlight":16,"legacyFabricHighlights":108},"totalRows":124,"rowsByType":{"ink":16,"highlight":108},"pagesWithObjects":1,"calloutCount":0}
+[CloudSync][verify] first read summary {"contextLabel":"focus-rehydrate","documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","elapsedMs":339,"firstFabricPages":1,"firstFabricObjects":124,"firstCallouts":0,"firstEmpty":false,"localFabricCount":2,"localCalloutCount":0,"localHasData":true,"willVerify":false}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:28.673Z","objId":null,"index":28,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:28.673Z","objId":null,"index":31,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:28.673Z","objId":null,"index":32,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:28.674Z","objId":null,"index":34,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:28.674Z","objId":null,"index":44,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:28.675Z","objId":null,"index":52,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:28.678Z","objId":null,"index":66,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[Counter SVG p1] dispatching renderCounter — i=68, displayNumber=1, fill=#ef4444, numberColor=unset, left=469.29, top=462.37, radius=14
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:28.678Z","objId":null,"index":71,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:28.678Z","objId":null,"index":73,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:28.678Z","objId":null,"index":76,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[Counter SVG p1] dispatching renderCounter — i=82, displayNumber=2, fill=#ef4444, numberColor=unset, left=470.05, top=499.76, radius=14
+[Counter SVG p1] dispatching renderCounter — i=83, displayNumber=1, fill=#ef4444, numberColor=unset, left=389.68, top=661.32, radius=14
+[Counter SVG p1] dispatching renderCounter — i=84, displayNumber=3, fill=#ef4444, numberColor=unset, left=470.94, top=558.85, radius=14
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:28.679Z","objId":null,"index":86,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:28.679Z","objId":null,"index":91,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:28.679Z","objId":null,"index":95,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:28.679Z","objId":null,"index":97,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:28.679Z","objId":null,"index":102,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:28.679Z","objId":null,"index":103,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:28.679Z","objId":null,"index":105,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:28.679Z","objId":null,"index":108,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:28.679Z","objId":null,"index":109,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:28.680Z","objId":null,"index":112,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:28.680Z","objId":null,"index":115,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:28.680Z","objId":null,"index":116,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[SVG p1] render — 124 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVG p1] MOUNT — 124 annotations, 0 callouts, viewBox=612x792
+[CloudSync][hook][state-obs] change {"prevCount":2,"currentCount":124,"delta":122,"hydrated":true,"sameRefAsLastByPage":true}
+[CloudSync][hook][state-obs] callout change {"prevCount":0,"currentCount":0,"delta":0,"hydrated":true,"sameRefAsLastCallouts":true}
+[SVG p1] render — 124 objs, viewBox=612x792
+[SVG p1] render — 124 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVG p1] render — 124 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:34.146Z","objId":null,"index":28,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:34.146Z","objId":null,"index":31,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:34.146Z","objId":null,"index":32,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:34.147Z","objId":null,"index":34,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:34.147Z","objId":null,"index":44,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:34.147Z","objId":null,"index":52,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:34.148Z","objId":null,"index":66,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[Counter SVG p1] dispatching renderCounter — i=68, displayNumber=1, fill=#ef4444, numberColor=unset, left=469.29, top=462.37, radius=14
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:34.148Z","objId":null,"index":71,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:34.148Z","objId":null,"index":73,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:34.148Z","objId":null,"index":76,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[Counter SVG p1] dispatching renderCounter — i=82, displayNumber=2, fill=#ef4444, numberColor=unset, left=470.05, top=499.76, radius=14
+[Counter SVG p1] dispatching renderCounter — i=83, displayNumber=1, fill=#ef4444, numberColor=unset, left=389.68, top=661.32, radius=14
+[Counter SVG p1] dispatching renderCounter — i=84, displayNumber=3, fill=#ef4444, numberColor=unset, left=470.94, top=558.85, radius=14
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:34.148Z","objId":null,"index":86,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:34.148Z","objId":null,"index":91,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:34.149Z","objId":null,"index":95,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:34.149Z","objId":null,"index":97,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:34.149Z","objId":null,"index":102,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:34.149Z","objId":null,"index":103,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:34.149Z","objId":null,"index":105,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:34.149Z","objId":null,"index":108,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:34.149Z","objId":null,"index":109,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:34.149Z","objId":null,"index":112,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:34.149Z","objId":null,"index":115,"objType":"line","tool":"line","isArrow":false,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":67.79,"top":356.69,"width":102.19,"height":83.1,"x1":-51.09357798165138,"y1":-41.54862385321101,"x2":51.09357798165138,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":67.79142201834863,"y1":356.691376146789,"x2":169.97857798165137,"y2":439.788623853211},"specArrowheadKind":"none","rotationApplied":false,"pivotDiag":null}
+[LineBboxDiag] renderLine {"ts":"2026-04-30T04:20:34.149Z","objId":null,"index":116,"objType":"line","tool":"arrow","isArrow":true,"angle":0,"hasMidpoint":false,"dataMidpoint":null,"storageSnapshot":{"left":204.79,"top":362.3,"width":101.06,"height":83.1,"x1":-50.53211009174312,"y1":-41.54862385321101,"x2":50.53211009174312,"y2":41.54862385321101},"specKind":"straight","specLine":{"x1":204.7878899082569,"y1":362.30137614678904,"x2":303.7923087957672,"y2":443.7050094542975},"specArrowheadKind":"solidTriangle","rotationApplied":false,"pivotDiag":null}
+[SVG p1] render — 125 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVG p1] MOUNT — 125 annotations, 0 callouts, viewBox=612x792
+[CloudSync][hook][state-obs] change {"prevCount":124,"currentCount":125,"delta":1,"hydrated":true,"sameRefAsLastByPage":false}
+[CloudSync][hook] fabric state changed — debounce push scheduled {"pageCount":1,"objectCount":125,"priorObjectCount":124,"isWipePush":false,"debounceMs":800}
+[SVG p1] render — 125 objs, viewBox=612x792
+[CloudSync][hook] fabric push debounce elapsed — pushing now
+console.warn @ [CloudSync][push] upsertAnnotationsByPage SHORT-CIRCUITED by __crdtForceLegacyFail test seam (post-serialize)
+console.warn @ [CloudSync][hook] legacy bulk push failed → delta-enqueued into CRDT dual-write queue {"pdfId":"sync-test.pdf-2489","documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","enqueuedCount":1,"skippedExisting":124,"skippedImportedOrFiltered":0,"skippedNoId":0,"priorBaselineSize":124,"error":"test-seam: __crdtForceLegacyFail (live upsertAnnotationsByPage)"}
+console.warn @ [CloudSync][hook] fabric push failed → queued {"pdfId":"sync-test.pdf-2489","documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","error":"test-seam: __crdtForceLegacyFail (live upsertAnnotationsByPage)"}
+[SVG p1] render — 125 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVG p1] render — 125 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[SVG p1] render — 125 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [SyncChip] manual retry attempt 1/4
+console.warn @ [CloudSync][push] upsertAnnotationsByPage SHORT-CIRCUITED by __crdtForceLegacyFail test seam (post-serialize)
+console.warn @ [CloudSync][push] upsertAnnotationsByPage SHORT-CIRCUITED by __crdtForceLegacyFail test seam (post-serialize)
+console.warn @ [SyncChip] manual retry attempt 1 failed forceFlush: legacy upsertAnnotationsByPage failed — test-seam: __crdtForceLegacyFail (live upsertAnnotationsByPage)
+console.warn @ [SyncChip] manual retry attempt 2/4
+console.warn @ [CloudSync][push] upsertAnnotationsByPage SHORT-CIRCUITED by __crdtForceLegacyFail test seam (post-serialize)
+console.warn @ [CloudSync][push] upsertAnnotationsByPage SHORT-CIRCUITED by __crdtForceLegacyFail test seam (post-serialize)
+console.warn @ [SyncChip] manual retry attempt 2 failed forceFlush: legacy upsertAnnotationsByPage failed — test-seam: __crdtForceLegacyFail (live upsertAnnotationsByPage)
+console.warn @ [SyncChip] manual retry attempt 3/4
+console.warn @ [CloudSync][push] upsertAnnotationsByPage SHORT-CIRCUITED by __crdtForceLegacyFail test seam (post-serialize)
+console.warn @ [CloudSync][push] upsertAnnotationsByPage SHORT-CIRCUITED by __crdtForceLegacyFail test seam (post-serialize)
+console.warn @ [SyncChip] manual retry attempt 3 failed forceFlush: legacy upsertAnnotationsByPage failed — test-seam: __crdtForceLegacyFail (live upsertAnnotationsByPage)
+[SVG p1] render — 125 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [SyncChip] manual retry attempt 4/4
+console.warn @ [CloudSync][push] upsertAnnotationsByPage SHORT-CIRCUITED by __crdtForceLegacyFail test seam (post-serialize)
+console.warn @ [CloudSync][push] upsertAnnotationsByPage SHORT-CIRCUITED by __crdtForceLegacyFail test seam (post-serialize)
+console.warn @ [SyncChip] manual retry attempt 4 failed forceFlush: legacy upsertAnnotationsByPage failed — test-seam: __crdtForceLegacyFail (live upsertAnnotationsByPage)
+console.warn @ [SyncChip] manual retry: all attempts failed; leaving chip in current state
+[CloudSync][hydrate] loadAllNonHighlightAnnotations start {"documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3"}
+[SVG p1] render — 125 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+[CloudSync][hydrate] loadAllNonHighlightAnnotations ok {"elapsedMs":699,"totalRowsScanned":124,"scanned":{"nonHighlight":16,"legacyFabricHighlights":108},"totalRows":124,"rowsByType":{"ink":16,"highlight":108},"pagesWithObjects":1,"calloutCount":0}
+[CloudSync][verify] first read summary {"contextLabel":"focus-rehydrate","documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","elapsedMs":700,"firstFabricPages":1,"firstFabricObjects":124,"firstCallouts":0,"firstEmpty":false,"localFabricCount":125,"localCalloutCount":0,"localHasData":true,"willVerify":false}
+console.warn @ [CloudSync][hook] focus-rehydrate REPLACE SKIPPED — unpushed local edits {"pdfId":"sync-test.pdf-2489","documentId":"1a7f57f8-3796-470e-afd2-f38919a873b3","localFabricCount":125,"cloudFabricCount":124,"hasUnpushedLegacyQueue":true,"hasUnpushedDualWriteQueue":true,"localAhead":true}
+[SVG p1] render — 125 objs, viewBox=612x792
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
+console.warn @ [LineBboxDiag] getLineBBox log failed {}
