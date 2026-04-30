@@ -610,7 +610,7 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13 → 14 → 
 **Goal:** Replace the interim 2026-04-27 diff-detection wipe brake with a permission-based delete-authority model (Drawboard / Lumin pattern). Two roles — collaborator (default) and document author/owner — gate selection, hover, eraser, marquee, and bulk-delete. Two confirmation modals (collaborator's "delete all of mine" + owner's "delete cross-author with breakdown") plus a 5-6 second undo toast on every delete. One-time owner-only cleanup banner for brake-suppressed residue. Brake retired; per-session "user-deleted IDs" filter retired.
 **Requirements**: 12 acceptance criteria locked in 35-CONTEXT.md (no traceability IDs; phase added mid-milestone outside the original requirement plan)
 **Depends on:** Phase 34
-**Plans:** 6 plans
+**Plans:** 1/6 plans executed
 
 Plans:
 - [ ] 35-01-PLAN.md — Wave 0 test scaffolds (4 unit + 6 e2e fixme'd)

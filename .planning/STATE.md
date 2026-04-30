@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.3
-milestone_name: Tools Polish
-status: verifying
-stopped_at: Phase 35 plans verified and committed — ready to execute
-last_updated: "2026-04-30T14:54:35.708Z"
-last_activity: "2026-04-29 20:50 — Phase 30 closed (gsd-verifier passed 19/19 ACs; 30-VERIFICATION.md + 30-RECONCILIATION.md committed; 9 carry-forward items documented)"
+milestone: v2.4
+milestone_name: CRDT Foundation + Real-Time Sync
+status: executing
+stopped_at: Completed 35-01-PLAN.md (Wave 0 test scaffolds — Plans 35-02..35-06 unblocked)
+last_updated: "2026-04-30T16:55:10.456Z"
+last_activity: "2026-04-30 16:53 — Phase 35 Plan 01 shipped (4 unit + 7 e2e Wave 0 scaffolds; baseline 393p/8f/29s preserved; +23 new skips)"
 progress:
   total_phases: 15
   completed_phases: 6
   total_plans: 39
-  completed_plans: 32
+  completed_plans: 33
   percent: 97
 ---
 
@@ -21,15 +21,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-14)
 
 **Core value:** Line/arrow/text-callout tools match the precision and feel of the `combined-tools` reference app, AND all annotations render through the same SVG pipeline for a unified select / edit / erase / undo story.
-**Current focus:** Milestone v2.4 — Phase 30 CLOSED 2026-04-29; Phase 31 (Cutover Seal) unblocked and next.
+**Current focus:** Milestone v2.4 — Phase 35 (Per-User Delete Authority + Confirm-Before-Wipe) executing. Plan 35-01 shipped 2026-04-30; Plans 35-02..35-06 unblocked.
 
 ## Current Position
 
-Milestone: v2.4 — CRDT Foundation + Real-Time Sync (Yjs port; SVG/Fabric layers immutable)
-Phase: **Phase 30 CLOSED 2026-04-29** — 30-VERIFICATION.md (19/19 PASS) + 30-RECONCILIATION.md (DONE) committed. Phase 31 (Migration Phase B — Cutover Seal) unblocked and next.
-Plan: Phase 30 CLOSED 2026-04-29 20:50. gsd-verifier ran goal-backward against all 19 CONTEXT.md acceptance criteria — 17 PASSED with code + test + UAT evidence; 2 DEFERRED to Phase 33 (UI surfaces only — properties-panel "Before v2.4" device row + activity-log "Document migrated" row; data paths already shipped this phase). Test baseline preserved exactly (393 pass / 8 fail / 6 skip; 8 baseline failures pre-Phase-30). 36 Phase 30 unit tests across 8 files all green. CI gate scripts/check-no-diff-delete.mjs exits 0. Boundary audit GREEN with documented App.jsx waivers (3 commits, all in commit messages: PHASE_2_DEBUG_INDICATORS flag flip + per-frame log silences + --app-chrome-top CSS variable + anchor calc refinement) and one Rule 3 SVGAnnotationLayer.jsx side-trip (closed-outline detection for Drawboard marker dots, accepted mid-session via second-AI handoff to unblock silent-migration UAT). Functional UAT confirmed end-to-end on 2026-04-29 evening (banner appears at 30s with __crdtForceLegacyFail seam, persists with quarantined entries, dismissable via X visual-mute, doesn't push UI, anchored below toolbar, confined to PDF area, strokes survive focus loss). 9 carry-forward items: 4 UX polish for next session (confirm-before-close modal on banner X, clickable sync status manual-retry, clearer auto-retry messaging, quarantine marker bbox positioning), 5 planned-deferred per CONTEXT.md (cutover seal Phase 31, compaction + cross-tab + bbox feed Phase 32, activity-log + properties-panel UI Phase 33, legacy decommission Phase 34, highlight migration v2.5).
-Status: Phase 30 CLOSED 2026-04-29. 30-VERIFICATION.md (passed 19/19) + 30-RECONCILIATION.md (DONE) committed. Phase 31 (Migration Phase B — Cutover Seal) unblocked. Next session can either tackle the 4 UX polish carry-forward items as a Phase 30.1 gap-closure or kick off Phase 31 directly.
-Last activity: 2026-04-29 20:50 — Phase 30 closed (gsd-verifier passed 19/19 ACs; 30-VERIFICATION.md + 30-RECONCILIATION.md committed; 9 carry-forward items documented)
+Milestone: v2.4 — CRDT Foundation + Real-Time Sync (Yjs port; SVG/Fabric layers immutable). Phase 35 retires the 2026-04-27 wipe brake and ships the Drawboard/Lumin permission model.
+Phase: **Phase 35 EXECUTING** — Plan 35-01 (Wave 0 test scaffolds) shipped 2026-04-30 16:53. Plans 35-02 (permission helper) / 35-03 (selection scope filter) / 35-04 (modals + undo toast) / 35-05 (brake retirement + cleanup banner) / 35-06 (e2e flip green) unblocked.
+Plan: Plan 35-01 closed 2026-04-30 16:53 — 4 unit test scaffolds (permissionScope / buildBulkDeletePlan / undoToastQueue / cleanupResidueAudit) + 7 e2e specs (collaborator-marquee-scope / collaborator-eraser-scope / collaborator-bulk-delete-confirm / owner-cross-author-confirm / owner-edit-no-prompt / single-delete-undo-toast / cleanup-banner-one-shot). 23 unit-test cases all skip cleanly today via per-test existsSync skip-guard pattern lifted verbatim from Phase 27/28/29; 7 e2e specs land as test.describe.fixme with full UAT bodies inline so Plan 35-06 unwraps in one diff. Locked enqueue signature `{ kind, message, count?, onUndo }` for undo toast queue, locked test seam contract (window.__phase35TestRoleOverride / __phase35SeedResidue / __selectedAnnotationIds + per-spec __phase35Seed* / __phase35SelectTool / __phase35GetAnnotationById / __phase35SnapshotAnnotation helpers). Owner-edit-no-prompt spec added per checker W7 covers AC #6 directly. Test baseline preserved exactly: 393 pass / 8 fail / 29 skip (was 6; +23 new Phase 35 skips). Zero src/ changes; commits b6b7e5e4 + fe135058 + the metadata commit.
+Status: Plan 35-01 DONE. Next: Plan 35-02 (lands `src/lib/collab/permissionScope.js` — flips 6 unit tests skip → green automatically).
+Last activity: 2026-04-30 16:53 — Phase 35 Plan 01 shipped (4 unit + 7 e2e Wave 0 scaffolds; baseline 393p/8f/29s preserved; +23 new skips)
 
 Progress: [██████████] 97% — Phase 27 functionally complete (5/5 plans, reconciliation pending); Phase 28 functionally complete (6/6 plans); Phase 29 functionally complete (6/6 plans, 29-RECONCILIATION.md DONE_WITH_CONCERNS); **Phase 30 CLOSED (7/7 plans, verifier 19/19, reconciliation DONE)**; v2.4 milestone overall: 4 of 8 phases shipped (27 modulo reconciliation, 28, 29, 30); 0 Phase 31/32/33/34; v2.3 closed at Phase 15
 
@@ -82,6 +82,7 @@ Progress: [██████████] 97% — Phase 27 functionally complet
 | Phase 30-migration-dual-write P05 | 4 | 3 tasks | 5 files |
 | Phase 30-migration-dual-write P06 | 12 | 1 tasks | 1 files |
 | Phase 30-migration-dual-write P07 | 6 | 2 tasks | 4 files |
+| Phase 35 P01 | 8 | 2 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -228,6 +229,10 @@ Progress: [██████████] 97% — Phase 27 functionally complet
 - [Phase 30-migration-dual-write]: Plan 30-07: opts.skipLegacy: true caller seam — surgical 2-block addition to Plan 30-04's dualWriteFabricCommit + dualWriteFabricDelete; useAnnotationCloudSync's bulk path fires legacy once, then per-row CRDT fan-out short-circuits the per-row legacy write. Existing 5 default-path tests preserved byte-identical.
 - [Phase 30-migration-dual-write]: Plan 30-07: useYDoc null-shape contract enables unconditional hook call at top of useAnnotationCloudSync — rules-of-hooks safe per Phase 27/28/29 precedent; fan-out helpers gate on isCRDTEnabled() && phase30Ydoc so kill-switch-off behavior is byte-identical to pre-Phase-30 (CONTEXT.md AC-15).
 - [Phase 30-migration-dual-write]: Plan 30-07: hook-inside-.map() pattern accepted in TabBar — iteration order stable across renders (React reconciles by key={tab.id}, useDragToReorder keeps tabVirtualOrder deterministic). useTabPendingDualWrite called per-tab inside .map() body; <TabItem> child split deferred to Phase 32 if a future linter complains.
+- [Phase 35]: Plan 35-01: Wave 0 unit + e2e scaffolds reused Phase 27/28/29 per-test existsSync skip-guard pattern verbatim — 4 unit tests (23 cases total) + 7 e2e specs all skip cleanly today, auto-flip when production modules land in 35-02 / 35-04 / 35-05; baseline 393 pass / 8 fail preserved.
+- [Phase 35]: Plan 35-01: Locked enqueue signature { kind, message, count?, onUndo } for undo toast queue across all 6 tests in undoToastQueue.test.mjs (15 distinct sites). Production hook for Plan 35-04 must split into useUndoToast default export + createUndoToastQueue named export so tests advance time deterministically without React renderer.
+- [Phase 35]: Plan 35-01: Test seam contract locked in plan frontmatter and consumed verbatim by 7 e2e specs — window.__phase35TestRoleOverride / __phase35SeedResidue / __selectedAnnotationIds + per-spec helpers (__phase35Seed* / __phase35SelectTool / __phase35GetAnnotationById / __phase35SnapshotAnnotation). Plans 35-03 / 35-04 / 35-05 / 35-06 attach at the same spelling.
+- [Phase 35]: Plan 35-01: owner-edit-no-prompt.spec.mjs added per checker W7 — covers AC #6 (owner editing foreign annotations without confirmation) directly via dialog-count assertions during drag/resize/rotate. Defends FabricEditCanvas no-branching invariant from CONTEXT.md DO NOT CHANGE.
 
 ### Roadmap Evolution
 
@@ -261,8 +266,8 @@ Progress: [██████████] 97% — Phase 27 functionally complet
 
 ## Session Continuity
 
-Last session: 2026-04-30T14:54:35.700Z
-Stopped at: Phase 35 plans verified and committed — ready to execute
+Last session: 2026-04-30T16:54:53.416Z
+Stopped at: Completed 35-01-PLAN.md (Wave 0 test scaffolds)
 
 ### Resume instructions for the next session (read carefully)
 
