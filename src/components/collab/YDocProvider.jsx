@@ -80,8 +80,57 @@ import { runBackfill } from '../../lib/collab/crdtBackfill.js';
 import { drainQueue } from '../../lib/collab/crdtDualWriteQueue.js';
 import { useDualWriteQueue } from '../../hooks/useDualWriteQueue.js';
 import { QuarantineMarkerOverlay } from './QuarantineMarkerOverlay.jsx';
-import { upsertFabricAnnotation } from '../../services/annotationCloudSync.js';
+import {
+  upsertFabricAnnotation,
+  loadAllNonHighlightAnnotations,
+  deleteAnnotations,
+} from '../../services/annotationCloudSync.js';
 import { applyFabricCommit } from '../../lib/collab/crdtAnnotationBridge.js';
+
+// Phase 35 Plan 05 — cleanup banner audit + Review surface.
+// auditResidue runs on document open and detects annotations the 2026-04-27
+// diff-detection delete-suppression block left in the cloud before per-user
+// authority shipped. isOwner gates the audit so collaborators never see the
+// banner. CleanupResidueReviewPanel is the inline modal-adjacent Review
+// surface (per checker W5: ship an actual surface, not paper-over).
+import { auditResidue } from '../../lib/collab/cleanupResidueAudit.js';
+import { isOwner } from '../../lib/collab/permissionScope.js';
+import { CleanupResidueReviewPanel } from './CleanupResidueReviewPanel.jsx';
+
+// Phase 35 Plan 05 — sticky-per-document dismissal persistence. Stored as a
+// JSON array of documentIds in localStorage; the audit short-circuits on
+// dismissedDocIds.has(documentId). UX: once an owner dismisses the cleanup
+// banner for a document, it never reappears for that document — the residue
+// audit is a one-shot affordance, not a recurring nag.
+const PHASE35_DISMISSED_KEY = 'phase35.dismissedCleanupBanners';
+
+function readDismissedDocIds() {
+  // UX: defensive read — corrupt JSON or missing key both yield an empty
+  // Set so the banner renders for first-time owners. Wrap in try/catch
+  // because localStorage access can throw in private-browse mode.
+  if (typeof window === 'undefined' || !window.localStorage) return new Set();
+  try {
+    const raw = window.localStorage.getItem(PHASE35_DISMISSED_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((id) => typeof id === 'string'));
+  } catch {
+    return new Set();
+  }
+}
+
+function writeDismissedDocIds(set) {
+  // UX: best-effort write — quota errors are non-fatal here (the audit will
+  // re-fire next session, banner will re-show, owner can dismiss again).
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    const payload = JSON.stringify([...set]);
+    window.localStorage.setItem(PHASE35_DISMISSED_KEY, payload);
+  } catch {
+    /* swallow — non-fatal */
+  }
+}
 
 // Frozen null-shape value reused when CRDT is disabled or docId is unknown.
 // UX: useYDoc() consumers can call hooks unconditionally — the null shape lets them
@@ -170,6 +219,15 @@ function YDocProviderInner({ docId, children, closeDocument }) {
   // user is told that deletions may reappear on close. Reset on document mount,
   // banner dismiss, or full queue clear.
   const [deletionsPending, setDeletionsPending] = useState(false);
+
+  // Phase 35 Plan 05 — cleanup banner state. cleanupResidueIds is null until
+  // the audit completes; an empty array means audit ran and found nothing
+  // (banner stays hidden). reviewPanelOpen drives the inline Review surface.
+  // UX: null vs [] distinction matters — the banner gate checks
+  // `cleanupResidueIds && cleanupResidueIds.length > 0` so an in-flight audit
+  // doesn't briefly render the banner with stale state.
+  const [cleanupResidueIds, setCleanupResidueIds] = useState(null);
+  const [reviewPanelOpen, setReviewPanelOpen] = useState(false);
 
   // Phase 28 state additions — accessRevoked drives ReadOnlyGate; transportState
   // is exposed for any future status surfaces (sync chip in Phase 33);
@@ -788,6 +846,201 @@ function YDocProviderInner({ docId, children, closeDocument }) {
     return () => window.removeEventListener('crdt:deletions-resolved', handler);
   }, []);
 
+  // Phase 35 Plan 05 — cleanup-banner audit effect. Runs once per document
+  // open. Flow:
+  //   1. Resolve viewerId from supabase.auth.getSession().
+  //   2. Resolve documentOwnerId from the documents table by docId.
+  //   3. Short-circuit when viewer is not the owner (collaborators never see
+  //      the banner per CONTEXT.md decision).
+  //   4. Short-circuit when documentId is in the sticky-dismissed set.
+  //   5. Load the cloud snapshot via loadAllNonHighlightAnnotations and pass
+  //      the rawRows (mapped to the audit's expected shape) to auditResidue.
+  //   6. Persist the resulting residueIds in state — banner gate reads it.
+  //
+  // Concrete cloud-fetch surface: loadAllNonHighlightAnnotations (verified at
+  // src/services/annotationCloudSync.js:318). No direct supabase.from() reads
+  // outside that helper.
+  //
+  // Test seam: window.__phase35SeedResidue (production-stripped). When set in
+  // dev/test, seeds residueIds directly so a Plan 35-06 e2e spec can assert
+  // banner + Review + Cleanup flow without manufacturing a brake-suppression
+  // race.
+  //
+  // Audit signature note: auditResidue takes isViewerOwner (boolean) and
+  // localUserDeletedSet ({id, deletedAt}[]). With the brake retired, there's
+  // no in-memory userDeletedFabricIdsRef anymore — localUserDeletedSet is
+  // empty in production and the audit gracefully returns no residue. The
+  // infrastructure remains as a safety net if a future session restores any
+  // form of deferred-delete tracking.
+  useEffect(() => {
+    if (!ydoc || !docId) return undefined;
+    let cancelled = false;
+    (async () => {
+      // Resolve viewer identity. Audit silently skips when no session.
+      let viewerId = null;
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        viewerId = session?.user?.id ?? null;
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[Phase35][cleanup] auth session lookup failed', err?.message);
+      }
+      if (cancelled) return;
+      if (!viewerId) {
+        setCleanupResidueIds([]);
+        return;
+      }
+
+      // Resolve document owner id from the documents table. UX: this is a
+      // single-row query keyed on docId, runs once per document open. If it
+      // fails (network blip, RLS denial), the audit bails — no banner, no
+      // false alarm.
+      let documentOwnerId = null;
+      try {
+        const { data, error } = await supabase
+          .from('documents')
+          .select('user_id')
+          .eq('id', docId)
+          .maybeSingle();
+        if (error) {
+          // eslint-disable-next-line no-console
+          console.warn('[Phase35][cleanup] documents owner lookup failed', error?.message);
+        } else {
+          documentOwnerId = data?.user_id ?? null;
+        }
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[Phase35][cleanup] documents owner lookup threw', err?.message);
+      }
+      if (cancelled) return;
+
+      // Per CONTEXT.md: collaborators never see the banner.
+      if (!isOwner(viewerId, documentOwnerId)) {
+        setCleanupResidueIds([]);
+        return;
+      }
+
+      // Sticky-per-document dismissal short-circuit.
+      const dismissedDocIds = readDismissedDocIds();
+      if (dismissedDocIds.has(docId)) {
+        setCleanupResidueIds([]);
+        return;
+      }
+
+      // Test seam — production-stripped via import.meta.env.MODE check.
+      // Plan 35-06 e2e flips can write window.__phase35SeedResidue =
+      // ['id1', 'id2', ...] OR true (auto-seed first 3 owner-authored rows).
+      let seededIds = null;
+      if (import.meta.env.MODE !== 'production' && typeof window !== 'undefined') {
+        const seed = window.__phase35SeedResidue;
+        if (Array.isArray(seed)) {
+          seededIds = seed.filter((id) => typeof id === 'string');
+        }
+      }
+
+      if (seededIds && seededIds.length > 0) {
+        // UX: seam path — bypass the audit and surface the seeded ids
+        // directly so e2e specs can verify the banner + Review + Cleanup
+        // chain without engineering a real brake-suppression race.
+        setCleanupResidueIds(seededIds);
+        return;
+      }
+
+      // Concrete cloud-snapshot read via the verified annotationCloudSync
+      // helper. rawRows is the supabase row shape: { id, highlight_id,
+      // user_id, annotation_type, annotation_data, ... }. Map to the
+      // auditResidue contract shape (id, authorId, lastEditedAt) before
+      // passing in — the helper resolves authorId via getAnnotationAuthorId
+      // chain which expects authorId at meta./top-level/data., NOT user_id.
+      let result;
+      try {
+        result = await loadAllNonHighlightAnnotations(docId);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[Phase35][cleanup] loadAllNonHighlightAnnotations threw', err?.message);
+        setCleanupResidueIds([]);
+        return;
+      }
+      if (cancelled) return;
+      if (result.error) {
+        // eslint-disable-next-line no-console
+        console.warn('[Phase35][cleanup] loadAllNonHighlightAnnotations failed', result.error?.message);
+        setCleanupResidueIds([]);
+        return;
+      }
+      const rawRows = result.rawRows || [];
+      // UX: map raw supabase rows to the audit shape. id = highlight_id (the
+      // client-side stable id the delete API takes); authorId = user_id;
+      // lastEditedAt = updated_at parsed to epoch ms (audit uses strict
+      // less-than comparison against the local-deleted cutoff).
+      const cloudAnnotations = rawRows.map((row) => ({
+        id: row.highlight_id,
+        authorId: row.user_id,
+        lastEditedAt: row.updated_at ? Date.parse(row.updated_at) : null,
+      })).filter((a) => typeof a.id === 'string');
+
+      // localUserDeletedSet is empty in production post-brake-retirement
+      // (the in-memory ref was removed in Task 1). The audit returns empty
+      // for empty set — no false positives. This wiring stands ready for a
+      // future feature that persists local-delete intents across sessions.
+      const localUserDeletedSet = [];
+
+      const auditResult = auditResidue({
+        cloudAnnotations,
+        viewerId,
+        isViewerOwner: true,
+        dismissedDocIds,
+        documentId: docId,
+        localUserDeletedSet,
+      });
+      if (cancelled) return;
+      setCleanupResidueIds(auditResult.residueIds);
+    })();
+    return () => { cancelled = true; };
+  }, [ydoc, docId]);
+
+  // Phase 35 Plan 05 — banner action handlers.
+
+  const handleCleanupBannerAction = useCallback(async () => {
+    // UX: 'Clean up now' (or 'Clean up all N' from the Review panel).
+    // Fires deleteAnnotations on the audited residueIds. On success, mark
+    // the document as dismissed (so the banner doesn't re-fire on next
+    // open if a new audit somehow finds the same ids), clear local state,
+    // close any open Review panel.
+    if (!cleanupResidueIds || cleanupResidueIds.length === 0) return;
+    try {
+      const result = await deleteAnnotations(docId, cleanupResidueIds);
+      if (result?.success) {
+        const dismissed = readDismissedDocIds();
+        dismissed.add(docId);
+        writeDismissedDocIds(dismissed);
+        setCleanupResidueIds([]);
+        setReviewPanelOpen(false);
+      } else {
+        // eslint-disable-next-line no-console
+        console.warn('[Phase35][cleanup] deleteAnnotations failed', result?.error?.message);
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[Phase35][cleanup] deleteAnnotations threw', err?.message || String(err));
+    }
+  }, [cleanupResidueIds, docId]);
+
+  const handleCleanupBannerReview = useCallback(() => {
+    // UX per checker W5: open the actual Review surface
+    // (CleanupResidueReviewPanel — count + first 5 ids + Clean up all + Close).
+    setReviewPanelOpen(true);
+  }, []);
+
+  const handleCleanupBannerDismiss = useCallback(() => {
+    // UX: sticky-per-document dismissal — never resurfaces for this doc id.
+    const dismissed = readDismissedDocIds();
+    dismissed.add(docId);
+    writeDismissedDocIds(dismissed);
+    setCleanupResidueIds([]);
+    setReviewPanelOpen(false);
+  }, [docId]);
+
   // Phase 30 — test seam for e2e specs that need to assert Y.Doc annotation
   // count post-backfill. Updates whenever yMapAnnotations.observe fires.
   useEffect(() => {
@@ -975,6 +1228,34 @@ function YDocProviderInner({ docId, children, closeDocument }) {
           }}
         />
       )}
+      {/* Phase 35 Plan 05 — sync_residue_cleanup banner gate.
+          Mount only when no higher-priority storage banner is showing AND
+          when the audit found residue. UX: this is a one-shot owner-only
+          affordance — the audit + sticky-dismiss in localStorage guarantee
+          it surfaces at most once per document for the document owner.
+          Collaborators never see it (auditResidue returns empty when
+          isViewerOwner is false). */}
+      {cleanupResidueIds && cleanupResidueIds.length > 0 &&
+       (!storageState || storageState.code === 'ok') &&
+       !(deletionsPending || dualWriteQueueState.stuckCount > 0 || dualWriteQueueState.quarantinedAnnoIds.length > 0 || (manualRetryExhausted && dualWriteQueueState.hasPending)) && (
+        <StorageFailureBanner
+          code="sync_residue_cleanup"
+          onAction={handleCleanupBannerAction}
+          onReview={handleCleanupBannerReview}
+          onDismiss={handleCleanupBannerDismiss}
+        />
+      )}
+      {/* Phase 35 Plan 05 — Review surface mounted as a sibling so it can
+          overlay the banner when the owner clicks Review. Not gated on
+          cleanupResidueIds.length > 0 here — the panel itself returns null
+          when isOpen is false, and the residueIds array stays in scope until
+          the user dismisses or completes cleanup. */}
+      <CleanupResidueReviewPanel
+        isOpen={reviewPanelOpen}
+        residueIds={cleanupResidueIds || []}
+        onClose={() => setReviewPanelOpen(false)}
+        onCleanupAll={handleCleanupBannerAction}
+      />
       {reSignInModalOpen && (
         <ReSignInModal
           isOpen={reSignInModalOpen}
