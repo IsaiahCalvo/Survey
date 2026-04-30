@@ -34,7 +34,9 @@ import { toFabricShape } from './svgToFabricShape.js';
 // Pulled from the single permission-scope source of truth so the marquee
 // uses the same canModify chain as click hit-test, eraser hit-test, and
 // the bulk-delete planner. No per-call-site fallback drift.
-import { canModify } from '../lib/collab/permissionScope.js';
+import { canModify, getAnnotationAuthorId, isOwner } from '../lib/collab/permissionScope.js';
+// Phase 35 — UAT diagnostic logger. Dev-only, production-stripped.
+import { phase35Diag } from '../lib/collab/phase35Diag.js';
 
 export const MIN_DRAG_PX = 5;
 
@@ -179,18 +181,67 @@ export function resolveMarqueeHits({
  * @returns {Array<number>}  owner-mode: same reference; collab-mode: filtered new array
  */
 export function filterMarqueeHits(hitIndices, annotations, viewerId, documentOwnerId) {
-  if (!Array.isArray(hitIndices) || hitIndices.length === 0) return hitIndices;
+  if (!Array.isArray(hitIndices) || hitIndices.length === 0) {
+    // Phase 35 UAT diag — empty marquee result. Common when drag is below
+    // MIN_DRAG_PX or hits no geometry; helpful to see ownership props anyway.
+    phase35Diag('marquee.filter', {
+      stage: 'empty-or-noop',
+      viewerId,
+      documentOwnerId,
+      hitsIn: hitIndices?.length ?? 0,
+      hitsOut: hitIndices?.length ?? 0,
+    });
+    return hitIndices;
+  }
   // Boot guard — props not yet resolved at the mount site. Return same ref so
   // legacy behavior is byte-identical.
-  if (!viewerId || !documentOwnerId) return hitIndices;
+  if (!viewerId || !documentOwnerId) {
+    phase35Diag('marquee.filter', {
+      stage: 'boot-guard-passthrough',
+      viewerId,
+      documentOwnerId,
+      hitsIn: hitIndices.length,
+      hitsOut: hitIndices.length,
+      note: 'viewerId or documentOwnerId missing — returning input ref unchanged',
+    });
+    return hitIndices;
+  }
   const objects = annotations?.objects || [];
   let allOwn = true;
+  // Per-annotation decision trace — used by Phase 35 UAT diag below.
+  const perAnnotation = [];
   const filtered = hitIndices.filter((i) => {
     const a = objects[i];
-    if (!a) return false;
+    if (!a) {
+      perAnnotation.push({ index: i, present: false, decision: 'DENY-MISSING' });
+      allOwn = false;
+      return false;
+    }
     const ok = canModify({ annotation: a, viewerId, documentOwnerId });
     if (!ok) allOwn = false;
+    perAnnotation.push({
+      index: i,
+      present: true,
+      annotationId: a?.data?.fabricId ?? a?.id ?? null,
+      authorId: getAnnotationAuthorId(a),
+      type: a?.type ?? null,
+      decision: ok ? 'ALLOW' : 'DENY-FOREIGN',
+    });
     return ok;
+  });
+  // Phase 35 UAT diag — full marquee filter trace. Per project feedback, dump
+  // every per-annotation decision so a single console paste contains the full
+  // proof of the gate's behavior.
+  phase35Diag('marquee.filter', {
+    stage: 'filtered',
+    viewerId,
+    documentOwnerId,
+    role: isOwner(viewerId, documentOwnerId) ? 'owner' : 'collaborator',
+    hitsIn: hitIndices.length,
+    hitsOut: filtered.length,
+    droppedCount: hitIndices.length - filtered.length,
+    perAnnotation,
+    sameRefReturned: allOwn && filtered.length === hitIndices.length,
   });
   // Owner-mode (or all-own collab session): everything passed → return same
   // reference for React memoization. canModify short-circuits to true for the

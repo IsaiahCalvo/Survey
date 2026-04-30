@@ -9080,6 +9080,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
 // PDF Viewer Component with improved typography
 function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, ballInCourtEntities, setBallInCourtEntities, onUnsavedAnnotationsChange }) {
+  // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
+  // phase35Diag logger can prefix every gate decision with the file under test.
+  // Production-stripped via import.meta.env.MODE check; tree-shakes from prod.
+  if (import.meta.env.MODE !== 'production' && typeof window !== 'undefined') {
+    window.__currentPdfName = pdfFile?.name || null;
+  }
   const syncfusionViewerElementId = `syncfusion-pdf-viewer-${tabId || 'default'}`;
   const syncfusionResourceUrl = useMemo(() => {
     if (typeof window === 'undefined') {
