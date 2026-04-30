@@ -610,13 +610,13 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13 → 14 → 
 **Goal:** Replace the interim 2026-04-27 diff-detection wipe brake with a permission-based delete-authority model (Drawboard / Lumin pattern). Two roles — collaborator (default) and document author/owner — gate selection, hover, eraser, marquee, and bulk-delete. Two confirmation modals (collaborator's "delete all of mine" + owner's "delete cross-author with breakdown") plus a 5-6 second undo toast on every delete. One-time owner-only cleanup banner for brake-suppressed residue. Brake retired; per-session "user-deleted IDs" filter retired.
 **Requirements**: 12 acceptance criteria locked in 35-CONTEXT.md (no traceability IDs; phase added mid-milestone outside the original requirement plan)
 **Depends on:** Phase 34
-**Plans:** 3/6 plans executed
+**Plans:** 4/6 plans executed (35-01 + 35-02 + 35-03 + 35-04 shipped; 35-05 + 35-06 unblocked)
 
 Plans:
 - [x] 35-01-PLAN.md — Wave 0 test scaffolds (4 unit + 7 e2e fixme'd) — shipped 2026-04-30
 - [x] 35-02-PLAN.md — Permission helper modules (permissionScope + bulkDeletePlan + cleanupResidueAudit, pure JS) — shipped 2026-04-30
 - [x] 35-03-PLAN.md — Selection / hover / marquee / eraser scope wiring — shipped 2026-04-30 (5 modified files: marqueeSelection.js + useSVGInteraction.js + FabricEraserCanvas.jsx + SVGAnnotationLayer.jsx + App.jsx; 5-site click gate + marquee post-filter + eraser continue-gate; 410p/8f/12s baseline preserved)
-- [ ] 35-04-PLAN.md — ConfirmDeleteModal + UndoToast + bulk-delete interceptor
+- [x] 35-04-PLAN.md — ConfirmDeleteModal + UndoToast + bulk-delete interceptor — shipped 2026-04-30 (5 new files: useUndoToast.js with pure factory + React hook, UndoToast.jsx + .css, ConfirmDeleteModal.jsx + .css; 3 modified: App.jsx +108 with handleRequestBulkDelete callback + modal/toast mount + single-delete toast hook in handleSaveAnnotations, useSVGInteraction.js +78 with closure-bound snapshot + onRequestBulkDelete interceptor, SVGAnnotationLayer.jsx +8-line additive prop pass-through; locked CONTEXT.md modal copy + comma-joined inline byAuthor breakdown per checker W6; Wave 0 6/6 undoToastQueue tests skip→green; baseline 410p/8f/12s → 416p/8f/6s; build green)
 - [ ] 35-05-PLAN.md — Wipe brake retirement + sync_residue_cleanup banner
 - [ ] 35-06-PLAN.md — e2e fixme flip + verification pass
 

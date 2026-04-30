@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
 status: completed
-stopped_at: Completed 35-03-PLAN.md (selection scope wiring; marquee + click + eraser gates; 410p/8f/12s preserved)
-last_updated: "2026-04-30T17:18:48.000Z"
-last_activity: "2026-04-30 17:18 — Phase 35 Plan 03 shipped (selection scope wiring at 5 click sites + marquee + eraser; 410p/8f/12s preserved; 13min)"
+stopped_at: Completed 35-04-PLAN.md (bulk-delete modals + undo toast + interceptor wiring; 5 new files + 3 modified; 416p/8f/6s; 9min)
+last_updated: "2026-04-30T17:37:34.552Z"
+last_activity: "2026-04-30 17:33 — Phase 35 Plan 04 shipped (bulk-delete modals + undo toast + closure-bound deleteSelected interceptor; 5 new files + 3 modified; 416p/8f/6s; 9min)"
 progress:
   total_phases: 15
   completed_phases: 6
   total_plans: 39
-  completed_plans: 35
+  completed_plans: 36
   percent: 97
 ---
 
@@ -26,12 +26,12 @@ See: .planning/PROJECT.md (updated 2026-04-14)
 ## Current Position
 
 Milestone: v2.4 — CRDT Foundation + Real-Time Sync (Yjs port; SVG/Fabric layers immutable). Phase 35 retires the 2026-04-27 wipe brake and ships the Drawboard/Lumin permission model.
-Phase: **Phase 35 EXECUTING** — Plans 35-01 + 35-02 + 35-03 shipped 2026-04-30. Plans 35-04 (modals + undo toast) / 35-05 (brake retirement + cleanup banner) / 35-06 (e2e flip green) unblocked.
-Plan: Plan 35-03 closed 2026-04-30 17:18 — 5 modified files (4 from PLAN + Dashboard scope expansion). marqueeSelection.js gains `filterMarqueeHits` owner-aware post-filter (same-reference passthrough for owner role). useSVGInteraction.js threads viewerId + documentOwnerId through to marquee commit + applies `canSelectAnnotationByIndex` gate at exactly 5 add-from-click sites (handler-entry covering all annotation pointerdown paths, Shift-toggle, group expand member filter, marquee Alt subtract defensive re-check, counter-orbit Shift-toggle). FabricEraserCanvas.jsx adds closure-safe refs (viewerIdRef + documentOwnerIdRef synced via useEffect — applyEraserAndCommit lives in a useRef stash, direct reads would capture stale init values) + continue-gate at top of per-object erase loop. App.jsx threads file.user_id at 3 Dashboard load paths (handleDocumentClick optimistic, downloadFromStorage, dataUrl legacy) so PDFViewer can resolve documentOwnerId without crossing scope boundaries; useMemo derivation pulls from pdfFile?.user_id; 6 mount-site prop additions (3 SVGAnnotationLayer + 3 FabricEraserCanvas). SVGAnnotationLayer.jsx gets 4-line additive prop pass-through (destructure + useSVGInteraction forward; render logic untouched per CONTEXT.md DO NOT CHANGE). Test baseline preserved exactly: 410p/8f/12s. Build green. 3 Rule-deviations auto-fixed: closure-safe refs in eraser (Rule 3 vs 20-line diff target — structural requirement), Dashboard file.user_id attachment (Rule 3 vs `documents.find()` plan hint — Dashboard scope unreachable from PDFViewer), and one Rule 1 grep-pattern false-match in comments (rephrased without changing semantics). All exact-count grep ACs pass: canSelectAnnotationByIndex = 6, viewerId={user = 6, documentOwnerId={documentOwnerId} = 6. Commits a4543cd8 + cd854061 + c324ad46 + the metadata commit.
-Status: Plan 35-03 DONE. Next: Plan 35-04 (bulk-delete modals + undo toast — imports buildBulkDeletePlan from Plan 35-02; selection state from Plan 35-03 feeds the planner's candidate-ids input).
-Last activity: 2026-04-30 17:18 — Phase 35 Plan 03 shipped (selection scope wiring; 5 click gates + marquee + eraser; baseline 410p/8f/12s; 13min)
+Phase: **Phase 35 EXECUTING** — Plans 35-01 + 35-02 + 35-03 + 35-04 shipped 2026-04-30. Plans 35-05 (brake retirement + cleanup banner) / 35-06 (e2e flip green) unblocked.
+Plan: Plan 35-04 closed 2026-04-30 17:33 — 5 new files (useUndoToast.js with pure factory + React hook, UndoToast.jsx + .css, ConfirmDeleteModal.jsx + .css; 633 LOC) + 3 modified (App.jsx +108 lines with 4 imports + handleRequestBulkDelete callback + ConfirmDeleteModal/UndoToast mount + single-delete toast hook in handleSaveAnnotations; useSVGInteraction.js +78 lines with closure-bound snapshot + onRequestBulkDelete interceptor; SVGAnnotationLayer.jsx +8-line additive prop pass-through). useUndoToast hook is a thin wrapper over a pure-JS createUndoToastQueue factory — engine-agnostic so Wave 0 6/6 unit tests skip→green with a fake clock; locked enqueue signature `{ kind, message, count?, onUndo }`. ConfirmDeleteModal renders two locked-copy variants: collaborator simple-count ("Delete all N of your annotations on this page?") and owner cross-author with comma-joined inline byAuthor breakdown ("Alice — 18, Bob — 12, Carol — 5") per checker W6, NOT a stacked list. deleteSelected captures snapshotObjects + builds runDelete closure that propagates deletedCount/deletedSnapshot/deletedPageNumber through saveContext; App.jsx's handleRequestBulkDelete builds the BulkDeletePlan in scope of viewerId/documentOwnerId, branches on plan.mode (no-op bails; owner-own-only fires direct + bulk-toast; modal variants stash runner in pendingDeleteRunnerRef and open the modal). Single-delete toast layered at handleSaveAnnotations.saveContext.deletedCount===1 — every single delete fires the 5s 'Annotation deleted' toast with snapshot-restore onUndo. Test baseline: 410p/8f/12s → 416p/8f/6s (+6 from Wave 0 flips; failures unchanged). Build green. 2 Rule-1 deviations auto-fixed: literal `<ul>` in a comment failed grep AC — rephrased without semantic change; multi-line `enqueueUndoToast({ kind: ... })` failed literal grep AC — inlined to satisfy contract. Commits 48f70918 + 18e530c4 + 61eb4577.
+Status: Plan 35-04 DONE. Next: Plan 35-05 (brake retirement + cleanup banner — independent surface; imports auditResidue from Plan 35-02).
+Last activity: 2026-04-30 17:33 — Phase 35 Plan 04 shipped (bulk-delete modals + undo toast + closure-bound deleteSelected interceptor; 5 new files + 3 modified; 416p/8f/6s; 9min)
 
-Progress: [██████████] 97% — Phase 27 functionally complete (5/5 plans, reconciliation pending); Phase 28 functionally complete (6/6 plans); Phase 29 functionally complete (6/6 plans, 29-RECONCILIATION.md DONE_WITH_CONCERNS); **Phase 30 CLOSED (7/7 plans, verifier 19/19, reconciliation DONE)**; v2.4 milestone overall: 4 of 8 phases shipped (27 modulo reconciliation, 28, 29, 30); 0 Phase 31/32/33/34; v2.3 closed at Phase 15
+Progress: [██████████] 97% — Phase 27 functionally complete (5/5 plans, reconciliation pending); Phase 28 functionally complete (6/6 plans); Phase 29 functionally complete (6/6 plans, 29-RECONCILIATION.md DONE_WITH_CONCERNS); **Phase 30 CLOSED (7/7 plans, verifier 19/19, reconciliation DONE)**; Phase 35 4 of 6 plans shipped (35-01..35-04); v2.4 milestone overall: 4 of 8 phases shipped (27 modulo reconciliation, 28, 29, 30); 0 Phase 31/32/33/34; v2.3 closed at Phase 15
 
 ## Performance Metrics
 
@@ -85,6 +85,7 @@ Progress: [██████████] 97% — Phase 27 functionally complet
 | Phase 35 P01 | 8 | 2 tasks | 11 files |
 | Phase 35-per-user-delete-authority-confirm-before-wipe P02 | 3 min | 3 tasks | 3 files |
 | Phase 35-per-user-delete-authority-confirm-before-wipe P03 | 13 min | 3 tasks | 5 files |
+| Phase 35-per-user-delete-authority-confirm-before-wipe P04 | 9 min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -245,6 +246,10 @@ Progress: [██████████] 97% — Phase 27 functionally complet
 - [Phase 35-per-user-delete-authority-confirm-before-wipe]: Plan 35-03: closure-safe refs (viewerIdRef + documentOwnerIdRef) required in FabricEraserCanvas because applyEraserAndCommit lives in a useRef stash and never re-evaluates; direct prop reads inside the loop would capture initial-render values forever; refs sync via useEffect matching the existing pattern (eraserSizeRef, viewerScaleRef, spacesRef, etc.); Rule 3 deviation against the plan's 20-line diff target — final diff 30 lines, mostly comments documenting the closure-safety contract
 - [Phase 35-per-user-delete-authority-confirm-before-wipe]: Plan 35-03: file.user_id at Dashboard load is the owner-identity carrier — the plan's documents.find(d=>d.id===pdfFile?.id)?.user_id hint wasn't viable from PDFViewer scope (documents lives in Dashboard, line 38304); solution extends the existing convention that already threads file.id / file.projectId / file.supabaseFilePath onto the File object at load time; pure additive (3 single-line additions in Dashboard at the optimistic / downloadFromStorage / dataUrl load paths)
 - [Phase 35-per-user-delete-authority-confirm-before-wipe]: Plan 35-03: SVGAnnotationLayer prop pass-through is the absolute minimum touch — 2 lines in destructure + 2 lines forwarding to existing useSVGInteraction({...}) call; render logic untouched per CONTEXT.md DO NOT CHANGE; visible-but-locked rendering rides existing isInteractive prop pattern; waiver in plan frontmatter explicitly authorized this 4-line additive prop-pass-through
+- [Phase 35]: Plan 35-04 closure-bound snapshot lives INSIDE useSVGInteraction.deleteSelected (NOT in an App.jsx ref). snapshotObjects captured at delete-request time; runner closure carries it through saveContext.deletedSnapshot; both onUndo paths (single in handleSaveAnnotations, bulk in handleRequestBulkDelete) restore by appending the captured snapshot to annotationsByPage. Stale-closure-proof per Plan 35-04 frontmatter checker I13.
+- [Phase 35]: Plan 35-04 single-delete toast layered at handleSaveAnnotations.saveContext.deletedCount===1, NOT inside deleteSelected. Every delete that goes through the save pipeline with deletedCount===1 fires the 'single' 5s toast — cleanest insertion point because every delete (single or bulk) flows through handleSaveAnnotations. Bulk deletes use deletedCount > 1 and go through the modal+wrappedRunDelete path which enqueues the 'bulk' toast there.
+- [Phase 35]: Plan 35-04 byAuthor breakdown rendered as comma-joined inline <p> per checker W6, NOT stacked unordered list. CONTEXT.md example 'Alice — 18, Bob — 12, Carol — 5' is single inline string + em dash + single paragraph. Reads as supplementary metadata to the body line, not a checklist of items the user must scan vertically.
+- [Phase 35]: Plan 35-04 engine-agnostic createUndoToastQueue factory + thin useUndoToast React hook split for testability. Wave 0 unit tests drive the factory directly with a fake clock; production app uses the React wrapper. Same testability split as Phase 14 buildCalloutRenderSpec / Phase 15 lineDragMath — pure helper precedes React wiring.
 
 ### Roadmap Evolution
 
@@ -278,8 +283,8 @@ Progress: [██████████] 97% — Phase 27 functionally complet
 
 ## Session Continuity
 
-Last session: 2026-04-30T17:03:48.445Z
-Stopped at: Completed 35-02-PLAN.md (3 pure-JS helpers; 17 Wave 0 unit tests green)
+Last session: 2026-04-30T17:36:00.408Z
+Stopped at: Completed 35-04-PLAN.md (bulk-delete modals + undo toast + interceptor wiring; 5 new files + 3 modified; 416p/8f/6s; 9min)
 
 ### Resume instructions for the next session (read carefully)
 
