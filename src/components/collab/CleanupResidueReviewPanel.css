@@ -1,0 +1,190 @@
+/* src/components/collab/CleanupResidueReviewPanel.css
+ * Phase 35 Plan 05 — Review surface for the sync_residue_cleanup banner.
+ *
+ * UX: same backdrop + card pattern as ConfirmDeleteModal (Phase 35 Plan 04)
+ * but smaller (max-width 400px) because the surface is informational + a
+ * single decision rather than a multi-paragraph confirmation. Reuses the
+ * accent-red destructive primary so the visual language stays consistent
+ * across the cleanup flow (banner → review → delete).
+ *
+ * Token reuse: var(--bg-secondary), var(--text-primary), var(--accent-red),
+ * var(--shadow-lg) — same tokens ConfirmDeleteModal uses, so a future theme
+ * change ripples through both surfaces uniformly.
+ */
+
+.cleanup-residue-review__backdrop {
+  /* UX: full-viewport scrim. z-index 210 sits ABOVE the ConfirmDeleteModal
+     scrim (200) so if both ever co-mount the review panel takes precedence.
+     In practice this can't happen because the cleanup banner only fires on
+     document open and the bulk-delete modal fires on user gesture, but the
+     z-index stack makes the boundary explicit. */
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 210;
+  background: rgba(0, 0, 0, 0.5);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  /* UX: 120ms ease-out fade-in matches ConfirmDeleteModal cadence. */
+  animation: cleanup-residue-review-fade-in 120ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+@keyframes cleanup-residue-review-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.cleanup-residue-review__card {
+  /* UX: 400px max-width — slightly tighter than ConfirmDeleteModal's 480px
+     because the body text here is shorter and the sample list reads more
+     comfortably at this width. 16/24 padding keeps the rhythm of the
+     existing modal family. */
+  background: var(--bg-secondary, #252525);
+  border: 1px solid var(--border-primary, #3A3A3A);
+  border-radius: 8px;
+  box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.5));
+
+  width: 100%;
+  max-width: 400px;
+  margin: 0 16px;
+  padding: 24px;
+
+  font-family: var(--font-primary, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif);
+
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cleanup-residue-review__heading {
+  /* UX: 16px / weight 600 — single bold surface in the panel, matches
+     ConfirmDeleteModal heading scale. */
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+  color: var(--text-primary, #FFFFFF);
+  margin: 0;
+}
+
+.cleanup-residue-review__body {
+  /* UX: 14px / weight 400 — explains what the residue is and why it's safe
+     to clean up. Calm tone matches Linear / Notion / Figma graceful-degradation
+     register. */
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--text-secondary, #C8C8C8);
+  margin: 0;
+}
+
+.cleanup-residue-review__sample-list {
+  /* UX: bullet-less list of monospaced annotation IDs. No native bullets so
+     the IDs read as a clean inventory rather than a narrative list. 8px gap
+     between rows for breathing room without burning vertical space. */
+  list-style: none;
+  margin: 4px 0 8px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  /* UX: max-height + scroll fallback in case future audits surface more than
+     the current 5-sample cap. Doesn't trigger today (sample.slice(0, 5))
+     but defends the chrome if the cap ever grows. */
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.cleanup-residue-review__sample-row {
+  /* UX: 13px / weight 400 — supplementary metadata weight, smaller than the
+     body. Each row is a single annotation ID rendered in monospace via the
+     <code> child. */
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-secondary, #C8C8C8);
+}
+
+.cleanup-residue-review__sample-row code {
+  /* UX: monospace ID for quick visual scanning. Same monospaced surface as
+     the existing diagnostic copy (e.g. error codes in StorageFailureBanner).
+     Slightly muted background so the ID reads as a token, not body text. */
+  font-family: var(--font-mono, "SF Mono", "Monaco", "Consolas", "Liberation Mono", monospace);
+  background: var(--bg-tertiary, #1F1F1F);
+  border: 1px solid var(--border-primary, #3A3A3A);
+  border-radius: 3px;
+  padding: 2px 6px;
+  color: var(--text-primary, #E8E8E8);
+  font-size: 12px;
+}
+
+.cleanup-residue-review__sample-row--more {
+  /* UX: tail row "…and N more" reads as muted-tone metadata so the eye knows
+     it's a summary, not another entry. Italic to further differentiate from
+     the data rows. */
+  font-style: italic;
+  color: var(--text-tertiary, #888888);
+  padding-left: 6px;
+}
+
+.cleanup-residue-review__actions {
+  /* UX: button row right-aligned (Material destructive convention). Close
+     left, primary right. 12px gap matches ConfirmDeleteModal. */
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.cleanup-residue-review__action {
+  /* UX: shared base — 14px label, 8/16 padding, 4px radius. Matches
+     ConfirmDeleteModal button base for visual rhythm. */
+  font-size: 14px;
+  font-weight: 400;
+  font-family: inherit;
+  padding: 8px 16px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  line-height: 1.4;
+  transition: background-color 120ms ease-out, color 120ms ease-out;
+}
+
+.cleanup-residue-review__action:focus {
+  /* UX: keyboard focus ring — same shape as the rest of the collab surface
+     family. */
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.4);
+}
+
+.cleanup-residue-review__action--secondary {
+  /* UX: Close — neutral outline. Default focus per accessibility (the user
+     can dismiss without committing to a destructive action). */
+  background: transparent;
+  border-color: var(--border-primary, #3A3A3A);
+  color: var(--text-primary, #FFFFFF);
+}
+
+.cleanup-residue-review__action--secondary:hover {
+  background: var(--bg-tertiary, #1F1F1F);
+}
+
+.cleanup-residue-review__action--primary {
+  /* UX: red destructive primary — same accent-red token ConfirmDeleteModal
+     uses so cleaning up brake-suppressed residue and bulk-deleting feel
+     like the same destructive surface family. */
+  background: var(--accent-red, #DC3545);
+  border-color: var(--accent-red, #DC3545);
+  color: #FFFFFF;
+}
+
+.cleanup-residue-review__action--primary:hover {
+  background: var(--accent-red-hover, #B02A37);
+  border-color: var(--accent-red-hover, #B02A37);
+}
