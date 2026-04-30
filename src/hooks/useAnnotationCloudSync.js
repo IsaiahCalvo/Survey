@@ -987,7 +987,11 @@ export function useAnnotationCloudSync({
           let hasUnpushedDualWriteQueue = false;
           try {
             const dwQueue = readDualWriteQueue(userId) || {};
-            hasUnpushedDualWriteQueue = Object.keys(dwQueue).some((aid) => !dwQueue[aid]?.quarantined);
+            // 2026-04-29 fix: count quarantined entries as "unpushed" too —
+            // they are still data the user expects to keep visible. Earlier
+            // version excluded quarantined and the focus-rehydrate replace
+            // would wipe a quarantined stroke off the canvas.
+            hasUnpushedDualWriteQueue = Object.keys(dwQueue).length > 0;
           } catch (_e) {
             // If readDualWriteQueue throws, fall back to queue-presence-unknown
             // and skip the replace defensively (better to keep local than wipe).

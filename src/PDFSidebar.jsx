@@ -82,6 +82,14 @@ const PDFSidebar = React.forwardRef(({
   currentUserDisplayName = null
 }, ref) => {
   const [isCollapsed, setIsCollapsed] = useState(true);
+  // 2026-04-29: publish the live sidebar width as a CSS variable so the
+  // StorageFailureBanner overlay can anchor inside the PDF area without
+  // running over the sidebar's vertical tool rail (Pages / Search /
+  // Bookmarks / Spaces).
+  React.useEffect(() => {
+    if (typeof document === 'undefined' || !document.documentElement) return;
+    document.documentElement.style.setProperty('--app-sidebar-width', isCollapsed ? '48px' : '272px');
+  }, [isCollapsed]);
   const [activeTab, setActiveTab] = useState('pages'); // 'pages' | 'search' | 'bookmarks' | 'spaces'
   const [hoveredTabId, setHoveredTabId] = useState(null);
   const [searchFocusRequestToken, setSearchFocusRequestToken] = useState(0);

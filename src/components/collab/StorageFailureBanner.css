@@ -16,11 +16,13 @@
      the banner never blocks the home/undo/redo controls or the open-PDF tabs.
      Stays fixed so it doesn't push the PDF canvas down. CSS variable lets the
      measured-toolbar effect override the fallback if chrome height changes. */
+  /* UX 2026-04-29 v3: confine to the PDF viewport — left edge anchored at
+     sidebar width so the banner doesn't run over the Pages / Search /
+     Bookmarks / Spaces tool rail. Width is auto (left + right both set). */
   position: fixed;
   top: var(--app-chrome-top, 96px);
-  left: 0;
+  left: var(--app-sidebar-width, 48px);
   right: 0;
-  width: 100%;
   z-index: 1000;
 
   display: flex;
