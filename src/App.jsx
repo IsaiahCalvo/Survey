@@ -20737,6 +20737,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const documentSyncUnsubscribeRef = useRef(null);
   const lastSyncedAnnotationsRef = useRef({});
   const syncErrorCountRef = useRef(0); // Track consecutive sync errors
+  // 2026-04-30 — Audit hardening (finding #10): same flush-on-unload pattern
+  // as src/hooks/useAnnotationCloudSync.js. Highlights ride the legacy 2000ms
+  // debounced sync path below; without a flush mechanism, edits made in the
+  // last 2 seconds before tab close were silently lost. This ref stashes the
+  // pending runSync so a beforeunload listener (and the effect cleanup) can
+  // fire it fire-and-forget. Idempotent — runner self-clears the ref.
+  const pendingHighlightSyncRef = useRef(null);
   const syncRLSErrorShownRef = useRef(false); // Track if RLS error warning was shown
   const syncStructuralErrorShownRef = useRef(false); // Track if schema/not-found sync warning was shown
   const syncStructuralAutoDisabledRef = useRef(readDocumentSyncStructuralDisabled()); // Session-scoped hard stop after structural backend failures
@@ -21147,9 +21154,40 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
     };
 
+    // 2026-04-30 — Audit hardening (finding #10): wrap runSync so beforeunload
+    // / unmount can fire it fire-and-forget when the 2000ms timer hasn't
+    // elapsed yet. flushPendingHighlightSync is idempotent: it self-clears
+    // the pendingHighlightSyncRef after the runner is invoked, so a duplicate
+    // call (timer + beforeunload race, or unmount + beforeunload race) is a
+    // safe no-op. The interaction-perf retry loop is intentionally bypassed
+    // on flush — when the tab is closing we'd rather attempt the write
+    // immediately than reschedule.
+    const flushPendingHighlightSync = () => {
+      if (pendingHighlightSyncRef.current !== flushPendingHighlightSync) return;
+      pendingHighlightSyncRef.current = null;
+      if (syncTimeout) {
+        clearTimeout(syncTimeout);
+        syncTimeout = null;
+      }
+      if (cancelled || syncStructuralAutoDisabledRef.current) return;
+      // Fire-and-forget — see comment in useAnnotationCloudSync.js cleanup.
+      try {
+        Promise.resolve(runSync()).catch(() => { /* swallow on unload path */ });
+      } catch (_e) { /* defensive */ }
+    };
+
     const scheduleSync = (delayMs) => {
+      // Re-arm the pending-flush ref every time we (re)schedule. Keeps the
+      // beforeunload / unmount path pointing at the latest runSync closure.
+      pendingHighlightSyncRef.current = flushPendingHighlightSync;
       syncTimeout = setTimeout(async () => {
-        if (cancelled || syncStructuralAutoDisabledRef.current) return;
+        if (cancelled || syncStructuralAutoDisabledRef.current) {
+          // Swept up — clear the pending flush so unload won't try to fire it.
+          if (pendingHighlightSyncRef.current === flushPendingHighlightSync) {
+            pendingHighlightSyncRef.current = null;
+          }
+          return;
+        }
 
         if (isInteractionPerfWindowActive()) {
           const retryDelay = getInteractionPerfResumeDelay();
@@ -21158,6 +21196,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           return;
         }
 
+        // Timer-driven path — clear the pending-flush ref before running so a
+        // racing beforeunload doesn't fire a duplicate.
+        if (pendingHighlightSyncRef.current === flushPendingHighlightSync) {
+          pendingHighlightSyncRef.current = null;
+        }
         await runSync();
       }, delayMs);
     };
@@ -21169,8 +21212,62 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       if (syncTimeout) {
         clearTimeout(syncTimeout);
       }
+      // 2026-04-30 — Audit hardening (finding #10): on unmount (tab close,
+      // document switch) fire any still-pending debounced highlight sync
+      // fire-and-forget so the last 2000ms of edits aren't lost. NOTE: the
+      // `cancelled = true` above means runSync's first guard would short-
+      // circuit — so we invoke the underlying syncAnnotationsToSupabase call
+      // directly here without the cancelled flag check, mirroring what the
+      // timer would have done. Idempotent: subsequent invocations see the
+      // pending ref cleared.
+      const pending = pendingHighlightSyncRef.current;
+      if (pending === flushPendingHighlightSync) {
+        pendingHighlightSyncRef.current = null;
+        try {
+          // Re-derive prior baseline + run upsert directly (cancelled flag
+          // would otherwise block runSync()). Fire-and-forget.
+          let priorHighlightAnnotations = null;
+          if (lastSyncedAnnotationsRef.current && typeof lastSyncedAnnotationsRef.current === 'string') {
+            try {
+              priorHighlightAnnotations = JSON.parse(lastSyncedAnnotationsRef.current);
+            } catch (_) {
+              priorHighlightAnnotations = null;
+            }
+          }
+          if (!syncStructuralAutoDisabledRef.current) {
+            console.log('[DocumentSync] unmount flush — pushing pending highlight sync');
+            Promise.resolve(
+              syncAnnotationsToSupabase(documentId, user.id, highlightAnnotations, {
+                priorHighlightAnnotations,
+              })
+            ).catch(() => { /* swallow on unmount path */ });
+          }
+        } catch (_e) { /* defensive — never throw from cleanup */ }
+      }
     };
   }, [documentSyncEnabled, getInteractionPerfResumeDelay, highlightAnnotations, isInteractionPerfWindowActive, pdfFile?.id, user?.id]);
+
+  // 2026-04-30 — Audit hardening (finding #10): mirror the beforeunload flush
+  // we added in src/hooks/useAnnotationCloudSync.js for the legacy highlight
+  // sync path. Without this, edits made in the last 2000ms before the user
+  // closes the tab were silently dropped. We fire-and-forget; the browser may
+  // still complete the in-flight Supabase fetch during page close. Idempotent
+  // (the pending runner self-clears its ref on first invocation).
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.addEventListener) return;
+    const onBeforeUnload = () => {
+      const pending = pendingHighlightSyncRef.current;
+      if (!pending) return;
+      console.log('[DocumentSync] beforeunload — flushing pending highlight sync');
+      try {
+        pending();
+      } catch (_e) { /* defensive */ }
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload);
+    };
+  }, []);
 
   // Phase 21: cloud sync for every non-highlight annotation type. Hydrates
   // shapes/text/stamps/sticky-notes/callouts/counters from Supabase on
