@@ -101,6 +101,16 @@ export function useAnnotationCloudSync({
   const lastByPageRef = useRef(null);
   const lastCalloutsRef = useRef(null);
   const debounceTimerRef = useRef(null);
+  // 2026-04-30 — Audit hardening (finding #10): annotations drawn in the
+  // last 800ms before the user closes the tab were silently lost because the
+  // debounce timer was cleared on unmount and the upsert never fired. These
+  // refs hold the most recently scheduled debounced push as a "pending flush"
+  // function so a beforeunload listener (and the effect cleanup) can fire it
+  // immediately. Set when the timer is scheduled, cleared either when the
+  // timer fires normally OR after the flush runs. Calling a null ref is a
+  // no-op (idempotent).
+  const pendingFabricFlushRef = useRef(null);
+  const pendingCalloutFlushRef = useRef(null);
   const hydratedRef = useRef(false);
   const startupSyncInFlightRef = useRef(false);
   const lastCloudRefreshAtRef = useRef(0);
@@ -489,7 +499,21 @@ export function useAnnotationCloudSync({
       debounceMs
     }));
 
-    debounceTimerRef.current = setTimeout(async () => {
+    // 2026-04-30 — Audit hardening (finding #10): factor the debounced work
+    // into a named runner so beforeunload / unmount can call it synchronously
+    // (fire-and-forget) when the timer hasn't elapsed yet. After the runner
+    // executes (either via timer or via flush), the pendingFabricFlushRef is
+    // cleared so subsequent flush calls are no-ops (idempotent).
+    const runFabricPush = async () => {
+      // Mark as consumed up-front so a concurrent beforeunload + timer race
+      // can't fire the same push twice. First caller wins; second caller sees
+      // a null ref and bails.
+      if (pendingFabricFlushRef.current !== runFabricPush) return;
+      pendingFabricFlushRef.current = null;
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
       console.log('[CloudSync][hook] fabric push debounce elapsed — pushing now');
       // 2026-04-25 — status pulse: flip to 'syncing' the moment the push
       // starts so the corner chip shows the orange spinner. The push only
@@ -642,10 +666,30 @@ export function useAnnotationCloudSync({
         }));
         setStatus({ stage: 'synced', count: result.data?.length || 0 });
       }
-    }, debounceMs);
+    };
+
+    pendingFabricFlushRef.current = runFabricPush;
+    debounceTimerRef.current = setTimeout(runFabricPush, debounceMs);
 
     return () => {
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+      // 2026-04-30 — Audit hardening (finding #10): on unmount (tab close,
+      // document switch) fire any still-pending debounced push fire-and-
+      // forget so the last 800ms of edits aren't lost. Idempotent — runner
+      // self-clears the ref so a duplicate call is a safe no-op.
+      const pending = pendingFabricFlushRef.current;
+      if (pending) {
+        try {
+          // Fire-and-forget — we deliberately do NOT await. The browser may
+          // still complete the in-flight fetch during page close; that's the
+          // best we can do without sendBeacon (which doesn't carry Supabase
+          // auth headers).
+          Promise.resolve(pending()).catch(() => { /* swallow — unmount path */ });
+        } catch (_e) { /* defensive — never throw from cleanup */ }
+      }
     };
   }, [enabled, documentId, userId, annotationsByPage, debounceMs]);
 
@@ -678,7 +722,19 @@ export function useAnnotationCloudSync({
       isCalloutWipePush,
       debounceMs
     }));
-    const handle = setTimeout(async () => {
+    // 2026-04-30 — Audit hardening (finding #10): same flush-on-unload
+    // pattern as the fabric push above. Factor the timer body into a named
+    // runner that beforeunload / unmount can fire synchronously, and stash
+    // it in pendingCalloutFlushRef. The runner self-clears the ref so a
+    // double invocation is a no-op.
+    let calloutTimerHandle = null;
+    const runCalloutPush = async () => {
+      if (pendingCalloutFlushRef.current !== runCalloutPush) return;
+      pendingCalloutFlushRef.current = null;
+      if (calloutTimerHandle) {
+        clearTimeout(calloutTimerHandle);
+        calloutTimerHandle = null;
+      }
       console.log('[CloudSync][hook] callout push debounce elapsed — pushing now');
       setStatus({ stage: 'syncing' });
       const currentCalloutIds = new Set(
@@ -744,10 +800,68 @@ export function useAnnotationCloudSync({
         }));
         setStatus({ stage: 'synced', count: result.data?.length || 0 });
       }
-    }, debounceMs);
+    };
 
-    return () => clearTimeout(handle);
+    pendingCalloutFlushRef.current = runCalloutPush;
+    calloutTimerHandle = setTimeout(runCalloutPush, debounceMs);
+
+    return () => {
+      if (calloutTimerHandle) {
+        clearTimeout(calloutTimerHandle);
+        calloutTimerHandle = null;
+      }
+      // 2026-04-30 — Audit hardening (finding #10): same unmount-flush as
+      // the fabric branch above. Fire any still-pending callout push fire-
+      // and-forget so trailing edits aren't dropped on tab close.
+      const pending = pendingCalloutFlushRef.current;
+      if (pending) {
+        try {
+          Promise.resolve(pending()).catch(() => { /* swallow — unmount path */ });
+        } catch (_e) { /* defensive — never throw from cleanup */ }
+      }
+    };
   }, [enabled, documentId, userId, callouts, debounceMs]);
+
+  // ---- beforeunload flush ------------------------------------------------
+  //
+  // 2026-04-30 — Audit hardening (finding #10): "Annotations drawn in the
+  // last 800ms before close are lost." Without this listener, the user
+  // could draw a stroke and close the tab inside the 800ms debounce window;
+  // the unmount cleanup would clear the timer and the upsert would never
+  // fire. We fire-and-forget the pending flushes (no await — beforeunload
+  // is synchronous-ish, and Supabase REST upsert needs auth headers that
+  // sendBeacon can't carry). The browser may still complete the in-flight
+  // request during the close — that's the best we can do without a
+  // server-side keepalive endpoint.
+  //
+  // The flush is idempotent: each runner self-clears its pending ref, so
+  // the timer firing after this listener (or vice-versa) is a safe no-op.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.addEventListener) return;
+    const onBeforeUnload = () => {
+      const pendingFabric = pendingFabricFlushRef.current;
+      const pendingCallout = pendingCalloutFlushRef.current;
+      if (!pendingFabric && !pendingCallout) return;
+      console.log('[CloudSync][hook] beforeunload — flushing pending pushes ' + JSON.stringify({
+        hasFabric: !!pendingFabric,
+        hasCallout: !!pendingCallout
+      }));
+      if (pendingFabric) {
+        try {
+          Promise.resolve(pendingFabric()).catch(() => { /* swallow */ });
+        } catch (_e) { /* defensive */ }
+      }
+      if (pendingCallout) {
+        try {
+          Promise.resolve(pendingCallout()).catch(() => { /* swallow */ });
+        } catch (_e) { /* defensive */ }
+      }
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload);
+    };
+  }, []);
 
   // ---- Realtime subscription ---------------------------------------------
 
