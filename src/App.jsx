@@ -9090,7 +9090,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 });
 
 // PDF Viewer Component with improved typography
-function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, ballInCourtEntities, setBallInCourtEntities, onUnsavedAnnotationsChange }) {
+function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, ballInCourtEntities, setBallInCourtEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
   // phase35Diag logger can prefix every gate decision with the file under test.
   // Production-stripped via import.meta.env.MODE check; tree-shakes from prod.
@@ -20805,6 +20805,29 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return false;
   }, []);
 
+  // Hardening (audit 2026-04-30 #2): when the document loaded into this
+  // PDFViewer changes, reset the per-document sync state so the new doc
+  // gets a fresh shot at sync init. Without this, an error encountered on
+  // PDF A (RLS, structural, repeated failures) leaves these refs/state
+  // sticky, and the next PDF inherits the disabled state silently — the
+  // user thinks "the new PDF is broken too" when really it never tried.
+  //
+  // Note: this intentionally clears `syncRLSErrorShownRef` per-document.
+  // The old assumption ("RLS will fail the same way again") doesn't hold
+  // across documents because RLS policies often gate per-row ownership.
+  // A fresh document with different ownership may sync just fine. If RLS
+  // really is broken globally, the next failure path will flip the flag
+  // back on and surface the warning again.
+  useEffect(() => {
+    setDocumentSyncEnabled(false);
+    syncRLSErrorShownRef.current = false;
+    syncStructuralAutoDisabledRef.current = false;
+    syncStructuralErrorShownRef.current = false;
+    syncErrorCountRef.current = 0;
+    presenceCheckDocumentIdRef.current = null;
+    documentSyncInitInFlightRef.current = false;
+  }, [pdfFile?.id]);
+
   // Load annotations from Supabase when document is opened
   useEffect(() => {
     const documentId = pdfFile?.id;
@@ -21358,6 +21381,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   } = useUndoToast();
   const [pendingDeletePlan, setPendingDeletePlan] = useState(null);
   const pendingDeleteRunnerRef = useRef(null);
+
+  // Hardening (audit 2026-04-30 #1): clear the bulk-delete confirmation modal
+  // state whenever the document loaded into this PDFViewer changes. Without
+  // this, a stale `pendingDeletePlan` snapshot from PDF A could survive a
+  // tab swap-in to PDF B and cause `runDelete` to fire against the wrong
+  // document on a delayed confirm click. The `pdfFile?.id` change covers
+  // both same-tab document replacement and (defensively) any case where
+  // PDFViewer is re-keyed onto a different doc. Tab close itself unmounts
+  // PDFViewer entirely, so no extra wire-up is needed there.
+  useEffect(() => {
+    setPendingDeletePlan(null);
+    pendingDeleteRunnerRef.current = null;
+  }, [pdfFile?.id]);
 
   const handleRequestBulkDelete = useCallback(
     ({ candidateIds, snapshotObjects, pageNumber, runDelete }) => {
@@ -22627,6 +22663,21 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
     }
   }, [pdfId, annotationsByPage, onUnsavedAnnotationsChange]);
+
+  // Hardening (audit 2026-04-30 #3): notify the App-level beforeunload guard
+  // whenever this PDFViewer's annotation count flips between empty and
+  // non-empty. App tracks the boolean on each tab so it can warn the user
+  // before window unload if the active tab is a local-only PDF (no cloud
+  // row) that has any annotations — those would otherwise vanish silently.
+  // We report a coarse boolean rather than the count because the warning
+  // is binary: any annotation = warn.
+  useEffect(() => {
+    if (typeof onAnnotationsExistChange !== 'function') return;
+    const hasAny = Object.values(annotationsByPage || {}).some(
+      (page) => Array.isArray(page?.objects) && page.objects.length > 0,
+    );
+    onAnnotationsExistChange(hasAny, tabId);
+  }, [annotationsByPage, onAnnotationsExistChange, tabId]);
 
   // Save callouts to localStorage when they change
   useEffect(() => {
@@ -38950,6 +39001,48 @@ export default function App() {
     });
   }, [selectedPDF]);
 
+  // Hardening (audit 2026-04-30 #3): track per-tab "has any annotations" so
+  // the beforeunload guard below can warn the user before they close a
+  // local-only PDF (no Supabase row) with annotations on it. Distinct from
+  // hasUnsavedAnnotations because we want to warn even after a localStorage
+  // save — closing the window/tab on a local-only PDF with annotations is
+  // always a "you might be losing work" moment until the file is exported.
+  const handleAnnotationsExistChange = useCallback((hasAny, targetTabId) => {
+    if (!targetTabId) return;
+    setTabs(prev =>
+      prev.map(tab =>
+        tab.id === targetTabId ? { ...tab, hasAnyAnnotations: hasAny } : tab,
+      ),
+    );
+  }, []);
+
+  // Hardening (audit 2026-04-30 #3): warn before window unload when the
+  // active tab is a local-only PDF (no cloud row) that has annotations.
+  // Browsers show a generic "leave site?" prompt and let the user cancel.
+  // Cloud-synced PDFs are out of scope here — their work is already
+  // persisted server-side, so the warning would be noise.
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const handler = (event) => {
+      const activeTab = tabs.find((t) => t.id === activeTabId);
+      if (!activeTab || activeTab.isHome) return undefined;
+      const file = activeTab.file;
+      if (!file) return undefined;
+      // Only warn for local-only PDFs (no Supabase row). Cloud PDFs are
+      // already persisted; their work survives a window close.
+      if (file.id) return undefined;
+      if (!activeTab.hasAnyAnnotations) return undefined;
+      // Modern browsers ignore the returned string and show their own
+      // generic message; the truthy returnValue is what triggers the
+      // confirm dialog.
+      event.preventDefault();
+      event.returnValue = '';
+      return '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [tabs, activeTabId]);
+
   // Memoized callback to update PDF file
   const handleUpdatePDFFile = useCallback((newFile, targetTabId) => {
     setTabs(prev => {
@@ -39137,6 +39230,7 @@ export default function App() {
                     onPageDrop={handlePageDrop}
                     onUpdatePDFFile={handleUpdatePDFFile}
                     onUnsavedAnnotationsChange={handleUnsavedAnnotationsChange}
+                    onAnnotationsExistChange={handleAnnotationsExistChange}
                     onRequestCreateTemplate={handleCreateTemplateRequest}
                     initialViewState={tabViewState}
                     onViewStateChange={handleViewStateChange}
