@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
 status: verifying
-stopped_at: Completed 31-03-PLAN.md
-last_updated: "2026-05-01T04:03:00.035Z"
-last_activity: 2026-05-01 — Phase 31 Plan 03 shipped (1 task, 1 file, 1 commit, ~2 min, baseline 437p/16f/6s → 439p/14f/6s with 2 RED contracts flipped GREEN). Legacy bulk-upsert path now gated; CRDT fan-out is sole writer to cloud by default.
+stopped_at: Completed 31-04-PLAN.md
+last_updated: "2026-05-01T04:12:57.734Z"
+last_activity: "2026-05-01 — Phase 31 Plan 04 shipped (3 tasks, 3 files, 3 commits, ~19 min, baseline 439p/14f/6s → 444p/9f/6s with 7 RED contracts flipped GREEN). Cutover seal contract complete: post-cutover doc opens read from Y.Doc snapshot and skip the legacy SELECT entirely."
 progress:
   total_phases: 15
   completed_phases: 7
   total_plans: 44
-  completed_plans: 41
-  percent: 93
+  completed_plans: 42
+  percent: 95
 ---
 
 # Project State
@@ -26,12 +26,12 @@ See: .planning/PROJECT.md (updated 2026-04-14)
 ## Current Position
 
 Milestone: v2.4 — CRDT Foundation + Real-Time Sync (Yjs port; SVG/Fabric layers immutable). Phase 31 (migration cutover seal) lean variant in flight: kill switch + per-doc backfill + ID-at-creation stamping + cutover-aware hydrate.
-Phase: **Phase 31 IN FLIGHT (3/5 plans complete)** — Plans 31-01 + 31-02 + 31-03 shipped. Plans 31-04 + 31-05 ahead.
-Plan: Plan 31-03 closed 2026-05-01 — Single-task plan, single-file diff. src/hooks/useAnnotationCloudSync.js gates all four `upsertAnnotationsByPage(...)` call sites + the fabric `deleteAnnotations(...)` call site behind `isLegacyBulkUpsertEnabled()`. Default off → CRDT fan-out (dualWriteFabricCommit per-row) is the SOLE writer to the cloud. localStorage opt-in (`pdf_app_legacy_bulk_upsert: 'true'`) re-engages the pre-Phase-31 dual-write byte-identical for emergency rollback. src/services/annotationCloudSync.js UNTOUCHED (rollback safety). Plan 31-01's two `useAnnotationCloudSync legacy bypass (Plan 31-03)` contract tests flipped RED→GREEN. Whole legacyBulkUpsertGate.test.mjs suite 6/6 pass (was 4/6). npm test 437p/16f/6s → 439p/14f/6s. Commit 89680011.
-Status: Phase 31 in flight. Plan 35 functionally complete (verification + reconciliation still pending). Next: Plan 31-04 (per-doc backfill on first post-cutover open + write documents.cutover_completed_at).
-Last activity: 2026-05-01 — Phase 31 Plan 03 shipped (1 task, 1 file, 1 commit, ~2 min, baseline 437p/16f/6s → 439p/14f/6s with 2 RED contracts flipped GREEN). Legacy bulk-upsert path now gated; CRDT fan-out is sole writer to cloud by default.
+Phase: **Phase 31 IN FLIGHT (4/5 plans complete)** — Plans 31-01 + 31-02 + 31-03 + 31-04 shipped. Plan 31-05 ahead.
+Plan: Plan 31-04 closed 2026-05-01 — Three coordinated changes complete the cutover seal. (1) `src/lib/collab/crdtBackfill.js` gains a pre-loop short-circuit (`cutover_already_complete` on already-sealed docs, before Web Lock acquire) AND a post-loop count-match gate (`yMapSize >= imported` → `UPDATE documents.cutover_completed_at = NOW()`). (2) `src/components/collab/YDocProvider.jsx` mount effect requests the seal via `markCutoverComplete: true` (single-line addition). (3) `src/hooks/useAnnotationCloudSync.js` hydrate effect branches on `documents.cutover_completed_at`: NOT NULL → materialize annotationsByPage from `phase30Ydoc.getMap('annotations')`; NULL → fall through to legacy `loadCloudWithEmptyVerify`. All 7 Plan 31-01 contract tests (4 cutoverBackfill + 3 cutoverHydrate) flipped RED→GREEN. npm test 439p/14f/6s → 444p/9f/6s (5 net green, zero regressions). Existing Phase 30 backfill behavior byte-identical when `markCutoverComplete` is not passed (8/8 existing tests preserved). Commits 8e4e989b + 53a29a63 + 18a460a9.
+Status: Phase 31 in flight (4/5 plans). Plan 35 functionally complete (verification + reconciliation still pending). Next: Plan 31-05 (final wave — likely final polish / additional cutover-aware behaviors layered on the flag).
+Last activity: 2026-05-01 — Phase 31 Plan 04 shipped (3 tasks, 3 files, 3 commits, ~19 min, baseline 439p/14f/6s → 444p/9f/6s with 7 RED contracts flipped GREEN). Cutover seal contract complete: post-cutover doc opens read from Y.Doc snapshot and skip the legacy SELECT entirely.
 
-Progress: [█████████░] 93% — Phase 27 functionally complete (5/5 plans, reconciliation pending); Phase 28 functionally complete (6/6 plans); Phase 29 functionally complete (6/6 plans, 29-RECONCILIATION.md DONE_WITH_CONCERNS); **Phase 30 CLOSED (7/7 plans, verifier 19/19, reconciliation DONE)**; **Phase 35 functionally complete (6/6 plans shipped 2026-04-30; verification + reconciliation pending)**; **Phase 31 IN FLIGHT (3/5 plans: 01 + 02 + 03 shipped 2026-05-01; legacy bulk-upsert gated, CRDT sole writer by default)**; v2.4 milestone overall: 5 of 8 phases shipped (27 modulo reconciliation, 28, 29, 30, 35 functionally); Phase 31 in flight; 0 Phase 32/33/34; v2.3 closed at Phase 15
+Progress: [██████████] 95% — Phase 27 functionally complete (5/5 plans, reconciliation pending); Phase 28 functionally complete (6/6 plans); Phase 29 functionally complete (6/6 plans, 29-RECONCILIATION.md DONE_WITH_CONCERNS); **Phase 30 CLOSED (7/7 plans, verifier 19/19, reconciliation DONE)**; **Phase 35 functionally complete (6/6 plans shipped 2026-04-30; verification + reconciliation pending)**; **Phase 31 IN FLIGHT (4/5 plans: 01 + 02 + 03 + 04 shipped 2026-05-01; cutover seal contract complete — post-cutover docs read from Y.Doc, skip legacy SELECT)**; v2.4 milestone overall: 5 of 8 phases shipped (27 modulo reconciliation, 28, 29, 30, 35 functionally); Phase 31 in flight; 0 Phase 32/33/34; v2.3 closed at Phase 15
 
 ## Performance Metrics
 
@@ -91,6 +91,7 @@ Progress: [█████████░] 93% — Phase 27 functionally complet
 | Phase 31-migration-cutover-seal P01 | 5min | 2 tasks | 4 files |
 | Phase 31-migration-cutover-seal P02 | 8 | 3 tasks | 3 files |
 | Phase 31-migration-cutover-seal P03 | 2 | 1 tasks | 1 files |
+| Phase 31-migration-cutover-seal P04 | 19 | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -268,6 +269,7 @@ Progress: [█████████░] 93% — Phase 27 functionally complet
 - [Phase 31-migration-cutover-seal]: Plan 31-03: Caller-side gating (not source deletion) at every legacy bulk-upsert call site in useAnnotationCloudSync.js — preserves src/services/annotationCloudSync.js verbatim so kill-switch flip is zero-code-change rollback. CRDT fan-out (dualWriteFabricCommit per-row) is now sole writer to cloud by default.
 - [Phase 31-migration-cutover-seal]: Plan 31-03: All four upsertAnnotationsByPage call sites + Site B fabric deleteAnnotations gated. Callout-side deleteAnnotations(documentId, deletedCalloutIds) at line 762 NOT gated — callouts ride legacy through v2.4 by design (CONTEXT.md Out of Scope; callout migration is v2.5).
 - [Phase 31-migration-cutover-seal]: Plan 31-03: Gate pattern uses success-shaped no-op result ({ data: [], error: null } / { success: true }) to preserve downstream success-branch logic verbatim — zero logic-flow restructuring needed when kill switch closed.
+- [Phase 31-migration-cutover-seal]: Plan 31-04: cutover seal contract = pre-loop SELECT short-circuit + post-loop verified-count-match UPDATE. yMapSize >= imported (NOT strict equality) tolerates mid-flight collaborator writes. Hydrate branches on cutover_completed_at: sealed → Y.Doc snapshot; cold → legacy SELECT preserved verbatim.
 
 ### Roadmap Evolution
 
@@ -301,8 +303,8 @@ Progress: [█████████░] 93% — Phase 27 functionally complet
 
 ## Session Continuity
 
-Last session: 2026-05-01T04:03:00.028Z
-Stopped at: Completed 31-03-PLAN.md
+Last session: 2026-05-01T04:12:57.730Z
+Stopped at: Completed 31-04-PLAN.md
 
 ### Resume instructions for the next session (read carefully)
 
