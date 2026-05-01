@@ -500,7 +500,14 @@ Plans:
   4. **Rollback path documented** — If seal flip causes regression, unsetting `migrated_at` restores legacy read path. Source-of-truth recoverable.
   5. **Highlights still on legacy** — Highlight read path unchanged; seal applies only to non-highlight annotation_types.
 
-**Plans**: TBD (populated by `/gsd:plan-phase 31`)
+**Scope status**: LEAN VARIANT user-approved 2026-04-30. Roadmap goal above describes the FULL scope; Phase 31 ships the kill-switch + per-doc backfill only. MIGRATE-02 (v2.3 client gate), parallel-write parity windows, and sealed-doc admin migrations are deferred to Phase 31.5 (no v2.3 clients exist). See `.planning/phases/31-migration-cutover-seal/31-CONTEXT.md` and `31-deferred-items.md` for the lean-variant scope and MIGRATE-02 deferral rationale.
+
+**Plans**: 5 plans across 5 waves
+- [ ] 31-01-PLAN.md — Wave 0 unit-test scaffolds (4 contracts: kill-switch gate, cutover backfill, ID-at-creation stamping, cutover hydrate)
+- [ ] 31-02-PLAN.md — Wave 1 LEGACY_BULK_UPSERT_ENABLED feature flag + counter overlay ID stamping (App.jsx narrow waiver) + supabase migration adding documents.cutover_completed_at
+- [ ] 31-03-PLAN.md — Wave 2 useAnnotationCloudSync.js gates upsertAnnotationsByPage behind the kill switch (default off; emergency rollback via localStorage)
+- [ ] 31-04-PLAN.md — Wave 3 crdtBackfill.js writes cutover_completed_at after verified count match + YDocProvider.jsx requests the cutover seal + useAnnotationCloudSync.js cutover-aware hydrate branch
+- [ ] 31-05-PLAN.md — Wave 4 verification, boundary audit, manual UAT checkpoint (SE-011 + Package 2 round-trips, kill-switch panic rollback)
 
 ### Phase 32: Multi-Tab + Persistence Hardening
 
@@ -610,7 +617,7 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13 → 14 → 
 **Goal:** Replace the interim 2026-04-27 diff-detection wipe brake with a permission-based delete-authority model (Drawboard / Lumin pattern). Two roles — collaborator (default) and document author/owner — gate selection, hover, eraser, marquee, and bulk-delete. Two confirmation modals (collaborator's "delete all of mine" + owner's "delete cross-author with breakdown") plus a 5-6 second undo toast on every delete. One-time owner-only cleanup banner for brake-suppressed residue. Brake retired; per-session "user-deleted IDs" filter retired.
 **Requirements**: 12 acceptance criteria locked in 35-CONTEXT.md (no traceability IDs; phase added mid-milestone outside the original requirement plan)
 **Depends on:** Phase 34
-**Plans:** 6/6 plans complete
+**Plans:** 1/5 plans executed
 
 Plans:
 - [x] 35-01-PLAN.md — Wave 0 test scaffolds (4 unit + 7 e2e fixme'd) — shipped 2026-04-30

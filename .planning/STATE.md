@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
-status: completed
-stopped_at: Completed 35-06-PLAN.md
-last_updated: "2026-04-30T18:10:16.825Z"
-last_activity: "2026-04-30 18:07 — Phase 35 Plan 06 shipped (e2e flip + 3 new test seams + boundary audit GREEN + phase-close verification; 4 files modified + 7 e2e specs flipped; 416p/8f/6s; 11min)"
+status: verifying
+stopped_at: Completed 31-01-PLAN.md
+last_updated: "2026-05-01T03:53:54.556Z"
+last_activity: 2026-05-01 — Phase 31 Plan 01 shipped (4 test scaffolds, 2 commits, 5 min, baseline 429p/8f/6s → 436p/17f/6s with 9 RED contracts for Plans 31-02/03/04).
 progress:
   total_phases: 15
   completed_phases: 7
-  total_plans: 39
-  completed_plans: 38
-  percent: 95
+  total_plans: 44
+  completed_plans: 39
+  percent: 97
 ---
 
 # Project State
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-04-14)
 
 ## Current Position
 
-Milestone: v2.4 — CRDT Foundation + Real-Time Sync (Yjs port; SVG/Fabric layers immutable). Phase 35 retires the 2026-04-27 wipe brake and ships the Drawboard/Lumin permission model.
-Phase: **Phase 35 FUNCTIONALLY COMPLETE** — All 6 plans shipped 2026-04-30. Plan 35-06 closed (e2e flip + test seams + boundary audit). Phase ready for VERIFICATION.md (gsd-verifier goal-backward against the 12 CONTEXT.md acceptance criteria) and 35-RECONCILIATION.md.
-Plan: Plan 35-06 closed 2026-04-30 18:07 — 3 src files modified (App.jsx +44: documentOwnerId override branch + __phase35GetAnnotationById helper; useSVGInteraction.js +18: __selectedAnnotationIds mirror; YDocProvider.jsx +13: __phase35SeedResidue=true auto-pick branch) + 7 e2e specs flipped from test.describe.fixme to test.describe with afterEach seam-cleanup + runtime-skip guards (Phase 29 e2e precedent) for the 9 speculative seams NOT in the Plan 35-01 locked contract. phase35-base git tag created at 9bdd9c1c (Plan 35-01 close) for boundary-audit reference. Boundary audit GREEN: PAL.jsx + FabricDrawingCanvas + FabricEditCanvas empty diff; SVGAnnotationLayer (+20) + FabricEraserCanvas (+29) + App.jsx (+241) all within declared waivers across Plans 35-03/04/05/06. Production bundle clean (0 matches in dist/assets/*.js for any of 4 Phase 35 test seams). 23/23 Phase 35 unit tests passing. npm test baseline 416p/8f/6s preserved exactly. Playwright e2e: 1 passed + 9 skipped + 0 failed across 7 spec files (collaborator-banner-hidden e2e LOCKED; speculative seams skipped; underlying contracts locked at unit level). 3 Rule-3 deviations: YDocProvider auto-pick branch added per locked Plan 35-01 contract; runtime-skip pattern for speculative seams; cleanup-banner owner test runtime-skip when no residue. Commits 500e3376 + 2428d97d + 37c03540.
-Status: Phase 35 functionally complete. Next: 35-VERIFICATION.md (gsd-verifier) + 35-RECONCILIATION.md.
-Last activity: 2026-04-30 18:07 — Phase 35 Plan 06 shipped (e2e flip + 3 new test seams + boundary audit GREEN + phase-close verification; 4 files modified + 7 e2e specs flipped; 416p/8f/6s; 11 min)
+Milestone: v2.4 — CRDT Foundation + Real-Time Sync (Yjs port; SVG/Fabric layers immutable). Phase 31 (migration cutover seal) lean variant in flight: kill switch + per-doc backfill + ID-at-creation stamping + cutover-aware hydrate.
+Phase: **Phase 31 IN FLIGHT (1/5 plans complete)** — Plan 31-01 Wave 0 test scaffolds shipped. Plans 31-02/03/04/05 ahead.
+Plan: Plan 31-01 closed 2026-05-01 — 4 Wave 0 unit-test scaffolds in tests/phase31/ (legacyBulkUpsertGate + cutoverBackfill + idAtCreationStamping + cutoverHydrate). Per-test existsSync skip-guard pattern (Phase 27/28/29/30 precedent). 9 RED contracts ship today + auto-flip green when Plans 31-02/31-03/31-04 land. Plan 31-02's featureFlags.js was already shipped (commit 7473cfd5) so 3 dynamic-import tests pass green-on-arrival; the other 9 grep tests target counter ID stamping (Plan 31-02), kill-switch gate (Plan 31-03), cutover backfill + hydrate (Plan 31-04). npm test baseline 429p/8f/6s → 436p/17f/6s (the 9 new failures are the locked contracts, no pre-existing tests regressed). Commits 75dc9406 + 0e7b0cad. Frontmatter declares MIGRATE-02-DEFERRED + deferred_to "Phase 31.5".
+Status: Phase 31 in flight. Plan 35 functionally complete (verification + reconciliation still pending). Next: Plan 31-02 (LEGACY_BULK_UPSERT_ENABLED + counter overlay ID stamping + supabase migration adding documents.cutover_completed_at).
+Last activity: 2026-05-01 — Phase 31 Plan 01 shipped (4 test scaffolds, 2 commits, 5 min, baseline 429p/8f/6s → 436p/17f/6s with 9 RED contracts for Plans 31-02/03/04).
 
 Progress: [██████████] 97% — Phase 27 functionally complete (5/5 plans, reconciliation pending); Phase 28 functionally complete (6/6 plans); Phase 29 functionally complete (6/6 plans, 29-RECONCILIATION.md DONE_WITH_CONCERNS); **Phase 30 CLOSED (7/7 plans, verifier 19/19, reconciliation DONE)**; **Phase 35 functionally complete (6/6 plans shipped 2026-04-30; verification + reconciliation pending)**; v2.4 milestone overall: 5 of 8 phases shipped (27 modulo reconciliation, 28, 29, 30, 35 functionally); 0 Phase 31/32/33/34; v2.3 closed at Phase 15
 
@@ -88,6 +88,7 @@ Progress: [██████████] 97% — Phase 27 functionally complet
 | Phase 35-per-user-delete-authority-confirm-before-wipe P04 | 9 min | 3 tasks | 8 files |
 | Phase 35-per-user-delete-authority-confirm-before-wipe P05 | 13 | 4 tasks | 5 files |
 | Phase 35-per-user-delete-authority-confirm-before-wipe P06 | 11 | 3 tasks | 10 files |
+| Phase 31-migration-cutover-seal P01 | 5min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -256,6 +257,9 @@ Progress: [██████████] 97% — Phase 27 functionally complet
 - [Phase 35-per-user-delete-authority-confirm-before-wipe]: Plan 35-06: Runtime-skip pattern (Phase 29 e2e precedent) for speculative test seams NOT in Plan 35-01 locked contract. Wave 0 specs reference 9 unimplemented seams; only 4 seams locked. Underlying contracts locked at unit level (23 tests across 4 unit-test files); e2e is a smoke check on top.
 - [Phase 35-per-user-delete-authority-confirm-before-wipe]: Plan 35-06: __selectedAnnotationIds mirror lives in useSVGInteraction.js (NOT App.jsx). Plan 35-01 frontmatter contract specified App.jsx but selectedIds state stayed inside useSVGInteraction (the hook owns it; App.jsx never sees per-page selection). Bubbling it up via callback prop on SVGAnnotationLayer would be more code for the same observable surface.
 - [Phase 35-per-user-delete-authority-confirm-before-wipe]: Plan 35-06: phase35-base git tag at Plan 35-01 close (9bdd9c1c) anchors Always-Protected boundary-audit diffs. PAL.jsx + FabricDrawingCanvas + FabricEditCanvas have empty diff; SVGAnnotationLayer (+20) + FabricEraserCanvas (+29) + App.jsx (+241) changes within declared waivers across Plans 35-03/04/05/06.
+- [Phase 31-migration-cutover-seal]: Plan 31-01: per-test existsSync skip-guard chain — HOOK_SKIP / SERVICE_SKIP gate on featureFlags.js presence (Plan 31-02 dependency), not on the hook/service file presence. Auto-flips skip→run when Plan 31-02 ships, RED until Plan 31-03 gates the call.
+- [Phase 31-migration-cutover-seal]: Plan 31-01: Grep tests against existing files ship RED — same red→green pattern Phase 30 used for its Wave 0 scaffolds. Gives executors of Plans 31-02 / 31-03 / 31-04 a concrete grep target each.
+- [Phase 31-migration-cutover-seal]: Plan 31-01: Idempotent backfill assertion deferred to runtime — Wave 0 only locks the export surface, leaves Y.Doc fixture choice to Plan 31-04 executor (runCutoverBackfill OR runBackfill with option flag — both surfaces accepted).
 
 ### Roadmap Evolution
 
@@ -289,8 +293,8 @@ Progress: [██████████] 97% — Phase 27 functionally complet
 
 ## Session Continuity
 
-Last session: 2026-04-30T18:10:04.056Z
-Stopped at: Completed 35-06-PLAN.md
+Last session: 2026-05-01T03:53:54.551Z
+Stopped at: Completed 31-01-PLAN.md
 
 ### Resume instructions for the next session (read carefully)
 
