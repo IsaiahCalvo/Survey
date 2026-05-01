@@ -306,12 +306,13 @@ Progress: [██████████] 95% — Phase 27 functionally complet
 
 ## Session Continuity
 
-Last session: 2026-05-01T04:19:21.868Z
-Stopped at: Plan 31-05 Tasks 1+2 complete; checkpoint:human-verify pending user UAT against 31-UAT-CHECKLIST.md
+Last session: 2026-05-01T08:37:00.000Z
+Stopped at: Phase 31 lean cutover functionally complete + UAT-verified end-to-end on SE-011. Cutover seal landed at 2026-05-01T05:28:59.348Z. Followup fix in commit `81e23c3d` resolved the doneKey-set-but-cutover-unsealed bug. Phase 31 paperwork (VERIFICATION + RECONCILIATION) deferred to next session per user wrap-up directive.
+Resume file: `.planning/phases/31-migration-cutover-seal/.continue-here.md` (Written: 2026-05-01 08:37)
 
 ### Resume instructions for the next session (read carefully)
 
-**One-line wake-up:** "Resume v2.4 Phase 30. Plans 30-01 through 30-06 complete (6/7). Plan 30-07 (Wave 4 live wiring) is the next and final plan in Phase 30 — closes the gap between the dual-write safety net (built in 30-02..30-06) and the live Fabric save path (still calls upsertFabricAnnotation directly today). After 30-07 lands, re-run the failure-banner + quarantine UAT steps deferred from Plan 30-06."
+**One-line wake-up:** "Resume Phase 31 close-out. Lean cutover landed + UAT passed end-to-end last session. First strip the inline `[Phase31 diag]` console logs (3 files, ~9 lines), then resume the manual UAT checklist from step 8 onward, then write `31-VERIFICATION.md` + `31-RECONCILIATION.md`. Phase 35 closing paperwork still owed separately."
 
 **Workflow steps:**
 
