@@ -204,6 +204,25 @@ export const AuthProvider = ({ children }) => {
     return () => window.removeEventListener('focus', handleFocus);
   }, [user]);
 
+  // 2026-04-30 — Periodic subscription tier refresh (every 5 minutes).
+  //
+  // Why: user upgrades in Stripe mid-session would otherwise wait until next
+  // focus to take effect. The window-focus listener above only fires when the
+  // user returns to this tab; if they upgrade in another window/tab and keep
+  // working in the app without refocusing, free-tier limits would keep
+  // enforcing against a now-Pro account. Polling every 5 minutes guarantees
+  // a hard upper bound on staleness without hammering the database.
+  // Skip if no user. Clear the interval on cleanup.
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const intervalId = setInterval(() => {
+      fetchSubscriptionTier(user.id);
+    }, 300_000); // 5 minutes
+
+    return () => clearInterval(intervalId);
+  }, [user]);
+
   // Sign up with email and password
   const signUp = async (email, password, metadata = {}) => {
     if (!isSupabaseAvailable()) {
@@ -357,6 +376,18 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // 2026-04-30 — Imperative tier refresh hook for callers.
+  //
+  // Exposed so callers (document open handlers, post-Stripe-redirect flows,
+  // etc.) can force a fresh tier read without waiting on the 5-minute poller
+  // or window focus. No-op when not logged in. Intentionally NOT wired into
+  // handleDocumentClick yet — that's a follow-up. This just exposes the door.
+  const refreshTier = async () => {
+    if (user?.id) {
+      await fetchSubscriptionTier(user.id);
+    }
+  };
+
   const value = {
     user,
     session,
@@ -370,6 +401,7 @@ export const AuthProvider = ({ children }) => {
     updatePassword,
     updateProfile,
     refreshSubscriptionTier,
+    refreshTier,
     isAuthenticated: !!user,
     isSupabaseAvailable: isSupabaseAvailable(),
     plan: subscriptionTier,
