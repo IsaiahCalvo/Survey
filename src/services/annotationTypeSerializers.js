@@ -19,7 +19,20 @@
  * Highlights stay on their existing dedicated columns (color, opacity, name,
  * notes, ...) — they are NOT routed through this serializer. That preserves
  * backwards compatibility with every existing highlight row in the database.
+ *
+ * Author-attribution invariant (2026-04-30 hardening):
+ *   The serializer treats `meta.authorId` (canonical) as WRITE-ONCE-ON-CREATE.
+ *   It stamps the current user's id ONLY when no field in the Phase 29 canonical
+ *   chain (meta.authorId > authorId > data.authorId > data.userId — see
+ *   permissionScope.getAnnotationAuthorId) is already populated. On EDITs by a
+ *   collaborator, the original author's id survives. `last_modified_by` is the
+ *   "edit history" field and is always overwritten with the current user.
+ *   Same goes for the row-level `user_id` column — it stays pinned to the
+ *   original author so server-side RLS reflects creator-ownership, not last-
+ *   editor ownership.
  */
+
+import { getAnnotationAuthorId } from '../lib/collab/permissionScope.js';
 
 // ----------------------------------------------------------------------------
 // Type mapping: Fabric object kind → DB annotation_type
@@ -217,6 +230,33 @@ export function serializeFabricObjectToRow(fabricObj, opts = {}) {
     if (!fabricObj.data.id) fabricObj.data.id = id;
   }
 
+  // Author-attribution guard (2026-04-30 hardening):
+  // Resolve the existing authorId via the Phase 29 canonical chain. If ANY
+  // field in the chain is populated, this annotation already has a creator
+  // recorded — preserve it. Only stamp `meta.authorId = current user` when
+  // the chain is fully empty (true CREATE: brand-new annotation that has not
+  // yet been attributed). Never overwrite a populated chain field — that
+  // would flip authorship on every collaborator edit.
+  //
+  // We write to `meta.authorId` (the canonical field) on CREATE, mirroring
+  // crdtAnnotationBridge.js lines 222-245 so the serializer and the CRDT
+  // bridge stay in sync. Legacy fields (data.authorId / data.userId / top-
+  // level authorId) are never re-stomped — if a row was created pre-Phase-29
+  // and only has data.userId, that legacy field stays as-is.
+  const existingAuthorId = getAnnotationAuthorId(fabricObj);
+  if (!existingAuthorId) {
+    if (!fabricObj.meta || typeof fabricObj.meta !== 'object') {
+      fabricObj.meta = {};
+    }
+    if (!fabricObj.meta.authorId) {
+      fabricObj.meta.authorId = userId;
+    }
+  }
+  // Resolve the row-level user_id from the (now possibly stamped) chain so
+  // the row reflects the ORIGINAL author for RLS / audit, not the current
+  // viewer. last_modified_by below carries the "edited by" signal instead.
+  const rowUserId = getAnnotationAuthorId(fabricObj) || userId;
+
   const bounds = computeBounds(fabricObj);
 
   // The full Fabric object goes into annotation_data so deserialization is
@@ -235,7 +275,7 @@ export function serializeFabricObjectToRow(fabricObj, opts = {}) {
 
   return {
     document_id: documentId,
-    user_id: userId,
+    user_id: rowUserId,
     highlight_id: id,
     annotation_type: dbType,
     page_number: pageNumber,
@@ -327,12 +367,27 @@ export function serializeCalloutToRow(callout, opts = {}) {
 
   const id = callout.id || callout.highlightId || generateClientId('callout');
 
+  // Author-attribution guard (2026-04-30 hardening) — same invariant as
+  // serializeFabricObjectToRow. Callouts live on a separate state slice from
+  // annotationsByPage but share the same author chain. If meta.authorId (or
+  // any chain field) is already set, preserve it. Only stamp on true CREATE.
+  const existingAuthorId = getAnnotationAuthorId(callout);
+  if (!existingAuthorId) {
+    if (!callout.meta || typeof callout.meta !== 'object') {
+      callout.meta = {};
+    }
+    if (!callout.meta.authorId) {
+      callout.meta.authorId = userId;
+    }
+  }
+  const rowUserId = getAnnotationAuthorId(callout) || userId;
+
   // Bounds: smallest rect enclosing anchor + knee + label rect.
   const bounds = computeCalloutBounds(callout);
 
   return {
     document_id: documentId,
-    user_id: userId,
+    user_id: rowUserId,
     highlight_id: id,
     annotation_type: 'callout',
     page_number: pageNumber,
