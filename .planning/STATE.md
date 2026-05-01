@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
 status: verifying
-stopped_at: Completed 31-01-PLAN.md
-last_updated: "2026-05-01T03:53:54.556Z"
+stopped_at: Completed 31-02-PLAN.md
+last_updated: "2026-05-01T03:57:26.739Z"
 last_activity: 2026-05-01 — Phase 31 Plan 01 shipped (4 test scaffolds, 2 commits, 5 min, baseline 429p/8f/6s → 436p/17f/6s with 9 RED contracts for Plans 31-02/03/04).
 progress:
   total_phases: 15
   completed_phases: 7
   total_plans: 44
-  completed_plans: 39
+  completed_plans: 40
   percent: 97
 ---
 
@@ -89,6 +89,7 @@ Progress: [██████████] 97% — Phase 27 functionally complet
 | Phase 35-per-user-delete-authority-confirm-before-wipe P05 | 13 | 4 tasks | 5 files |
 | Phase 35-per-user-delete-authority-confirm-before-wipe P06 | 11 | 3 tasks | 10 files |
 | Phase 31-migration-cutover-seal P01 | 5min | 2 tasks | 4 files |
+| Phase 31-migration-cutover-seal P02 | 8 | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -260,6 +261,9 @@ Progress: [██████████] 97% — Phase 27 functionally complet
 - [Phase 31-migration-cutover-seal]: Plan 31-01: per-test existsSync skip-guard chain — HOOK_SKIP / SERVICE_SKIP gate on featureFlags.js presence (Plan 31-02 dependency), not on the hook/service file presence. Auto-flips skip→run when Plan 31-02 ships, RED until Plan 31-03 gates the call.
 - [Phase 31-migration-cutover-seal]: Plan 31-01: Grep tests against existing files ship RED — same red→green pattern Phase 30 used for its Wave 0 scaffolds. Gives executors of Plans 31-02 / 31-03 / 31-04 a concrete grep target each.
 - [Phase 31-migration-cutover-seal]: Plan 31-01: Idempotent backfill assertion deferred to runtime — Wave 0 only locks the export surface, leaves Y.Doc fixture choice to Plan 31-04 executor (runCutoverBackfill OR runBackfill with option flag — both surfaces accepted).
+- [Phase 31-migration-cutover-seal]: Plan 31-02: ID-at-creation stamps use assignment form (counter.data.id = crypto.randomUUID()) placed AFTER object construction but BEFORE handleSaveAnnotations - satisfies Plan 31-01 Test 1 strict regex while preserving Test 3 ordering invariant
+- [Phase 31-migration-cutover-seal]: Plan 31-02: LEGACY_BULK_UPSERT_ENABLED flag is inverted-polarity (default OFF, localStorage opt-IN for emergency rollback) - same three-tier read order as crdtFeatureFlag.js but flipped polarity for kill-switch semantics
+- [Phase 31-migration-cutover-seal]: Plan 31-02: cutover_completed_at migration applied live to Supabase via supabase db push --linked --include-all - swept the previously-pending 20260430000001_add_document_provenance.sql migration through alongside
 
 ### Roadmap Evolution
 
@@ -293,8 +297,8 @@ Progress: [██████████] 97% — Phase 27 functionally complet
 
 ## Session Continuity
 
-Last session: 2026-05-01T03:53:54.551Z
-Stopped at: Completed 31-01-PLAN.md
+Last session: 2026-05-01T03:57:26.735Z
+Stopped at: Completed 31-02-PLAN.md
 
 ### Resume instructions for the next session (read carefully)
 
