@@ -20798,6 +20798,29 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return false;
   }, []);
 
+  // Hardening (audit 2026-04-30 #2): when the document loaded into this
+  // PDFViewer changes, reset the per-document sync state so the new doc
+  // gets a fresh shot at sync init. Without this, an error encountered on
+  // PDF A (RLS, structural, repeated failures) leaves these refs/state
+  // sticky, and the next PDF inherits the disabled state silently — the
+  // user thinks "the new PDF is broken too" when really it never tried.
+  //
+  // Note: this intentionally clears `syncRLSErrorShownRef` per-document.
+  // The old assumption ("RLS will fail the same way again") doesn't hold
+  // across documents because RLS policies often gate per-row ownership.
+  // A fresh document with different ownership may sync just fine. If RLS
+  // really is broken globally, the next failure path will flip the flag
+  // back on and surface the warning again.
+  useEffect(() => {
+    setDocumentSyncEnabled(false);
+    syncRLSErrorShownRef.current = false;
+    syncStructuralAutoDisabledRef.current = false;
+    syncStructuralErrorShownRef.current = false;
+    syncErrorCountRef.current = 0;
+    presenceCheckDocumentIdRef.current = null;
+    documentSyncInitInFlightRef.current = false;
+  }, [pdfFile?.id]);
+
   // Load annotations from Supabase when document is opened
   useEffect(() => {
     const documentId = pdfFile?.id;
