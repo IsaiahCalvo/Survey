@@ -29904,12 +29904,6 @@ ${pageBlocks}
                                       lockScalingY: true,
                                       lockRotation: true,
                                       data: {
-                                        // Phase 31 - ID-at-creation stamping. Post-cutover the legacy
-                                        // upload path (which used to mint via serializeFabricObjectToRow
-                                        // line 221) is gone, so every annotation must carry its data.id
-                                        // from frame one. UUID v4 format matches what
-                                        // serializeFabricObjectToRow used to produce.
-                                        id: crypto.randomUUID(),
                                         type: 'counter',
                                         createdAt: dragCreatedAt,
                                         pointerAngle: initialAngle,
@@ -29919,6 +29913,13 @@ ${pageBlocks}
                                         ...(inheritedNumberColor ? { numberColor: inheritedNumberColor } : {}),
                                       },
                                     };
+                                    // Phase 31 - ID-at-creation stamping (assignment form). Post-cutover
+                                    // the legacy upload path (which used to mint via
+                                    // serializeFabricObjectToRow line 221) is gone, so every annotation
+                                    // must carry its data.id from frame one. Stamped BEFORE
+                                    // handleSaveAnnotations so the saved JSON carries the id. UUID v4
+                                    // format matches what serializeFabricObjectToRow used to produce.
+                                    counter.data.id = crypto.randomUUID();
                                     const currentPage = annotationsByPageRef.current?.[pageNumber] || { version: '5.3.0', objects: [] };
                                     const updatedJSON = {
                                       ...currentPage,
@@ -31243,10 +31244,6 @@ ${pageBlocks}
                                           lockScalingY: true,
                                           lockRotation: true,
                                           data: {
-                                            // Phase 31 - ID-at-creation stamping. Mirror of overlay #1.
-                                            // Keep these two blocks in sync per the existing two-render-path
-                                            // convention noted in the surrounding comments.
-                                            id: crypto.randomUUID(),
                                             type: 'counter',
                                             createdAt: dragCreatedAt,
                                             pointerAngle: initialAngle,
@@ -31256,6 +31253,10 @@ ${pageBlocks}
                                             ...(inheritedNumberColor ? { numberColor: inheritedNumberColor } : {}),
                                           },
                                         };
+                                        // Phase 31 - ID-at-creation stamping (assignment form). Mirror
+                                        // of overlay #1. Keep these two blocks in sync per the existing
+                                        // two-render-path convention.
+                                        counter.data.id = crypto.randomUUID();
                                         const currentPage = annotationsByPageRef.current?.[pageNum] || { version: '5.3.0', objects: [] };
                                         const updatedJSON = {
                                           ...currentPage,
