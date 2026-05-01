@@ -180,6 +180,14 @@ export async function runBackfill(args) {
     userId,
   } = args || {};
 
+  console.log('[Phase31 diag] runBackfill ENTRY ' + JSON.stringify({
+    hasYdoc: !!ydoc,
+    hasSupabase: !!supabase,
+    documentId,
+    userId,
+    markCutoverComplete: !!args?.markCutoverComplete
+  }));
+
   // Defensive guards - silent no-op if any required input is missing. The
   // caller (Plan 30-06 YDocProvider mount) gates on isCRDTEnabled() before
   // even calling us, but defense-in-depth: never throw inside the provider.
@@ -211,6 +219,11 @@ export async function runBackfill(args) {
         .select('cutover_completed_at')
         .eq('id', documentId)
         .maybeSingle();
+      console.log('[Phase31 diag] cutover lookup result ' + JSON.stringify({
+        documentId,
+        cutoverAt: docRow?.cutover_completed_at || null,
+        sealed: !!docRow?.cutover_completed_at
+      }));
       if (docRow?.cutover_completed_at) {
         return {
           ranAs: 'cutover_already_complete',
@@ -268,8 +281,43 @@ async function runBackfillUnlocked(args) {
   // does not suppress collaborator B's first-open (each user's first-open of
   // the same doc is independently idempotent, and the bridge's per-row dedup
   // catches duplicates anyway).
+  //
+  // Phase 31 Plan 04 followup (2026-05-01) — when the caller is requesting
+  // `markCutoverComplete` and the previous backfill ran successfully on this
+  // device but the legacy doc row was never sealed (cutover_completed_at IS
+  // NULL — we already verified that in the pre-loop short-circuit above),
+  // we still need to perform the cutover-seal write. Without this branch the
+  // doc gets stuck "imported but not sealed" forever, the hydrate path keeps
+  // hitting the legacy SELECT, and the kill-switch + dual-write contract never
+  // becomes the post-cutover contract.
   const doneKey = `${BACKFILL_DONE_PREFIX}${userId}`;
   if (yMapMeta.get(doneKey)) {
+    if (args.markCutoverComplete) {
+      const yMapSizeAlready = yMapAnnotations.size;
+      console.log('[Phase31 diag] runBackfill — doneKey set, sealing cutover ' + JSON.stringify({
+        documentId, userId, yMapSize: yMapSizeAlready
+      }));
+      try {
+        const nowIso = new Date().toISOString();
+        const { error: sealErr } = await supabase
+          .from('documents')
+          .update({ cutover_completed_at: nowIso })
+          .eq('id', documentId);
+        if (sealErr) {
+          // eslint-disable-next-line no-console
+          console.warn('[crdtBackfill] cutover_completed_at write failed (already_done path)', sealErr?.message);
+          return { ranAs: 'already_done', count: 0, cutoverCompleted: false };
+        }
+        console.log('[Phase31 diag] runBackfill — cutover sealed (already_done path) ' + JSON.stringify({
+          documentId, cutoverAt: nowIso
+        }));
+        return { ranAs: 'already_done', count: 0, cutoverCompleted: true, cutoverAt: nowIso };
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[crdtBackfill] cutover_completed_at write threw (already_done path)', err?.message);
+        return { ranAs: 'already_done', count: 0, cutoverCompleted: false };
+      }
+    }
     return { ranAs: 'already_done', count: 0 };
   }
 
@@ -425,6 +473,14 @@ async function runBackfillUnlocked(args) {
     }
   }
 
+  console.log('[Phase31 diag] runBackfill DONE ' + JSON.stringify({
+    ranAs: 'leader',
+    imported,
+    skipped,
+    cutoverCompleted,
+    yMapSize: yMapAnnotations.size,
+    documentId
+  }));
   return { ranAs: 'leader', imported, skipped, cutoverCompleted };
 }
 

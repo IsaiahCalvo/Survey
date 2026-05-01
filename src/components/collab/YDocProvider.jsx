@@ -462,6 +462,7 @@ function YDocProviderInner({ docId, children, closeDocument }) {
         try { dispose(); } catch { /* swallow */ }
         return;
       }
+      console.log('[Phase31 diag] undoState set ' + JSON.stringify({ userId, docId }));
       setUndoState({ undoManager: result.undoManager, origin: result.origin, undoCtx: ctx });
     })();
 
@@ -674,6 +675,13 @@ function YDocProviderInner({ docId, children, closeDocument }) {
   const backfillRanRef = useRef(null);
   useEffect(() => {
     const userId = undoState?.undoCtx?.userId;
+    console.log('[Phase31 diag] backfill effect tick ' + JSON.stringify({
+      hasYdoc: !!ydoc,
+      docId,
+      userId: userId || null,
+      willRun: !!(ydoc && docId && userId),
+      alreadyRanFor: backfillRanRef.current
+    }));
     if (!ydoc || !docId || !userId) return undefined;
     // Per-mount run-once gate. Track the (docId, userId) pair so a user-switch
     // (rare in this app but possible via re-auth) re-runs the backfill check.
