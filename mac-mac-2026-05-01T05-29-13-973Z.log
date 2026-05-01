@@ -1,0 +1,635 @@
+===== SurveyApp Save Log =====
+version:   0.1.41
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1203x826
+locale:    en-US
+timestamp: 2026-05-01T05:29:13.970Z (5/1/2026, 1:29:13 AM)
+==============================
+[dev-auto-login] boot {"hasDevEmail":true,"devEmailHint":"isai***","hasDevPassword":true,"hasCachedSession":true,"cachedSessionEmail":"isaiahcalvo123@gmail.com","cachedSessionExpiresAt":1777615685}
+[dev-auto-login] cached session matches dev email, keeping it
+[dev-auto-login] decision {"needsAutoLogin":false,"willAttemptSignIn":false}
+[CloudSync][hook] session id minted {"sessionId":"4bc11ccc-71a2-4be4-b117-ad619a90867f"}
+[AnnotPerf] finalize idle (forced-reset) — deferring CSS transform removal, waiting for PAL confirmation
+[CloudSync][hook][state-obs] annotationsByPage initial {"currentCount":0,"pages":0,"hydrated":false}
+[CloudSync][hook][state-obs] callouts initial {"currentCount":0,"hydrated":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":null}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":false}
+[AnnotPerf] finalize idle (forced-reset) — deferring CSS transform removal, waiting for PAL confirmation
+[CSeries wipe] doc=test.pdf-2462 totalCounters=112 legacyRemoved=0 — nothing to wipe.
+[Phase31 diag] backfill effect tick {"hasYdoc":true,"docId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":null,"willRun":false,"alreadyRanFor":null}
+[CloudSync][hook][state-obs] change {"prevCount":0,"currentCount":113,"delta":113,"hydrated":false,"sameRefAsLastByPage":false}
+[CloudSync][hook][state-obs] callout change {"prevCount":0,"currentCount":3,"delta":3,"hydrated":false,"sameRefAsLastCallouts":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"test.pdf-2462"}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":true}
+[Phase31 diag] undoState set {"userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","docId":"484e4280-bca3-4ebe-bde7-d9371da0f528"}
+[Phase31 diag] backfill effect tick {"hasYdoc":true,"docId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","willRun":true,"alreadyRanFor":null}
+[Phase31 diag] runBackfill ENTRY {"hasYdoc":true,"hasSupabase":true,"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","markCutoverComplete":true}
+console.warn @ Realtime send() is automatically falling back to REST API. This behavior will be deprecated in the future. Please use httpSend() explicitly for REST delivery.
+[HIGHLIGHT-SYNC][load.legacy][pdf=test.pdf] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","totalRows":0,"fabricCarryingDropped":0,"keptCount":0,"keptIds":[]}
+[Phase31 diag] cutover lookup result {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","cutoverAt":null,"sealed":false}
+[Phase31 diag] runBackfill — doneKey set, sealing cutover {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapSize":135}
+[CloudSync][hydrate] loadAllNonHighlightAnnotations start {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528"}
+[PrintPanel] RENDER — panel closed
+[CloudSync][hook][state-obs] change {"prevCount":113,"currentCount":113,"delta":0,"hydrated":false,"sameRefAsLastByPage":false}
+[CloudSync][hook][state-obs] callout change {"prevCount":3,"currentCount":3,"delta":0,"hydrated":false,"sameRefAsLastCallouts":false}
+[CloudSync][hook] hydrate effect fired {"enabled":true,"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"test.pdf-2462"}
+[CloudSync][hook] stage=hydrating
+[CloudSync][hook] fabric push skipped — not hydrated yet
+[CloudSync][hook] callout push skipped — not hydrated yet
+[CloudSync][realtime] subscribing {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","currentUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","currentSessionId":"4bc11ccc-71a2-4be4-b117-ad619a90867f","hasFabricInsert":true,"hasFabricUpdate":true,"hasFabricDelete":true,"hasCalloutInsert":true,"hasCalloutUpdate":true,"hasCalloutDelete":true}
+[Phase31 diag] runBackfill — cutover sealed (already_done path) {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","cutoverAt":"2026-05-01T05:28:59.348Z"}
+[CloudSync][realtime] subscribe status {"status":"SUBSCRIBED","error":null}
+[CloudSync][hook] post-subscribe catch-up skipped — startup sync already in flight
+[Counter SVG p1] dispatching renderCounter — i=0, displayNumber=59, fill=#ef4444, numberColor=unset, left=235.88566893326754, top=469.2074690576803, radius=14
+[Counter SVG p1] dispatching renderCounter — i=1, displayNumber=59, fill=#ef4444, numberColor=unset, left=236.3845213325039, top=469.2074690576803, radius=14
+[Counter SVG p1] dispatching renderCounter — i=2, displayNumber=59, fill=#ef4444, numberColor=unset, left=244.635277461979, top=466.80181900083653, radius=14
+[Counter SVG p1] dispatching renderCounter — i=3, displayNumber=59, fill=#ef4444, numberColor=unset, left=260.5460434586756, top=461.78375769536024, radius=14
+[Counter SVG p1] dispatching renderCounter — i=4, displayNumber=59, fill=#ef4444, numberColor=unset, left=276.5815225551814, top=460.3528389712349, radius=14
+[Counter SVG p1] dispatching renderCounter — i=5, displayNumber=59, fill=#ef4444, numberColor=unset, left=286.2467877903859, top=460.3528389712349, radius=14
+[Counter SVG p1] dispatching renderCounter — i=6, displayNumber=59, fill=#ef4444, numberColor=unset, left=235.98740856732232, top=469.2074690576803, radius=14
+[Counter SVG p1] dispatching renderCounter — i=7, displayNumber=59, fill=#ef4444, numberColor=unset, left=326.43394324202575, top=493.2081769235719, radius=14
+[Counter SVG p1] dispatching renderCounter — i=8, displayNumber=59, fill=#ef4444, numberColor=unset, left=279.6337115768249, top=460.3528389712349, radius=14
+[Counter SVG p1] dispatching renderCounter — i=9, displayNumber=59, fill=#ef4444, numberColor=unset, left=343.8839314442609, top=506.99225637615564, radius=14
+[Counter SVG p1] dispatching renderCounter — i=10, displayNumber=59, fill=#ef4444, numberColor=unset, left=268.5112722280615, top=460.43488706321455, radius=14
+[Counter SVG p1] dispatching renderCounter — i=11, displayNumber=59, fill=#ef4444, numberColor=unset, left=348.9840408417169, top=507.18588987322767, radius=14
+[Counter SVG p1] dispatching renderCounter — i=12, displayNumber=59, fill=#ef4444, numberColor=unset, left=384.4550719663656, top=519.680173319891, radius=14
+[Counter SVG p1] dispatching renderCounter — i=13, displayNumber=59, fill=#ef4444, numberColor=unset, left=353.29977047984727, top=507.3040391256784, radius=14
+[Counter SVG p1] dispatching renderCounter — i=14, displayNumber=59, fill=#ef4444, numberColor=unset, left=303.7066217636586, top=468.7775370557069, radius=14
+[Counter SVG p1] dispatching renderCounter — i=15, displayNumber=59, fill=#ef4444, numberColor=unset, left=335.4395418177138, top=502.30895128595637, radius=14
+[Counter SVG p1] dispatching renderCounter — i=16, displayNumber=59, fill=#ef4444, numberColor=unset, left=313.0141573178318, top=478.0752268388425, radius=14
+[Counter SVG p1] dispatching renderCounter — i=17, displayNumber=59, fill=#ef4444, numberColor=unset, left=238.8820652523649, top=468.9514790107038, radius=14
+[Counter SVG p1] dispatching renderCounter — i=18, displayNumber=59, fill=#ef4444, numberColor=unset, left=382.76159934790536, top=519.4307471202728, radius=14
+[Counter SVG p1] dispatching renderCounter — i=19, displayNumber=59, fill=#ef4444, numberColor=unset, left=341.4323344559085, top=506.1488019906046, radius=14
+[Counter SVG p1] dispatching renderCounter — i=20, displayNumber=59, fill=#ef4444, numberColor=unset, left=352.5974388125013, top=507.18588987322767, radius=14
+[Counter SVG p1] dispatching renderCounter — i=21, displayNumber=59, fill=#ef4444, numberColor=unset, left=371.6325961517836, top=515.3644436817607, radius=14
+[Counter SVG p1] dispatching renderCounter — i=22, displayNumber=59, fill=#ef4444, numberColor=unset, left=299.99476608249853, top=465.3610545056736, radius=14
+[Counter SVG p1] dispatching renderCounter — i=23, displayNumber=59, fill=#ef4444, numberColor=unset, left=384.88828589201825, top=519.680173319891, radius=14
+[Counter SVG p1] dispatching renderCounter — i=24, displayNumber=59, fill=#ef4444, numberColor=unset, left=367.8649477680774, top=513.6676891396212, radius=14
+[Counter SVG p1] dispatching renderCounter — i=25, displayNumber=59, fill=#ef4444, numberColor=unset, left=363.67064930607694, top=511.92826958965225, radius=14
+[Counter SVG p1] dispatching renderCounter — i=26, displayNumber=59, fill=#ef4444, numberColor=unset, left=345.9023145069607, top=507.156352560115, radius=14
+[Counter SVG p1] dispatching renderCounter — i=27, displayNumber=59, fill=#ef4444, numberColor=unset, left=290.67738475728777, top=460.5760097814196, radius=14
+[Counter SVG p1] dispatching renderCounter — i=28, displayNumber=59, fill=#ef4444, numberColor=unset, left=331.9180377099466, top=499.22394302752093, radius=14
+[Counter SVG p1] dispatching renderCounter — i=29, displayNumber=59, fill=#ef4444, numberColor=unset, left=355.3739462450932, top=508.18359467170035, radius=14
+[Counter SVG p1] dispatching renderCounter — i=30, displayNumber=33, fill=#ef4444, numberColor=unset, left=170.85106930650593, top=482.5813080503657, radius=14
+[Counter SVG p1] dispatching renderCounter — i=31, displayNumber=34, fill=#ef4444, numberColor=unset, left=165.4194856174521, top=482.5813080503657, radius=14
+[Counter SVG p1] dispatching renderCounter — i=32, displayNumber=35, fill=#ef4444, numberColor=unset, left=130.4079238078895, top=481.3079216628413, radius=14
+[Counter SVG p1] dispatching renderCounter — i=33, displayNumber=36, fill=#ef4444, numberColor=unset, left=170.45395654132435, top=482.5813080503657, radius=14
+[Counter SVG p1] dispatching renderCounter — i=34, displayNumber=37, fill=#ef4444, numberColor=unset, left=111.9635127308608, top=478.43623844355307, radius=14
+[Counter SVG p1] dispatching renderCounter — i=35, displayNumber=38, fill=#ef4444, numberColor=unset, left=106.74525408095411, top=472.3220146292284, radius=14
+[Counter SVG p1] dispatching renderCounter — i=36, displayNumber=39, fill=#ef4444, numberColor=unset, left=140.67378107638515, top=482.2924987665973, radius=14
+[Counter SVG p1] dispatching renderCounter — i=37, displayNumber=59, fill=#ef4444, numberColor=unset, left=319.48939273686693, top=485.3971985671078, radius=14
+[Counter SVG p1] dispatching renderCounter — i=38, displayNumber=59, fill=#ef4444, numberColor=unset, left=358.71822647418435, top=509.689997640447, radius=14
+[Counter SVG p1] dispatching renderCounter — i=39, displayNumber=59, fill=#ef4444, numberColor=unset, left=385.44621291748, top=519.8967802827174, radius=14
+[Counter SVG p1] dispatching renderCounter — i=40, displayNumber=59, fill=#ef4444, numberColor=unset, left=308.17003796735236, top=473.2311074883631, radius=14
+[Counter SVG p1] dispatching renderCounter — i=41, displayNumber=59, fill=#ef4444, numberColor=unset, left=385.5938994830434, top=519.9919560694137, radius=14
+[Counter SVG p1] dispatching renderCounter — i=42, displayNumber=60, fill=#ef4444, numberColor=unset, left=301.5241425169995, top=462.4631158969519, radius=14
+[Counter SVG p1] dispatching renderCounter — i=43, displayNumber=61, fill=#ef4444, numberColor=unset, left=266.3517664471567, top=503.71689654432737, radius=14
+[Counter SVG p1] dispatching renderCounter — i=44, displayNumber=62, fill=#ef4444, numberColor=unset, left=241.41899225637616, top=446.70988223685623, radius=14
+[Counter SVG p1] dispatching renderCounter — i=45, displayNumber=59, fill=#ef4444, numberColor=unset, left=385.5938994830434, top=519.9919560694137, radius=14
+[Counter SVG p1] dispatching renderCounter — i=46, displayNumber=60, fill=#ef4444, numberColor=unset, left=301.5241425169995, top=462.4631158969519, radius=14
+[Counter SVG p1] dispatching renderCounter — i=47, displayNumber=61, fill=#ef4444, numberColor=unset, left=266.3517664471567, top=503.71689654432737, radius=14
+[Counter SVG p1] dispatching renderCounter — i=48, displayNumber=59, fill=#ef4444, numberColor=unset, left=385.5938994830434, top=519.9919560694137, radius=14
+[Counter SVG p1] dispatching renderCounter — i=49, displayNumber=59, fill=#ef4444, numberColor=unset, left=385.5938994830434, top=519.9919560694137, radius=14
+[Counter SVG p1] dispatching renderCounter — i=50, displayNumber=60, fill=#ef4444, numberColor=unset, left=301.5241425169995, top=462.4631158969519, radius=14
+[Counter SVG p1] dispatching renderCounter — i=51, displayNumber=59, fill=#ef4444, numberColor=unset, left=381.38319140264696, top=519.0008151182994, radius=14
+[Counter SVG p1] dispatching renderCounter — i=52, displayNumber=59, fill=#ef4444, numberColor=unset, left=385.5938994830434, top=519.9919560694137, radius=14
+[Counter SVG p1] dispatching renderCounter — i=53, displayNumber=60, fill=#ef4444, numberColor=unset, left=301.5241425169995, top=462.5681374546858, radius=14
+[Counter SVG p1] dispatching renderCounter — i=54, displayNumber=59, fill=#ef4444, numberColor=unset, left=383.7363306806238, top=519.6768913962119, radius=14
+[Counter SVG p1] dispatching renderCounter — i=55, displayNumber=59, fill=#ef4444, numberColor=unset, left=385.5938994830434, top=519.9919560694137, radius=14
+[Counter SVG p1] dispatching renderCounter — i=56, displayNumber=60, fill=#ef4444, numberColor=unset, left=301.5241425169995, top=462.4631158969519, radius=14
+[Counter SVG p1] dispatching renderCounter — i=57, displayNumber=61, fill=#ef4444, numberColor=unset, left=266.3517664471567, top=503.71689654432737, radius=14
+[Counter SVG p1] dispatching renderCounter — i=58, displayNumber=62, fill=#ef4444, numberColor=unset, left=241.41899225637616, top=446.6048606791222, radius=14
+[Counter SVG p1] dispatching renderCounter — i=59, displayNumber=59, fill=#ef4444, numberColor=unset, left=248.0025311568245, top=465.4365387502949, radius=14
+[Counter SVG p1] dispatching renderCounter — i=60, displayNumber=29, fill=#ef4444, numberColor=unset, left=168.74407430446814, top=267.4709024217594, radius=14
+[Counter SVG p1] dispatching renderCounter — i=61, displayNumber=30, fill=#ef4444, numberColor=unset, left=141.80604474570453, top=260.0373452884017, radius=14
+[Counter SVG p1] dispatching renderCounter — i=62, displayNumber=40, fill=#ef4444, numberColor=unset, left=109.14434029043952, top=477.7273429288487, radius=14
+[Counter SVG p1] dispatching renderCounter — i=63, displayNumber=41, fill=#ef4444, numberColor=unset, left=107.9989489264034, top=477.3499217057423, radius=14
+[Counter SVG p1] dispatching renderCounter — i=64, displayNumber=42, fill=#ef4444, numberColor=unset, left=99.47251120787661, top=440.94026040884614, radius=14
+[Counter SVG p1] dispatching renderCounter — i=65, displayNumber=43, fill=#ef4444, numberColor=unset, left=101.84206010424934, top=449.3879319590725, radius=14
+[Counter SVG p1] dispatching renderCounter — i=66, displayNumber=44, fill=#ef4444, numberColor=unset, left=98.70782299062614, top=439.3419635770823, radius=14
+[Counter SVG p1] dispatching renderCounter — i=67, displayNumber=45, fill=#ef4444, numberColor=unset, left=103.52240502799287, top=456.9790214290311, radius=14
+[Counter SVG p1] dispatching renderCounter — i=68, displayNumber=46, fill=#ef4444, numberColor=unset, left=106.44003517878976, top=469.9163645723846, radius=14
+[Counter SVG p1] dispatching renderCounter — i=69, displayNumber=47, fill=#ef4444, numberColor=unset, left=115.03539329457945, top=478.94821853750614, radius=14
+[Counter SVG p1] dispatching renderCounter — i=70, displayNumber=48, fill=#ef4444, numberColor=unset, left=107.18503185396511, top=475.86321027907076, radius=14
+[Counter SVG p1] dispatching renderCounter — i=71, displayNumber=49, fill=#ef4444, numberColor=unset, left=107.02749951736416, top=474.4585469443789, radius=14
+[Counter SVG p1] dispatching renderCounter — i=72, displayNumber=50, fill=#ef4444, numberColor=unset, left=123.51916600527682, top=480.32990840644374, radius=14
+[Counter SVG p1] dispatching renderCounter — i=73, displayNumber=51, fill=#ef4444, numberColor=unset, left=102.36060404556082, top=451.4653896479976, radius=14
+[Counter SVG p1] dispatching renderCounter — i=74, displayNumber=52, fill=#ef4444, numberColor=unset, left=98.48465218044144, top=438.9021858040713, radius=14
+[Counter SVG p1] dispatching renderCounter — i=75, displayNumber=53, fill=#ef4444, numberColor=unset, left=100.10920440163882, top=443.1654046633347, radius=14
+[Counter SVG p1] dispatching renderCounter — i=76, displayNumber=54, fill=#ef4444, numberColor=unset, left=156.1644608421459, top=482.5813080503657, radius=14
+[Counter SVG p1] dispatching renderCounter — i=77, displayNumber=55, fill=#ef4444, numberColor=unset, left=110.7656105879577, top=478.1375833887471, radius=14
+[Counter SVG p1] dispatching renderCounter — i=78, displayNumber=56, fill=#ef4444, numberColor=unset, left=98.94412149552757, top=439.706257105472, radius=14
+[Counter SVG p1] dispatching renderCounter — i=79, displayNumber=57, fill=#ef4444, numberColor=unset, left=98.3730667753491, top=438.49850919153135, radius=14
+[Counter SVG p1] dispatching renderCounter — i=80, displayNumber=1, fill=#ef4444, numberColor=unset, left=179.56457667474635, top=267.0442523434651, radius=14
+[Counter SVG p1] dispatching renderCounter — i=81, displayNumber=2, fill=#ef4444, numberColor=unset, left=182.1933975417748, top=270.014393273129, radius=14
+[Counter SVG p1] dispatching renderCounter — i=82, displayNumber=3, fill=#ef4444, numberColor=unset, left=191.72410390613268, top=280.093180891911, radius=14
+[Counter SVG p1] dispatching renderCounter — i=83, displayNumber=4, fill=#ef4444, numberColor=unset, left=120.84439820673973, top=236.456723653446, radius=14
+[Counter SVG p1] dispatching renderCounter — i=85, displayNumber=5, fill=#ef4444, numberColor=unset, left=122.65930200132993, top=236.23355284326132, radius=14
+[Counter SVG p1] dispatching renderCounter — i=86, displayNumber=6, fill=#ef4444, numberColor=unset, left=188.4881271584547, top=276.35835174499664, radius=14
+[Counter SVG p1] dispatching renderCounter — i=87, displayNumber=7, fill=#ef4444, numberColor=unset, left=159.6925287972715, top=249.39406679679956, radius=14
+[Counter SVG p1] dispatching renderCounter — i=88, displayNumber=8, fill=#ef4444, numberColor=unset, left=149.728608507261, top=260.112829533023, radius=14
+[Counter SVG p1] dispatching renderCounter — i=89, displayNumber=9, fill=#ef4444, numberColor=unset, left=190.19144554795255, top=278.3143782577919, radius=14
+[Counter SVG p1] dispatching renderCounter — i=90, displayNumber=10, fill=#ef4444, numberColor=unset, left=131.98652909757823, top=236.90634719749457, radius=14
+[Counter SVG p1] dispatching renderCounter — i=91, displayNumber=11, fill=#ef4444, numberColor=unset, left=177.5429116883674, top=272.55132027714023, radius=14
+[Counter SVG p1] dispatching renderCounter — i=92, displayNumber=12, fill=#ef4444, numberColor=unset, left=180.93970269632553, top=268.55065531221175, radius=14
+[Counter SVG p1] dispatching renderCounter — i=93, displayNumber=13, fill=#ef4444, numberColor=unset, left=174.75984040841718, top=261.6454878912032, radius=14
+[Counter SVG p1] dispatching renderCounter — i=94, displayNumber=14, fill=#ef4444, numberColor=unset, left=189.42675733070206, top=277.42169501705314, radius=14
+[Counter SVG p1] dispatching renderCounter — i=95, displayNumber=15, fill=#ef4444, numberColor=unset, left=184.06081211523198, top=271.7964778309273, radius=14
+[Counter SVG p1] dispatching renderCounter — i=96, displayNumber=16, fill=#ef4444, numberColor=unset, left=191.26463459104656, top=279.3941311482443, radius=14
+[Counter SVG p1] dispatching renderCounter — i=97, displayNumber=17, fill=#ef4444, numberColor=unset, left=186.4270790879255, top=274.29730367446746, radius=14
+[Counter SVG p1] dispatching renderCounter — i=98, displayNumber=18, fill=#ef4444, numberColor=unset, left=192.11793474763508, top=280.29666016002056, radius=14
+[Counter SVG p1] dispatching renderCounter — i=99, displayNumber=19, fill=#ef4444, numberColor=unset, left=191.8947639374504, top=280.2638409232287, radius=14
+[Counter SVG p1] dispatching renderCounter — i=100, displayNumber=20, fill=#ef4444, numberColor=unset, left=135.5966451446835, top=267.20506660374525, radius=14
+[Counter SVG p1] dispatching renderCounter — i=101, displayNumber=21, fill=#ef4444, numberColor=unset, left=181.47793817971214, top=274.7403633711577, radius=14
+[Counter SVG p1] dispatching renderCounter — i=102, displayNumber=22, fill=#ef4444, numberColor=unset, left=177.9597159956241, top=265.1538643042536, radius=14
+[Counter SVG p1] dispatching renderCounter — i=103, displayNumber=23, fill=#ef4444, numberColor=unset, left=137.05710118192152, top=264.5499903472833, radius=14
+[Counter SVG p1] dispatching renderCounter — i=104, displayNumber=24, fill=#ef4444, numberColor=unset, left=136.24318410948325, top=265.8036851927326, radius=14
+[Counter SVG p1] dispatching renderCounter — i=105, displayNumber=25, fill=#ef4444, numberColor=unset, left=189.38737424655184, top=279.2070614985306, radius=14
+[Counter SVG p1] dispatching renderCounter — i=106, displayNumber=26, fill=#ef4444, numberColor=unset, left=154.1296681610502, top=261.0777150947039, radius=14
+[Counter SVG p1] dispatching renderCounter — i=107, displayNumber=27, fill=#ef4444, numberColor=unset, left=143.1089684463416, top=259.8010467835003, radius=14
+[Counter SVG p1] dispatching renderCounter — i=108, displayNumber=28, fill=#ef4444, numberColor=unset, left=147.5691027263562, top=259.9027864175551, radius=14
+[Counter SVG p1] dispatching renderCounter — i=109, displayNumber=31, fill=#ef4444, numberColor=unset, left=134.89759540101676, top=269.27596044531197, radius=14
+[Counter SVG p1] dispatching renderCounter — i=110, displayNumber=32, fill=#ef4444, numberColor=unset, left=137.70364014672128, top=352.09858641326497, radius=14
+[Counter SVG p1] dispatching renderCounter — i=111, displayNumber=58, fill=#ef4444, numberColor=unset, left=104.53323752118234, top=461.5441772667796, radius=14
+[Counter SVG p1] dispatching renderCounter — i=112, displayNumber=59, fill=#ef4444, numberColor=unset, left=379.8866342049379, top=518.4396061691585, radius=14
+[CloudSync][hook] cutover-complete hydrate — reading from Y.Doc {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","cutoverTs":"2026-05-01T05:28:59.348+00:00"}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[Counter SVG p1] dispatching renderCounter — i=2, displayNumber=6, fill=#ef4444, numberColor=unset, left=120.84439820673973, top=236.456723653446, radius=14
+[Counter SVG p1] dispatching renderCounter — i=3, displayNumber=3, fill=#ef4444, numberColor=unset, left=179.56457667474635, top=267.0442523434651, radius=14
+[Counter SVG p1] dispatching renderCounter — i=4, displayNumber=8, fill=#ef4444, numberColor=unset, left=188.4881271584547, top=276.35835174499664, radius=14
+[Counter SVG p1] dispatching renderCounter — i=5, displayNumber=1, fill=#ef4444, numberColor=unset, left=185.3079431133229, top=273.0501726763766, radius=14
+[Counter SVG p1] dispatching renderCounter — i=6, displayNumber=7, fill=#ef4444, numberColor=unset, left=122.65930200132993, top=236.23355284326132, radius=14
+[Counter SVG p1] dispatching renderCounter — i=7, displayNumber=9, fill=#ef4444, numberColor=unset, left=159.6925287972715, top=249.39406679679956, radius=14
+[Counter SVG p1] dispatching renderCounter — i=8, displayNumber=11, fill=#ef4444, numberColor=unset, left=190.19144554795255, top=278.3143782577919, radius=14
+[Counter SVG p1] dispatching renderCounter — i=9, displayNumber=5, fill=#ef4444, numberColor=unset, left=191.72410390613268, top=280.093180891911, radius=14
+[Counter SVG p1] dispatching renderCounter — i=10, displayNumber=12, fill=#ef4444, numberColor=unset, left=131.98652909757823, top=236.90634719749457, radius=14
+[Counter SVG p1] dispatching renderCounter — i=11, displayNumber=14, fill=#ef4444, numberColor=unset, left=180.93970269632553, top=268.55065531221175, radius=14
+[Counter SVG p1] dispatching renderCounter — i=12, displayNumber=15, fill=#ef4444, numberColor=unset, left=174.75984040841718, top=261.6454878912032, radius=14
+[Counter SVG p1] dispatching renderCounter — i=13, displayNumber=16, fill=#ef4444, numberColor=unset, left=189.42675733070206, top=277.42169501705314, radius=14
+[Counter SVG p1] dispatching renderCounter — i=14, displayNumber=4, fill=#ef4444, numberColor=unset, left=182.1933975417748, top=270.014393273129, radius=14
+[Counter SVG p1] dispatching renderCounter — i=15, displayNumber=17, fill=#ef4444, numberColor=unset, left=184.06081211523198, top=271.7964778309273, radius=14
+[Counter SVG p1] dispatching renderCounter — i=16, displayNumber=19, fill=#ef4444, numberColor=unset, left=186.4270790879255, top=274.29730367446746, radius=14
+[Counter SVG p1] dispatching renderCounter — i=17, displayNumber=20, fill=#ef4444, numberColor=unset, left=192.11793474763508, top=280.29666016002056, radius=14
+[Counter SVG p1] dispatching renderCounter — i=18, displayNumber=10, fill=#ef4444, numberColor=unset, left=149.728608507261, top=260.112829533023, radius=14
+[Counter SVG p1] dispatching renderCounter — i=19, displayNumber=21, fill=#ef4444, numberColor=unset, left=191.8947639374504, top=280.2638409232287, radius=14
+[Counter SVG p1] dispatching renderCounter — i=20, displayNumber=1, fill=#ef4444, numberColor=unset, left=134.89759540101676, top=269.27596044531197, radius=14
+[Counter SVG p1] dispatching renderCounter — i=21, displayNumber=23, fill=#ef4444, numberColor=unset, left=181.47793817971214, top=274.7403633711577, radius=14
+[Counter SVG p1] dispatching renderCounter — i=22, displayNumber=24, fill=#ef4444, numberColor=unset, left=177.9597159956241, top=265.1538643042536, radius=14
+[Counter SVG p1] dispatching renderCounter — i=23, displayNumber=26, fill=#ef4444, numberColor=unset, left=136.24318410948325, top=265.8036851927326, radius=14
+[Counter SVG p1] dispatching renderCounter — i=24, displayNumber=27, fill=#ef4444, numberColor=unset, left=189.38737424655184, top=279.2070614985306, radius=14
+[Counter SVG p1] dispatching renderCounter — i=25, displayNumber=13, fill=#ef4444, numberColor=unset, left=177.5429116883674, top=272.55132027714023, radius=14
+[Counter SVG p1] dispatching renderCounter — i=26, displayNumber=28, fill=#ef4444, numberColor=unset, left=154.1296681610502, top=261.0777150947039, radius=14
+[Counter SVG p1] dispatching renderCounter — i=27, displayNumber=29, fill=#ef4444, numberColor=unset, left=143.1089684463416, top=259.8010467835003, radius=14
+[Counter SVG p1] dispatching renderCounter — i=28, displayNumber=18, fill=#ef4444, numberColor=unset, left=191.26463459104656, top=279.3941311482443, radius=14
+[Counter SVG p1] dispatching renderCounter — i=29, displayNumber=22, fill=#ef4444, numberColor=unset, left=135.5966451446835, top=267.20506660374525, radius=14
+[Counter SVG p1] dispatching renderCounter — i=30, displayNumber=30, fill=#ef4444, numberColor=unset, left=147.5691027263562, top=259.9027864175551, radius=14
+[Counter SVG p1] dispatching renderCounter — i=31, displayNumber=25, fill=#ef4444, numberColor=unset, left=137.05710118192152, top=264.5499903472833, radius=14
+[Counter SVG p1] dispatching renderCounter — i=32, displayNumber=1, fill=#ef4444, numberColor=unset, left=168.74407430446814, top=267.4709024217594, radius=14
+[Counter SVG p1] dispatching renderCounter — i=33, displayNumber=2, fill=#ef4444, numberColor=unset, left=141.80604474570453, top=260.0373452884017, radius=14
+[Counter SVG p1] dispatching renderCounter — i=34, displayNumber=31, fill=#ef4444, numberColor=unset, left=134.89759540101676, top=269.27596044531197, radius=14
+[Counter SVG p1] dispatching renderCounter — i=35, displayNumber=32, fill=#ef4444, numberColor=unset, left=137.70364014672128, top=352.09858641326497, radius=14
+[Counter SVG p1] dispatching renderCounter — i=36, displayNumber=33, fill=#ef4444, numberColor=unset, left=170.85106930650593, top=482.5813080503657, radius=14
+[Counter SVG p1] dispatching renderCounter — i=37, displayNumber=34, fill=#ef4444, numberColor=unset, left=165.4194856174521, top=482.5813080503657, radius=14
+[Counter SVG p1] dispatching renderCounter — i=38, displayNumber=33, fill=#ef4444, numberColor=unset, left=146.03644436817606, top=482.5813080503657, radius=14
+[Counter SVG p1] dispatching renderCounter — i=39, displayNumber=35, fill=#ef4444, numberColor=unset, left=130.4079238078895, top=481.3079216628413, radius=14
+[Counter SVG p1] dispatching renderCounter — i=40, displayNumber=36, fill=#ef4444, numberColor=unset, left=170.45395654132435, top=482.5813080503657, radius=14
+[Counter SVG p1] dispatching renderCounter — i=41, displayNumber=37, fill=#ef4444, numberColor=unset, left=111.9635127308608, top=478.43623844355307, radius=14
+[Counter SVG p1] dispatching renderCounter — i=42, displayNumber=38, fill=#ef4444, numberColor=unset, left=106.74525408095411, top=472.3220146292284, radius=14
+[Counter SVG p1] dispatching renderCounter — i=43, displayNumber=39, fill=#ef4444, numberColor=unset, left=140.67378107638515, top=482.2924987665973, radius=14
+[Counter SVG p1] dispatching renderCounter — i=44, displayNumber=40, fill=#ef4444, numberColor=unset, left=109.14434029043952, top=477.7273429288487, radius=14
+[Counter SVG p1] dispatching renderCounter — i=45, displayNumber=41, fill=#ef4444, numberColor=unset, left=107.9989489264034, top=477.3499217057423, radius=14
+[Counter SVG p1] dispatching renderCounter — i=46, displayNumber=42, fill=#ef4444, numberColor=unset, left=99.47251120787661, top=440.94026040884614, radius=14
+[Counter SVG p1] dispatching renderCounter — i=47, displayNumber=43, fill=#ef4444, numberColor=unset, left=101.84206010424934, top=449.3879319590725, radius=14
+[Counter SVG p1] dispatching renderCounter — i=48, displayNumber=44, fill=#ef4444, numberColor=unset, left=98.70782299062614, top=439.3419635770823, radius=14
+[Counter SVG p1] dispatching renderCounter — i=49, displayNumber=45, fill=#ef4444, numberColor=unset, left=103.52240502799287, top=456.9790214290311, radius=14
+[Counter SVG p1] dispatching renderCounter — i=50, displayNumber=46, fill=#ef4444, numberColor=unset, left=106.44003517878976, top=469.9163645723846, radius=14
+[Counter SVG p1] dispatching renderCounter — i=51, displayNumber=47, fill=#ef4444, numberColor=unset, left=115.03539329457945, top=478.94821853750614, radius=14
+[Counter SVG p1] dispatching renderCounter — i=52, displayNumber=48, fill=#ef4444, numberColor=unset, left=107.18503185396511, top=475.86321027907076, radius=14
+[Counter SVG p1] dispatching renderCounter — i=53, displayNumber=49, fill=#ef4444, numberColor=unset, left=107.02749951736416, top=474.4585469443789, radius=14
+[Counter SVG p1] dispatching renderCounter — i=54, displayNumber=50, fill=#ef4444, numberColor=unset, left=123.51916600527682, top=480.32990840644374, radius=14
+[Counter SVG p1] dispatching renderCounter — i=55, displayNumber=51, fill=#ef4444, numberColor=unset, left=102.36060404556082, top=451.4653896479976, radius=14
+[Counter SVG p1] dispatching renderCounter — i=56, displayNumber=52, fill=#ef4444, numberColor=unset, left=98.48465218044144, top=438.9021858040713, radius=14
+[Counter SVG p1] dispatching renderCounter — i=57, displayNumber=53, fill=#ef4444, numberColor=unset, left=100.10920440163882, top=443.1654046633347, radius=14
+[Counter SVG p1] dispatching renderCounter — i=58, displayNumber=55, fill=#ef4444, numberColor=unset, left=110.7656105879577, top=478.1375833887471, radius=14
+[Counter SVG p1] dispatching renderCounter — i=59, displayNumber=54, fill=#ef4444, numberColor=unset, left=156.1644608421459, top=482.5813080503657, radius=14
+[Counter SVG p1] dispatching renderCounter — i=60, displayNumber=56, fill=#ef4444, numberColor=unset, left=98.94412149552757, top=439.706257105472, radius=14
+[Counter SVG p1] dispatching renderCounter — i=61, displayNumber=57, fill=#ef4444, numberColor=unset, left=98.3730667753491, top=438.49850919153135, radius=14
+[Counter SVG p1] dispatching renderCounter — i=62, displayNumber=58, fill=#ef4444, numberColor=unset, left=104.53323752118234, top=461.5441772667796, radius=14
+[Counter SVG p1] dispatching renderCounter — i=63, displayNumber=59, fill=#ef4444, numberColor=unset, left=235.88566893326754, top=469.2074690576803, radius=14
+[Counter SVG p1] dispatching renderCounter — i=64, displayNumber=60, fill=#ef4444, numberColor=unset, left=236.3845213325039, top=469.2074690576803, radius=14
+[Counter SVG p1] dispatching renderCounter — i=65, displayNumber=61, fill=#ef4444, numberColor=unset, left=244.635277461979, top=466.80181900083653, radius=14
+[Counter SVG p1] dispatching renderCounter — i=66, displayNumber=62, fill=#ef4444, numberColor=unset, left=260.5460434586756, top=461.78375769536024, radius=14
+[Counter SVG p1] dispatching renderCounter — i=67, displayNumber=63, fill=#ef4444, numberColor=unset, left=276.5815225551814, top=460.3528389712349, radius=14
+[Counter SVG p1] dispatching renderCounter — i=68, displayNumber=64, fill=#ef4444, numberColor=unset, left=286.2467877903859, top=460.3528389712349, radius=14
+[Counter SVG p1] dispatching renderCounter — i=69, displayNumber=65, fill=#ef4444, numberColor=unset, left=235.98740856732232, top=469.2074690576803, radius=14
+[Counter SVG p1] dispatching renderCounter — i=70, displayNumber=66, fill=#ef4444, numberColor=unset, left=326.43394324202575, top=493.2081769235719, radius=14
+[Counter SVG p1] dispatching renderCounter — i=71, displayNumber=67, fill=#ef4444, numberColor=unset, left=279.6337115768249, top=460.3528389712349, radius=14
+[Counter SVG p1] dispatching renderCounter — i=72, displayNumber=68, fill=#ef4444, numberColor=unset, left=343.8839314442609, top=506.99225637615564, radius=14
+[Counter SVG p1] dispatching renderCounter — i=73, displayNumber=69, fill=#ef4444, numberColor=unset, left=268.5112722280615, top=460.43488706321455, radius=14
+[Counter SVG p1] dispatching renderCounter — i=74, displayNumber=70, fill=#ef4444, numberColor=unset, left=348.9840408417169, top=507.18588987322767, radius=14
+[Counter SVG p1] dispatching renderCounter — i=75, displayNumber=71, fill=#ef4444, numberColor=unset, left=384.4550719663656, top=519.680173319891, radius=14
+[Counter SVG p1] dispatching renderCounter — i=76, displayNumber=72, fill=#ef4444, numberColor=unset, left=353.29977047984727, top=507.3040391256784, radius=14
+[Counter SVG p1] dispatching renderCounter — i=77, displayNumber=73, fill=#ef4444, numberColor=unset, left=303.7066217636586, top=468.7775370557069, radius=14
+[Counter SVG p1] dispatching renderCounter — i=78, displayNumber=74, fill=#ef4444, numberColor=unset, left=335.4395418177138, top=502.30895128595637, radius=14
+[Counter SVG p1] dispatching renderCounter — i=79, displayNumber=75, fill=#ef4444, numberColor=unset, left=313.0141573178318, top=478.0752268388425, radius=14
+[Counter SVG p1] dispatching renderCounter — i=80, displayNumber=76, fill=#ef4444, numberColor=unset, left=238.8820652523649, top=468.9514790107038, radius=14
+[Counter SVG p1] dispatching renderCounter — i=81, displayNumber=77, fill=#ef4444, numberColor=unset, left=382.76159934790536, top=519.4307471202728, radius=14
+[Counter SVG p1] dispatching renderCounter — i=82, displayNumber=78, fill=#ef4444, numberColor=unset, left=341.4323344559085, top=506.1488019906046, radius=14
+[Counter SVG p1] dispatching renderCounter — i=83, displayNumber=79, fill=#ef4444, numberColor=unset, left=352.5974388125013, top=507.18588987322767, radius=14
+[Counter SVG p1] dispatching renderCounter — i=84, displayNumber=80, fill=#ef4444, numberColor=unset, left=371.6325961517836, top=515.3644436817607, radius=14
+[Counter SVG p1] dispatching renderCounter — i=85, displayNumber=81, fill=#ef4444, numberColor=unset, left=299.99476608249853, top=465.3610545056736, radius=14
+[Counter SVG p1] dispatching renderCounter — i=86, displayNumber=82, fill=#ef4444, numberColor=unset, left=384.88828589201825, top=519.680173319891, radius=14
+[Counter SVG p1] dispatching renderCounter — i=87, displayNumber=83, fill=#ef4444, numberColor=unset, left=367.8649477680774, top=513.6676891396212, radius=14
+[Counter SVG p1] dispatching renderCounter — i=88, displayNumber=84, fill=#ef4444, numberColor=unset, left=363.67064930607694, top=511.92826958965225, radius=14
+[Counter SVG p1] dispatching renderCounter — i=89, displayNumber=85, fill=#ef4444, numberColor=unset, left=345.9023145069607, top=507.156352560115, radius=14
+[Counter SVG p1] dispatching renderCounter — i=90, displayNumber=86, fill=#ef4444, numberColor=unset, left=290.67738475728777, top=460.5760097814196, radius=14
+[Counter SVG p1] dispatching renderCounter — i=91, displayNumber=87, fill=#ef4444, numberColor=unset, left=331.9180377099466, top=499.22394302752093, radius=14
+[Counter SVG p1] dispatching renderCounter — i=92, displayNumber=88, fill=#ef4444, numberColor=unset, left=355.3739462450932, top=508.18359467170035, radius=14
+[Counter SVG p1] dispatching renderCounter — i=93, displayNumber=89, fill=#ef4444, numberColor=unset, left=319.48939273686693, top=485.3971985671078, radius=14
+[Counter SVG p1] dispatching renderCounter — i=94, displayNumber=90, fill=#ef4444, numberColor=unset, left=358.71822647418435, top=509.689997640447, radius=14
+[Counter SVG p1] dispatching renderCounter — i=95, displayNumber=91, fill=#ef4444, numberColor=unset, left=385.44621291748, top=519.8967802827174, radius=14
+[Counter SVG p1] dispatching renderCounter — i=96, displayNumber=92, fill=#ef4444, numberColor=unset, left=308.17003796735236, top=473.2311074883631, radius=14
+[Counter SVG p1] dispatching renderCounter — i=97, displayNumber=93, fill=#ef4444, numberColor=unset, left=385.5938994830434, top=519.9919560694137, radius=14
+[Counter SVG p1] dispatching renderCounter — i=98, displayNumber=103, fill=#ef4444, numberColor=unset, left=301.5241425169995, top=462.4631158969519, radius=14
+[Counter SVG p1] dispatching renderCounter — i=99, displayNumber=108, fill=#ef4444, numberColor=unset, left=266.3517664471567, top=503.71689654432737, radius=14
+[Counter SVG p1] dispatching renderCounter — i=100, displayNumber=111, fill=#ef4444, numberColor=unset, left=241.41899225637616, top=446.70988223685623, radius=14
+[Counter SVG p1] dispatching renderCounter — i=101, displayNumber=94, fill=#ef4444, numberColor=unset, left=385.5938994830434, top=519.9919560694137, radius=14
+[Counter SVG p1] dispatching renderCounter — i=102, displayNumber=104, fill=#ef4444, numberColor=unset, left=301.5241425169995, top=462.4631158969519, radius=14
+[Counter SVG p1] dispatching renderCounter — i=103, displayNumber=109, fill=#ef4444, numberColor=unset, left=266.3517664471567, top=503.71689654432737, radius=14
+[Counter SVG p1] dispatching renderCounter — i=104, displayNumber=95, fill=#ef4444, numberColor=unset, left=385.5938994830434, top=519.9919560694137, radius=14
+[Counter SVG p1] dispatching renderCounter — i=105, displayNumber=96, fill=#ef4444, numberColor=unset, left=385.5938994830434, top=519.9919560694137, radius=14
+[Counter SVG p1] dispatching renderCounter — i=106, displayNumber=105, fill=#ef4444, numberColor=unset, left=301.5241425169995, top=462.4631158969519, radius=14
+[Counter SVG p1] dispatching renderCounter — i=107, displayNumber=97, fill=#ef4444, numberColor=unset, left=381.38319140264696, top=519.0008151182994, radius=14
+[Counter SVG p1] dispatching renderCounter — i=108, displayNumber=98, fill=#ef4444, numberColor=unset, left=385.5938994830434, top=519.9919560694137, radius=14
+[Counter SVG p1] dispatching renderCounter — i=109, displayNumber=106, fill=#ef4444, numberColor=unset, left=301.5241425169995, top=462.5681374546858, radius=14
+[Counter SVG p1] dispatching renderCounter — i=110, displayNumber=99, fill=#ef4444, numberColor=unset, left=383.7363306806238, top=519.6768913962119, radius=14
+[Counter SVG p1] dispatching renderCounter — i=111, displayNumber=100, fill=#ef4444, numberColor=unset, left=385.5938994830434, top=519.9919560694137, radius=14
+[Counter SVG p1] dispatching renderCounter — i=112, displayNumber=107, fill=#ef4444, numberColor=unset, left=301.5241425169995, top=462.4631158969519, radius=14
+[Counter SVG p1] dispatching renderCounter — i=113, displayNumber=110, fill=#ef4444, numberColor=unset, left=266.3517664471567, top=503.71689654432737, radius=14
+[Counter SVG p1] dispatching renderCounter — i=114, displayNumber=112, fill=#ef4444, numberColor=unset, left=241.41899225637616, top=446.6048606791222, radius=14
+[Counter SVG p1] dispatching renderCounter — i=115, displayNumber=101, fill=#ef4444, numberColor=unset, left=248.0025311568245, top=465.4365387502949, radius=14
+[Counter SVG p1] dispatching renderCounter — i=116, displayNumber=102, fill=#ef4444, numberColor=unset, left=379.8866342049379, top=518.4396061691585, radius=14
+[Counter SVG p1] dispatching renderCounter — i=119, displayNumber=1, fill=#ef4444, numberColor=unset, left=91.26784795655901, top=610.3440697342097, radius=14
+[Counter SVG p1] dispatching renderCounter — i=120, displayNumber=2, fill=#ef4444, numberColor=unset, left=132.38851100314375, top=669.8081166047442, radius=14
+[Counter SVG p1] dispatching renderCounter — i=121, displayNumber=3, fill=#ef4444, numberColor=unset, left=254.7841383252358, top=669.8081166047442, radius=14
+[Counter SVG p1] dispatching renderCounter — i=122, displayNumber=4, fill=#ef4444, numberColor=unset, left=369.9254929979994, top=763.9969134038297, radius=14
+[Counter SVG p1] dispatching renderCounter — i=123, displayNumber=5, fill=#ef4444, numberColor=unset, left=476.596970563018, top=707.8635324378394, radius=14
+[Counter SVG p1] dispatching renderCounter — i=124, displayNumber=6, fill=#ef4444, numberColor=unset, left=495.054044012575, top=561.3919405544441, radius=14
+[Counter SVG p1] dispatching renderCounter — i=125, displayNumber=113, fill=#ef4444, numberColor=unset, left=332.2636181766219, top=396.20965990282934, radius=14
+[Counter SVG p1] dispatching renderCounter — i=126, displayNumber=114, fill=#ef4444, numberColor=unset, left=250.57324949985707, top=391.0324092597885, radius=14
+[Counter SVG p1] dispatching renderCounter — i=127, displayNumber=115, fill=#ef4444, numberColor=unset, left=269.2664475564447, top=236.5894255501572, radius=14
+[Counter SVG p1] dispatching renderCounter — i=128, displayNumber=116, fill=#ef4444, numberColor=unset, left=325.3329236924836, top=252.2130037153472, radius=14
+[Counter SVG p1] dispatching renderCounter — i=129, displayNumber=1, fill=#ef4444, numberColor=unset, left=457.0423549585596, top=594.1913975421548, radius=14
+[Counter SVG p1] dispatching renderCounter — i=130, displayNumber=2, fill=#ef4444, numberColor=unset, left=495.01468991140325, top=668.84612746499, radius=14
+[Counter SVG p1] dispatching renderCounter — i=131, displayNumber=3, fill=#ef4444, numberColor=unset, left=516.7162903686767, top=525.6146899114033, radius=14
+[Counter SVG p1] dispatching renderCounter — i=132, displayNumber=1, fill=#ef4444, numberColor=unset, left=73.19119748499571, top=328.7042583595313, radius=14
+[Counter SVG p1] dispatching renderCounter — i=133, displayNumber=4, fill=#ef4444, numberColor=unset, left=455.77865104315515, top=525.6146899114033, radius=14
+[Counter SVG p1] dispatching renderCounter — i=134, displayNumber=1, fill=#ef4444, numberColor=unset, left=514.5037153472421, top=572.1618462417833, radius=14
+[CloudSync][hook][state-obs] change {"prevCount":113,"currentCount":135,"delta":22,"hydrated":true,"sameRefAsLastByPage":true}
+[CalloutGeom svg p1] id=callout-em0pymclz-mom79pmg text="Field note" {"side":"svg","timestamp":"2026-05-01T05:28:59.780Z","pageNumber":1,"source":{"id":"callout-em0pymclz-mom79pmg","pageNumber":1,"text":"Field note","arrowTip":{"x":0.38348531696827964,"y":0.46747198369960696},"knee":{"x":0.5341610032489444,"y":0.41696693319455647},"style":{"bold":false,"italic":false,"fontSize":14,"fillColor":"transparent","fontColor":"#1e293b","textAlign":"left","underline":false,"fontFamily":"Arial","borderColor":"#1e293b","fillOpacity":1,"borderOpacity":1,"lineThickness":2,"strikethrough":false,"arrowheadStyle":"solidTriangle"},"_rawKeys":["id","knee","meta","text","style","arrowTip","isSelected","pageNumber","textBoxWidth","textBoxHeight","textBoxPosition"],"_raw":{"id":"callout-em0pymclz-mom79pmg","knee":{"x":0.5341610032489444,"y":0.41696693319455647},"meta":{"authorId":"170d915c-5741-4e0b-b03f-deaeedae27bd"},"text":"Field note","style":{"bold":false,"italic":false,"fontSize":14,"fillColor":"transparent","fontColor":"#1e293b","textAlign":"left","underline":false,"fontFamily":"Arial","borderColor":"#1e293b","fillOpacity":1,"borderOpacity":1,"lineThickness":2,"strikethrough":false,"arrowheadStyle":"solidTriangle"},"arrowTip":{"x":0.38348531696827964,"y":0.46747198369960696},"isSelected":true,"pageNumber":1,"textBoxWidth":0.19607843137254902,"textBoxHeight":0.04040404040404041,"textBoxPosition":{"x":0.6848366895296093,"y":0.5249114636394508}}},"dom":{"root":{"tag":"g","attrs":{"data-callout-id":"callout-em0pymclz-mom79pmg","opacity":"1"},"rect":{"x":516.27783203125,"y":527.317138671875,"left":516.27783203125,"top":527.317138671875,"right":930.8267211914062,"bottom":690.5065307617188,"width":414.54888916015625,"height":163.18939208984375},"computed":{"visibility":"visible","opacity":"1","display":"inline","transform":"none","pointer-events":"none"}},"foreignObject":{"tag":"foreignObject","attrs":{"data-callout-part":"text","x":"425.1200539921209","y":"415.7298792024451","width":"108","height":"36.9","overflow":"hidden"},"rect":{"x":778.8229370117188,"y":641.3020629882812,"left":778.8229370117188,"top":641.3020629882812,"right":922.8229370117188,"bottom":690.5,"width":144,"height":49.19793701171875}},"textDiv":{"tag":"DIV","rect":{"x":778.8229370117188,"y":641.3020629882812,"left":778.8229370117188,"top":641.3020629882812,"right":922.8229370117188,"bottom":690.5,"width":144,"height":49.19793701171875},"text":"Field note","computed":{"font-size":"14px","font-family":"Arial","font-weight":"400","line-height":"15.82px","padding-top":"0px","padding-right":"0px","padding-bottom":"0px","padding-left":"0px","border-radius":"0px","background-color":"rgba(0, 0, 0, 0)","color":"rgb(30, 41, 59)","box-sizing":"border-box","width":"108px","height":"36.8984px","white-space":"pre-wrap"}},"textSpanCount":1,"arrowTip":{"rect":null,"attrs":null},"knee":{"rect":null,"attrs":null},"line1":{"rect":{"x":647.8753662109375,"y":527.317138671875,"left":647.8753662109375,"top":527.317138671875,"right":770.8267211914062,"bottom":641.3065185546875,"width":122.95135498046875,"height":113.9893798828125},"attrs":{"data-callout-part":"line1","x1":"419.1200539921209","y1":"415.7298792024451","x2":"326.906533988354","y2":"330.2378110900887","stroke":"#1e293b","stroke-width":"2","stroke-linecap":"round","vector-effect":"non-scaling-stroke"}},"line2":{"rect":{"x":528.1859130859375,"y":527.317138671875,"left":528.1859130859375,"top":527.317138671875,"right":647.8753662109375,"bottom":579.2354736328125,"width":119.689453125,"height":51.9183349609375},"attrs":{"data-callout-part":"line2","x1":"326.906533988354","y1":"330.2378110900887","x2":"237.1394338415709","y2":"369.1766131846693","stroke":"#1e293b","stroke-width":"2","stroke-linecap":"round","vector-effect":"non-scaling-stroke"}},"textHit":{"rect":{"x":778.8229370117188,"y":641.3020629882812,"left":778.8229370117188,"top":641.3020629882812,"right":922.8229370117188,"bottom":690.5,"width":144,"height":49.19793701171875},"attrs":{"data-callout-part":"text","x":"425.1200539921209","y":"415.7298792024451","width":"108","height":"36.9","overflow":"hidden"}}},"rendererDerived":{"pageSize":{"width":612,"height":792},"arrowTip":{"x":234.69301398458714,"y":370.2378110900887},"knee":{"x":326.906533988354,"y":330.2378110900887},"textBox":{"x":419.1200539921209,"y":415.7298792024451,"width":120,"height":32},"normalizedInputs":{"textBoxPosition":{"x":0.6848366895296093,"y":0.5249114636394508},"textBoxWidth":0.19607843137254902,"textBoxHeight":0.04040404040404041,"textBox":null}},"extras":{"editingCalloutId":null,"pageSize":{"width":612,"height":792}}}
+[CalloutGeom svg p1] id=callout-ik3708b2s-mom7bvcs text=" updated" {"side":"svg","timestamp":"2026-05-01T05:28:59.781Z","pageNumber":1,"source":{"id":"callout-ik3708b2s-mom7bvcs","pageNumber":1,"text":" updated","arrowTip":{"x":0.36339522546419095,"y":0.5140445350021831},"knee":{"x":0.5442060490009888,"y":0.46353948449713256},"style":{"bold":false,"italic":false,"fontSize":14,"fillColor":"transparent","fontColor":"#1e293b","textAlign":"left","underline":false,"fontFamily":"Arial","borderColor":"#1e293b","fillOpacity":1,"borderOpacity":1,"lineThickness":2,"strikethrough":false,"arrowheadStyle":"solidTriangle"},"_rawKeys":["id","knee","meta","text","style","arrowTip","isSelected","pageNumber","textBoxWidth","textBoxHeight","textBoxPosition"],"_raw":{"id":"callout-ik3708b2s-mom7bvcs","knee":{"x":0.5442060490009888,"y":0.46353948449713256},"meta":{"authorId":"170d915c-5741-4e0b-b03f-deaeedae27bd"},"text":" updated","style":{"bold":false,"italic":false,"fontSize":14,"fillColor":"transparent","fontColor":"#1e293b","textAlign":"left","underline":false,"fontFamily":"Arial","borderColor":"#1e293b","fillOpacity":1,"borderOpacity":1,"lineThickness":2,"strikethrough":false,"arrowheadStyle":"solidTriangle"},"arrowTip":{"x":0.36339522546419095,"y":0.5140445350021831},"isSelected":true,"pageNumber":1,"textBoxWidth":0.19607843137254902,"textBoxHeight":0.04040404040404041,"textBoxPosition":{"x":0.7250168725377867,"y":0.5714840149420268}}},"dom":{"root":{"tag":"g","attrs":{"data-callout-id":"callout-ik3708b2s-mom7bvcs","opacity":"1"},"rect":{"x":500.0298156738281,"y":576.4976806640625,"left":500.0298156738281,"top":576.4976806640625,"right":963.61376953125,"bottom":739.6870727539062,"width":463.5839538574219,"height":163.18939208984375},"computed":{"visibility":"visible","opacity":"1","display":"inline","transform":"none","pointer-events":"none"}},"foreignObject":{"tag":"foreignObject","attrs":{"data-callout-part":"text","x":"449.7103259931254","y":"452.61533983408526","width":"108","height":"36.9","overflow":"hidden"},"rect":{"x":811.6041870117188,"y":690.4791870117188,"left":811.6041870117188,"top":690.4791870117188,"right":955.6041870117188,"bottom":739.6770629882812,"width":144,"height":49.1978759765625}},"textDiv":{"tag":"DIV","rect":{"x":811.6041870117188,"y":690.4791870117188,"left":811.6041870117188,"top":690.4791870117188,"right":955.6041870117188,"bottom":739.6770629882812,"width":144,"height":49.1978759765625},"text":" updated","computed":{"font-size":"14px","font-family":"Arial","font-weight":"400","line-height":"15.82px","padding-top":"0px","padding-right":"0px","padding-bottom":"0px","padding-left":"0px","border-radius":"0px","background-color":"rgba(0, 0, 0, 0)","color":"rgb(30, 41, 59)","box-sizing":"border-box","width":"108px","height":"36.8984px","white-space":"pre-wrap"}},"textSpanCount":1,"arrowTip":{"rect":null,"attrs":null},"knee":{"rect":null,"attrs":null},"line1":{"rect":{"x":656.0721435546875,"y":576.4976806640625,"left":656.0721435546875,"top":576.4976806640625,"right":803.61376953125,"bottom":690.4871215820312,"width":147.5416259765625,"height":113.98944091796875},"attrs":{"data-callout-part":"line1","x1":"443.7103259931254","y1":"452.61533983408526","x2":"333.0541019886051","y2":"367.123271721729","stroke":"#1e293b","stroke-width":"2","stroke-linecap":"round","vector-effect":"non-scaling-stroke"}},"line2":{"rect":{"x":511.8742980957031,"y":576.4976806640625,"left":511.8742980957031,"top":576.4976806640625,"right":656.0721435546875,"bottom":628.622314453125,"width":144.19784545898438,"height":52.1246337890625},"attrs":{"data-callout-part":"line2","x1":"333.0541019886051","y1":"367.123271721729","x2":"224.90572613661115","y2":"406.2167350401868","stroke":"#1e293b","stroke-width":"2","stroke-linecap":"round","vector-effect":"non-scaling-stroke"}},"textHit":{"rect":{"x":811.6041870117188,"y":690.4791870117188,"left":811.6041870117188,"top":690.4791870117188,"right":955.6041870117188,"bottom":739.6770629882812,"width":144,"height":49.1978759765625},"attrs":{"data-callout-part":"text","x":"449.7103259931254","y":"452.61533983408526","width":"108","height":"36.9","overflow":"hidden"}}},"rendererDerived":{"pageSize":{"width":612,"height":792},"arrowTip":{"x":222.39787798408486,"y":407.123271721729},"knee":{"x":333.0541019886051,"y":367.123271721729},"textBox":{"x":443.7103259931254,"y":452.61533983408526,"width":120,"height":32},"normalizedInputs":{"textBoxPosition":{"x":0.7250168725377867,"y":0.5714840149420268},"textBoxWidth":0.19607843137254902,"textBoxHeight":0.04040404040404041,"textBox":null}},"extras":{"editingCalloutId":null,"pageSize":{"width":612,"height":792}}}
+[CalloutGeom svg p1] id=callout-l9ysd05kq-mom8wec7 text="fsvdfvfdvfdv" {"side":"svg","timestamp":"2026-05-01T05:28:59.781Z","pageNumber":1,"source":{"id":"callout-l9ysd05kq-mom8wec7","pageNumber":1,"text":"fsvdfvfdvfdv","arrowTip":{"x":0.4664246337330274,"y":0.31372605895856986},"knee":{"x":0.5395627319333318,"y":0.19588773589652084},"style":{"bold":false,"italic":false,"fontSize":14,"fillColor":"transparent","fontColor":"#1e293b","textAlign":"left","underline":false,"fontFamily":"Arial","borderColor":"#1e293b","fillOpacity":1,"borderOpacity":1,"lineThickness":2,"strikethrough":false,"arrowheadStyle":"solidTriangle"},"_rawKeys":["id","knee","meta","text","style","arrowTip","isSelected","pageNumber","textBoxWidth","textBoxHeight","textBoxPosition"],"_raw":{"id":"callout-l9ysd05kq-mom8wec7","knee":{"x":0.5395627319333318,"y":0.19588773589652084},"meta":{"authorId":"170d915c-5741-4e0b-b03f-deaeedae27bd"},"text":"fsvdfvfdvfdv","style":{"bold":false,"italic":false,"fontSize":14,"fillColor":"transparent","fontColor":"#1e293b","textAlign":"left","underline":false,"fontFamily":"Arial","borderColor":"#1e293b","fillOpacity":1,"borderOpacity":1,"lineThickness":2,"strikethrough":false,"arrowheadStyle":"solidTriangle"},"arrowTip":{"x":0.4664246337330274,"y":0.31372605895856986},"isSelected":true,"pageNumber":1,"textBoxWidth":0.19504344563711928,"textBoxHeight":0.05469200420344533,"textBoxPosition":{"x":0.6320384392629613,"y":0.33005693637546507}}},"dom":{"root":{"tag":"g","attrs":{"data-callout-id":"callout-l9ysd05kq-mom8wec7","opacity":"1"},"rect":{"x":584.718505859375,"y":293.857421875,"left":584.718505859375,"top":293.857421875,"right":886.8988647460938,"bottom":499.8282165527344,"width":302.18035888671875,"height":205.97079467773438},"computed":{"visibility":"visible","opacity":"1","display":"inline","transform":"none","pointer-events":"none"}},"foreignObject":{"tag":"foreignObject","attrs":{"data-callout-part":"text","x":"392.80752482893234","y":"261.40509360936835","width":"107.366588729917","height":"48.2160673291287","overflow":"hidden"},"rect":{"x":735.7395629882812,"y":435.53125,"left":735.7395629882812,"top":435.53125,"right":878.8854370117188,"bottom":499.8125,"width":143.1458740234375,"height":64.28125}},"textDiv":{"tag":"DIV","rect":{"x":735.7395629882812,"y":435.53125,"left":735.7395629882812,"top":435.53125,"right":878.8854370117188,"bottom":499.8125,"width":143.1458740234375,"height":64.28125},"text":"fsvdfvfdvfdv","computed":{"font-size":"14px","font-family":"Arial","font-weight":"400","line-height":"15.82px","padding-top":"0px","padding-right":"0px","padding-bottom":"0px","padding-left":"0px","border-radius":"0px","background-color":"rgba(0, 0, 0, 0)","color":"rgb(30, 41, 59)","box-sizing":"border-box","width":"107.359px","height":"48.2109px","white-space":"pre-wrap"}},"textSpanCount":1,"arrowTip":{"rect":null,"attrs":null},"knee":{"rect":null,"attrs":null},"line1":{"rect":{"x":652.283203125,"y":293.857421875,"left":652.283203125,"top":293.857421875,"right":727.7433471679688,"bottom":435.5401306152344,"width":75.46014404296875,"height":141.68270874023438},"attrs":{"data-callout-part":"line1","x1":"386.80752482893234","y1":"261.40509360936835","x2":"330.21239194319907","y2":"155.1430868300445","stroke":"#1e293b","stroke-width":"2","stroke-linecap":"round","vector-effect":"non-scaling-stroke"}},"line2":{"rect":{"x":594.1400146484375,"y":293.857421875,"left":594.1400146484375,"top":293.857421875,"right":652.283203125,"bottom":415.08880615234375,"width":58.1431884765625,"height":121.23138427734375},"attrs":{"data-callout-part":"line2","x1":"330.21239194319907","y1":"155.1430868300445","x2":"286.6050526353732","y2":"246.0666064544364","stroke":"#1e293b","stroke-width":"2","stroke-linecap":"round","vector-effect":"non-scaling-stroke"}},"textHit":{"rect":{"x":735.7395629882812,"y":435.53125,"left":735.7395629882812,"top":435.53125,"right":878.8854370117188,"bottom":499.8125,"width":143.1458740234375,"height":64.28125},"attrs":{"data-callout-part":"text","x":"392.80752482893234","y":"261.40509360936835","width":"107.366588729917","height":"48.2160673291287","overflow":"hidden"}}},"rendererDerived":{"pageSize":{"width":612,"height":792},"arrowTip":{"x":285.45187584461274,"y":248.47103869518733},"knee":{"x":330.21239194319907,"y":155.1430868300445},"textBox":{"x":386.80752482893234,"y":261.40509360936835,"width":119.366588729917,"height":43.3160673291287},"normalizedInputs":{"textBoxPosition":{"x":0.6320384392629613,"y":0.33005693637546507},"textBoxWidth":0.19504344563711928,"textBoxHeight":0.05469200420344533,"textBox":null}},"extras":{"editingCalloutId":null,"pageSize":{"width":612,"height":792}}}
+[CloudSync][hydrate] loadAllNonHighlightAnnotations ok {"elapsedMs":400,"totalRowsScanned":116,"scanned":{"nonHighlight":116,"legacyFabricHighlights":0},"totalRows":116,"rowsByType":{"callout":3,"counter":112,"ink":1},"pagesWithObjects":1,"calloutCount":3}
+[DebugBridge +3624.6ms] pdf_loaded {"pageCount":3,"currentPage":1}
+[DebugBridge +3726.0ms] zoom_start {"scale":0.1,"targetScale":0.9,"source":"zoomChange"}
+[Counter SVG p1] dispatching renderCounter — i=2, displayNumber=6, fill=#ef4444, numberColor=unset, left=120.84439820673973, top=236.456723653446, radius=14
+[Counter SVG p1] dispatching renderCounter — i=3, displayNumber=3, fill=#ef4444, numberColor=unset, left=179.56457667474635, top=267.0442523434651, radius=14
+[Counter SVG p1] dispatching renderCounter — i=4, displayNumber=8, fill=#ef4444, numberColor=unset, left=188.4881271584547, top=276.35835174499664, radius=14
+[Counter SVG p1] dispatching renderCounter — i=5, displayNumber=1, fill=#ef4444, numberColor=unset, left=185.3079431133229, top=273.0501726763766, radius=14
+[Counter SVG p1] dispatching renderCounter — i=6, displayNumber=7, fill=#ef4444, numberColor=unset, left=122.65930200132993, top=236.23355284326132, radius=14
+[Counter SVG p1] dispatching renderCounter — i=7, displayNumber=9, fill=#ef4444, numberColor=unset, left=159.6925287972715, top=249.39406679679956, radius=14
+[Counter SVG p1] dispatching renderCounter — i=8, displayNumber=11, fill=#ef4444, numberColor=unset, left=190.19144554795255, top=278.3143782577919, radius=14
+[Counter SVG p1] dispatching renderCounter — i=9, displayNumber=5, fill=#ef4444, numberColor=unset, left=191.72410390613268, top=280.093180891911, radius=14
+[Counter SVG p1] dispatching renderCounter — i=10, displayNumber=12, fill=#ef4444, numberColor=unset, left=131.98652909757823, top=236.90634719749457, radius=14
+[Counter SVG p1] dispatching renderCounter — i=11, displayNumber=14, fill=#ef4444, numberColor=unset, left=180.93970269632553, top=268.55065531221175, radius=14
+[Counter SVG p1] dispatching renderCounter — i=12, displayNumber=15, fill=#ef4444, numberColor=unset, left=174.75984040841718, top=261.6454878912032, radius=14
+[Counter SVG p1] dispatching renderCounter — i=13, displayNumber=16, fill=#ef4444, numberColor=unset, left=189.42675733070206, top=277.42169501705314, radius=14
+[Counter SVG p1] dispatching renderCounter — i=14, displayNumber=4, fill=#ef4444, numberColor=unset, left=182.1933975417748, top=270.014393273129, radius=14
+[Counter SVG p1] dispatching renderCounter — i=15, displayNumber=17, fill=#ef4444, numberColor=unset, left=184.06081211523198, top=271.7964778309273, radius=14
+[Counter SVG p1] dispatching renderCounter — i=16, displayNumber=19, fill=#ef4444, numberColor=unset, left=186.4270790879255, top=274.29730367446746, radius=14
+[Counter SVG p1] dispatching renderCounter — i=17, displayNumber=20, fill=#ef4444, numberColor=unset, left=192.11793474763508, top=280.29666016002056, radius=14
+[Counter SVG p1] dispatching renderCounter — i=18, displayNumber=10, fill=#ef4444, numberColor=unset, left=149.728608507261, top=260.112829533023, radius=14
+[Counter SVG p1] dispatching renderCounter — i=19, displayNumber=21, fill=#ef4444, numberColor=unset, left=191.8947639374504, top=280.2638409232287, radius=14
+[Counter SVG p1] dispatching renderCounter — i=20, displayNumber=1, fill=#ef4444, numberColor=unset, left=134.89759540101676, top=269.27596044531197, radius=14
+[Counter SVG p1] dispatching renderCounter — i=21, displayNumber=23, fill=#ef4444, numberColor=unset, left=181.47793817971214, top=274.7403633711577, radius=14
+[Counter SVG p1] dispatching renderCounter — i=22, displayNumber=24, fill=#ef4444, numberColor=unset, left=177.9597159956241, top=265.1538643042536, radius=14
+[Counter SVG p1] dispatching renderCounter — i=23, displayNumber=26, fill=#ef4444, numberColor=unset, left=136.24318410948325, top=265.8036851927326, radius=14
+[Counter SVG p1] dispatching renderCounter — i=24, displayNumber=27, fill=#ef4444, numberColor=unset, left=189.38737424655184, top=279.2070614985306, radius=14
+[Counter SVG p1] dispatching renderCounter — i=25, displayNumber=13, fill=#ef4444, numberColor=unset, left=177.5429116883674, top=272.55132027714023, radius=14
+[Counter SVG p1] dispatching renderCounter — i=26, displayNumber=28, fill=#ef4444, numberColor=unset, left=154.1296681610502, top=261.0777150947039, radius=14
+[Counter SVG p1] dispatching renderCounter — i=27, displayNumber=29, fill=#ef4444, numberColor=unset, left=143.1089684463416, top=259.8010467835003, radius=14
+[Counter SVG p1] dispatching renderCounter — i=28, displayNumber=18, fill=#ef4444, numberColor=unset, left=191.26463459104656, top=279.3941311482443, radius=14
+[Counter SVG p1] dispatching renderCounter — i=29, displayNumber=22, fill=#ef4444, numberColor=unset, left=135.5966451446835, top=267.20506660374525, radius=14
+[Counter SVG p1] dispatching renderCounter — i=30, displayNumber=30, fill=#ef4444, numberColor=unset, left=147.5691027263562, top=259.9027864175551, radius=14
+[Counter SVG p1] dispatching renderCounter — i=31, displayNumber=25, fill=#ef4444, numberColor=unset, left=137.05710118192152, top=264.5499903472833, radius=14
+[Counter SVG p1] dispatching renderCounter — i=32, displayNumber=1, fill=#ef4444, numberColor=unset, left=168.74407430446814, top=267.4709024217594, radius=14
+[Counter SVG p1] dispatching renderCounter — i=33, displayNumber=2, fill=#ef4444, numberColor=unset, left=141.80604474570453, top=260.0373452884017, radius=14
+[Counter SVG p1] dispatching renderCounter — i=34, displayNumber=31, fill=#ef4444, numberColor=unset, left=134.89759540101676, top=269.27596044531197, radius=14
+[Counter SVG p1] dispatching renderCounter — i=35, displayNumber=32, fill=#ef4444, numberColor=unset, left=137.70364014672128, top=352.09858641326497, radius=14
+[Counter SVG p1] dispatching renderCounter — i=36, displayNumber=33, fill=#ef4444, numberColor=unset, left=170.85106930650593, top=482.5813080503657, radius=14
+[Counter SVG p1] dispatching renderCounter — i=37, displayNumber=34, fill=#ef4444, numberColor=unset, left=165.4194856174521, top=482.5813080503657, radius=14
+[Counter SVG p1] dispatching renderCounter — i=38, displayNumber=33, fill=#ef4444, numberColor=unset, left=146.03644436817606, top=482.5813080503657, radius=14
+[Counter SVG p1] dispatching renderCounter — i=39, displayNumber=35, fill=#ef4444, numberColor=unset, left=130.4079238078895, top=481.3079216628413, radius=14
+[Counter SVG p1] dispatching renderCounter — i=40, displayNumber=36, fill=#ef4444, numberColor=unset, left=170.45395654132435, top=482.5813080503657, radius=14
+[Counter SVG p1] dispatching renderCounter — i=41, displayNumber=37, fill=#ef4444, numberColor=unset, left=111.9635127308608, top=478.43623844355307, radius=14
+[Counter SVG p1] dispatching renderCounter — i=42, displayNumber=38, fill=#ef4444, numberColor=unset, left=106.74525408095411, top=472.3220146292284, radius=14
+[Counter SVG p1] dispatching renderCounter — i=43, displayNumber=39, fill=#ef4444, numberColor=unset, left=140.67378107638515, top=482.2924987665973, radius=14
+[Counter SVG p1] dispatching renderCounter — i=44, displayNumber=40, fill=#ef4444, numberColor=unset, left=109.14434029043952, top=477.7273429288487, radius=14
+[Counter SVG p1] dispatching renderCounter — i=45, displayNumber=41, fill=#ef4444, numberColor=unset, left=107.9989489264034, top=477.3499217057423, radius=14
+[Counter SVG p1] dispatching renderCounter — i=46, displayNumber=42, fill=#ef4444, numberColor=unset, left=99.47251120787661, top=440.94026040884614, radius=14
+[Counter SVG p1] dispatching renderCounter — i=47, displayNumber=43, fill=#ef4444, numberColor=unset, left=101.84206010424934, top=449.3879319590725, radius=14
+[Counter SVG p1] dispatching renderCounter — i=48, displayNumber=44, fill=#ef4444, numberColor=unset, left=98.70782299062614, top=439.3419635770823, radius=14
+[Counter SVG p1] dispatching renderCounter — i=49, displayNumber=45, fill=#ef4444, numberColor=unset, left=103.52240502799287, top=456.9790214290311, radius=14
+[Counter SVG p1] dispatching renderCounter — i=50, displayNumber=46, fill=#ef4444, numberColor=unset, left=106.44003517878976, top=469.9163645723846, radius=14
+[Counter SVG p1] dispatching renderCounter — i=51, displayNumber=47, fill=#ef4444, numberColor=unset, left=115.03539329457945, top=478.94821853750614, radius=14
+[Counter SVG p1] dispatching renderCounter — i=52, displayNumber=48, fill=#ef4444, numberColor=unset, left=107.18503185396511, top=475.86321027907076, radius=14
+[Counter SVG p1] dispatching renderCounter — i=53, displayNumber=49, fill=#ef4444, numberColor=unset, left=107.02749951736416, top=474.4585469443789, radius=14
+[Counter SVG p1] dispatching renderCounter — i=54, displayNumber=50, fill=#ef4444, numberColor=unset, left=123.51916600527682, top=480.32990840644374, radius=14
+[Counter SVG p1] dispatching renderCounter — i=55, displayNumber=51, fill=#ef4444, numberColor=unset, left=102.36060404556082, top=451.4653896479976, radius=14
+[Counter SVG p1] dispatching renderCounter — i=56, displayNumber=52, fill=#ef4444, numberColor=unset, left=98.48465218044144, top=438.9021858040713, radius=14
+[Counter SVG p1] dispatching renderCounter — i=57, displayNumber=53, fill=#ef4444, numberColor=unset, left=100.10920440163882, top=443.1654046633347, radius=14
+[Counter SVG p1] dispatching renderCounter — i=58, displayNumber=55, fill=#ef4444, numberColor=unset, left=110.7656105879577, top=478.1375833887471, radius=14
+[Counter SVG p1] dispatching renderCounter — i=59, displayNumber=54, fill=#ef4444, numberColor=unset, left=156.1644608421459, top=482.5813080503657, radius=14
+[Counter SVG p1] dispatching renderCounter — i=60, displayNumber=56, fill=#ef4444, numberColor=unset, left=98.94412149552757, top=439.706257105472, radius=14
+[Counter SVG p1] dispatching renderCounter — i=61, displayNumber=57, fill=#ef4444, numberColor=unset, left=98.3730667753491, top=438.49850919153135, radius=14
+[Counter SVG p1] dispatching renderCounter — i=62, displayNumber=58, fill=#ef4444, numberColor=unset, left=104.53323752118234, top=461.5441772667796, radius=14
+[Counter SVG p1] dispatching renderCounter — i=63, displayNumber=59, fill=#ef4444, numberColor=unset, left=235.88566893326754, top=469.2074690576803, radius=14
+[Counter SVG p1] dispatching renderCounter — i=64, displayNumber=60, fill=#ef4444, numberColor=unset, left=236.3845213325039, top=469.2074690576803, radius=14
+[Counter SVG p1] dispatching renderCounter — i=65, displayNumber=61, fill=#ef4444, numberColor=unset, left=244.635277461979, top=466.80181900083653, radius=14
+[Counter SVG p1] dispatching renderCounter — i=66, displayNumber=62, fill=#ef4444, numberColor=unset, left=260.5460434586756, top=461.78375769536024, radius=14
+[Counter SVG p1] dispatching renderCounter — i=67, displayNumber=63, fill=#ef4444, numberColor=unset, left=276.5815225551814, top=460.3528389712349, radius=14
+[Counter SVG p1] dispatching renderCounter — i=68, displayNumber=64, fill=#ef4444, numberColor=unset, left=286.2467877903859, top=460.3528389712349, radius=14
+[Counter SVG p1] dispatching renderCounter — i=69, displayNumber=65, fill=#ef4444, numberColor=unset, left=235.98740856732232, top=469.2074690576803, radius=14
+[Counter SVG p1] dispatching renderCounter — i=70, displayNumber=66, fill=#ef4444, numberColor=unset, left=326.43394324202575, top=493.2081769235719, radius=14
+[Counter SVG p1] dispatching renderCounter — i=71, displayNumber=67, fill=#ef4444, numberColor=unset, left=279.6337115768249, top=460.3528389712349, radius=14
+[Counter SVG p1] dispatching renderCounter — i=72, displayNumber=68, fill=#ef4444, numberColor=unset, left=343.8839314442609, top=506.99225637615564, radius=14
+[Counter SVG p1] dispatching renderCounter — i=73, displayNumber=69, fill=#ef4444, numberColor=unset, left=268.5112722280615, top=460.43488706321455, radius=14
+[Counter SVG p1] dispatching renderCounter — i=74, displayNumber=70, fill=#ef4444, numberColor=unset, left=348.9840408417169, top=507.18588987322767, radius=14
+[Counter SVG p1] dispatching renderCounter — i=75, displayNumber=71, fill=#ef4444, numberColor=unset, left=384.4550719663656, top=519.680173319891, radius=14
+[Counter SVG p1] dispatching renderCounter — i=76, displayNumber=72, fill=#ef4444, numberColor=unset, left=353.29977047984727, top=507.3040391256784, radius=14
+[Counter SVG p1] dispatching renderCounter — i=77, displayNumber=73, fill=#ef4444, numberColor=unset, left=303.7066217636586, top=468.7775370557069, radius=14
+[Counter SVG p1] dispatching renderCounter — i=78, displayNumber=74, fill=#ef4444, numberColor=unset, left=335.4395418177138, top=502.30895128595637, radius=14
+[Counter SVG p1] dispatching renderCounter — i=79, displayNumber=75, fill=#ef4444, numberColor=unset, left=313.0141573178318, top=478.0752268388425, radius=14
+[Counter SVG p1] dispatching renderCounter — i=80, displayNumber=76, fill=#ef4444, numberColor=unset, left=238.8820652523649, top=468.9514790107038, radius=14
+[Counter SVG p1] dispatching renderCounter — i=81, displayNumber=77, fill=#ef4444, numberColor=unset, left=382.76159934790536, top=519.4307471202728, radius=14
+[Counter SVG p1] dispatching renderCounter — i=82, displayNumber=78, fill=#ef4444, numberColor=unset, left=341.4323344559085, top=506.1488019906046, radius=14
+[Counter SVG p1] dispatching renderCounter — i=83, displayNumber=79, fill=#ef4444, numberColor=unset, left=352.5974388125013, top=507.18588987322767, radius=14
+[Counter SVG p1] dispatching renderCounter — i=84, displayNumber=80, fill=#ef4444, numberColor=unset, left=371.6325961517836, top=515.3644436817607, radius=14
+[Counter SVG p1] dispatching renderCounter — i=85, displayNumber=81, fill=#ef4444, numberColor=unset, left=299.99476608249853, top=465.3610545056736, radius=14
+[Counter SVG p1] dispatching renderCounter — i=86, displayNumber=82, fill=#ef4444, numberColor=unset, left=384.88828589201825, top=519.680173319891, radius=14
+[Counter SVG p1] dispatching renderCounter — i=87, displayNumber=83, fill=#ef4444, numberColor=unset, left=367.8649477680774, top=513.6676891396212, radius=14
+[Counter SVG p1] dispatching renderCounter — i=88, displayNumber=84, fill=#ef4444, numberColor=unset, left=363.67064930607694, top=511.92826958965225, radius=14
+[Counter SVG p1] dispatching renderCounter — i=89, displayNumber=85, fill=#ef4444, numberColor=unset, left=345.9023145069607, top=507.156352560115, radius=14
+[Counter SVG p1] dispatching renderCounter — i=90, displayNumber=86, fill=#ef4444, numberColor=unset, left=290.67738475728777, top=460.5760097814196, radius=14
+[Counter SVG p1] dispatching renderCounter — i=91, displayNumber=87, fill=#ef4444, numberColor=unset, left=331.9180377099466, top=499.22394302752093, radius=14
+[Counter SVG p1] dispatching renderCounter — i=92, displayNumber=88, fill=#ef4444, numberColor=unset, left=355.3739462450932, top=508.18359467170035, radius=14
+[Counter SVG p1] dispatching renderCounter — i=93, displayNumber=89, fill=#ef4444, numberColor=unset, left=319.48939273686693, top=485.3971985671078, radius=14
+[Counter SVG p1] dispatching renderCounter — i=94, displayNumber=90, fill=#ef4444, numberColor=unset, left=358.71822647418435, top=509.689997640447, radius=14
+[Counter SVG p1] dispatching renderCounter — i=95, displayNumber=91, fill=#ef4444, numberColor=unset, left=385.44621291748, top=519.8967802827174, radius=14
+[Counter SVG p1] dispatching renderCounter — i=96, displayNumber=92, fill=#ef4444, numberColor=unset, left=308.17003796735236, top=473.2311074883631, radius=14
+[Counter SVG p1] dispatching renderCounter — i=97, displayNumber=93, fill=#ef4444, numberColor=unset, left=385.5938994830434, top=519.9919560694137, radius=14
+[Counter SVG p1] dispatching renderCounter — i=98, displayNumber=103, fill=#ef4444, numberColor=unset, left=301.5241425169995, top=462.4631158969519, radius=14
+[Counter SVG p1] dispatching renderCounter — i=99, displayNumber=108, fill=#ef4444, numberColor=unset, left=266.3517664471567, top=503.71689654432737, radius=14
+[Counter SVG p1] dispatching renderCounter — i=100, displayNumber=111, fill=#ef4444, numberColor=unset, left=241.41899225637616, top=446.70988223685623, radius=14
+[Counter SVG p1] dispatching renderCounter — i=101, displayNumber=94, fill=#ef4444, numberColor=unset, left=385.5938994830434, top=519.9919560694137, radius=14
+[Counter SVG p1] dispatching renderCounter — i=102, displayNumber=104, fill=#ef4444, numberColor=unset, left=301.5241425169995, top=462.4631158969519, radius=14
+[Counter SVG p1] dispatching renderCounter — i=103, displayNumber=109, fill=#ef4444, numberColor=unset, left=266.3517664471567, top=503.71689654432737, radius=14
+[Counter SVG p1] dispatching renderCounter — i=104, displayNumber=95, fill=#ef4444, numberColor=unset, left=385.5938994830434, top=519.9919560694137, radius=14
+[Counter SVG p1] dispatching renderCounter — i=105, displayNumber=96, fill=#ef4444, numberColor=unset, left=385.5938994830434, top=519.9919560694137, radius=14
+[Counter SVG p1] dispatching renderCounter — i=106, displayNumber=105, fill=#ef4444, numberColor=unset, left=301.5241425169995, top=462.4631158969519, radius=14
+[Counter SVG p1] dispatching renderCounter — i=107, displayNumber=97, fill=#ef4444, numberColor=unset, left=381.38319140264696, top=519.0008151182994, radius=14
+[Counter SVG p1] dispatching renderCounter — i=108, displayNumber=98, fill=#ef4444, numberColor=unset, left=385.5938994830434, top=519.9919560694137, radius=14
+[Counter SVG p1] dispatching renderCounter — i=109, displayNumber=106, fill=#ef4444, numberColor=unset, left=301.5241425169995, top=462.5681374546858, radius=14
+[Counter SVG p1] dispatching renderCounter — i=110, displayNumber=99, fill=#ef4444, numberColor=unset, left=383.7363306806238, top=519.6768913962119, radius=14
+[Counter SVG p1] dispatching renderCounter — i=111, displayNumber=100, fill=#ef4444, numberColor=unset, left=385.5938994830434, top=519.9919560694137, radius=14
+[Counter SVG p1] dispatching renderCounter — i=112, displayNumber=107, fill=#ef4444, numberColor=unset, left=301.5241425169995, top=462.4631158969519, radius=14
+[Counter SVG p1] dispatching renderCounter — i=113, displayNumber=110, fill=#ef4444, numberColor=unset, left=266.3517664471567, top=503.71689654432737, radius=14
+[Counter SVG p1] dispatching renderCounter — i=114, displayNumber=112, fill=#ef4444, numberColor=unset, left=241.41899225637616, top=446.6048606791222, radius=14
+[Counter SVG p1] dispatching renderCounter — i=115, displayNumber=101, fill=#ef4444, numberColor=unset, left=248.0025311568245, top=465.4365387502949, radius=14
+[Counter SVG p1] dispatching renderCounter — i=116, displayNumber=102, fill=#ef4444, numberColor=unset, left=379.8866342049379, top=518.4396061691585, radius=14
+[Counter SVG p1] dispatching renderCounter — i=119, displayNumber=1, fill=#ef4444, numberColor=unset, left=91.26784795655901, top=610.3440697342097, radius=14
+[Counter SVG p1] dispatching renderCounter — i=120, displayNumber=2, fill=#ef4444, numberColor=unset, left=132.38851100314375, top=669.8081166047442, radius=14
+[Counter SVG p1] dispatching renderCounter — i=121, displayNumber=3, fill=#ef4444, numberColor=unset, left=254.7841383252358, top=669.8081166047442, radius=14
+[Counter SVG p1] dispatching renderCounter — i=122, displayNumber=4, fill=#ef4444, numberColor=unset, left=369.9254929979994, top=763.9969134038297, radius=14
+[Counter SVG p1] dispatching renderCounter — i=123, displayNumber=5, fill=#ef4444, numberColor=unset, left=476.596970563018, top=707.8635324378394, radius=14
+[Counter SVG p1] dispatching renderCounter — i=124, displayNumber=6, fill=#ef4444, numberColor=unset, left=495.054044012575, top=561.3919405544441, radius=14
+[Counter SVG p1] dispatching renderCounter — i=125, displayNumber=113, fill=#ef4444, numberColor=unset, left=332.2636181766219, top=396.20965990282934, radius=14
+[Counter SVG p1] dispatching renderCounter — i=126, displayNumber=114, fill=#ef4444, numberColor=unset, left=250.57324949985707, top=391.0324092597885, radius=14
+[Counter SVG p1] dispatching renderCounter — i=127, displayNumber=115, fill=#ef4444, numberColor=unset, left=269.2664475564447, top=236.5894255501572, radius=14
+[Counter SVG p1] dispatching renderCounter — i=128, displayNumber=116, fill=#ef4444, numberColor=unset, left=325.3329236924836, top=252.2130037153472, radius=14
+[Counter SVG p1] dispatching renderCounter — i=129, displayNumber=1, fill=#ef4444, numberColor=unset, left=457.0423549585596, top=594.1913975421548, radius=14
+[Counter SVG p1] dispatching renderCounter — i=130, displayNumber=2, fill=#ef4444, numberColor=unset, left=495.01468991140325, top=668.84612746499, radius=14
+[Counter SVG p1] dispatching renderCounter — i=131, displayNumber=3, fill=#ef4444, numberColor=unset, left=516.7162903686767, top=525.6146899114033, radius=14
+[Counter SVG p1] dispatching renderCounter — i=132, displayNumber=1, fill=#ef4444, numberColor=unset, left=73.19119748499571, top=328.7042583595313, radius=14
+[Counter SVG p1] dispatching renderCounter — i=133, displayNumber=4, fill=#ef4444, numberColor=unset, left=455.77865104315515, top=525.6146899114033, radius=14
+[Counter SVG p1] dispatching renderCounter — i=134, displayNumber=1, fill=#ef4444, numberColor=unset, left=514.5037153472421, top=572.1618462417833, radius=14
+[Counter] TOOL ACTIVATED — activeTool=counter, lastShapeTool=counter, ref will sync next render
+[DebugBridge +4982.6ms] zoom_end {"source":"zoomChange_settle"}
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=348.0 clientY=359.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=349.4 clientY=358.9
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=351.8 clientY=358.5
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=354.7 clientY=358.0
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=357.1 clientY=358.0
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=358.9 clientY=357.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=361.3 clientY=357.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=363.7 clientY=357.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=366.1 clientY=357.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=369.7 clientY=357.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=371.1 clientY=357.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=373.4 clientY=357.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=377.1 clientY=357.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=378.0 clientY=357.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=380.4 clientY=357.7
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=382.2 clientY=358.0
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=384.1 clientY=358.4
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=385.9 clientY=358.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=387.3 clientY=359.1
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=388.6 clientY=359.4
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=389.6 clientY=359.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=390.5 clientY=359.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=391.5 clientY=359.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=392.4 clientY=359.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=393.3 clientY=359.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=394.3 clientY=359.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=394.8 clientY=359.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=395.8 clientY=359.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=396.3 clientY=359.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=396.9 clientY=359.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=397.5 clientY=359.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=398.1 clientY=359.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=398.6 clientY=359.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=399.2 clientY=359.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=399.8 clientY=359.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=400.3 clientY=359.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=400.9 clientY=359.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=401.8 clientY=359.4
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=402.4 clientY=359.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=403.4 clientY=359.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=403.9 clientY=358.9
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=404.5 clientY=358.6
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=405.1 clientY=358.6
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=405.3 clientY=358.3
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=405.6 clientY=358.3
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=405.8 clientY=358.3
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=406.1 clientY=358.1
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=406.4 clientY=358.1
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=406.1 clientY=358.1
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=405.5 clientY=358.1
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=405.3 clientY=358.1
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=404.7 clientY=358.1
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=404.1 clientY=357.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=403.9 clientY=357.8
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=403.3 clientY=357.5
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=403.0 clientY=357.5
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=402.8 clientY=357.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=402.5 clientY=357.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=402.3 clientY=357.2
+[CDrag move#1 p1] FIRED dragActive=false dragPageKey=undefined clientX=402.3 clientY=357.0
+[CSeries new#1 p1] auto-created seriesId=series-1777613343983 color=#ef4444 (from toolbar strokeColor=#ef4444)
+[Counter p1] drag-start — x=62.3, y=305.2, fill=#ef4444, dragCreatedAt=1777613343983, seriesId=series-1777613343983, seriesStart=1, autoCreated=true
+[Counter p1] handleSaveAnnotations ENTRY — source=counter:drag-start, prevObjects=135, nextObjects=136, delta=1, counterObjsInJson=132, firstCounter={"id":"counter-1777599580609-uxqtcxcyw","type":"counter","seriesId":"series-1777599580280","createdAt":1777599580280,"seriesStart":1,"pointerAngle":225,"displayNumber":6}
+[Counter] setAnnotationsByPage reducer — after renumber, total counters in doc: 132, list: [{"page":"1","dn":1,"ca":1777599580280},{"page":"1","dn":2,"ca":1777599580280},{"page":"1","dn":3,"ca":1777599580280},{"page":"1","dn":4,"ca":1777599580280},{"page":"1","dn":5,"ca":1777599580280},{"page":"1","dn":6,"ca":1777599580280},{"page":"1","dn":7,"ca":1777599580280},{"page":"1","dn":8,"ca":1777599580280},{"page":"1","dn":9,"ca":1777599580280},{"page":"1","dn":10,"ca":1777599580280},{"page":"1","dn":11,"ca":1777599580280},{"page":"1","dn":12,"ca":1777599580280},{"page":"1","dn":13,"ca":1777599580280},{"page":"1","dn":14,"ca":1777599580280},{"page":"1","dn":15,"ca":1777599580280},{"page":"1","dn":16,"ca":1777599580280},{"page":"1","dn":17,"ca":1777599580280},{"page":"1","dn":18,"ca":1777599580280},{"page":"1","dn":19,"ca":1777599580280},{"page":"1","dn":20,"ca":1777599580280},{"page":"1","dn":21,"ca":1777599580280},{"page":"1","dn":22,"ca":1777599580280},{"page":"1","dn":23,"ca":1777599580280},{"page":"1","dn":24,"ca":1777599580280},{"page":"1","dn":25,"ca":1777599580280},{"page":"1","dn":26,"ca":1777599580280},{"page":"1","dn":27,"ca":1777599580280},{"page":"1","dn":28,"ca":1777599580280},{"page":"1","dn":29,"ca":1777599580280},{"page":"1","dn":30,"ca":1777599580280},{"page":"1","dn":31,"ca":1777599580280},{"page":"1","dn":32,"ca":1777599580280},{"page":"1","dn":33,"ca":1777599580280},{"page":"1","dn":34,"ca":1777599581650},{"page":"1","dn":35,"ca":1777599583108},{"page":"1","dn":36,"ca":1777599583108},{"page":"1","dn":37,"ca":1777599583108},{"page":"1","dn":38,"ca":1777599583108},{"page":"1","dn":39,"ca":1777599583108},{"page":"1","dn":40,"ca":1777599583108},{"page":"1","dn":41,"ca":1777599583108},{"page":"1","dn":42,"ca":1777599583108},{"page":"1","dn":43,"ca":1777599583108},{"page":"1","dn":44,"ca":1777599583108},{"page":"1","dn":45,"ca":1777599583108},{"page":"1","dn":46,"ca":1777599583108},{"page":"1","dn":47,"ca":1777599583108},{"page":"1","dn":48,"ca":1777599583108},{"page":"1","dn":49,"ca":1777599583108},{"page":"1","dn":50,"ca":1777599583108},{"page":"1","dn":51,"ca":1777599583108},{"page":"1","dn":52,"ca":1777599583108},{"page":"1","dn":53,"ca":1777599583108},{"page":"1","dn":54,"ca":1777599583108},{"page":"1","dn":55,"ca":1777599583108},{"page":"1","dn":56,"ca":1777599583108},{"page":"1","dn":57,"ca":1777599583108},{"page":"1","dn":58,"ca":1777599583108},{"page":"1","dn":59,"ca":1777599583108},{"page":"1","dn":60,"ca":1777599583108},{"page":"1","dn":61,"ca":1777599583108},{"page":"1","dn":62,"ca":1777599621261},{"page":"1","dn":63,"ca":1777599621261},{"page":"1","dn":64,"ca":1777599621261},{"page":"1","dn":65,"ca":1777599621261},{"page":"1","dn":66,"ca":1777599621261},{"page":"1","dn":67,"ca":1777599621261},{"page":"1","dn":68,"ca":1777599621261},{"page":"1","dn":69,"ca":1777599621261},{"page":"1","dn":70,"ca":1777599621261},{"page":"1","dn":71,"ca":1777599621261},{"page":"1","dn":72,"ca":1777599621261},{"page":"1","dn":73,"ca":1777599621261},{"page":"1","dn":74,"ca":1777599621261},{"page":"1","dn":75,"ca":1777599621261},{"page":"1","dn":76,"ca":1777599621261},{"page":"1","dn":77,"ca":1777599621261},{"page":"1","dn":78,"ca":1777599621261},{"page":"1","dn":79,"ca":1777599621261},{"page":"1","dn":80,"ca":1777599621261},{"page":"1","dn":81,"ca":1777599621261},{"page":"1","dn":82,"ca":1777599621261},{"page":"1","dn":83,"ca":1777599621261},{"page":"1","dn":84,"ca":1777599621261},{"page":"1","dn":85,"ca":1777599621261},{"page":"1","dn":86,"ca":1777599621261},{"page":"1","dn":87,"ca":1777599621261},{"page":"1","dn":88,"ca":1777599621261},{"page":"1","dn":89,"ca":1777599621261},{"page":"1","dn":90,"ca":1777599621261},{"page":"1","dn":91,"ca":1777599621261},{"page":"1","dn":92,"ca":1777599621261},{"page":"1","dn":93,"ca":1777599621261},{"page":"1","dn":94,"ca":1777599621261},{"page":"1","dn":95,"ca":1777599621261},{"page":"1","dn":96,"ca":1777599621261},{"page":"1","dn":106,"ca":1777599623466},{"page":"1","dn":111,"ca":1777599624087},{"page":"1","dn":114,"ca":1777599624553},{"page":"1","dn":97,"ca":1777599621261},{"page":"1","dn":107,"ca":1777599623466},{"page":"1","dn":112,"ca":1777599624087},{"page":"1","dn":98,"ca":1777599621261},{"page":"1","dn":99,"ca":1777599621261},{"page":"1","dn":108,"ca":1777599623466},{"page":"1","dn":100,"ca":1777599621261},{"page":"1","dn":101,"ca":1777599621261},{"page":"1","dn":109,"ca":1777599623466},{"page":"1","dn":102,"ca":1777599621261},{"page":"1","dn":103,"ca":1777599621261},{"page":"1","dn":110,"ca":1777599623466},{"page":"1","dn":113,"ca":1777599624087},{"page":"1","dn":115,"ca":1777599624553},{"page":"1","dn":104,"ca":1777599621261},{"page":"1","dn":105,"ca":1777599621261},{"page":"1","dn":1,"ca":1777609485793},{"page":"1","dn":2,"ca":1777609486453},{"page":"1","dn":3,"ca":1777609486841},{"page":"1","dn":4,"ca":1777609487236},{"page":"1","dn":5,"ca":1777609487678},{"page":"1","dn":6,"ca":1777609488115},{"page":"1","dn":116,"ca":1777609500936},{"page":"1","dn":117,"ca":1777609501719},{"page":"1","dn":118,"ca":1777609502263},{"page":"1","dn":119,"ca":1777609502865},{"page":"1","dn":1,"ca":1777610357855},{"page":"1","dn":2,"ca":1777610360283},{"page":"1","dn":3,"ca":1777610362880},{"page":"1","dn":1,"ca":1777612722598},{"page":"1","dn":4,"ca":1777610363592},{"page":"1","dn":1,"ca":1777613200120},{"page":"1","dn":1,"ca":1777613343983}]
+[Counter SVG p1] dispatching renderCounter — i=2, displayNumber=1, fill=#ef4444, numberColor=unset, left=120.84439820673973, top=236.456723653446, radius=14
+[Counter SVG p1] dispatching renderCounter — i=3, displayNumber=2, fill=#ef4444, numberColor=unset, left=179.56457667474635, top=267.0442523434651, radius=14
+[Counter SVG p1] dispatching renderCounter — i=4, displayNumber=3, fill=#ef4444, numberColor=unset, left=188.4881271584547, top=276.35835174499664, radius=14
+[Counter SVG p1] dispatching renderCounter — i=5, displayNumber=4, fill=#ef4444, numberColor=unset, left=185.3079431133229, top=273.0501726763766, radius=14
+[Counter SVG p1] dispatching renderCounter — i=6, displayNumber=5, fill=#ef4444, numberColor=unset, left=122.65930200132993, top=236.23355284326132, radius=14
+[Counter SVG p1] dispatching renderCounter — i=7, displayNumber=6, fill=#ef4444, numberColor=unset, left=159.6925287972715, top=249.39406679679956, radius=14
+[Counter SVG p1] dispatching renderCounter — i=8, displayNumber=7, fill=#ef4444, numberColor=unset, left=190.19144554795255, top=278.3143782577919, radius=14
+[Counter SVG p1] dispatching renderCounter — i=9, displayNumber=8, fill=#ef4444, numberColor=unset, left=191.72410390613268, top=280.093180891911, radius=14
+[Counter SVG p1] dispatching renderCounter — i=10, displayNumber=9, fill=#ef4444, numberColor=unset, left=131.98652909757823, top=236.90634719749457, radius=14
+[Counter SVG p1] dispatching renderCounter — i=11, displayNumber=10, fill=#ef4444, numberColor=unset, left=180.93970269632553, top=268.55065531221175, radius=14
+[Counter SVG p1] dispatching renderCounter — i=12, displayNumber=11, fill=#ef4444, numberColor=unset, left=174.75984040841718, top=261.6454878912032, radius=14
+[Counter SVG p1] dispatching renderCounter — i=13, displayNumber=12, fill=#ef4444, numberColor=unset, left=189.42675733070206, top=277.42169501705314, radius=14
+[Counter SVG p1] dispatching renderCounter — i=14, displayNumber=13, fill=#ef4444, numberColor=unset, left=182.1933975417748, top=270.014393273129, radius=14
+[Counter SVG p1] dispatching renderCounter — i=15, displayNumber=14, fill=#ef4444, numberColor=unset, left=184.06081211523198, top=271.7964778309273, radius=14
+[Counter SVG p1] dispatching renderCounter — i=16, displayNumber=15, fill=#ef4444, numberColor=unset, left=186.4270790879255, top=274.29730367446746, radius=14
+[Counter SVG p1] dispatching renderCounter — i=17, displayNumber=16, fill=#ef4444, numberColor=unset, left=192.11793474763508, top=280.29666016002056, radius=14
+[Counter SVG p1] dispatching renderCounter — i=18, displayNumber=17, fill=#ef4444, numberColor=unset, left=149.728608507261, top=260.112829533023, radius=14
+[Counter SVG p1] dispatching renderCounter — i=19, displayNumber=18, fill=#ef4444, numberColor=unset, left=191.8947639374504, top=280.2638409232287, radius=14
+[Counter SVG p1] dispatching renderCounter — i=20, displayNumber=19, fill=#ef4444, numberColor=unset, left=134.89759540101676, top=269.27596044531197, radius=14
+[Counter SVG p1] dispatching renderCounter — i=21, displayNumber=20, fill=#ef4444, numberColor=unset, left=181.47793817971214, top=274.7403633711577, radius=14
+[Counter SVG p1] dispatching renderCounter — i=22, displayNumber=21, fill=#ef4444, numberColor=unset, left=177.9597159956241, top=265.1538643042536, radius=14
+[Counter SVG p1] dispatching renderCounter — i=23, displayNumber=22, fill=#ef4444, numberColor=unset, left=136.24318410948325, top=265.8036851927326, radius=14
+[Counter SVG p1] dispatching renderCounter — i=24, displayNumber=23, fill=#ef4444, numberColor=unset, left=189.38737424655184, top=279.2070614985306, radius=14
+[Counter SVG p1] dispatching renderCounter — i=25, displayNumber=24, fill=#ef4444, numberColor=unset, left=177.5429116883674, top=272.55132027714023, radius=14
+[Counter SVG p1] dispatching renderCounter — i=26, displayNumber=25, fill=#ef4444, numberColor=unset, left=154.1296681610502, top=261.0777150947039, radius=14
+[Counter SVG p1] dispatching renderCounter — i=27, displayNumber=26, fill=#ef4444, numberColor=unset, left=143.1089684463416, top=259.8010467835003, radius=14
+[Counter SVG p1] dispatching renderCounter — i=28, displayNumber=27, fill=#ef4444, numberColor=unset, left=191.26463459104656, top=279.3941311482443, radius=14
+[Counter SVG p1] dispatching renderCounter — i=29, displayNumber=28, fill=#ef4444, numberColor=unset, left=135.5966451446835, top=267.20506660374525, radius=14
+[Counter SVG p1] dispatching renderCounter — i=30, displayNumber=29, fill=#ef4444, numberColor=unset, left=147.5691027263562, top=259.9027864175551, radius=14
+[Counter SVG p1] dispatching renderCounter — i=31, displayNumber=30, fill=#ef4444, numberColor=unset, left=137.05710118192152, top=264.5499903472833, radius=14
+[Counter SVG p1] dispatching renderCounter — i=32, displayNumber=31, fill=#ef4444, numberColor=unset, left=168.74407430446814, top=267.4709024217594, radius=14
+[Counter SVG p1] dispatching renderCounter — i=33, displayNumber=32, fill=#ef4444, numberColor=unset, left=141.80604474570453, top=260.0373452884017, radius=14
+[Counter SVG p1] dispatching renderCounter — i=34, displayNumber=33, fill=#ef4444, numberColor=unset, left=134.89759540101676, top=269.27596044531197, radius=14
+[Counter SVG p1] dispatching renderCounter — i=35, displayNumber=34, fill=#ef4444, numberColor=unset, left=137.70364014672128, top=352.09858641326497, radius=14
+[Counter SVG p1] dispatching renderCounter — i=36, displayNumber=35, fill=#ef4444, numberColor=unset, left=170.85106930650593, top=482.5813080503657, radius=14
+[Counter SVG p1] dispatching renderCounter — i=37, displayNumber=36, fill=#ef4444, numberColor=unset, left=165.4194856174521, top=482.5813080503657, radius=14
+[Counter SVG p1] dispatching renderCounter — i=38, displayNumber=37, fill=#ef4444, numberColor=unset, left=146.03644436817606, top=482.5813080503657, radius=14
+[Counter SVG p1] dispatching renderCounter — i=39, displayNumber=38, fill=#ef4444, numberColor=unset, left=130.4079238078895, top=481.3079216628413, radius=14
+[Counter SVG p1] dispatching renderCounter — i=40, displayNumber=39, fill=#ef4444, numberColor=unset, left=170.45395654132435, top=482.5813080503657, radius=14
+[Counter SVG p1] dispatching renderCounter — i=41, displayNumber=40, fill=#ef4444, numberColor=unset, left=111.9635127308608, top=478.43623844355307, radius=14
+[Counter SVG p1] dispatching renderCounter — i=42, displayNumber=41, fill=#ef4444, numberColor=unset, left=106.74525408095411, top=472.3220146292284, radius=14
+[Counter SVG p1] dispatching renderCounter — i=43, displayNumber=42, fill=#ef4444, numberColor=unset, left=140.67378107638515, top=482.2924987665973, radius=14
+[Counter SVG p1] dispatching renderCounter — i=44, displayNumber=43, fill=#ef4444, numberColor=unset, left=109.14434029043952, top=477.7273429288487, radius=14
+[Counter SVG p1] dispatching renderCounter — i=45, displayNumber=44, fill=#ef4444, numberColor=unset, left=107.9989489264034, top=477.3499217057423, radius=14
+[Counter SVG p1] dispatching renderCounter — i=46, displayNumber=45, fill=#ef4444, numberColor=unset, left=99.47251120787661, top=440.94026040884614, radius=14
+[Counter SVG p1] dispatching renderCounter — i=47, displayNumber=46, fill=#ef4444, numberColor=unset, left=101.84206010424934, top=449.3879319590725, radius=14
+[Counter SVG p1] dispatching renderCounter — i=48, displayNumber=47, fill=#ef4444, numberColor=unset, left=98.70782299062614, top=439.3419635770823, radius=14
+[Counter SVG p1] dispatching renderCounter — i=49, displayNumber=48, fill=#ef4444, numberColor=unset, left=103.52240502799287, top=456.9790214290311, radius=14
+[Counter SVG p1] dispatching renderCounter — i=50, displayNumber=49, fill=#ef4444, numberColor=unset, left=106.44003517878976, top=469.9163645723846, radius=14
+[Counter SVG p1] dispatching renderCounter — i=51, displayNumber=50, fill=#ef4444, numberColor=unset, left=115.03539329457945, top=478.94821853750614, radius=14
+[Counter SVG p1] dispatching renderCounter — i=52, displayNumber=51, fill=#ef4444, numberColor=unset, left=107.18503185396511, top=475.86321027907076, radius=14
+[Counter SVG p1] dispatching renderCounter — i=53, displayNumber=52, fill=#ef4444, numberColor=unset, left=107.02749951736416, top=474.4585469443789, radius=14
+[Counter SVG p1] dispatching renderCounter — i=54, displayNumber=53, fill=#ef4444, numberColor=unset, left=123.51916600527682, top=480.32990840644374, radius=14
+[Counter SVG p1] dispatching renderCounter — i=55, displayNumber=54, fill=#ef4444, numberColor=unset, left=102.36060404556082, top=451.4653896479976, radius=14
+[Counter SVG p1] dispatching renderCounter — i=56, displayNumber=55, fill=#ef4444, numberColor=unset, left=98.48465218044144, top=438.9021858040713, radius=14
+[Counter SVG p1] dispatching renderCounter — i=57, displayNumber=56, fill=#ef4444, numberColor=unset, left=100.10920440163882, top=443.1654046633347, radius=14
+[Counter SVG p1] dispatching renderCounter — i=58, displayNumber=57, fill=#ef4444, numberColor=unset, left=110.7656105879577, top=478.1375833887471, radius=14
+[Counter SVG p1] dispatching renderCounter — i=59, displayNumber=58, fill=#ef4444, numberColor=unset, left=156.1644608421459, top=482.5813080503657, radius=14
+[Counter SVG p1] dispatching renderCounter — i=60, displayNumber=59, fill=#ef4444, numberColor=unset, left=98.94412149552757, top=439.706257105472, radius=14
+[Counter SVG p1] dispatching renderCounter — i=61, displayNumber=60, fill=#ef4444, numberColor=unset, left=98.3730667753491, top=438.49850919153135, radius=14
+[Counter SVG p1] dispatching renderCounter — i=62, displayNumber=61, fill=#ef4444, numberColor=unset, left=104.53323752118234, top=461.5441772667796, radius=14
+[Counter SVG p1] dispatching renderCounter — i=63, displayNumber=62, fill=#ef4444, numberColor=unset, left=235.88566893326754, top=469.2074690576803, radius=14
+[Counter SVG p1] dispatching renderCounter — i=64, displayNumber=63, fill=#ef4444, numberColor=unset, left=236.3845213325039, top=469.2074690576803, radius=14
+[Counter SVG p1] dispatching renderCounter — i=65, displayNumber=64, fill=#ef4444, numberColor=unset, left=244.635277461979, top=466.80181900083653, radius=14
+[Counter SVG p1] dispatching renderCounter — i=66, displayNumber=65, fill=#ef4444, numberColor=unset, left=260.5460434586756, top=461.78375769536024, radius=14
+[Counter SVG p1] dispatching renderCounter — i=67, displayNumber=66, fill=#ef4444, numberColor=unset, left=276.5815225551814, top=460.3528389712349, radius=14
+[Counter SVG p1] dispatching renderCounter — i=68, displayNumber=67, fill=#ef4444, numberColor=unset, left=286.2467877903859, top=460.3528389712349, radius=14
+[Counter SVG p1] dispatching renderCounter — i=69, displayNumber=68, fill=#ef4444, numberColor=unset, left=235.98740856732232, top=469.2074690576803, radius=14
+[Counter SVG p1] dispatching renderCounter — i=70, displayNumber=69, fill=#ef4444, numberColor=unset, left=326.43394324202575, top=493.2081769235719, radius=14
+[Counter SVG p1] dispatching renderCounter — i=71, displayNumber=70, fill=#ef4444, numberColor=unset, left=279.6337115768249, top=460.3528389712349, radius=14
+[Counter SVG p1] dispatching renderCounter — i=72, displayNumber=71, fill=#ef4444, numberColor=unset, left=343.8839314442609, top=506.99225637615564, radius=14
+[Counter SVG p1] dispatching renderCounter — i=73, displayNumber=72, fill=#ef4444, numberColor=unset, left=268.5112722280615, top=460.43488706321455, radius=14
+[Counter SVG p1] dispatching renderCounter — i=74, displayNumber=73, fill=#ef4444, numberColor=unset, left=348.9840408417169, top=507.18588987322767, radius=14
+[Counter SVG p1] dispatching renderCounter — i=75, displayNumber=74, fill=#ef4444, numberColor=unset, left=384.4550719663656, top=519.680173319891, radius=14
+[Counter SVG p1] dispatching renderCounter — i=76, displayNumber=75, fill=#ef4444, numberColor=unset, left=353.29977047984727, top=507.3040391256784, radius=14
+[Counter SVG p1] dispatching renderCounter — i=77, displayNumber=76, fill=#ef4444, numberColor=unset, left=303.7066217636586, top=468.7775370557069, radius=14
+[Counter SVG p1] dispatching renderCounter — i=78, displayNumber=77, fill=#ef4444, numberColor=unset, left=335.4395418177138, top=502.30895128595637, radius=14
+[Counter SVG p1] dispatching renderCounter — i=79, displayNumber=78, fill=#ef4444, numberColor=unset, left=313.0141573178318, top=478.0752268388425, radius=14
+[Counter SVG p1] dispatching renderCounter — i=80, displayNumber=79, fill=#ef4444, numberColor=unset, left=238.8820652523649, top=468.9514790107038, radius=14
+[Counter SVG p1] dispatching renderCounter — i=81, displayNumber=80, fill=#ef4444, numberColor=unset, left=382.76159934790536, top=519.4307471202728, radius=14
+[Counter SVG p1] dispatching renderCounter — i=82, displayNumber=81, fill=#ef4444, numberColor=unset, left=341.4323344559085, top=506.1488019906046, radius=14
+[Counter SVG p1] dispatching renderCounter — i=83, displayNumber=82, fill=#ef4444, numberColor=unset, left=352.5974388125013, top=507.18588987322767, radius=14
+[Counter SVG p1] dispatching renderCounter — i=84, displayNumber=83, fill=#ef4444, numberColor=unset, left=371.6325961517836, top=515.3644436817607, radius=14
+[Counter SVG p1] dispatching renderCounter — i=85, displayNumber=84, fill=#ef4444, numberColor=unset, left=299.99476608249853, top=465.3610545056736, radius=14
+[Counter SVG p1] dispatching renderCounter — i=86, displayNumber=85, fill=#ef4444, numberColor=unset, left=384.88828589201825, top=519.680173319891, radius=14
+[Counter SVG p1] dispatching renderCounter — i=87, displayNumber=86, fill=#ef4444, numberColor=unset, left=367.8649477680774, top=513.6676891396212, radius=14
+[Counter SVG p1] dispatching renderCounter — i=88, displayNumber=87, fill=#ef4444, numberColor=unset, left=363.67064930607694, top=511.92826958965225, radius=14
+[Counter SVG p1] dispatching renderCounter — i=89, displayNumber=88, fill=#ef4444, numberColor=unset, left=345.9023145069607, top=507.156352560115, radius=14
+[Counter SVG p1] dispatching renderCounter — i=90, displayNumber=89, fill=#ef4444, numberColor=unset, left=290.67738475728777, top=460.5760097814196, radius=14
+[Counter SVG p1] dispatching renderCounter — i=91, displayNumber=90, fill=#ef4444, numberColor=unset, left=331.9180377099466, top=499.22394302752093, radius=14
+[Counter SVG p1] dispatching renderCounter — i=92, displayNumber=91, fill=#ef4444, numberColor=unset, left=355.3739462450932, top=508.18359467170035, radius=14
+[Counter SVG p1] dispatching renderCounter — i=93, displayNumber=92, fill=#ef4444, numberColor=unset, left=319.48939273686693, top=485.3971985671078, radius=14
+[Counter SVG p1] dispatching renderCounter — i=94, displayNumber=93, fill=#ef4444, numberColor=unset, left=358.71822647418435, top=509.689997640447, radius=14
+[Counter SVG p1] dispatching renderCounter — i=95, displayNumber=94, fill=#ef4444, numberColor=unset, left=385.44621291748, top=519.8967802827174, radius=14
+[Counter SVG p1] dispatching renderCounter — i=96, displayNumber=95, fill=#ef4444, numberColor=unset, left=308.17003796735236, top=473.2311074883631, radius=14
+[Counter SVG p1] dispatching renderCounter — i=97, displayNumber=96, fill=#ef4444, numberColor=unset, left=385.5938994830434, top=519.9919560694137, radius=14
+[Counter SVG p1] dispatching renderCounter — i=98, displayNumber=106, fill=#ef4444, numberColor=unset, left=301.5241425169995, top=462.4631158969519, radius=14
+[Counter SVG p1] dispatching renderCounter — i=99, displayNumber=111, fill=#ef4444, numberColor=unset, left=266.3517664471567, top=503.71689654432737, radius=14
+[Counter SVG p1] dispatching renderCounter — i=100, displayNumber=114, fill=#ef4444, numberColor=unset, left=241.41899225637616, top=446.70988223685623, radius=14
+[Counter SVG p1] dispatching renderCounter — i=101, displayNumber=97, fill=#ef4444, numberColor=unset, left=385.5938994830434, top=519.9919560694137, radius=14
+[Counter SVG p1] dispatching renderCounter — i=102, displayNumber=107, fill=#ef4444, numberColor=unset, left=301.5241425169995, top=462.4631158969519, radius=14
+[Counter SVG p1] dispatching renderCounter — i=103, displayNumber=112, fill=#ef4444, numberColor=unset, left=266.3517664471567, top=503.71689654432737, radius=14
+[Counter SVG p1] dispatching renderCounter — i=104, displayNumber=98, fill=#ef4444, numberColor=unset, left=385.5938994830434, top=519.9919560694137, radius=14
+[Counter SVG p1] dispatching renderCounter — i=105, displayNumber=99, fill=#ef4444, numberColor=unset, left=385.5938994830434, top=519.9919560694137, radius=14
+[Counter SVG p1] dispatching renderCounter — i=106, displayNumber=108, fill=#ef4444, numberColor=unset, left=301.5241425169995, top=462.4631158969519, radius=14
+[Counter SVG p1] dispatching renderCounter — i=107, displayNumber=100, fill=#ef4444, numberColor=unset, left=381.38319140264696, top=519.0008151182994, radius=14
+[Counter SVG p1] dispatching renderCounter — i=108, displayNumber=101, fill=#ef4444, numberColor=unset, left=385.5938994830434, top=519.9919560694137, radius=14
+[Counter SVG p1] dispatching renderCounter — i=109, displayNumber=109, fill=#ef4444, numberColor=unset, left=301.5241425169995, top=462.5681374546858, radius=14
+[Counter SVG p1] dispatching renderCounter — i=110, displayNumber=102, fill=#ef4444, numberColor=unset, left=383.7363306806238, top=519.6768913962119, radius=14
+[Counter SVG p1] dispatching renderCounter — i=111, displayNumber=103, fill=#ef4444, numberColor=unset, left=385.5938994830434, top=519.9919560694137, radius=14
+[Counter SVG p1] dispatching renderCounter — i=112, displayNumber=110, fill=#ef4444, numberColor=unset, left=301.5241425169995, top=462.4631158969519, radius=14
+[Counter SVG p1] dispatching renderCounter — i=113, displayNumber=113, fill=#ef4444, numberColor=unset, left=266.3517664471567, top=503.71689654432737, radius=14
+[Counter SVG p1] dispatching renderCounter — i=114, displayNumber=115, fill=#ef4444, numberColor=unset, left=241.41899225637616, top=446.6048606791222, radius=14
+[Counter SVG p1] dispatching renderCounter — i=115, displayNumber=104, fill=#ef4444, numberColor=unset, left=248.0025311568245, top=465.4365387502949, radius=14
+[Counter SVG p1] dispatching renderCounter — i=116, displayNumber=105, fill=#ef4444, numberColor=unset, left=379.8866342049379, top=518.4396061691585, radius=14
+[Counter SVG p1] dispatching renderCounter — i=119, displayNumber=1, fill=#ef4444, numberColor=unset, left=91.26784795655901, top=610.3440697342097, radius=14
+[Counter SVG p1] dispatching renderCounter — i=120, displayNumber=2, fill=#ef4444, numberColor=unset, left=132.38851100314375, top=669.8081166047442, radius=14
+[Counter SVG p1] dispatching renderCounter — i=121, displayNumber=3, fill=#ef4444, numberColor=unset, left=254.7841383252358, top=669.8081166047442, radius=14
+[Counter SVG p1] dispatching renderCounter — i=122, displayNumber=4, fill=#ef4444, numberColor=unset, left=369.9254929979994, top=763.9969134038297, radius=14
+[Counter SVG p1] dispatching renderCounter — i=123, displayNumber=5, fill=#ef4444, numberColor=unset, left=476.596970563018, top=707.8635324378394, radius=14
+[Counter SVG p1] dispatching renderCounter — i=124, displayNumber=6, fill=#ef4444, numberColor=unset, left=495.054044012575, top=561.3919405544441, radius=14
+[Counter SVG p1] dispatching renderCounter — i=125, displayNumber=116, fill=#ef4444, numberColor=unset, left=332.2636181766219, top=396.20965990282934, radius=14
+[Counter SVG p1] dispatching renderCounter — i=126, displayNumber=117, fill=#ef4444, numberColor=unset, left=250.57324949985707, top=391.0324092597885, radius=14
+[Counter SVG p1] dispatching renderCounter — i=127, displayNumber=118, fill=#ef4444, numberColor=unset, left=269.2664475564447, top=236.5894255501572, radius=14
+[Counter SVG p1] dispatching renderCounter — i=128, displayNumber=119, fill=#ef4444, numberColor=unset, left=325.3329236924836, top=252.2130037153472, radius=14
+[Counter SVG p1] dispatching renderCounter — i=129, displayNumber=1, fill=#ef4444, numberColor=unset, left=457.0423549585596, top=594.1913975421548, radius=14
+[Counter SVG p1] dispatching renderCounter — i=130, displayNumber=2, fill=#ef4444, numberColor=unset, left=495.01468991140325, top=668.84612746499, radius=14
+[Counter SVG p1] dispatching renderCounter — i=131, displayNumber=3, fill=#ef4444, numberColor=unset, left=516.7162903686767, top=525.6146899114033, radius=14
+[Counter SVG p1] dispatching renderCounter — i=132, displayNumber=1, fill=#ef4444, numberColor=unset, left=73.19119748499571, top=328.7042583595313, radius=14
+[Counter SVG p1] dispatching renderCounter — i=133, displayNumber=4, fill=#ef4444, numberColor=unset, left=455.77865104315515, top=525.6146899114033, radius=14
+[Counter SVG p1] dispatching renderCounter — i=134, displayNumber=1, fill=#ef4444, numberColor=unset, left=514.5037153472421, top=572.1618462417833, radius=14
+[Counter SVG p1] dispatching renderCounter — i=135, displayNumber=1, fill=#ef4444, numberColor=unset, left=48.28005144326951, top=291.16044584166906, radius=14
+[CloudSync][hook][state-obs] change {"prevCount":135,"currentCount":136,"delta":1,"hydrated":true,"sameRefAsLastByPage":false}
+[CloudSync][hook] fabric state changed — debounce push scheduled {"pageCount":1,"objectCount":136,"priorObjectCount":135,"isWipePush":false,"debounceMs":800}
+[CDrag up#1 p1] FIRED dragActive=true dragPageKey=1
+[CDrag commit] ENTRY active=true createdAt=1777613343983 bodyX=62.3 bodyY=305.2 angle=225.0
+[Counter p1] handleSaveAnnotations ENTRY — source=counter:create, prevObjects=136, nextObjects=136, delta=0, counterObjsInJson=132, firstCounter={"id":"counter-1777599580609-uxqtcxcyw","type":"counter","seriesId":"series-1777599580280","createdAt":1777599580280,"seriesStart":1,"pointerAngle":225,"displayNumber":1}
+[CloudSync][hook] fabric push debounce elapsed — pushing now
+[Phase31 diag] CRDT fan-out completed {"dispatched":132,"skippedType":4,"pagesScanned":1,"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528"}
+[CloudSync][hook] fabric push synced {"count":0}
