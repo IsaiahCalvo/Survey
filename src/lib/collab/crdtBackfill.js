@@ -187,6 +187,44 @@ export async function runBackfill(args) {
     return { ranAs: 'noop_missing_inputs' };
   }
 
+  // Phase 31 Plan 04 — cutover short-circuit. If the doc is already sealed
+  // (documents.cutover_completed_at is NOT NULL), skip the entire legacy
+  // SELECT + import loop entirely. The runtime cost of this read is one row
+  // by primary key; the saved cost is potentially thousands of legacy row
+  // reads + per-property Y.Map writes per document open.
+  //
+  // Runs BEFORE the Web Lock acquire so both tabs can cheap-out without
+  // contending for the lock. Both tabs will read the same `cutover_completed_at`
+  // value from Supabase and both will return early — no double-write risk.
+  //
+  // Silent fall-through on any read error: if the documents row read fails
+  // (network blip, transient auth race, table missing in test fixture), we
+  // proceed to the standard backfill flow. Worst case is one redundant import
+  // loop on an already-sealed doc; the per-user Y.Doc meta marker
+  // (`backfill_done:${userId}`) catches that on the next gate inside
+  // runBackfillUnlocked. UX comment: keep the catch silent — auth/network
+  // races during boot are normal and should not surface a console error.
+  if (args.markCutoverComplete) {
+    try {
+      const { data: docRow } = await supabase
+        .from('documents')
+        .select('cutover_completed_at')
+        .eq('id', documentId)
+        .maybeSingle();
+      if (docRow?.cutover_completed_at) {
+        return {
+          ranAs: 'cutover_already_complete',
+          cutoverCompleted: true,
+          cutoverAt: docRow.cutover_completed_at,
+        };
+      }
+    } catch (err) {
+      // Silent fall-through. eslint-disable to allow the diagnostic warn.
+      // eslint-disable-next-line no-console
+      console.warn('[crdtBackfill] cutover_completed_at lookup failed', err?.message);
+    }
+  }
+
   if (typeof navigator === 'undefined' || !navigator.locks || typeof navigator.locks.request !== 'function') {
     // SSR / Node-test fallback: run inline without lock. Tests inject a fake
     // navigator.locks; production browsers always have it. Without this branch
@@ -338,7 +376,56 @@ async function runBackfillUnlocked(args) {
     yMapMeta.set(doneKey, Date.now());
   }, closingOrigin);
 
-  return { ranAs: 'leader', imported, skipped };
+  // Phase 31 Plan 04 — cutover-completion gate. Only fires when:
+  //   1. Caller passed markCutoverComplete: true (YDocProvider's mount effect).
+  //   2. Verified count match: yMapAnnotations.size >= imported. The Y.Map
+  //      may have MORE entries than `imported` (mid-flight collaborator writes
+  //      from other tabs / devices add their own entries during the loop) —
+  //      we tolerate that. The match condition we MUST satisfy is "no
+  //      imported row is MISSING from the Y.Map." If yMapSize < imported, an
+  //      import dropped silently and we conservatively do NOT seal; the next
+  //      open will retry the loop and the timestamp stays NULL until success.
+  //
+  // CONTEXT.md "Risk and Rollback" mitigation: the cutover timestamp is only
+  // set after a verified count match. If the backfill fails partway, the doc
+  // stays uncutover-flagged and the next open retries.
+  //
+  // Skipped rows (malformed legacy data we couldn't round-trip) DO NOT block
+  // sealing — they were unrenderable in v2.3 and would never be renderable in
+  // v2.4 either. Sealing without them is correct.
+  let cutoverCompleted = false;
+  if (args.markCutoverComplete) {
+    // Verified-count match: yMapSize >= imported gates the cutover_completed_at
+    // write. CONTEXT.md AC bullet 1 + Risk-and-Rollback mitigation #1.
+    const yMapSize = yMapAnnotations.size;
+    const expectedMinSize = imported;
+    if (yMapSize >= expectedMinSize) {
+      try {
+        // Count match passed (yMapSize >= imported); seal cutover_completed_at.
+        const nowIso = new Date().toISOString();
+        const { error: updateError } = await supabase
+          .from('documents')
+          .update({ cutover_completed_at: nowIso })
+          .eq('id', documentId);
+        if (updateError) {
+          // eslint-disable-next-line no-console
+          console.warn('[crdtBackfill] cutover_completed_at write failed', updateError?.message);
+        } else {
+          cutoverCompleted = true;
+        }
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[crdtBackfill] cutover_completed_at write threw', err?.message);
+      }
+    } else {
+      // eslint-disable-next-line no-console
+      console.warn('[crdtBackfill] cutover gate skipped — count mismatch', JSON.stringify({
+        yMapSize, imported, skipped, expectedMinSize,
+      }));
+    }
+  }
+
+  return { ranAs: 'leader', imported, skipped, cutoverCompleted };
 }
 
 export default runBackfill;
