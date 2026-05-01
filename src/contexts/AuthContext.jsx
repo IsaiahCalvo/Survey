@@ -369,20 +369,11 @@ export const AuthProvider = ({ children }) => {
     return data;
   };
 
-  // Refresh subscription tier (call after user returns from Stripe checkout)
+  // Refresh subscription tier — call after Stripe checkout, on document open,
+  // or any other moment where a stale tier could mis-gate features. No-op when
+  // not logged in. Already exposed below; the new 5-minute poller + the
+  // existing window.focus listener are the automatic triggers.
   const refreshSubscriptionTier = async () => {
-    if (user?.id) {
-      await fetchSubscriptionTier(user.id);
-    }
-  };
-
-  // 2026-04-30 — Imperative tier refresh hook for callers.
-  //
-  // Exposed so callers (document open handlers, post-Stripe-redirect flows,
-  // etc.) can force a fresh tier read without waiting on the 5-minute poller
-  // or window focus. No-op when not logged in. Intentionally NOT wired into
-  // handleDocumentClick yet — that's a follow-up. This just exposes the door.
-  const refreshTier = async () => {
     if (user?.id) {
       await fetchSubscriptionTier(user.id);
     }
@@ -401,7 +392,6 @@ export const AuthProvider = ({ children }) => {
     updatePassword,
     updateProfile,
     refreshSubscriptionTier,
-    refreshTier,
     isAuthenticated: !!user,
     isSupabaseAvailable: isSupabaseAvailable(),
     plan: subscriptionTier,
