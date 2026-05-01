@@ -45,6 +45,12 @@ import {
 } from '../services/cloudSyncQueue.js';
 import { getAuthSnapshot } from '../supabaseClient.js';
 import { isCRDTEnabled } from '../lib/collab/crdtFeatureFlag.js';
+// Phase 31 — legacy bulk-upsert kill switch (Plan 31-02 / 31-03).
+// Default OFF means CRDT fan-out (dualWriteFabricCommit per-row) is the SOLE
+// writer to the cloud. Default ON (localStorage opt-in `pdf_app_legacy_bulk_upsert`)
+// preserves the pre-Phase-31 byte-identical dual-write behavior — emergency
+// rollback without redeploy. Source: 31-CONTEXT.md AC bullet 5.
+import { isLegacyBulkUpsertEnabled } from '../lib/collab/featureFlags.js';
 import { enqueue as enqueueDualWrite, readQueue as readDualWriteQueue } from '../lib/collab/crdtDualWriteQueue.js';
 import { useYDoc } from './useYDoc.js';
 
@@ -558,7 +564,17 @@ export function useAnnotationCloudSync({
           firstFew: deletedIds.slice(0, 5)
         }));
         try {
-          const delResult = await deleteAnnotations(documentId, deletedIds);
+          // Phase 31 — kill switch mirror of Site A. Default off skips the
+          // legacy bulk delete; the CRDT fan-out below is the sole writer.
+          // The `delResult` shape preserved as `{ success: true }` so the
+          // downstream success branch (which runs `fanOutCrdtForDeletedIds`
+          // and dispatches `crdt:deletions-resolved`) executes verbatim.
+          let delResult;
+          if (isLegacyBulkUpsertEnabled()) {
+            delResult = await deleteAnnotations(documentId, deletedIds);
+          } else {
+            delResult = { success: true };
+          }
           if (!delResult.success) {
             console.warn('[CloudSync][hook] cloud delete failed ' + JSON.stringify({
               error: delResult.error?.message || String(delResult.error)
@@ -587,7 +603,19 @@ export function useAnnotationCloudSync({
         }
       }
 
-      const result = await upsertAnnotationsByPage(annotationsByPage, { documentId, userId, pdfId, clientSessionId });
+      // Phase 31 — kill switch (CONTEXT.md AC bullet 5). Default off skips
+      // the legacy bulk-upsert entirely; the CRDT fan-out below is the sole
+      // writer to the cloud. localStorage opt-in
+      // (`pdf_app_legacy_bulk_upsert: 'true'`) re-engages the legacy path
+      // for emergency rollback. When the gate is closed, `result` is a
+      // success-shaped no-op so the downstream `else` branch (CRDT fan-out)
+      // runs verbatim — byte-identical to the post-cutover contract.
+      let result;
+      if (isLegacyBulkUpsertEnabled()) {
+        result = await upsertAnnotationsByPage(annotationsByPage, { documentId, userId, pdfId, clientSessionId });
+      } else {
+        result = { data: [], error: null };
+      }
       if (result.error) {
         // Phase 30 fix (2026-04-29 v2): when the legacy bulk upsert fails,
         // surface it through the new dual-write queue too so sync_queue_stuck
@@ -1175,7 +1203,16 @@ export function useAnnotationCloudSync({
     const flush = async (entry) => {
       const { kind, payload, opts } = entry;
       if (kind === 'fabric-bulk') {
-        const r = await upsertAnnotationsByPage(payload, opts);
+        // Phase 31 — kill switch (CONTEXT.md AC bullet 5). Default off skips
+        // the legacy bulk replay entirely; the CRDT fan-out below stays as
+        // the sole writer for the queued payload. localStorage opt-in
+        // re-engages the legacy replay byte-identical to pre-Phase-31.
+        let r;
+        if (isLegacyBulkUpsertEnabled()) {
+          r = await upsertAnnotationsByPage(payload, opts);
+        } else {
+          r = { data: [], error: null };
+        }
         // Phase 30 — CRDT-side mirror after the queued legacy write lands.
         // Highlight + callout bypass at the call site; helper enqueues internal
         // failures to crdtDualWriteQueue (separate from this legacy queue).
@@ -1244,7 +1281,16 @@ export function useAnnotationCloudSync({
     const flush = async (entry) => {
       const { kind, payload, opts } = entry;
       if (kind === 'fabric-bulk') {
-        const r = await upsertAnnotationsByPage(payload, opts);
+        // Phase 31 — kill switch (mirror of online-drain flush above).
+        // Default off skips the legacy bulk replay; CRDT fan-out remains
+        // sole writer for the queued payload. localStorage opt-in re-engages
+        // the legacy path for emergency rollback.
+        let r;
+        if (isLegacyBulkUpsertEnabled()) {
+          r = await upsertAnnotationsByPage(payload, opts);
+        } else {
+          r = { data: [], error: null };
+        }
         if (!r?.error) {
           await fanOutCrdtForAnnotationsByPage(payload, opts);
         }
@@ -1267,13 +1313,20 @@ export function useAnnotationCloudSync({
     setQueueSize(remainingAfterDrain);
 
     if (lastByPageRef.current) {
-      const upRes = await upsertAnnotationsByPage(
-        lastByPageRef.current,
-        { documentId, userId, pdfId, clientSessionId }
-      );
-      if (upRes?.error) {
-        const msg = upRes.error?.message || String(upRes.error);
-        throw new Error(`forceFlush: legacy upsertAnnotationsByPage failed — ${msg}`);
+      // Phase 31 — kill switch. Default off skips the legacy direct push
+      // entirely; the CRDT fan-out below is the sole writer for the
+      // last-known good state. localStorage opt-in re-engages the legacy
+      // path so the SyncStatusChip "Click to sync now" retry preserves the
+      // pre-Phase-31 dual-write semantics.
+      if (isLegacyBulkUpsertEnabled()) {
+        const upRes = await upsertAnnotationsByPage(
+          lastByPageRef.current,
+          { documentId, userId, pdfId, clientSessionId }
+        );
+        if (upRes?.error) {
+          const msg = upRes.error?.message || String(upRes.error);
+          throw new Error(`forceFlush: legacy upsertAnnotationsByPage failed — ${msg}`);
+        }
       }
       await fanOutCrdtForAnnotationsByPage(lastByPageRef.current, { documentId, userId });
     }
