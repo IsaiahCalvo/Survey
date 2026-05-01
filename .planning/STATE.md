@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
 status: verifying
-stopped_at: Completed 31-04-PLAN.md
-last_updated: "2026-05-01T04:12:57.734Z"
+stopped_at: "Plan 31-05 Tasks 1+2 complete; checkpoint:human-verify pending user UAT against 31-UAT-CHECKLIST.md"
+last_updated: "2026-05-01T04:19:28.216Z"
 last_activity: "2026-05-01 — Phase 31 Plan 04 shipped (3 tasks, 3 files, 3 commits, ~19 min, baseline 439p/14f/6s → 444p/9f/6s with 7 RED contracts flipped GREEN). Cutover seal contract complete: post-cutover doc opens read from Y.Doc snapshot and skip the legacy SELECT entirely."
 progress:
   total_phases: 15
-  completed_phases: 7
+  completed_phases: 8
   total_plans: 44
-  completed_plans: 42
+  completed_plans: 43
   percent: 95
 ---
 
@@ -92,6 +92,7 @@ Progress: [██████████] 95% — Phase 27 functionally complet
 | Phase 31-migration-cutover-seal P02 | 8 | 3 tasks | 3 files |
 | Phase 31-migration-cutover-seal P03 | 2 | 1 tasks | 1 files |
 | Phase 31-migration-cutover-seal P04 | 19 | 3 tasks | 3 files |
+| Phase 31-migration-cutover-seal P05 | 2 min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -270,6 +271,8 @@ Progress: [██████████] 95% — Phase 27 functionally complet
 - [Phase 31-migration-cutover-seal]: Plan 31-03: All four upsertAnnotationsByPage call sites + Site B fabric deleteAnnotations gated. Callout-side deleteAnnotations(documentId, deletedCalloutIds) at line 762 NOT gated — callouts ride legacy through v2.4 by design (CONTEXT.md Out of Scope; callout migration is v2.5).
 - [Phase 31-migration-cutover-seal]: Plan 31-03: Gate pattern uses success-shaped no-op result ({ data: [], error: null } / { success: true }) to preserve downstream success-branch logic verbatim — zero logic-flow restructuring needed when kill switch closed.
 - [Phase 31-migration-cutover-seal]: Plan 31-04: cutover seal contract = pre-loop SELECT short-circuit + post-loop verified-count-match UPDATE. yMapSize >= imported (NOT strict equality) tolerates mid-flight collaborator writes. Hydrate branches on cutover_completed_at: sealed → Y.Doc snapshot; cold → legacy SELECT preserved verbatim.
+- [Phase 31-migration-cutover-seal]: Plan 31-05 phase-close gate: zero production code; verification + 32-step stepwise UAT checklist + boundary audit GREEN + checkpoint:human-verify pending user UAT
+- [Phase 31-migration-cutover-seal]: 32 discrete UAT steps over 7 grouped tests per stepwise-UAT user preference; AC coverage preserved via mapping table
 
 ### Roadmap Evolution
 
@@ -303,8 +306,8 @@ Progress: [██████████] 95% — Phase 27 functionally complet
 
 ## Session Continuity
 
-Last session: 2026-05-01T04:12:57.730Z
-Stopped at: Completed 31-04-PLAN.md
+Last session: 2026-05-01T04:19:21.868Z
+Stopped at: Plan 31-05 Tasks 1+2 complete; checkpoint:human-verify pending user UAT against 31-UAT-CHECKLIST.md
 
 ### Resume instructions for the next session (read carefully)
 
