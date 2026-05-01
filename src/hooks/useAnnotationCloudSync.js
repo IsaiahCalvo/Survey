@@ -43,7 +43,7 @@ import {
   drainQueue,
   getQueueSize
 } from '../services/cloudSyncQueue.js';
-import { getAuthSnapshot } from '../supabaseClient.js';
+import { getAuthSnapshot, supabase } from '../supabaseClient.js';
 import { isCRDTEnabled } from '../lib/collab/crdtFeatureFlag.js';
 // Phase 31 — legacy bulk-upsert kill switch (Plan 31-02 / 31-03).
 // Default OFF means CRDT fan-out (dualWriteFabricCommit per-row) is the SOLE
@@ -336,6 +336,105 @@ export function useAnnotationCloudSync({
       try {
         setStatus({ stage: 'hydrating' });
         console.log('[CloudSync][hook] stage=hydrating');
+
+        // Phase 31 Plan 04 — cutover-aware hydrate branch.
+        //
+        // If documents.cutover_completed_at is NOT NULL, the doc has been
+        // sealed: every legacy row has been copied into the Y.Doc and the
+        // legacy SELECT path is wasted work. Read state from the Y.Doc
+        // snapshot instead and skip loadCloudWithEmptyVerify entirely.
+        // CONTEXT.md AC bullet 1: 500+ row docs must render in under 3
+        // seconds post-cutover; the Y.Doc is already in-memory after the
+        // Phase 27 IndexeddbPersistence hydrate, so the round-trip is
+        // essentially free vs the legacy SELECT cost.
+        //
+        // Cold-doc fallback (cutover_completed_at NULL): fall through to
+        // the existing loadCloudWithEmptyVerify path verbatim. Plan 31-04's
+        // backfill kicks off in YDocProvider's mount effect; first open
+        // seeds the Y.Doc + writes the timestamp, second open hits this
+        // branch.
+        //
+        // UX comment: silent fall-through on read error. If the Supabase
+        // SELECT errors (transient network race, schema not yet migrated
+        // in dev fixture), we proceed with the legacy hydrate. Worst case
+        // is one redundant SELECT on a sealed doc.
+        let cutoverTs = null;
+        try {
+          if (supabase) {
+            const { data: docRow } = await supabase
+              .from('documents')
+              .select('cutover_completed_at')
+              .eq('id', documentId)
+              .maybeSingle();
+            cutoverTs = docRow?.cutover_completed_at ?? null;
+          }
+        } catch (cutoverErr) {
+          console.warn('[CloudSync][hook] cutover_completed_at lookup failed: ' +
+            (cutoverErr?.message || String(cutoverErr)));
+        }
+        if (cancelled) return;
+        // When cutover_completed_at is set we read state from phase30Ydoc.getMap('annotations');
+        // when null we fall through to the legacy loadCloudWithEmptyVerify path.
+        if (cutoverTs && phase30Ydoc) {
+          // Sealed doc — populate annotationsByPage from the Y.Map snapshot.
+          // Phase 29 bridge shape (crdtAnnotationBridge.applyFabricCommit):
+          //   annoYMap.get('id')         -> string annoId (top-level)
+          //   annoYMap.get('type')       -> string Fabric type (top-level)
+          //   annoYMap.get('pageNumber') -> number 1-based page (top-level)
+          //   annoYMap.get('fabric')     -> Y.Map of per-property fabric JSON
+          //   annoYMap.get('meta')       -> Y.Map of attribution / timestamps
+          //
+          // Per-property writes (no clear-and-set) means we materialize the
+          // Fabric JSON by iterating fabricYMap.entries() and assembling the
+          // object. setAnnotationsByPage takes { [pageNum]: { version, objects } }
+          // so we group per pageNumber.
+          console.log('[CloudSync][hook] cutover-complete hydrate — reading from Y.Doc ' +
+            JSON.stringify({ documentId, cutoverTs }));
+          let yMap;
+          try { yMap = phase30Ydoc.getMap('annotations'); } catch (_e) { yMap = null; }
+          const byPage = {};
+          if (yMap && typeof yMap.forEach === 'function') {
+            yMap.forEach((annoYMap) => {
+              if (!annoYMap || typeof annoYMap.get !== 'function') return;
+              const pageNumber = annoYMap.get('pageNumber') ?? 1;
+              // Materialize fabric props from the per-property Y.Map.
+              const fabricYMap = annoYMap.get('fabric');
+              let fabricObj = null;
+              if (fabricYMap) {
+                if (typeof fabricYMap.toJSON === 'function') {
+                  try { fabricObj = fabricYMap.toJSON(); } catch (_e) { fabricObj = null; }
+                }
+                if (!fabricObj && typeof fabricYMap.forEach === 'function') {
+                  fabricObj = {};
+                  fabricYMap.forEach((v, k) => { fabricObj[k] = v; });
+                }
+              }
+              if (!fabricObj) return;
+              if (!byPage[pageNumber]) byPage[pageNumber] = { version: '5.3.0', objects: [] };
+              byPage[pageNumber].objects.push(fabricObj);
+            });
+          }
+          setAnnotationsByPage(() => {
+            // Update lastByPageRef.current synchronously inside the setter so
+            // the push useEffect's identity check (state === lastRef) returns
+            // true and we don't echo the Y.Doc snapshot right back out as if
+            // it were a local change.
+            lastByPageRef.current = byPage;
+            return byPage;
+          });
+          hydratedRef.current = true;
+          startupSyncInFlightRef.current = false;
+          setStatus({
+            stage: 'synced',
+            count: (yMap && typeof yMap.size === 'number') ? yMap.size : 0,
+            source: 'ydoc-snapshot',
+            cutoverTs,
+          });
+          return; // Skip the legacy SELECT path entirely.
+        }
+        // Cold-doc fallback (or kill-switch off / no Y.Doc mounted yet) —
+        // flow into the existing legacy hydrate below verbatim.
+
         // 2026-04-26 — capture local counts at fire time so the verify helper
         // can decide whether an empty cloud read should be trusted on its own
         // or re-asked once. annotationsByPage / callouts here are the closure
