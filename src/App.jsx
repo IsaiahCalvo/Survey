@@ -21262,6 +21262,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [pendingDeletePlan, setPendingDeletePlan] = useState(null);
   const pendingDeleteRunnerRef = useRef(null);
 
+  // Hardening (audit 2026-04-30 #1): clear the bulk-delete confirmation modal
+  // state whenever the document loaded into this PDFViewer changes. Without
+  // this, a stale `pendingDeletePlan` snapshot from PDF A could survive a
+  // tab swap-in to PDF B and cause `runDelete` to fire against the wrong
+  // document on a delayed confirm click. The `pdfFile?.id` change covers
+  // both same-tab document replacement and (defensively) any case where
+  // PDFViewer is re-keyed onto a different doc. Tab close itself unmounts
+  // PDFViewer entirely, so no extra wire-up is needed there.
+  useEffect(() => {
+    setPendingDeletePlan(null);
+    pendingDeleteRunnerRef.current = null;
+  }, [pdfFile?.id]);
+
   const handleRequestBulkDelete = useCallback(
     ({ candidateIds, snapshotObjects, pageNumber, runDelete }) => {
       // Flatten the current page's annotations so the planner can resolve
