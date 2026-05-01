@@ -728,6 +728,21 @@ function YDocProviderInner({ docId, children, closeDocument }) {
           sessionId,
           clientID: ydoc.clientID,
           originPayloadFactory,
+          // Phase 31 Plan 04 — request the cutover seal. After the legacy
+          // SELECT + import loop completes, crdtBackfill writes
+          // documents.cutover_completed_at = NOW() ONLY if the imported count
+          // matches Y.Map size (verified-count gate). NULL stays in place on
+          // mismatch — next open retries naturally.
+          //
+          // The pre-loop short-circuit (cutover_already_complete) inside
+          // crdtBackfill saves redundant work on every subsequent open of an
+          // already-sealed document — one row read by primary key vs the full
+          // legacy SELECT + per-property Y.Map writes for thousands of rows.
+          //
+          // UX comment: still silent. No banner / spinner / toast. Annotations
+          // just appear like normal once the Y.Doc populates (CONTEXT.md
+          // "First-open import feel" decision preserved verbatim).
+          markCutoverComplete: true,
         });
       } catch (err) {
         // Silent retry on partial failure per CONTEXT.md. Next first-open
