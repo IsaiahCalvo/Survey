@@ -11088,6 +11088,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, [editingAnnotation?.pageNumber, editingAnnotation?.index, editingAnnotation?.reactCalloutId]);
   const editModeCooldownRef = useRef(0); // timestamp — prevents re-entering edit mode immediately after dismiss
   const textToolDragRef = useRef(null); // { startX, startY, pageNumber, rect, effectiveScale } for drag-to-create
+  // UX 2026-05-01 — runaway-pin guard. A single counter-tool click was
+  // somehow firing the pointerdown handler dozens of times in the same
+  // millisecond, stacking pins with identical createdAt timestamps. Both
+  // overlay handlers now (a) bail if pointerdown fired within the last
+  // 200 ms and (b) claim counterDragRef.current.active = true UP FRONT
+  // (before any compute), so any synchronous re-entry hits the guard.
+  const counterPointerDownCooldownRef = useRef(0);
 
   // [COUNTER WIP — DO NOT TOUCH] Counter drag-to-place state.
   // UX: Shottr-style drag-to-place + Shift-twist. mouseDown spawns a preview pin
@@ -29803,7 +29810,6 @@ ${pageBlocks}
                                   }}
                                   onPointerDown={(e) => {
                                     if (Date.now() - editModeCooldownRef.current < 300) return;
-                                    if (counterDragRef.current?.active) return; // safety: ignore re-entrancy
                                     // [COUNTER MULTI-LIST] If the click target is inside
                                     // the counter caret popup (or its submenu), bail out
                                     // — the popup floats over the page area in a
@@ -29812,10 +29818,24 @@ ${pageBlocks}
                                     // and drops a pin instead of letting "New Count" /
                                     // "Continue Count" fire. Mirrors the same guard in
                                     // overlay #2 (~line 26711) — keep them in sync.
+                                    // (Checked BEFORE the runaway guard so popup clicks
+                                    // never burn the cooldown window.)
                                     if (e.target?.closest?.('[data-counter-caret-popup]')) {
                                       console.log('[CSeries popup] counter overlay #1 pointerdown bailed — target inside caret popup');
                                       return;
                                     }
+                                    // UX 2026-05-01 — runaway-pin guard. See ref decl
+                                    // for full rationale. 200ms cooldown + immediate
+                                    // lock claim ensures one click = one pin even if
+                                    // the handler is somehow re-fired in the same
+                                    // millisecond.
+                                    if (Date.now() - counterPointerDownCooldownRef.current < 200) {
+                                      console.log('[Counter overlay #1] pointerdown bailed — within 200ms cooldown of previous');
+                                      return;
+                                    }
+                                    if (counterDragRef.current?.active) return; // safety: ignore re-entrancy
+                                    counterPointerDownCooldownRef.current = Date.now();
+                                    counterDragRef.current = { active: true, _claiming: true };
                                     e.stopPropagation();
                                     const rect = e.currentTarget.getBoundingClientRect();
                                     const pageW = resolvedPageSize.width;
@@ -31157,16 +31177,26 @@ ${pageBlocks}
                                       }}
                                       onPointerDown={(e) => {
                                         if (Date.now() - editModeCooldownRef.current < 300) return;
-                                        if (counterDragRef.current?.active) return; // safety: ignore re-entrancy
                                         // [COUNTER MULTI-LIST] Mirror of overlay #1's
                                         // popup-click bail-out (~line 25665). Keep these
                                         // two blocks in sync. Without this, clicks on the
                                         // caret popup (which overlaps the page area)
                                         // drop a pin instead of selecting the option.
+                                        // (Checked BEFORE the runaway guard so popup
+                                        // clicks never burn the cooldown window.)
                                         if (e.target?.closest?.('[data-counter-caret-popup]')) {
                                           console.log('[CSeries popup] counter overlay #2 pointerdown bailed — target inside caret popup');
                                           return;
                                         }
+                                        // UX 2026-05-01 — runaway-pin guard. Mirror of
+                                        // overlay #1's guard (~line 29811). Keep in sync.
+                                        if (Date.now() - counterPointerDownCooldownRef.current < 200) {
+                                          console.log('[Counter overlay #2] pointerdown bailed — within 200ms cooldown of previous');
+                                          return;
+                                        }
+                                        if (counterDragRef.current?.active) return; // safety: ignore re-entrancy
+                                        counterPointerDownCooldownRef.current = Date.now();
+                                        counterDragRef.current = { active: true, _claiming: true };
                                         e.stopPropagation();
                                         const rect = e.currentTarget.getBoundingClientRect();
                                         const pageW = pageSizes[pageNum]?.width;
