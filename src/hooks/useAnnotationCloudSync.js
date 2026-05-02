@@ -181,45 +181,23 @@ export function useAnnotationCloudSync({
   // Callouts: ride the legacy upsertCallouts path unchanged through Phase 30.
   // Callout migration is v2.5 scope; out of Phase 30 boundary.
   const fanOutCrdtForAnnotationsByPage = async (annotationsByPageArg, opts) => {
-    // Phase 31 diag (2026-05-01): log gate state so a single Cmd+Shift+L
-    // snapshot tells us exactly why the new CRDT writer is silent under the
-    // post-cutover kill switch. Remove once root cause is identified.
-    const __crdtOn = isCRDTEnabled();
-    const __ydocPresent = !!phase30Ydoc;
-    if (!__crdtOn || !__ydocPresent) {
-      console.warn('[Phase31 diag] CRDT fan-out short-circuit ' + JSON.stringify({
-        isCRDTEnabled: __crdtOn,
-        phase30YdocTruthy: __ydocPresent,
-        reason: !__crdtOn ? 'crdt-disabled' : 'ydoc-null',
-        documentId: opts?.documentId,
-        userId: opts?.userId
-      }));
-      return;
-    }
+    if (!isCRDTEnabled() || !phase30Ydoc) return;
     let yMapAnnotations;
     try {
       yMapAnnotations = phase30Ydoc.getMap('annotations');
-    } catch (e) {
-      console.warn('[Phase31 diag] CRDT fan-out getMap threw ' + JSON.stringify({
-        error: e?.message || String(e),
-        documentId: opts?.documentId
-      }));
+    } catch (_e) {
       return;
     }
     const originPayload = (typeof phase30OriginCtx === 'function') ? phase30OriginCtx() : null;
     const ctx = phase30UndoCtx || null;
-    let __dispatched = 0;
-    let __skippedType = 0;
-    let __pages = 0;
     for (const page of Object.values(annotationsByPageArg || {})) {
       if (!page || !Array.isArray(page.objects)) continue;
-      __pages += 1;
       for (const fabricObj of page.objects) {
         const annotation_type = fabricObj?.data?.annotationType || fabricObj?.type;
         // Layer 1 highlight bypass + callout bypass at the call site.
-        if (annotation_type === 'highlight') { __skippedType += 1; continue; }
-        if (annotation_type === 'callout') { __skippedType += 1; continue; }
-        if (!NON_HIGHLIGHT_TYPES.includes(annotation_type)) { __skippedType += 1; continue; }
+        if (annotation_type === 'highlight') continue;
+        if (annotation_type === 'callout') continue;
+        if (!NON_HIGHLIGHT_TYPES.includes(annotation_type)) continue;
         try {
           await dualWriteFabricCommit(fabricObj, {
             ...(opts || {}),
@@ -230,18 +208,11 @@ export function useAnnotationCloudSync({
             annotation_type,
             skipLegacy: true,  // legacy bulk upsert already fired before this fan-out
           });
-          __dispatched += 1;
         } catch (_err) {
           // Helper enqueues failures internally — no further action needed here.
         }
       }
     }
-    console.log('[Phase31 diag] CRDT fan-out completed ' + JSON.stringify({
-      dispatched: __dispatched,
-      skippedType: __skippedType,
-      pagesScanned: __pages,
-      documentId: opts?.documentId
-    }));
   };
 
   const fanOutCrdtForDeletedIds = async (documentId, deletedIds, opts) => {
