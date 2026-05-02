@@ -3971,11 +3971,34 @@ export function useSVGInteraction({
   const deleteSelected = useCallback(() => {
     if (selectedIds.size === 0) return;
 
+    // Phase 35 hardening 2026-05-01 — defense-in-depth ownership gate.
+    // The click-time gate (canSelectAnnotationByIndex) and the marquee
+    // filter both run canModify at SELECTION time. We re-run it HERE at
+    // DELETE time as a single-source-of-truth check that no upstream
+    // codepath can sneak past. If the upstream gate ever leaks (boot
+    // window when viewerId is null, future bug, etc.), this is the wall
+    // that catches it before runDelete fires. Forbidden indices drop
+    // out of indicesToDelete entirely so they can't be deleted by either
+    // the planner path or the direct fallback.
+    const indicesToDelete = Array.from(selectedIds)
+      .filter((idx) => {
+        const obj = annotations?.objects?.[idx];
+        if (!obj) return false;
+        // Boot guard: mirror canSelectAnnotationByIndex's permissive
+        // behavior during the brief window where viewerId / documentOwnerId
+        // aren't resolved yet. Once both populate, the strict canModify
+        // check engages and is the single source of truth.
+        if (!viewerId || !documentOwnerId) return true;
+        return canModify({ annotation: obj, viewerId, documentOwnerId });
+      })
+      .sort((a, b) => b - a);
+
+    if (indicesToDelete.length === 0) return;
+
     // Capture snapshot at request time — closure over CURRENT state. The
     // bulk-delete planner reads from snapshotObjects (NOT from a ref in
     // App.jsx) which dodges the stale-closure bug from prior revisions
     // (Plan 35-04 frontmatter checker I13).
-    const indicesToDelete = Array.from(selectedIds).sort((a, b) => b - a);
     const snapshotObjects = indicesToDelete
       .map((idx) => {
         const obj = annotations?.objects?.[idx];
@@ -4017,13 +4040,24 @@ export function useSVGInteraction({
     // documentOwnerId — it builds the BulkDeletePlan and decides modal vs
     // direct-fire.
     const candidateIds = snapshotObjects.map((o) => o?.id).filter(Boolean);
+    // Phase 35 regression fix 2026-05-01: the bulk-delete planner is keyed
+    // by stable annotation id, but legacy / freshly-loaded / not-yet-synced
+    // annotations have no id locally (data.id is stamped only on the first
+    // cloud upload via serializeFabricObjectToRow). When EVERY snapshot
+    // lacks an id the planner returns mode='no-op' and Delete becomes a
+    // silent dead key. Safe to fall through here because the canModify
+    // re-check above already enforced ownership.
+    if (candidateIds.length === 0) {
+      runDelete();
+      return;
+    }
     onRequestBulkDelete({
       candidateIds,
       snapshotObjects,
       pageNumber,
       runDelete,
     });
-  }, [selectedIds, annotations, onSaveAnnotations, deselectAll, onRequestBulkDelete, pageNumber]);
+  }, [selectedIds, annotations, onSaveAnnotations, deselectAll, onRequestBulkDelete, pageNumber, viewerId, documentOwnerId]);
 
   // ---------------------------------------------------------------------------
   // EDIT-12 Gap 1 fix (Plan 12-03): optimistic rotation paint
