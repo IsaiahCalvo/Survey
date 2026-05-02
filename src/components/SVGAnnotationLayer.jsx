@@ -405,14 +405,19 @@ const SVGAnnotationLayer = memo(({
   // over. So the select tool must stay "on" during bbox mode so handle
   // clicks, shape drags, and click-to-dismiss all keep working.
   const isBboxEditMode = editingAnnotationIndex != null && editingAnnotationEditType === 'bbox';
-  const isSelectTool = (activeTool === 'select' || activeTool === 'text-select') && (editingAnnotationIndex == null || isBboxEditMode);
+  const isCalloutTextEditMode = !!editingCalloutId;
+  const isSelectTool = (activeTool === 'select' || activeTool === 'text-select')
+    && !isCalloutTextEditMode
+    && (editingAnnotationIndex == null || isBboxEditMode);
   // UX: line/arrow/callout tools also get pointerEvents=auto so the crosshair
   // class shows through and callout creation drag can start on the SVG
   // surface. Gated on editingAnnotationIndex == null so the creation surface
   // disables during edit mode (mirrors isSelectTool's edit-mode guard). Bbox
   // mode does NOT re-enable creation tools — the user's in "edit a shape"
   // mode, not "draw a new shape" mode.
-  const isCreationTool = (activeTool === 'line' || activeTool === 'arrow' || activeTool === 'callout') && editingAnnotationIndex == null;
+  const isCreationTool = (activeTool === 'line' || activeTool === 'arrow' || activeTool === 'callout')
+    && editingAnnotationIndex == null
+    && !isCalloutTextEditMode;
   const isInteractive = isSelectTool || isCreationTool;
 
   // ---------------------------------------------------------------------------
@@ -3102,46 +3107,67 @@ const SVGAnnotationLayer = memo(({
           and 14-CONTEXT.md Area 4 CREATE-01 callout preview. */}
       {calloutCreation && (
         <g className="callout-preview" opacity={0.6} style={{ pointerEvents: 'none' }}>
-          {/* Dashed textbox at currentPointer (120x32 default) */}
-          <rect
-            x={calloutCreation.currentPointer.x}
-            y={calloutCreation.currentPointer.y}
-            width={120}
-            height={32}
-            fill="#ffffff"
-            stroke="#1e293b"
-            strokeWidth={2}
-            strokeDasharray="5,5"
-            rx={4}
-            ry={4}
-          />
-          {/* Dashed connector line 1: textbox-center → knee */}
-          <line
-            x1={calloutCreation.currentPointer.x + 60}
-            y1={calloutCreation.currentPointer.y + 16}
-            x2={(calloutCreation.arrowTip.x + calloutCreation.currentPointer.x) / 2}
-            y2={calloutCreation.arrowTip.y - 40}
-            stroke="#1e293b"
-            strokeWidth={2}
-            strokeDasharray="5,5"
-            strokeLinecap="round"
-          />
-          {/* Dashed connector line 2: knee → arrowTip */}
-          <line
-            x1={(calloutCreation.arrowTip.x + calloutCreation.currentPointer.x) / 2}
-            y1={calloutCreation.arrowTip.y - 40}
-            x2={calloutCreation.arrowTip.x}
-            y2={calloutCreation.arrowTip.y}
-            stroke="#1e293b"
-            strokeWidth={2}
-            strokeDasharray="5,5"
-            strokeLinecap="round"
-          />
-          {/* Dashed arrowhead triangle at arrowTip */}
-          <polygon
-            points={`${calloutCreation.arrowTip.x},${calloutCreation.arrowTip.y} ${calloutCreation.arrowTip.x - 8},${calloutCreation.arrowTip.y - 4} ${calloutCreation.arrowTip.x - 8},${calloutCreation.arrowTip.y + 4}`}
-            fill="#1e293b"
-          />
+          {(() => {
+            const previewW = 120;
+            const previewH = 32;
+            const tbX = calloutCreation.currentPointer.x;
+            const tbY = calloutCreation.currentPointer.y;
+            const arrowTip = calloutCreation.arrowTip;
+            const knee = {
+              x: (arrowTip.x + tbX) / 2,
+              y: arrowTip.y - 40,
+            };
+            // Keep the ghost geometry in lockstep with the committed callout
+            // renderer: connector starts on the textbox edge, not its center.
+            const conn = calculateCalloutConnection(tbX, tbY, previewW, previewH, knee, arrowTip, 0);
+            return (
+              <>
+                <rect
+                  x={tbX}
+                  y={tbY}
+                  width={previewW}
+                  height={previewH}
+                  fill="transparent"
+                  stroke="#1e293b"
+                  strokeWidth={Math.max(1, 2 * 0.7)}
+                  strokeDasharray="5,5"
+                  rx={0}
+                  ry={0}
+                  vectorEffect="non-scaling-stroke"
+                />
+                {!conn.shouldHideLine1 && (
+                  <line
+                    x1={conn.line1Start.x}
+                    y1={conn.line1Start.y}
+                    x2={conn.effectiveKnee.x}
+                    y2={conn.effectiveKnee.y}
+                    stroke="#1e293b"
+                    strokeWidth={2}
+                    strokeDasharray="5,5"
+                    strokeLinecap="round"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                )}
+                <line
+                  x1={conn.line2Start.x}
+                  y1={conn.line2Start.y}
+                  x2={arrowTip.x}
+                  y2={arrowTip.y}
+                  stroke="#1e293b"
+                  strokeWidth={2}
+                  strokeDasharray="5,5"
+                  strokeLinecap="round"
+                  vectorEffect="non-scaling-stroke"
+                />
+                <circle
+                  cx={arrowTip.x}
+                  cy={arrowTip.y}
+                  r={Math.max(2, 2 + 0.4)}
+                  fill="#1e293b"
+                />
+              </>
+            );
+          })()}
         </g>
       )}
       {/* UX: Phase 19 — AutoCAD marquee rectangle. Blue solid fill when

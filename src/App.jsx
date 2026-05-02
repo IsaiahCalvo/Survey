@@ -16432,6 +16432,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const handleRequestCalloutEditMode = useCallback((calloutId, targetPageNumber) => {
     const reactCallout = callouts.find((c) => c && c.id === calloutId);
     if (!reactCallout) return;
+    // UX: creating a callout immediately enters text edit. At that point the
+    // user's next page click means "commit/dismiss this editor", not "start
+    // another callout". Switch out of the creation tool as edit mode opens so
+    // the committed callout lands back on the normal selection canvas.
+    if (activeTool === 'callout') {
+      setActiveTool('select');
+    }
     // UX: resolve page size per the editing page. Fall back to the
     // callout's recorded pageNumber if the caller didn't pass one, and
     // to a 612x792 default if the pageSizes map hasn't been populated
@@ -16507,7 +16514,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         pageSize: pageSizeObj,
       });
     } catch (_e) {}
-  }, [callouts, pageSizes]);
+  }, [activeTool, callouts, pageSizes]);
 
   // UX: auto-open newly-created callout in edit mode. handleCreateCallout
   // sets pendingAutoEditCalloutRef; this effect waits for the new callout
