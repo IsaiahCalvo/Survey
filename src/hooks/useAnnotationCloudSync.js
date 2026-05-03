@@ -498,6 +498,55 @@ export function useAnnotationCloudSync({
               byPage[pageNumber].objects.push(fabricObj);
             });
           }
+          // Phase 31 hotfix (2026-05-03 third iteration) — degeneracy guard
+          // BEFORE replacing state. If the Y.Map snapshot is materially
+          // smaller than what we already have in state (e.g. local IndexedDB
+          // had 3,059 from a prior legacy load and Y.Map only has 3 from a
+          // wiped CRDT cache), DON'T replace. Trust the bigger source so the
+          // user keeps seeing their annotations while the backfill effect
+          // detects the degeneracy and re-imports in the background. The
+          // backfill will refill Y.Map; on the NEXT open the materialized
+          // count will be healthy and this guard becomes a no-op.
+          //
+          // Threshold: the Y.Map is "trusted" only if it has at least 80% of
+          // the current state count, or when state is small (<10) so the
+          // initial-mount case still hydrates from a healthy Y.Map.
+          const __currentStateCount = countFabricObjects(annotationsByPage);
+          const __ydocBreakdown = __phase31UatBreakdown(byPage, userId);
+          const __perPage = {};
+          for (const [pageStr, pageObj] of Object.entries(byPage)) {
+            __perPage[pageStr] = Array.isArray(pageObj?.objects) ? pageObj.objects.length : 0;
+          }
+          const __ydocCount = __ydocBreakdown.total;
+          const __ydocLooksDegenerate = __currentStateCount >= 10
+            && __ydocCount < Math.floor(__currentStateCount * 0.8);
+          console.log('[Phase31 UAT] hydrate:cutover-sealed ' + JSON.stringify({
+            documentId,
+            pdfId,
+            cutoverTs,
+            yMapSize: (yMap && typeof yMap.size === 'number') ? yMap.size : 0,
+            materializedTotal: __ydocCount,
+            materializedDrawnByMe: __ydocBreakdown.drawnByMe,
+            materializedDrawnByOthers: __ydocBreakdown.drawnByOthers,
+            materializedImported: __ydocBreakdown.imported,
+            pages: Object.keys(byPage).length,
+            perPage: __perPage,
+            currentStateCount: __currentStateCount,
+            ydocLooksDegenerate: __ydocLooksDegenerate,
+          }));
+          if (__ydocLooksDegenerate) {
+            console.warn('[CloudSync][hook] cutover hydrate skipped state replace — Y.Map smaller than current state, trusting current state until backfill recovers ' +
+              JSON.stringify({ ydocCount: __ydocCount, currentStateCount: __currentStateCount }));
+            hydratedRef.current = true;
+            startupSyncInFlightRef.current = false;
+            setStatus({
+              stage: 'synced',
+              count: __currentStateCount,
+              source: 'legacy-cache-degeneracy-fallback',
+              cutoverTs,
+            });
+            return;
+          }
           setAnnotationsByPage(() => {
             // Update lastByPageRef.current synchronously inside the setter so
             // the push useEffect's identity check (state === lastRef) returns
@@ -514,29 +563,6 @@ export function useAnnotationCloudSync({
             source: 'ydoc-snapshot',
             cutoverTs,
           });
-          // Phase 31 UAT (2026-05-03) — confirm the post-cutover hydrate fired
-          // and report the materialized counts so the user can answer step 13
-          // and step 27 from the UAT checklist on a single log line.
-          // Per-page breakdown added 2026-05-03 — captures cases where one or
-          // more pages have zero materialized annotations (the "open to page 6,
-          // see nothing, scroll away and back, annotations appear" repro).
-          const __ydocBreakdown = __phase31UatBreakdown(byPage, userId);
-          const __perPage = {};
-          for (const [pageStr, pageObj] of Object.entries(byPage)) {
-            __perPage[pageStr] = Array.isArray(pageObj?.objects) ? pageObj.objects.length : 0;
-          }
-          console.log('[Phase31 UAT] hydrate:cutover-sealed ' + JSON.stringify({
-            documentId,
-            pdfId,
-            cutoverTs,
-            yMapSize: (yMap && typeof yMap.size === 'number') ? yMap.size : 0,
-            materializedTotal: __ydocBreakdown.total,
-            materializedDrawnByMe: __ydocBreakdown.drawnByMe,
-            materializedDrawnByOthers: __ydocBreakdown.drawnByOthers,
-            materializedImported: __ydocBreakdown.imported,
-            pages: Object.keys(byPage).length,
-            perPage: __perPage,
-          }));
           return; // Skip the legacy SELECT path entirely.
         }
         // Cold-doc fallback (or kill-switch off / no Y.Doc mounted yet) —
