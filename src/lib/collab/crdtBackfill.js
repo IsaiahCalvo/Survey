@@ -474,6 +474,21 @@ async function runBackfillUnlocked(args) {
     }
   }
 
+  // Phase 31 UAT (2026-05-03) — single closing log so the recovery walk-
+  // through can confirm the loop finished and how the gate resolved without
+  // needing to spelunk through individual save events. Stripped at Phase 31
+  // close like the other UAT logs.
+  console.log('[Phase31 UAT] backfill:done ' + JSON.stringify({
+    ranAs: 'leader',
+    documentId,
+    userId,
+    rowsFetched: rows.length,
+    imported,
+    skipped,
+    yMapSizeAfter: yMapAnnotations.size,
+    cutoverRequested: !!args.markCutoverComplete,
+    cutoverCompleted,
+  }));
   return { ranAs: 'leader', imported, skipped, cutoverCompleted };
 }
 
