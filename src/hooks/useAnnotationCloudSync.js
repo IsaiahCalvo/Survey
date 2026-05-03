@@ -517,7 +517,14 @@ export function useAnnotationCloudSync({
           // Phase 31 UAT (2026-05-03) — confirm the post-cutover hydrate fired
           // and report the materialized counts so the user can answer step 13
           // and step 27 from the UAT checklist on a single log line.
+          // Per-page breakdown added 2026-05-03 — captures cases where one or
+          // more pages have zero materialized annotations (the "open to page 6,
+          // see nothing, scroll away and back, annotations appear" repro).
           const __ydocBreakdown = __phase31UatBreakdown(byPage, userId);
+          const __perPage = {};
+          for (const [pageStr, pageObj] of Object.entries(byPage)) {
+            __perPage[pageStr] = Array.isArray(pageObj?.objects) ? pageObj.objects.length : 0;
+          }
           console.log('[Phase31 UAT] hydrate:cutover-sealed ' + JSON.stringify({
             documentId,
             pdfId,
@@ -528,6 +535,7 @@ export function useAnnotationCloudSync({
             materializedDrawnByOthers: __ydocBreakdown.drawnByOthers,
             materializedImported: __ydocBreakdown.imported,
             pages: Object.keys(byPage).length,
+            perPage: __perPage,
           }));
           return; // Skip the legacy SELECT path entirely.
         }

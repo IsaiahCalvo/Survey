@@ -30,6 +30,11 @@ export function installNetworkLogger() {
   if (installed) return;
   if (typeof window === 'undefined') return;
 
+  // Expose the snapshot getter on window so the bulletproof Cmd+Shift+L
+  // handler in main.jsx (which runs outside React) can grab the trace
+  // without an import dependency on this module's exports.
+  try { window.__networkLogSnapshot = () => ring.slice(); } catch (_e) { /* swallow */ }
+
   const originalFetch = window.fetch;
   if (typeof originalFetch === 'function') {
     window.fetch = async function instrumentedFetch(input, init) {

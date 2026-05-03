@@ -22,6 +22,91 @@
   console.error = (...args) => capture('console.error @ ', _error, args);
 })();
 
+// BULLETPROOF Cmd+Shift+L (2026-05-03) — capture-phase, install-once,
+// outside-React keydown handler. Lives at module-init level so it survives
+// any React crash, error-boundary fallback, route change, or unmount of
+// the in-App subscriber. Capture phase + dual window/document attachment
+// guarantees no child stopPropagation can swallow it. Every step is
+// individually try/catch'd so a downstream failure (no electron bridge,
+// missing network logger, GitHub push throws, etc.) never prevents the
+// next step from running. The user requirement is "Cmd+Shift+L should
+// always just be a natural hotkey to save the logs, both locally and to
+// GitHub — no matter what state the app is in." This is the contract.
+(() => {
+  const handler = (event) => {
+    try {
+      const key = event.key || '';
+      const isShortcut = (event.metaKey || event.ctrlKey)
+        && event.shiftKey
+        && (key === 'L' || key === 'l' || event.code === 'KeyL');
+      if (!isShortcut) return;
+      try { event.preventDefault(); } catch (_e) { /* swallow */ }
+      try { event.stopPropagation(); } catch (_e) { /* swallow */ }
+
+      const buf = (typeof window !== 'undefined') ? window.__consoleLogBuffer : null;
+      const consoleText = Array.isArray(buf) && buf.length > 0
+        ? buf.join('\n')
+        : '(no console output captured)';
+
+      let networkSnapshot = null;
+      try {
+        if (typeof window !== 'undefined' && typeof window.__networkLogSnapshot === 'function') {
+          networkSnapshot = window.__networkLogSnapshot();
+        }
+      } catch (netErr) {
+        try { console.warn('[SaveLog] bulletproof: network snapshot failed', netErr?.message || netErr); } catch (_e) { /* swallow */ }
+      }
+
+      // Local dated snapshot (Electron). The user can grab this folder
+      // even if every other path fails.
+      try {
+        const api = (typeof window !== 'undefined') ? window.electronAPI : null;
+        if (api && typeof api.saveLogSnapshot === 'function') {
+          api.saveLogSnapshot({
+            consoleText,
+            network: networkSnapshot,
+            summary: {
+              triggeredBy: 'cmd-shift-l-bulletproof',
+              userAgent: (typeof navigator !== 'undefined' ? navigator.userAgent : null),
+              screen: (typeof window !== 'undefined') ? { w: window.innerWidth, h: window.innerHeight } : null,
+              consoleLineCount: Array.isArray(buf) ? buf.length : 0,
+              url: (typeof window !== 'undefined' && window.location) ? window.location.href : null,
+            },
+          }).then((res) => {
+            try {
+              if (res?.ok) console.log('[SaveLog] bulletproof local snapshot saved at ' + res.dir);
+              else console.warn('[SaveLog] bulletproof local snapshot failed: ' + (res?.error || 'unknown'));
+            } catch (_e) { /* swallow */ }
+          }).catch((err) => {
+            try { console.warn('[SaveLog] bulletproof local snapshot threw: ' + (err?.message || err)); } catch (_e) { /* swallow */ }
+          });
+        }
+      } catch (snapErr) {
+        try { console.warn('[SaveLog] bulletproof local trigger error: ' + (snapErr?.message || snapErr)); } catch (_e) { /* swallow */ }
+      }
+
+      // Tell the in-React banner if it's still mounted. Harmless if not —
+      // the dated snapshot above already landed on disk, and the in-App
+      // useEffect has its own GitHub-push path. This event is fire-and-
+      // forget; we don't await it.
+      try {
+        if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+          window.dispatchEvent(new CustomEvent('save-log-banner-start', {
+            detail: { consoleText }
+          }));
+        }
+      } catch (evtErr) {
+        try { console.warn('[SaveLog] bulletproof event dispatch failed: ' + (evtErr?.message || evtErr)); } catch (_e) { /* swallow */ }
+      }
+    } catch (outerErr) {
+      // Last-resort: a bulletproof handler must never throw upward.
+      try { console.warn('[SaveLog] bulletproof handler outer error: ' + (outerErr?.message || outerErr)); } catch (_e) { /* swallow */ }
+    }
+  };
+  try { if (typeof window !== 'undefined') window.addEventListener('keydown', handler, true); } catch (_e) { /* swallow */ }
+  try { if (typeof document !== 'undefined') document.addEventListener('keydown', handler, true); } catch (_e) { /* swallow */ }
+})();
+
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { registerLicense } from '@syncfusion/ej2-base';
