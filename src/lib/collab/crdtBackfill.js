@@ -190,6 +190,17 @@ export async function runBackfill(args) {
     userId,
   } = args || {};
 
+  // Phase 31 UAT (2026-05-03) — entrance log so the recovery walkthrough can
+  // tell whether YDocProvider's backfill effect actually called us. Stripped
+  // at Phase 31 close.
+  console.log('[Phase31 UAT] backfill:start ' + JSON.stringify({
+    hasYdoc: !!ydoc,
+    hasSupabase: !!supabase,
+    documentId: documentId || null,
+    userId: userId || null,
+    markCutoverComplete: !!args?.markCutoverComplete,
+  }));
+
   // Defensive guards - silent no-op if any required input is missing. The
   // caller (Plan 30-06 YDocProvider mount) gates on isCRDTEnabled() before
   // even calling us, but defense-in-depth: never throw inside the provider.

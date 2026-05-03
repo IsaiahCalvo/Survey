@@ -674,6 +674,15 @@ function YDocProviderInner({ docId, children, closeDocument }) {
   const backfillRanRef = useRef(null);
   useEffect(() => {
     const userId = undoState?.undoCtx?.userId;
+    // Phase 31 UAT (2026-05-03) — confirm the effect fires and which gate
+    // path it follows. Stripped at Phase 31 close.
+    console.log('[Phase31 UAT] backfill:effect ' + JSON.stringify({
+      hasYdoc: !!ydoc,
+      docId: docId || null,
+      userId: userId || null,
+      alreadyRanFor: backfillRanRef.current,
+      willRun: !!(ydoc && docId && userId && backfillRanRef.current !== `${docId}::${userId}`),
+    }));
     if (!ydoc || !docId || !userId) return undefined;
     // Per-mount run-once gate. Track the (docId, userId) pair so a user-switch
     // (rare in this app but possible via re-auth) re-runs the backfill check.
