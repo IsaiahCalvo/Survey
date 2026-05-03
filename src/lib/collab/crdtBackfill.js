@@ -279,35 +279,32 @@ async function runBackfillUnlocked(args) {
   // the same doc is independently idempotent, and the bridge's per-row dedup
   // catches duplicates anyway).
   //
-  // Phase 31 Plan 04 followup (2026-05-01) — when the caller is requesting
-  // `markCutoverComplete` and the previous backfill ran successfully on this
-  // device but the legacy doc row was never sealed (cutover_completed_at IS
-  // NULL — we already verified that in the pre-loop short-circuit above),
-  // we still need to perform the cutover-seal write. Without this branch the
-  // doc gets stuck "imported but not sealed" forever, the hydrate path keeps
-  // hitting the legacy SELECT, and the kill-switch + dual-write contract never
-  // becomes the post-cutover contract.
+  // Phase 31 hotfix (2026-05-03) — when the caller is requesting
+  // `markCutoverComplete`, we ALWAYS fall through to the paginated SELECT +
+  // import loop, regardless of whether doneKey is set. Reasons:
+  //
+  //   1. Recovery from the pre-2026-05-03 truncated-import bug. If a previous
+  //      session sealed an incomplete Y.Map (because the bare SELECT capped
+  //      at 1000 rows), the doneKey marker was set on a truncated baseline.
+  //      An admin unseal of cutover_completed_at on the documents row
+  //      requires a re-run of the import loop to actually fill in the missing
+  //      rows; without falling through here the next open would just re-seal
+  //      the same incomplete Y.Map with `ranAs: already_done`.
+  //
+  //   2. Defense-in-depth against any future bug that lands a partial Y.Map
+  //      with the doneKey marker still set. Bridge idempotency (the
+  //      meta.authorId existence sentinel inside applyFabricCreate) means
+  //      re-running the loop on already-imported rows is a cheap no-op —
+  //      shallowEqual produces zero Y.Map writes per already-present row.
+  //      Cost is one paginated SELECT plus per-row sentinel checks; benefit
+  //      is the gate seals on a verified-against-legacy count.
+  //
+  //   3. The non-markCutoverComplete pre-Phase-31 caller path (Phase 30
+  //      open-doc backfill, no seal request) keeps the original
+  //      doneKey-set short-circuit so existing performance characteristics
+  //      are preserved on every routine open.
   const doneKey = `${BACKFILL_DONE_PREFIX}${userId}`;
-  if (yMapMeta.get(doneKey)) {
-    if (args.markCutoverComplete) {
-      try {
-        const nowIso = new Date().toISOString();
-        const { error: sealErr } = await supabase
-          .from('documents')
-          .update({ cutover_completed_at: nowIso })
-          .eq('id', documentId);
-        if (sealErr) {
-          // eslint-disable-next-line no-console
-          console.warn('[crdtBackfill] cutover_completed_at write failed (already_done path)', sealErr?.message);
-          return { ranAs: 'already_done', count: 0, cutoverCompleted: false };
-        }
-        return { ranAs: 'already_done', count: 0, cutoverCompleted: true, cutoverAt: nowIso };
-      } catch (err) {
-        // eslint-disable-next-line no-console
-        console.warn('[crdtBackfill] cutover_completed_at write threw (already_done path)', err?.message);
-        return { ranAs: 'already_done', count: 0, cutoverCompleted: false };
-      }
-    }
+  if (yMapMeta.get(doneKey) && !args.markCutoverComplete) {
     return { ranAs: 'already_done', count: 0 };
   }
 
