@@ -144,6 +144,13 @@ export function useAnnotationCloudSync({
   const hydratedRef = useRef(false);
   const startupSyncInFlightRef = useRef(false);
   const lastCloudRefreshAtRef = useRef(0);
+  // Phase 31 hotfix (2026-05-03) — cached `documents.cutover_completed_at`
+  // for the currently-mounted doc. Set inside the hydrate effect after the
+  // Supabase lookup; consumed by onFocus to short-circuit the legacy
+  // loadAllNonHighlightAnnotations path on sealed docs (Y.Doc + realtime
+  // subscription is the source of truth post-cutover; legacy reads would
+  // race-overwrite local state).
+  const cutoverTsRef = useRef(null);
   // 2026-04-30 (Phase 35 Plan 05) — RETIRED: per-session "user just deleted
   // these IDs" sets (formerly fabric + callout). Their job was to stop the
   // focus-rehydrate from resurrecting annotations the user had just deleted
@@ -443,6 +450,12 @@ export function useAnnotationCloudSync({
           console.warn('[CloudSync][hook] cutover_completed_at lookup failed: ' +
             (cutoverErr?.message || String(cutoverErr)));
         }
+        // Phase 31 hotfix (2026-05-03) — cache the cutover timestamp for the
+        // life of this mounted doc so onFocus can short-circuit the legacy
+        // rehydrate without re-querying. Cleared on doc unmount via the
+        // outer cleanup; the YDocProvider key={docId} pattern guarantees a
+        // fresh ref allocation whenever pdfFile changes.
+        cutoverTsRef.current = cutoverTs;
         if (cancelled) return;
         // When cutover_completed_at is set we read state from phase30Ydoc.getMap('annotations');
         // when null we fall through to the legacy loadCloudWithEmptyVerify path.
@@ -1306,6 +1319,19 @@ export function useAnnotationCloudSync({
       if (!documentId) return;
       if (startupSyncInFlightRef.current || !hydratedRef.current) {
         console.log('[CloudSync][hook] focus rehydrate skipped — startup sync already in flight');
+        return;
+      }
+      // Phase 31 hotfix (2026-05-03) — sealed-doc gate. After the cutover
+      // timestamp is set, the Y.Doc is the single source of truth and is
+      // kept current by the realtime broadcast subscription. Running the
+      // legacy `loadAllNonHighlightAnnotations` SELECT here would replace
+      // local state with a stale snapshot of the legacy table (which is no
+      // longer being written to under the kill switch), wiping in-flight
+      // CRDT-only writes — exactly the regression captured in Logs/
+      // 2026-05-03_15-20-12 where a placed counter pin was overwritten.
+      if (cutoverTsRef.current && phase30Ydoc) {
+        console.log('[Phase31 UAT] focus rehydrate skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth ' +
+          JSON.stringify({ documentId, pdfId, cutoverTs: cutoverTsRef.current }));
         return;
       }
       if (Date.now() - lastCloudRefreshAtRef.current < RECENT_CLOUD_REFRESH_SKIP_MS) {
