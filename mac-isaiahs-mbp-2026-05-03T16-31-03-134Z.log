@@ -1,0 +1,82 @@
+===== SurveyApp Save Log =====
+version:   0.1.41
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1203x826
+locale:    en-US
+timestamp: 2026-05-03T16:31:03.128Z (5/3/2026, 12:31:03 PM)
+==============================
+[dev-auto-login] boot {"hasDevEmail":true,"devEmailHint":"isai***","hasDevPassword":true,"hasCachedSession":true,"cachedSessionEmail":"isaiahcalvo123@gmail.com","cachedSessionExpiresAt":1777827697}
+[dev-auto-login] cached session matches dev email, keeping it
+[dev-auto-login] decision {"needsAutoLogin":false,"willAttemptSignIn":false}
+[CloudSync][hook] session id minted {"sessionId":"2bc27476-acd0-431a-ac38-b08928f7c205"}
+[AnnotPerf] finalize idle (forced-reset) — deferring CSS transform removal, waiting for PAL confirmation
+[DebugBridge +4893.0ms] zoom_start {"scale":0.8926767676767676,"targetScale":1,"source":"keyboard_toolbar"}
+[CloudSync][hook][state-obs] annotationsByPage initial {"currentCount":0,"pages":0,"hydrated":false}
+[CloudSync][hook][state-obs] callouts initial {"currentCount":0,"hydrated":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":null}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":false}
+[CSeries wipe] doc=Package 2 - Rev 4 -- IC.pdf-8316501 totalCounters=0 legacyRemoved=0 — nothing to wipe.
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"70dadd86-35f0-432b-925f-c59e919a4e4d","userId":null,"alreadyRanFor":null,"willRun":false}
+[CloudSync][hook][state-obs] change {"prevCount":0,"currentCount":3058,"delta":3058,"hydrated":false,"sameRefAsLastByPage":false}
+[CloudSync][hook][state-obs] callout change {"prevCount":0,"currentCount":0,"delta":0,"hydrated":false,"sameRefAsLastCallouts":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"Package 2 - Rev 4 -- IC.pdf-8316501"}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":true}
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"70dadd86-35f0-432b-925f-c59e919a4e4d","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","alreadyRanFor":null,"willRun":true}
+[Phase31 UAT] backfill:start {"hasYdoc":true,"hasSupabase":true,"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","markCutoverComplete":true}
+console.warn @ [SupabaseYjsProvider] update exceeds soft cap 1889017 bytes — skipping broadcast
+[CloudSync][hydrate] loadAllNonHighlightAnnotations start {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d"}
+[DebugBridge +6538.8ms] zoom_end {"source":"keyboard_toolbar_settle"}
+[HIGHLIGHT-SYNC][load.legacy][pdf=Package 2 - Rev 4 -- IC.pdf] {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","totalRows":1820,"fabricCarryingDropped":1820,"keptCount":0,"keptIds":[]}
+[CloudSync][hook] hydrate effect fired {"enabled":true,"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"Package 2 - Rev 4 -- IC.pdf-8316501"}
+[CloudSync][hook] stage=hydrating
+[CloudSync][hook] fabric push skipped — not hydrated yet
+[CloudSync][hook] callout push skipped — not hydrated yet
+[CloudSync][realtime] subscribing {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","currentUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","currentSessionId":"2bc27476-acd0-431a-ac38-b08928f7c205","hasFabricInsert":true,"hasFabricUpdate":true,"hasFabricDelete":true,"hasCalloutInsert":true,"hasCalloutUpdate":true,"hasCalloutDelete":true}
+[CloudSync][realtime] subscribe status {"status":"SUBSCRIBED","error":null}
+[CloudSync][hook] post-subscribe catch-up skipped — startup sync already in flight
+[Phase31 UAT] hydrate:legacy-fallthrough {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","pdfId":"Package 2 - Rev 4 -- IC.pdf-8316501","cutoverTs":null,"ydocMounted":true,"reason":"not-yet-sealed"}
+[CloudSync][hydrate] loadAllNonHighlightAnnotations start {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d"}
+[PrintPanel] RENDER — panel closed
+[CloudSync][hook][state-obs] change {"prevCount":3058,"currentCount":3058,"delta":0,"hydrated":false,"sameRefAsLastByPage":false}
+[CloudSync][hook][state-obs] callout change {"prevCount":0,"currentCount":0,"delta":0,"hydrated":false,"sameRefAsLastCallouts":false}
+[CloudSync][hook] fabric push skipped — not hydrated yet
+[CloudSync][hook] callout push skipped — not hydrated yet
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +7404.7ms] pdf_loaded {"pageCount":36,"currentPage":1}
+[DebugBridge +7618.8ms] zoom_start {"scale":0.1,"targetScale":0.9,"source":"zoomChange"}
+[HyperlinkDiag] post-load scan {"hyperlinkCount":0,"samples":[]}
+[HyperlinkDiag] page 1 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 2 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 3 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG","IMG","IMG","IMG","e-pv-text-layer"]}
+[HyperlinkDiag] page 4 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG","e-pv-text-layer","IMG","IMG","IMG"]}
+[DebugBridge +8787.5ms] zoom_end {"source":"zoomChange_settle"}
+console.error @ [AnnotationSync] Error upserting annotations: {"code":"57014","details":null,"hint":null,"message":"canceling statement due to statement timeout"}
+console.error @ [DocumentSync] Sync failed: {"code":"57014","details":null,"hint":null,"message":"canceling statement due to statement timeout"}
+[CloudSync][hydrate] loadAllNonHighlightAnnotations ok {"elapsedMs":32457,"totalRowsScanned":24450,"scanned":{"nonHighlight":22630,"legacyFabricHighlights":1820},"totalRows":24450,"rowsByType":{"ink":22584,"square":42,"freetext":4,"highlight":1820},"pagesWithObjects":6,"calloutCount":0}
+[CloudSync][hydrate] loadAllNonHighlightAnnotations ok {"elapsedMs":31682,"totalRowsScanned":24450,"scanned":{"nonHighlight":22630,"legacyFabricHighlights":1820},"totalRows":24450,"rowsByType":{"ink":22584,"square":42,"freetext":4,"highlight":1820},"pagesWithObjects":6,"calloutCount":0}
+[CloudSync][verify] first read summary {"contextLabel":"initial-hydrate","documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","elapsedMs":31696,"firstFabricPages":6,"firstFabricObjects":3058,"firstCallouts":0,"firstEmpty":false,"localFabricCount":3058,"localCalloutCount":0,"localHasData":true,"willVerify":false}
+[CloudSync][hook] replacing local fabric state with cloud (cloud is authoritative) {"pages":6,"migrationDone":true}
+[CloudSync][hook] replacing local callouts with cloud (cloud is authoritative) {"count":0,"migrationDone":true}
+[CloudSync][hook] stage=migrating (one-time local→cloud push)
+[CloudSync][hook] hydrate+migrate complete — push gate OPEN {"migrationPushed":0}
+[CloudSync][hook][state-obs] change {"prevCount":3058,"currentCount":3058,"delta":0,"hydrated":true,"sameRefAsLastByPage":true}
+[CloudSync][hook][state-obs] callout change {"prevCount":0,"currentCount":0,"delta":0,"hydrated":true,"sameRefAsLastCallouts":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[CloudSync][hydrate] loadAllNonHighlightAnnotations start {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d"}
+[DebugBridge +234590.3ms] zoom_start {"scale":0.67,"targetScale":0.8800505050505051,"source":"keyboard_toolbar"}
+[DebugBridge +235902.3ms] zoom_end {"source":"zoomChange_settle"}
+[CloudSync][hydrate] loadAllNonHighlightAnnotations ok {"elapsedMs":28760,"totalRowsScanned":24450,"scanned":{"nonHighlight":22630,"legacyFabricHighlights":1820},"totalRows":24450,"rowsByType":{"ink":22584,"square":42,"freetext":4,"highlight":1820},"pagesWithObjects":6,"calloutCount":0}
+[CloudSync][verify] first read summary {"contextLabel":"focus-rehydrate","documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","elapsedMs":28777,"firstFabricPages":6,"firstFabricObjects":3058,"firstCallouts":0,"firstEmpty":false,"localFabricCount":3058,"localCalloutCount":0,"localHasData":true,"willVerify":false}
+[CloudSync][hook][state-obs] change {"prevCount":3058,"currentCount":3058,"delta":0,"hydrated":true,"sameRefAsLastByPage":true}
+[CloudSync][hook][state-obs] callout change {"prevCount":0,"currentCount":0,"delta":0,"hydrated":true,"sameRefAsLastCallouts":true}
