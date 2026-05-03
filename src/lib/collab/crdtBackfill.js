@@ -323,10 +323,16 @@ async function runBackfillUnlocked(args) {
   // (1000) does not silently truncate large docs. Pre-2026-05-03 hotfix this
   // was a bare `.select('*')` and any doc with >1000 non-highlight rows sealed
   // on a truncated baseline.
-  // .order('created_at', ascending) is intentional - backfill writes preserve
-  // the legacy creation order, which matters for activity log readback.
-  // Tie-break by highlight_id so paginated cursoring is total-ordered even when
-  // multiple rows share the same created_at millisecond.
+  //
+  // Ordering: `page_number ASC` mirrors the production legacy reader
+  // (annotationCloudSync.loadPagedAnnotationRows). Captured 2026-05-03 16:42:
+  // ordering by `created_at` triggers a full sort over the document's full
+  // 22,630-row span on every page request and times out at 10s with PostgREST
+  // statement_timeout = 10000ms (Postgres error 57014). The legacy reader
+  // doesn't time out under the same data because (document_id, page_number)
+  // is the natural index ordering. Backfill creation-order preservation was a
+  // soft preference for the Phase 33 activity log; bridge idempotency makes
+  // any stable ordering correctness-preserving across re-runs.
   let rows = [];
   let queryError = null;
   let pagesFetched = 0;
@@ -342,8 +348,7 @@ async function runBackfillUnlocked(args) {
         .select('*')
         .eq('document_id', documentId)
         .in('annotation_type', NON_HIGHLIGHT_TYPES_FOR_BACKFILL)
-        .order('created_at', { ascending: true })
-        .order('highlight_id', { ascending: true })
+        .order('page_number', { ascending: true })
         .range(from, to);
       const pageElapsedMs = Date.now() - pageStartedAt;
       if (result?.error) {
