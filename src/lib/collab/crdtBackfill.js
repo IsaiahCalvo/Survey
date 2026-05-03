@@ -233,11 +233,58 @@ export async function runBackfill(args) {
         .eq('id', documentId)
         .maybeSingle();
       if (docRow?.cutover_completed_at) {
-        return {
-          ranAs: 'cutover_already_complete',
-          cutoverCompleted: true,
-          cutoverAt: docRow.cutover_completed_at,
-        };
+        // Phase 31 hotfix (2026-05-03 second iteration) — Y.Map degeneracy
+        // probe before the cheap-out short-circuit. If local IndexedDB lost
+        // its Y.Doc cache (cleared by browser quota, dev-server restart with
+        // wipe, switching machines, etc.) the Y.Map can have far fewer
+        // entries than the legacy table even though the doc is sealed. Without
+        // this probe we'd silently render only what's left in Y.Map and the
+        // user sees missing annotations on every open with no recourse.
+        //
+        // Cheap HEAD count query against legacy. Compare with Y.Map.size; if
+        // Y.Map is suspiciously small (less than 95% of legacy or absolute
+        // diff >100), DON'T short-circuit — fall through to the paginated
+        // import loop. Bridge idempotency makes re-runs on already-imported
+        // rows EDIT-branch no-ops (shallowEqual produces zero Y.Map writes),
+        // so the cost is one paginated SELECT plus the cheap probe. The seal
+        // timestamp stays as-is (we don't unseal); the loop tops up Y.Map.
+        const yMapForProbe = args.yMapAnnotations || ydoc.getMap('annotations');
+        const yMapSize = (yMapForProbe && typeof yMapForProbe.size === 'number') ? yMapForProbe.size : 0;
+        let legacyCount = null;
+        let probeOk = false;
+        try {
+          const { count, error: countErr } = await supabase
+            .from('document_annotations')
+            .select('*', { count: 'exact', head: true })
+            .eq('document_id', documentId)
+            .in('annotation_type', NON_HIGHLIGHT_TYPES_FOR_BACKFILL);
+          if (!countErr && typeof count === 'number') {
+            legacyCount = count;
+            probeOk = true;
+          }
+        } catch (_e) {
+          // Probe failed — be conservative: fall through to the loop so we
+          // don't trust a potentially-empty Y.Map.
+        }
+        const tolerance = probeOk ? Math.max(100, Math.ceil((legacyCount || 0) * 0.05)) : 0;
+        const yMapLooksHealthy = probeOk && (yMapSize >= (legacyCount || 0) - tolerance);
+        console.log('[Phase31 UAT] backfill:degeneracy-probe ' + JSON.stringify({
+          documentId, userId, yMapSize, legacyCount, probeOk, tolerance, yMapLooksHealthy,
+        }));
+        if (yMapLooksHealthy) {
+          return {
+            ranAs: 'cutover_already_complete',
+            cutoverCompleted: true,
+            cutoverAt: docRow.cutover_completed_at,
+            yMapSize,
+            legacyCount,
+          };
+        }
+        // Y.Map is degenerate vs legacy — keep the seal but force a re-import
+        // so the user's annotations come back without manual intervention.
+        // eslint-disable-next-line no-console
+        console.warn('[crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover ' +
+          JSON.stringify({ yMapSize, legacyCount }));
       }
     } catch (err) {
       // Silent fall-through. eslint-disable to allow the diagnostic warn.
