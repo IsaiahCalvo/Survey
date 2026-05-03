@@ -329,9 +329,14 @@ async function runBackfillUnlocked(args) {
   // multiple rows share the same created_at millisecond.
   let rows = [];
   let queryError = null;
+  let pagesFetched = 0;
+  console.log('[Phase31 UAT] backfill:select-loop start ' + JSON.stringify({
+    documentId, userId, pageSize: BACKFILL_PAGE_SIZE,
+  }));
   try {
     for (let from = 0; ; from += BACKFILL_PAGE_SIZE) {
       const to = from + BACKFILL_PAGE_SIZE - 1;
+      const pageStartedAt = Date.now();
       const result = await supabase
         .from('document_annotations')
         .select('*')
@@ -340,19 +345,39 @@ async function runBackfillUnlocked(args) {
         .order('created_at', { ascending: true })
         .order('highlight_id', { ascending: true })
         .range(from, to);
+      const pageElapsedMs = Date.now() - pageStartedAt;
       if (result?.error) {
         queryError = result.error;
+        console.log('[Phase31 UAT] backfill:select-loop page ERROR ' + JSON.stringify({
+          documentId, page: pagesFetched, range: [from, to], pageElapsedMs,
+          errorCode: result.error?.code || null,
+          errorMessage: result.error?.message || String(result.error),
+        }));
         break;
       }
       const pageRows = result?.data || [];
       rows.push(...pageRows);
+      pagesFetched++;
+      console.log('[Phase31 UAT] backfill:select-loop page ok ' + JSON.stringify({
+        documentId, page: pagesFetched - 1, range: [from, to],
+        pageRows: pageRows.length, totalSoFar: rows.length, pageElapsedMs,
+      }));
       if (pageRows.length < BACKFILL_PAGE_SIZE) break;
     }
   } catch (err) {
     queryError = err;
+    console.log('[Phase31 UAT] backfill:select-loop THREW ' + JSON.stringify({
+      documentId, pagesFetched, message: err?.message || String(err),
+    }));
   }
 
   if (queryError) {
+    console.log('[Phase31 UAT] backfill:done (failed at SELECT) ' + JSON.stringify({
+      ranAs: 'failed',
+      documentId, userId, pagesFetched, rowsFetched: rows.length,
+      errorCode: queryError?.code || null,
+      errorMessage: queryError?.message || String(queryError),
+    }));
     // Don't mark done. Next first-open silently retries. CONTEXT.md
     // "Silent retry on partial failure".
     return { ranAs: 'failed', error: queryError };
