@@ -1,0 +1,144 @@
+===== SurveyApp Save Log =====
+version:   0.1.41
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1203x826
+locale:    en-US
+timestamp: 2026-05-03T15:20:17.845Z (5/3/2026, 11:20:17 AM)
+==============================
+[dev-auto-login] boot {"hasDevEmail":true,"devEmailHint":"isai***","hasDevPassword":true,"hasCachedSession":true,"cachedSessionEmail":"isaiahcalvo123@gmail.com","cachedSessionExpiresAt":1777824185}
+[dev-auto-login] cached session matches dev email, keeping it
+[dev-auto-login] decision {"needsAutoLogin":false,"willAttemptSignIn":false}
+[CloudSync][hook] session id minted {"sessionId":"480216d4-281c-4fd9-9a28-3024ddc2f48c"}
+[AnnotPerf] finalize idle (forced-reset) — deferring CSS transform removal, waiting for PAL confirmation
+[DebugBridge +36051.9ms] zoom_start {"scale":0.1,"targetScale":1,"source":"keyboard_toolbar"}
+[CloudSync][hook][state-obs] annotationsByPage initial {"currentCount":0,"pages":0,"hydrated":false}
+[CloudSync][hook][state-obs] callouts initial {"currentCount":0,"hydrated":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":null}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":false}
+[CSeries wipe] doc=Package 2 - Rev 4 -- IC.pdf-8316501 totalCounters=0 legacyRemoved=0 — nothing to wipe.
+[CloudSync][hook][state-obs] change {"prevCount":0,"currentCount":0,"delta":0,"hydrated":false,"sameRefAsLastByPage":false}
+[CloudSync][hook][state-obs] callout change {"prevCount":0,"currentCount":0,"delta":0,"hydrated":false,"sameRefAsLastCallouts":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"Package 2 - Rev 4 -- IC.pdf-8316501"}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":true}
+console.warn @ [SupabaseYjsProvider] update exceeds soft cap 1888209 bytes — skipping broadcast
+[CloudSync][hydrate] loadAllNonHighlightAnnotations start {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d"}
+[DebugBridge +37784.0ms] zoom_end {"source":"keyboard_toolbar_settle"}
+[PrintPanel] RENDER — panel closed
+[CloudSync][hook][state-obs] change {"prevCount":0,"currentCount":3056,"delta":3056,"hydrated":false,"sameRefAsLastByPage":false}
+[CloudSync][hook][state-obs] callout change {"prevCount":0,"currentCount":0,"delta":0,"hydrated":false,"sameRefAsLastCallouts":false}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +39044.6ms] pdf_loaded {"pageCount":36,"currentPage":1}
+[HIGHLIGHT-SYNC][load.legacy][pdf=Package 2 - Rev 4 -- IC.pdf] {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","totalRows":1820,"fabricCarryingDropped":1820,"keptCount":0,"keptIds":[]}
+[DebugBridge +39423.4ms] zoom_start {"scale":0.1,"targetScale":0.9,"source":"zoomChange"}
+[CloudSync][hook] hydrate effect fired {"enabled":true,"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"Package 2 - Rev 4 -- IC.pdf-8316501"}
+[CloudSync][hook] stage=hydrating
+[CloudSync][hook] fabric push skipped — not hydrated yet
+[CloudSync][hook] callout push skipped — not hydrated yet
+[CloudSync][realtime] subscribing {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","currentUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","currentSessionId":"480216d4-281c-4fd9-9a28-3024ddc2f48c","hasFabricInsert":true,"hasFabricUpdate":true,"hasFabricDelete":true,"hasCalloutInsert":true,"hasCalloutUpdate":true,"hasCalloutDelete":true}
+[Phase31 UAT] save:fan-out done {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","pdfId":"Package 2 - Rev 4 -- IC.pdf-8316501","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","dispatched":0,"skippedHighlightOrCallout":0,"skippedOtherType":3058,"yMapSizeAfter":1065}
+[HyperlinkDiag] post-load scan {"hyperlinkCount":0,"samples":[]}
+[HyperlinkDiag] page 1 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 2 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 3 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG","IMG","IMG","IMG","e-pv-text-layer"]}
+[HyperlinkDiag] page 4 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG","e-pv-text-layer","IMG"]}
+[CloudSync][realtime] subscribe status {"status":"SUBSCRIBED","error":null}
+[CloudSync][hook] post-subscribe catch-up skipped — startup sync already in flight
+[CloudSync][hook] cutover-complete hydrate — reading from Y.Doc {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","cutoverTs":"2026-05-03T15:19:21.269+00:00"}
+[Phase31 UAT] hydrate:cutover-sealed {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","pdfId":"Package 2 - Rev 4 -- IC.pdf-8316501","cutoverTs":"2026-05-03T15:19:21.269+00:00","yMapSize":1065,"materializedTotal":1065,"materializedDrawnByMe":0,"materializedDrawnByOthers":1065,"materializedImported":0,"pages":2}
+console.warn @ [CloudSync][hook][state-obs] SHRINK {"prevCount":3056,"currentCount":1065,"delta":-1991,"hydrated":true,"sameRefAsLastByPage":true,"stack":"    at commitHookEffectListMount (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=d338d6e7:23793:34) |     at commitPassiveMountOnFiber (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=d338d6e7:25034:19) |     at commitPassiveMountEffects_complete (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=d338d6e7:25007:17) |     at commitPassiveMountEffects_begin (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=d338d6e7:24997:15) |     at commitPassiveMountEffects (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=d338d6e7:24987:11) |     at flushPassiveEffectsImpl (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=d338d6e7:26368:11)"}
+[DebugBridge +40563.1ms] zoom_end {"source":"zoomChange_settle"}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[CloudSync][hydrate] loadAllNonHighlightAnnotations start {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d"}
+console.error @ [AnnotationSync] Error upserting annotations: {"code":"57014","details":null,"hint":null,"message":"canceling statement due to statement timeout"}
+console.error @ [DocumentSync] Sync failed: {"code":"57014","details":null,"hint":null,"message":"canceling statement due to statement timeout"}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[Counter] TOOL ACTIVATED — activeTool=counter, lastShapeTool=counter, ref will sync next render
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=866.9 clientY=349.5
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=866.7 clientY=349.7
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=865.8 clientY=350.3
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=863.1 clientY=351.6
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=862.9 clientY=351.6
+[CSeries new#1 p6] auto-created seriesId=series-1777821583684 color=#ef4444 (from toolbar strokeColor=#ef4444)
+[Counter p6] drag-start — x=883.9, y=312.1, fill=#ef4444, dragCreatedAt=1777821583684, seriesId=series-1777821583684, seriesStart=1, autoCreated=true
+[Counter p6] handleSaveAnnotations ENTRY — source=counter:drag-start, prevObjects=0, nextObjects=1, delta=1, counterObjsInJson=1, firstCounter={"type":"counter","createdAt":1777821583684,"pointerAngle":225,"displayNumber":1,"seriesId":"series-1777821583684","seriesStart":1,"id":"31d77201-432e-44be-9a3e-7a26fa41d457"}
+[Counter] setAnnotationsByPage reducer — after renumber, total counters in doc: 1, list: [{"page":"6","dn":1,"ca":1777821583684}]
+[Counter SVG p6] dispatching renderCounter — i=0, displayNumber=1, fill=#ef4444, numberColor=unset, left=869.888739639897, top=298.11300371534725, radius=14
+[CloudSync][hook][state-obs] change {"prevCount":1065,"currentCount":1066,"delta":1,"hydrated":true,"sameRefAsLastByPage":false}
+[CloudSync][hook] fabric state changed — debounce push scheduled {"pageCount":3,"objectCount":1066,"priorObjectCount":1065,"isWipePush":false,"debounceMs":800}
+[CDrag up#1 p6] FIRED dragActive=true dragPageKey=6
+[CDrag commit] ENTRY active=true createdAt=1777821583684 bodyX=883.9 bodyY=312.1 angle=225.0
+[Counter p6] handleSaveAnnotations ENTRY — source=counter:create, prevObjects=1, nextObjects=1, delta=0, counterObjsInJson=1, firstCounter={"type":"counter","createdAt":1777821583684,"pointerAngle":225,"displayNumber":1,"seriesId":"series-1777821583684","seriesStart":1,"id":"31d77201-432e-44be-9a3e-7a26fa41d457"}
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=863.1 clientY=351.6
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=865.7 clientY=349.5
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=868.4 clientY=346.7
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=871.7 clientY=343.8
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=876.0 clientY=339.6
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=881.1 clientY=335.0
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=885.4 clientY=330.7
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=891.3 clientY=325.4
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=895.8 clientY=320.3
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=901.2 clientY=314.4
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=905.7 clientY=308.8
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=910.2 clientY=303.1
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=913.9 clientY=298.3
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=917.7 clientY=293.5
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=919.3 clientY=291.5
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=923.7 clientY=285.8
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=925.2 clientY=283.8
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=926.3 clientY=282.3
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=927.0 clientY=281.3
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=927.5 clientY=280.8
+[CloudSync][hook] fabric push debounce elapsed — pushing now
+[Phase31 UAT] save:start {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","pdfId":"Package 2 - Rev 4 -- IC.pdf-8316501","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","legacyBulkUpsertEnabled":false,"crdtEnabled":true,"ydocMounted":true,"route":"crdt-only","currentTotal":1066,"currentDrawnByMe":0,"currentDrawnByOthers":1066,"currentImported":0,"priorTotal":1065,"priorDrawnByMe":0,"priorImported":0,"deltaTotal":1}
+[Phase31 UAT] save:fan-out done {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","pdfId":"Package 2 - Rev 4 -- IC.pdf-8316501","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","dispatched":1,"skippedHighlightOrCallout":0,"skippedOtherType":1065,"yMapSizeAfter":1066}
+[CloudSync][hook] fabric push synced {"count":0}
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=928.1 clientY=280.0
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=928.1 clientY=279.5
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=929.1 clientY=278.5
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=930.6 clientY=277.4
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=935.2 clientY=273.1
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=940.3 clientY=268.0
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=944.6 clientY=263.8
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=950.8 clientY=257.5
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=958.9 clientY=250.1
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=973.8 clientY=236.1
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=986.8 clientY=223.9
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=1000.8 clientY=209.0
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=1018.0 clientY=190.8
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=1035.3 clientY=171.6
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=1056.2 clientY=148.7
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=1078.7 clientY=125.1
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=1101.8 clientY=99.8
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=1115.5 clientY=647.9
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=1111.5 clientY=653.6
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=1109.1 clientY=657.4
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=1108.0 clientY=659.3
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[CloudSync][hydrate] loadAllNonHighlightAnnotations ok {"elapsedMs":35487,"totalRowsScanned":24450,"scanned":{"nonHighlight":22630,"legacyFabricHighlights":1820},"totalRows":24450,"rowsByType":{"ink":22584,"square":42,"freetext":4,"highlight":1820},"pagesWithObjects":6,"calloutCount":0}
+[CloudSync][hydrate] loadAllNonHighlightAnnotations ok {"elapsedMs":23258,"totalRowsScanned":24450,"scanned":{"nonHighlight":22630,"legacyFabricHighlights":1820},"totalRows":24450,"rowsByType":{"ink":22584,"square":42,"freetext":4,"highlight":1820},"pagesWithObjects":6,"calloutCount":0}
+[CloudSync][verify] first read summary {"contextLabel":"focus-rehydrate","documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","elapsedMs":23270,"firstFabricPages":6,"firstFabricObjects":3058,"firstCallouts":0,"firstEmpty":false,"localFabricCount":1065,"localCalloutCount":0,"localHasData":true,"willVerify":false}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[CloudSync][hook][state-obs] change {"prevCount":1066,"currentCount":3058,"delta":1992,"hydrated":true,"sameRefAsLastByPage":true}
+[CloudSync][hook][state-obs] callout change {"prevCount":0,"currentCount":0,"delta":0,"hydrated":true,"sameRefAsLastCallouts":true}
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=1109.2 clientY=659.0
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=1111.5 clientY=657.8
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=1115.2 clientY=656.0
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=1118.8 clientY=654.2
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=1126.9 clientY=649.9
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=1137.0 clientY=645.1
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=1051.2 clientY=553.3
+[CDrag move#1 p6] FIRED dragActive=false dragPageKey=undefined clientX=1028.0 clientY=639.2
+[SaveLog] global menu trigger — capturing console buffer
