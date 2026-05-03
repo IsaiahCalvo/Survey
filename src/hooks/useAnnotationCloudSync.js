@@ -55,6 +55,30 @@ import { enqueue as enqueueDualWrite, readQueue as readDualWriteQueue } from '..
 import { useYDoc } from './useYDoc.js';
 
 const DEFAULT_DEBOUNCE_MS = 800; // mid-drag pushes are coalesced into one upsert
+
+// Phase 31 UAT instrumentation (2026-05-03). Returns a tally of what is in
+// `annotationsByPage` broken out by provenance so every save / delete / hydrate
+// log can answer "did the user-drawn count actually change?" without follow-up
+// questions. Imported PDF strokes are detected by the same shape the existing
+// dual-write enqueue site uses (path with no `left`).
+function __phase31UatBreakdown(annotationsByPage, viewerId) {
+  let total = 0;
+  let imported = 0;
+  let drawnByMe = 0;
+  let drawnByOthers = 0;
+  for (const page of Object.values(annotationsByPage || {})) {
+    if (!page || !Array.isArray(page.objects)) continue;
+    for (const obj of page.objects) {
+      total++;
+      const isImported = obj?.type === 'path' && obj.left == null && Array.isArray(obj.path);
+      if (isImported) { imported++; continue; }
+      const author = obj?.data?.userId || obj?.data?.authorId || obj?.authorId || null;
+      if (viewerId && author === viewerId) drawnByMe++;
+      else drawnByOthers++;
+    }
+  }
+  return { total, imported, drawnByMe, drawnByOthers };
+}
 // 2026-04-26 — How long to wait before re-asking the cloud when the first read
 // came back empty but the device still shows annotations. Long enough for a
 // transient auth/replica race to finish; short enough that it does not feel
@@ -181,23 +205,38 @@ export function useAnnotationCloudSync({
   // Callouts: ride the legacy upsertCallouts path unchanged through Phase 30.
   // Callout migration is v2.5 scope; out of Phase 30 boundary.
   const fanOutCrdtForAnnotationsByPage = async (annotationsByPageArg, opts) => {
-    if (!isCRDTEnabled() || !phase30Ydoc) return;
+    if (!isCRDTEnabled() || !phase30Ydoc) {
+      console.log('[Phase31 UAT] save:fan-out skipped ' + JSON.stringify({
+        reason: !isCRDTEnabled() ? 'crdt-disabled' : 'ydoc-null',
+        documentId: opts?.documentId,
+        pdfId,
+      }));
+      return;
+    }
     let yMapAnnotations;
     try {
       yMapAnnotations = phase30Ydoc.getMap('annotations');
-    } catch (_e) {
+    } catch (e) {
+      console.log('[Phase31 UAT] save:fan-out getMap-threw ' + JSON.stringify({
+        error: e?.message || String(e),
+        documentId: opts?.documentId,
+        pdfId,
+      }));
       return;
     }
     const originPayload = (typeof phase30OriginCtx === 'function') ? phase30OriginCtx() : null;
     const ctx = phase30UndoCtx || null;
+    let __dispatched = 0;
+    let __skippedHighlightOrCallout = 0;
+    let __skippedOtherType = 0;
     for (const page of Object.values(annotationsByPageArg || {})) {
       if (!page || !Array.isArray(page.objects)) continue;
       for (const fabricObj of page.objects) {
         const annotation_type = fabricObj?.data?.annotationType || fabricObj?.type;
         // Layer 1 highlight bypass + callout bypass at the call site.
-        if (annotation_type === 'highlight') continue;
-        if (annotation_type === 'callout') continue;
-        if (!NON_HIGHLIGHT_TYPES.includes(annotation_type)) continue;
+        if (annotation_type === 'highlight') { __skippedHighlightOrCallout++; continue; }
+        if (annotation_type === 'callout') { __skippedHighlightOrCallout++; continue; }
+        if (!NON_HIGHLIGHT_TYPES.includes(annotation_type)) { __skippedOtherType++; continue; }
         try {
           await dualWriteFabricCommit(fabricObj, {
             ...(opts || {}),
@@ -208,15 +247,35 @@ export function useAnnotationCloudSync({
             annotation_type,
             skipLegacy: true,  // legacy bulk upsert already fired before this fan-out
           });
+          __dispatched++;
         } catch (_err) {
           // Helper enqueues failures internally — no further action needed here.
         }
       }
     }
+    let __yMapSize = -1;
+    try { __yMapSize = yMapAnnotations.size; } catch (_e) { /* fall through */ }
+    console.log('[Phase31 UAT] save:fan-out done ' + JSON.stringify({
+      documentId: opts?.documentId,
+      pdfId,
+      userId: opts?.userId,
+      dispatched: __dispatched,
+      skippedHighlightOrCallout: __skippedHighlightOrCallout,
+      skippedOtherType: __skippedOtherType,
+      yMapSizeAfter: __yMapSize,
+    }));
   };
 
   const fanOutCrdtForDeletedIds = async (documentId, deletedIds, opts) => {
-    if (!isCRDTEnabled() || !phase30Ydoc) return;
+    if (!isCRDTEnabled() || !phase30Ydoc) {
+      console.log('[Phase31 UAT] delete:fan-out skipped ' + JSON.stringify({
+        reason: !isCRDTEnabled() ? 'crdt-disabled' : 'ydoc-null',
+        documentId,
+        pdfId,
+        deletedIdsCount: Array.isArray(deletedIds) ? deletedIds.length : 0,
+      }));
+      return;
+    }
     if (!Array.isArray(deletedIds) || deletedIds.length === 0) return;
     let yMapAnnotations;
     try {
@@ -225,6 +284,7 @@ export function useAnnotationCloudSync({
       return;
     }
     const originPayload = (typeof phase30OriginCtx === 'function') ? phase30OriginCtx() : null;
+    let __deleted = 0;
     for (const annoId of deletedIds) {
       try {
         await dualWriteFabricDelete(documentId, annoId, {
@@ -239,10 +299,21 @@ export function useAnnotationCloudSync({
           annotation_type: 'fabric',
           skipLegacy: true,  // legacy bulk delete already fired before this fan-out
         });
+        __deleted++;
       } catch (_err) {
         // Helper enqueues failures internally.
       }
     }
+    let __yMapSize = -1;
+    try { __yMapSize = yMapAnnotations.size; } catch (_e) { /* fall through */ }
+    console.log('[Phase31 UAT] delete:fan-out done ' + JSON.stringify({
+      documentId,
+      pdfId,
+      userId: opts?.userId,
+      requested: deletedIds.length,
+      deleted: __deleted,
+      yMapSizeAfter: __yMapSize,
+    }));
   };
 
   // ---- 2026-04-27 — state-mutation observer ------------------------------
@@ -430,10 +501,32 @@ export function useAnnotationCloudSync({
             source: 'ydoc-snapshot',
             cutoverTs,
           });
+          // Phase 31 UAT (2026-05-03) — confirm the post-cutover hydrate fired
+          // and report the materialized counts so the user can answer step 13
+          // and step 27 from the UAT checklist on a single log line.
+          const __ydocBreakdown = __phase31UatBreakdown(byPage, userId);
+          console.log('[Phase31 UAT] hydrate:cutover-sealed ' + JSON.stringify({
+            documentId,
+            pdfId,
+            cutoverTs,
+            yMapSize: (yMap && typeof yMap.size === 'number') ? yMap.size : 0,
+            materializedTotal: __ydocBreakdown.total,
+            materializedDrawnByMe: __ydocBreakdown.drawnByMe,
+            materializedDrawnByOthers: __ydocBreakdown.drawnByOthers,
+            materializedImported: __ydocBreakdown.imported,
+            pages: Object.keys(byPage).length,
+          }));
           return; // Skip the legacy SELECT path entirely.
         }
         // Cold-doc fallback (or kill-switch off / no Y.Doc mounted yet) —
         // flow into the existing legacy hydrate below verbatim.
+        console.log('[Phase31 UAT] hydrate:legacy-fallthrough ' + JSON.stringify({
+          documentId,
+          pdfId,
+          cutoverTs,
+          ydocMounted: !!phase30Ydoc,
+          reason: !cutoverTs ? 'not-yet-sealed' : 'ydoc-not-mounted',
+        }));
 
         // 2026-04-26 — capture local counts at fire time so the verify helper
         // can decide whether an empty cloud read should be trusted on its own
@@ -620,6 +713,34 @@ export function useAnnotationCloudSync({
         debounceTimerRef.current = null;
       }
       console.log('[CloudSync][hook] fabric push debounce elapsed — pushing now');
+      // Phase 31 UAT (2026-05-03) — capture the full decision context at the
+      // moment a save fires. Lets the user paste a single log and answer steps
+      // 8–11, 21, 28–32, and the kill-switch panic-rollback section without
+      // follow-up questions. Breakdown splits user-drawn vs imported PDF rows
+      // per the project memory `Diagnostic logs must identify the PDF and
+      // split user vs imported counts`.
+      const __killSwitchOn = isLegacyBulkUpsertEnabled();
+      const __crdtOn = isCRDTEnabled();
+      const __ydocPresent = !!phase30Ydoc;
+      const __breakdownNow = __phase31UatBreakdown(annotationsByPage, userId);
+      const __breakdownPrior = __phase31UatBreakdown(priorByPage, userId);
+      console.log('[Phase31 UAT] save:start ' + JSON.stringify({
+        documentId,
+        pdfId,
+        userId,
+        legacyBulkUpsertEnabled: __killSwitchOn,
+        crdtEnabled: __crdtOn,
+        ydocMounted: __ydocPresent,
+        route: __killSwitchOn ? 'legacy-bulk-then-crdt' : 'crdt-only',
+        currentTotal: __breakdownNow.total,
+        currentDrawnByMe: __breakdownNow.drawnByMe,
+        currentDrawnByOthers: __breakdownNow.drawnByOthers,
+        currentImported: __breakdownNow.imported,
+        priorTotal: __breakdownPrior.total,
+        priorDrawnByMe: __breakdownPrior.drawnByMe,
+        priorImported: __breakdownPrior.imported,
+        deltaTotal: __breakdownNow.total - __breakdownPrior.total,
+      }));
       // 2026-04-25 — status pulse: flip to 'syncing' the moment the push
       // starts so the corner chip shows the orange spinner. The push only
       // takes ~150-300ms so this can be brief, but the user wanted clear
