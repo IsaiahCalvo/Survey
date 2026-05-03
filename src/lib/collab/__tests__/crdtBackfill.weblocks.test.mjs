@@ -46,15 +46,22 @@ function makeWebLocksMock() {
   };
 }
 
-// Helper Supabase mock that counts .order() invocations — proxy for "leader
-// ran the SELECT" vs "loser short-circuited via marker check".
+// Helper Supabase mock that counts .range() invocations — proxy for "leader
+// ran the paginated SELECT" vs "loser short-circuited via marker check".
+// (Phase 31 hotfix 2026-05-03: production backfill paginates with .range();
+// .order() is no longer terminal so counting .range() is the correct proxy
+// for an actual SELECT firing.)
 function makeSupabaseMock(rows) {
-  const calls = { order: 0 };
+  const calls = { range: 0 };
   const builder = {
     select() { return builder; },
     eq() { return builder; },
     in() { return builder; },
-    order() { calls.order += 1; return Promise.resolve({ data: rows, error: null }); },
+    order() { return builder; },
+    range(from, to) {
+      calls.range += 1;
+      return Promise.resolve({ data: rows.slice(from, to + 1), error: null });
+    },
   };
   return {
     from() { return builder; },
@@ -109,7 +116,7 @@ test(
     // because a marker (yMapAnnotations.get('__migration__') sentinel OR a
     // dedicated yMapMeta yMap.get('backfillDone') marker) was already set
     // when the loser acquired the lock.
-    assert.strictEqual(supabase._calls.order, 1, 'exactly one runBackfill should run the SELECT (leader); the other must short-circuit (loser)');
+    assert.strictEqual(supabase._calls.range, 1, 'exactly one runBackfill should run the SELECT (leader); the other must short-circuit (loser)');
     // Both calls resolve cleanly — loser does NOT throw.
     assert.ok(r1 !== undefined || r1 === undefined, 'leader resolves');
     assert.ok(r2 !== undefined || r2 === undefined, 'loser resolves');

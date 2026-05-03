@@ -28,16 +28,33 @@ function skipReason() {
 }
 
 // Build a tiny Supabase chain mock that returns the rows handed in. The
-// production chain shape (per src/services/annotationCloudSync.js) is:
-//   supabase.from('document_annotations').select('*').eq('document_id', id).in('annotation_type', NON_HIGHLIGHT).order('created_at')
-// Each link returns the next builder; the terminal returns { data, error }.
+// production chain shape (per src/lib/collab/crdtBackfill.js Phase 31 hotfix
+// 2026-05-03) is:
+//   supabase
+//     .from('document_annotations')
+//     .select('*')
+//     .eq('document_id', id)
+//     .in('annotation_type', NON_HIGHLIGHT)
+//     .order('created_at', { ascending: true })
+//     .order('highlight_id', { ascending: true })
+//     .range(from, to)
+// Each link returns the next builder; .range() is the terminal Promise. The
+// .range() implementation slices the fixture rows so the production
+// pagination loop sees a final page with `data.length < BACKFILL_PAGE_SIZE`
+// and breaks. For test-sized fixtures (< 1000 rows) the first range call
+// returns everything and the loop exits after one iteration.
 function makeSupabaseMock(rows) {
-  const calls = { from: [], select: [], eq: [], in: [], order: [] };
+  const calls = { from: [], select: [], eq: [], in: [], order: [], range: [] };
   const builder = {
     select(cols) { calls.select.push(cols); return builder; },
     eq(col, val) { calls.eq.push([col, val]); return builder; },
     in(col, vals) { calls.in.push([col, vals]); return builder; },
-    order(col, opts) { calls.order.push([col, opts]); return Promise.resolve({ data: rows, error: null }); },
+    order(col, opts) { calls.order.push([col, opts]); return builder; },
+    range(from, to) {
+      calls.range.push([from, to]);
+      const slice = rows.slice(from, to + 1);
+      return Promise.resolve({ data: slice, error: null });
+    },
   };
   const supabase = {
     from(table) { calls.from.push(table); return builder; },
@@ -184,4 +201,51 @@ test(
     const hasBackfillOrigin = capturedOrigins.some((o) => o && typeof o === 'object' && o.source === 'crdt-backfill');
     assert.ok(hasBackfillOrigin, 'at least one transaction origin must carry source: "crdt-backfill"');
   }
+);
+
+test(
+  'crdtBackfill #7 (Phase 31 hotfix 2026-05-03): paginated SELECT covers >1000 rows so PostgREST default cap does not silently truncate the import',
+  { skip: !existsSync(TARGET) ? 'crdtBackfill.js not yet present (Plan 30-02)' : (skipReason() || false) },
+  async () => {
+    const Y = await import('yjs');
+    const mod = await import(TARGET);
+    const ydoc = new Y.Doc();
+    const yMapAnnotations = ydoc.getMap('annotations');
+
+    // 2,500 rows = three pages: 1000 + 1000 + 500.
+    const BIG_FIXTURE_SIZE = 2500;
+    const rows = [];
+    for (let i = 0; i < BIG_FIXTURE_SIZE; i++) {
+      const idStr = String(i).padStart(6, '0');
+      rows.push({
+        highlight_id: `anno-${idStr}`,
+        user_id: 'alice',
+        document_id: 'doc1',
+        annotation_type: 'square',
+        created_at: '2026-01-15T10:00:00Z',
+        annotation_data: '{"left":0,"top":0,"width":10,"height":10}',
+      });
+    }
+    const supabase = makeSupabaseMock(rows);
+
+    const result = await mod.runBackfill({
+      ydoc, yMapAnnotations, supabase,
+      documentId: 'doc1', userId: 'importer1', sessionId: 's1', clientID: ydoc.clientID,
+    });
+
+    // Three pages of fetch (1000 + 1000 + 500). Pre-hotfix the SELECT was
+    // unpaginated and the `_calls.range` array would have zero entries
+    // (and the loop would have processed only the first ~1000 rows).
+    const rangeCalls = supabase._calls.range;
+    assert.strictEqual(rangeCalls.length, 3, `expected exactly 3 paginated .range() fetches for 2500 rows; got ${rangeCalls.length}`);
+    assert.deepStrictEqual(rangeCalls[0], [0, 999], 'first page must request rows [0, 999]');
+    assert.deepStrictEqual(rangeCalls[1], [1000, 1999], 'second page must request rows [1000, 1999]');
+    assert.deepStrictEqual(rangeCalls[2], [2000, 2999], 'third page must request rows [2000, 2999] and short-circuit on partial fill');
+
+    // All 2500 annotations must land in the Y.Map. Pre-hotfix size was 1000.
+    assert.strictEqual(yMapAnnotations.size, BIG_FIXTURE_SIZE,
+      `expected all ${BIG_FIXTURE_SIZE} rows in Y.Map after paginated import; got ${yMapAnnotations.size}`);
+    assert.strictEqual(result.imported, BIG_FIXTURE_SIZE,
+      `expected runBackfill to report imported=${BIG_FIXTURE_SIZE}; got ${result.imported}`);
+  },
 );

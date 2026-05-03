@@ -44,6 +44,16 @@ export const NON_HIGHLIGHT_TYPES_FOR_BACKFILL = [
   'stamp', 'sticky_note', 'callout', 'counter', 'eraser',
 ];
 
+// Phase 31 hotfix (2026-05-03) — Supabase / PostgREST default cap.
+// supabase/config.toml sets `max_rows = 1000`, matching the standard PostgREST
+// default. A bare `.select('*')` is silently truncated to the first 1000 rows
+// at the server. The legacy reader (annotationCloudSync.loadPagedAnnotationRows)
+// works around this by paginating with `.range(from, to)`. Pre-hotfix the
+// backfill SELECT below did NOT paginate, so docs with >1000 non-highlight
+// rows imported only the first page and the verified-count gate
+// (`yMapSize >= imported`) sealed the doc on a truncated baseline.
+const BACKFILL_PAGE_SIZE = 1000;
+
 // Per-user marker key in ydoc.getMap('meta'). Stored INSIDE the Y.Doc so it
 // propagates to other devices via normal CRDT sync - a second device opening
 // after the first finished sees the marker and short-circuits. Per-user keying
@@ -301,21 +311,35 @@ async function runBackfillUnlocked(args) {
     return { ranAs: 'already_done', count: 0 };
   }
 
-  // Read legacy rows. Same query shape as
-  // annotationCloudSync.loadAllNonHighlightAnnotations (line 173-200).
+  // Read legacy rows. PAGINATED with `.range()` so the PostgREST max_rows cap
+  // (1000) does not silently truncate large docs. Pre-2026-05-03 hotfix this
+  // was a bare `.select('*')` and any doc with >1000 non-highlight rows sealed
+  // on a truncated baseline.
   // .order('created_at', ascending) is intentional - backfill writes preserve
   // the legacy creation order, which matters for activity log readback.
+  // Tie-break by highlight_id so paginated cursoring is total-ordered even when
+  // multiple rows share the same created_at millisecond.
   let rows = [];
   let queryError = null;
   try {
-    const result = await supabase
-      .from('document_annotations')
-      .select('*')
-      .eq('document_id', documentId)
-      .in('annotation_type', NON_HIGHLIGHT_TYPES_FOR_BACKFILL)
-      .order('created_at', { ascending: true });
-    rows = result?.data || [];
-    queryError = result?.error || null;
+    for (let from = 0; ; from += BACKFILL_PAGE_SIZE) {
+      const to = from + BACKFILL_PAGE_SIZE - 1;
+      const result = await supabase
+        .from('document_annotations')
+        .select('*')
+        .eq('document_id', documentId)
+        .in('annotation_type', NON_HIGHLIGHT_TYPES_FOR_BACKFILL)
+        .order('created_at', { ascending: true })
+        .order('highlight_id', { ascending: true })
+        .range(from, to);
+      if (result?.error) {
+        queryError = result.error;
+        break;
+      }
+      const pageRows = result?.data || [];
+      rows.push(...pageRows);
+      if (pageRows.length < BACKFILL_PAGE_SIZE) break;
+    }
   } catch (err) {
     queryError = err;
   }
