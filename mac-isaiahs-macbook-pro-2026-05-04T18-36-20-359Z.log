@@ -1,0 +1,108 @@
+===== SurveyApp Save Log =====
+version:   0.1.45
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1512x826
+locale:    en-US
+timestamp: 2026-05-04T18:36:20.359Z (5/4/2026, 2:36:20 PM)
+==============================
+[dev-auto-login] boot {"hasDevEmail":true,"devEmailHint":"isai***","hasDevPassword":true,"hasCachedSession":true,"cachedSessionEmail":"isaiahcalvo123@gmail.com","cachedSessionExpiresAt":1777923100}
+[dev-auto-login] cached session matches dev email, keeping it
+[dev-auto-login] decision {"needsAutoLogin":false,"willAttemptSignIn":false}
+[CloudSync][hook] session id minted {"sessionId":"87faaa19-3517-4f04-bbdd-ef75d348104c"}
+[AnnotPerf] finalize idle (forced-reset) — deferring CSS transform removal, waiting for PAL confirmation
+[DebugBridge +4144.9ms] zoom_start {"scale":0.91993,"targetScale":1,"source":"keyboard_toolbar"}
+[CloudSync][hook][state-obs] annotationsByPage initial {"currentCount":0,"pages":0,"hydrated":false}
+[CloudSync][hook][state-obs] callouts initial {"currentCount":0,"hydrated":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":null}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":false}
+[CSeries wipe] doc=Package 2 - Rev 4 -- IC.pdf-8316501 totalCounters=1 legacyRemoved=0 — nothing to wipe.
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"70dadd86-35f0-432b-925f-c59e919a4e4d","userId":null,"alreadyRanFor":null,"willRun":false}
+[CloudSync][hook][state-obs] change {"prevCount":0,"currentCount":5767,"delta":5767,"hydrated":false,"sameRefAsLastByPage":false}
+[CloudSync][hook][state-obs] callout change {"prevCount":0,"currentCount":0,"delta":0,"hydrated":false,"sameRefAsLastCallouts":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"Package 2 - Rev 4 -- IC.pdf-8316501"}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":true}
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"70dadd86-35f0-432b-925f-c59e919a4e4d","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","alreadyRanFor":null,"willRun":true}
+[Phase31 UAT] backfill:start {"hasYdoc":true,"hasSupabase":true,"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","markCutoverComplete":true}
+[CloudSync][hydrate] loadAllNonHighlightAnnotations start {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d"}
+console.warn @ [SupabaseYjsProvider] update exceeds soft cap 14132197 bytes — skipping broadcast
+[DebugBridge +7658.7ms] zoom_end {"source":"keyboard_toolbar_settle"}
+[DebugBridge +7659.2ms] zoom_start {"scale":0.91993,"targetScale":1,"source":"keyboard_toolbar"}
+[HIGHLIGHT-SYNC][load.legacy][pdf=Package 2 - Rev 4 -- IC.pdf] {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","totalRows":1820,"fabricCarryingDropped":1820,"keptCount":0,"keptIds":[]}
+[CloudSync][hook] hydrate effect fired {"enabled":true,"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"Package 2 - Rev 4 -- IC.pdf-8316501"}
+[CloudSync][hook] stage=hydrating
+[CloudSync][hook] fabric push skipped — not hydrated yet
+[CloudSync][hook] callout push skipped — not hydrated yet
+[CloudSync][realtime] subscribing {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","currentUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","currentSessionId":"87faaa19-3517-4f04-bbdd-ef75d348104c","hasFabricInsert":true,"hasFabricUpdate":true,"hasFabricDelete":true,"hasCalloutInsert":true,"hasCalloutUpdate":true,"hasCalloutDelete":true}
+[CloudSync][realtime] subscribe status {"status":"SUBSCRIBED","error":null}
+[CloudSync][hook] post-subscribe catch-up skipped — startup sync already in flight
+[CloudSync][hook] cutover-complete hydrate — reading from Y.Doc {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","cutoverTs":"2026-05-04T18:30:47.673+00:00"}
+[Phase31 UAT] hydrate:cutover-sealed {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","pdfId":"Package 2 - Rev 4 -- IC.pdf-8316501","cutoverTs":"2026-05-04T18:30:47.673+00:00","yMapSize":5767,"materializedTotal":5767,"materializedDrawnByMe":5767,"materializedDrawnByOthers":0,"materializedImported":0,"pages":7,"perPage":{"1":1,"6":769,"7":291,"8":785,"9":2754,"10":654,"11":513},"currentStateCount":5767,"ydocLooksDegenerate":false}
+[Phase31 UAT] hydrate:cutover-sealed:by-type {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","pdfFile":"Package 2 - Rev 4 -- IC.pdf-8316501","viewerUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapTotal":5767,"yMapByType":{"path":5759,"rect":6,"textbox":1,"circle":1},"yMapByAuthor":{"byMe":5767,"byOthers":0,"anonymous":0},"yMapByTypeByAuthor":{"path":{"byMe":5759,"byOthers":0,"anonymous":0},"rect":{"byMe":6,"byOthers":0,"anonymous":0},"textbox":{"byMe":1,"byOthers":0,"anonymous":0},"circle":{"byMe":1,"byOthers":0,"anonymous":0}},"yMapPerTypePerPage":{"path":{"6":767,"7":290,"8":784,"9":2753,"10":653,"11":512},"rect":{"6":1,"7":1,"8":1,"9":1,"10":1,"11":1},"textbox":{"6":1},"circle":{"unknown":1}},"byPageTotal":5767,"byPageByType":{"circle":1,"path":5759,"rect":6,"textbox":1},"byPagePerPagePerType":{"1":{"circle":1},"6":{"path":767,"rect":1,"textbox":1},"7":{"rect":1,"path":290},"8":{"rect":1,"path":784},"9":{"path":2753,"rect":1},"10":{"path":653,"rect":1},"11":{"rect":1,"path":512}}}
+[CloudSync][hook][state-obs] change {"prevCount":5767,"currentCount":5767,"delta":0,"hydrated":true,"sameRefAsLastByPage":true}
+[DebugBridge +8775.4ms] zoom_end {"source":"keyboard_toolbar_settle"}
+[PrintPanel] RENDER — panel closed
+console.warn @ [CloudSync][hook][state-obs] SHRINK {"prevCount":5767,"currentCount":3059,"delta":-2708,"hydrated":true,"sameRefAsLastByPage":false,"stack":"    at commitHookEffectListMount (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=d338d6e7:23793:34) |     at commitPassiveMountOnFiber (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=d338d6e7:25034:19) |     at commitPassiveMountEffects_complete (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=d338d6e7:25007:17) |     at commitPassiveMountEffects_begin (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=d338d6e7:24997:15) |     at commitPassiveMountEffects (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=d338d6e7:24987:11) |     at flushPassiveEffectsImpl (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=d338d6e7:26368:11)"}
+[CloudSync][hook][state-obs] callout change {"prevCount":0,"currentCount":0,"delta":0,"hydrated":true,"sameRefAsLastCallouts":false}
+[CloudSync][hook] fabric state changed — debounce push scheduled {"pageCount":7,"objectCount":3059,"priorObjectCount":5767,"isWipePush":false,"debounceMs":800}
+[CloudSync][hook] callout state changed — debounce push scheduled {"count":0,"priorCount":0,"isCalloutWipePush":false,"debounceMs":800}
+[Counter SVG p1] dispatching renderCounter — i=0, displayNumber=1, fill=#ef4444, numberColor=unset, left=869.89, top=298.11, radius=14
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +9274.5ms] pdf_loaded {"pageCount":36,"currentPage":1}
+[DebugBridge +9399.8ms] zoom_start {"scale":0.1,"targetScale":0.9,"source":"zoomChange"}
+[CloudSync][hook] fabric push debounce elapsed — pushing now
+[Phase31 UAT] save:start {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","pdfId":"Package 2 - Rev 4 -- IC.pdf-8316501","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","legacyBulkUpsertEnabled":false,"crdtEnabled":true,"ydocMounted":true,"route":"crdt-only","currentTotal":3059,"currentDrawnByMe":3,"currentDrawnByOthers":3056,"currentImported":0,"priorTotal":5767,"priorDrawnByMe":5767,"priorImported":0,"deltaTotal":-2708}
+console.warn @ [CloudSync][hook] stale-cache shrink suppressed — cutover-sealed doc, skipping 5764 delete cascade {"priorTotal":5767,"currentTotal":3,"shrinkRatio":"1.00","cutoverTs":"2026-05-04T18:30:47.673+00:00"}
+[CloudSync][hook] re-hydrate after suppress — restoring state from Y.Map {"resyncCount":5767}
+[Phase31 UAT] save:fan-out done {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","pdfId":"Package 2 - Rev 4 -- IC.pdf-8316501","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","dispatched":1,"skippedHighlightOrCallout":0,"skippedOtherType":3058,"yMapSizeAfter":5767}
+[CloudSync][hook] fabric push synced {"count":0}
+[CloudSync][hook] callout push debounce elapsed — pushing now
+[CloudSync][push] upsertCallouts: nothing to push (empty list)
+[CloudSync][hook] callout push synced {"count":0}
+[Counter SVG p1] dispatching renderCounter — i=0, displayNumber=1, fill=#ef4444, numberColor=unset, left=869.89, top=298.11, radius=14
+[CloudSync][hook][state-obs] change {"prevCount":3059,"currentCount":5767,"delta":2708,"hydrated":true,"sameRefAsLastByPage":true}
+[HyperlinkDiag] post-load scan {"hyperlinkCount":0,"samples":[]}
+[HyperlinkDiag] page 1 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 2 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 3 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG","IMG","IMG","IMG","e-pv-text-layer"]}
+[HyperlinkDiag] page 4 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG"]}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +10688.0ms] zoom_end {"source":"zoomChange_settle"}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +12814.6ms] zoom_start {"scale":0.67,"targetScale":0.77,"source":"zoomChange"}
+[DebugBridge +14155.5ms] zoom_end {"source":"zoomChange_settle"}
+[DebugBridge +14241.8ms] zoom_start {"scale":1.7678530316352845,"targetScale":1.8678530316352846,"source":"zoomChange"}
+[Phase31 UAT] backfill:degeneracy-probe {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapSize":5767,"legacyCount":22630,"probeOk":true,"tolerance":1132,"yMapLooksHealthy":true,"dedupeRan":true,"lastGoodSize":5767}
+[DebugBridge +25491.0ms] zoom_end {"source":"zoomChange_settle"}
+[DebugBridge +27093.8ms] zoom_start {"scale":4,"targetScale":3.9,"source":"zoomChange"}
+[DebugBridge +29751.1ms] zoom_end {"source":"zoomChange_settle"}
+[Counter SVG p1] dispatching renderCounter — i=0, displayNumber=1, fill=#ef4444, numberColor=unset, left=869.89, top=298.11, radius=14
+[Diag] tool-switch DETECTED → select (scheduling t+1000ms capture)
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+console.warn @ [CloudSync][hook][state-obs] SHRINK {"prevCount":5767,"currentCount":5766,"delta":-1,"hydrated":true,"sameRefAsLastByPage":false,"stack":"    at commitHookEffectListMount (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=d338d6e7:23793:34) |     at commitPassiveMountOnFiber (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=d338d6e7:25034:19) |     at commitPassiveMountEffects_complete (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=d338d6e7:25007:17) |     at commitPassiveMountEffects_begin (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=d338d6e7:24997:15) |     at commitPassiveMountEffects (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=d338d6e7:24987:11) |     at flushPassiveEffectsImpl (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=d338d6e7:26368:11)"}
+[CloudSync][hook] fabric state changed — debounce push scheduled {"pageCount":7,"objectCount":5766,"priorObjectCount":5767,"isWipePush":false,"debounceMs":800}
+[Diag select] screenshot saved (855 KB) → /Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/TestLogs/testlog-screenshot-select.png
+[Diag select] CAPTURED @ t+1004ms — annotations=769 callouts=0 svgWrappers=5 svgVis=[visible,visible,visible,visible,visible] svgElems=1846 svgVisElems=1846 eraserCanvases=0 svgMarkupBytes=8773261
+[CloudSync][hook] fabric push debounce elapsed — pushing now
+[Phase31 UAT] save:start {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","pdfId":"Package 2 - Rev 4 -- IC.pdf-8316501","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","legacyBulkUpsertEnabled":false,"crdtEnabled":true,"ydocMounted":true,"route":"crdt-only","currentTotal":5766,"currentDrawnByMe":5766,"currentDrawnByOthers":0,"currentImported":0,"priorTotal":5767,"priorDrawnByMe":5767,"priorImported":0,"deltaTotal":-1}
+[CloudSync][hook] eraser/delete detected — removing rows from cloud {"count":1,"firstFew":["ink-1777522194734-8kwayhbff"]}
+[Phase31 UAT] delete:fan-out done {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","pdfId":"Package 2 - Rev 4 -- IC.pdf-8316501","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","requested":1,"deleted":1,"yMapSizeAfter":5766}
+[Phase31 UAT] save:fan-out done {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","pdfId":"Package 2 - Rev 4 -- IC.pdf-8316501","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","dispatched":1,"skippedHighlightOrCallout":0,"skippedOtherType":5765,"yMapSizeAfter":5766}
+[CloudSync][hook] fabric push synced {"count":0}
+[CloudSync][hook][state-obs] change {"prevCount":5766,"currentCount":5767,"delta":1,"hydrated":true,"sameRefAsLastByPage":false}
+[CloudSync][hook] fabric state changed — debounce push scheduled {"pageCount":7,"objectCount":5767,"priorObjectCount":5766,"isWipePush":false,"debounceMs":800}
+[CloudSync][hook] fabric push debounce elapsed — pushing now
+[Phase31 UAT] save:start {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","pdfId":"Package 2 - Rev 4 -- IC.pdf-8316501","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","legacyBulkUpsertEnabled":false,"crdtEnabled":true,"ydocMounted":true,"route":"crdt-only","currentTotal":5767,"currentDrawnByMe":5767,"currentDrawnByOthers":0,"currentImported":0,"priorTotal":5766,"priorDrawnByMe":5766,"priorImported":0,"deltaTotal":1}
+[Phase31 UAT] save:fan-out done {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","pdfId":"Package 2 - Rev 4 -- IC.pdf-8316501","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","dispatched":1,"skippedHighlightOrCallout":0,"skippedOtherType":5766,"yMapSizeAfter":5766}
+[CloudSync][hook] fabric push synced {"count":0}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
