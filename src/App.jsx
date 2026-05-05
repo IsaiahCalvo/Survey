@@ -266,6 +266,7 @@ const OVERLAY_LAG_RECORDER_AUTO_KEY = 'syncfusion_overlay_lag_auto';
 const OVERLAY_LAG_RECORDER_AUTO_SAMPLE_PAGE_LIMIT = 6;
 const OVERLAY_LAG_RECORDER_AUTO_MAX_SAMPLES = 12000;
 const OVERLAY_LAG_RECORDER_AUTO_SAMPLE_INTERVAL_MS = 180;
+const OVERLAY_LAG_RECORDER_DEBUG_UI_INTERVAL_MS = 1000;
 const OVERLAY_LAG_RECORDER_PERF_ENTRY_LIMIT = 6000;
 const OVERLAY_LAG_RECORDER_EVENT_TIMING_THRESHOLD_MS = 24;
 const DOCUMENT_SYNC_STRUCTURAL_DISABLED_KEY = 'document_sync_structural_disabled';
@@ -9307,6 +9308,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const syncfusionWheelZoomRafRef = useRef(null);
   const syncfusionWheelZoomDeltaRef = useRef(0);
   const syncfusionWheelZoomAnchorRef = useRef(null);
+  const syncfusionLastCursorPageRef = useRef(null);
   const skipNextViewStateEmitRef = useRef(true);
   const presenceAutoDisabledRef = useRef(false);
   const presenceStructuralWarningShownRef = useRef(false);
@@ -10720,7 +10722,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // This prevents the visual flicker between CSS transform removal and canvas re-render.
     // Skip during active overlay zoom — the zoom settle timer handles cleanup.
     if (!overlayZoomInProgress) {
-      console.log(`[AnnotPerf] finalize idle (${reason}) — deferring CSS transform removal, waiting for PAL confirmation`);
       beginSyncfusionScaleConfirmPending('finalize_idle');
     }
     if (wasActive) {
@@ -12702,7 +12703,24 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       return null;
     }
     const direct = document.elementFromPoint?.(clientX, clientY)?.closest?.('.e-pv-page-div');
-    if (direct) return direct;
+    if (direct) {
+      syncfusionLastCursorPageRef.current = direct;
+      return direct;
+    }
+
+    const cached = syncfusionLastCursorPageRef.current;
+    const cachedRect = cached?.isConnected ? cached.getBoundingClientRect?.() : null;
+    if (
+      cachedRect &&
+      cachedRect.width > 0 &&
+      cachedRect.height > 0 &&
+      clientX >= cachedRect.left &&
+      clientX <= cachedRect.right &&
+      clientY >= cachedRect.top &&
+      clientY <= cachedRect.bottom
+    ) {
+      return cached;
+    }
 
     // Annotation/selection overlays sit above Syncfusion's page divs, so
     // elementFromPoint can return our overlay instead of the PDF page. For
@@ -12713,6 +12731,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       const rect = page.getBoundingClientRect?.();
       if (!rect || rect.width <= 0 || rect.height <= 0) continue;
       if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) {
+        syncfusionLastCursorPageRef.current = page;
         return page;
       }
     }
@@ -15263,7 +15282,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       recorder.samples.splice(0, recorder.samples.length - recorder.options.maxSamples);
     }
 
-    if (nowMs - overlayLagRecorderDebugAtRef.current > 220) {
+    if (nowMs - overlayLagRecorderDebugAtRef.current > OVERLAY_LAG_RECORDER_DEBUG_UI_INTERVAL_MS) {
       overlayLagRecorderDebugAtRef.current = nowMs;
       setDebugData({
         overlayLagRecorderActive: recorder.active,
