@@ -1,0 +1,235 @@
+===== SurveyApp Save Log =====
+version:   0.1.45
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1203x826
+locale:    en-US
+timestamp: 2026-05-05T17:39:54.592Z (5/5/2026, 1:39:54 PM)
+==============================
+[dev-auto-login] boot {"hasDevEmail":true,"devEmailHint":"isai***","hasDevPassword":true,"hasCachedSession":true,"cachedSessionEmail":"isaiahcalvo123@gmail.com","cachedSessionExpiresAt":1778004349}
+[dev-auto-login] cached session matches dev email, keeping it
+[dev-auto-login] decision {"needsAutoLogin":false,"willAttemptSignIn":false}
+[CloudSync][hook] session id minted {"sessionId":"b3c89b03-7131-4e15-b4a3-04316aad240b"}
+[AnnotPerf] finalize idle (forced-reset) — deferring CSS transform removal, waiting for PAL confirmation
+[CloudSync][hook][state-obs] annotationsByPage initial {"currentCount":0,"pages":0,"hydrated":false}
+[CloudSync][hook][state-obs] callouts initial {"currentCount":0,"hydrated":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":null}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":false}
+[AnnotPerf] finalize idle (forced-reset) — deferring CSS transform removal, waiting for PAL confirmation
+[Cloud render cache] doc=Package 2 - Rev 4 -- IC.pdf-6291605 painting verified cloud snapshot immediately — count=2867.
+[CSeries wipe] doc=Package 2 - Rev 4 -- IC.pdf-6291605 totalCounters=0 legacyRemoved=0 — nothing to wipe.
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":null,"alreadyRanFor":null,"willRun":false}
+[CloudSync][hook][state-obs] change {"prevCount":0,"currentCount":2867,"delta":2867,"hydrated":false,"sameRefAsLastByPage":false}
+[CloudSync][hook][state-obs] callout change {"prevCount":0,"currentCount":0,"delta":0,"hydrated":false,"sameRefAsLastCallouts":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605"}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":true}
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","alreadyRanFor":null,"willRun":true}
+[Phase31 UAT] backfill:start {"hasYdoc":true,"hasSupabase":true,"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","markCutoverComplete":true}
+[HIGHLIGHT-SYNC][load.legacy][pdf=Package 2 - Rev 4 -- IC.pdf] {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","totalRows":0,"fabricCarryingDropped":0,"keptCount":0,"keptIds":[]}
+[PDFImport] skipped embedded PDF annotation import — cloud/Y.Doc is authoritative {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86"}
+[PrintPanel] RENDER — panel closed
+[DebugBridge +6084.1ms] zoom_start {"scale":0.67,"targetScale":0.9,"source":"zoomChange"}
+[CloudSync][hook] hydrate effect fired {"enabled":true,"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605"}
+[CloudSync][hook] stage=hydrating
+[CloudSync][hook] fabric push skipped — not hydrated yet
+[CloudSync][hook] callout push skipped — not hydrated yet
+[CloudSync][realtime] subscribing {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","currentUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","currentSessionId":"b3c89b03-7131-4e15-b4a3-04316aad240b","hasFabricInsert":true,"hasFabricUpdate":true,"hasFabricDelete":true,"hasCalloutInsert":true,"hasCalloutUpdate":true,"hasCalloutDelete":true}
+[CloudSync][realtime] subscribe status {"status":"SUBSCRIBED","error":null}
+[CloudSync][hook] post-subscribe catch-up skipped — startup sync already in flight
+[CloudSync][hook] cutover-complete hydrate — reading from Y.Doc {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","cutoverTs":"2026-05-05T16:30:00.778+00:00"}
+[Phase31 UAT] hydrate:cutover-sealed {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605","cutoverTs":"2026-05-05T16:30:00.778+00:00","yMapSize":2867,"materializedTotal":2867,"materializedDrawnByMe":2867,"materializedDrawnByOthers":0,"materializedImported":0,"pages":6,"perPage":{"6":359,"7":146,"8":393,"9":1382,"10":330,"11":257},"currentStateCount":2867,"ydocLooksDegenerate":false}
+[Phase31 UAT] hydrate:cutover-sealed:by-type {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","pdfFile":"Package 2 - Rev 4 -- IC.pdf-6291605","viewerUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapTotal":2867,"yMapByType":{"path":2860,"rect":6,"textbox":1},"yMapByAuthor":{"byMe":2867,"byOthers":0,"anonymous":0},"yMapByTypeByAuthor":{"path":{"byMe":2860,"byOthers":0,"anonymous":0},"rect":{"byMe":6,"byOthers":0,"anonymous":0},"textbox":{"byMe":1,"byOthers":0,"anonymous":0}},"yMapPerTypePerPage":{"path":{"6":357,"7":145,"8":392,"9":1381,"10":329,"11":256},"rect":{"6":1,"7":1,"8":1,"9":1,"10":1,"11":1},"textbox":{"6":1}},"byPageTotal":2867,"byPageByType":{"path":2860,"rect":6,"textbox":1},"byPagePerPagePerType":{"6":{"path":357,"rect":1,"textbox":1},"7":{"path":145,"rect":1},"8":{"path":392,"rect":1},"9":{"path":1381,"rect":1},"10":{"rect":1,"path":329},"11":{"path":256,"rect":1}}}
+[CloudSync][hook][state-obs] change {"prevCount":2867,"currentCount":2867,"delta":0,"hydrated":true,"sameRefAsLastByPage":true}
+[DebugBridge +6688.1ms] pdf_loaded {"pageCount":36,"currentPage":1}
+[Phase31 UAT] backfill:cutover-dedupe-anchor-skip {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapSize":2867,"lastGoodSize":2867}
+[HyperlinkDiag] post-load scan {"hyperlinkCount":0,"samples":[]}
+[HyperlinkDiag] page 1 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 2 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 3 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 4 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[DebugBridge +7804.6ms] zoom_end {"source":"zoomChange_settle"}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +17937.2ms] zoom_start {"scale":0.67,"source":"overlay_wheel_zoom_pre"}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":67,"nextZoom":69.25241906023011,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":10.5,"scrollTop":3906.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":69,"nextZoom":70.75149352044559,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":46,"scrollTop":4132}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":70,"nextZoom":74.59525586638419,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":72.5,"scrollTop":4292.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":74,"nextZoom":77.33901361881684,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":96.5,"scrollTop":4433}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":77,"nextZoom":79.73868026057659,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":104.5,"scrollTop":4481.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":79,"nextZoom":80.57371363798305,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":106.5,"scrollTop":4496}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":80,"nextZoom":80.82414829425808,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":106,"scrollTop":4495.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":80,"nextZoom":81.90460280542324,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":123,"scrollTop":4597}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":81,"nextZoom":82.55699736540811,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":134,"scrollTop":4662.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":82,"nextZoom":83.68143492550983,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":173.5,"scrollTop":4898}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":83,"nextZoom":87.7087078715094,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":215.5,"scrollTop":5149}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":87,"nextZoom":91.99310619452902,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":270,"scrollTop":5472.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":91,"nextZoom":97.51857524581116,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":442,"scrollTop":6495.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":97,"nextZoom":114.97277712972613,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":465,"scrollTop":6632.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":114,"nextZoom":117.31975968248216,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":465,"scrollTop":6632.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":117,"nextZoom":118.25839972816055,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":474,"scrollTop":6687}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":118,"nextZoom":121.33814534107688,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":517,"scrollTop":6943.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":121,"nextZoom":122.63878567777051,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":559.5,"scrollTop":7196}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":122,"nextZoom":126.95966761693457,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":620,"scrollTop":7559}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":126,"nextZoom":133.15983297268588,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":704,"scrollTop":8056.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":133,"nextZoom":141.64781340497973,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":870,"scrollTop":9044}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":141,"nextZoom":158.5108408293813,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":1037.5,"scrollTop":10038}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":158,"nextZoom":175.48607727219309,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":1117.5,"scrollTop":10516}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":175,"nextZoom":183.65514035711928,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":1117.5,"scrollTop":10516}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":183,"nextZoom":186.40777411925794,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":1163.5,"scrollTop":10790}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":186,"nextZoom":188.33341981049432,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":1232,"scrollTop":11197.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":188,"nextZoom":195.29990171392683,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":1358,"scrollTop":11950}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":195,"nextZoom":208.1485952828488,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":1509.5,"scrollTop":12848.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":208,"nextZoom":223.49392212430385,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":1591,"scrollTop":13336}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":223,"nextZoom":231.81444017418102,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":1741.5,"scrollTop":14232}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":231,"nextZoom":247.11904619778844,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":2106,"scrollTop":16395.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":247,"nextZoom":284.0632976857791,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":2130,"scrollTop":16541}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":284,"nextZoom":286.5582504053435,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":2214,"scrollTop":17041.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":286,"nextZoom":295.10380424872847,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":2220,"scrollTop":17076.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":295,"nextZoom":295.7070464019864,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":2219.5,"scrollTop":17076}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":295,"nextZoom":301.39725875521367,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":2299,"scrollTop":17548.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":301,"nextZoom":303.7802548110086,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":2337.5,"scrollTop":17778.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":303,"nextZoom":307.708181438475,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":2500.5,"scrollTop":18749}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":307,"nextZoom":324.28049836911623,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":2681,"scrollTop":19823}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":324,"nextZoom":342.6204016129091,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":2855.5,"scrollTop":20863}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":342,"nextZoom":360.37998490249663,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":3010,"scrollTop":21782.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":360,"nextZoom":376.08658563132354,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":3225,"scrollTop":23063.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":376,"nextZoom":397.9582228987363,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":3245,"scrollTop":23182.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":397,"nextZoom":400,"cursorX":695,"cursorY":243,"pageAnchor":true,"scrollLeft":3244.5,"scrollTop":23182.5}
+[DebugBridge +21153.2ms] zoom_end {"source":"zoomChange_settle"}
+[DebugBridge +32921.4ms] zoom_start {"scale":4,"source":"overlay_wheel_zoom_pre"}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":400,"nextZoom":393.00109191620936,"cursorX":456,"cursorY":467,"pageAnchor":true,"scrollLeft":1547,"scrollTop":17432}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":393,"nextZoom":302.3310829470121,"cursorX":456,"cursorY":467,"pageAnchor":true,"scrollLeft":1340.5,"scrollTop":15587}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":302,"nextZoom":271.16813689798516,"cursorX":456,"cursorY":467,"pageAnchor":true,"scrollLeft":1268,"scrollTop":14941}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":271,"nextZoom":260.26014438925677,"cursorX":456,"cursorY":467,"pageAnchor":true,"scrollLeft":1235.5,"scrollTop":14649}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":260,"nextZoom":255.32925631762689,"cursorX":456,"cursorY":467,"pageAnchor":true,"scrollLeft":1186,"scrollTop":14209}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":255,"nextZoom":247.90160960953895,"cursorX":456,"cursorY":467,"pageAnchor":true,"scrollLeft":1158.5,"scrollTop":13968.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":247,"nextZoom":243.83844000041105,"cursorX":456,"cursorY":467,"pageAnchor":true,"scrollLeft":1158.5,"scrollTop":13968}
+[DebugBridge +34425.5ms] zoom_end {"source":"zoomChange_settle"}
+[DebugBridge +34795.3ms] zoom_start {"scale":2.43,"source":"overlay_wheel_zoom_pre"}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":243,"nextZoom":239.4857539781007,"cursorX":454,"cursorY":472,"pageAnchor":true,"scrollLeft":263,"scrollTop":13353}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":239,"nextZoom":227.5596272725306,"cursorX":454,"cursorY":472,"pageAnchor":true,"scrollLeft":177.5,"scrollTop":11714.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":227,"nextZoom":200.59594069852326,"cursorX":454,"cursorY":472,"pageAnchor":true,"scrollLeft":146.5,"scrollTop":11120}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":200,"nextZoom":190.81383472094333,"cursorX":454,"cursorY":472,"pageAnchor":true,"scrollLeft":139.5,"scrollTop":10990.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":190,"nextZoom":188.6801383920045,"cursorX":454,"cursorY":472,"pageAnchor":true,"scrollLeft":127,"scrollTop":10748.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":188,"nextZoom":184.70239014071223,"cursorX":454,"cursorY":472,"pageAnchor":true,"scrollLeft":126.5,"scrollTop":10748}
+[DebugBridge +36309.7ms] zoom_end {"source":"zoomChange_settle"}
+[DebugBridge +37580.2ms] zoom_start {"scale":1.84,"source":"overlay_wheel_zoom_pre"}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":184,"nextZoom":181.7843074494232,"cursorX":454,"cursorY":473,"pageAnchor":true,"scrollLeft":1093.5,"scrollTop":8633}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":181,"nextZoom":151.52087185508412,"cursorX":454,"cursorY":473,"pageAnchor":true,"scrollLeft":996.5,"scrollTop":8064}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":151,"nextZoom":142.05479844277147,"cursorX":454,"cursorY":473,"pageAnchor":true,"scrollLeft":988,"scrollTop":8015}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":142,"nextZoom":141.2524593773732,"cursorX":454,"cursorY":473,"pageAnchor":true,"scrollLeft":987.5,"scrollTop":8015}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":141,"nextZoom":143.27141555168973,"cursorX":381,"cursorY":305,"pageAnchor":true,"scrollLeft":1061,"scrollTop":8464.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":143,"nextZoom":148.88820802407184,"cursorX":381,"cursorY":305,"pageAnchor":true,"scrollLeft":1102,"scrollTop":8712.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":148,"nextZoom":153.10932277645023,"cursorX":381,"cursorY":305,"pageAnchor":true,"scrollLeft":1239,"scrollTop":9548.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":153,"nextZoom":167.30756257960232,"cursorX":381,"cursorY":305,"pageAnchor":true,"scrollLeft":1421.5,"scrollTop":10660.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":167,"nextZoom":186.19055052215205,"cursorX":381,"cursorY":305,"pageAnchor":true,"scrollLeft":1540,"scrollTop":11383.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":186,"nextZoom":198.46838579098846,"cursorX":381,"cursorY":305,"pageAnchor":true,"scrollLeft":1784,"scrollTop":12868.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":198,"nextZoom":223.70348907046267,"cursorX":381,"cursorY":305,"pageAnchor":true,"scrollLeft":1783.5,"scrollTop":12868}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":223,"nextZoom":254.29005302568052,"cursorX":381,"cursorY":305,"pageAnchor":true,"scrollLeft":2784,"scrollTop":18958}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":254,"nextZoom":327.1339162451268,"cursorX":381,"cursorY":305,"pageAnchor":true,"scrollLeft":3082,"scrollTop":20774}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":327,"nextZoom":357.9910914428167,"cursorX":381,"cursorY":305,"pageAnchor":true,"scrollLeft":3081.5,"scrollTop":20774}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":357,"nextZoom":361.6893091248445,"cursorX":381,"cursorY":305,"pageAnchor":true,"scrollLeft":3487.5,"scrollTop":23247}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":361,"nextZoom":400,"cursorX":381,"cursorY":305,"pageAnchor":true,"scrollLeft":3487.5,"scrollTop":23247}
+[DebugBridge +40263.1ms] zoom_end {"source":"zoomChange_settle"}
+[DebugBridge +40463.3ms] zoom_start {"scale":4,"source":"overlay_wheel_zoom_pre"}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":400,"nextZoom":397.3574577411874,"cursorX":381,"cursorY":305,"pageAnchor":true,"scrollLeft":3416.5,"scrollTop":22817}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":397,"nextZoom":392.69920585453974,"cursorX":381,"cursorY":305,"pageAnchor":true,"scrollLeft":3371.5,"scrollTop":22544}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":392,"nextZoom":388.06779431099164,"cursorX":381,"cursorY":305,"pageAnchor":true,"scrollLeft":3067.5,"scrollTop":20695.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":388,"nextZoom":356.6788208278496,"cursorX":381,"cursorY":305,"pageAnchor":true,"scrollLeft":2833,"scrollTop":19268.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":356,"nextZoom":332.4458012043298,"cursorX":381,"cursorY":305,"pageAnchor":true,"scrollLeft":2713.5,"scrollTop":18539}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":332,"nextZoom":320.0660128752075,"cursorX":381,"cursorY":305,"pageAnchor":true,"scrollLeft":1921.5,"scrollTop":13718}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":320,"nextZoom":238.17997106968065,"cursorX":381,"cursorY":305,"pageAnchor":true,"scrollLeft":1669,"scrollTop":12181}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":238,"nextZoom":212.07629915526564,"cursorX":381,"cursorY":305,"pageAnchor":true,"scrollLeft":1621,"scrollTop":11891.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":212,"nextZoom":207.15554183345125,"cursorX":381,"cursorY":305,"pageAnchor":true,"scrollLeft":1620.5,"scrollTop":11891}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":207,"nextZoom":205.00749162182157,"cursorX":381,"cursorY":305,"pageAnchor":true,"scrollLeft":1569,"scrollTop":11578.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":205,"nextZoom":201.84762931046794,"cursorX":381,"cursorY":305,"pageAnchor":true,"scrollLeft":1538,"scrollTop":11392.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":201,"nextZoom":198.69088378133796,"cursorX":381,"cursorY":305,"pageAnchor":true,"scrollLeft":1431.5,"scrollTop":10743.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":198,"nextZoom":187.6723075871413,"cursorX":381,"cursorY":305,"pageAnchor":true,"scrollLeft":1271.5,"scrollTop":9769}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":187,"nextZoom":171.1251972565825,"cursorX":381,"cursorY":305,"pageAnchor":true,"scrollLeft":1155.5,"scrollTop":9063.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":171,"nextZoom":159.14043017790252,"cursorX":381,"cursorY":305,"pageAnchor":true,"scrollLeft":810.5,"scrollTop":6959}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":159,"nextZoom":123.40143830327186,"cursorX":381,"cursorY":305,"pageAnchor":true,"scrollLeft":765.5,"scrollTop":6686.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":123,"nextZoom":118.7729526777346,"cursorX":381,"cursorY":305,"pageAnchor":true,"scrollLeft":765,"scrollTop":6686.5}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +42299.2ms] zoom_end {"source":"zoomChange_settle"}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +43199.3ms] zoom_start {"scale":1.18,"source":"overlay_wheel_zoom_pre"}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":118,"nextZoom":119.2691552813927,"cursorX":380,"cursorY":305,"pageAnchor":true,"scrollLeft":935,"scrollTop":10780.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":119,"nextZoom":136.43679199972195,"cursorX":380,"cursorY":305,"pageAnchor":true,"scrollLeft":980.5,"scrollTop":11164.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":136,"nextZoom":141.16725055542568,"cursorX":380,"cursorY":305,"pageAnchor":true,"scrollLeft":980,"scrollTop":11164}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":141,"nextZoom":142.80984562972063,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":1008,"scrollTop":11359}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":142,"nextZoom":143.5543938405251,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":1262.5,"scrollTop":13130}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":143,"nextZoom":165.23813680051498,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":1511.5,"scrollTop":14862}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":165,"nextZoom":186.44402409042925,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":1829.5,"scrollTop":17070}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":186,"nextZoom":213.48413507171412,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":1829,"scrollTop":17070}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":213,"nextZoom":215.92538804999083,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":1899.5,"scrollTop":17559.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":215,"nextZoom":219.48242521311138,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":2079.5,"scrollTop":18811.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":219,"nextZoom":234.81554728030608,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":2384,"scrollTop":20932.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":234,"nextZoom":260.7830175119606,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":3050.5,"scrollTop":25564.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":260,"nextZoom":317.4941855727761,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":3050.5,"scrollTop":25564}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":317,"nextZoom":326.04179010742297,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":3246.5,"scrollTop":26927.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":326,"nextZoom":334.19298056825966,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":3556.5,"scrollTop":29085.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":334,"nextZoom":360.61500480768467,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":3971.5,"scrollTop":31972}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":360,"nextZoom":395.9584740602441,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":4018.5,"scrollTop":32302}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":395,"nextZoom":400,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":4018,"scrollTop":32302}
+[DebugBridge +46292.8ms] zoom_end {"source":"zoomChange_settle"}
+[DebugBridge +48192.2ms] zoom_start {"scale":4,"source":"overlay_wheel_zoom_pre"}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":400,"nextZoom":391.25554962623477,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":3048,"scrollTop":25558}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":391,"nextZoom":317.4326800893309,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":2778.5,"scrollTop":23687}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":317,"nextZoom":294.5253940858892,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":2387,"scrollTop":20966}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":294,"nextZoom":261.21353061945797,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":2205,"scrollTop":19705}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":261,"nextZoom":245.77537274615267,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":2040,"scrollTop":18556.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":245,"nextZoom":231.7122760695685,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":1596,"scrollTop":15470}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":231,"nextZoom":193.92550894595706,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":1296,"scrollTop":13386.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":193,"nextZoom":168.4193763547749,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":866.5,"scrollTop":10399.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":168,"nextZoom":131.8467933205158,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":839,"scrollTop":10207.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":131,"nextZoom":129.50109659947518,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":166,"scrollTop":5526}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":129,"nextZoom":72.1749483320172,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":165.5,"scrollTop":5525.5}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +50381.5ms] zoom_end {"source":"zoomChange_settle"}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +60419.1ms] zoom_start {"scale":0.72,"source":"overlay_wheel_zoom_pre"}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":72,"nextZoom":76.27635852442808,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":292.5,"scrollTop":9803.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":76,"nextZoom":103.03317861058322,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":308,"scrollTop":9971}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":103,"nextZoom":104.73088146934779,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":308,"scrollTop":9970.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":104,"nextZoom":105.92199768658905,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":707,"scrollTop":14143.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":105,"nextZoom":147.0059467067586,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":710,"scrollTop":14180.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":147,"nextZoom":147.3849869810122,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":710,"scrollTop":14180.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":147,"nextZoom":148.84415436635842,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":742,"scrollTop":14519.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":148,"nextZoom":150.82213899446958,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":805.5,"scrollTop":15185}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":150,"nextZoom":157.5644558042996,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":924.5,"scrollTop":16433}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":157,"nextZoom":170.20810361343638,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":1327.5,"scrollTop":20647}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":170,"nextZoom":212.90094550122825,"cursorX":681,"cursorY":369,"pageAnchor":true,"scrollLeft":1327,"scrollTop":20647}
+[DebugBridge +62719.0ms] zoom_end {"source":"zoomChange_settle"}
