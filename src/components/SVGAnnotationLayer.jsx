@@ -68,7 +68,6 @@ import { captureSvgCallout } from '../utils/calloutGeometryDiag.js';
 // is viewport-only painting (skip drawings outside the visible scroll
 // window) — tracked as a follow-up.
 
-const DEBUG_ROTATION_INPUT_VISIBILITY = false;
 
 const formatDashArrayForDebug = (dashArray) => {
   if (!Array.isArray(dashArray) || dashArray.length === 0) return 'none';
@@ -503,15 +502,11 @@ const SVGAnnotationLayer = memo(({
     if (typeof next === 'function') {
       setRotInputVisible(prev => {
         const computed = next(prev);
-        if (DEBUG_ROTATION_INPUT_VISIBILITY) {
-          console.log(`[SVGAnnotationLayer] setRotInputVisible(${computed}) reason=${reason} prev=${prev}`);
-        }
+        console.log(`[SVGAnnotationLayer] setRotInputVisible(${computed}) reason=${reason} prev=${prev}`);
         return computed;
       });
     } else {
-      if (DEBUG_ROTATION_INPUT_VISIBILITY) {
-        console.log(`[SVGAnnotationLayer] setRotInputVisible(${next}) reason=${reason}`);
-      }
+      console.log(`[SVGAnnotationLayer] setRotInputVisible(${next}) reason=${reason}`);
       setRotInputVisible(next);
     }
   }, []);
@@ -1132,17 +1127,13 @@ const SVGAnnotationLayer = memo(({
   useEffect(() => { isRotatingRef.current = isRotating; }, [isRotating]);
 
   const handleRotationInputHoverChange = useCallback((hovered) => {
-    if (DEBUG_ROTATION_INPUT_VISIBILITY) {
-      console.log(`[SVGAnnotationLayer] pill onHoverChange(${hovered}) visibleRef=${rotInputVisibleRef.current} rotatingRef=${isRotatingRef.current}`);
-    }
+    console.log(`[SVGAnnotationLayer] pill onHoverChange(${hovered}) visibleRef=${rotInputVisibleRef.current} rotatingRef=${isRotatingRef.current}`);
     rotInputHoveredRef.current = hovered;
     if (hovered) {
       // Cancel grace timer if cursor entered the input itself — keeps the
       // pill open while the user is interacting with it.
       if (rotInputCloseTimerRef.current) {
-        if (DEBUG_ROTATION_INPUT_VISIBILITY) {
-          console.log(`[SVGAnnotationLayer] pill onHoverChange(true) — cancelling close timer`);
-        }
+        console.log(`[SVGAnnotationLayer] pill onHoverChange(true) — cancelling close timer`);
         clearTimeout(rotInputCloseTimerRef.current);
         rotInputCloseTimerRef.current = null;
       }
@@ -1151,24 +1142,18 @@ const SVGAnnotationLayer = memo(({
       // the user can travel back to the handle without dismissing the pill.
       // Suppressed during active rotation drag (drag overrides visibility).
       if (rotInputVisibleRef.current && !rotInputCloseTimerRef.current && !isRotatingRef.current) {
-        if (DEBUG_ROTATION_INPUT_VISIBILITY) {
-          console.log(`[SVGAnnotationLayer] pill onHoverChange(false) — scheduling 500ms grace`);
-        }
+        console.log(`[SVGAnnotationLayer] pill onHoverChange(false) — scheduling 500ms grace`);
         rotInputCloseTimerRef.current = setTimeout(() => {
           // Same activeElement guard as the mtr-leave path — if the user is
           // currently typing in the pill input, never hide regardless of hover.
           const ae = document.activeElement;
           const focusedInPill = !!(ae && ae.closest && ae.closest('[data-rotation-input-field]'));
           if (focusedInPill) {
-            if (DEBUG_ROTATION_INPUT_VISIBILITY) {
-              console.log(`[SVGAnnotationLayer] grace timer expired but pill input is focused, NOT hiding`);
-            }
+            console.log(`[SVGAnnotationLayer] grace timer expired but pill input is focused, NOT hiding`);
           } else if (!rotInputHoveredRef.current) {
             setRotInputVisibleDbg(false, '500ms grace expired (pill leave path)');
           } else {
-            if (DEBUG_ROTATION_INPUT_VISIBILITY) {
-              console.log(`[SVGAnnotationLayer] grace timer expired but cursor came back, NOT hiding`);
-            }
+            console.log(`[SVGAnnotationLayer] grace timer expired but cursor came back, NOT hiding`);
           }
           rotInputCloseTimerRef.current = null;
         }, 500);

@@ -254,7 +254,7 @@ const SYNCFUSION_INTERACTION_FORCE_PROXY_ALL_PAGES = true;
 const ZOOM_ONLY_INTERACTION_REASONS = new Set([
   'wheel-zoom', 'syncfusion-wheel-zoom', 'syncfusion-zoom-change', 'overlay-wheel-zoom'
 ]);
-const SYNCFUSION_SCROLL_DELAY_MS = 40;
+const SYNCFUSION_SCROLL_DELAY_MS = 80;
 // Keep initial PDF work close to the visible viewport. Syncfusion defaults to
 // 2 initial pages, and PDF.js recommends rendering only visible pages to avoid
 // slow opens and excess canvas memory on large annotated documents.
@@ -476,39 +476,6 @@ const percentileOverlayRecorder = (values = [], percentile = 0.95) => {
   const sorted = [...values].sort((left, right) => left - right);
   const index = Math.min(sorted.length - 1, Math.max(0, Math.floor(percentile * (sorted.length - 1))));
   return sorted[index];
-};
-
-const summarizeFrameDurations = (samples = [], jankThresholdMs = 32) => {
-  const frameDurations = samples
-    .map((sample) => sample?.frameMs)
-    .filter((value) => Number.isFinite(value) && value > 0);
-  if (frameDurations.length === 0) {
-    return {
-      sampleCount: samples.length,
-      measuredFrameCount: 0,
-      frameMsAvg: null,
-      frameMsP95: null,
-      frameMsMax: null,
-      fpsAvg: null,
-      jankFrames: 0,
-      jankFrameRatePct: null
-    };
-  }
-  const avg = frameDurations.reduce((sum, value) => sum + value, 0) / frameDurations.length;
-  const max = Math.max(...frameDurations);
-  const jankFrames = frameDurations.filter((frameMs) => frameMs > jankThresholdMs).length;
-  return {
-    sampleCount: samples.length,
-    measuredFrameCount: frameDurations.length,
-    frameMsAvg: roundOverlayRecorderValue(avg, 3),
-    frameMsP95: roundOverlayRecorderValue(percentileOverlayRecorder(frameDurations, 0.95), 3),
-    frameMsMax: roundOverlayRecorderValue(max, 3),
-    fpsAvg: roundOverlayRecorderValue(1000 / avg, 2),
-    fpsAtP95Frame: roundOverlayRecorderValue(1000 / percentileOverlayRecorder(frameDurations, 0.95), 2),
-    fpsAtWorstFrame: roundOverlayRecorderValue(1000 / max, 2),
-    jankFrames,
-    jankFrameRatePct: roundOverlayRecorderValue((jankFrames / frameDurations.length) * 100, 2)
-  };
 };
 
 const getSyncfusionOverlayPrefetchPages = (viewerScale) => {
@@ -9387,22 +9354,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     longTaskEntries: [],
     eventEntries: []
   });
-  const syncfusionPagePerfRef = useRef({
-    currentLoadStartedAtMs: null,
-    currentDocumentLoadedAtMs: null,
-    currentDocumentLoadElapsedMs: null,
-    currentPageCount: null,
-    currentDocumentKey: null,
-    pageRenderEvents: [],
-    pageRenderByPage: {},
-    pageContainerEvents: [],
-    spinnerSnapshots: [],
-    lastSummary: null
-  });
-  const syncfusionPagePerfConsoleRef = useRef({
-    pageRenderLogs: 0,
-    lastSummaryAtMs: 0
-  });
   const overlayLagEventTotalsRef = useRef({
     syncfusionScroll: 0,
     syncfusionWheelZoom: 0,
@@ -13568,155 +13519,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return resolvedHost || null;
   }, [resolveSyncfusionLivePageHost]);
 
-  const summarizeSyncfusionPagePerf = useCallback(() => {
-    const state = syncfusionPagePerfRef.current;
-    const pageEvents = Array.isArray(state.pageRenderEvents) ? state.pageRenderEvents : [];
-    const pageLoadElapsed = pageEvents
-      .map((event) => Number(event.elapsedSinceLoadStartMs))
-      .filter((value) => Number.isFinite(value) && value >= 0);
-    const pageDocElapsed = pageEvents
-      .map((event) => Number(event.elapsedSinceDocumentLoadMs))
-      .filter((value) => Number.isFinite(value) && value >= 0);
-    const pagesRendered = Object.keys(state.pageRenderByPage || {}).length;
-    const visibleSpinnerCounts = pageEvents
-      .map((event) => Number(event.visibleSpinnerCount))
-      .filter((value) => Number.isFinite(value) && value >= 0);
-    const latestSpinnerSnapshot = state.spinnerSnapshots?.[state.spinnerSnapshots.length - 1] || null;
-    const pageEventsByNumber = Object.entries(state.pageRenderByPage || {})
-      .map(([pageNumber, entry]) => ({
-        pageNumber: Number(pageNumber),
-        firstElapsedSinceLoadStartMs: roundOverlayRecorderValue(entry?.firstElapsedSinceLoadStartMs, 1),
-        lastElapsedSinceLoadStartMs: roundOverlayRecorderValue(entry?.lastElapsedSinceLoadStartMs, 1),
-        count: Number(entry?.count) || 0
-      }))
-      .sort((left, right) => left.pageNumber - right.pageNumber)
-      .slice(0, 20);
-
-    return cloneOverlayRecorderPayload({
-      documentKey: state.currentDocumentKey,
-      pageCount: state.currentPageCount,
-      documentLoadElapsedMs: roundOverlayRecorderValue(state.currentDocumentLoadElapsedMs, 1),
-      totalPageRenderEvents: pageEvents.length,
-      pagesRendered,
-      firstPageRenderElapsedMs: roundOverlayRecorderValue(pageLoadElapsed.length ? Math.min(...pageLoadElapsed) : null, 1),
-      latestPageRenderElapsedMs: roundOverlayRecorderValue(pageLoadElapsed.length ? Math.max(...pageLoadElapsed) : null, 1),
-      pageRenderElapsedP50Ms: roundOverlayRecorderValue(percentileOverlayRecorder(pageLoadElapsed, 0.5), 1),
-      pageRenderElapsedP95Ms: roundOverlayRecorderValue(percentileOverlayRecorder(pageLoadElapsed, 0.95), 1),
-      pageRenderAfterDocumentLoadP50Ms: roundOverlayRecorderValue(percentileOverlayRecorder(pageDocElapsed, 0.5), 1),
-      pageRenderAfterDocumentLoadP95Ms: roundOverlayRecorderValue(percentileOverlayRecorder(pageDocElapsed, 0.95), 1),
-      visibleSpinnerCountMax: roundOverlayRecorderValue(visibleSpinnerCounts.length ? Math.max(...visibleSpinnerCounts) : null, 0),
-      latestVisibleSpinnerCount: latestSpinnerSnapshot?.visibleSpinnerCount ?? null,
-      latestVisibleSpinnerPages: latestSpinnerSnapshot?.visibleSpinnerPages || [],
-      pageEventsByNumber,
-      recentPageRenderEvents: pageEvents.slice(-24),
-      recentContainerEvents: (state.pageContainerEvents || []).slice(-24),
-      recentSpinnerSnapshots: (state.spinnerSnapshots || []).slice(-12)
-    });
-  }, []);
-
   const handleSyncfusionDebugEvent = useCallback((event) => {
     const type = event?.type || 'unknown';
     const key = `syncfusion_${type}`;
     emitPdfDebugEvent(key, event);
     setDebugData({ lastSyncfusionEvent: type });
 
-    const perfState = syncfusionPagePerfRef.current;
-    if (type === 'document_load_start') {
-      perfState.currentLoadStartedAtMs = Number(event?.perfNowMs);
-      perfState.currentDocumentLoadedAtMs = null;
-      perfState.currentDocumentLoadElapsedMs = null;
-      perfState.currentPageCount = null;
-      perfState.currentDocumentKey = event?.documentKey || null;
-      perfState.pageRenderEvents = [];
-      perfState.pageRenderByPage = {};
-      perfState.pageContainerEvents = [];
-      perfState.spinnerSnapshots = [];
-      perfState.lastSummary = null;
-      syncfusionPagePerfConsoleRef.current = {
-        pageRenderLogs: 0,
-        lastSummaryAtMs: 0
-      };
-    } else if (type === 'document_load') {
-      perfState.currentDocumentLoadedAtMs = Number(event?.perfNowMs);
-      perfState.currentDocumentLoadElapsedMs = Number(event?.elapsedSinceLoadStartMs);
-      perfState.currentPageCount = Number(event?.pageCount) || null;
-      perfState.lastSummary = summarizeSyncfusionPagePerf();
-      setDebugData({ pagePerformance: perfState.lastSummary });
-      console.log('[PagePerf] document loaded', {
-        pageCount: perfState.currentPageCount,
-        documentLoadElapsedMs: perfState.lastSummary?.documentLoadElapsedMs,
-        documentKey: perfState.currentDocumentKey
-      });
-    } else if (type === 'page_render_complete') {
-      const pageNumber = Number(event?.pageNumber);
-      const entry = {
-        at: event?.at || Date.now(),
-        pageNumber: Number.isFinite(pageNumber) ? pageNumber : null,
-        elapsedSinceLoadStartMs: roundOverlayRecorderValue(event?.elapsedSinceLoadStartMs, 1),
-        elapsedSinceDocumentLoadMs: roundOverlayRecorderValue(event?.elapsedSinceDocumentLoadMs, 1),
-        visibleSpinnerCount: Number(event?.visibleSpinnerCount) || 0,
-        visibleSpinnerPages: Array.isArray(event?.visibleSpinnerPages) ? event.visibleSpinnerPages.slice(0, 12) : [],
-        pageContainerCount: Number(event?.pageContainerCount) || 0
-      };
-      perfState.pageRenderEvents.push(entry);
-      if (perfState.pageRenderEvents.length > 600) {
-        perfState.pageRenderEvents.splice(0, perfState.pageRenderEvents.length - 600);
-      }
-      if (Number.isFinite(pageNumber) && pageNumber > 0) {
-        const existing = perfState.pageRenderByPage[pageNumber] || { count: 0 };
-        perfState.pageRenderByPage[pageNumber] = {
-          count: existing.count + 1,
-          firstElapsedSinceLoadStartMs: existing.firstElapsedSinceLoadStartMs ?? entry.elapsedSinceLoadStartMs,
-          lastElapsedSinceLoadStartMs: entry.elapsedSinceLoadStartMs
-        };
-      }
-      perfState.spinnerSnapshots.push({
-        at: entry.at,
-        visibleSpinnerCount: entry.visibleSpinnerCount,
-        visibleSpinnerPages: entry.visibleSpinnerPages
-      });
-      if (perfState.spinnerSnapshots.length > 120) {
-        perfState.spinnerSnapshots.splice(0, perfState.spinnerSnapshots.length - 120);
-      }
-      perfState.lastSummary = summarizeSyncfusionPagePerf();
-      setDebugData({ pagePerformance: perfState.lastSummary });
-      const consoleState = syncfusionPagePerfConsoleRef.current;
-      const nowMs = typeof performance !== 'undefined' && typeof performance.now === 'function'
-        ? performance.now()
-        : Date.now();
-      const shouldLogPage =
-        consoleState.pageRenderLogs < 24 ||
-        entry.visibleSpinnerCount > 0 ||
-        nowMs - consoleState.lastSummaryAtMs > 2500;
-      if (shouldLogPage) {
-        consoleState.pageRenderLogs += 1;
-        consoleState.lastSummaryAtMs = nowMs;
-        console.log('[PagePerf] page render', {
-          pageNumber: entry.pageNumber,
-          elapsedSinceLoadStartMs: entry.elapsedSinceLoadStartMs,
-          elapsedSinceDocumentLoadMs: entry.elapsedSinceDocumentLoadMs,
-          visibleSpinnerCount: entry.visibleSpinnerCount,
-          visibleSpinnerPages: entry.visibleSpinnerPages,
-          totalPageRenderEvents: perfState.lastSummary?.totalPageRenderEvents,
-          pagesRendered: perfState.lastSummary?.pagesRendered
-        });
-      }
-    } else if (type === 'page_containers_changed') {
-      perfState.pageContainerEvents.push({
-        at: event?.at || Date.now(),
-        count: Number(event?.count) || 0,
-        reason: event?.reason || null
-      });
-      if (perfState.pageContainerEvents.length > 300) {
-        perfState.pageContainerEvents.splice(0, perfState.pageContainerEvents.length - 300);
-      }
-    }
-
     const now = Date.now();
     const eventTimes = syncfusionEventTimesRef.current[key] || [];
     const nextTimes = [...eventTimes, now].filter((ts) => ts >= now - 2000);
     syncfusionEventTimesRef.current[key] = nextTimes;
-  }, [summarizeSyncfusionPagePerf]);
+  }, []);
 
   const handleSyncfusionPageContainersChange = useCallback((pageContainerMap, meta = null) => {
     if (!useSyncfusionRenderer) return;
@@ -14982,16 +14795,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const samplesWithLongTasks = longTaskCounts.filter((count) => count > 0).length;
     const jankSamples = samples.filter((sample) => Number(sample.frameMs) > jankThresholdMs);
     const jankSamplesWithLongTasks = jankSamples.filter((sample) => Number(sample.longTaskCount) > 0).length;
-    const foregroundSamples = samples.filter((sample) => sample?.documentVisible !== false && sample?.windowFocused !== false);
-    const hiddenOrBlurredSamples = samples.filter((sample) => sample?.documentVisible === false || sample?.windowFocused === false);
-    const activeSamples = foregroundSamples.filter((sample) => (
-      sample?.interactionActive === true ||
-      sample?.zoomOverlayTransformActive === true ||
-      sample?.interactionPhase === 'interacting' ||
-      sample?.interactionPhase === 'committing' ||
-      Object.values(sample?.interactionEventDeltas || {}).some((value) => Number(value) > 0)
-    ));
-    const idleForegroundSamples = foregroundSamples.filter((sample) => !activeSamples.includes(sample));
 
     const interactionEventTotals = {};
     samples.forEach((sample) => {
@@ -15079,10 +14882,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         : null,
       eventTimingTotalMs: roundOverlayRecorderValue(eventTimingTotals.length ? eventTimingTotals.reduce((sum, value) => sum + value, 0) : 0, 3),
       eventTimingMsP95: roundOverlayRecorderValue(percentileOverlayRecorder(eventTimingTotals, 0.95), 3),
-      focusedForeground: summarizeFrameDurations(foregroundSamples, jankThresholdMs),
-      activeInteraction: summarizeFrameDurations(activeSamples, jankThresholdMs),
-      idleForeground: summarizeFrameDurations(idleForegroundSamples, jankThresholdMs),
-      hiddenOrBlurred: summarizeFrameDurations(hiddenOrBlurredSamples, jankThresholdMs),
       interactionEventHotspots,
       longTaskHotspots
     };
@@ -15325,9 +15124,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       frameMs: roundOverlayRecorderValue(frameMs, 3),
       appScale: roundOverlayRecorderValue(scaleRef.current || scale, 5),
       viewerScale: roundOverlayRecorderValue(viewerScale, 5),
-      documentVisible: typeof document === 'undefined' ? null : document.visibilityState !== 'hidden',
-      windowFocused: typeof document === 'undefined' || typeof document.hasFocus !== 'function' ? null : document.hasFocus(),
-      interactionPerfActive: isInteractionPerfWindowActive(),
       interactionActive: syncfusionInteractionActiveRef.current,
       interactionPhase: syncfusionInteractionPhaseRef.current,
       interactionSessionId: syncfusionInteractionSessionIdRef.current,
@@ -15394,7 +15190,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         overlayLagSampleCaptureCostMs: sample.sampleCaptureCostMs
       });
     }
-  }, [consumeOverlayLagPerfAttribution, isInteractionPerfWindowActive, scale]);
+  }, [consumeOverlayLagPerfAttribution, scale]);
 
   const startOverlayLagRecorder = useCallback((options = {}) => {
     const recorder = overlayLagRecorderRef.current;
@@ -16249,45 +16045,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         overlayTransformTotals: { ...(syncfusionOverlayTransformStatsRef.current || {}) }
       })
     };
-    window.pdfPagePerfRecorder = {
-      summary: () => summarizeSyncfusionPagePerf(),
-      status: () => ({
-        pageRenderEventCount: syncfusionPagePerfRef.current.pageRenderEvents.length,
-        pageContainerEventCount: syncfusionPagePerfRef.current.pageContainerEvents.length,
-        spinnerSnapshotCount: syncfusionPagePerfRef.current.spinnerSnapshots.length,
-        currentDocumentKey: syncfusionPagePerfRef.current.currentDocumentKey,
-        currentPageCount: syncfusionPagePerfRef.current.currentPageCount
-      }),
-      clear: () => {
-        syncfusionPagePerfRef.current = {
-          currentLoadStartedAtMs: null,
-          currentDocumentLoadedAtMs: null,
-          currentDocumentLoadElapsedMs: null,
-          currentPageCount: null,
-          currentDocumentKey: null,
-          pageRenderEvents: [],
-          pageRenderByPage: {},
-          pageContainerEvents: [],
-          spinnerSnapshots: [],
-          lastSummary: null
-        };
-        return { cleared: true };
-      }
-    };
 
     return () => {
       if (window.pdfOverlayRecorder) {
         delete window.pdfOverlayRecorder;
-      }
-      if (window.pdfPagePerfRecorder) {
-        delete window.pdfPagePerfRecorder;
       }
     };
   }, [
     clearOverlayLagRecorder,
     downloadOverlayLagRecorderDump,
     getOverlayLagRecorderDump,
-    summarizeSyncfusionPagePerf,
     startOverlayLagRecorder,
     stopOverlayLagRecorder
   ]);
@@ -40251,15 +40018,6 @@ export default function App() {
               overlayRecorderStatus: typeof window.pdfOverlayRecorder?.status === 'function'
                 ? window.pdfOverlayRecorder.status()
                 : null,
-              pagePerformance: typeof window.pdfPagePerfRecorder?.summary === 'function'
-                ? window.pdfPagePerfRecorder.summary()
-                : null,
-              pagePerformanceStatus: typeof window.pdfPagePerfRecorder?.status === 'function'
-                ? window.pdfPagePerfRecorder.status()
-                : null,
-              pdfDebugSnapshot: typeof window.pdfDebug?.dump === 'function'
-                ? window.pdfDebug.dump()
-                : null,
             },
           }).then((res) => {
             if (res?.ok) console.log('[SaveLog] local snapshot saved at', res.dir);
@@ -40318,15 +40076,6 @@ export default function App() {
                 : null,
               overlayRecorderStatus: typeof window.pdfOverlayRecorder?.status === 'function'
                 ? window.pdfOverlayRecorder.status()
-                : null,
-              pagePerformance: typeof window.pdfPagePerfRecorder?.summary === 'function'
-                ? window.pdfPagePerfRecorder.summary()
-                : null,
-              pagePerformanceStatus: typeof window.pdfPagePerfRecorder?.status === 'function'
-                ? window.pdfPagePerfRecorder.status()
-                : null,
-              pdfDebugSnapshot: typeof window.pdfDebug?.dump === 'function'
-                ? window.pdfDebug.dump()
                 : null,
             },
           });

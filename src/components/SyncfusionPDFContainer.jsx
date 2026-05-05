@@ -643,12 +643,6 @@ const SyncfusionPDFContainer = forwardRef(({
   const bookmarkRetryRef = useRef(null);
   const thumbnailCacheRef = useRef(new Map());
   const pageContainerMapRef = useRef({});
-  const pageRenderPerfRef = useRef({
-    loadStartedAtMs: null,
-    documentLoadedAtMs: null,
-    documentKey: null,
-    renderCount: 0
-  });
   const suspendContainerRefreshRef = useRef(suspendContainerRefresh === true);
   const pendingRefreshReasonRef = useRef(null);
   // UX 2026-04-22 (Windows load failure): track per-document state for the
@@ -676,34 +670,6 @@ const SyncfusionPDFContainer = forwardRef(({
       ...payload
     });
   }, [onDebugEvent]);
-
-  const captureVisibleSpinnerSnapshot = useCallback(() => {
-    const host = getViewerInstance()?.element;
-    if (!host || typeof window === 'undefined') {
-      return { visibleSpinnerCount: 0, visibleSpinnerPages: [] };
-    }
-    const visibleSpinnerPages = [];
-    host.querySelectorAll('.e-pv-page-div').forEach((pageDiv) => {
-      const rect = pageDiv.getBoundingClientRect?.();
-      if (!rect || rect.width <= 0 || rect.height <= 0) return;
-      const intersectsViewport =
-        rect.bottom > 0 &&
-        rect.right > 0 &&
-        rect.top < window.innerHeight &&
-        rect.left < window.innerWidth;
-      if (!intersectsViewport) return;
-      const hasVisibleSpinner = !!pageDiv.querySelector('.e-spinner-pane.e-spin-show, .e-spin-show');
-      if (!hasVisibleSpinner) return;
-      const pageNumber =
-        coercePositiveInt(pageDiv.dataset?.pageNumber, null) ||
-        coercePositiveInt((pageDiv.id || '').match(/_pageDiv_(\d+)$/)?.[1], null);
-      visibleSpinnerPages.push(pageNumber || null);
-    });
-    return {
-      visibleSpinnerCount: visibleSpinnerPages.length,
-      visibleSpinnerPages: visibleSpinnerPages.slice(0, 12)
-    };
-  }, [getViewerInstance]);
 
   const clearBookmarkRetry = useCallback(() => {
     if (bookmarkRetryRef.current) {
@@ -1904,10 +1870,6 @@ const SyncfusionPDFContainer = forwardRef(({
 
   const handleDocumentLoad = useCallback((args) => {
     const viewer = getViewerInstance();
-    const perfNowMs = typeof performance !== 'undefined' && typeof performance.now === 'function'
-      ? performance.now()
-      : Date.now();
-    pageRenderPerfRef.current.documentLoadedAtMs = perfNowMs;
     const resolvedPageCount = resolvePageCountFromArgs(args, viewer);
     const resolvedCurrent = coercePositiveInt(
       args?.currentPageNumber ?? viewer?.currentPageNumber ?? 1,
@@ -1935,12 +1897,7 @@ const SyncfusionPDFContainer = forwardRef(({
     emitDebugEvent('document_load', {
       pageCount: resolvedPageCount,
       currentPageNumber: resolvedCurrent,
-      zoomValue: resolvedZoom,
-      perfNowMs,
-      elapsedSinceLoadStartMs: pageRenderPerfRef.current.loadStartedAtMs !== null
-        ? perfNowMs - pageRenderPerfRef.current.loadStartedAtMs
-        : null,
-      documentKey: pageRenderPerfRef.current.documentKey
+      zoomValue: resolvedZoom
     });
 
     // UX 2026-04-22 (hyperlink diag): After a doc loads, wait a tick and
@@ -2130,33 +2087,10 @@ const SyncfusionPDFContainer = forwardRef(({
     });
   }, [emitDebugEvent, getViewerInstance, onZoomChanged, zoomValue]);
 
-  const handlePageRenderComplete = useCallback((args) => {
-    const perfNowMs = typeof performance !== 'undefined' && typeof performance.now === 'function'
-      ? performance.now()
-      : Date.now();
-    pageRenderPerfRef.current.renderCount += 1;
-    const rawPage =
-      args?.pageNumber ??
-      args?.currentPageNumber ??
-      (Number.isFinite(Number(args?.pageIndex)) ? Number(args.pageIndex) + 1 : null);
-    const pageNumber = coercePositiveInt(rawPage, null);
-    const spinnerSnapshot = captureVisibleSpinnerSnapshot();
-    emitDebugEvent('page_render_complete', {
-      pageNumber,
-      perfNowMs,
-      renderCount: pageRenderPerfRef.current.renderCount,
-      elapsedSinceLoadStartMs: pageRenderPerfRef.current.loadStartedAtMs !== null
-        ? perfNowMs - pageRenderPerfRef.current.loadStartedAtMs
-        : null,
-      elapsedSinceDocumentLoadMs: pageRenderPerfRef.current.documentLoadedAtMs !== null
-        ? perfNowMs - pageRenderPerfRef.current.documentLoadedAtMs
-        : null,
-      pageContainerCount: Object.keys(pageContainerMapRef.current || {}).length,
-      visibleSpinnerCount: spinnerSnapshot.visibleSpinnerCount,
-      visibleSpinnerPages: spinnerSnapshot.visibleSpinnerPages
-    });
+  const handlePageRenderComplete = useCallback(() => {
+    emitDebugEvent('page_render_complete');
     requestPageContainerRefresh('page_render_complete');
-  }, [captureVisibleSpinnerSnapshot, emitDebugEvent, requestPageContainerRefresh]);
+  }, [emitDebugEvent, requestPageContainerRefresh]);
 
   const handleTextSelectionEnd = useCallback((args) => {
     onTextSelectionEnd?.(args);
@@ -2236,22 +2170,6 @@ const SyncfusionPDFContainer = forwardRef(({
       clearBookmarkRetry();
 
       try {
-        const perfNowMs = typeof performance !== 'undefined' && typeof performance.now === 'function'
-          ? performance.now()
-          : Date.now();
-        pageRenderPerfRef.current = {
-          loadStartedAtMs: perfNowMs,
-          documentLoadedAtMs: null,
-          documentKey,
-          renderCount: 0
-        };
-        emitDebugEvent('document_load_start', {
-          perfNowMs,
-          documentKey,
-          byteLength: getSourceByteLength(documentSource),
-          initialRenderPages,
-          scrollDelayMs: normalizedScrollDelayMs
-        });
         viewer.load(documentSource, '');
       } catch (error) {
         // UX 2026-04-22: see `handleDocumentLoadFailed` for the full story.
@@ -2289,9 +2207,7 @@ const SyncfusionPDFContainer = forwardRef(({
     documentSource,
     emitDebugEvent,
     getViewerInstance,
-    initialRenderPages,
     isReady,
-    normalizedScrollDelayMs,
     onDocumentLoadFailed,
     resourcesReady,
     sanitizeAndReloadDocument

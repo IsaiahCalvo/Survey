@@ -59,24 +59,12 @@
 
       let overlayPerformance = null;
       let overlayRecorderStatus = null;
-      let pagePerformance = null;
-      let pagePerformanceStatus = null;
-      let pdfDebugSnapshot = null;
       try {
         if (typeof window !== 'undefined' && typeof window.pdfOverlayRecorder?.summary === 'function') {
           overlayPerformance = window.pdfOverlayRecorder.summary();
         }
         if (typeof window !== 'undefined' && typeof window.pdfOverlayRecorder?.status === 'function') {
           overlayRecorderStatus = window.pdfOverlayRecorder.status();
-        }
-        if (typeof window !== 'undefined' && typeof window.pdfPagePerfRecorder?.summary === 'function') {
-          pagePerformance = window.pdfPagePerfRecorder.summary();
-        }
-        if (typeof window !== 'undefined' && typeof window.pdfPagePerfRecorder?.status === 'function') {
-          pagePerformanceStatus = window.pdfPagePerfRecorder.status();
-        }
-        if (typeof window !== 'undefined' && typeof window.pdfDebug?.dump === 'function') {
-          pdfDebugSnapshot = window.pdfDebug.dump();
         }
       } catch (perfErr) {
         try { console.warn('[SaveLog] bulletproof: overlay performance snapshot failed', perfErr?.message || perfErr); } catch (_e) { /* swallow */ }
@@ -98,9 +86,6 @@
               url: (typeof window !== 'undefined' && window.location) ? window.location.href : null,
               overlayPerformance,
               overlayRecorderStatus,
-              pagePerformance,
-              pagePerformanceStatus,
-              pdfDebugSnapshot,
             },
           }).then((res) => {
             try {
