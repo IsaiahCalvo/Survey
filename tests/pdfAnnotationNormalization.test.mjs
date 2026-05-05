@@ -357,6 +357,33 @@ test('synced Drawboard marker dots use rgba alpha even when opacity round-trips 
   assert.match(d, /M 20 10.5/, 'ellipse should replace the cached cubic outline');
 });
 
+test('Drawboard red ink outlines with mixed cubic and line commands are rebuilt smooth', () => {
+  const redInkOutline = {
+    type: 'path',
+    path: [
+      ['M', 0, 0],
+      ['C', 4, -2, 9, -2, 12, 0],
+      ['L', 14, 3],
+      ['L', 13, 8],
+      ['C', 9, 11, 4, 11, 1, 8],
+      ['L', 0, 0.1],
+    ],
+    stroke: 'none',
+    strokeWidth: 0,
+    fill: 'rgba(255, 0, 0, 1)',
+    layer: 'pdf-annotations',
+  };
+
+  const attrs = renderPathToSvgAttrs(redInkOutline);
+  assert.equal(attrs.smoothClosedOutline, true);
+  assert.equal(attrs.smoothClosedOutlineAsEllipse, false);
+
+  const d = renderPathToSvgD(redInkOutline, attrs);
+  assert.match(d, /\bC\b/, 'mixed Drawboard ink outline should render with smoothed cubic curves');
+  assert.doesNotMatch(d, /\bL\b/, 'raw line segments should not leak into closed ink rendering');
+  assert.match(d, /\bZ\b/, 'smoothed ink outline should stay closed for fill rendering');
+});
+
 test('synced filled Ink rows with tiny open subpaths still smooth the main outline', () => {
   const syncedRow = {
     type: 'path',
