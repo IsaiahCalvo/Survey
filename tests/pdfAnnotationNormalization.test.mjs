@@ -384,6 +384,32 @@ test('Drawboard red ink outlines with mixed cubic and line commands are rebuilt 
   assert.match(d, /\bZ\b/, 'smoothed ink outline should stay closed for fill rendering');
 });
 
+test('Drawboard pressure ink keeps original cubic handles when the PDF already has smooth curves', () => {
+  const redPressureInk = {
+    type: 'path',
+    path: [
+      ['M', 0.5, 1],
+      ['C', 0.6, 0.5, 1.1, 0, 1.7, 0.2],
+      ['C', 2.4, 0.4, 2.6, 1.1, 2.2, 1.7],
+      ['L', 1.9, 2.1],
+      ['C', 1.5, 2.7, 0.7, 2.6, 0.3, 2],
+      ['C', 0, 1.6, 0.1, 1.2, 0.5, 1],
+      ['Z'],
+    ],
+    stroke: null,
+    strokeWidth: 0.9,
+    fill: 'rgba(255, 0, 0, 1)',
+    layer: 'pdf-annotations',
+  };
+
+  const attrs = renderPathToSvgAttrs(redPressureInk);
+  assert.equal(attrs.smoothClosedOutline, true);
+
+  const d = renderPathToSvgD(redPressureInk, attrs);
+  assert.match(d, /C 0.6 0.5 1.1 0 1.7 0.2/, 'original Drawboard cubic handles should survive rendering');
+  assert.match(d, /L 1.9 2.1/, 'Drawboard connector segments should stay part of the authored outline');
+});
+
 test('synced filled Ink rows with tiny open subpaths still smooth the main outline', () => {
   const syncedRow = {
     type: 'path',

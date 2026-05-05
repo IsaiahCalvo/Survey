@@ -1047,6 +1047,18 @@ const isSupabaseRowNotFoundError = (error) => {
   return false;
 };
 
+const serializeError = (error) => {
+  if (!error) return null;
+  return {
+    name: error.name || null,
+    message: error.message || String(error),
+    code: error.code || null,
+    status: error.status || error.statusCode || null,
+    details: error.details || null,
+    hint: error.hint || null,
+  };
+};
+
 const escapeCSVValue = (value) => {
   if (value === null || value === undefined) return '';
   const str = String(value);
@@ -3281,7 +3293,15 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
   const toggleSelectItem = (id, e) => {
     if (e && e.stopPropagation) e.stopPropagation();
-    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    setSelectedIds(prev => {
+      const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
+      console.log('[DocumentDelete] selection:toggle', JSON.stringify({
+        id,
+        wasSelected: prev.includes(id),
+        selectedIds: next,
+      }));
+      return next;
+    });
   };
 
   const handleEnterSelectionMode = (e) => {
@@ -3289,6 +3309,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       e.preventDefault();
       e.stopPropagation();
     }
+    console.log('[DocumentDelete] selection:enter', JSON.stringify({
+      activeSection,
+      visibleItems: getCurrentItems().length,
+    }));
     setIsSelectionMode(true);
     setSelectedIds([]);
   };
@@ -3514,6 +3538,66 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     }
   };
 
+  const deleteDocumentEverywhere = async ({ docId, filePath = null, source = 'unknown' }) => {
+    if (!docId) throw new Error('Missing document id');
+    if (!supabase) throw new Error('Supabase is not available');
+
+    console.log('[DocumentDelete] start', JSON.stringify({ docId, filePath, source }));
+
+    // Hard-deleting a cutover/Y.Doc PDF can cascade through thousands of large
+    // annotation/sync rows and hit Supabase statement timeouts. For the user
+    // action, make the document disappear immediately by archiving the row; a
+    // fresh upload will get a fresh document id and will not read the old Y.Doc.
+    const { data: archivedRows, error: archiveError } = await supabase
+      .from('documents')
+      .update({ archived: true, updated_at: new Date().toISOString() })
+      .eq('id', docId)
+      .select('id,name,file_path,user_id');
+
+    if (archiveError && !isSupabaseRowNotFoundError(archiveError)) {
+      console.error('[DocumentDelete] archive:error', JSON.stringify({
+        docId,
+        source,
+        error: serializeError(archiveError),
+      }));
+      throw archiveError;
+    }
+
+    console.log('[DocumentDelete] archive:result', JSON.stringify({
+      docId,
+      source,
+      archivedCount: Array.isArray(archivedRows) ? archivedRows.length : 0,
+      archivedRows,
+    }));
+
+    const { data: remaining, error: verifyError } = await supabase
+      .from('documents')
+      .select('id,name,file_path,user_id,archived')
+      .eq('id', docId)
+      .maybeSingle();
+
+    if (verifyError && !isSupabaseRowNotFoundError(verifyError)) {
+      console.error('[DocumentDelete] verify:error', JSON.stringify({
+        docId,
+        source,
+        error: serializeError(verifyError),
+      }));
+      throw verifyError;
+    }
+
+    if (remaining && remaining.archived !== true) {
+      const blocked = new Error('Document delete did not hide the database row');
+      console.error('[DocumentDelete] verify:not-archived', JSON.stringify({
+        docId,
+        source,
+        remaining,
+      }));
+      throw blocked;
+    }
+
+    console.log('[DocumentDelete] verify:archived', JSON.stringify({ docId, source }));
+  };
+
   const handleBulkDelete = async () => {
     const ctx = getCurrentContextKey();
     if (selectedIds.length === 0) return;
@@ -3525,31 +3609,33 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
     try {
       if (ctx === 'documents') {
+        const idsToDelete = [...selectedIds];
+        console.log('[DocumentDelete] bulk:start', JSON.stringify({
+          ctx,
+          selectedIds: idsToDelete,
+          selectedCount: idsToDelete.length,
+          visibleDocumentCount: sortedDocuments.length,
+        }));
+        // Hide immediately. The database operation below archives the row so
+        // old cutover/Y.Doc annotation blobs are not synchronously hard-deleted.
+        setDocuments(prev => prev.filter(d => !idsToDelete.includes(d.id)));
+        setSelectedIds([]);
+        setIsSelectionMode(false);
         // Delete documents from Supabase
-        for (const docId of selectedIds) {
+        for (const docId of idsToDelete) {
           try {
             // Check if this is a temp document (local only, not yet in Supabase)
             if (typeof docId === 'string' && docId.startsWith('temp-')) {
               // Just remove from local state, no Supabase deletion needed
-              setDocuments(prev => prev.filter(d => d.id !== docId));
               continue;
             }
             const doc = supabaseDocuments.find(d => d.id === docId);
             const filePath = doc?.file_path || doc?.filePath;
 
-            // Delete DB record first so storage failures do not leave stale metadata.
-            await deleteSupabaseDocument(docId);
-            if (filePath) {
-              try {
-                await deleteFromStorage(filePath);
-              } catch (storageError) {
-                if (!isStorageFileNotFoundError(storageError)) {
-                  console.error('Error deleting document file from storage:', storageError);
-                }
-              }
-            }
+            await deleteDocumentEverywhere({ docId, filePath, source: 'bulk-documents' });
           } catch (err) {
-            console.error('Error deleting document:', err);
+            console.error('[DocumentDelete] bulk:item-error', { docId, error: serializeError(err) });
+            throw err;
           }
         }
         await refetchDocuments();
@@ -3566,31 +3652,25 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       } else if (ctx === 'projectFiles') {
         const proj = projects.find(p => p.id === selectedProjectId);
         if (proj) {
+          const idsToDelete = [...selectedIds];
+          setDocuments(prev => prev.filter(d => !idsToDelete.includes(d.id)));
+          setSelectedIds([]);
+          setIsSelectionMode(false);
           // Delete document records and files from Supabase
-          for (const docId of selectedIds) {
+          for (const docId of idsToDelete) {
             try {
               // Check if this is a temp document (local only, not yet in Supabase)
               if (typeof docId === 'string' && docId.startsWith('temp-')) {
                 // Just remove from local state, no Supabase deletion needed
-                setDocuments(prev => prev.filter(d => d.id !== docId));
                 continue;
               }
               const doc = supabaseDocuments.find(d => d.id === docId);
               const filePath = doc?.file_path || doc?.filePath;
 
-              // Delete DB record first so storage failures do not leave stale metadata.
-              await deleteSupabaseDocument(docId);
-              if (filePath) {
-                try {
-                  await deleteFromStorage(filePath);
-                } catch (storageError) {
-                  if (!isStorageFileNotFoundError(storageError)) {
-                    console.error('Error deleting document file from storage:', storageError);
-                  }
-                }
-              }
+              await deleteDocumentEverywhere({ docId, filePath, source: 'bulk-project-files' });
             } catch (err) {
-              console.error('Error deleting document:', err);
+              console.error('[DocumentDelete] bulk:item-error', { docId, error: serializeError(err) });
+              throw err;
             }
           }
 
@@ -3630,7 +3710,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       }
       exitSelectionMode();
     } catch (err) {
-      console.error('Error in bulk delete:', err);
+      console.error('[DocumentDelete] bulk:error', serializeError(err));
       alert('Failed to delete items: ' + (err.message || 'Unknown error'));
     }
   };
@@ -4075,11 +4155,15 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   const handleDeleteDocument = async (docId, event) => {
     event.stopPropagation();
 
+    console.log('[DocumentDelete] single:click', JSON.stringify({ docId }));
+
     if (!confirm('Are you sure you want to delete this document? This action cannot be undone.')) {
+      console.log('[DocumentDelete] single:cancelled', JSON.stringify({ docId }));
       return;
     }
 
     try {
+      console.log('[DocumentDelete] single:confirmed', JSON.stringify({ docId }));
       // Optimistic update
       setDocuments(prev => prev.filter(doc => doc.id !== docId));
 
@@ -4087,20 +4171,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       const doc = documents.find(d => d.id === docId);
       const filePath = doc?.file_path || doc?.filePath;
 
-      // Delete DB row first so storage failures do not leave stale metadata.
-      await deleteSupabaseDocument(docId);
-      if (filePath) {
-        try {
-          await deleteFromStorage(filePath);
-        } catch (storageError) {
-          if (!isStorageFileNotFoundError(storageError)) {
-            console.error('Error deleting document file from storage:', storageError);
-          }
-        }
-      }
+      await deleteDocumentEverywhere({ docId, filePath, source: 'single-document-button' });
       await refetchDocuments();
     } catch (error) {
-      console.error('Error deleting document:', error);
+      console.error('[DocumentDelete] single:error', serializeError(error));
       alert('Failed to delete document: ' + error.message);
       // Revert optimistic update if needed, but refetching should handle it
       await refetchDocuments();

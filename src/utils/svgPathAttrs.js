@@ -385,16 +385,26 @@ function shouldRenderClosedInkAsEllipse(obj) {
 function smoothClosedOutlinePathD(path) {
   // Drawboard/Adobe ink frequently arrives as a filled outline path with a
   // mixed command stream: some cubic curves plus some straight L segments.
-  // Rendering that raw stream exposes the low-level polygon edges as jagged
-  // red pen strokes after sync/cache round-trips. For closed filled ink, the
-  // visual source of truth is the outline itself, so rebuild every closed
-  // outline from its drawable endpoints with Catmull-Rom cubics. Do not skip
-  // paths just because they already contain a few C commands.
+  // Low-point polygon outlines need rebuilding, but Drawboard pressure ink
+  // often already contains high-quality cubic handles. Do not throw those
+  // handles away: rebuilding from endpoints makes handwritten letters look
+  // lumpy/angular compared with Drawboard and Adobe. Only synthesize curves
+  // for paths that are mostly straight-line/polygon data.
   const subpaths = collectSubpathEndpoints(path);
   if (subpaths.length === 0) return null;
   const smoothed = [];
 
   for (const subpath of subpaths) {
+    const cubicCount = subpath.commands.filter((seg) => Array.isArray(seg) && seg[0] === 'C').length;
+    const lineCount = subpath.commands.filter((seg) => Array.isArray(seg) && seg[0] === 'L').length;
+    const hasExplicitClose = subpath.commands.some((seg) => Array.isArray(seg) && seg[0] === 'Z');
+    const isCubicDominant = cubicCount >= 3 && cubicCount >= lineCount * 2;
+
+    if (isCubicDominant && hasExplicitClose) {
+      smoothed.push(subpath.commands.map(formatPathCommand).join(' '));
+      continue;
+    }
+
     const d = subpath.points.length >= 3
       ? closedCatmullRomToCubicPath(subpath.points)
       : null;

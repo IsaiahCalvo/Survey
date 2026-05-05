@@ -203,6 +203,7 @@ export const useDocuments = (projectId = null) => {
         .from('documents')
         .select('*')
         .eq('user_id', user.id)
+        .eq('archived', false)
         .order('updated_at', { ascending: false });
 
       if (projectId) {
@@ -271,7 +272,10 @@ export const useDocuments = (projectId = null) => {
 
   const deleteDocument = async (id) => {
     try {
-      const { error } = await supabase.from('documents').delete().eq('id', id);
+      const { error } = await supabase
+        .from('documents')
+        .update({ archived: true, updated_at: new Date().toISOString() })
+        .eq('id', id);
 
       if (error && !isSupabaseNotFoundError(error)) throw error;
       setDocuments(documents.filter((d) => d.id !== id));
