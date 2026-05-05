@@ -99,6 +99,25 @@ const summarizeImportedSvgAnnotationForDebug = (obj, index) => ({
   regionId: obj?.regionId || null,
 });
 
+const shouldPrioritizeLiveReveal = (obj) => {
+  const type = String(obj?.type || '').toLowerCase();
+  if (type === 'circle' || type === 'ellipse') {
+    const fill = String(obj?.fill || '').trim().toLowerCase();
+    return !!fill && fill !== 'none' && fill !== 'transparent';
+  }
+  if (type !== 'path' || !Array.isArray(obj?.path) || obj.path.length === 0) {
+    return false;
+  }
+  try {
+    const attrs = renderPathToSvgAttrs(obj);
+    const fill = String(attrs?.fill || '').trim().toLowerCase();
+    const stroke = String(attrs?.stroke || '').trim().toLowerCase();
+    return attrs?.smoothClosedOutline === true && !!fill && fill !== 'none' && stroke === 'none';
+  } catch {
+    return false;
+  }
+};
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -2252,9 +2271,12 @@ const SVGAnnotationLayer = memo(({
     });
     return () => cancelAnimationFrame(handle);
   }, [revealCount, filteredAnnotations.length]);
-  const stagedAnnotations = revealCount >= filteredAnnotations.length
-    ? filteredAnnotations
-    : filteredAnnotations.slice(0, revealCount);
+  const stagedAnnotations = useMemo(() => {
+    if (revealCount >= filteredAnnotations.length) return filteredAnnotations;
+    return filteredAnnotations.filter((entry, position) => (
+      position < revealCount || shouldPrioritizeLiveReveal(entry?.obj)
+    ));
+  }, [filteredAnnotations, revealCount]);
 
   const importedDebugRows = useMemo(() => (
     filteredAnnotations

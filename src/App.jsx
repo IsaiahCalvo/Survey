@@ -254,7 +254,7 @@ const SYNCFUSION_INTERACTION_FORCE_PROXY_ALL_PAGES = true;
 const ZOOM_ONLY_INTERACTION_REASONS = new Set([
   'wheel-zoom', 'syncfusion-wheel-zoom', 'syncfusion-zoom-change', 'overlay-wheel-zoom'
 ]);
-const SYNCFUSION_SCROLL_DELAY_MS = 180;
+const SYNCFUSION_SCROLL_DELAY_MS = 80;
 // Keep initial PDF work close to the visible viewport. Syncfusion defaults to
 // 2 initial pages, and PDF.js recommends rendering only visible pages to avoid
 // slow opens and excess canvas memory on large annotated documents.
