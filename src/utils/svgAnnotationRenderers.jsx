@@ -234,6 +234,7 @@ export const renderPath = (obj, index) => {
       strokeLinecap={attrs.strokeLinecap}
       strokeLinejoin={attrs.strokeLinejoin}
       vectorEffect={attrs.vectorEffect}
+      shapeRendering="geometricPrecision"
       style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
     />
   );

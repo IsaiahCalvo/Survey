@@ -383,18 +383,18 @@ function shouldRenderClosedInkAsEllipse(obj) {
 }
 
 function smoothClosedOutlinePathD(path) {
-  // Drawboard/Adobe ink frequently arrives as a filled outline path with a
-  // mixed command stream: some cubic curves plus some straight L segments.
-  // Rendering that raw stream exposes the low-level polygon edges as jagged
-  // red pen strokes after sync/cache round-trips. For closed filled ink, the
-  // visual source of truth is the outline itself, so rebuild every closed
-  // outline from its drawable endpoints with Catmull-Rom cubics. Do not skip
-  // paths just because they already contain a few C commands.
-  const subpaths = collectSubpathEndpoints(path);
+  // Drawboard/Adobe handwriting often stores its real PDF appearance as
+  // cubic-filled outlines. Those curves are already the authoritative shape
+  // that Drawboard/PDF renderers paint; rebuilding them from endpoints makes
+  // red pen text look blobby and unlike the original. Only smooth genuinely
+  // low-point polygon outlines (the blue/yellow/purple dots and similar
+  // closed ink with no cubic data).
+  const subpaths = collectSubpaths(path);
   if (subpaths.length === 0) return null;
   const smoothed = [];
 
   for (const subpath of subpaths) {
+    if (subpath.hasCubic) return null;
     const d = subpath.points.length >= 3
       ? closedCatmullRomToCubicPath(subpath.points)
       : null;
