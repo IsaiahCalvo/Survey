@@ -248,7 +248,7 @@ const SYNCFUSION_INTERACTION_COMMIT_FRAME_BUDGET_MS = 6;
 const SYNCFUSION_INTERACTION_EVENT_THROTTLE_MS = 96;
 const SYNCFUSION_INTERACTION_MARK_THROTTLE_MS = 96;
 const SYNCFUSION_ZOOM_OVERLAY_SETTLE_MS = 1000;
-const SYNCFUSION_TRACKPAD_SCROLL_SENSITIVITY = 0.58;
+const SYNCFUSION_DIAGONAL_SCROLL_SENSITIVITY = 0.82;
 // Trackpad pinch/wheel zoom sensitivity. Keep this centralized so both
 // Syncfusion wheel paths stay cursor-anchored and feel equally responsive.
 const SYNCFUSION_WHEEL_ZOOM_EXPONENT = 0.0030;
@@ -13163,12 +13163,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         });
       } else {
         const wheelDelta = getNormalizedWheelDeltas(event);
-        const shouldScaleTrackpadScroll = Math.abs(wheelDelta.x) > 0.5 || Math.abs(wheelDelta.y) > 0.5;
-        if (shouldScaleTrackpadScroll) {
+        const isDiagonalTrackpadScroll = Math.abs(wheelDelta.x) > 0.5 && Math.abs(wheelDelta.y) > 0.5;
+        if (isDiagonalTrackpadScroll) {
           event.preventDefault();
           event.stopPropagation();
-          viewerContainer.scrollLeft += wheelDelta.x * SYNCFUSION_TRACKPAD_SCROLL_SENSITIVITY;
-          viewerContainer.scrollTop += wheelDelta.y * SYNCFUSION_TRACKPAD_SCROLL_SENSITIVITY;
+          viewerContainer.scrollLeft += wheelDelta.x * SYNCFUSION_DIAGONAL_SCROLL_SENSITIVITY;
+          viewerContainer.scrollTop += wheelDelta.y * SYNCFUSION_DIAGONAL_SCROLL_SENSITIVITY;
         }
         queueInteractionMark('wheel-scroll', 'syncfusion-wheel-scroll', INTERACTION_PERF_SCROLL_HOLD_MS);
       }
