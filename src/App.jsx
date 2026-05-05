@@ -247,6 +247,7 @@ const SYNCFUSION_INTERACTION_COMMIT_MAX_PAGES_PER_FRAME = 2;
 const SYNCFUSION_INTERACTION_COMMIT_FRAME_BUDGET_MS = 6;
 const SYNCFUSION_INTERACTION_EVENT_THROTTLE_MS = 96;
 const SYNCFUSION_INTERACTION_MARK_THROTTLE_MS = 96;
+const SYNCFUSION_ZOOM_OVERLAY_SETTLE_MS = 650;
 // Trackpad pinch/wheel zoom sensitivity. Keep this centralized so both
 // Syncfusion wheel paths stay cursor-anchored and feel equally responsive.
 const SYNCFUSION_WHEEL_ZOOM_EXPONENT = 0.0030;
@@ -12842,16 +12843,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           applyAnchor();
           window.requestAnimationFrame(() => {
             applyAnchor();
-            console.log('[SyncfusionZoom] cursor-anchor applied ' + JSON.stringify({
-              source: reason,
-              currentZoom,
-              nextZoom,
-              cursorX,
-              cursorY,
-              pageAnchor: !!anchor?.pageAnchor,
-              scrollLeft: viewerContainer.scrollLeft,
-              scrollTop: viewerContainer.scrollTop,
-            }));
           });
         });
       }
@@ -13133,16 +13124,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               applyAnchor();
               window.requestAnimationFrame(() => {
                 applyAnchor();
-                console.log('[SyncfusionZoom] cursor-anchor applied ' + JSON.stringify({
-                  source: 'syncfusion-wheel-zoom',
-                  currentZoom,
-                  nextZoom,
-                  cursorX,
-                  cursorY,
-                  pageAnchor: !!anchor?.pageAnchor,
-                  scrollLeft: viewerContainer.scrollLeft,
-                  scrollTop: viewerContainer.scrollTop,
-                }));
               });
             });
           }
@@ -14048,7 +14029,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
       // Signal zoom-start to Canvas components (increments zoomGeneration).
       beginSyncfusionScaleConfirmPending('zoomChange_settle');
-    }, 1000);
+    }, SYNCFUSION_ZOOM_OVERLAY_SETTLE_MS);
   }, [
     beginSyncfusionScaleConfirmPending,
     bumpOverlayLagEventTotal,
@@ -24710,7 +24691,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             setManualZoomScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
           }
           beginSyncfusionScaleConfirmPending('keyboard_toolbar_settle');
-        }, 1000);
+        }, SYNCFUSION_ZOOM_OVERLAY_SETTLE_MS);
       }
       // Do not push the React scale into PAL ahead of Syncfusion's own
       // zoomChange callback. Pre-committing here lets PAL redraw before the
@@ -25205,7 +25186,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           setManualZoomScale((prev) => (Math.abs(prev - finalScale) <= 0.0005 ? prev : finalScale));
         }
         beginSyncfusionScaleConfirmPending('ctrl_key_settle');
-      }, 1000);
+      }, SYNCFUSION_ZOOM_OVERLAY_SETTLE_MS);
     };
 
     // Capture phase: runs before Syncfusion's own handler
