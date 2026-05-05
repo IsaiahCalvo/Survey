@@ -676,6 +676,45 @@ export function useAnnotationCloudSync({
             });
             return;
           }
+          if (__ydocCount === 0 && __currentStateCount === 0) {
+            console.warn('[CloudSync][hook] cutover hydrate saw empty Y.Doc — probing legacy cloud rows before painting blank ' +
+              JSON.stringify({ documentId, cutoverTs }));
+            const fallbackCloud = await loadCloudWithEmptyVerify(documentId, {
+              localFabricCount: 0,
+              localCalloutCount: 0,
+              contextLabel: 'cutover-empty-ydoc-fallback'
+            });
+            lastCloudRefreshAtRef.current = Date.now();
+            const fallbackCount = countFabricObjects(fallbackCloud?.annotationsByPage);
+            if (!fallbackCloud?.error && fallbackCount > 0) {
+              const nextByPage = fallbackCloud.annotationsByPage || {};
+              const nextCallouts = Array.isArray(fallbackCloud.callouts) ? fallbackCloud.callouts : [];
+              console.warn('[CloudSync][hook] cutover empty-Y.Doc fallback restored legacy cloud rows ' +
+                JSON.stringify({ documentId, fallbackCount, callouts: nextCallouts.length }));
+              setAnnotationsByPage(() => {
+                lastByPageRef.current = nextByPage;
+                return nextByPage;
+              });
+              setCallouts(() => {
+                lastCalloutsRef.current = nextCallouts;
+                return nextCallouts;
+              });
+              hydratedRef.current = true;
+              ydocAuthoritativeRef.current = false;
+              startupSyncInFlightRef.current = false;
+              setStatus({
+                stage: 'synced',
+                count: fallbackCount,
+                source: 'legacy-cloud-empty-ydoc-fallback',
+                cutoverTs,
+              });
+              return;
+            }
+            if (fallbackCloud?.error) {
+              console.warn('[CloudSync][hook] cutover empty-Y.Doc fallback failed: ' +
+                (fallbackCloud.error?.message || String(fallbackCloud.error)));
+            }
+          }
           setAnnotationsByPage(() => {
             // Update lastByPageRef.current synchronously inside the setter so
             // the push useEffect's identity check (state === lastRef) returns
@@ -697,15 +736,54 @@ export function useAnnotationCloudSync({
         }
         if (cutoverTs && !phase30Ydoc) {
           // Cutover means the legacy row table is no longer the visible source
-          // of truth. If the Y.Doc provider is still mounting, wait for the
-          // provider-driven rerun instead of falling back to stale rows that can
-          // reintroduce jagged Drawboard/Adobe ink.
+          // of truth. But a cold refresh must not show a blank PDF while the
+          // Y.Doc provider is mounting, so we paint the existing cloud rows as
+          // a temporary view and let Y.Doc replace them when it becomes ready.
+          console.log('[Phase31 UAT] hydrate:awaiting-ydoc — probing cloud rows for immediate paint ' +
+            JSON.stringify({ documentId, pdfId, cutoverTs }));
+          const fallbackCloud = await loadCloudWithEmptyVerify(documentId, {
+            localFabricCount: countFabricObjects(annotationsByPage),
+            localCalloutCount: calloutCountSafe(callouts),
+            contextLabel: 'cutover-awaiting-ydoc-provisional'
+          });
+          lastCloudRefreshAtRef.current = Date.now();
+          if (cancelled) {
+            console.log('[CloudSync][hook] awaiting-ydoc fallback cancelled mid-flight');
+            return;
+          }
+          const fallbackCount = countFabricObjects(fallbackCloud?.annotationsByPage);
+          if (!fallbackCloud?.error && fallbackCount > 0) {
+            const nextByPage = fallbackCloud.annotationsByPage || {};
+            const nextCallouts = Array.isArray(fallbackCloud.callouts) ? fallbackCloud.callouts : [];
+            console.warn('[CloudSync][hook] awaiting-Y.Doc fallback painted cloud rows immediately ' +
+              JSON.stringify({ documentId, fallbackCount, callouts: nextCallouts.length, cutoverTs }));
+            setAnnotationsByPage(() => {
+              lastByPageRef.current = nextByPage;
+              return nextByPage;
+            });
+            setCallouts(() => {
+              lastCalloutsRef.current = nextCallouts;
+              return nextCallouts;
+            });
+            ydocAuthoritativeRef.current = false;
+            hydratedRef.current = true;
+            startupSyncInFlightRef.current = false;
+            setStatus({
+              stage: 'synced',
+              count: fallbackCount,
+              source: 'legacy-cloud-awaiting-ydoc-provisional',
+              cutoverTs,
+            });
+            return;
+          }
+          if (fallbackCloud?.error) {
+            console.warn('[CloudSync][hook] awaiting-Y.Doc fallback failed: ' +
+              (fallbackCloud.error?.message || String(fallbackCloud.error)));
+          }
           ydocAuthoritativeRef.current = true;
           hydratedRef.current = false;
           startupSyncInFlightRef.current = false;
           setStatus({ stage: 'hydrating', source: 'awaiting-ydoc', cutoverTs });
-          console.log('[Phase31 UAT] hydrate:awaiting-ydoc — cutover doc will not read legacy rows ' +
-            JSON.stringify({ documentId, pdfId, cutoverTs }));
           return;
         }
         // Cold-doc fallback (or kill-switch off / no Y.Doc mounted yet) —

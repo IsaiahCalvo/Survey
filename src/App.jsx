@@ -1808,6 +1808,45 @@ const loadAnnotationsByPage = (pdfId) => {
   }
 };
 
+const cloudRenderCacheKey = (pdfId) => `cloudRenderAnnotationsByPage_${pdfId}`;
+
+const countAnnotationPageObjects = (pages) => Object.values(pages || {}).reduce(
+  (sum, page) => sum + (Array.isArray(page?.objects) ? page.objects.length : 0),
+  0
+);
+
+const saveCloudRenderAnnotationsByPage = (pdfId, metadata, annotationsByPage) => {
+  if (!pdfId) return;
+  try {
+    localStorage.setItem(cloudRenderCacheKey(pdfId), JSON.stringify({
+      version: 1,
+      savedAt: new Date().toISOString(),
+      documentId: metadata?.documentId || null,
+      cutoverTs: metadata?.cutoverTs || null,
+      annotationsByPage: annotationsByPage || {}
+    }));
+  } catch (e) {
+    if (e?.name !== 'QuotaExceededError' && e?.code !== 22) {
+      console.warn('[Cloud render cache] save failed:', e);
+    }
+  }
+};
+
+const loadCloudRenderAnnotationsByPage = (pdfId, metadata) => {
+  if (!pdfId) return null;
+  try {
+    const raw = localStorage.getItem(cloudRenderCacheKey(pdfId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed?.documentId !== (metadata?.documentId || null)) return null;
+    if ((parsed?.cutoverTs || null) !== (metadata?.cutoverTs || null)) return null;
+    return parsed?.annotationsByPage || {};
+  } catch (e) {
+    console.warn('[Cloud render cache] load failed:', e);
+    return null;
+  }
+};
+
 const loadHighlightAnnotations = (pdfId) => {
   if (!pdfId) return {};
   try {
@@ -2651,7 +2690,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       uploadedAt: doc.created_at || doc.updated_at,
       type: 'application/pdf',
       filePath: doc.file_path,
-      projectId: doc.project_id
+      projectId: doc.project_id,
+      cutoverCompletedAt: doc.cutover_completed_at || null
     }));
     setDocuments(prev => {
       // Keep temporary documents that haven't been replaced by real ones yet
@@ -23022,6 +23062,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   useEffect(() => {
     // Reset to regular mode whenever the active PDF changes
     // Clear all PDF-specific state first to ensure clean transition
+    const previouslyVisibleAnnotationsByPage = annotationsByPageRef.current || {};
     const previousUndoDepth = undoHistoryRef.current.length;
     const previousRedoDepth = redoHistoryRef.current.length;
 
@@ -23114,9 +23155,28 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // visible stale-state flash: correct smooth Drawboard paths hydrate, then a
     // pre-cutover local snapshot overwrites them, then sync repairs it seconds
     // later. LocalStorage remains only for local/offline PDFs.
-    const loadedAnnotationsByPage = isCloudBackedDoc ? {} : loadAnnotationsByPage(id);
-    if (isCloudBackedDoc) {
+    const isCutoverSealedDoc = !!pdfFile?.cutoverCompletedAt;
+    // Show unsealed cloud-doc annotations immediately from the warm local
+    // cache while Supabase confirms/replaces in the background. Once a doc is
+    // cutover-sealed, Y.Doc is authoritative; loading the stale local cache
+    // there causes the "annotations disappear, then repair seconds later"
+    // flash we saw in earlier cutover logs.
+    const shouldUseLocalAnnotationCache = !isCloudBackedDoc || !isCutoverSealedDoc;
+    const cloudRenderCache = isCloudBackedDoc
+      ? loadCloudRenderAnnotationsByPage(id, {
+          documentId: pdfFile.id,
+          cutoverTs: pdfFile.cutoverCompletedAt || null
+        })
+      : null;
+    const loadedAnnotationsByPage = cloudRenderCache
+      || (shouldUseLocalAnnotationCache ? loadAnnotationsByPage(id) : {});
+    if (isCloudBackedDoc && cloudRenderCache) {
+      console.log(`[Cloud render cache] doc=${id} painting verified cloud snapshot immediately — count=${countAnnotationPageObjects(cloudRenderCache)}.`);
+    } else if (isCloudBackedDoc && !shouldUseLocalAnnotationCache) {
       console.log(`[Local annotation cache] doc=${id} skip annotationsByPage localStorage load — cloud/Y.Doc is authoritative.`);
+    } else if (isCloudBackedDoc) {
+      const localCount = countAnnotationPageObjects(loadedAnnotationsByPage);
+      console.log(`[Local annotation cache] doc=${id} using local annotations immediately while first cloud migration settles — count=${localCount}.`);
     }
 
     // [COUNTER MULTI-LIST] Wipe legacy (no-seriesId) counter pins on first
@@ -23173,8 +23233,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     activeCounterSeriesIdRef.current = null;
     activeCounterSeriesColorRef.current = null;
 
-    setAnnotationsByPage(migratedAnnotationsByPage);
-    savedAnnotationsByPageRef.current = migratedAnnotationsByPage; // Track as saved
+    const nextAnnotationCount = countAnnotationPageObjects(migratedAnnotationsByPage);
+    const currentAnnotationCount = countAnnotationPageObjects(previouslyVisibleAnnotationsByPage);
+    let initialAnnotationsByPage = migratedAnnotationsByPage;
+    if (isCloudBackedDoc && nextAnnotationCount === 0 && currentAnnotationCount > 0) {
+      // Cloud-backed PDFs can briefly have no local cache while Y.Doc/Supabase
+      // hydrates. Do not paint a blank annotation layer during that handoff.
+      initialAnnotationsByPage = previouslyVisibleAnnotationsByPage;
+      console.log(`[Local annotation cache] doc=${id} preserving ${currentAnnotationCount} visible annotations until cloud/Y.Doc replacement arrives.`);
+    }
+    setAnnotationsByPage(initialAnnotationsByPage);
+    savedAnnotationsByPageRef.current = initialAnnotationsByPage; // Track as saved
     // Load callouts from localStorage
     const loadedCallouts = isCloudBackedDoc ? [] : loadCallouts(id);
     setCallouts(loadedCallouts);
@@ -23256,6 +23325,22 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     if (pdfFile?.id) return;
     saveAnnotationsByPage(pdfId, annotationsByPage);
   }, [pdfId, pdfFile?.id, annotationsByPage]);
+
+  // Cloud docs still need an instant first paint on refresh. This cache is
+  // display-only: Y.Doc/Supabase remains authoritative and replaces it after
+  // hydrate, so we avoid the blank-PDF wait without pushing stale rows back up.
+  useEffect(() => {
+    if (!pdfId || !pdfFile?.id) return;
+    if (countAnnotationPageObjects(annotationsByPage) === 0) return;
+    saveCloudRenderAnnotationsByPage(
+      pdfId,
+      {
+        documentId: pdfFile.id,
+        cutoverTs: pdfFile.cutoverCompletedAt || null
+      },
+      annotationsByPage
+    );
+  }, [pdfId, pdfFile?.id, pdfFile?.cutoverCompletedAt, annotationsByPage]);
 
   // Save survey data to Supabase Storage
   const saveSurveyDataToSupabase = useCallback(async (currentAnnotations, currentSpaces, currentTemplate) => {

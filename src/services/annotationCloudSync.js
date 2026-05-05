@@ -50,6 +50,7 @@ export const NON_HIGHLIGHT_TYPES = [
 
 const SUPABASE_PAGE_SIZE = 1000;
 const UPSERT_BATCH_SIZE = 250;
+const SUPABASE_READ_PAGE_CONCURRENCY = 4;
 
 function isAllTypesOwnedRow(row) {
   if (!row) return false;
@@ -59,18 +60,24 @@ function isAllTypesOwnedRow(row) {
 
 async function loadPagedAnnotationRows(documentId, applyFilters) {
   const rows = [];
-  for (let from = 0; ; from += SUPABASE_PAGE_SIZE) {
-    const to = from + SUPABASE_PAGE_SIZE - 1;
-    let query = supabase
-      .from('document_annotations')
-      .select('*')
-      .eq('document_id', documentId)
-      .order('page_number', { ascending: true });
-    query = applyFilters ? applyFilters(query) : query;
-    const { data, error } = await query.range(from, to);
-    if (error) return { rows, error };
-    rows.push(...(data || []));
-    if (!data || data.length < SUPABASE_PAGE_SIZE) break;
+  for (let base = 0; ; base += SUPABASE_PAGE_SIZE * SUPABASE_READ_PAGE_CONCURRENCY) {
+    const batch = Array.from({ length: SUPABASE_READ_PAGE_CONCURRENCY }, (_, index) => {
+      const from = base + index * SUPABASE_PAGE_SIZE;
+      const to = from + SUPABASE_PAGE_SIZE - 1;
+      let query = supabase
+        .from('document_annotations')
+        .select('*')
+        .eq('document_id', documentId)
+        .order('page_number', { ascending: true });
+      query = applyFilters ? applyFilters(query) : query;
+      return query.range(from, to);
+    });
+    const results = await Promise.all(batch);
+    for (const result of results) {
+      if (result.error) return { rows, error: result.error };
+      rows.push(...(result.data || []));
+    }
+    if (results.some((result) => !result.data || result.data.length < SUPABASE_PAGE_SIZE)) break;
   }
   return { rows, error: null };
 }
