@@ -289,6 +289,33 @@
   background: #2b2b2b !important;
 }
 
+.syncfusion-renderer-only .e-pv-page-div,
+.syncfusion-renderer-only .e-pv-page-canvas,
+.syncfusion-renderer-only .e-pv-text-layer,
+.syncfusion-renderer-only .e-pv-annotation-canvas {
+  background: #ffffff !important;
+}
+
+/*
+ * Syncfusion virtualizes PDF page canvases, so a page can briefly repaint
+ * when revisited. Keep that repaint quiet: show the white page surface instead
+ * of a gray flash or the built-in red spinner while our annotation layer stays
+ * visible from cache.
+ */
+.syncfusion-renderer-only .e-spinner-pane,
+.syncfusion-renderer-only .e-spinner-pane.e-spin-show,
+.syncfusion-renderer-only .e-spinner-pane.e-spin-hide {
+  background: transparent !important;
+}
+
+.syncfusion-renderer-only .e-spinner-pane .e-spinner-inner,
+.syncfusion-renderer-only .e-spinner-pane .e-spin-material,
+.syncfusion-renderer-only .e-spinner-pane .e-path-circle,
+.syncfusion-renderer-only .e-spinner-pane .e-spin-bootstrap,
+.syncfusion-renderer-only .e-spinner-pane .e-spin-fabric {
+  display: none !important;
+}
+
 /*
  * 2026-04-25 — Off-page cursor override (paired with the JS in
  * cursorScoping.js). When the cursor is in the gray gutter outside
@@ -303,4 +330,3 @@
 .syncfusion-renderer-only .e-pv-page-container.__cursor-off-page * {
   cursor: default !important;
 }
-
