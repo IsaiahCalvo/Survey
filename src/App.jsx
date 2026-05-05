@@ -14839,6 +14839,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       frameMsAvg: roundOverlayRecorderValue(avg(frameDurations), 3),
       frameMsP95: roundOverlayRecorderValue(percentileOverlayRecorder(frameDurations, 0.95), 3),
       frameMsMax: roundOverlayRecorderValue(frameDurations.length ? Math.max(...frameDurations) : null, 3),
+      fpsAvg: roundOverlayRecorderValue(frameDurations.length ? 1000 / avg(frameDurations) : null, 2),
+      fpsAtP95Frame: roundOverlayRecorderValue(frameDurations.length ? 1000 / percentileOverlayRecorder(frameDurations, 0.95) : null, 2),
+      fpsAtWorstFrame: roundOverlayRecorderValue(frameDurations.length ? 1000 / Math.max(...frameDurations) : null, 2),
       jankFrames,
       jankFrameRatePct: frameDurations.length > 0
         ? roundOverlayRecorderValue((jankFrames / frameDurations.length) * 100, 2)
@@ -40009,6 +40012,12 @@ export default function App() {
               userAgent: navigator?.userAgent || null,
               screen: { w: window.innerWidth, h: window.innerHeight },
               consoleLineCount: Array.isArray(buf) ? buf.length : 0,
+              overlayPerformance: typeof window.pdfOverlayRecorder?.summary === 'function'
+                ? window.pdfOverlayRecorder.summary()
+                : null,
+              overlayRecorderStatus: typeof window.pdfOverlayRecorder?.status === 'function'
+                ? window.pdfOverlayRecorder.status()
+                : null,
             },
           }).then((res) => {
             if (res?.ok) console.log('[SaveLog] local snapshot saved at', res.dir);
@@ -40062,6 +40071,12 @@ export default function App() {
               userAgent: navigator?.userAgent || null,
               screen: { w: window.innerWidth, h: window.innerHeight },
               consoleLineCount: Array.isArray(buf) ? buf.length : 0,
+              overlayPerformance: typeof window.pdfOverlayRecorder?.summary === 'function'
+                ? window.pdfOverlayRecorder.summary()
+                : null,
+              overlayRecorderStatus: typeof window.pdfOverlayRecorder?.status === 'function'
+                ? window.pdfOverlayRecorder.status()
+                : null,
             },
           });
           if (res?.ok) console.log('[SaveLog] local snapshot saved at', res.dir);

@@ -57,6 +57,19 @@
         try { console.warn('[SaveLog] bulletproof: network snapshot failed', netErr?.message || netErr); } catch (_e) { /* swallow */ }
       }
 
+      let overlayPerformance = null;
+      let overlayRecorderStatus = null;
+      try {
+        if (typeof window !== 'undefined' && typeof window.pdfOverlayRecorder?.summary === 'function') {
+          overlayPerformance = window.pdfOverlayRecorder.summary();
+        }
+        if (typeof window !== 'undefined' && typeof window.pdfOverlayRecorder?.status === 'function') {
+          overlayRecorderStatus = window.pdfOverlayRecorder.status();
+        }
+      } catch (perfErr) {
+        try { console.warn('[SaveLog] bulletproof: overlay performance snapshot failed', perfErr?.message || perfErr); } catch (_e) { /* swallow */ }
+      }
+
       // Local dated snapshot (Electron). The user can grab this folder
       // even if every other path fails.
       try {
@@ -71,6 +84,8 @@
               screen: (typeof window !== 'undefined') ? { w: window.innerWidth, h: window.innerHeight } : null,
               consoleLineCount: Array.isArray(buf) ? buf.length : 0,
               url: (typeof window !== 'undefined' && window.location) ? window.location.href : null,
+              overlayPerformance,
+              overlayRecorderStatus,
             },
           }).then((res) => {
             try {
