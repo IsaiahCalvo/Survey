@@ -247,7 +247,7 @@ const SYNCFUSION_INTERACTION_COMMIT_MAX_PAGES_PER_FRAME = 2;
 const SYNCFUSION_INTERACTION_COMMIT_FRAME_BUDGET_MS = 6;
 const SYNCFUSION_INTERACTION_EVENT_THROTTLE_MS = 96;
 const SYNCFUSION_INTERACTION_MARK_THROTTLE_MS = 96;
-const SYNCFUSION_ZOOM_OVERLAY_SETTLE_MS = 650;
+const SYNCFUSION_ZOOM_OVERLAY_SETTLE_MS = 1000;
 // Trackpad pinch/wheel zoom sensitivity. Keep this centralized so both
 // Syncfusion wheel paths stay cursor-anchored and feel equally responsive.
 const SYNCFUSION_WHEEL_ZOOM_EXPONENT = 0.0030;
@@ -277,6 +277,19 @@ const getSmoothSyncfusionWheelZoom = (currentZoom, wheelDelta) => {
   const safeDelta = Number.isFinite(Number(wheelDelta)) ? Number(wheelDelta) : 0;
   const factor = Math.exp(safeDelta * SYNCFUSION_WHEEL_ZOOM_EXPONENT);
   return Math.max(10, Math.min(400, safeCurrent * factor));
+};
+
+const getNormalizedWheelDeltas = (event) => {
+  const rawX = Number(event?.deltaX) || 0;
+  const rawY = Number(event?.deltaY) || 0;
+  if (event?.deltaMode === 1) {
+    return { x: rawX * 16, y: rawY * 16 };
+  }
+  if (event?.deltaMode === 2) {
+    const pageSize = typeof window !== 'undefined' ? Math.max(1, window.innerHeight || 800) : 800;
+    return { x: rawX * pageSize, y: rawY * pageSize };
+  }
+  return { x: rawX, y: rawY };
 };
 const HISTORY_DEBUG_TRACE_LIMIT = 250;
 const HISTORY_PAGE_PREVIEW_LIMIT = 12;
@@ -13129,6 +13142,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           }
         });
       } else {
+        const wheelDelta = getNormalizedWheelDeltas(event);
+        const isDiagonalTrackpadScroll = Math.abs(wheelDelta.x) > 0.5 && Math.abs(wheelDelta.y) > 0.5;
+        if (isDiagonalTrackpadScroll) {
+          event.preventDefault();
+          event.stopPropagation();
+          viewerContainer.scrollLeft += wheelDelta.x;
+          viewerContainer.scrollTop += wheelDelta.y;
+        }
         queueInteractionMark('wheel-scroll', 'syncfusion-wheel-scroll', INTERACTION_PERF_SCROLL_HOLD_MS);
       }
     };
