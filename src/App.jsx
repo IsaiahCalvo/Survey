@@ -258,10 +258,7 @@ const SYNCFUSION_SCROLL_DELAY_MS = 80;
 // Keep initial PDF work close to the visible viewport. Syncfusion defaults to
 // 2 initial pages, and PDF.js recommends rendering only visible pages to avoid
 // slow opens and excess canvas memory on large annotated documents.
-// Syncfusion keeps pages below this threshold in the DOM instead of removing
-// and repainting them while scrolling. Keep enough early drawing pages warm
-// so revisiting page 6 does not feel like a blank reload.
-const SYNCFUSION_INITIAL_RENDER_PAGES = 8;
+const SYNCFUSION_INITIAL_RENDER_PAGES = 2;
 const SYNCFUSION_RESTRICT_ZOOM_REQUEST_DURING_INTERACTION = true;
 const SYNCFUSION_DUAL_LAYER_ENABLED_KEY = 'syncfusion_interaction_dual_layer_enabled';
 const OVERLAY_LAG_RECORDER_AUTO_KEY = 'syncfusion_overlay_lag_auto';
