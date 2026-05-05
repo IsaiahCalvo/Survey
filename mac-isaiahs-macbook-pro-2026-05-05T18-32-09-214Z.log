@@ -1,0 +1,134 @@
+===== SurveyApp Save Log =====
+version:   0.1.45
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1203x826
+locale:    en-US
+timestamp: 2026-05-05T18:32:09.207Z (5/5/2026, 2:32:09 PM)
+==============================
+[dev-auto-login] boot {"hasDevEmail":true,"devEmailHint":"isai***","hasDevPassword":true,"hasCachedSession":true,"cachedSessionEmail":"isaiahcalvo123@gmail.com","cachedSessionExpiresAt":1778007875}
+[dev-auto-login] cached session matches dev email, keeping it
+[dev-auto-login] decision {"needsAutoLogin":false,"willAttemptSignIn":false}
+[CloudSync][hook] session id minted {"sessionId":"6f2f7c74-502c-4928-a881-c8bb219f73e7"}
+[AnnotPerf] finalize idle (forced-reset) — deferring CSS transform removal, waiting for PAL confirmation
+[CloudSync][hook][state-obs] annotationsByPage initial {"currentCount":0,"pages":0,"hydrated":false}
+[CloudSync][hook][state-obs] callouts initial {"currentCount":0,"hydrated":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":null}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":false}
+[AnnotPerf] finalize idle (forced-reset) — deferring CSS transform removal, waiting for PAL confirmation
+[Cloud render cache] doc=Package 2 - Rev 4 -- IC.pdf-6291605 painting verified cloud snapshot immediately — count=2867.
+[CSeries wipe] doc=Package 2 - Rev 4 -- IC.pdf-6291605 totalCounters=0 legacyRemoved=0 — nothing to wipe.
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":null,"alreadyRanFor":null,"willRun":false}
+[CloudSync][hook][state-obs] change {"prevCount":0,"currentCount":2867,"delta":2867,"hydrated":false,"sameRefAsLastByPage":false}
+[CloudSync][hook][state-obs] callout change {"prevCount":0,"currentCount":0,"delta":0,"hydrated":false,"sameRefAsLastCallouts":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605"}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":true}
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","alreadyRanFor":null,"willRun":true}
+[Phase31 UAT] backfill:start {"hasYdoc":true,"hasSupabase":true,"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","markCutoverComplete":true}
+[HIGHLIGHT-SYNC][load.legacy][pdf=Package 2 - Rev 4 -- IC.pdf] {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","totalRows":0,"fabricCarryingDropped":0,"keptCount":0,"keptIds":[]}
+[CloudSync][hook] hydrate effect fired {"enabled":true,"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605"}
+[CloudSync][hook] stage=hydrating
+[CloudSync][hook] fabric push skipped — not hydrated yet
+[CloudSync][hook] callout push skipped — not hydrated yet
+[CloudSync][realtime] subscribing {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","currentUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","currentSessionId":"6f2f7c74-502c-4928-a881-c8bb219f73e7","hasFabricInsert":true,"hasFabricUpdate":true,"hasFabricDelete":true,"hasCalloutInsert":true,"hasCalloutUpdate":true,"hasCalloutDelete":true}
+[CloudSync][realtime] subscribe status {"status":"SUBSCRIBED","error":null}
+[CloudSync][hook] post-subscribe catch-up skipped — startup sync already in flight
+[PDFImport] skipped embedded PDF annotation import — cloud/Y.Doc is authoritative {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86"}
+[PrintPanel] RENDER — panel closed
+[DebugBridge +4290.2ms] zoom_start {"scale":0.67,"targetScale":0.9,"source":"zoomChange"}
+[CloudSync][hook] cutover-complete hydrate — reading from Y.Doc {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","cutoverTs":"2026-05-05T16:30:00.778+00:00"}
+[Phase31 UAT] hydrate:cutover-sealed {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605","cutoverTs":"2026-05-05T16:30:00.778+00:00","yMapSize":2867,"materializedTotal":2867,"materializedDrawnByMe":2867,"materializedDrawnByOthers":0,"materializedImported":0,"pages":6,"perPage":{"6":359,"7":146,"8":393,"9":1382,"10":330,"11":257},"currentStateCount":2867,"ydocLooksDegenerate":false}
+[Phase31 UAT] hydrate:cutover-sealed:by-type {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","pdfFile":"Package 2 - Rev 4 -- IC.pdf-6291605","viewerUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapTotal":2867,"yMapByType":{"path":2860,"rect":6,"textbox":1},"yMapByAuthor":{"byMe":2867,"byOthers":0,"anonymous":0},"yMapByTypeByAuthor":{"path":{"byMe":2860,"byOthers":0,"anonymous":0},"rect":{"byMe":6,"byOthers":0,"anonymous":0},"textbox":{"byMe":1,"byOthers":0,"anonymous":0}},"yMapPerTypePerPage":{"path":{"6":357,"7":145,"8":392,"9":1381,"10":329,"11":256},"rect":{"6":1,"7":1,"8":1,"9":1,"10":1,"11":1},"textbox":{"6":1}},"byPageTotal":2867,"byPageByType":{"path":2860,"rect":6,"textbox":1},"byPagePerPagePerType":{"6":{"path":357,"rect":1,"textbox":1},"7":{"path":145,"rect":1},"8":{"path":392,"rect":1},"9":{"path":1381,"rect":1},"10":{"rect":1,"path":329},"11":{"path":256,"rect":1}}}
+[CloudSync][hook][state-obs] change {"prevCount":2867,"currentCount":2867,"delta":0,"hydrated":true,"sameRefAsLastByPage":true}
+[DebugBridge +4957.8ms] pdf_loaded {"pageCount":36,"currentPage":1}
+[Phase31 UAT] backfill:cutover-dedupe-anchor-skip {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapSize":2867,"lastGoodSize":2867}
+[HyperlinkDiag] post-load scan {"hyperlinkCount":0,"samples":[]}
+[HyperlinkDiag] page 1 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 2 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 3 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 4 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[DebugBridge +6081.0ms] zoom_end {"source":"zoomChange_settle"}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +10262.4ms] zoom_start {"scale":0.67,"source":"overlay_wheel_zoom_pre"}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":67,"nextZoom":70.16792852012546,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":31,"scrollTop":4015.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":70,"nextZoom":72.91228079990356,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":70.5,"scrollTop":4286.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":72,"nextZoom":77.50127384646674,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":131.5,"scrollTop":4666.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":77,"nextZoom":83.93366391613877,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":174,"scrollTop":4932}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":83,"nextZoom":88.43518594093,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":195,"scrollTop":5062.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":88,"nextZoom":90.643320899184,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":210.5,"scrollTop":5162}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":90,"nextZoom":92.33261026585696,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":210.5,"scrollTop":5162}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":92,"nextZoom":94.62411574095556,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":244,"scrollTop":5373}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":94,"nextZoom":95.90627133132959,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":271.5,"scrollTop":5543.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":95,"nextZoom":98.80038815105102,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":337.5,"scrollTop":5956.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":98,"nextZoom":105.79098946598873,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":405.5,"scrollTop":6383.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":105,"nextZoom":113.01661977217984,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":469.5,"scrollTop":6785.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":113,"nextZoom":119.82219176651103,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":603.5,"scrollTop":7625}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":119,"nextZoom":134.0261522821384,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":610.5,"scrollTop":7670}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":134,"nextZoom":134.794050240119,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":610,"scrollTop":7669.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":134,"nextZoom":139.41257798540886,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":674.5,"scrollTop":8074.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":139,"nextZoom":141.65052243399506,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":685.5,"scrollTop":8144}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":141,"nextZoom":142.83288376337663,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":784,"scrollTop":8759}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":142,"nextZoom":153.2464570134656,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":907.5,"scrollTop":9532}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":153,"nextZoom":166.33596936891934,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":1027.5,"scrollTop":10286}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":166,"nextZoom":179.10586911850373,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":1108,"scrollTop":10788.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":179,"nextZoom":187.6158038467483,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":1339.5,"scrollTop":12237}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":187,"nextZoom":212.13859396695491,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":1399,"scrollTop":12612}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":212,"nextZoom":218.49151838128182,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":1399,"scrollTop":12611.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":218,"nextZoom":221.0573422015319,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":1466,"scrollTop":13031.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":221,"nextZoom":225.6015288649628,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":1530.5,"scrollTop":13437}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":225,"nextZoom":232.4674381747413,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":1664,"scrollTop":14273}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":232,"nextZoom":246.6297979082763,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":1926,"scrollTop":15914.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":246,"nextZoom":274.4214832773064,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":2068,"scrollTop":16804.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":274,"nextZoom":289.48405039765595,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":2384,"scrollTop":18786}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":289,"nextZoom":323.03584621071167,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":2453,"scrollTop":19216.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":323,"nextZoom":330.3289840531062,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":2460,"scrollTop":19262.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":330,"nextZoom":331.1119991433677,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":2459.5,"scrollTop":19262}
+[DebugBridge +12834.9ms] zoom_end {"source":"zoomChange_settle"}
+[DebugBridge +15965.3ms] zoom_start {"scale":3.31,"source":"overlay_wheel_zoom_pre"}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":331,"nextZoom":325.6099195351424,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":1404,"scrollTop":12655.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":325,"nextZoom":219.27253686865987,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":1326.5,"scrollTop":12172}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":219,"nextZoom":211.08348113375342,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":1303,"scrollTop":12025.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":211,"nextZoom":208.60714800453417,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":1303,"scrollTop":12025}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":208,"nextZoom":205.24371531116736,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":467.5,"scrollTop":6796}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":205,"nextZoom":120.07969589446863,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":467.5,"scrollTop":6796}
+[DebugBridge +17752.9ms] zoom_end {"source":"zoomChange_settle"}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +19087.6ms] zoom_start {"scale":1.2,"source":"overlay_wheel_zoom_pre"}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":120,"nextZoom":118.7719288633229,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":397,"scrollTop":8750.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":118,"nextZoom":112.6229118862641,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":214.5,"scrollTop":7198.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":112,"nextZoom":93.30215409362975,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":200,"scrollTop":7072.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":93,"nextZoom":91.73841205946441,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":129,"scrollTop":6470}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":91,"nextZoom":84.23410604931806,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":81,"scrollTop":6066.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":84,"nextZoom":79.21511505684046,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":58,"scrollTop":5870.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":79,"nextZoom":76.78107908366279,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":3,"scrollTop":5401.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":76,"nextZoom":70.94322183952029,"cursorX":665,"cursorY":297,"pageAnchor":true,"scrollLeft":3,"scrollTop":5401.5}
+[DebugBridge +20554.1ms] zoom_end {"source":"zoomChange_settle"}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
