@@ -12897,9 +12897,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     let scrollMarkRafId = null;
     let wheelScrollMarkRafId = null;
     let wheelZoomMarkRafId = null;
-    let wheelPanRafId = null;
-    let pendingWheelPanX = 0;
-    let pendingWheelPanY = 0;
     const raf =
       typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function'
         ? window.requestAnimationFrame.bind(window)
@@ -12972,24 +12969,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     const onScroll = () => {
       queueInteractionMark('scroll', 'syncfusion-scroll', INTERACTION_PERF_SCROLL_HOLD_MS);
-    };
-
-    const queueWheelPan = (deltaX, deltaY) => {
-      pendingWheelPanX += deltaX;
-      pendingWheelPanY += deltaY;
-      if (wheelPanRafId !== null) return;
-
-      wheelPanRafId = raf(() => {
-        wheelPanRafId = null;
-        const nextX = pendingWheelPanX;
-        const nextY = pendingWheelPanY;
-        pendingWheelPanX = 0;
-        pendingWheelPanY = 0;
-        if (Math.abs(nextX) < 0.01 && Math.abs(nextY) < 0.01) return;
-
-        viewerContainer.scrollLeft += nextX;
-        viewerContainer.scrollTop += nextY;
-      });
     };
 
     const onWheel = (event) => {
@@ -13164,11 +13143,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         });
       } else {
         const wheelDelta = getNormalizedWheelDeltas(event);
-        const hasHorizontalTrackpadIntent = Math.abs(wheelDelta.x) > 0.5;
-        if (hasHorizontalTrackpadIntent) {
+        const isDiagonalTrackpadScroll = Math.abs(wheelDelta.x) > 0.5 && Math.abs(wheelDelta.y) > 0.5;
+        if (isDiagonalTrackpadScroll) {
           event.preventDefault();
           event.stopPropagation();
-          queueWheelPan(wheelDelta.x, wheelDelta.y);
+          viewerContainer.scrollLeft += wheelDelta.x;
+          viewerContainer.scrollTop += wheelDelta.y;
         }
         queueInteractionMark('wheel-scroll', 'syncfusion-wheel-scroll', INTERACTION_PERF_SCROLL_HOLD_MS);
       }
@@ -13225,12 +13205,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           cancelRaf(wheelZoomMarkRafId);
           wheelZoomMarkRafId = null;
         }
-        if (wheelPanRafId !== null) {
-          cancelRaf(wheelPanRafId);
-          wheelPanRafId = null;
-        }
-        pendingWheelPanX = 0;
-        pendingWheelPanY = 0;
         clearSyncfusionWheelZoomRaf();
         viewerContainer.removeEventListener('scroll', onScroll);
         viewerContainer.removeEventListener('wheel', onWheel, { capture: true });

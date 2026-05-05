@@ -287,8 +287,6 @@
 
 .syncfusion-renderer-only .e-pv-viewer-container {
   background: #2b2b2b !important;
-  overscroll-behavior: contain;
-  scroll-behavior: auto !important;
 }
 
 /*
@@ -305,3 +303,4 @@
 .syncfusion-renderer-only .e-pv-page-container.__cursor-off-page * {
   cursor: default !important;
 }
+
