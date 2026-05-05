@@ -1,0 +1,160 @@
+===== SurveyApp Save Log =====
+version:   0.1.45
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1203x826
+locale:    en-US
+timestamp: 2026-05-05T14:36:54.788Z (5/5/2026, 10:36:54 AM)
+==============================
+[dev-auto-login] boot {"hasDevEmail":true,"devEmailHint":"isai***","hasDevPassword":true,"hasCachedSession":true,"cachedSessionEmail":"isaiahcalvo123@gmail.com","cachedSessionExpiresAt":1777993833}
+[dev-auto-login] cached session matches dev email, keeping it
+[dev-auto-login] decision {"needsAutoLogin":false,"willAttemptSignIn":false}
+[CloudSync][hook] session id minted {"sessionId":"0e18da53-b4c0-446a-93e7-93226410ef0b"}
+[AnnotPerf] finalize idle (forced-reset) — deferring CSS transform removal, waiting for PAL confirmation
+[DebugBridge +4255.6ms] zoom_start {"scale":0.8926767676767676,"targetScale":1,"source":"keyboard_toolbar"}
+[CloudSync][hook][state-obs] annotationsByPage initial {"currentCount":0,"pages":0,"hydrated":false}
+[CloudSync][hook][state-obs] callouts initial {"currentCount":0,"hydrated":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":null}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":false}
+[Local annotation cache] doc=Package 2 - Rev 4 -- IC.pdf-8316501 skip annotationsByPage localStorage load — cloud/Y.Doc is authoritative.
+[CSeries wipe] doc=Package 2 - Rev 4 -- IC.pdf-8316501 totalCounters=0 legacyRemoved=0 — nothing to wipe.
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"70dadd86-35f0-432b-925f-c59e919a4e4d","userId":null,"alreadyRanFor":null,"willRun":false}
+[CloudSync][hook][state-obs] change {"prevCount":0,"currentCount":0,"delta":0,"hydrated":false,"sameRefAsLastByPage":false}
+[CloudSync][hook][state-obs] callout change {"prevCount":0,"currentCount":0,"delta":0,"hydrated":false,"sameRefAsLastCallouts":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"Package 2 - Rev 4 -- IC.pdf-8316501"}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":true}
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"70dadd86-35f0-432b-925f-c59e919a4e4d","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","alreadyRanFor":null,"willRun":true}
+[Phase31 UAT] backfill:start {"hasYdoc":true,"hasSupabase":true,"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","markCutoverComplete":true}
+console.warn @ [SupabaseYjsProvider] update exceeds soft cap 10759571 bytes — skipping broadcast
+[PDFImport] skipped embedded PDF annotation import — cloud/Y.Doc is authoritative {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d"}
+[PrintPanel] RENDER — panel closed
+[DebugBridge +6016.5ms] pdf_loaded {"pageCount":36,"currentPage":1}
+[HyperlinkDiag] post-load scan {"hyperlinkCount":0,"samples":[]}
+[HyperlinkDiag] page 1 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 2 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 3 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 4 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[DebugBridge +7357.5ms] zoom_end {"source":"zoomChange_settle"}
+[HIGHLIGHT-SYNC][load.legacy][pdf=Package 2 - Rev 4 -- IC.pdf] {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","totalRows":1820,"fabricCarryingDropped":1820,"keptCount":0,"keptIds":[]}
+[CloudSync][hook] hydrate effect fired {"enabled":true,"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"Package 2 - Rev 4 -- IC.pdf-8316501"}
+[CloudSync][hook] stage=hydrating
+[CloudSync][hook] fabric push skipped — not hydrated yet
+[CloudSync][hook] callout push skipped — not hydrated yet
+[CloudSync][realtime] subscribing {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","currentUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","currentSessionId":"0e18da53-b4c0-446a-93e7-93226410ef0b","hasFabricInsert":true,"hasFabricUpdate":true,"hasFabricDelete":true,"hasCalloutInsert":true,"hasCalloutUpdate":true,"hasCalloutDelete":true}
+[CloudSync][realtime] subscribe status {"status":"SUBSCRIBED","error":null}
+[CloudSync][hook] post-subscribe catch-up skipped — startup sync already in flight
+[CloudSync][hook] cutover-complete hydrate — reading from Y.Doc {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","cutoverTs":"2026-05-05T14:14:38.969+00:00"}
+[Phase31 UAT] hydrate:cutover-sealed {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","pdfId":"Package 2 - Rev 4 -- IC.pdf-8316501","cutoverTs":"2026-05-05T14:14:38.969+00:00","yMapSize":3645,"materializedTotal":3645,"materializedDrawnByMe":3645,"materializedDrawnByOthers":0,"materializedImported":0,"pages":7,"perPage":{"1":1,"6":525,"7":233,"8":431,"9":1805,"10":375,"11":275},"currentStateCount":0,"ydocLooksDegenerate":false}
+[Phase31 UAT] hydrate:cutover-sealed:by-type {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","pdfFile":"Package 2 - Rev 4 -- IC.pdf-8316501","viewerUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapTotal":3645,"yMapByType":{"path":3598,"rect":42,"circle":1,"textbox":4},"yMapByAuthor":{"byMe":3645,"byOthers":0,"anonymous":0},"yMapByTypeByAuthor":{"path":{"byMe":3598,"byOthers":0,"anonymous":0},"rect":{"byMe":42,"byOthers":0,"anonymous":0},"circle":{"byMe":1,"byOthers":0,"anonymous":0},"textbox":{"byMe":4,"byOthers":0,"anonymous":0}},"yMapPerTypePerPage":{"path":{"6":517,"7":227,"8":423,"9":1797,"10":367,"11":267},"rect":{"6":4,"7":6,"8":8,"9":8,"10":8,"11":8},"circle":{"unknown":1},"textbox":{"6":4}},"byPageTotal":3645,"byPageByType":{"circle":1,"rect":42,"path":3598,"textbox":4},"byPagePerPagePerType":{"1":{"circle":1},"6":{"rect":4,"path":517,"textbox":4},"7":{"rect":6,"path":227},"8":{"rect":8,"path":423},"9":{"path":1797,"rect":8},"10":{"path":367,"rect":8},"11":{"rect":8,"path":267}}}
+[Counter SVG p1] dispatching renderCounter — i=0, displayNumber=1, fill=#ef4444, numberColor=unset, left=869.89, top=298.11, radius=14
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[CloudSync][hook][state-obs] change {"prevCount":0,"currentCount":3645,"delta":3645,"hydrated":true,"sameRefAsLastByPage":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[Phase31 UAT] backfill:degeneracy-probe {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapSize":3645,"legacyCount":22630,"probeOk":true,"tolerance":1132,"yMapLooksHealthy":false,"dedupeRan":true,"lastGoodSize":5767}
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":3645,"legacyCount":22630}
+[Phase31 UAT] backfill:select-loop start {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pageSize":1000}
+[Phase31 UAT] backfill:select-loop page ok {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","page":0,"range":[0,999],"pageRows":1000,"totalSoFar":1000,"pageElapsedMs":645}
+[DebugBridge +12047.7ms] zoom_start {"scale":0.67,"source":"overlay_wheel_zoom_pre"}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":67,"nextZoom":67.83371925354004,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":0,"scrollTop":3630.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":67,"nextZoom":68.3936017036438,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":36.5,"scrollTop":3947}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":68,"nextZoom":73.70918273925781,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":70.5,"scrollTop":4167.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":73,"nextZoom":77.41944360733032,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":141,"scrollTop":4611.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":77,"nextZoom":84.88799648284912,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":189.5,"scrollTop":4921.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":84,"nextZoom":90.10396785736084,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":258,"scrollTop":5356.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":90,"nextZoom":97.426070022583,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":368.5,"scrollTop":6054}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":97,"nextZoom":109.15800256729126,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":368,"scrollTop":6054}
+[Phase31 UAT] backfill:select-loop page ok {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","page":1,"range":[1000,1999],"pageRows":1000,"totalSoFar":2000,"pageElapsedMs":571}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":109,"nextZoom":109.9518818616867,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":380.5,"scrollTop":6134}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":109,"nextZoom":110.51066789627075,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":388,"scrollTop":6184.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":110,"nextZoom":111.35781073570251,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":417.5,"scrollTop":6374.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":111,"nextZoom":114.55511770248413,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":456,"scrollTop":6618.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":114,"nextZoom":118.66977653503417,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":513,"scrollTop":6985.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":118,"nextZoom":124.84375114440918,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":709,"scrollTop":8229}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":124,"nextZoom":145.75649137496947,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":711.5,"scrollTop":8246}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":145,"nextZoom":146.04182341098786,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":727,"scrollTop":8347}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":146,"nextZoom":147.74089515507222,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":726.5,"scrollTop":8346.5}
+[Phase31 UAT] backfill:select-loop page ok {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","page":2,"range":[2000,2999],"pageRows":1000,"totalSoFar":3000,"pageElapsedMs":764}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":147,"nextZoom":148.42221908569337,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":745.5,"scrollTop":8469}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":148,"nextZoom":149.8018939971924,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":756,"scrollTop":8538}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":149,"nextZoom":150.9669167995453,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":784,"scrollTop":8719.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":150,"nextZoom":154.0219825744629,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":839,"scrollTop":9071.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":154,"nextZoom":159.94443492889405,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":895,"scrollTop":9427.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":159,"nextZoom":165.93527526855468,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":1047.5,"scrollTop":10399}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":165,"nextZoom":182.27688006162643,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":1049.5,"scrollTop":10411.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":182,"nextZoom":182.48698632121085,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":1052,"scrollTop":10430.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":182,"nextZoom":182.8099499732256,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":1052,"scrollTop":10430}
+[Phase31 UAT] backfill:select-loop page ok {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","page":3,"range":[3000,3999],"pageRows":1000,"totalSoFar":4000,"pageElapsedMs":629}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":182,"nextZoom":183.2467227935791,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":1070.5,"scrollTop":10550}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":183,"nextZoom":184.83120532035826,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":1111.5,"scrollTop":10810}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":184,"nextZoom":189.2164161682129,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":1132,"scrollTop":10942}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":189,"nextZoom":191.43730688095093,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":1200,"scrollTop":11377.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":191,"nextZoom":198.76523399353027,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":1247,"scrollTop":11679}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":198,"nextZoom":203.84164638519286,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":1387,"scrollTop":12573.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":203,"nextZoom":218.8845058441162,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":1385,"scrollTop":12560.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":218,"nextZoom":218.67697848677636,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":1385.5,"scrollTop":12569}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":218,"nextZoom":218.82002618312836,"cursorX":657,"cursorY":440,"pageAnchor":true,"scrollLeft":1385.5,"scrollTop":12568.5}
+[Phase31 UAT] backfill:select-loop page ok {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","page":4,"range":[4000,4999],"pageRows":1000,"totalSoFar":5000,"pageElapsedMs":698}
+[Phase31 UAT] backfill:select-loop page ok {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","page":5,"range":[5000,5999],"pageRows":1000,"totalSoFar":6000,"pageElapsedMs":624}
+[DebugBridge +15943.0ms] zoom_end {"source":"zoomChange_settle"}
+[Phase31 UAT] backfill:select-loop page ok {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","page":6,"range":[6000,6999],"pageRows":1000,"totalSoFar":7000,"pageElapsedMs":1034}
+[Phase31 UAT] backfill:select-loop page ok {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","page":7,"range":[7000,7999],"pageRows":1000,"totalSoFar":8000,"pageElapsedMs":1246}
+[Phase31 UAT] backfill:select-loop page ok {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","page":8,"range":[8000,8999],"pageRows":1000,"totalSoFar":9000,"pageElapsedMs":1502}
+[DebugBridge +20215.9ms] zoom_start {"scale":2.18,"source":"overlay_wheel_zoom_pre"}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":218,"nextZoom":220.3154997587204,"cursorX":679,"cursorY":586,"pageAnchor":true,"scrollLeft":1509,"scrollTop":13355.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":220,"nextZoom":231.91369094848633,"cursorX":679,"cursorY":586,"pageAnchor":true,"scrollLeft":1569.5,"scrollTop":13742}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":231,"nextZoom":238.35733337402343,"cursorX":679,"cursorY":586,"pageAnchor":true,"scrollLeft":1634.5,"scrollTop":14158}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":238,"nextZoom":245.27855968475342,"cursorX":679,"cursorY":586,"pageAnchor":true,"scrollLeft":1712,"scrollTop":14655.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":245,"nextZoom":253.55669708251952,"cursorX":679,"cursorY":586,"pageAnchor":true,"scrollLeft":1741.5,"scrollTop":14845}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":253,"nextZoom":256.71544857025145,"cursorX":679,"cursorY":586,"pageAnchor":true,"scrollLeft":1754.5,"scrollTop":14928.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":256,"nextZoom":258.1026053905487,"cursorX":679,"cursorY":586,"pageAnchor":true,"scrollLeft":1769.5,"scrollTop":15024}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":258,"nextZoom":259.6947133541107,"cursorX":679,"cursorY":586,"pageAnchor":true,"scrollLeft":1767.5,"scrollTop":15012.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":259,"nextZoom":259.50964492559433,"cursorX":679,"cursorY":586,"pageAnchor":true,"scrollLeft":1770.5,"scrollTop":15029.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":259,"nextZoom":259.8019095778465,"cursorX":679,"cursorY":586,"pageAnchor":true,"scrollLeft":1770,"scrollTop":15029.5}
+[Phase31 UAT] backfill:select-loop page ok {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","page":9,"range":[9000,9999],"pageRows":1000,"totalSoFar":10000,"pageElapsedMs":2242}
+[DebugBridge +21656.2ms] zoom_end {"source":"zoomChange_settle"}
+[Phase31 UAT] backfill:select-loop page ok {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","page":10,"range":[10000,10999],"pageRows":1000,"totalSoFar":11000,"pageElapsedMs":2186}
+console.error @ [AnnotationSync] Error upserting annotations: {"code":"57014","details":null,"hint":null,"message":"canceling statement due to statement timeout"}
+console.error @ [DocumentSync] Sync failed: {"code":"57014","details":null,"hint":null,"message":"canceling statement due to statement timeout"}
+[Phase31 UAT] backfill:select-loop page ok {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","page":11,"range":[11000,11999],"pageRows":1000,"totalSoFar":12000,"pageElapsedMs":2173}
+[Phase31 UAT] backfill:select-loop page ok {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","page":12,"range":[12000,12999],"pageRows":1000,"totalSoFar":13000,"pageElapsedMs":3629}
+[SaveLog] bulletproof local snapshot saved at /Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/Logs/2026-05-05_14-35-35
+[Phase31 UAT] backfill:select-loop page ok {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","page":13,"range":[13000,13999],"pageRows":1000,"totalSoFar":14000,"pageElapsedMs":4215}
+[SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"hasGhTokenEnv":true,"payloadLength":19870}
+[SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"hasGhTokenEnv":true,"payloadLength":19870}
+[Phase31 UAT] backfill:select-loop page ok {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","page":14,"range":[14000,14999],"pageRows":1000,"totalSoFar":15000,"pageElapsedMs":1493}
+[SaveLogBanner] GitHub push OK {"url":"https://github.com/IsaiahCalvo/Survey/blob/logs/mac-isaiahs-macbook-pro-2026-05-05T14-35-40-588Z.log","filename":"mac-isaiahs-macbook-pro-2026-05-05T14-35-40-588Z.log"}
+[Phase31 UAT] backfill:select-loop page ok {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","page":15,"range":[15000,15999],"pageRows":1000,"totalSoFar":16000,"pageElapsedMs":1596}
+[SaveLogBanner] GitHub push OK {"url":"https://github.com/IsaiahCalvo/Survey/blob/logs/mac-isaiahs-macbook-pro-2026-05-05T14-35-40-612Z.log","filename":"mac-isaiahs-macbook-pro-2026-05-05T14-35-40-612Z.log"}
+[Phase31 UAT] backfill:select-loop page ok {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","page":16,"range":[16000,16999],"pageRows":1000,"totalSoFar":17000,"pageElapsedMs":1458}
+[Phase31 UAT] backfill:select-loop page ok {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","page":17,"range":[17000,17999],"pageRows":1000,"totalSoFar":18000,"pageElapsedMs":1752}
+[Phase31 UAT] backfill:select-loop page ok {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","page":18,"range":[18000,18999],"pageRows":1000,"totalSoFar":19000,"pageElapsedMs":1989}
+[Phase31 UAT] backfill:select-loop page ok {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","page":19,"range":[19000,19999],"pageRows":1000,"totalSoFar":20000,"pageElapsedMs":1730}
+[Phase31 UAT] backfill:select-loop page ok {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","page":20,"range":[20000,20999],"pageRows":1000,"totalSoFar":21000,"pageElapsedMs":1877}
+[Phase31 UAT] focus rehydrate skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","pdfId":"Package 2 - Rev 4 -- IC.pdf-8316501","cutoverTs":"2026-05-05T14:14:38.969+00:00","ydocAuthoritative":true}
+[Phase31 UAT] backfill:select-loop page ok {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","page":21,"range":[21000,21999],"pageRows":1000,"totalSoFar":22000,"pageElapsedMs":2625}
+[Phase31 UAT] backfill:select-loop page ok {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","page":22,"range":[22000,22999],"pageRows":630,"totalSoFar":22630,"pageElapsedMs":2265}
+[Phase31 UAT] backfill:done {"ranAs":"leader","documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowsFetched":22630,"imported":22630,"skipped":0,"yMapSizeAfter":22631,"cutoverRequested":true,"cutoverCompleted":true,"importedByType":{"ink":22584,"square":42,"freetext":4},"skippedByType":{}}
+[crdtDedupePdfImports] removed 18986 duplicate PDF-imported annotations across 5759 unique signatures
+[CloudSync][hook] dedupe-resync — restoring state {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","removed":18986,"resyncCount":3645}
+[CloudSync][hook][state-obs] change {"prevCount":3645,"currentCount":3645,"delta":0,"hydrated":true,"sameRefAsLastByPage":true}
+[DebugBridge +69675.4ms] zoom_start {"scale":2.59,"source":"overlay_wheel_zoom_pre"}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":259,"nextZoom":260.71476340293884,"cursorX":1040,"cursorY":194,"pageAnchor":true,"scrollLeft":1798.5,"scrollTop":15185.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":260,"nextZoom":262.46806688308715,"cursorX":1040,"cursorY":194,"pageAnchor":true,"scrollLeft":2206,"scrollTop":17394.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":262,"nextZoom":300.17815628051756,"cursorX":1040,"cursorY":194,"pageAnchor":true,"scrollLeft":2220,"scrollTop":17472}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":300,"nextZoom":301.50367884635926,"cursorX":1040,"cursorY":194,"pageAnchor":true,"scrollLeft":2216.5,"scrollTop":17454}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":301,"nextZoom":301.2065532505512,"cursorX":1040,"cursorY":194,"pageAnchor":true,"scrollLeft":2216,"scrollTop":17454}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":301,"nextZoom":302.3049799442291,"cursorX":1040,"cursorY":194,"pageAnchor":true,"scrollLeft":2653,"scrollTop":19822.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":302,"nextZoom":341.63377952575684,"cursorX":1040,"cursorY":194,"pageAnchor":true,"scrollLeft":2708.5,"scrollTop":20127.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":341,"nextZoom":346.8527361661196,"cursorX":1040,"cursorY":194,"pageAnchor":true,"scrollLeft":2708.5,"scrollTop":20127.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":346,"nextZoom":345.0932188749313,"cursorX":1039,"cursorY":195,"pageAnchor":true,"scrollLeft":2540,"scrollTop":19213.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":345,"nextZoom":331.25786690711976,"cursorX":1039,"cursorY":195,"pageAnchor":true,"scrollLeft":2197,"scrollTop":17357}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":331,"nextZoom":299.5733384251595,"cursorX":1039,"cursorY":195,"pageAnchor":true,"scrollLeft":2197,"scrollTop":17356.5}
+[DebugBridge +73672.3ms] zoom_end {"source":"zoomChange_settle"}
+[Phase31 UAT] focus rehydrate skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"70dadd86-35f0-432b-925f-c59e919a4e4d","pdfId":"Package 2 - Rev 4 -- IC.pdf-8316501","cutoverTs":"2026-05-05T14:14:38.969+00:00","ydocAuthoritative":true}
