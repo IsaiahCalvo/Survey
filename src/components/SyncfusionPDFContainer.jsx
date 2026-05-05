@@ -14,6 +14,7 @@ import {
   BookmarkView,
   TextSelection,
   TextSearch,
+  Annotation,
   Print,
   LinkAnnotation,
   FormFields,
@@ -71,6 +72,483 @@ const coerceZoom = (value, fallback = 100) => {
   const next = Number(value);
   if (!Number.isFinite(next)) return fallback;
   return Math.max(10, Math.min(1000, next));
+};
+
+const TEXT_MARKUP_ANNOTATION_TYPES = new Set([
+  'highlight',
+  'underline',
+  'strikethrough',
+  'strikeout',
+  'squiggly',
+  'textmarkup',
+  'text markup'
+]);
+
+const readNumberField = (source, fields, fallback = null) => {
+  if (!source || typeof source !== 'object') return fallback;
+  for (const field of fields) {
+    const value = source[field];
+    const next = Number(value);
+    if (Number.isFinite(next)) return next;
+  }
+  return fallback;
+};
+
+const normalizePdfViewerBounds = (bounds) => {
+  if (!bounds) return [];
+  if (typeof bounds === 'string') {
+    try {
+      return normalizePdfViewerBounds(JSON.parse(bounds));
+    } catch {
+      return [];
+    }
+  }
+  const sourceBounds = Array.isArray(bounds) ? bounds : [bounds];
+  return sourceBounds
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') return null;
+      const x = readNumberField(entry, ['x', 'X', 'left', 'Left']);
+      const y = readNumberField(entry, ['y', 'Y', 'top', 'Top']);
+      const width = readNumberField(entry, ['width', 'Width']);
+      const height = readNumberField(entry, ['height', 'Height']);
+      const right = readNumberField(entry, ['right', 'Right']);
+      const bottom = readNumberField(entry, ['bottom', 'Bottom']);
+      if (x === null || y === null) return null;
+      const resolvedWidth = width ?? (right !== null ? right - x : null);
+      const resolvedHeight = height ?? (bottom !== null ? bottom - y : null);
+      if (!Number.isFinite(resolvedWidth) || !Number.isFinite(resolvedHeight)) return null;
+      return { x, y, width: resolvedWidth, height: resolvedHeight };
+    })
+    .filter(Boolean);
+};
+
+const getAnnotationKind = (annotation) => {
+  const candidates = [
+    annotation?.textMarkupAnnotationType,
+    annotation?.shapeAnnotationType,
+    annotation?.annotationType,
+    annotation?.type,
+    annotation?.subject,
+    annotation?.annotationSettings?.type
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return candidate.trim().toLowerCase();
+    }
+  }
+  return '';
+};
+
+const isTextMarkupAnnotation = (annotation) => {
+  const kind = getAnnotationKind(annotation);
+  if (TEXT_MARKUP_ANNOTATION_TYPES.has(kind)) return true;
+  return Array.isArray(annotation?.bounds) && annotation.bounds.length > 0 && kind.includes('highlight');
+};
+
+const getAnnotationId = (annotation) => (
+  annotation?.annotationId ||
+  annotation?.id ||
+  annotation?.annotName ||
+  annotation?.AnnotName ||
+  annotation?.name ||
+  null
+);
+
+const pointTouchesBounds = (point, bounds, radius) => (
+  point.x >= bounds.x - radius &&
+  point.x <= bounds.x + bounds.width + radius &&
+  point.y >= bounds.y - radius &&
+  point.y <= bounds.y + bounds.height + radius
+);
+
+const getTextMarkupModule = (viewer) => (
+  viewer?.annotationModule?.textMarkupAnnotationModule ||
+  viewer?.annotation?.textMarkupAnnotationModule ||
+  viewer?.textMarkupAnnotationModule ||
+  null
+);
+
+const getSyncfusionDocumentId = (viewer) => (
+  viewer?.viewerBase?.documentId ||
+  viewer?.pdfViewerBase?.documentId ||
+  viewer?.documentId ||
+  ''
+);
+
+const getTextMarkupPageIndex = (annotation, fallbackPageIndex = null) => {
+  const rawPage = readNumberField(annotation, ['pageNumber', 'pageIndex', 'page'], null);
+  if (Number.isFinite(fallbackPageIndex)) return fallbackPageIndex;
+  if (!Number.isFinite(rawPage)) return fallbackPageIndex;
+  return rawPage;
+};
+
+const getTextMarkupAnnotationCanvas = (viewer, annotation, pageIndex) => {
+  const viewerBase = viewer?.viewerBase || viewer?.pdfViewerBase;
+  const canvasId = annotation?.textMarkupAnnotationType === 'Highlight'
+    ? '_blendAnnotationsIntoCanvas_'
+    : '_annotationCanvas_';
+  if (!viewerBase) return null;
+  if (canvasId === '_blendAnnotationsIntoCanvas_') {
+    return viewerBase.getElement?.(`${canvasId}${pageIndex}`) || null;
+  }
+  return viewerBase.getAnnotationCanvas?.(canvasId, pageIndex) || null;
+};
+
+const getTextMarkupBoundsList = (annotation) => (
+  normalizePdfViewerBounds(annotation?.bounds || annotation?.Bounds || annotation?.rect || annotation?.Rect)
+);
+
+const TEXT_MARKUP_HANDLE_HIT_SIZE = 24;
+const TEXT_MARKUP_HANDLE_VISUAL_SIZE = 10;
+
+const installTextMarkupDropletHandlers = (viewer) => {
+  const textMarkupModule = getTextMarkupModule(viewer);
+  if (!textMarkupModule) return;
+  if (!textMarkupModule.__betasafeDropletState) {
+    textMarkupModule.__betasafeDropletState = {
+      activePointerId: null,
+      activeSide: null,
+      pendingMove: null,
+      moveFrame: null
+    };
+  }
+  const state = textMarkupModule.__betasafeDropletState;
+
+  const findTextTarget = (event) => {
+    const directTarget = event?.target?.closest?.('.e-pv-text');
+    if (directTarget) return directTarget;
+    if (!document.elementsFromPoint || !Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return null;
+    return document.elementsFromPoint(event.clientX, event.clientY)
+      .map((element) => element?.closest?.('.e-pv-text'))
+      .find(Boolean) || null;
+  };
+
+  const startResize = (side, event = null) => {
+    state.activePointerId = Number.isFinite(event?.pointerId) ? event.pointerId : null;
+    state.activeSide = side;
+    textMarkupModule.isDropletClicked = true;
+    textMarkupModule.isExtended = true;
+    textMarkupModule.isLeftDropletClicked = side === 'left';
+    textMarkupModule.isRightDropletClicked = side === 'right';
+    try {
+      event?.currentTarget?.setPointerCapture?.(event.pointerId);
+    } catch {
+      // Pointer capture is not available for synthetic mouse events.
+    }
+    try {
+      textMarkupModule.pdfViewer?.textSelectionModule?.initiateSelectionByTouch?.();
+      textMarkupModule.pdfViewer.textSelectionModule.selectionRangeArray = [];
+    } catch {
+      // Syncfusion initializes this lazily on some documents.
+    }
+  };
+
+  const handleMove = (event) => {
+    if (!state.activeSide || !textMarkupModule.isDropletClicked) return;
+    if (
+      state.activePointerId !== null &&
+      Number.isFinite(event.pointerId) &&
+      event.pointerId !== state.activePointerId
+    ) {
+      return;
+    }
+    state.pendingMove = event;
+    if (state.moveFrame) return;
+    state.moveFrame = window.requestAnimationFrame(() => {
+      state.moveFrame = null;
+      const moveEvent = state.pendingMove;
+      state.pendingMove = null;
+      if (!moveEvent || !textMarkupModule.isDropletClicked) return;
+      textMarkupModule.isLeftDropletClicked = state.activeSide === 'left';
+      textMarkupModule.isRightDropletClicked = state.activeSide === 'right';
+      const target = findTextTarget(moveEvent);
+      if (!target || typeof textMarkupModule.textSelect !== 'function') return;
+      textMarkupModule.textSelect(target, moveEvent.clientX, moveEvent.clientY);
+    });
+  };
+
+  const endResize = () => {
+    state.activePointerId = null;
+    state.activeSide = null;
+    state.pendingMove = null;
+    if (state.moveFrame) {
+      window.cancelAnimationFrame(state.moveFrame);
+      state.moveFrame = null;
+    }
+  };
+
+  const bind = (element, side) => {
+    if (!element || element.__betasafeDropletSide === side) return;
+    element.addEventListener('pointerdown', (event) => startResize(side, event));
+    element.addEventListener('mousedown', (event) => startResize(side, event));
+    element.__betasafeDropletSide = side;
+  };
+
+  if (!textMarkupModule.__betasafeDropletMethodsPatched) {
+    ['updateDropletStyles', 'updateCurrentResizerPosition'].forEach((methodName) => {
+      const original = textMarkupModule[methodName];
+      if (typeof original !== 'function') return;
+      textMarkupModule[methodName] = function patchedTextMarkupDropletMethod(...args) {
+        const result = original.apply(this, args);
+        syncTextMarkupDropletAppearance(viewer, false);
+        if (typeof window !== 'undefined') {
+          window.requestAnimationFrame(() => syncTextMarkupDropletAppearance(viewer, false));
+        }
+        return result;
+      };
+    });
+    textMarkupModule.__betasafeDropletMethodsPatched = true;
+  }
+
+  bind(textMarkupModule.dropDivAnnotationLeft, 'left');
+  bind(textMarkupModule.dropElementLeft, 'left');
+  bind(textMarkupModule.dropDivAnnotationRight, 'right');
+  bind(textMarkupModule.dropElementRight, 'right');
+  if (!textMarkupModule.__betasafeDropletHandlersInstalled) {
+    document.addEventListener('pointermove', handleMove, true);
+    document.addEventListener('mousemove', handleMove, true);
+    document.addEventListener('pointerup', endResize, true);
+    document.addEventListener('mouseup', endResize, true);
+    document.addEventListener('pointercancel', endResize, true);
+    window.addEventListener('blur', endResize);
+    textMarkupModule.__betasafeDropletHandlersInstalled = true;
+  }
+};
+
+const getTextMarkupPageDiv = (viewer, pageIndex) => {
+  const viewerBase = viewer?.viewerBase || viewer?.pdfViewerBase;
+  const viewerId = viewer?.element?.id || '';
+  return viewerBase?.getElement?.(`_pageDiv_${pageIndex}`) ||
+    document.getElementById(`${viewerId}_pageDiv_${pageIndex}`) ||
+    viewer?.element?.querySelector?.(`[id$="_pageDiv_${pageIndex}"]`) ||
+    null;
+};
+
+const getTextMarkupPageContainer = (viewer) => (
+  viewer?.viewerBase?.pageContainer ||
+  viewer?.pdfViewerBase?.pageContainer ||
+  viewer?.element?.querySelector?.('.e-pv-page-container') ||
+  viewer?.element ||
+  null
+);
+
+const normalizeSelectedDropletPositions = (viewer, hitSize = TEXT_MARKUP_HANDLE_HIT_SIZE) => {
+  const textMarkupModule = getTextMarkupModule(viewer);
+  const annotation = textMarkupModule?.currentTextMarkupAnnotation;
+  const pageIndex = Number(textMarkupModule?.selectTextMarkupCurrentPage);
+  if (!annotation || !Number.isFinite(pageIndex) || typeof document === 'undefined') return;
+  const boundsList = getTextMarkupBoundsList(annotation);
+  if (!boundsList.length) return;
+  const pageDiv = getTextMarkupPageDiv(viewer, pageIndex);
+  const pageContainer = getTextMarkupPageContainer(viewer);
+  if (!pageDiv?.getBoundingClientRect || !pageContainer?.getBoundingClientRect) return;
+  const pageRect = pageDiv.getBoundingClientRect();
+  const containerRect = pageContainer.getBoundingClientRect();
+  const pageSize = viewer?.viewerBase?.pageSize?.[pageIndex] || {};
+  const pageWidth = Number(pageSize.width) || pageRect.width;
+  const pageHeight = Number(pageSize.height) || pageRect.height;
+  if (!pageRect.width || !pageRect.height || !pageWidth || !pageHeight) return;
+
+  const place = (element, bounds, edge) => {
+    if (!element || !bounds) return;
+    const boundX = edge === 'left' ? bounds.x : bounds.x + bounds.width;
+    const boundY = bounds.y + (bounds.height / 2);
+    const screenX = pageRect.left + (boundX / pageWidth) * pageRect.width;
+    const screenY = pageRect.top + (boundY / pageHeight) * pageRect.height;
+    element.style.setProperty('width', `${hitSize}px`, 'important');
+    element.style.setProperty('height', `${hitSize}px`, 'important');
+    element.style.setProperty('left', `${screenX - containerRect.left - (hitSize / 2)}px`, 'important');
+    element.style.setProperty('top', `${screenY - containerRect.top - (hitSize / 2)}px`, 'important');
+  };
+
+  place(textMarkupModule.dropDivAnnotationLeft, boundsList[0], 'left');
+  place(textMarkupModule.dropDivAnnotationRight, boundsList[boundsList.length - 1], 'right');
+};
+
+const syncTextMarkupDropletAppearance = (viewer, scheduleFollowUp = true) => {
+  const textMarkupModule = getTextMarkupModule(viewer);
+  const zoomFactor = Math.max(0.1, Number(viewer?.viewerBase?.getZoomFactor?.() || 1));
+  if (textMarkupModule) {
+    // Syncfusion multiplies dropletHeight by zoom. Normalize the rendered
+    // hit target to a viewport-sized value so zoom does not change usability.
+    textMarkupModule.dropletHeight = Math.max(10, Math.min(64, TEXT_MARKUP_HANDLE_HIT_SIZE / zoomFactor));
+    installTextMarkupDropletHandlers(viewer);
+  }
+  if (typeof document === 'undefined') return;
+  const viewerId = viewer?.element?.id || '';
+  const selector = viewerId
+    ? `#${viewerId}_droplet_left, #${viewerId}_droplet_right, #${viewerId}_dropletspan_left, #${viewerId}_dropletspan_right`
+    : '.e-pv-drop, .e-pv-droplet';
+  document.querySelectorAll(selector).forEach((element) => {
+    const isOuter = element.classList?.contains('e-pv-drop') || /_droplet_(left|right)$/.test(element.id || '');
+    element.style.borderColor = '#4a90e2';
+    element.style.zIndex = '10020';
+    element.style.pointerEvents = 'auto';
+    if (isOuter) {
+      element.style.setProperty('width', `${TEXT_MARKUP_HANDLE_HIT_SIZE}px`, 'important');
+      element.style.setProperty('height', `${TEXT_MARKUP_HANDLE_HIT_SIZE}px`, 'important');
+      element.style.setProperty('background', 'transparent', 'important');
+      element.style.setProperty('border-width', '0', 'important');
+      element.style.cursor = 'ew-resize';
+    } else {
+      const visualSize = TEXT_MARKUP_HANDLE_VISUAL_SIZE;
+      const outerSize = TEXT_MARKUP_HANDLE_HIT_SIZE;
+      element.style.setProperty('background', '#ffffff', 'important');
+      element.style.setProperty('border', '1px solid #4a90e2', 'important');
+      element.style.setProperty('border-radius', '999px', 'important');
+      element.style.setProperty('box-shadow', '0 1px 3px rgba(0,0,0,0.18)', 'important');
+      element.style.setProperty('width', `${visualSize}px`, 'important');
+      element.style.setProperty('height', `${visualSize}px`, 'important');
+      element.style.setProperty('top', `${Math.max(0, (outerSize - visualSize) / 2)}px`, 'important');
+      element.style.setProperty('left', `${Math.max(0, (outerSize - visualSize) / 2)}px`, 'important');
+      element.style.setProperty('transform', 'rotate(0deg)', 'important');
+      element.style.cursor = 'ew-resize';
+    }
+  });
+  normalizeSelectedDropletPositions(viewer);
+  if (scheduleFollowUp && typeof window !== 'undefined') {
+    window.requestAnimationFrame(() => syncTextMarkupDropletAppearance(viewer, false));
+  }
+};
+
+const collectTextMarkupAnnotations = (viewer, pageNumber = null) => {
+  const annotations = [];
+  const seen = new Set();
+  const addAnnotation = (annotation, fallbackPageIndex = null) => {
+    if (!isTextMarkupAnnotation(annotation)) return;
+    const id = getAnnotationId(annotation);
+    const pageIndex = getTextMarkupPageIndex(annotation, fallbackPageIndex);
+    const key = `${id || annotations.length}:${Number.isFinite(pageIndex) ? pageIndex : 'unknown'}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    annotations.push({ annotation, pageIndex });
+  };
+
+  const targetPageNumber = Number(pageNumber);
+  const targetPageIndex = Number.isFinite(targetPageNumber) ? targetPageNumber - 1 : null;
+  const pageIndexes = Number.isFinite(targetPageIndex)
+    ? [targetPageIndex]
+    : [];
+
+  const textMarkupModule = getTextMarkupModule(viewer);
+  if (typeof textMarkupModule?.getAnnotations === 'function') {
+    const indexes = pageIndexes.length > 0
+      ? pageIndexes
+      : Array.from({ length: Math.max(0, coercePositiveInt(viewer?.pageCount, 0)) }, (_, index) => index);
+    indexes.forEach((pageIndex) => {
+      try {
+        const pageAnnotations = textMarkupModule.getAnnotations(pageIndex, null);
+        if (Array.isArray(pageAnnotations)) {
+          pageAnnotations.forEach((annotation) => addAnnotation(annotation, pageIndex));
+        }
+      } catch {
+        // Syncfusion throws for pages that have not initialized their annotation store.
+      }
+    });
+  }
+
+  const documentId = getSyncfusionDocumentId(viewer);
+  const storeObject = documentId
+    ? viewer?.annotationsCollection?.get?.(`${documentId}_annotations_textMarkup`)
+    : null;
+  if (Array.isArray(storeObject)) {
+    storeObject.forEach((pageEntry) => {
+      const entryPageIndex = readNumberField(pageEntry, ['pageIndex', 'pageNumber', 'page'], null);
+      if (pageIndexes.length > 0 && Number.isFinite(entryPageIndex) && !pageIndexes.includes(entryPageIndex)) return;
+      if (Array.isArray(pageEntry?.annotations)) {
+        pageEntry.annotations.forEach((annotation) => addAnnotation(annotation, entryPageIndex));
+      }
+    });
+  }
+
+  [
+    viewer?.annotationCollection,
+    viewer?.annotationModule?.annotationCollection,
+    viewer?.annotation?.annotationCollection,
+    viewer?.annotationModule?.textMarkupAnnotationModule?.annotationCollection,
+    viewer?.textMarkupAnnotationModule?.annotationCollection
+  ].filter(Array.isArray).forEach((collection) => {
+    collection.forEach((annotation) => addAnnotation(annotation, targetPageIndex));
+  });
+
+  return annotations;
+};
+
+const selectTextMarkupAnnotation = (viewer, annotation, pageIndex, event = null) => {
+  const textMarkupModule = getTextMarkupModule(viewer);
+  if (!textMarkupModule || !annotation || !Number.isFinite(pageIndex)) return false;
+  if (!textMarkupModule.dropDivAnnotationLeft && typeof textMarkupModule.createAnnotationSelectElement === 'function') {
+    try {
+      textMarkupModule.createAnnotationSelectElement();
+    } catch {
+      // Syncfusion may already have created the droplet elements.
+    }
+  }
+  syncTextMarkupDropletAppearance(viewer);
+  const canvas = getTextMarkupAnnotationCanvas(viewer, annotation, pageIndex);
+  if (!canvas) return false;
+  try {
+    const markupType = annotation.textMarkupAnnotationType;
+    if (markupType) {
+      textMarkupModule.currentTextMarkupAddMode = markupType;
+    }
+    textMarkupModule.currentTextMarkupAnnotation = annotation;
+    textMarkupModule.selectTextMarkupCurrentPage = pageIndex;
+    if (typeof textMarkupModule.onTextMarkupMouseUp === 'function' && event) {
+      textMarkupModule.onTextMarkupMouseUp(annotation, event, canvas, pageIndex);
+    } else if (typeof textMarkupModule.selectAnnotation === 'function') {
+      textMarkupModule.selectAnnotation(annotation, canvas, pageIndex, event || undefined, false);
+    } else if (typeof textMarkupModule.annotationDivSelect === 'function') {
+      textMarkupModule.annotationDivSelect(annotation, pageIndex);
+    }
+    textMarkupModule.currentTextMarkupAnnotation = annotation;
+    textMarkupModule.selectTextMarkupCurrentPage = pageIndex;
+    textMarkupModule.updateCurrentResizerPosition?.(annotation);
+    textMarkupModule.showHideDropletDiv?.(false);
+    textMarkupModule.updateDropletStyles?.(markupType);
+    syncTextMarkupDropletAppearance(viewer);
+    return true;
+  } catch (error) {
+    console.warn('[SyncfusionPDFContainer] Failed to select text markup annotation:', error);
+    return false;
+  }
+};
+
+const deleteTextMarkupAnnotation = (viewer, annotation, pageIndex) => {
+  const textMarkupModule = getTextMarkupModule(viewer);
+  if (!textMarkupModule || !annotation || !Number.isFinite(pageIndex)) return false;
+  try {
+    textMarkupModule.currentTextMarkupAnnotation = annotation;
+    textMarkupModule.selectTextMarkupCurrentPage = pageIndex;
+    if (typeof textMarkupModule.deleteTextMarkupAnnotation === 'function') {
+      textMarkupModule.deleteTextMarkupAnnotation();
+      return true;
+    }
+  } catch (error) {
+    console.warn('[SyncfusionPDFContainer] Failed to delete text markup annotation:', error);
+  }
+  return false;
+};
+
+const selectTextMarkupAtPagePoint = (viewer, pageNumber, point, radius = 4, event = null) => {
+  if (!viewer || !point || !Number.isFinite(Number(point.x)) || !Number.isFinite(Number(point.y))) return null;
+  const targetPageIndex = Number(pageNumber) - 1;
+  const hitRadius = Math.max(0, Number(radius) || 0);
+  const matches = collectTextMarkupAnnotations(viewer, pageNumber)
+    .filter(({ annotation, pageIndex }) => {
+      if (Number.isFinite(targetPageIndex) && Number.isFinite(pageIndex) && pageIndex !== targetPageIndex) return false;
+      return getTextMarkupBoundsList(annotation).some((bounds) => pointTouchesBounds(point, bounds, hitRadius));
+    });
+
+  const selected = matches[0];
+  if (!selected) return null;
+  if (!selectTextMarkupAnnotation(viewer, selected.annotation, selected.pageIndex, event)) return null;
+  return {
+    id: getAnnotationId(selected.annotation) || null,
+    type: selected.annotation?.textMarkupAnnotationType || getAnnotationKind(selected.annotation),
+    pageIndex: selected.pageIndex,
+    pageNumber: selected.pageIndex + 1
+  };
 };
 
 const resolvePageCountFromArgs = (args, viewer) => {
@@ -138,6 +616,12 @@ const SyncfusionPDFContainer = forwardRef(({
   scrollDelayMs = 160,
   suspendContainerRefresh = false,
   restrictZoomRequest = false,
+  textHighlightModeActive = false,
+  textHighlightColor = '#ffff00',
+  textHighlightOpacity = 0.5,
+  textMarkupMode = null,
+  textMarkupColor = null,
+  textMarkupOpacity = null,
   className = '',
   style = {},
   onDocumentLoaded,
@@ -1193,6 +1677,104 @@ const SyncfusionPDFContainer = forwardRef(({
       const viewer = getViewerInstance();
       viewer?.load?.(source, password);
     },
+    saveAsBlob: async () => {
+      const viewer = getViewerInstance();
+      if (typeof viewer?.saveAsBlob !== 'function') return null;
+      return viewer.saveAsBlob();
+    },
+    selectTextMarkupAtPoint: (pageNumber, point, radius = 4, event = null) => {
+      const viewer = getViewerInstance();
+      return selectTextMarkupAtPagePoint(viewer, pageNumber, point, radius, event);
+    },
+    selectTextMarkupAtClientPoint: (clientX, clientY, radius = 4, event = null) => {
+      const viewer = getViewerInstance();
+      if (!viewer || !Number.isFinite(Number(clientX)) || !Number.isFinite(Number(clientY))) return null;
+      const host = getViewerElement();
+      const pageDivs = Array.from(host?.querySelectorAll?.('.e-pv-page-div, [id*="_pageDiv_"]') || []);
+      for (const pageDiv of pageDivs) {
+        const rect = pageDiv.getBoundingClientRect();
+        if (
+          clientX < rect.left ||
+          clientX > rect.right ||
+          clientY < rect.top ||
+          clientY > rect.bottom
+        ) {
+          continue;
+        }
+        const pageIndexMatch = String(pageDiv.id || '').match(/_pageDiv_(\d+)$/);
+        const pageIndexFromId = pageIndexMatch ? Number(pageIndexMatch[1]) : null;
+        const pageNumber = coercePositiveInt(pageDiv.dataset?.pageNumber, null) ||
+          (Number.isFinite(pageIndexFromId) ? pageIndexFromId + 1 : null);
+        if (!pageNumber) continue;
+        const pageIndex = pageNumber - 1;
+        const zoom = Math.max(0.1, Number(viewer?.viewerBase?.getZoomFactor?.() || 1));
+        const syncfusionPageSize = viewer?.viewerBase?.pageSize?.[pageIndex] || {};
+        const pageWidth = Number(syncfusionPageSize.width) || rect.width / zoom;
+        const pageHeight = Number(syncfusionPageSize.height) || rect.height / zoom;
+        const point = {
+          x: ((clientX - rect.left) / rect.width) * pageWidth,
+          y: ((clientY - rect.top) / rect.height) * pageHeight
+        };
+        const selected = selectTextMarkupAtPagePoint(viewer, pageNumber, point, radius, event);
+        if (selected) return selected;
+      }
+      return null;
+    },
+    deleteSelectedTextMarkupAnnotation: () => {
+      const viewer = getViewerInstance();
+      const textMarkupModule = getTextMarkupModule(viewer);
+      const annotation = textMarkupModule?.currentTextMarkupAnnotation;
+      const pageIndex = Number(textMarkupModule?.selectTextMarkupCurrentPage);
+      if (!annotation || !Number.isFinite(pageIndex)) return false;
+      return deleteTextMarkupAnnotation(viewer, annotation, pageIndex);
+    },
+    eraseTextMarkupAtPoints: (pageNumber, points = [], radius = 0) => {
+      const viewer = getViewerInstance();
+      if (!viewer || !Array.isArray(points) || points.length === 0) return 0;
+
+      const targetPage = Number(pageNumber);
+      const targetsToDelete = [];
+      const seen = new Set();
+      for (const { annotation, pageIndex } of collectTextMarkupAnnotations(viewer, pageNumber)) {
+        if (Number.isFinite(targetPage) && Number.isFinite(pageIndex) && pageIndex !== targetPage - 1) continue;
+        const boundsList = getTextMarkupBoundsList(annotation);
+        const touched = boundsList.some((bounds) => points.some((point) => pointTouchesBounds(point, bounds, radius)));
+        if (!touched) continue;
+
+        const id = getAnnotationId(annotation);
+        const key = `${id || targetsToDelete.length}:${Number.isFinite(pageIndex) ? pageIndex : 'unknown'}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          targetsToDelete.push({ annotation, pageIndex, id });
+        }
+      }
+
+      const annotationApi = viewer.annotationModule || viewer.annotation;
+      let deleted = 0;
+      targetsToDelete.forEach(({ annotation, pageIndex, id }) => {
+        try {
+          if (deleteTextMarkupAnnotation(viewer, annotation, pageIndex)) {
+            deleted += 1;
+            return;
+          }
+          if (id && typeof annotationApi?.deleteAnnotationById === 'function') {
+            annotationApi.deleteAnnotationById(id);
+            deleted += 1;
+            return;
+          }
+          if (id && typeof annotationApi?.selectAnnotation === 'function') {
+            annotationApi.selectAnnotation(id);
+            if (typeof annotationApi?.deleteAnnotation === 'function') {
+              annotationApi.deleteAnnotation();
+              deleted += 1;
+            }
+          }
+        } catch (error) {
+          console.warn('[SyncfusionPDFContainer] Failed to delete text markup annotation:', error);
+        }
+      });
+      return deleted;
+    },
     clearTextSelection: () => {
       const viewer = getViewerInstance();
       viewer?.textSelectionModule?.clearTextSelection?.();
@@ -1646,6 +2228,102 @@ const SyncfusionPDFContainer = forwardRef(({
     }
   }, [getViewerInstance, interactionMode]);
 
+  const textMarkupSelectorSettings = useMemo(() => {
+    const zoomScale = Math.max(0.1, (Number(zoomValue) || 100) / 100);
+    const resizerSize = Math.max(4, Math.min(7, 6 / Math.sqrt(zoomScale)));
+    return {
+      selectionBorderColor: '#4a90e2',
+      selectionBorderThickness: 1,
+      selectorLineDashArray: [4, 4],
+      resizerBorderColor: '#4a90e2',
+      resizerFillColor: '#ffffff',
+      resizerShape: 'Circle',
+      resizerSize
+    };
+  }, [zoomValue]);
+
+  useEffect(() => {
+    const viewer = getViewerInstance();
+    if (!viewer) return;
+
+    const mode = textMarkupMode || (textHighlightModeActive ? 'Highlight' : 'None');
+    const color = textMarkupColor || textHighlightColor;
+    const opacity = textMarkupOpacity ?? textHighlightOpacity;
+    try {
+      viewer.enableTextMarkupResizer = true;
+      syncTextMarkupDropletAppearance(viewer);
+      viewer.highlightSettings = {
+        ...(viewer.highlightSettings || {}),
+        color,
+        opacity,
+        enableTextMarkupResizer: true,
+        annotationSelectorSettings: textMarkupSelectorSettings
+      };
+      viewer.underlineSettings = {
+        ...(viewer.underlineSettings || {}),
+        color,
+        opacity,
+        enableTextMarkupResizer: true,
+        annotationSelectorSettings: textMarkupSelectorSettings
+      };
+      viewer.strikethroughSettings = {
+        ...(viewer.strikethroughSettings || {}),
+        color,
+        opacity,
+        enableTextMarkupResizer: true,
+        annotationSelectorSettings: textMarkupSelectorSettings
+      };
+      viewer.squigglySettings = {
+        ...(viewer.squigglySettings || {}),
+        color,
+        opacity,
+        enableTextMarkupResizer: true,
+        annotationSelectorSettings: textMarkupSelectorSettings
+      };
+      const annotationApi = viewer.annotationModule || viewer.annotation;
+      if (mode === 'None') {
+        const textMarkupModule = getTextMarkupModule(viewer);
+        if (textMarkupModule) {
+          textMarkupModule.isTextMarkupAnnotationMode = false;
+          textMarkupModule.currentTextMarkupAddMode = '';
+        }
+      } else {
+        annotationApi?.setAnnotationMode?.(mode);
+      }
+    } catch (error) {
+      console.warn('[SyncfusionPDFContainer] Failed to set text highlight mode:', error);
+    }
+  }, [getViewerInstance, textHighlightColor, textHighlightModeActive, textHighlightOpacity, textMarkupColor, textMarkupMode, textMarkupOpacity, textMarkupSelectorSettings]);
+
+  useEffect(() => {
+    const viewer = getViewerInstance();
+    const root = viewer?.element;
+    if (!viewer || !root || typeof MutationObserver === 'undefined') return undefined;
+    let frame = null;
+    const apply = () => {
+      frame = null;
+      syncTextMarkupDropletAppearance(viewer, false);
+    };
+    const scheduleApply = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(apply);
+    };
+    const observer = new MutationObserver(scheduleApply);
+    observer.observe(root, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['style', 'class']
+    });
+    scheduleApply();
+    return () => {
+      observer.disconnect();
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+      }
+    };
+  }, [getViewerInstance, zoomValue]);
+
   // UX 2026-04-23: Cmd+P no longer fires Syncfusion's built-in print directly.
   // The top-level App component owns a custom PrintPanel component and opens
   // it in response to `onPrintPdf`; Syncfusion's print module is still used as
@@ -1696,7 +2374,7 @@ const SyncfusionPDFContainer = forwardRef(({
       enableCommentPanel={false}
       enableDownload={false}
       enablePrint={true}
-      enableAnnotation={false}
+      enableAnnotation={true}
       enableFormFields={true}
       enableFormDesigner={false}
       enablePageOrganizer={false}
@@ -1731,6 +2409,12 @@ const SyncfusionPDFContainer = forwardRef(({
       enableThumbnail={false}
       enableBookmark={true}
       enableTextSelection={true}
+      enableTextMarkupAnnotation={true}
+      enableTextMarkupResizer={true}
+      highlightSettings={{ color: textHighlightColor, opacity: textHighlightOpacity, enableTextMarkupResizer: true, annotationSelectorSettings: textMarkupSelectorSettings }}
+      underlineSettings={{ color: textMarkupColor || textHighlightColor, opacity: textMarkupOpacity ?? textHighlightOpacity, enableTextMarkupResizer: true, annotationSelectorSettings: textMarkupSelectorSettings }}
+      strikethroughSettings={{ color: textMarkupColor || textHighlightColor, opacity: textMarkupOpacity ?? textHighlightOpacity, enableTextMarkupResizer: true, annotationSelectorSettings: textMarkupSelectorSettings }}
+      squigglySettings={{ color: textMarkupColor || textHighlightColor, opacity: textMarkupOpacity ?? textHighlightOpacity, enableTextMarkupResizer: true, annotationSelectorSettings: textMarkupSelectorSettings }}
       restrictZoomRequest={restrictZoomRequest}
       showNotificationDialog={false}
       contextMenuSettings={{ contextMenuAction: 'None', contextMenuItems: [] }}
@@ -1749,7 +2433,7 @@ const SyncfusionPDFContainer = forwardRef(({
       ajaxRequestSuccess={handleAjaxRequestSuccess}
       documentUnload={handleDocumentUnload}
     >
-      <Inject services={[Magnification, Navigation, BookmarkView, TextSelection, TextSearch, Print, LinkAnnotation, FormFields]} />
+      <Inject services={[Magnification, Navigation, BookmarkView, TextSelection, TextSearch, Annotation, Print, LinkAnnotation, FormFields]} />
     </PdfViewerComponent>
   );
 });

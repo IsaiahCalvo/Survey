@@ -808,6 +808,7 @@ export const useConnectedServices = () => {
 export const DEFAULT_TOOL_PREFERENCES = {
   pen: { strokeColor: '#ff0000', strokeWidth: 3, strokeOpacity: 100 },
   highlighter: { strokeColor: '#ffff00', strokeWidth: 20, strokeOpacity: 50 },
+  'text-highlight': { strokeColor: '#ffff00', strokeOpacity: 50 },
   eraser: { strokeWidth: 10 },
   rect: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 0, strokeOpacity: 100 },
   ellipse: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 0, strokeOpacity: 100 },

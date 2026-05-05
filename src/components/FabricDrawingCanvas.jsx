@@ -26,7 +26,7 @@ const CUSTOM_PROPS = [
   'strokeUniform', 'spaceId', 'moduleId', 'regionId',
   'data', 'name', 'highlightId', 'needsBIC',
   'globalCompositeOperation', 'layer',
-  'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType',
+  'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode',
   'tool',
 ];
 
@@ -197,6 +197,7 @@ const FabricDrawingCanvas = memo(({
       const pathJSON = e.path.toJSON(CUSTOM_PROPS);
       pathJSON.left = 0;
       pathJSON.top = 0;
+      pathJSON.tool = activeToolRef.current;
 
       // Track session path for undo sync (count-based, object not needed on Canvas)
       sessionPathsRef.current.push(e.path);

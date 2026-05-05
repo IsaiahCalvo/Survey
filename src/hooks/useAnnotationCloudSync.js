@@ -61,6 +61,46 @@ const DEFAULT_DEBOUNCE_MS = 800; // mid-drag pushes are coalesced into one upser
 // log can answer "did the user-drawn count actually change?" without follow-up
 // questions. Imported PDF strokes are detected by the same shape the existing
 // dual-write enqueue site uses (path with no `left`).
+// 2026-05-04 — Shared materialization helper for cutover-sealed Y.Map reads.
+// Pulls the fabric JSON via toJSON / forEach, then stamps the top-level id
+// and meta.authorId onto the resulting object so downstream consumers (the
+// per-user delete authority planner, the activity log, etc.) can resolve
+// annotation identity without re-walking the Y.Map sub-map. Without this,
+// the bulk-delete planner sees authorId=null on every annotation and
+// classifies them as "from another user," firing the cross-author modal
+// even on a single-user document.
+function materializeAnnoFromYMap(annoYMap) {
+  if (!annoYMap || typeof annoYMap.get !== 'function') return null;
+  const fabricYMap = annoYMap.get('fabric');
+  let fabricObj = null;
+  if (fabricYMap) {
+    if (typeof fabricYMap.toJSON === 'function') {
+      try { fabricObj = fabricYMap.toJSON(); } catch (_e) { fabricObj = null; }
+    }
+    if (!fabricObj && typeof fabricYMap.forEach === 'function') {
+      fabricObj = {};
+      fabricYMap.forEach((v, k) => { fabricObj[k] = v; });
+    }
+  }
+  if (!fabricObj) return null;
+  // Stamp identity + attribution. id resolution prefers the top-level
+  // annoYMap.id (canonical Phase 29 bridge contract) and falls back to
+  // the fabric-side data.id for older entries. authorId / lastEditorId
+  // come from the meta sub-map.
+  const topId = annoYMap.get('id');
+  if (topId && fabricObj.id == null) fabricObj.id = topId;
+  try {
+    const metaYMap = annoYMap.get('meta');
+    if (metaYMap && typeof metaYMap.get === 'function') {
+      const aid = metaYMap.get('authorId');
+      if (aid && fabricObj.authorId == null) fabricObj.authorId = aid;
+      const lid = metaYMap.get('lastEditorId');
+      if (lid && fabricObj.lastEditorId == null) fabricObj.lastEditorId = lid;
+    }
+  } catch (_e) { /* ignore */ }
+  return fabricObj;
+}
+
 function __phase31UatBreakdown(annotationsByPage, viewerId) {
   let total = 0;
   let imported = 0;
@@ -78,6 +118,70 @@ function __phase31UatBreakdown(annotationsByPage, viewerId) {
     }
   }
   return { total, imported, drawnByMe, drawnByOthers };
+}
+
+// 2026-05-03 — Targeted diag for "imported strokes show, native annotations
+// don't" regression. Walks the Y.Map once and returns per-type-per-author
+// counts so a single log line answers: "Did the squares / freetext / counters
+// actually land in Y.Map, and were they attributed correctly?" Reads
+// meta.authorId from the per-annotation meta sub-Y.Map (where the bridge
+// writes it) — the previous helper only looked at obj.data.userId which is
+// never populated by the bridge, so drawnByMe always reads 0.
+function __phase31UatYMapByType(yMap, viewerId) {
+  const totalsByType = {};
+  const totalsByAuthor = { byMe: 0, byOthers: 0, anonymous: 0 };
+  const byTypeByAuthor = {};
+  const perTypePerPage = {};
+  let total = 0;
+  if (!yMap || typeof yMap.forEach !== 'function') {
+    return { total, totalsByType, totalsByAuthor, byTypeByAuthor, perTypePerPage };
+  }
+  yMap.forEach((annoYMap) => {
+    if (!annoYMap || typeof annoYMap.get !== 'function') return;
+    total++;
+    const fabricType = annoYMap.get('type') || 'unknown';
+    const pageNumber = annoYMap.get('pageNumber') ?? 'unknown';
+    let metaAuthorId = null;
+    try {
+      const metaYMap = annoYMap.get('meta');
+      if (metaYMap && typeof metaYMap.get === 'function') {
+        metaAuthorId = metaYMap.get('authorId') || null;
+      }
+    } catch (_e) { /* ignore */ }
+    totalsByType[fabricType] = (totalsByType[fabricType] || 0) + 1;
+    let authorBucket;
+    if (!metaAuthorId) authorBucket = 'anonymous';
+    else if (viewerId && metaAuthorId === viewerId) authorBucket = 'byMe';
+    else authorBucket = 'byOthers';
+    totalsByAuthor[authorBucket]++;
+    if (!byTypeByAuthor[fabricType]) byTypeByAuthor[fabricType] = { byMe: 0, byOthers: 0, anonymous: 0 };
+    byTypeByAuthor[fabricType][authorBucket]++;
+    if (!perTypePerPage[fabricType]) perTypePerPage[fabricType] = {};
+    perTypePerPage[fabricType][pageNumber] = (perTypePerPage[fabricType][pageNumber] || 0) + 1;
+  });
+  return { total, totalsByType, totalsByAuthor, byTypeByAuthor, perTypePerPage };
+}
+
+// 2026-05-03 — Sibling helper for the `byPage` object the cutover hydrate
+// is about to hand to setAnnotationsByPage. Per-Fabric-type counts so we can
+// see whether materialization preserved the Y.Map's type spread before React
+// state replacement. If yMap has 42 squares but byPage has 0 squares, the
+// materializer is dropping them.
+function __phase31UatByPageByType(byPage) {
+  const totalsByType = {};
+  const perPagePerType = {};
+  let total = 0;
+  for (const [pageStr, page] of Object.entries(byPage || {})) {
+    if (!page || !Array.isArray(page.objects)) continue;
+    for (const obj of page.objects) {
+      total++;
+      const t = obj?.data?.annotationType || obj?.type || 'unknown';
+      totalsByType[t] = (totalsByType[t] || 0) + 1;
+      if (!perPagePerType[pageStr]) perPagePerType[pageStr] = {};
+      perPagePerType[pageStr][t] = (perPagePerType[pageStr][t] || 0) + 1;
+    }
+  }
+  return { total, totalsByType, perPagePerType };
 }
 // 2026-04-26 — How long to wait before re-asking the cloud when the first read
 // came back empty but the device still shows annotations. Long enough for a
@@ -144,6 +248,12 @@ export function useAnnotationCloudSync({
   const hydratedRef = useRef(false);
   const startupSyncInFlightRef = useRef(false);
   const lastCloudRefreshAtRef = useRef(0);
+  // Once a document has successfully hydrated from the cutover Y.Doc, the
+  // legacy Supabase row snapshot is no longer allowed to replace local state.
+  // Drawboard/Adobe ink depends on the normalized Y.Doc shape; the legacy row
+  // table can still contain stale pre-cutover outlines that render jagged or
+  // duplicated if a reconnect/focus catch-up reads them back.
+  const ydocAuthoritativeRef = useRef(false);
   // Phase 31 hotfix (2026-05-03) — cached `documents.cutover_completed_at`
   // for the currently-mounted doc. Set inside the hydrate effect after the
   // Supabase lookup; consumed by onFocus to short-circuit the legacy
@@ -456,6 +566,7 @@ export function useAnnotationCloudSync({
         // outer cleanup; the YDocProvider key={docId} pattern guarantees a
         // fresh ref allocation whenever pdfFile changes.
         cutoverTsRef.current = cutoverTs;
+        if (cutoverTs) ydocAuthoritativeRef.current = true;
         if (cancelled) return;
         // When cutover_completed_at is set we read state from phase30Ydoc.getMap('annotations');
         // when null we fall through to the legacy loadCloudWithEmptyVerify path.
@@ -481,18 +592,7 @@ export function useAnnotationCloudSync({
             yMap.forEach((annoYMap) => {
               if (!annoYMap || typeof annoYMap.get !== 'function') return;
               const pageNumber = annoYMap.get('pageNumber') ?? 1;
-              // Materialize fabric props from the per-property Y.Map.
-              const fabricYMap = annoYMap.get('fabric');
-              let fabricObj = null;
-              if (fabricYMap) {
-                if (typeof fabricYMap.toJSON === 'function') {
-                  try { fabricObj = fabricYMap.toJSON(); } catch (_e) { fabricObj = null; }
-                }
-                if (!fabricObj && typeof fabricYMap.forEach === 'function') {
-                  fabricObj = {};
-                  fabricYMap.forEach((v, k) => { fabricObj[k] = v; });
-                }
-              }
+              const fabricObj = materializeAnnoFromYMap(annoYMap);
               if (!fabricObj) return;
               if (!byPage[pageNumber]) byPage[pageNumber] = { version: '5.3.0', objects: [] };
               byPage[pageNumber].objects.push(fabricObj);
@@ -534,10 +634,39 @@ export function useAnnotationCloudSync({
             currentStateCount: __currentStateCount,
             ydocLooksDegenerate: __ydocLooksDegenerate,
           }));
+          // 2026-05-03 — Targeted diag for "native in-app annotations not
+          // showing" regression. Single-line answer: which Fabric types live
+          // in Y.Map (and how many of each), how the bridge attributed them
+          // (meta.authorId from the meta sub-Y.Map), and whether the
+          // materializer preserved that spread into the byPage shape that
+          // React is about to consume. If yMap shows 42 squares but byPage
+          // shows 0 squares, the loss is in materialization. If yMap shows 0
+          // squares while legacy rowsByType shows 42, the loss is in backfill.
+          try {
+            const __yMapDiag = __phase31UatYMapByType(yMap, userId);
+            const __byPageDiag = __phase31UatByPageByType(byPage);
+            console.log('[Phase31 UAT] hydrate:cutover-sealed:by-type ' + JSON.stringify({
+              documentId,
+              pdfFile: pdfId,
+              viewerUserId: userId,
+              yMapTotal: __yMapDiag.total,
+              yMapByType: __yMapDiag.totalsByType,
+              yMapByAuthor: __yMapDiag.totalsByAuthor,
+              yMapByTypeByAuthor: __yMapDiag.byTypeByAuthor,
+              yMapPerTypePerPage: __yMapDiag.perTypePerPage,
+              byPageTotal: __byPageDiag.total,
+              byPageByType: __byPageDiag.totalsByType,
+              byPagePerPagePerType: __byPageDiag.perPagePerType,
+            }));
+          } catch (__diagErr) {
+            console.warn('[Phase31 UAT] hydrate:cutover-sealed:by-type failed: ' +
+              (__diagErr?.message || String(__diagErr)));
+          }
           if (__ydocLooksDegenerate) {
             console.warn('[CloudSync][hook] cutover hydrate skipped state replace — Y.Map smaller than current state, trusting current state until backfill recovers ' +
               JSON.stringify({ ydocCount: __ydocCount, currentStateCount: __currentStateCount }));
             hydratedRef.current = true;
+            ydocAuthoritativeRef.current = true;
             startupSyncInFlightRef.current = false;
             setStatus({
               stage: 'synced',
@@ -556,6 +685,7 @@ export function useAnnotationCloudSync({
             return byPage;
           });
           hydratedRef.current = true;
+          ydocAuthoritativeRef.current = true;
           startupSyncInFlightRef.current = false;
           setStatus({
             stage: 'synced',
@@ -564,6 +694,19 @@ export function useAnnotationCloudSync({
             cutoverTs,
           });
           return; // Skip the legacy SELECT path entirely.
+        }
+        if (cutoverTs && !phase30Ydoc) {
+          // Cutover means the legacy row table is no longer the visible source
+          // of truth. If the Y.Doc provider is still mounting, wait for the
+          // provider-driven rerun instead of falling back to stale rows that can
+          // reintroduce jagged Drawboard/Adobe ink.
+          ydocAuthoritativeRef.current = true;
+          hydratedRef.current = false;
+          startupSyncInFlightRef.current = false;
+          setStatus({ stage: 'hydrating', source: 'awaiting-ydoc', cutoverTs });
+          console.log('[Phase31 UAT] hydrate:awaiting-ydoc — cutover doc will not read legacy rows ' +
+            JSON.stringify({ documentId, pdfId, cutoverTs }));
+          return;
         }
         // Cold-doc fallback (or kill-switch off / no Y.Doc mounted yet) —
         // flow into the existing legacy hydrate below verbatim.
@@ -574,6 +717,7 @@ export function useAnnotationCloudSync({
           ydocMounted: !!phase30Ydoc,
           reason: !cutoverTs ? 'not-yet-sealed' : 'ydoc-not-mounted',
         }));
+        ydocAuthoritativeRef.current = false;
 
         // 2026-04-26 — capture local counts at fire time so the verify helper
         // can decide whether an empty cloud read should be trusted on its own
@@ -691,7 +835,7 @@ export function useAnnotationCloudSync({
       cancelled = true;
       startupSyncInFlightRef.current = false;
     };
-  }, [enabled, documentId, userId, pdfId, setAnnotationsByPage, setCallouts]);
+  }, [enabled, documentId, userId, pdfId, phase30Ydoc, setAnnotationsByPage, setCallouts]);
 
   // ---- Debounced push on state change ------------------------------------
 
@@ -825,6 +969,71 @@ export function useAnnotationCloudSync({
       // authors goes through a confirmation modal. The original cross-device
       // race concern is resolved by permission scoping, not suppression.
       // Deletes now propagate unconditionally on diff detection.
+      // 2026-05-04 — Stale-cache shrink suppressor for cutover-sealed docs.
+      // UX: when localStorage's pre-cutover snapshot (e.g. 3,000 strokes)
+      // overwrites the cutover-hydrated state (22,000 strokes from Y.Map)
+      // mid-mount, the diff detector saw it as a "user just deleted 19,000
+      // annotations" and cascaded a wipe out to Y.Map. Recovery (re-import
+      // + re-dedupe) took 30+ seconds and produced a 41 MB Y.Doc broadcast.
+      // Guard: when the doc is cutover-sealed AND the shrink wipes out more
+      // than 80% of prior state, skip the cascade entirely — the cloud is
+      // the source of truth post-cutover, and a user-driven 80%+ delete is
+      // implausible without an explicit modal flow.
+      // 2026-05-04 — Use priorByPage size as the denominator. Earlier this
+      // computed __priorTotal as (deletedIds + currentTotal), which double-
+      // counted any current-only IDs (a stale localStorage cache with
+      // different IDs than Y.Map produced a 65% ratio that dodged the 80%
+      // gate, letting the cascade wipe 5,762 entries). Comparing against
+      // the actual prior count is the right denominator and matches the
+      // user-intent question: "did we lose most of what was there?"
+      const __priorTotal = priorObjectCount;
+      const __shrinkRatio = __priorTotal > 0 ? deletedIds.length / __priorTotal : 0;
+      if (
+        deletedIds.length > 50
+        && cutoverTsRef.current
+        && phase30Ydoc
+        && __shrinkRatio >= 0.5
+      ) {
+        console.warn('[CloudSync][hook] stale-cache shrink suppressed — cutover-sealed doc, skipping ' +
+          deletedIds.length + ' delete cascade ' + JSON.stringify({
+            priorTotal: __priorTotal,
+            currentTotal: __priorTotal - deletedIds.length,
+            shrinkRatio: __shrinkRatio.toFixed(2),
+            cutoverTs: cutoverTsRef.current,
+          }));
+        deletedIds.length = 0;
+        // 2026-05-04 — Re-hydrate state from Y.Map after suppressing the
+        // stale-cache shrink. UX: without this, the suppressor saves the
+        // cloud copy from a wipe BUT the user still sees the stale
+        // localStorage state on screen (3,000 strokes instead of the real
+        // 5,765 in Y.Map). Re-running the materialization brings the
+        // visible state back in sync with the source of truth.
+        try {
+          let yMap;
+          try { yMap = phase30Ydoc.getMap('annotations'); } catch (_e) { yMap = null; }
+          if (yMap && typeof yMap.forEach === 'function') {
+            const byPage = {};
+            yMap.forEach((annoYMap) => {
+              if (!annoYMap || typeof annoYMap.get !== 'function') return;
+              const pageNumber = annoYMap.get('pageNumber') ?? 1;
+              const fabricObj = materializeAnnoFromYMap(annoYMap);
+              if (!fabricObj) return;
+              if (!byPage[pageNumber]) byPage[pageNumber] = { version: '5.3.0', objects: [] };
+              byPage[pageNumber].objects.push(fabricObj);
+            });
+            const __resyncCount = countFabricObjects(byPage);
+            console.log('[CloudSync][hook] re-hydrate after suppress — restoring state from Y.Map ' +
+              JSON.stringify({ resyncCount: __resyncCount }));
+            setAnnotationsByPage(() => {
+              lastByPageRef.current = byPage;
+              return byPage;
+            });
+          }
+        } catch (resyncErr) {
+          console.warn('[CloudSync][hook] re-hydrate after suppress failed: ' +
+            (resyncErr?.message || String(resyncErr)));
+        }
+      }
       if (deletedIds.length > 0) {
         console.log('[CloudSync][hook] eraser/delete detected — removing rows from cloud ' + JSON.stringify({
           count: deletedIds.length,
@@ -1119,6 +1328,48 @@ export function useAnnotationCloudSync({
 
   // ---- beforeunload flush ------------------------------------------------
   //
+  // 2026-05-04 — Re-hydrate listener for the dedupe pass. When YDocProvider's
+  // post-backfill dedupe trims duplicate-import entries from Y.Map, the
+  // hydrate-time materialization in this hook is stale (still reflects the
+  // pre-dedupe shape). Without resyncing, the user sees the duplicates on
+  // screen until the next doc open. Listen for the dispatched event and
+  // re-materialize state from Y.Map in-place.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !phase30Ydoc) return undefined;
+    const onDedupeResync = (e) => {
+      try {
+        if (e?.detail?.documentId && e.detail.documentId !== documentId) return;
+        let yMap;
+        try { yMap = phase30Ydoc.getMap('annotations'); } catch (_e) { yMap = null; }
+        if (!yMap || typeof yMap.forEach !== 'function') return;
+        const byPage = {};
+        yMap.forEach((annoYMap) => {
+          if (!annoYMap || typeof annoYMap.get !== 'function') return;
+          const pageNumber = annoYMap.get('pageNumber') ?? 1;
+          const fabricObj = materializeAnnoFromYMap(annoYMap);
+          if (!fabricObj) return;
+          if (!byPage[pageNumber]) byPage[pageNumber] = { version: '5.3.0', objects: [] };
+          byPage[pageNumber].objects.push(fabricObj);
+        });
+        const __resyncCount = countFabricObjects(byPage);
+        console.log('[CloudSync][hook] dedupe-resync — restoring state ' + JSON.stringify({
+          documentId,
+          removed: e?.detail?.removed,
+          resyncCount: __resyncCount,
+        }));
+        setAnnotationsByPage(() => {
+          lastByPageRef.current = byPage;
+          return byPage;
+        });
+      } catch (resyncErr) {
+        console.warn('[CloudSync][hook] dedupe-resync failed: ' +
+          (resyncErr?.message || String(resyncErr)));
+      }
+    };
+    window.addEventListener('crdt:dedupe-resync', onDedupeResync);
+    return () => window.removeEventListener('crdt:dedupe-resync', onDedupeResync);
+  }, [phase30Ydoc, documentId, setAnnotationsByPage]);
+
   // 2026-04-30 — Audit hardening (finding #10): "Annotations drawn in the
   // last 800ms before close are lost." Without this listener, the user
   // could draw a stroke and close the tab inside the 800ms debounce window;
@@ -1233,6 +1484,11 @@ export function useAnnotationCloudSync({
         // not the per-row delete payload made it through.
         onDeleteFallback: () => {
           if (!documentId) return;
+          if (ydocAuthoritativeRef.current || cutoverTsRef.current) {
+            console.log('[Phase31 UAT] delete-fallback refetch skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth ' +
+              JSON.stringify({ documentId, pdfId, cutoverTs: cutoverTsRef.current, ydocAuthoritative: ydocAuthoritativeRef.current }));
+            return;
+          }
           (async () => {
             try {
               const fresh = await loadAllNonHighlightAnnotations(documentId);
@@ -1272,8 +1528,28 @@ export function useAnnotationCloudSync({
         // overwritten with the same data).
         onSubscribed: () => {
           if (!documentId) return;
+          // This gate must run before the startup-in-flight shortcut and must
+          // not depend on a fresh closure. Realtime reconnects can happen long
+          // after initial hydrate; if we let this path read the legacy rows, it
+          // replaces the good 3644-entry Y.Doc view with the stale 3058-row
+          // snapshot and the same Drawboard ink turns jagged/duplicated again.
+          if (ydocAuthoritativeRef.current || cutoverTsRef.current) {
+            console.log('[Phase31 UAT] post-subscribe catch-up skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth ' +
+              JSON.stringify({ documentId, pdfId, cutoverTs: cutoverTsRef.current, ydocAuthoritative: ydocAuthoritativeRef.current }));
+            return;
+          }
           if (startupSyncInFlightRef.current || !hydratedRef.current) {
             console.log('[CloudSync][hook] post-subscribe catch-up skipped — startup sync already in flight');
+            return;
+          }
+          // Cutover-sealed documents are CRDT/Y.Doc authoritative. The legacy
+          // row table still contains pre-dedupe/pre-cutover annotation rows
+          // for rollback, so using loadAllNonHighlightAnnotations here can
+          // replace the correct 3644-entry Y.Doc view with the stale 3058-row
+          // snapshot and make Drawboard ink look jagged/duplicated again.
+          if (cutoverTsRef.current && phase30Ydoc) {
+            console.log('[Phase31 UAT] post-subscribe catch-up skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth ' +
+              JSON.stringify({ documentId, pdfId, cutoverTs: cutoverTsRef.current }));
             return;
           }
           if (Date.now() - lastCloudRefreshAtRef.current < RECENT_CLOUD_REFRESH_SKIP_MS) {
@@ -1363,9 +1639,9 @@ export function useAnnotationCloudSync({
       // longer being written to under the kill switch), wiping in-flight
       // CRDT-only writes — exactly the regression captured in Logs/
       // 2026-05-03_15-20-12 where a placed counter pin was overwritten.
-      if (cutoverTsRef.current && phase30Ydoc) {
+      if (ydocAuthoritativeRef.current || cutoverTsRef.current || (cutoverTsRef.current && phase30Ydoc)) {
         console.log('[Phase31 UAT] focus rehydrate skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth ' +
-          JSON.stringify({ documentId, pdfId, cutoverTs: cutoverTsRef.current }));
+          JSON.stringify({ documentId, pdfId, cutoverTs: cutoverTsRef.current, ydocAuthoritative: ydocAuthoritativeRef.current }));
         return;
       }
       if (Date.now() - lastCloudRefreshAtRef.current < RECENT_CLOUD_REFRESH_SKIP_MS) {
@@ -1472,7 +1748,7 @@ export function useAnnotationCloudSync({
         window.removeEventListener('focus', onFocus);
       }
     };
-  }, [enabled, documentId, userId, clientSessionId, setAnnotationsByPage, setCallouts]);
+  }, [enabled, documentId, userId, pdfId, clientSessionId, phase30Ydoc, setAnnotationsByPage, setCallouts]);
 
   // ---- Drain offline queue on reconnect ----------------------------------
 

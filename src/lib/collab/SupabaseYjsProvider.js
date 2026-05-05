@@ -335,8 +335,8 @@ export function connect(documentId, ydoc, options = {}) {
       detached = true;
       try { ydoc.off('update', onLocalUpdate); } catch { /* swallow */ }
       try { channel?.unsubscribe?.(); } catch { /* swallow */ }
-      try { supabase.removeChannel?.(channel); } catch { /* swallow */ }
-      try { supabase.realtime?.removeChannel?.(channel); } catch { /* swallow */ }
+      try { if (channel) supabase.removeChannel?.(channel); } catch { /* swallow */ }
+      try { if (channel) supabase.realtime?.removeChannel?.(channel); } catch { /* swallow */ }
       channel = null;
     },
     send(eventName, payload) {

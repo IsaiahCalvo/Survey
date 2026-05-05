@@ -94,7 +94,7 @@ const CUSTOM_PROPS = [
   'strokeUniform', 'spaceId', 'moduleId', 'regionId',
   'data', 'name', 'highlightId', 'needsBIC',
   'globalCompositeOperation', 'layer',
-  'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType',
+  'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode',
 ];
 
 // UX: BBOX_PADDING is the page-unit buffer added on every side of a shape

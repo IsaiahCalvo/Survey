@@ -62,8 +62,11 @@ import { captureSvgCallout } from '../utils/calloutGeometryDiag.js';
 // Constants
 // ---------------------------------------------------------------------------
 
-const MAX_PREVIEW_OBJECTS = 420;
-const MAX_PREVIEW_CALLOUTS = 140;
+// 2026-05-03 — Per-page render caps deleted. Adobe / Drawboard PDF render
+// every annotation; silently dropping a user's drawing past an arbitrary
+// ceiling is unacceptable. If a dense page feels laggy, the right answer
+// is viewport-only painting (skip drawings outside the visible scroll
+// window) — tracked as a follow-up.
 
 
 const formatDashArrayForDebug = (dashArray) => {
@@ -246,6 +249,14 @@ const SVGAnnotationLayer = memo(({
   // modal/toast layer. Single-line additive prop pass-through; no render-
   // logic touch (CONTEXT.md DO NOT CHANGE).
   onRequestBulkDelete,
+  // 2026-05-03 — Viewport culling. App.jsx passes true for the visible page
+  // and a small window above/below (currently ±2). Off-window pages skip
+  // the heavy filteredAnnotations + filteredCallouts iteration so a 150-
+  // page doc with thousands of strokes per page only pays render cost for
+  // the pages on screen. Default true preserves pre-2026-05-03 behavior
+  // for any caller that doesn't yet pass this prop. UX: matches Drawboard /
+  // Adobe behavior where off-screen pages hold data only.
+  isPageInRenderWindow = true,
 }) => {
   // ---------------------------------------------------------------------------
   // Refs
@@ -1156,6 +1167,11 @@ const SVGAnnotationLayer = memo(({
   //  on every selection/hover change)
   // ---------------------------------------------------------------------------
   const filteredAnnotations = useMemo(() => {
+    // 2026-05-03 — Viewport-culling fast exit. Off-window pages return an
+    // empty render set so the SVG layer is mounted (preserving layout +
+    // ref stability) but does no per-object work. The page gets its full
+    // render the moment isPageInRenderWindow flips true on scroll.
+    if (!isPageInRenderWindow) return [];
     const objects = Array.isArray(annotations?.objects)
       ? annotations.objects
       : [];
@@ -1190,6 +1206,105 @@ const SVGAnnotationLayer = memo(({
     }
 
     if (objects.length === 0) return [];
+
+    // Diagnostic summary for user-shared logs. This answers: did this page
+    // render smooth filled Drawboard/Adobe outlines, open stroked ink, or
+    // duplicate path geometry? Keep it aggregate-only so dense pages do not
+    // spam thousands of per-path records.
+    if (typeof window !== 'undefined' && window.__SVG_PATH_RENDER_DIAG === true) {
+      try {
+        const pathStats = {
+          pageNumber,
+          inputObjects: objects.length,
+          pathCount: 0,
+          filledSmooth: 0,
+          filledNotSmooth: 0,
+          openStrokedCurved: 0,
+          openStrokedLineOnly: 0,
+          exactDuplicateGroups: 0,
+          bboxDuplicateGroups: 0,
+          sampleProblemPaths: [],
+        };
+        const exactGroups = new Map();
+        const bboxGroups = new Map();
+        objects.forEach((candidate, idx) => {
+          if (String(candidate?.type || '').toLowerCase() !== 'path' || !Array.isArray(candidate?.path)) return;
+          pathStats.pathCount += 1;
+          const attrs = renderPathToSvgAttrs(candidate);
+          const d = renderPathToSvgD(candidate, attrs);
+          const hasC = /\bC\b/.test(d);
+          const hasQ = /\bQ\b/.test(d);
+          const hasL = /\bL\b/.test(d);
+          const isFilled = attrs.stroke === 'none' && attrs.fill && attrs.fill !== 'none';
+          const isStroked = attrs.stroke && attrs.stroke !== 'none';
+          if (isFilled && attrs.smoothClosedOutline === true && hasC) pathStats.filledSmooth += 1;
+          else if (isFilled) {
+            pathStats.filledNotSmooth += 1;
+            if (pathStats.sampleProblemPaths.length < 8) {
+              pathStats.sampleProblemPaths.push({
+                idx,
+                kind: 'filled-not-smooth',
+                id: candidate?.id || candidate?.data?.id || candidate?.pdfAnnotationId || null,
+                fill: attrs.fill,
+                stroke: attrs.stroke,
+                strokeWidth: attrs.strokeWidth,
+                commands: { hasC, hasQ, hasL },
+                dHead: d.slice(0, 120),
+              });
+            }
+          } else if (isStroked && (hasC || hasQ)) pathStats.openStrokedCurved += 1;
+          else if (isStroked) {
+            pathStats.openStrokedLineOnly += 1;
+            if (pathStats.sampleProblemPaths.length < 8) {
+              pathStats.sampleProblemPaths.push({
+                idx,
+                kind: 'open-stroked-line-only',
+                id: candidate?.id || candidate?.data?.id || candidate?.pdfAnnotationId || null,
+                stroke: attrs.stroke,
+                strokeWidth: attrs.strokeWidth,
+                vectorEffect: attrs.vectorEffect || null,
+                commands: { hasC, hasQ, hasL },
+                dHead: d.slice(0, 120),
+              });
+            }
+          }
+          const exactKey = `${attrs.fill}|${attrs.stroke}|${Math.round(candidate.left || 0)}|${Math.round(candidate.top || 0)}|${d}`;
+          exactGroups.set(exactKey, (exactGroups.get(exactKey) || 0) + 1);
+          let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+          for (const seg of candidate.path || []) {
+            for (let j = 1; j + 1 < seg.length; j += 2) {
+              const x = Number(seg[j]);
+              const y = Number(seg[j + 1]);
+              if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+              minX = Math.min(minX, x);
+              minY = Math.min(minY, y);
+              maxX = Math.max(maxX, x);
+              maxY = Math.max(maxY, y);
+            }
+          }
+          if (Number.isFinite(minX) && Number.isFinite(minY)) {
+            const bboxKey = [
+              attrs.fill,
+              attrs.stroke,
+              Math.round(candidate.left || 0),
+              Math.round(candidate.top || 0),
+              Math.round(maxX - minX),
+              Math.round(maxY - minY),
+            ].join('|');
+            bboxGroups.set(bboxKey, (bboxGroups.get(bboxKey) || 0) + 1);
+          }
+        });
+        pathStats.exactDuplicateGroups = [...exactGroups.values()].filter((count) => count > 1).length;
+        pathStats.bboxDuplicateGroups = [...bboxGroups.values()].filter((count) => count > 1).length;
+        if (!window.__diagSVGPathRenderStats) window.__diagSVGPathRenderStats = {};
+        window.__diagSVGPathRenderStats[pageNumber] = pathStats;
+        if (pathStats.pathCount > 0) {
+          console.log('[SVGPathRenderStats] ' + JSON.stringify(pathStats));
+        }
+      } catch (diagErr) {
+        console.warn('[SVGPathRenderStats] failed ' + (diagErr?.message || String(diagErr)));
+      }
+    }
 
     // Compute region overlay state for this page
     let isOverlayEnabledForThisPage = false;
@@ -1242,12 +1357,12 @@ const SVGAnnotationLayer = memo(({
     // No early-skip gate here — the filter renders in eraser mode
     // identically to selector mode.
 
+    // 2026-05-03 — Per-page render cap removed. UX: a hard ceiling that
+    // silently drops drawings is unacceptable for a PDF annotation app —
+    // Adobe / Drawboard render every stroke. If a heavy page feels laggy
+    // the right answer is viewport-only painting (skip drawings outside
+    // the visible scroll window), not a hard cap. Tracked as follow-up.
     for (let i = 0; i < objects.length; i++) {
-      if (count >= MAX_PREVIEW_OBJECTS) {
-        dropReasons.maxPreviewCap.push(i);
-        continue;
-      }
-
       const obj = objects[i];
       if (!obj) {
         dropReasons.nullOrHiddenFlag.push(i);
@@ -1464,6 +1579,7 @@ const SVGAnnotationLayer = memo(({
     getSpaceIdForRegion,
     activeTool,
     editingAnnotationIndex,
+    isPageInRenderWindow,
   ]);
 
   // ---------------------------------------------------------------------------
@@ -1932,15 +2048,18 @@ const SVGAnnotationLayer = memo(({
   // visible renderCallout chrome stays exactly as Plan 14-01 shipped it; the
   // hit overlays sit on top for pointer capture.
   const filteredCallouts = useMemo(() => {
+    // 2026-05-03 — Viewport-culling fast exit (parity with filteredAnnotations).
+    if (!isPageInRenderWindow) return [];
     if (!Array.isArray(callouts) || callouts.length === 0) return [];
     const pageSize = { width, height };
     const elements = [];
     let count = 0;
 
     for (let i = 0; i < callouts.length; i++) {
-      // MAX_PREVIEW_CALLOUTS guard — existing constant, do NOT change
-      if (count >= MAX_PREVIEW_CALLOUTS) break;
-
+      // 2026-05-03 — Callout render cap removed for parity with the per-page
+      // shape/path cap removal. Same UX rationale: never silently drop a
+      // user's drawing. If perf needs help, viewport-only painting is the
+      // right tool.
       const callout = callouts[i];
       if (!callout) continue;
 
@@ -2081,7 +2200,7 @@ const SVGAnnotationLayer = memo(({
     // ride-along translate so callouts stay in lockstep with annotations
     // during group drag.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [callouts, pageNumber, showSurveyPanel, selectedModuleId, width, height, editingCalloutId, liveCalloutEditBounds, effectiveSelectedCalloutIds, activeCalloutDrag, visualTransform]);
+  }, [callouts, pageNumber, showSurveyPanel, selectedModuleId, width, height, editingCalloutId, liveCalloutEditBounds, effectiveSelectedCalloutIds, activeCalloutDrag, visualTransform, isPageInRenderWindow]);
 
   // Diagnostic: after the SVG callouts are laid out, walk the DOM and record
   // the source data + every rendered element's screen rect per callout id.
@@ -2113,6 +2232,30 @@ const SVGAnnotationLayer = memo(({
 
   const objectCount = filteredAnnotations.length;
   const calloutCount = filteredCallouts.length;
+
+  // 2026-05-03 — Time-sliced reveal. UX: on first paint of a heavy page
+  // (12k+ pen strokes from a survey doc) the browser used to lock up for
+  // ~1-2 seconds while React mounted every <path>. Now we paint in waves
+  // of REVEAL_STEP per animation frame: the user sees strokes appear
+  // progressively, the browser stays responsive, and total time-to-full
+  // is the same. The initial seed of REVEAL_STEP means small pages
+  // (under the seed) render in one shot — no staging tax. revealCount
+  // never decreases, so a subsequent edit that adds a single annotation
+  // catches the new entry on the next frame without re-staging the
+  // already-painted set.
+  const REVEAL_STEP = 300;
+  const [revealCount, setRevealCount] = useState(REVEAL_STEP);
+  useEffect(() => {
+    if (revealCount >= filteredAnnotations.length) return;
+    const handle = requestAnimationFrame(() => {
+      setRevealCount((c) => Math.min(c + REVEAL_STEP, filteredAnnotations.length));
+    });
+    return () => cancelAnimationFrame(handle);
+  }, [revealCount, filteredAnnotations.length]);
+  const stagedAnnotations = revealCount >= filteredAnnotations.length
+    ? filteredAnnotations
+    : filteredAnnotations.slice(0, revealCount);
+
   const importedDebugRows = useMemo(() => (
     filteredAnnotations
       .filter(({ obj }) => obj?.isPdfImported)
@@ -2174,7 +2317,7 @@ const SVGAnnotationLayer = memo(({
   // ---------------------------------------------------------------------------
   // Render: wrap each annotation with hit-area, hover, and interaction handlers
   // ---------------------------------------------------------------------------
-  const wrappedAnnotations = filteredAnnotations
+  const wrappedAnnotations = stagedAnnotations
     .map(({ obj, index: i, element, isObjectInteractive }) => {
     // During resize, create a temporary modified copy for rendering
     // (Imported paths use SVG transform instead — handled in computedTransform below)

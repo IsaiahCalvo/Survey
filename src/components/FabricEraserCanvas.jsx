@@ -21,6 +21,7 @@ import React, { memo, useState, useEffect, useRef } from 'react';
 import { fabric } from 'fabric';
 import { useFabricCanvas } from '../hooks/useFabricCanvas';
 import { booleanErasePath } from '../utils/geometryEraser';
+import { calculateCalloutConnection } from '../utils/calloutGeometry';
 // Phase 35 Plan 03 — eraser hit-test gate (AC #2: non-owner eraser swipe
 // across a foreign-author mark has no effect; owner short-circuits inside).
 import { canModify } from '../lib/collab/permissionScope.js';
@@ -35,17 +36,118 @@ const CUSTOM_PROPS = [
   'strokeUniform', 'spaceId', 'moduleId', 'regionId',
   'data', 'name', 'highlightId', 'needsBIC',
   'globalCompositeOperation', 'layer',
-  'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType',
+  'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode',
   'tool',
 ];
+
+const FABRIC_ENLIVENABLE_TYPES = new Set([
+  'path',
+  'rect',
+  'circle',
+  'ellipse',
+  'line',
+  'polygon',
+  'polyline',
+  'textbox',
+  'i-text',
+  'text',
+  'group',
+  'image',
+  'triangle',
+]);
+
+const isFabricEnlivenableObject = (obj) => {
+  const type = typeof obj?.type === 'string' ? obj.type.toLowerCase() : '';
+  return FABRIC_ENLIVENABLE_TYPES.has(type);
+};
+
+const getLegacyCalloutPayload = (obj, fallbackPageNumber) => {
+  const callout = obj?.callout || (obj?.type === 'callout' ? obj : null);
+  if (!callout || typeof callout !== 'object' || !callout.id) return null;
+  return {
+    ...callout,
+    pageNumber: callout.pageNumber ?? fallbackPageNumber,
+  };
+};
+
+const distanceToSegment = (point, start, end) => {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSq = dx * dx + dy * dy;
+  if (lengthSq === 0) {
+    return Math.hypot(point.x - start.x, point.y - start.y);
+  }
+  const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSq));
+  const projected = {
+    x: start.x + t * dx,
+    y: start.y + t * dy,
+  };
+  return Math.hypot(point.x - projected.x, point.y - projected.y);
+};
+
+const pointInRect = (point, rect, radius) => (
+  point.x >= rect.x - radius &&
+  point.x <= rect.x + rect.width + radius &&
+  point.y >= rect.y - radius &&
+  point.y <= rect.y + rect.height + radius
+);
+
+const getCalloutHitIds = ({ callouts, pageNumber, pageWidth, pageHeight, eraserPoints, eraserRadius }) => {
+  if (!Array.isArray(callouts) || callouts.length === 0) return [];
+  const hitIds = [];
+  const lineTolerance = eraserRadius + 8;
+
+  callouts.forEach((callout) => {
+    if (!callout?.id || callout.pageNumber !== pageNumber || hitIds.includes(callout.id)) return;
+
+    const textBox = {
+      x: (callout.textBoxPosition?.x || 0) * pageWidth,
+      y: (callout.textBoxPosition?.y || 0) * pageHeight,
+      width: Math.max(18, (callout.textBoxWidth ?? 0.1) * pageWidth),
+      height: Math.max(18, (callout.textBoxHeight ?? 0.05) * pageHeight),
+    };
+    const knee = {
+      x: (callout.knee?.x || 0) * pageWidth,
+      y: (callout.knee?.y || 0) * pageHeight,
+    };
+    const arrowTip = {
+      x: (callout.arrowTip?.x || 0) * pageWidth,
+      y: (callout.arrowTip?.y || 0) * pageHeight,
+    };
+    const connection = calculateCalloutConnection(
+      textBox.x,
+      textBox.y,
+      textBox.width,
+      textBox.height,
+      knee,
+      arrowTip,
+      0
+    );
+
+    const hit = eraserPoints.some((point) => {
+      if (pointInRect(point, textBox, eraserRadius)) return true;
+      if (Math.hypot(point.x - arrowTip.x, point.y - arrowTip.y) <= lineTolerance) return true;
+      if (Math.hypot(point.x - connection.effectiveKnee.x, point.y - connection.effectiveKnee.y) <= lineTolerance) return true;
+      if (!connection.shouldHideLine1 && distanceToSegment(point, connection.line1Start, connection.effectiveKnee) <= lineTolerance) return true;
+      return distanceToSegment(point, connection.line2Start, arrowTip) <= lineTolerance;
+    });
+
+    if (hit) hitIds.push(callout.id);
+  });
+
+  return hitIds;
+};
 
 const FabricEraserCanvas = memo(({
   pageNumber,
   pageWidth,
   pageHeight,
   annotations,
+  callouts = [],
   onEraseCommit,
   onEraseCallout,
+  onEraseTextMarkup,
+  eraserMode = 'partial',
   eraserSize = 20,
   viewerScale,
   selectedSpaceId,
@@ -68,6 +170,7 @@ const FabricEraserCanvas = memo(({
   const canvasElRef = useRef(null);
   const containerRef = useRef(null);
   const mountedRef = useRef(true);
+  const unsupportedAnnotationObjectsRef = useRef([]);
 
   // CRITICAL: Ref mirror of isLoading for use in mouse:down handler.
   // The mouse:down handler is bound in useEffect([]) and would capture the
@@ -80,8 +183,11 @@ const FabricEraserCanvas = memo(({
 
   // Closure-safe refs for props
   const annotationsRef = useRef(annotations);
+  const calloutsRef = useRef(callouts);
   const onEraseCommitRef = useRef(onEraseCommit);
   const onEraseCalloutRef = useRef(onEraseCallout);
+  const onEraseTextMarkupRef = useRef(onEraseTextMarkup);
+  const eraserModeRef = useRef(eraserMode);
   const eraserSizeRef = useRef(eraserSize);
   const viewerScaleRef = useRef(viewerScale);
   const effectiveScaleRef = useRef(1);
@@ -111,36 +217,6 @@ const FabricEraserCanvas = memo(({
     }
     return null;
   };
-
-  // Pre-dispose callback: flush in-progress erase gesture before canvas.off()/dispose()
-  const onBeforeDisposeRef = useRef((canvas) => {
-    if (isErasingRef.current) {
-      isErasingRef.current = false;
-      try {
-        applyEraserAndCommit(canvas);
-      } catch (err) {
-        console.error('Pre-unmount eraser flush error:', err);
-      }
-      eraserPathRef.current = [];
-    }
-    mountedRef.current = false;
-  });
-
-  // ---------------------------------------------------------------------------
-  // Canvas lifecycle (useFabricCanvas hook)
-  // ---------------------------------------------------------------------------
-  const { fabricRef } = useFabricCanvas({
-    canvasElRef,
-    onBeforeDisposeRef,
-    options: {
-      backgroundColor: 'transparent',
-      isDrawingMode: false,
-      selection: false,
-      enableRetinaScaling: true,
-      stopContextMenu: true,
-      skipTargetFind: true,
-    },
-  });
 
   // ---------------------------------------------------------------------------
   // Helper: apply eraser path to canvas objects and commit
@@ -176,6 +252,7 @@ const FabricEraserCanvas = memo(({
       }
     }
     const eraserPath = { points: eraserPoints };
+    const mode = eraserModeRef.current === 'entire' ? 'entire' : 'partial';
 
     const objects = [...canvas.getObjects()];
     let changed = false;
@@ -217,10 +294,32 @@ const FabricEraserCanvas = memo(({
         continue;
       }
 
-      // Only erase path-type objects (same approach as PAL -- non-path objects
-      // like rect, ellipse, textbox are removed if touched, path objects get
-      // boolean subtraction)
       if (obj.type === 'path' && obj.path) {
+        const pathBounds = obj.getBoundingRect ? obj.getBoundingRect(true) : null;
+        const eraserTouchesPath = pathBounds
+          ? eraserPoints.some((point) => (
+              point.x >= pathBounds.left - currentEraserSize &&
+              point.x <= pathBounds.left + pathBounds.width + currentEraserSize &&
+              point.y >= pathBounds.top - currentEraserSize &&
+              point.y <= pathBounds.top + pathBounds.height + currentEraserSize
+            ))
+          : true;
+        if (!eraserTouchesPath) {
+          continue;
+        }
+
+        const isStrokePath =
+          obj.tool === 'pen' ||
+          obj.tool === 'highlighter' ||
+          obj.pdfAnnotationType === 'Ink' ||
+          (!obj.pdfAnnotationType && !obj.highlightId && !obj.moduleId);
+
+        if (mode === 'entire' || !isStrokePath) {
+          canvas.remove(obj);
+          changed = true;
+          continue;
+        }
+
         // Short-circuit: booleanErasePath unconditionally converts a stroked
         // polyline into a filled cookie-cutter outline. When the eraser
         // doesn't overlap the path's bounding box at all, that conversion
@@ -229,20 +328,9 @@ const FabricEraserCanvas = memo(({
         // "hollow stripe through imported pen stroke" symptom. Guard: only
         // run booleanErasePath when at least one eraser sample is within
         // radius of the path's world-space bounding rect.
-        const pathBounds = obj.getBoundingRect ? obj.getBoundingRect(true) : null;
-        if (pathBounds) {
-          const eraserTouchesPath = eraserPoints.some((point) => {
-            return (
-              point.x >= pathBounds.left - currentEraserSize &&
-              point.x <= pathBounds.left + pathBounds.width + currentEraserSize &&
-              point.y >= pathBounds.top - currentEraserSize &&
-              point.y <= pathBounds.top + pathBounds.height + currentEraserSize
-            );
-          });
-          if (!eraserTouchesPath) {
-            continue;
-          }
-        }
+        // This branch is now only reached by partial-erasable pen/highlighter
+        // strokes. Shapes represented as paths and every non-path annotation
+        // are whole-object erase targets.
 
         // Use booleanErasePath (cookie-cutter) for ALL pen strokes, imported
         // or native. Rationale: once a native pen stroke has been erased
@@ -372,6 +460,54 @@ const FabricEraserCanvas = memo(({
       }
     }
 
+    const unsupportedAnnotationObjects = Array.isArray(unsupportedAnnotationObjectsRef.current)
+      ? unsupportedAnnotationObjectsRef.current
+      : [];
+    let calloutHitIds = [];
+    const calloutCallback = onEraseCalloutRef.current;
+    if (calloutCallback) {
+      try {
+        const legacyCallouts = unsupportedAnnotationObjects
+          .map((entry) => getLegacyCalloutPayload(entry.object, pageNumber))
+          .filter(Boolean);
+        calloutHitIds = getCalloutHitIds({
+          callouts: [
+            ...(Array.isArray(calloutsRef.current) ? calloutsRef.current : []),
+            ...legacyCallouts,
+          ],
+          pageNumber,
+          pageWidth,
+          pageHeight,
+          eraserPoints,
+          eraserRadius: currentEraserSize,
+        });
+        const svgEl = document.querySelector(
+          `[data-diag-svg-wrapper="${pageNumber}"] svg`
+        );
+        if (svgEl) {
+          const groups = svgEl.querySelectorAll('[data-callout-id]');
+          groups.forEach((g) => {
+            const cid = g.getAttribute('data-callout-id');
+            if (calloutHitIds.includes(cid)) return;
+            try {
+              const bbox = g.getBBox();
+              const hit = eraserPoints.some(
+                (p) =>
+                  p.x >= bbox.x - currentEraserSize &&
+                  p.x <= bbox.x + bbox.width + currentEraserSize &&
+                  p.y >= bbox.y - currentEraserSize &&
+                  p.y <= bbox.y + bbox.height + currentEraserSize
+              );
+              if (hit) calloutHitIds.push(cid);
+            } catch (_) {}
+          });
+        }
+      } catch (_) {
+        calloutHitIds = [];
+      }
+    }
+    const calloutHitIdSet = new Set(calloutHitIds);
+
     if (changed) {
       canvas.renderAll();
     }
@@ -438,43 +574,57 @@ const FabricEraserCanvas = memo(({
       }
       return json;
     });
+    unsupportedAnnotationObjects.forEach((entry) => {
+      const legacyCallout = getLegacyCalloutPayload(entry.object, pageNumber);
+      if (legacyCallout?.id && calloutHitIdSet.has(legacyCallout.id)) return;
+      serializedObjects.push({ ...entry.object });
+    });
     const updatedJSON = { objects: serializedObjects };
     onEraseCommitRef.current(updatedJSON);
 
-    // Callout hit-test: callouts live in a separate React state, not in the
-    // Fabric canvas objects above. Check if the eraser path overlaps any
-    // callout's SVG bounding box on this page.
-    const calloutCallback = onEraseCalloutRef.current;
-    if (calloutCallback) {
+    if (calloutCallback && calloutHitIds.length > 0) {
       try {
-        const svgEl = document.querySelector(
-          `[data-diag-svg-wrapper="${pageNumber}"] svg`
-        );
-        if (svgEl) {
-          const hitIds = [];
-          const groups = svgEl.querySelectorAll('[data-callout-id]');
-          groups.forEach((g) => {
-            const cid = g.getAttribute('data-callout-id');
-            if (hitIds.includes(cid)) return;
-            try {
-              const bbox = g.getBBox();
-              const hit = eraserPoints.some(
-                (p) =>
-                  p.x >= bbox.x - currentEraserSize &&
-                  p.x <= bbox.x + bbox.width + currentEraserSize &&
-                  p.y >= bbox.y - currentEraserSize &&
-                  p.y <= bbox.y + bbox.height + currentEraserSize
-              );
-              if (hit) hitIds.push(cid);
-            } catch (_) {}
-          });
-          if (hitIds.length > 0) {
-            calloutCallback(hitIds);
-          }
-        }
+        calloutCallback(calloutHitIds);
+      } catch (_) {}
+    }
+
+    const textMarkupCallback = onEraseTextMarkupRef.current;
+    if (textMarkupCallback) {
+      try {
+        textMarkupCallback(pageNumber, eraserPoints, currentEraserSize);
       } catch (_) {}
     }
   }).current;
+
+  // Pre-dispose callback: flush in-progress erase gesture before canvas.off()/dispose()
+  const onBeforeDisposeRef = useRef((canvas) => {
+    if (isErasingRef.current) {
+      isErasingRef.current = false;
+      try {
+        applyEraserAndCommit(canvas);
+      } catch (err) {
+        console.error('Pre-unmount eraser flush error:', err);
+      }
+      eraserPathRef.current = [];
+    }
+    mountedRef.current = false;
+  });
+
+  // ---------------------------------------------------------------------------
+  // Canvas lifecycle (useFabricCanvas hook)
+  // ---------------------------------------------------------------------------
+  const { fabricRef } = useFabricCanvas({
+    canvasElRef,
+    onBeforeDisposeRef,
+    options: {
+      backgroundColor: 'transparent',
+      isDrawingMode: false,
+      selection: false,
+      enableRetinaScaling: true,
+      stopContextMenu: true,
+      skipTargetFind: true,
+    },
+  });
 
   // ---------------------------------------------------------------------------
   // Canvas initialization: sizing, cursors, annotation loading, eraser events
@@ -503,6 +653,16 @@ const FabricEraserCanvas = memo(({
     // -----------------------------------------------------------------------
     const annotationsToLoad = annotationsRef.current;
     const objectsArray = annotationsToLoad?.objects || [];
+    const enlivenableEntries = [];
+    const unsupportedEntries = [];
+    objectsArray.forEach((object, originalIndex) => {
+      if (isFabricEnlivenableObject(object)) {
+        enlivenableEntries.push({ object, originalIndex });
+      } else {
+        unsupportedEntries.push({ object, originalIndex });
+      }
+    });
+    unsupportedAnnotationObjectsRef.current = unsupportedEntries;
 
     // Diagnostics: snapshot what goes into enlivenObjects so we can compare
     // against what comes out. Any type mismatch / silent drop will show up here.
@@ -525,8 +685,9 @@ const FabricEraserCanvas = memo(({
       };
     });
 
-    if (objectsArray.length > 0) {
-      fabric.util.enlivenObjects(objectsArray, (enlivenedObjects) => {
+    if (enlivenableEntries.length > 0) {
+      const enlivenableObjects = enlivenableEntries.map((entry) => entry.object);
+      fabric.util.enlivenObjects(enlivenableObjects, (enlivenedObjects) => {
         // Guard: component may have unmounted during async load
         if (!mountedRef.current) return;
 
@@ -546,6 +707,15 @@ const FabricEraserCanvas = memo(({
           if (!window.__diagEraserStats) window.__diagEraserStats = {};
           window.__diagEraserStats[pageNumber] = {
             inputCount: objectsArray.length,
+            enlivenableCount: enlivenableEntries.length,
+            unsupportedCount: unsupportedEntries.length,
+            unsupportedInputDetail: unsupportedEntries.map((entry) => ({
+              index: entry.originalIndex,
+              keys: Object.keys(entry.object || {}),
+              calloutId: entry.object?.callout?.id || null,
+              type: entry.object?.type || null,
+              dataType: entry.object?.data?.type || null,
+            })),
             enlivenedCount: enlivenedObjects.length,
             nullIndexes,
             inputTypeHistogram,
@@ -553,13 +723,14 @@ const FabricEraserCanvas = memo(({
             inputDetail,
           };
           console.log(
-            `[FabricEraserCanvas p${pageNumber}] enliven — input=${objectsArray.length} output=${enlivenedObjects.length} nulls=${nullIndexes.length} types=${JSON.stringify(inputTypeHistogram)}→${JSON.stringify(outputTypeHistogram)}`
+            `[FabricEraserCanvas p${pageNumber}] enliven — input=${objectsArray.length} enlivenable=${enlivenableEntries.length} unsupported=${unsupportedEntries.length} output=${enlivenedObjects.length} nulls=${nullIndexes.length} types=${JSON.stringify(inputTypeHistogram)}→${JSON.stringify(outputTypeHistogram)}`
           );
         }
 
         enlivenedObjects.forEach((obj, index) => {
           if (!obj) return;
-          const objData = objectsArray[index];
+          const objData = enlivenableEntries[index]?.object;
+          if (!objData) return;
 
           obj.set({
             strokeUniform: true,
@@ -692,7 +863,13 @@ const FabricEraserCanvas = memo(({
             }
             obj.setCoords();
 
-            if (typeof window !== 'undefined') {
+            // 2026-05-03 — Per-object override log silenced. UX: on heavy
+            // pages (12k+ imported strokes) this single console.log fired
+            // once per object on every eraser-tool mount, dominating the
+            // mount cost (4,900 lines on the heavy page = several seconds
+            // of pure logging in dev tools). Re-enable per session via
+            // window.__DIAG_ERASER_OVERRIDE = true.
+            if (typeof window !== 'undefined' && window.__DIAG_ERASER_OVERRIDE) {
               const label =
                 obj.type === 'textbox'
                   ? `text="${(objData.text || '').slice(0, 20)}"`
@@ -795,6 +972,10 @@ const FabricEraserCanvas = memo(({
     annotationsRef.current = annotations;
   }, [annotations]);
 
+  useEffect(() => {
+    calloutsRef.current = callouts;
+  }, [callouts]);
+
   // Diagnostics: expose this canvas by pageNumber so App.jsx's tool-switch
   // snapshot can dump per-object Fabric state (bounds, strokes, text fields)
   // for side-by-side compare against the SVG selector render. See handleSaveOverlayLagLog.
@@ -816,6 +997,14 @@ const FabricEraserCanvas = memo(({
   useEffect(() => {
     onEraseCalloutRef.current = onEraseCallout;
   }, [onEraseCallout]);
+
+  useEffect(() => {
+    onEraseTextMarkupRef.current = onEraseTextMarkup;
+  }, [onEraseTextMarkup]);
+
+  useEffect(() => {
+    eraserModeRef.current = eraserMode;
+  }, [eraserMode]);
 
   useEffect(() => {
     eraserSizeRef.current = eraserSize;

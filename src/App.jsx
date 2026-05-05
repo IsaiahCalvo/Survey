@@ -149,6 +149,44 @@ import {
   normalizeRegionVisibility
 } from './utils/annotationVisibilityRules';
 
+const NATIVE_TEXT_MARKUP_TOOLS = new Set(['text-highlight', 'underline', 'strikeout', 'squiggly']);
+const REVIEW_TOOL_IDS = ['text', 'callout'];
+
+const getSyncfusionTextMarkupMode = (tool) => {
+  switch (tool) {
+    case 'text-highlight':
+      return 'Highlight';
+    case 'underline':
+      return 'Underline';
+    case 'strikeout':
+      return 'Strikethrough';
+    case 'squiggly':
+      return 'Squiggly';
+    default:
+      return null;
+  }
+};
+
+const getToolFromSyncfusionMarkupType = (type) => {
+  const normalized = String(type || '').trim().toLowerCase();
+  if (normalized === 'highlight') return 'text-highlight';
+  if (normalized === 'underline') return 'underline';
+  if (normalized === 'strikethrough' || normalized === 'strikeout') return 'strikeout';
+  if (normalized === 'squiggly') return 'squiggly';
+  return null;
+};
+
+const coerceSyncfusionZoomPercent = (...values) => {
+  for (const value of values) {
+    if (value == null) continue;
+    const parsed = typeof value === 'string'
+      ? parseFloat(value.replace('%', ''))
+      : Number(value);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return 100;
+};
+
 // Set up the PDF.js worker
 // Set up the PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
@@ -209,13 +247,16 @@ const SYNCFUSION_INTERACTION_COMMIT_MAX_PAGES_PER_FRAME = 2;
 const SYNCFUSION_INTERACTION_COMMIT_FRAME_BUDGET_MS = 6;
 const SYNCFUSION_INTERACTION_EVENT_THROTTLE_MS = 96;
 const SYNCFUSION_INTERACTION_MARK_THROTTLE_MS = 96;
-const SYNCFUSION_WHEEL_ZOOM_SENSITIVITY = 0.3;
+const SYNCFUSION_WHEEL_ZOOM_EXPONENT = 0.0016;
 const SYNCFUSION_INTERACTION_FORCE_PROXY_ALL_PAGES = true;
 const ZOOM_ONLY_INTERACTION_REASONS = new Set([
   'wheel-zoom', 'syncfusion-wheel-zoom', 'syncfusion-zoom-change', 'overlay-wheel-zoom'
 ]);
 const SYNCFUSION_SCROLL_DELAY_MS = 180;
-const SYNCFUSION_INITIAL_RENDER_PAGES = 4;
+// Keep initial PDF work close to the visible viewport. Syncfusion defaults to
+// 2 initial pages, and PDF.js recommends rendering only visible pages to avoid
+// slow opens and excess canvas memory on large annotated documents.
+const SYNCFUSION_INITIAL_RENDER_PAGES = 2;
 const SYNCFUSION_RESTRICT_ZOOM_REQUEST_DURING_INTERACTION = true;
 const SYNCFUSION_DUAL_LAYER_ENABLED_KEY = 'syncfusion_interaction_dual_layer_enabled';
 const OVERLAY_LAG_RECORDER_AUTO_KEY = 'syncfusion_overlay_lag_auto';
@@ -227,6 +268,13 @@ const OVERLAY_LAG_RECORDER_EVENT_TIMING_THRESHOLD_MS = 24;
 const DOCUMENT_SYNC_STRUCTURAL_DISABLED_KEY = 'document_sync_structural_disabled';
 const DOCUMENT_SYNC_STRUCTURAL_DISABLED_TTL_MS = 10 * 60 * 1000;
 const HISTORY_DEBUG_CONSOLE_KEY = 'pdf_history_debug_console';
+
+const getSmoothSyncfusionWheelZoom = (currentZoom, wheelDelta) => {
+  const safeCurrent = Number.isFinite(Number(currentZoom)) ? Number(currentZoom) : 100;
+  const safeDelta = Number.isFinite(Number(wheelDelta)) ? Number(wheelDelta) : 0;
+  const factor = Math.exp(safeDelta * SYNCFUSION_WHEEL_ZOOM_EXPONENT);
+  return Math.max(10, Math.min(400, safeCurrent * factor));
+};
 const HISTORY_DEBUG_TRACE_LIMIT = 250;
 const HISTORY_PAGE_PREVIEW_LIMIT = 12;
 const HISTORY_OBJECT_CHANGE_PREVIEW_LIMIT = 10;
@@ -11030,7 +11078,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       if (activeTool === 'pen' || activeTool === 'highlighter' || activeTool === REGION_EDIT_TOOL) forcedCursor = 'crosshair';
       else if (activeTool === 'eraser') forcedCursor = 'none';
       else if (activeTool === 'pan') forcedCursor = 'grab';
-      else if (activeTool === 'text') forcedCursor = 'text';
+      else if (activeTool === 'text' || NATIVE_TEXT_MARKUP_TOOLS.has(activeTool)) forcedCursor = 'text';
       const prevCursor = el.style.cursor;
       el.style.cursor = forcedCursor;
       const clearOverride = () => {
@@ -11043,7 +11091,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   // Clear edit state when switching to drawing/eraser tools
   useEffect(() => {
-    if (activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'eraser') {
+    if (activeTool === 'pen' || activeTool === 'highlighter' || NATIVE_TEXT_MARKUP_TOOLS.has(activeTool) || activeTool === 'eraser') {
       setEditingAnnotation(null);
     }
   }, [activeTool]);
@@ -11156,6 +11204,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // series" indicator (color dot, future visual) needs to refresh. We use
   // this counter as a cheap re-render trigger when the user picks a series.
   const [counterUITick, setCounterUITick] = useState(0);
+  const [highlighterCaretPopupOpen, setHighlighterCaretPopupOpen] = useState(false);
+  const highlighterCaretPopupRef = useRef(null);
+  const [eraserCaretPopupOpen, setEraserCaretPopupOpen] = useState(false);
+  const eraserCaretPopupRef = useRef(null);
+  const [underlineCaretPopupOpen, setUnderlineCaretPopupOpen] = useState(false);
+  const underlineCaretPopupRef = useRef(null);
+  const [strikeCaretPopupOpen, setStrikeCaretPopupOpen] = useState(false);
+  const strikeCaretPopupRef = useRef(null);
 
   // Disable ALL Syncfusion interactive layers during annotation edit mode via injected <style>.
   // Covers .e-pv-text-layer, .e-pv-annotation-canvas, and any other Syncfusion overlay.
@@ -11208,6 +11264,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Opened by document-level contextmenu dispatcher in src/utils/contextMenuDiagnostics.js
   // via window.__onAnnotationContextMenu. Dismissed by click-outside or Escape.
   const [annotationContextMenu, setAnnotationContextMenu] = useState(null);
+  const selectedNativeTextMarkupRef = useRef(null);
   // UX: right-click → context menu → Properties opens AnnotationPropertiesPanel
   // at the same (x, y) the context menu was anchored to. Shape mirrors
   // annotationContextMenu (kind, pageNumber, annotationIndex, calloutId, x, y)
@@ -11588,6 +11645,86 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     };
   }, [counterCaretPopupOpen]);
 
+  useEffect(() => {
+    if (!highlighterCaretPopupOpen) return undefined;
+    const onDocClick = (e) => {
+      const root = highlighterCaretPopupRef.current;
+      if (root && root.contains(e.target)) return;
+      const caret = document.querySelector('[data-highlighter-caret-button="true"]');
+      if (caret && caret.contains(e.target)) return;
+      setHighlighterCaretPopupOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') setHighlighterCaretPopupOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [highlighterCaretPopupOpen]);
+
+  useEffect(() => {
+    if (!eraserCaretPopupOpen) return undefined;
+    const onDocClick = (e) => {
+      const root = eraserCaretPopupRef.current;
+      if (root && root.contains(e.target)) return;
+      const caret = document.querySelector('[data-eraser-caret-button="true"]');
+      if (caret && caret.contains(e.target)) return;
+      setEraserCaretPopupOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') setEraserCaretPopupOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [eraserCaretPopupOpen]);
+
+  useEffect(() => {
+    if (!underlineCaretPopupOpen) return undefined;
+    const onDocClick = (e) => {
+      const root = underlineCaretPopupRef.current;
+      if (root && root.contains(e.target)) return;
+      const caret = document.querySelector('[data-underline-caret-button="true"]');
+      if (caret && caret.contains(e.target)) return;
+      setUnderlineCaretPopupOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') setUnderlineCaretPopupOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [underlineCaretPopupOpen]);
+
+  useEffect(() => {
+    if (!strikeCaretPopupOpen) return undefined;
+    const onDocClick = (e) => {
+      const root = strikeCaretPopupRef.current;
+      if (root && root.contains(e.target)) return;
+      const caret = document.querySelector('[data-strike-caret-button="true"]');
+      if (caret && caret.contains(e.target)) return;
+      setStrikeCaretPopupOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') setStrikeCaretPopupOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [strikeCaretPopupOpen]);
+
   const handleSwitchCounterSeries = useCallback((seriesId) => {
     const series = (counterSeriesList || []).find((s) => s.seriesId === seriesId);
     if (!series) {
@@ -11696,7 +11833,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   });
   const [lastReviewTool, setLastReviewTool] = useState(() => {
     try {
-      return localStorage.getItem('lastReviewTool') || 'text';
+      const savedTool = localStorage.getItem('lastReviewTool');
+      return REVIEW_TOOL_IDS.includes(savedTool) ? savedTool : 'text';
     } catch (e) {
       return 'text';
     }
@@ -11722,7 +11860,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       });
     }
 
-    if (['pen', 'highlighter', 'eraser'].includes(activeTool)) {
+    if (['pen', 'highlighter', 'text-highlight', 'eraser'].includes(activeTool)) {
       setLastDrawTool(activeTool);
       try {
         localStorage.setItem('lastDrawTool', activeTool);
@@ -11732,7 +11870,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       try {
         localStorage.setItem('lastShapeTool', activeTool);
       } catch (e) { }
-    } else if (['text', 'callout', 'note', 'underline', 'strikeout', 'squiggly'].includes(activeTool)) {
+    } else if (REVIEW_TOOL_IDS.includes(activeTool)) {
       setLastReviewTool(activeTool);
       try {
         localStorage.setItem('lastReviewTool', activeTool);
@@ -12428,6 +12566,190 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     syncfusionWheelZoomAnchorRef.current = null;
   }, []);
 
+  const findSyncfusionPageAtClientPoint = useCallback((clientX, clientY) => {
+    if (typeof document === 'undefined' || !Number.isFinite(clientX) || !Number.isFinite(clientY)) {
+      return null;
+    }
+    const direct = document.elementFromPoint?.(clientX, clientY)?.closest?.('.e-pv-page-div');
+    if (direct) return direct;
+
+    // Annotation/selection overlays sit above Syncfusion's page divs, so
+    // elementFromPoint can return our overlay instead of the PDF page. For
+    // cursor-centric zoom we still need the real page under that screen point;
+    // otherwise zoom falls back to rough scroll-ratio math and drifts down/right.
+    const pages = Array.from(document.querySelectorAll('.e-pv-page-div'));
+    for (const page of pages) {
+      const rect = page.getBoundingClientRect?.();
+      if (!rect || rect.width <= 0 || rect.height <= 0) continue;
+      if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) {
+        return page;
+      }
+    }
+    return null;
+  }, []);
+
+  const performSyncfusionCursorWheelZoom = useCallback((event, viewerContainer, reason = 'overlay-wheel-zoom') => {
+    if (!event || !viewerContainer || !(event.ctrlKey || event.metaKey)) return false;
+    if (event.__surveyCursorZoomHandled) return true;
+    event.__surveyCursorZoomHandled = true;
+
+    event.preventDefault?.();
+    event.stopPropagation?.();
+
+    const tool = activeToolRef.current;
+    if (tool === 'pen' || tool === 'highlighter' || tool === 'eraser') {
+      setActiveTool('pan');
+    }
+    bumpOverlayLagEventTotal(reason === 'syncfusion-wheel-zoom' ? 'syncfusionWheelZoom' : 'overlayWheelZoom');
+    markInteractionPerfActive(reason, INTERACTION_PERF_SCROLL_HOLD_MS);
+    markSyncfusionInteractionActive(reason);
+
+    const raf =
+      typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function'
+        ? window.requestAnimationFrame.bind(window)
+        : (callback) => setTimeout(callback, 16);
+
+    const containerRect = viewerContainer.getBoundingClientRect();
+    const pointerX = Number.isFinite(event.clientX) ? event.clientX - containerRect.left : containerRect.width / 2;
+    const pointerY = Number.isFinite(event.clientY) ? event.clientY - containerRect.top : containerRect.height / 2;
+    const clientXForAnchor = Number.isFinite(event.clientX) ? event.clientX : (containerRect.left + containerRect.width / 2);
+    const clientYForAnchor = Number.isFinite(event.clientY) ? event.clientY : (containerRect.top + containerRect.height / 2);
+    const pageElementAtCursor = findSyncfusionPageAtClientPoint(clientXForAnchor, clientYForAnchor);
+    const pageRectAtCursor = pageElementAtCursor?.getBoundingClientRect?.();
+    const pageAnchor = pageElementAtCursor && pageRectAtCursor?.width > 0 && pageRectAtCursor?.height > 0
+      ? {
+          id: pageElementAtCursor.id || null,
+          ratioX: (clientXForAnchor - pageRectAtCursor.left) / pageRectAtCursor.width,
+          ratioY: (clientYForAnchor - pageRectAtCursor.top) / pageRectAtCursor.height,
+        }
+      : null;
+    syncfusionWheelZoomAnchorRef.current = {
+      x: pointerX + viewerContainer.scrollLeft,
+      y: pointerY + viewerContainer.scrollTop,
+      cursorX: pointerX,
+      cursorY: pointerY,
+      clientX: clientXForAnchor,
+      clientY: clientYForAnchor,
+      pageAnchor,
+      scrollLeftAtEvent: viewerContainer.scrollLeft,
+      scrollTopAtEvent: viewerContainer.scrollTop,
+    };
+    syncfusionWheelZoomDeltaRef.current += (-event.deltaY);
+
+    if (syncfusionWheelZoomRafRef.current !== null) return true;
+
+    syncfusionWheelZoomRafRef.current = raf(() => {
+      syncfusionWheelZoomRafRef.current = null;
+      const delta = Number(syncfusionWheelZoomDeltaRef.current) || 0;
+      syncfusionWheelZoomDeltaRef.current = 0;
+      if (Math.abs(delta) < 0.01) return;
+
+      const anchor = syncfusionWheelZoomAnchorRef.current;
+      if (anchor) setAnchor(anchor);
+
+      const viewer = syncfusionViewerRef.current;
+      if (!viewer) return;
+      const currentZoom = coerceSyncfusionZoomPercent(
+        typeof viewer.getZoomValue === 'function' ? viewer.getZoomValue() : null,
+        viewer.zoomValue,
+        viewer.magnificationModule?.zoomFactor ? viewer.magnificationModule.zoomFactor * 100 : null,
+        scaleRef.current ? scaleRef.current * 100 : null,
+        100
+      );
+
+      const nextZoom = getSmoothSyncfusionWheelZoom(currentZoom, delta);
+      if (Math.abs(nextZoom - currentZoom) < 0.05) return;
+
+      if (!zoomOverlayTransformActiveRef.current) {
+        zoomOverlayBaseScaleRef.current = currentZoom / 100;
+        zoomOverlayTransformActiveRef.current = true;
+        debugMark('zoom_start', { scale: currentZoom / 100, source: 'overlay_wheel_zoom_pre' });
+        const pcMap = syncfusionPageContainersStateRef.current || pageContainersRef.current || {};
+        const cachedRects = {};
+        const portalHostSnapshot = {};
+        Object.entries(pcMap).forEach(([pn, el]) => {
+          if (el?.isConnected) {
+            cachedRects[pn] = { top: el.offsetTop, left: el.offsetLeft, width: el.offsetWidth, height: el.offsetHeight };
+            portalHostSnapshot[Number(pn)] = el;
+          }
+        });
+        syncfusionCachedPageRectsRef.current = cachedRects;
+        const existingHosts = syncfusionInteractionPortalHostsRef.current || {};
+        if (Object.keys(existingHosts).length === 0) {
+          syncfusionInteractionPortalHostsRef.current = portalHostSnapshot;
+        }
+      }
+
+      const cursorX = (anchor && Number.isFinite(anchor.cursorX)) ? anchor.cursorX : 0;
+      const cursorY = (anchor && Number.isFinite(anchor.cursorY)) ? anchor.cursorY : 0;
+      const scrollLeftAtEvent = (anchor && Number.isFinite(anchor.scrollLeftAtEvent)) ? anchor.scrollLeftAtEvent : viewerContainer.scrollLeft;
+      const scrollTopAtEvent = (anchor && Number.isFinite(anchor.scrollTopAtEvent)) ? anchor.scrollTopAtEvent : viewerContainer.scrollTop;
+      const ratio = nextZoom > 0 && currentZoom > 0 ? (nextZoom / currentZoom) : 1;
+      const targetScrollLeft = (scrollLeftAtEvent + cursorX) * ratio - cursorX;
+      const targetScrollTop = (scrollTopAtEvent + cursorY) * ratio - cursorY;
+
+      const mag = viewer.magnificationModule;
+      const clientX = (anchor && Number.isFinite(anchor.clientX)) ? anchor.clientX : null;
+      const clientY = (anchor && Number.isFinite(anchor.clientY)) ? anchor.clientY : null;
+      // Syncfusion exposes a native cursor-aware zoom entry point. We still
+      // reapply scroll below because mixed-size/portrait documents can be
+      // re-centered by Syncfusion after zoom, which breaks cursor-centric zoom.
+      if (mag && typeof mag.initiateMouseZoom === 'function' && clientX !== null && clientY !== null) {
+        mag.initiateMouseZoom(clientX, clientY, nextZoom);
+      } else if (mag && typeof mag.zoomTo === 'function') {
+        mag.zoomTo(nextZoom);
+      }
+
+      const applyAnchor = () => {
+        const maxScrollLeft = Math.max(0, (viewerContainer.scrollWidth || 0) - viewerContainer.clientWidth);
+        const maxScrollTop = Math.max(0, (viewerContainer.scrollHeight || 0) - viewerContainer.clientHeight);
+        let nextLeft = targetScrollLeft;
+        let nextTop = targetScrollTop;
+        const pageAnchorInfo = anchor?.pageAnchor;
+        const pageEl = pageAnchorInfo?.id && typeof document !== 'undefined'
+          ? document.getElementById(pageAnchorInfo.id)
+          : null;
+        const pageRect = pageEl?.getBoundingClientRect?.();
+        if (pageRect && Number.isFinite(pageAnchorInfo.ratioX) && Number.isFinite(pageAnchorInfo.ratioY)) {
+          const anchoredClientX = pageRect.left + (pageRect.width * pageAnchorInfo.ratioX);
+          const anchoredClientY = pageRect.top + (pageRect.height * pageAnchorInfo.ratioY);
+          nextLeft = viewerContainer.scrollLeft + (anchoredClientX - clientX);
+          nextTop = viewerContainer.scrollTop + (anchoredClientY - clientY);
+        }
+        viewerContainer.scrollLeft = Math.min(Math.max(0, nextLeft), maxScrollLeft);
+        viewerContainer.scrollTop = Math.min(Math.max(0, nextTop), maxScrollTop);
+      };
+      applyAnchor();
+      if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(() => {
+          applyAnchor();
+          window.requestAnimationFrame(() => {
+            applyAnchor();
+            console.log('[SyncfusionZoom] cursor-anchor applied ' + JSON.stringify({
+              source: reason,
+              currentZoom,
+              nextZoom,
+              cursorX,
+              cursorY,
+              pageAnchor: !!anchor?.pageAnchor,
+              scrollLeft: viewerContainer.scrollLeft,
+              scrollTop: viewerContainer.scrollTop,
+            }));
+          });
+        });
+      }
+    });
+
+    return true;
+  }, [
+    bumpOverlayLagEventTotal,
+    findSyncfusionPageAtClientPoint,
+    markInteractionPerfActive,
+    markSyncfusionInteractionActive,
+    setAnchor,
+    setActiveTool,
+  ]);
+
   // Memoize document unload handler to prevent re-renders
   const handleDocumentUnload = useCallback(() => {
     pageContainersRef.current = {};
@@ -12529,20 +12851,51 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     };
 
     const onWheel = (event) => {
-      // NOTE: Custom Ctrl+Wheel zoom is DISABLED — letting Syncfusion handle it natively.
-      // To re-enable, remove the early return below and uncomment the zoom logic.
-      // The custom handler was working (tested 2026-03-11) but disabled to reduce complexity.
+      // 2026-05-04 — Cursor-centric Ctrl+Wheel / trackpad-pinch zoom RE-ENABLED.
+      // UX problem: Syncfusion's native handler zooms to the page center,
+      // which feels wrong on trackpad pinch — the user expects the spot
+      // under the cursor to stay still. Trackpad pinch fires wheel events
+      // with ctrlKey=true on macOS / Windows, so this single branch covers
+      // mouse Ctrl+wheel AND trackpad pinch with the same anchor math.
       if (event.ctrlKey || event.metaKey) {
-        return; // DISABLED — Syncfusion handles Ctrl+Wheel zoom natively
         event.preventDefault();
+        // Stop the event from reaching Syncfusion's internal magnification
+        // listeners on the inner page canvases. Without this, our cursor-
+        // anchored math runs AND Syncfusion runs its own page-center zoom
+        // on top, so the user sees a jumpy mid-page zoom that ignores the
+        // cursor anchor we just set.
+        event.stopPropagation();
         queueInteractionMark('wheel-zoom', 'syncfusion-wheel-zoom', INTERACTION_PERF_SCROLL_HOLD_MS);
 
         const containerRect = viewerContainer.getBoundingClientRect();
         const pointerX = Number.isFinite(event.clientX) ? event.clientX - containerRect.left : containerRect.width / 2;
         const pointerY = Number.isFinite(event.clientY) ? event.clientY - containerRect.top : containerRect.height / 2;
+        const clientXForAnchor = Number.isFinite(event.clientX) ? event.clientX : (containerRect.left + containerRect.width / 2);
+        const clientYForAnchor = Number.isFinite(event.clientY) ? event.clientY : (containerRect.top + containerRect.height / 2);
+        const pageElementAtCursor = findSyncfusionPageAtClientPoint(clientXForAnchor, clientYForAnchor);
+        const pageRectAtCursor = pageElementAtCursor?.getBoundingClientRect?.();
+        const pageAnchor = pageElementAtCursor && pageRectAtCursor?.width > 0 && pageRectAtCursor?.height > 0
+          ? {
+              id: pageElementAtCursor.id || null,
+              ratioX: (clientXForAnchor - pageRectAtCursor.left) / pageRectAtCursor.width,
+              ratioY: (clientYForAnchor - pageRectAtCursor.top) / pageRectAtCursor.height,
+            }
+          : null;
+        // Capture the cursor in three forms so the rAF body can use whichever
+        // it needs: document-space anchor for the overlay transform; container-
+        // relative cursor for any local math; and raw client coords so we can
+        // hand them straight to Syncfusion's native cursor-anchored zoom
+        // entry point (`initiateMouseZoom`) without re-deriving them.
         syncfusionWheelZoomAnchorRef.current = {
           x: pointerX + viewerContainer.scrollLeft,
-          y: pointerY + viewerContainer.scrollTop
+          y: pointerY + viewerContainer.scrollTop,
+          cursorX: pointerX,
+          cursorY: pointerY,
+          clientX: clientXForAnchor,
+          clientY: clientYForAnchor,
+          pageAnchor,
+          scrollLeftAtEvent: viewerContainer.scrollLeft,
+          scrollTopAtEvent: viewerContainer.scrollTop,
         };
         syncfusionWheelZoomDeltaRef.current += (-event.deltaY);
 
@@ -12567,13 +12920,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           if (!viewer) {
             return;
           }
-          const currentZoom = Number(viewer.zoomValue || 100);
-          if (!Number.isFinite(currentZoom)) {
-            return;
-          }
+          const currentZoom = coerceSyncfusionZoomPercent(
+            typeof viewer.getZoomValue === 'function' ? viewer.getZoomValue() : null,
+            viewer.zoomValue,
+            viewer.magnificationModule?.zoomFactor ? viewer.magnificationModule.zoomFactor * 100 : null,
+            scaleRef.current ? scaleRef.current * 100 : null,
+            100
+          );
 
-          let nextZoom = currentZoom + (delta * SYNCFUSION_WHEEL_ZOOM_SENSITIVITY);
-          nextZoom = Math.max(10, Math.min(400, nextZoom));
+          const nextZoom = getSmoothSyncfusionWheelZoom(currentZoom, delta);
           if (Math.abs(nextZoom - currentZoom) < 0.05) {
             return;
           }
@@ -12600,8 +12955,79 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
               syncfusionInteractionPortalHostsRef.current = portalHostSnapshot;
             }
           }
-          if (viewer.magnificationModule && typeof viewer.magnificationModule.zoomTo === 'function') {
-            viewer.magnificationModule.zoomTo(nextZoom);
+          // Hybrid cursor-anchored zoom strategy. The underlying viewer ships
+          // a native entry point that stamps the cursor position onto its
+          // magnification module before zooming, and on horizontal axes
+          // wider than the viewport that's enough — but on portrait PDFs
+          // (or vertically-overflowing zooms) the module forces the
+          // horizontal scroll back to page center, defeating the anchor.
+          // We hand the cursor coords to the native entry point AND
+          // overwrite the final scroll with our own cursor-anchor math
+          // so the spot under the cursor truly stays put. A second
+          // override on the next frame catches the deferred re-render
+          // path that otherwise re-centers the page after ~one frame.
+          const clientX = (anchor && Number.isFinite(anchor.clientX)) ? anchor.clientX : null;
+          const clientY = (anchor && Number.isFinite(anchor.clientY)) ? anchor.clientY : null;
+          const cursorX = (anchor && Number.isFinite(anchor.cursorX)) ? anchor.cursorX : 0;
+          const cursorY = (anchor && Number.isFinite(anchor.cursorY)) ? anchor.cursorY : 0;
+          const scrollLeftAtEvent = (anchor && Number.isFinite(anchor.scrollLeftAtEvent)) ? anchor.scrollLeftAtEvent : viewerContainer.scrollLeft;
+          const scrollTopAtEvent = (anchor && Number.isFinite(anchor.scrollTopAtEvent)) ? anchor.scrollTopAtEvent : viewerContainer.scrollTop;
+          const ratio = nextZoom > 0 && currentZoom > 0 ? (nextZoom / currentZoom) : 1;
+          const targetScrollLeft = (scrollLeftAtEvent + cursorX) * ratio - cursorX;
+          const targetScrollTop = (scrollTopAtEvent + cursorY) * ratio - cursorY;
+
+          const mag = viewer.magnificationModule;
+          if (mag && typeof mag.initiateMouseZoom === 'function' && clientX !== null && clientY !== null) {
+            mag.initiateMouseZoom(clientX, clientY, nextZoom);
+          } else if (mag && typeof mag.zoomTo === 'function') {
+            mag.zoomTo(nextZoom);
+          }
+
+          // Force the scroll position to honor the cursor anchor. Apply
+          // synchronously immediately after the zoom call (overrides the
+          // viewer's internal centering) and then again on the next two
+          // frames (overrides the deferred re-render path). The clamp
+          // matters at extreme zoom levels where the cursor-anchored
+          // scroll exceeds the new scrollable bounds.
+          const applyAnchor = () => {
+            const maxScrollLeft = Math.max(0, (viewerContainer.scrollWidth || 0) - viewerContainer.clientWidth);
+            const maxScrollTop = Math.max(0, (viewerContainer.scrollHeight || 0) - viewerContainer.clientHeight);
+            let nextLeft = targetScrollLeft;
+            let nextTop = targetScrollTop;
+            const pageAnchorInfo = anchor?.pageAnchor;
+            const pageEl = pageAnchorInfo?.id && typeof document !== 'undefined'
+              ? document.getElementById(pageAnchorInfo.id)
+              : null;
+            const pageRect = pageEl?.getBoundingClientRect?.();
+            if (pageRect && Number.isFinite(pageAnchorInfo.ratioX) && Number.isFinite(pageAnchorInfo.ratioY)) {
+              const anchoredClientX = pageRect.left + (pageRect.width * pageAnchorInfo.ratioX);
+              const anchoredClientY = pageRect.top + (pageRect.height * pageAnchorInfo.ratioY);
+              nextLeft = viewerContainer.scrollLeft + (anchoredClientX - clientX);
+              nextTop = viewerContainer.scrollTop + (anchoredClientY - clientY);
+            }
+            const finalLeft = Math.min(Math.max(0, nextLeft), maxScrollLeft);
+            const finalTop = Math.min(Math.max(0, nextTop), maxScrollTop);
+            viewerContainer.scrollLeft = finalLeft;
+            viewerContainer.scrollTop = finalTop;
+          };
+          applyAnchor();
+          if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+            window.requestAnimationFrame(() => {
+              applyAnchor();
+              window.requestAnimationFrame(() => {
+                applyAnchor();
+                console.log('[SyncfusionZoom] cursor-anchor applied ' + JSON.stringify({
+                  source: 'syncfusion-wheel-zoom',
+                  currentZoom,
+                  nextZoom,
+                  cursorX,
+                  cursorY,
+                  pageAnchor: !!anchor?.pageAnchor,
+                  scrollLeft: viewerContainer.scrollLeft,
+                  scrollTop: viewerContainer.scrollTop,
+                }));
+              });
+            });
           }
         });
       } else {
@@ -12635,8 +13061,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     };
 
     viewerContainer.addEventListener('scroll', onScroll, { passive: true });
-    // IMPORTANT: Passive must be false to allow preventDefault() for zoom override
-    viewerContainer.addEventListener('wheel', onWheel, { passive: false });
+    // IMPORTANT: Passive must be false to allow preventDefault() for zoom override.
+    // Capture must be true so trackpad-pinch wheel events reach our handler
+    // before the underlying viewer's internal magnification listener consumes
+    // them — otherwise Ctrl+Wheel zoom always falls back to page-center zoom.
+    viewerContainer.addEventListener('wheel', onWheel, { passive: false, capture: true });
     viewerContainer.addEventListener('pointerdown', onPointerDown, { passive: true });
     window.addEventListener('pointermove', onPointerMove, { passive: true });
     window.addEventListener('pointerup', onPointerEnd, { passive: true });
@@ -12659,7 +13088,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         }
         clearSyncfusionWheelZoomRaf();
         viewerContainer.removeEventListener('scroll', onScroll);
-        viewerContainer.removeEventListener('wheel', onWheel);
+        viewerContainer.removeEventListener('wheel', onWheel, { capture: true });
         viewerContainer.removeEventListener('pointerdown', onPointerDown);
         window.removeEventListener('pointermove', onPointerMove);
         window.removeEventListener('pointerup', onPointerEnd);
@@ -12670,6 +13099,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     bumpOverlayLagEventTotal,
     clearSyncfusionWheelZoomRaf,
     detachSyncfusionInteractionListeners,
+    findSyncfusionPageAtClientPoint,
     markInteractionPerfActive,
     markSyncfusionInteractionActive,
     setAnchor
@@ -12698,6 +13128,28 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     setSyncfusionOverlayWindowPages((prev) => (prev.size === 0 ? prev : new Set()));
     setSyncfusionCommittedPageScales((prev) => (Object.keys(prev).length === 0 ? prev : {}));
   }, [clearSyncfusionWheelZoomRaf, detachSyncfusionInteractionListeners, finishSyncfusionInteractionWindow, useSyncfusionRenderer]);
+
+  useEffect(() => {
+    if (!useSyncfusionRenderer || typeof document === 'undefined') return undefined;
+
+    const onDocumentWheel = (event) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      const wrapper = syncfusionWrapperRef.current;
+      if (!wrapper || !wrapper.contains(event.target)) return;
+      const viewerContainer =
+        syncfusionInteractionListenersRef.current?.container ||
+        syncfusionViewerRef.current?.getViewerContainer?.() ||
+        syncfusionViewerRef.current?.viewerBase?.viewerContainer ||
+        syncfusionViewerRef.current?.pdfViewerBase?.viewerContainer ||
+        containerRef.current;
+      performSyncfusionCursorWheelZoom(event, viewerContainer, 'overlay-wheel-zoom');
+    };
+
+    document.addEventListener('wheel', onDocumentWheel, { passive: false, capture: true });
+    return () => {
+      document.removeEventListener('wheel', onDocumentWheel, { capture: true });
+    };
+  }, [performSyncfusionCursorWheelZoom, useSyncfusionRenderer]);
 
   const bindSyncfusionViewerRefs = useCallback(() => {
     if (!useSyncfusionRenderer) return;
@@ -13411,23 +13863,27 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   const handleSyncfusionWrapperWheel = useCallback((event) => {
     if (!useSyncfusionRenderer) return;
-    if (syncfusionInteractionListenersRef.current?.container) return;
     if (event.ctrlKey || event.metaKey) {
-      // If drawing/eraser tool is active, switch to pan immediately on zoom start.
-      // The Canvas ResizeObserver will flush any in-progress stroke before resize.
-      const tool = activeToolRef.current;
-      if (tool === 'pen' || tool === 'highlighter' || tool === 'eraser') {
-        setActiveTool('pan');
-      }
-      bumpOverlayLagEventTotal('overlayWheelZoom');
-      markInteractionPerfActive('overlay-wheel-zoom', INTERACTION_PERF_SCROLL_HOLD_MS);
-      markSyncfusionInteractionActive('overlay-wheel-zoom');
+      const viewerContainer =
+        syncfusionInteractionListenersRef.current?.container ||
+        syncfusionViewerRef.current?.getViewerContainer?.() ||
+        syncfusionViewerRef.current?.viewerBase?.viewerContainer ||
+        syncfusionViewerRef.current?.pdfViewerBase?.viewerContainer ||
+        containerRef.current;
+      performSyncfusionCursorWheelZoom(event, viewerContainer, 'overlay-wheel-zoom');
       return;
     }
+    if (syncfusionInteractionListenersRef.current?.container) return;
     bumpOverlayLagEventTotal('overlayWheelScroll');
     markInteractionPerfActive('overlay-wheel-scroll', INTERACTION_PERF_SCROLL_HOLD_MS);
     markSyncfusionInteractionActive('overlay-wheel-scroll');
-  }, [bumpOverlayLagEventTotal, markInteractionPerfActive, markSyncfusionInteractionActive, useSyncfusionRenderer]);
+  }, [
+    bumpOverlayLagEventTotal,
+    markInteractionPerfActive,
+    markSyncfusionInteractionActive,
+    performSyncfusionCursorWheelZoom,
+    useSyncfusionRenderer,
+  ]);
 
   const handleSyncfusionWrapperPointerDown = useCallback(() => {
     if (!useSyncfusionRenderer) return;
@@ -21458,9 +21914,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       };
 
       if (plan.mode === 'owner-own-only') {
-        // CONTEXT.md: owner with no foreign-author marks does NOT see the
-        // modal — just the bulk-toast (still gives them the 6s undo window).
-        wrappedRunDelete();
+        // 2026-05-04 — Owner deleting only their own marks: skip the modal
+        // AND skip the bulk-toast banner. UX: a solo-document owner seeing
+        // a "5 annotations deleted" banner on every delete reads as the
+        // app questioning their action. Cmd+Z still works as the undo
+        // path. The toast is only valuable when the delete is unusual
+        // (cross-author wipe, collaborator deleting all of theirs) — for
+        // the everyday solo-owner delete it's noise.
+        runDelete();
         return;
       }
 
@@ -22573,8 +23034,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // Load highlightAnnotations from localStorage
     const loadedHighlights = loadHighlightAnnotations(id);
     setHighlightAnnotations(loadedHighlights);
-    // Load annotationsByPage from localStorage
-    const loadedAnnotationsByPage = loadAnnotationsByPage(id);
+    const isCloudBackedDoc = !!pdfFile?.id;
+    // Cloud-backed docs use the CRDT/Y.Doc snapshot as the annotation source.
+    // Loading the older annotationsByPage_* localStorage cache here causes a
+    // visible stale-state flash: correct smooth Drawboard paths hydrate, then a
+    // pre-cutover local snapshot overwrites them, then sync repairs it seconds
+    // later. LocalStorage remains only for local/offline PDFs.
+    const loadedAnnotationsByPage = isCloudBackedDoc ? {} : loadAnnotationsByPage(id);
+    if (isCloudBackedDoc) {
+      console.log(`[Local annotation cache] doc=${id} skip annotationsByPage localStorage load — cloud/Y.Doc is authoritative.`);
+    }
 
     // [COUNTER MULTI-LIST] Wipe legacy (no-seriesId) counter pins on first
     // load. The brainstorm decided (Q2 = B): when this feature ships, force
@@ -22633,7 +23102,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     setAnnotationsByPage(migratedAnnotationsByPage);
     savedAnnotationsByPageRef.current = migratedAnnotationsByPage; // Track as saved
     // Load callouts from localStorage
-    const loadedCallouts = loadCallouts(id);
+    const loadedCallouts = isCloudBackedDoc ? [] : loadCallouts(id);
     setCallouts(loadedCallouts);
     setHasUnsavedAnnotations(false); // Reset unsaved flag
   }, [clearExcelSyncCheckpoint, finishSyncfusionInteractionWindow, pdfFile, pushHistoryDebugEvent]);
@@ -22696,8 +23165,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Save callouts to localStorage when they change
   useEffect(() => {
     if (!pdfId) return;
+    if (pdfFile?.id) return;
     saveCallouts(pdfId, callouts);
-  }, [pdfId, callouts]);
+  }, [pdfId, pdfFile?.id, callouts]);
 
   // 2026-04-25 — Mirror annotationsByPage to localStorage on every change.
   // Without this auto-save, localStorage only got rewritten on manual
@@ -22709,8 +23179,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // in lock-step with the live state, matching how callouts already work.
   useEffect(() => {
     if (!pdfId) return;
+    if (pdfFile?.id) return;
     saveAnnotationsByPage(pdfId, annotationsByPage);
-  }, [pdfId, annotationsByPage]);
+  }, [pdfId, pdfFile?.id, annotationsByPage]);
 
   // Save survey data to Supabase Storage
   const saveSurveyDataToSupabase = useCallback(async (currentAnnotations, currentSpaces, currentTemplate) => {
@@ -22778,11 +23249,29 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
       // Restore state
       if (data.annotations) setHighlightAnnotations(data.annotations);
-      if (data.annotationsByPage) {
+      // Cloud-sync documents source editable annotations from Y.Doc/Supabase
+      // rows, not this older Supabase Storage survey-data JSON blob. That
+      // blob can hold a pre-cutover annotationsByPage snapshot; restoring it
+      // after Y.Doc hydrate causes the visible 3644 -> 3058 shrink and the
+      // temporary jagged/duplicate annotation state.
+      const shouldRestoreLegacyAnnotationBlob = !doc.id;
+      if (data.annotationsByPage && shouldRestoreLegacyAnnotationBlob) {
         setAnnotationsByPage(data.annotationsByPage);
         savedAnnotationsByPageRef.current = data.annotationsByPage;
+      } else if (data.annotationsByPage) {
+        console.log('[SupabaseStorage] skipped legacy annotationsByPage restore — cloud/Y.Doc is authoritative ' + JSON.stringify({
+          documentId: doc.id || null,
+          pages: Object.keys(data.annotationsByPage || {}).length,
+        }));
       }
-      if (data.callouts) setCallouts(data.callouts);
+      if (data.callouts && shouldRestoreLegacyAnnotationBlob) {
+        setCallouts(data.callouts);
+      } else if (data.callouts) {
+        console.log('[SupabaseStorage] skipped legacy callouts restore — cloud/Y.Doc is authoritative ' + JSON.stringify({
+          documentId: doc.id || null,
+          count: Array.isArray(data.callouts) ? data.callouts.length : 0,
+        }));
+      }
       if (data.spaces) setSpaces(data.spaces);
       if (data.ballInCourtEntities) setBallInCourtEntities(data.ballInCourtEntities);
 
@@ -22816,8 +23305,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
     try {
       const defaultName = (pdfFile.name || 'document').replace(/\.pdf$/i, '') + '-annotated.pdf';
+      let sourcePdfForExport = pdfFile;
+      const saveAsBlob = syncfusionViewerRef.current?.saveAsBlob;
+      if (typeof saveAsBlob === 'function') {
+        try {
+          const blob = await saveAsBlob();
+          if (blob && Number(blob.size) > 0) {
+            sourcePdfForExport = blob;
+          }
+        } catch (error) {
+          console.warn('[ExportAnnotatedPDF] Falling back to original PDF bytes after Syncfusion saveAsBlob failed:', error);
+        }
+      }
       const buffer = await savePDFWithAnnotationsPdfLib(
-        pdfFile,
+        sourcePdfForExport,
         annotationsByPage,
         pageSizes,
         null,
@@ -22859,6 +23360,22 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     };
   }, [handleExportAnnotatedPDF]);
 
+  const getPdfFileForExplicitSave = useCallback(async () => {
+    const saveAsBlob = syncfusionViewerRef.current?.saveAsBlob;
+    if (typeof saveAsBlob !== 'function') return pdfFile;
+
+    try {
+      const blob = await saveAsBlob();
+      if (blob && Number(blob.size) > 0) {
+        return blob;
+      }
+    } catch (error) {
+      console.warn('[App] Falling back to original PDF bytes after Syncfusion saveAsBlob failed:', error);
+    }
+
+    return pdfFile;
+  }, [pdfFile]);
+
   // Save function for annotations (triggered by Cmd/Ctrl+S or auto-save)
   // silent=true skips alerts (for auto-save)
   const handleSaveDocument = useCallback(async (silent = false) => {
@@ -22894,7 +23411,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         );
 
         if (hasLocalOriginal) {
-          await savePDFWithAnnotationsPdfLib(pdfFile, annotationsByPage, pageSizes, pdfFilePath);
+          const sourcePdfForSave = await getPdfFileForExplicitSave();
+          await savePDFWithAnnotationsPdfLib(sourcePdfForSave, annotationsByPage, pageSizes, pdfFilePath);
           alert('PDF saved with annotations! The file has been updated.');
         } else {
           // Web mode OR desktop where the PDF was opened from the cloud and
@@ -22911,8 +23429,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             //   2. File System Access API picker (Chrome / Edge)
             //   3. Legacy <a download> auto-download (Safari / Firefox)
             // Result shape lets us phrase the toast accurately for each path.
+            const sourcePdfForSave = await getPdfFileForExplicitSave();
             const result = await saveAnnotatedPDFFile({
-              pdfFile,
+              pdfFile: sourcePdfForSave,
               annotationsByPage,
               pageSizes,
               defaultName: pdfFile.name,
@@ -22954,7 +23473,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         alert('Error saving PDF: ' + error.message);
       }
     }
-  }, [pdfId, pdfFile, annotationsByPage, pageSizes, pdfFilePath, onUnsavedAnnotationsChange, selectedTemplate, pushToExcelWithRetry, features?.cloudSync, features?.excelExport, highlightAnnotations, spaces, tabId, hasPendingExcelSyncChanges]);
+  }, [pdfId, pdfFile, annotationsByPage, pageSizes, pdfFilePath, onUnsavedAnnotationsChange, selectedTemplate, pushToExcelWithRetry, features?.cloudSync, features?.excelExport, highlightAnnotations, spaces, tabId, hasPendingExcelSyncChanges, getPdfFileForExplicitSave]);
 
   // Auto-save every 30 seconds when there are unsaved changes and a file path is available
   useEffect(() => {
@@ -23419,6 +23938,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
         // Import existing PDF annotations as editable Fabric.js objects
         perfLoad.mark(docName, 'Importing PDF annotations');
+        const shouldSkipEmbeddedPdfAnnotationImport = !!pdfFile?.id;
+        if (shouldSkipEmbeddedPdfAnnotationImport) {
+          console.log('[PDFImport] skipped embedded PDF annotation import — cloud/Y.Doc is authoritative ' + JSON.stringify({
+            documentId: pdfFile.id,
+          }));
+        } else {
         try {
           const { annotationsByPage: importedAnnotations, unsupportedTypes } = await importAnnotationsFromPdf(pdf, {
             rawPdfBytes: arrayBuffer
@@ -23513,6 +24038,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         } catch (importError) {
           console.error('Error importing PDF annotations:', importError);
           // Don't block PDF loading if annotation import fails
+        }
         }
 
         // Worker-based rendering is disabled because pdfFile is loaded from Supabase Storage
@@ -25267,33 +25793,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       [pageNumber]: normalizedIncomingAnnotations
     });
 
-    // Phase 35 Plan 04 — single-delete undo toast. Triggered by every delete
-    // that goes through this save pipeline with deletedCount===1. The
-    // bulk-delete path uses deletedCount > 1 and goes through
-    // handleRequestBulkDelete's wrappedRunDelete (which enqueues the bulk
-    // toast there). This single-delete branch is the only path that fires
-    // the 'single' kind 5s toast. saveContext fields are populated by
-    // useSVGInteraction's deleteSelected (Plan 35-04 interceptor).
-    if (
-      saveContext?.action === 'delete' &&
-      saveContext?.deletedCount === 1
-    ) {
-      const deletedSnapshot = saveContext.deletedSnapshot || [];
-      const deletedPageNumber = saveContext.deletedPageNumber ?? pageNumber;
-      const onUndo = () => {
-        setAnnotationsByPage((prev) => {
-          const prevPage = prev?.[deletedPageNumber] || { objects: [] };
-          const restoredObjects = [
-            ...(prevPage.objects || []),
-            ...deletedSnapshot,
-          ];
-          return {
-            ...prev,
-            [deletedPageNumber]: { ...prevPage, objects: restoredObjects },
-          };
-        });
-      };
-      enqueueUndoToast({ kind: 'single', message: 'Annotation deleted', onUndo });
+    // 2026-05-04 — Single-delete undo toast suppressed entirely. UX: a
+    // banner saying "Annotation deleted" on every single deletion was
+    // perceived as the app questioning a routine action. Cmd+Z still
+    // works as undo. The bulk + cross-author paths still surface their
+    // own modals/toasts where the higher stakes warrant explicit
+    // confirmation; only the everyday solo single-delete is silent now.
+    if (saveContext?.action === 'delete' && saveContext?.deletedCount === 1) {
+      // intentionally no toast
     }
   }, [
     addHistoryCheckpoint,
@@ -26711,6 +27218,184 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // Selection-only mode for Syncfusion renderer:
     // keep native text selection/copy behavior and do not create survey highlights.
   }, []);
+
+  const handleSelectSyncfusionTextMarkup = useCallback((pageNumber, event, pageSize) => {
+    if (activeTool !== 'select' && activeTool !== 'text-select') return false;
+    const target = event?.currentTarget;
+    if (!target || !pageSize?.width || !pageSize?.height) return false;
+    const rect = target.getBoundingClientRect();
+    if (!rect.width || !rect.height) return false;
+
+    const point = {
+      x: ((event.clientX - rect.left) / rect.width) * pageSize.width,
+      y: ((event.clientY - rect.top) / rect.height) * pageSize.height
+    };
+    const selected = syncfusionViewerRef.current?.selectTextMarkupAtPoint?.(
+      pageNumber,
+      point,
+      Math.max(4, 8 / Math.max(Number(scale) || 1, 0.1)),
+      event.nativeEvent || event
+    );
+    if (!selected) return false;
+    const selectedId = typeof selected === 'object' ? selected.id : selected;
+    const selectedType = typeof selected === 'object' ? selected.type : null;
+    const previous = selectedNativeTextMarkupRef.current;
+    const now = Date.now();
+    const isSecondTap =
+      selectedId &&
+      previous?.id === selectedId &&
+      previous?.pageNumber === pageNumber &&
+      now - previous.selectedAt < 1800;
+    selectedNativeTextMarkupRef.current = {
+      id: selectedId,
+      type: selectedType,
+      pageNumber,
+      selectedAt: now
+    };
+    if (isSecondTap && (event.pointerType === 'touch' || event.pointerType === 'pen')) {
+      setAnnotationContextMenu({
+        x: event.clientX,
+        y: event.clientY,
+        pageNumber,
+        annotationIndex: null,
+        calloutId: null,
+        kind: 'textMarkup',
+        textMarkupId: selectedId,
+        textMarkupType: selectedType,
+        groupIndices: null
+      });
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    return true;
+  }, [activeTool, scale]);
+
+  const handleSelectSyncfusionTextMarkupFromClientPoint = useCallback((event) => {
+    if (activeTool !== 'select' && activeTool !== 'text-select') return false;
+    if (!event || typeof event.clientX !== 'number' || typeof event.clientY !== 'number') return false;
+    if (event.target?.closest?.('[data-annotation-context-menu], [data-toolbar], button, input, textarea, select')) return false;
+
+    const directSelected = syncfusionViewerRef.current?.selectTextMarkupAtClientPoint?.(
+      event.clientX,
+      event.clientY,
+      Math.max(4, 8 / Math.max(Number(scale) || 1, 0.1)),
+      event
+    );
+    if (directSelected) {
+      const selectedId = typeof directSelected === 'object' ? directSelected.id : directSelected;
+      const selectedType = typeof directSelected === 'object' ? directSelected.type : null;
+      const selectedPageNumber = Number(directSelected.pageNumber) || null;
+      selectedNativeTextMarkupRef.current = {
+        id: selectedId,
+        type: selectedType,
+        pageNumber: selectedPageNumber,
+        selectedAt: Date.now()
+      };
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+      return true;
+    }
+
+    const containers = syncfusionViewerRef.current?.getPageContainers?.() || {};
+    const entries = Object.entries(containers);
+    for (const [pageKey, pageElement] of entries) {
+      if (!pageElement?.getBoundingClientRect) continue;
+      const pageNumber = Number(pageKey);
+      const pageSize = pageSizes[pageNumber];
+      if (!pageSize?.width || !pageSize?.height) continue;
+      const rect = pageElement.getBoundingClientRect();
+      if (
+        event.clientX < rect.left ||
+        event.clientX > rect.right ||
+        event.clientY < rect.top ||
+        event.clientY > rect.bottom
+      ) {
+        continue;
+      }
+
+      const point = {
+        x: ((event.clientX - rect.left) / rect.width) * pageSize.width,
+        y: ((event.clientY - rect.top) / rect.height) * pageSize.height
+      };
+      const selected = syncfusionViewerRef.current?.selectTextMarkupAtPoint?.(
+        pageNumber,
+        point,
+        Math.max(4, 8 / Math.max(Number(scale) || 1, 0.1)),
+        event
+      );
+      if (!selected) return false;
+
+      const selectedId = typeof selected === 'object' ? selected.id : selected;
+      const selectedType = typeof selected === 'object' ? selected.type : null;
+      const previous = selectedNativeTextMarkupRef.current;
+      const now = Date.now();
+      const isSecondTap =
+        selectedId &&
+        previous?.id === selectedId &&
+        previous?.pageNumber === pageNumber &&
+        now - previous.selectedAt < 1800;
+      selectedNativeTextMarkupRef.current = {
+        id: selectedId,
+        type: selectedType,
+        pageNumber,
+        selectedAt: now
+      };
+      if (isSecondTap && (event.pointerType === 'touch' || event.pointerType === 'pen')) {
+        setAnnotationContextMenu({
+          x: event.clientX,
+          y: event.clientY,
+          pageNumber,
+          annotationIndex: null,
+          calloutId: null,
+          kind: 'textMarkup',
+          textMarkupId: selectedId,
+          textMarkupType: selectedType,
+          groupIndices: null
+        });
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+      return true;
+    }
+    return false;
+  }, [activeTool, pageSizes, scale]);
+
+  useEffect(() => {
+    if (activeTool !== 'select' && activeTool !== 'text-select') return undefined;
+    const handlePointerDownCapture = (event) => {
+      handleSelectSyncfusionTextMarkupFromClientPoint(event);
+    };
+    document.addEventListener('pointerdown', handlePointerDownCapture, true);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDownCapture, true);
+    };
+  }, [activeTool, handleSelectSyncfusionTextMarkupFromClientPoint]);
+
+  useEffect(() => {
+    const handleNativeTextMarkupDelete = (event) => {
+      if (activeTool !== 'select' && !NATIVE_TEXT_MARKUP_TOOLS.has(activeTool)) return;
+      if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+      const tagName = event.target?.tagName?.toLowerCase?.();
+      if (tagName === 'input' || tagName === 'textarea' || event.target?.isContentEditable) return;
+
+      const deleted = syncfusionViewerRef.current?.deleteSelectedTextMarkupAnnotation?.();
+      if (!deleted) return;
+      event.preventDefault();
+      event.stopPropagation();
+      selectedNativeTextMarkupRef.current = null;
+      setHasUnsavedAnnotations(true);
+      if (onUnsavedAnnotationsChange) {
+        onUnsavedAnnotationsChange(true, tabId);
+      }
+    };
+
+    document.addEventListener('keydown', handleNativeTextMarkupDelete, { capture: true });
+    return () => {
+      document.removeEventListener('keydown', handleNativeTextMarkupDelete, { capture: true });
+    };
+  }, [activeTool, onUnsavedAnnotationsChange, tabId]);
 
   // Filter annotations by active module for rendering on PDF
   const filteredAnnotationsForPages = useMemo(() => {
@@ -28146,7 +28831,19 @@ ${pageBlocks}
         const doOpenProperties = () => setAnnotationPropertiesPanel({ ...ctx });
 
         let items;
-        if (ctx.kind === 'callout') {
+        if (ctx.kind === 'textMarkup') {
+          items = [
+            item('Delete', 'delete', () => {
+              const deleted = syncfusionViewerRef.current?.deleteSelectedTextMarkupAnnotation?.();
+              if (!deleted) return;
+              selectedNativeTextMarkupRef.current = null;
+              setHasUnsavedAnnotations(true);
+              if (onUnsavedAnnotationsChange) {
+                onUnsavedAnnotationsChange(true, tabId);
+              }
+            }),
+          ];
+        } else if (ctx.kind === 'callout') {
           // UX: 2026-04-21 — Group / Ungroup items intentionally omitted
           // from the right-click menu. The feature is hidden app-wide until
           // the matrix-per-shape rewrite ships. Handlers above
@@ -29016,6 +29713,12 @@ ${pageBlocks}
                       syncfusionInteractionPhase !== 'idle'
                     }
                     interactionMode={activeTool === 'pan' ? 'Pan' : 'TextSelection'}
+                    textHighlightModeActive={activeTool === 'text-highlight'}
+                    textHighlightColor={strokeColor}
+                    textHighlightOpacity={Math.max(0, Math.min(1, Number(strokeOpacity) / 100 || 0.5))}
+                    textMarkupMode={getSyncfusionTextMarkupMode(activeTool)}
+                    textMarkupColor={strokeColor}
+                    textMarkupOpacity={Math.max(0, Math.min(1, Number(strokeOpacity) / 100 || 1))}
                     onDocumentLoaded={handleSyncfusionDocumentLoad}
                     onDocumentLoadFailed={handleSyncfusionDocumentLoadFailed}
                     onPageChanged={handleSyncfusionPageChange}
@@ -29495,11 +30198,15 @@ ${pageBlocks}
                                   // SVGAnnotationLayer.jsx:~1332).
                                   cursor: (svgInteractive && !isFabricEditMode) ? 'default' : undefined,
                                 }}
-                                onPointerDown={(svgInteractive && !isFabricEditMode) ? (e) => e.stopPropagation() : undefined}
+                                onPointerDown={(svgInteractive && !isFabricEditMode) ? (e) => {
+                                  if (handleSelectSyncfusionTextMarkup(pageNumber, e, resolvedPageSize)) return;
+                                  e.stopPropagation();
+                                } : undefined}
                                 onMouseDown={(svgInteractive && !isFabricEditMode) ? (e) => e.stopPropagation() : undefined}
                               >
                                 <SVGAnnotationLayer
                                   pageNumber={pageNumber}
+                                  isPageInRenderWindow={visiblePagesSet.has(pageNumber) || Math.abs(pageNumber - pageNum) <= 2}
                                   width={resolvedPageSize.width}
                                   height={resolvedPageSize.height}
                                   annotations={pageAnnotations}
@@ -29679,8 +30386,10 @@ ${pageBlocks}
                                   pageWidth={resolvedPageSize.width}
                                   pageHeight={resolvedPageSize.height}
                                   annotations={pageAnnotations}
+                                  callouts={callouts}
                                   onEraseCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'eraser:commit', tool: 'eraser' })}
                                   onEraseCallout={handleDeleteSelectedCallouts}
+                                  eraserMode={eraserMode}
                                   eraserSize={eraserSize}
                                   viewerScale={scale}
                                   selectedSpaceId={annotationSpaceId}
@@ -30341,11 +31050,15 @@ ${pageBlocks}
                                       // mount site. No layer-wide visibility hide; per-callout
                                       // skip happens inside SVGAnnotationLayer via editingCalloutId.
                                       style={{ position: 'relative', width: '100%', height: '100%', pointerEvents: (svgInteractive && !isFabricEditMode) ? 'auto' : 'none', zIndex: 100, cursor: (svgInteractive && !isFabricEditMode) ? 'default' : undefined }}
-                                      onPointerDown={(svgInteractive && !isFabricEditMode) ? (e) => e.stopPropagation() : undefined}
+                                      onPointerDown={(svgInteractive && !isFabricEditMode) ? (e) => {
+                                        if (handleSelectSyncfusionTextMarkup(pageNumber, e, pageSizes[pageNumber])) return;
+                                        e.stopPropagation();
+                                      } : undefined}
                                       onMouseDown={(svgInteractive && !isFabricEditMode) ? (e) => e.stopPropagation() : undefined}
                                     >
                                     <SVGAnnotationLayer
                                       pageNumber={pageNumber}
+                                      isPageInRenderWindow={visiblePagesSet.has(pageNumber) || Math.abs(pageNumber - pageNum) <= 2}
                                       width={pageSizes[pageNumber].width}
                                       height={pageSizes[pageNumber].height}
                                       annotations={pageAnnotationsCS}
@@ -30480,8 +31193,10 @@ ${pageBlocks}
                                         pageWidth={pageSizes[pageNumber].width}
                                         pageHeight={pageSizes[pageNumber].height}
                                         annotations={pageAnnotationsCS}
+                                        callouts={callouts}
                                         onEraseCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'eraser:commit', tool: 'eraser' })}
                                         onEraseCallout={handleDeleteSelectedCallouts}
+                                        eraserMode={eraserMode}
                                         eraserSize={eraserSize}
                                         viewerScale={scale}
                                         selectedSpaceId={annotationSpaceId}
@@ -30925,11 +31640,15 @@ ${pageBlocks}
                                       // skip via editingCalloutId prop.
                                       cursor: (svgInteractive && !isFabricEditMode) ? 'default' : undefined,
                                     }}
-                                    onPointerDown={(svgInteractive && !isFabricEditMode) ? (e) => e.stopPropagation() : undefined}
+                                    onPointerDown={(svgInteractive && !isFabricEditMode) ? (e) => {
+                                      if (handleSelectSyncfusionTextMarkup(pageNum, e, pageSizes[pageNum])) return;
+                                      e.stopPropagation();
+                                    } : undefined}
                                     onMouseDown={(svgInteractive && !isFabricEditMode) ? (e) => e.stopPropagation() : undefined}
                                   >
                                     <SVGAnnotationLayer
                                       pageNumber={pageNum}
+                                      isPageInRenderWindow={true}
                                       width={pageSizes[pageNum].width}
                                       height={pageSizes[pageNum].height}
                                       annotations={pageAnnotations}
@@ -31058,8 +31777,10 @@ ${pageBlocks}
                                       pageWidth={pageSizes[pageNum].width}
                                       pageHeight={pageSizes[pageNum].height}
                                       annotations={pageAnnotations}
+                                      callouts={callouts}
                                       onEraseCommit={(updatedJSON) => handleSaveAnnotations(pageNum, updatedJSON, { source: 'eraser:commit', tool: 'eraser' })}
                                       onEraseCallout={handleDeleteSelectedCallouts}
+                                      eraserMode={eraserMode}
                                       eraserSize={eraserSize}
                                       viewerScale={scale}
                                       selectedSpaceId={annotationSpaceId}
@@ -31575,18 +32296,43 @@ ${pageBlocks}
                   { id: 'pen', label: 'Pen', iconName: 'pen' },
                   { id: 'highlighter', label: 'Highlighter', iconName: 'highlighter' },
                   { id: 'eraser', label: 'Eraser', iconName: 'eraser' }
-                ].map(t => (
-                  <div key={t.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                ].map(t => {
+                  const isHighlighter = t.id === 'highlighter';
+                  const isEraser = t.id === 'eraser';
+                  // TODO: Revisit native PDF text markup tools later. For now the
+                  // highlighter UI is freehand-only so testing stays focused.
+                  const showTextMarkupHighlightMenu = false;
+                  const isHighlighterSplitMenu = isHighlighter && showTextMarkupHighlightMenu;
+                  const isActiveHighlighter = activeTool === 'highlighter';
+                  const isActive = isHighlighter ? isActiveHighlighter : activeTool === t.id;
+                  const button = (
                     <button
-                      onClick={() => {
+                      key={t.id}
+                      data-highlighter-caret-button={isHighlighterSplitMenu ? 'true' : undefined}
+                      data-eraser-caret-button={isEraser ? 'true' : undefined}
+                      onClick={(e) => {
+                        if (isHighlighter) {
+                          e.stopPropagation();
+                          setActiveTool('highlighter');
+                          setHighlighterCaretPopupOpen(false);
+                          return;
+                        }
+                        if (isEraser) {
+                          e.stopPropagation();
+                          setActiveTool('eraser');
+                          setEraserCaretPopupOpen((open) => !open);
+                          return;
+                        }
                         setActiveTool(t.id);
+                        setHighlighterCaretPopupOpen(false);
+                        setEraserCaretPopupOpen(false);
                       }}
                       onMouseEnter={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect();
                         setTooltip({ visible: true, text: t.label, x: rect.left + rect.width / 2, y: rect.top - 10 });
                       }}
                       onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
-                      className={`btn ${activeTool === t.id ? 'btn-active' : 'btn-ghost'}`}
+                      className={`btn ${isActive ? 'btn-active' : 'btn-ghost'}`}
                       style={{
                         position: 'relative',
                         display: 'flex',
@@ -31597,12 +32343,185 @@ ${pageBlocks}
                         minWidth: '40px',
                         width: '40px'
                       }}
-                      title={t.label}
+                      title={isHighlighter ? 'Highlighter' : isEraser ? (eraserMode === 'entire' ? 'Full Stroke Erase' : 'Partial Erase') : t.label}
                     >
                       <Icon name={t.iconName} size={20} />
+                      {(isHighlighterSplitMenu || isEraser) && (
+                        <div
+                          data-highlighter-caret-button={isHighlighterSplitMenu ? 'true' : undefined}
+                          data-eraser-caret-button={isEraser ? 'true' : undefined}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (isHighlighterSplitMenu) {
+                              setActiveTool('highlighter');
+                              setHighlighterCaretPopupOpen((open) => !open);
+                            } else {
+                              setActiveTool('eraser');
+                              setEraserCaretPopupOpen((open) => !open);
+                            }
+                          }}
+                          style={{
+                            position: 'absolute',
+                            left: '50%',
+                            top: '50%',
+                            transform: 'translate(12px, -50%)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: '2px',
+                            pointerEvents: 'auto',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <Icon name="chevronUp" size={12} color="#888888" />
+                        </div>
+                      )}
                     </button>
-                  </div>
-                ))}
+                  );
+
+                  if (!isHighlighterSplitMenu && !isEraser) {
+                    return (
+                      <div key={t.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                        {button}
+                      </div>
+                    );
+                  }
+
+                  let popupFixedTop = 0;
+                  let popupFixedLeft = 0;
+                  const popupOpen = isHighlighterSplitMenu ? highlighterCaretPopupOpen : eraserCaretPopupOpen;
+                  const buttonSelector = isHighlighterSplitMenu ? '[data-highlighter-caret-button="true"]' : '[data-eraser-caret-button="true"]';
+                  if (popupOpen && typeof document !== 'undefined') {
+                    const btnEl = document.querySelector(buttonSelector);
+                    if (btnEl) {
+                      const r = btnEl.getBoundingClientRect();
+                      popupFixedTop = r.top - 6;
+                      popupFixedLeft = r.left + r.width / 2;
+                    }
+                  }
+
+                  const optionStyle = (selected) => ({
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'flex-start',
+                    gap: '8px',
+                    padding: '6px 10px',
+                    background: selected ? '#2a2a2a' : 'transparent',
+                    border: 'none',
+                    borderRadius: '4px',
+                    color: '#DDD',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    fontFamily: 'inherit',
+                    outline: 'none',
+                    whiteSpace: 'nowrap'
+                  });
+
+                  return (
+                    <div key={t.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      {button}
+                      {popupOpen && createPortal(
+                        <div
+                          ref={isHighlighter ? highlighterCaretPopupRef : eraserCaretPopupRef}
+                          data-highlighter-caret-popup={isHighlighterSplitMenu ? 'true' : undefined}
+                          data-eraser-caret-popup={isEraser ? 'true' : undefined}
+                          style={{
+                            position: 'fixed',
+                            top: `${popupFixedTop}px`,
+                            left: `${popupFixedLeft}px`,
+                            transform: 'translate(-50%, -100%)',
+                            backgroundColor: 'rgb(30, 30, 30)',
+                            backgroundImage: 'none',
+                            border: '1px solid #333',
+                            borderRadius: '6px',
+                            boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
+                            zIndex: 999999,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            padding: '4px',
+                            minWidth: isHighlighterSplitMenu ? '150px' : '142px',
+                            color: '#DDD',
+                            pointerEvents: 'auto',
+                            cursor: 'default',
+                            fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif',
+                            fontSize: '12px'
+                          }}
+                        >
+                          <div style={{
+                            padding: '4px 8px',
+                            fontSize: '10px',
+                            color: '#888',
+                            textTransform: 'uppercase',
+                            fontWeight: 600,
+                            borderBottom: '1px solid #333',
+                            marginBottom: '4px'
+                          }}>
+                            {isHighlighterSplitMenu ? 'Highlight Type' : 'Eraser Type'}
+                          </div>
+                          {isHighlighterSplitMenu ? (
+                            <>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveTool('highlighter');
+                                  setHighlighterCaretPopupOpen(false);
+                                }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = '#2a2a2a'; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === 'highlighter' ? '#2a2a2a' : 'transparent'; }}
+                                style={optionStyle(activeTool === 'highlighter')}
+                              >
+                                Freehand Highlight
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveTool('text-highlight');
+                                  setHighlighterCaretPopupOpen(false);
+                                }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = '#2a2a2a'; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === 'text-highlight' ? '#2a2a2a' : 'transparent'; }}
+                                style={optionStyle(activeTool === 'text-highlight')}
+                              >
+                                Text Highlight
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveTool('eraser');
+                                  setEraserMode('partial');
+                                  setEraserCaretPopupOpen(false);
+                                }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = '#2a2a2a'; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = eraserMode === 'partial' ? '#2a2a2a' : 'transparent'; }}
+                                style={optionStyle(eraserMode === 'partial')}
+                              >
+                                Partial Erase
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveTool('eraser');
+                                  setEraserMode('entire');
+                                  setEraserCaretPopupOpen(false);
+                                }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = '#2a2a2a'; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = eraserMode === 'entire' ? '#2a2a2a' : 'transparent'; }}
+                                style={optionStyle(eraserMode === 'entire')}
+                              >
+                                Full Stroke Erase
+                              </button>
+                            </>
+                          )}
+                        </div>,
+                        document.body
+                      )}
+                    </div>
+                  );
+                })}
               </>
             )}
 
@@ -32024,34 +32943,202 @@ ${pageBlocks}
               <>
                 {[
                   { id: 'text', label: 'Text', iconName: 'text' },
-                  { id: 'callout', label: 'Callout', iconName: 'callout' },
-                  { id: 'note', label: 'Note', iconName: 'note' },
-                  { id: 'underline', label: 'Underline', iconName: 'underline' },
-                  { id: 'strikeout', label: 'Strikeout', iconName: 'strikeout' },
-                  { id: 'squiggly', label: 'Squiggly', iconName: 'squiggly' }
-                ].map(t => (
-                  <button
-                    key={t.id}
-                    onClick={() => setActiveTool(t.id)}
-                    onMouseEnter={(e) => {
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      setTooltip({ visible: true, text: t.label, x: rect.left + rect.width / 2, y: rect.top - 10 });
-                    }}
-                    onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
-                    className={`btn ${activeTool === t.id ? 'btn-active' : 'btn-ghost'}`}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      padding: '6px',
-                      gap: '4px',
-                      minWidth: '40px'
-                    }}
-                    title={t.label}
-                  >
-                    <Icon name={t.iconName} size={20} />
-                  </button>
-                ))}
+                  { id: 'callout', label: 'Callout', iconName: 'callout' }
+                  // TODO: Revisit the user-created Note tool later. Imported
+                  // PDF Text/sticky-note annotations still render through
+                  // pdfAnnotationImporter + the normal PDF annotation layers.
+                  // { id: 'note', label: 'Note', iconName: 'note' }
+                  // TODO: Revisit native PDF text markup tools later. Underline,
+                  // squiggly, and strike-through are hidden from the toolbar for now.
+                  // { id: 'underline', label: 'Underline', iconName: 'underline', menu: 'underline' },
+                  // { id: 'strikeout', label: 'Strike Through', iconName: 'strikeout', menu: 'strike' }
+                ].map(t => {
+                  const isUnderlineMenu = t.menu === 'underline';
+                  const isStrikeMenu = t.menu === 'strike';
+                  const popupOpen = isUnderlineMenu ? underlineCaretPopupOpen : (isStrikeMenu ? strikeCaretPopupOpen : false);
+                  const popupRef = isUnderlineMenu ? underlineCaretPopupRef : strikeCaretPopupRef;
+                  const caretAttr = isUnderlineMenu ? 'data-underline-caret-button' : 'data-strike-caret-button';
+                  const isActiveUnderline = isUnderlineMenu && (activeTool === 'underline' || activeTool === 'squiggly');
+                  const isActiveStrike = isStrikeMenu && activeTool === 'strikeout';
+                  const isActive = isActiveUnderline || isActiveStrike || activeTool === t.id;
+
+                  const onMainClick = (e) => {
+                    if (isUnderlineMenu) {
+                      e.stopPropagation();
+                      setActiveTool(activeTool === 'squiggly' ? 'squiggly' : 'underline');
+                      setUnderlineCaretPopupOpen((open) => !open);
+                      setStrikeCaretPopupOpen(false);
+                      return;
+                    }
+                    if (isStrikeMenu) {
+                      e.stopPropagation();
+                      setActiveTool('strikeout');
+                      setStrikeCaretPopupOpen((open) => !open);
+                      setUnderlineCaretPopupOpen(false);
+                      return;
+                    }
+                    setActiveTool(t.id);
+                    setUnderlineCaretPopupOpen(false);
+                    setStrikeCaretPopupOpen(false);
+                  };
+
+                  const button = (
+                    <button
+                      key={t.id}
+                      {...((isUnderlineMenu || isStrikeMenu) ? { [caretAttr]: 'true' } : {})}
+                      onClick={onMainClick}
+                      onMouseEnter={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setTooltip({ visible: true, text: t.label, x: rect.left + rect.width / 2, y: rect.top - 10 });
+                      }}
+                      onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
+                      className={`btn ${isActive ? 'btn-active' : 'btn-ghost'}`}
+                      style={{
+                        position: 'relative',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '6px',
+                        gap: '4px',
+                        minWidth: '40px',
+                        width: (isUnderlineMenu || isStrikeMenu) ? '40px' : undefined
+                      }}
+                      title={isUnderlineMenu ? (activeTool === 'squiggly' ? 'Wavy Underline' : 'Underline') : isStrikeMenu ? 'Strike Through' : t.label}
+                    >
+                      <Icon name={t.iconName} size={20} />
+                      {(isUnderlineMenu || isStrikeMenu) && (
+                        <div
+                          {...{ [caretAttr]: 'true' }}
+                          onClick={onMainClick}
+                          style={{
+                            position: 'absolute',
+                            left: '50%',
+                            top: '50%',
+                            transform: 'translate(12px, -50%)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: '2px',
+                            pointerEvents: 'auto',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <Icon name="chevronUp" size={12} color="#888888" />
+                        </div>
+                      )}
+                    </button>
+                  );
+
+                  if (!isUnderlineMenu && !isStrikeMenu) return button;
+
+                  let popupFixedTop = 0;
+                  let popupFixedLeft = 0;
+                  if (popupOpen && typeof document !== 'undefined') {
+                    const btnEl = document.querySelector(`[${caretAttr}="true"]`);
+                    if (btnEl) {
+                      const r = btnEl.getBoundingClientRect();
+                      popupFixedTop = r.top - 6;
+                      popupFixedLeft = r.left + r.width / 2;
+                    }
+                  }
+
+                  const optionStyle = (selected, disabled = false) => ({
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'flex-start',
+                    gap: '8px',
+                    padding: '6px 10px',
+                    background: selected ? '#2a2a2a' : 'transparent',
+                    border: 'none',
+                    borderRadius: '4px',
+                    color: disabled ? '#666' : '#DDD',
+                    textAlign: 'left',
+                    cursor: disabled ? 'not-allowed' : 'pointer',
+                    fontSize: '12px',
+                    fontFamily: 'inherit',
+                    outline: 'none',
+                    whiteSpace: 'nowrap'
+                  });
+
+                  const renderOption = ({ tool, label, disabled = false }) => (
+                    <button
+                      key={label}
+                      disabled={disabled}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (disabled) return;
+                        setActiveTool(tool);
+                        setUnderlineCaretPopupOpen(false);
+                        setStrikeCaretPopupOpen(false);
+                      }}
+                      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = '#2a2a2a'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = activeTool === tool ? '#2a2a2a' : 'transparent'; }}
+                      style={optionStyle(activeTool === tool, disabled)}
+                    >
+                      {label}
+                    </button>
+                  );
+
+                  return (
+                    <div key={t.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      {button}
+                      {popupOpen && createPortal(
+                        <div
+                          ref={popupRef}
+                          data-underline-caret-popup={isUnderlineMenu ? 'true' : undefined}
+                          data-strike-caret-popup={isStrikeMenu ? 'true' : undefined}
+                          style={{
+                            position: 'fixed',
+                            top: `${popupFixedTop}px`,
+                            left: `${popupFixedLeft}px`,
+                            transform: 'translate(-50%, -100%)',
+                            backgroundColor: 'rgb(30, 30, 30)',
+                            backgroundImage: 'none',
+                            border: '1px solid #333',
+                            borderRadius: '6px',
+                            boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
+                            zIndex: 999999,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            padding: '4px',
+                            minWidth: isUnderlineMenu ? '150px' : '166px',
+                            color: '#DDD',
+                            pointerEvents: 'auto',
+                            cursor: 'default',
+                            fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif',
+                            fontSize: '12px'
+                          }}
+                        >
+                          <div style={{
+                            padding: '4px 8px',
+                            fontSize: '10px',
+                            color: '#888',
+                            textTransform: 'uppercase',
+                            fontWeight: 600,
+                            borderBottom: '1px solid #333',
+                            marginBottom: '4px'
+                          }}>
+                            {isUnderlineMenu ? 'Underline Type' : 'Strike Type'}
+                          </div>
+                          {isUnderlineMenu ? (
+                            <>
+                              {renderOption({ tool: 'underline', label: 'Regular Underline' })}
+                              {renderOption({ tool: 'squiggly', label: 'Wavy Underline' })}
+                              {renderOption({ tool: 'underline', label: 'Dashed Underline', disabled: true })}
+                            </>
+                          ) : (
+                            <>
+                              {renderOption({ tool: 'strikeout', label: 'Straight Strike Through' })}
+                              {renderOption({ tool: 'strikeout', label: 'Dashed Strike Through', disabled: true })}
+                              {renderOption({ tool: 'strikeout', label: 'Wavy Strike Through', disabled: true })}
+                            </>
+                          )}
+                        </div>,
+                        document.body
+                      )}
+                    </div>
+                  );
+                })}
               </>
             )}
 
@@ -32140,7 +33227,7 @@ ${pageBlocks}
                 const isActive = activeCategoryDropdown === 'draw';
                 setActiveCategoryDropdown(isActive ? null : 'draw');
                 if (!isActive) {
-                  if (!['pen', 'highlighter', 'eraser'].includes(activeTool)) {
+                  if (!['pen', 'highlighter', 'text-highlight', 'eraser'].includes(activeTool)) {
                     setActiveTool(lastDrawTool);
                   }
                 }
@@ -32150,7 +33237,7 @@ ${pageBlocks}
                 setTooltip({ visible: true, text: 'Draw', x: rect.left + rect.width / 2, y: rect.top - 10 });
               }}
               onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
-              className={`btn btn-md ${activeTool !== 'pan' && activeTool !== 'select' && (activeCategoryDropdown === 'draw' || ['pen', 'highlighter', 'eraser'].includes(activeTool)) ? 'btn-active' : 'btn-default'}`}
+              className={`btn btn-md ${activeTool !== 'pan' && activeTool !== 'select' && (activeCategoryDropdown === 'draw' || ['pen', 'highlighter', 'text-highlight', 'eraser'].includes(activeTool)) ? 'btn-active' : 'btn-default'}`}
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
               title="Draw"
             >
@@ -32186,7 +33273,7 @@ ${pageBlocks}
                 const isActive = activeCategoryDropdown === 'review';
                 setActiveCategoryDropdown(isActive ? null : 'review');
                 if (!isActive) {
-                  if (!['text', 'callout', 'note', 'underline', 'strikeout', 'squiggly'].includes(activeTool)) {
+                  if (!REVIEW_TOOL_IDS.includes(activeTool)) {
                     setActiveTool(lastReviewTool);
                   }
                 }
@@ -32196,7 +33283,7 @@ ${pageBlocks}
                 setTooltip({ visible: true, text: 'Text', x: rect.left + rect.width / 2, y: rect.top - 10 });
               }}
               onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
-              className={`btn btn-md ${activeTool !== 'pan' && activeTool !== 'select' && (activeCategoryDropdown === 'review' || ['text', 'callout', 'note', 'underline', 'strikeout', 'squiggly'].includes(activeTool)) ? 'btn-active' : 'btn-default'}`}
+              className={`btn btn-md ${activeTool !== 'pan' && activeTool !== 'select' && (activeCategoryDropdown === 'review' || REVIEW_TOOL_IDS.includes(activeTool)) ? 'btn-active' : 'btn-default'}`}
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
               title="Text"
             >

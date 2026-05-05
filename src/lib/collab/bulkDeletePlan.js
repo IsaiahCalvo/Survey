@@ -114,11 +114,20 @@ export function buildBulkDeletePlan({
   }
 
   // Step 4: partition by authorship.
+  // 2026-05-04 — When the viewer is the document owner, treat unattributed
+  // annotations (authorId === null) as the viewer's own. Pre-sharing
+  // legacy annotations and PDF imports that predate the authorId field
+  // arrive with no attribution; the owner of the doc is the only person
+  // who could have created them locally on a non-shared file. Without
+  // this, solo-doc owners get the cross-author confirmation modal on
+  // every delete because the planner classifies unattributed marks as
+  // "from another user."
+  const viewerIsOwner = isOwner(viewerId, documentOwnerId);
   const ownIds = [];
   const foreignIds = [];
   for (const a of eligible) {
     const authorId = getAnnotationAuthorId(a);
-    if (authorId === viewerId) {
+    if (authorId === viewerId || (viewerIsOwner && authorId == null)) {
       ownIds.push(a.id);
     } else {
       foreignIds.push(a.id);

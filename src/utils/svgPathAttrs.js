@@ -227,6 +227,33 @@ function collectSubpaths(path) {
   return subpaths;
 }
 
+function collectSubpathEndpoints(path) {
+  const subpaths = [];
+  let current = null;
+
+  for (const seg of path || []) {
+    if (!Array.isArray(seg) || seg.length === 0) continue;
+
+    if (seg[0] === 'M') {
+      if (current?.points?.length > 0) subpaths.push(current);
+      const point = getPathEndpoint(seg);
+      current = point ? { points: [point], commands: [seg] } : null;
+      continue;
+    }
+
+    if (!current) continue;
+    current.commands.push(seg);
+
+    const endpoint = getPathEndpoint(seg);
+    if (endpoint) {
+      current.points.push(endpoint);
+    }
+  }
+
+  if (current?.points?.length > 0) subpaths.push(current);
+  return subpaths;
+}
+
 function getPointBounds(points) {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const point of points || []) {
@@ -294,6 +321,29 @@ function closedCatmullRomToCubicPath(points) {
   return commands.join(' ');
 }
 
+function openCatmullRomToCubicPath(points) {
+  const pts = dedupeAdjacentPoints(points);
+  if (pts.length < 3) return null;
+
+  const commands = [`M ${pts[0].x} ${pts[0].y}`];
+  for (let i = 0; i < pts.length - 1; i += 1) {
+    const p0 = pts[Math.max(0, i - 1)];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[Math.min(pts.length - 1, i + 2)];
+    const c1 = {
+      x: p1.x + (p2.x - p0.x) / 6,
+      y: p1.y + (p2.y - p0.y) / 6,
+    };
+    const c2 = {
+      x: p2.x - (p3.x - p1.x) / 6,
+      y: p2.y - (p3.y - p1.y) / 6,
+    };
+    commands.push(`C ${c1.x} ${c1.y} ${c2.x} ${c2.y} ${p2.x} ${p2.y}`);
+  }
+  return commands.join(' ');
+}
+
 function ellipsePathDFromBounds(bounds) {
   if (!bounds || bounds.width <= 0 || bounds.height <= 0) return null;
   const cx = bounds.minX + bounds.width / 2;
@@ -333,14 +383,35 @@ function shouldRenderClosedInkAsEllipse(obj) {
 }
 
 function smoothClosedOutlinePathD(path) {
-  const subpaths = collectSubpaths(path);
+  // Drawboard/Adobe ink frequently arrives as a filled outline path with a
+  // mixed command stream: some cubic curves plus some straight L segments.
+  // Rendering that raw stream exposes the low-level polygon edges as jagged
+  // red pen strokes after sync/cache round-trips. For closed filled ink, the
+  // visual source of truth is the outline itself, so rebuild every closed
+  // outline from its drawable endpoints with Catmull-Rom cubics. Do not skip
+  // paths just because they already contain a few C commands.
+  const subpaths = collectSubpathEndpoints(path);
   if (subpaths.length === 0) return null;
   const smoothed = [];
 
   for (const subpath of subpaths) {
-    if (subpath.hasCubic) return null;
     const d = subpath.points.length >= 3
       ? closedCatmullRomToCubicPath(subpath.points)
+      : null;
+    smoothed.push(d || subpath.commands.map(formatPathCommand).join(' '));
+  }
+
+  return smoothed.join(' ');
+}
+
+function smoothOpenStrokePathD(path) {
+  const subpaths = collectSubpathEndpoints(path);
+  if (subpaths.length === 0) return null;
+  const smoothed = [];
+
+  for (const subpath of subpaths) {
+    const d = subpath.points.length >= 3
+      ? openCatmullRomToCubicPath(subpath.points)
       : null;
     smoothed.push(d || subpath.commands.map(formatPathCommand).join(' '));
   }
@@ -360,6 +431,11 @@ export function renderPathToSvgD(obj, attrs = renderPathToSvgAttrs(obj)) {
     if (smoothed) return smoothed;
   }
 
+  if (attrs?.smoothOpenStroke) {
+    const smoothed = smoothOpenStrokePathD(obj.path);
+    if (smoothed) return smoothed;
+  }
+
   return obj.path.map(formatPathCommand).join(' ');
 }
 
@@ -372,6 +448,10 @@ export function renderPathToSvgD(obj, attrs = renderPathToSvgAttrs(obj)) {
 export function renderPathToSvgAttrs(obj) {
   const rawWidth = obj.strokeWidth ?? 1;
   const isImported = isPdfImportedPath(obj);
+  const isPdfInkLike =
+    isImported ||
+    obj?.layer === 'pdf-annotations' ||
+    obj?.data?.pdfAnnotationType === 'Ink';
   const fillPdfInkOutline = shouldFillPdfInkOutline(obj);
   if (fillPdfInkOutline) {
     const fill = isVisiblePaint(obj.fill) ? obj.fill : (obj.stroke ?? '#000');
@@ -407,6 +487,7 @@ export function renderPathToSvgAttrs(obj) {
     strokeWidth,
     fill: obj.fill ?? 'none',
     fillRule: undefined,
+    smoothOpenStroke: isPdfInkLike && isVisiblePaint(obj?.stroke),
     strokeLinecap: obj.strokeLineCap ?? 'round',
     strokeLinejoin: obj.strokeLineJoin ?? 'round',
     vectorEffect,
