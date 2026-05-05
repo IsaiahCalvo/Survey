@@ -1,0 +1,111 @@
+===== SurveyApp Save Log =====
+version:   0.1.45
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1203x826
+locale:    en-US
+timestamp: 2026-05-05T16:13:08.762Z (5/5/2026, 12:13:08 PM)
+==============================
+[dev-auto-login] boot {"hasDevEmail":true,"devEmailHint":"isai***","hasDevPassword":true,"hasCachedSession":true,"cachedSessionEmail":"isaiahcalvo123@gmail.com","cachedSessionExpiresAt":1778000839}
+[dev-auto-login] cached session matches dev email, keeping it
+[dev-auto-login] decision {"needsAutoLogin":false,"willAttemptSignIn":false}
+[CloudSync][hook] session id minted {"sessionId":"0da71108-a181-46a9-a0d9-4177fedb9a2d"}
+[AnnotPerf] finalize idle (forced-reset) — deferring CSS transform removal, waiting for PAL confirmation
+[DebugBridge +13078.1ms] zoom_start {"scale":4,"targetScale":1,"source":"keyboard_toolbar"}
+[CloudSync][hook][state-obs] annotationsByPage initial {"currentCount":0,"pages":0,"hydrated":false}
+[CloudSync][hook][state-obs] callouts initial {"currentCount":0,"hydrated":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":null,"userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":null}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":false,"hasUserId":true,"hasPdfId":false}
+[CSeries wipe] doc=Package 2 - Rev 4 -- IC.pdf-6291605 totalCounters=0 legacyRemoved=0 — nothing to wipe.
+[CloudSync][hook][state-obs] change {"prevCount":0,"currentCount":0,"delta":0,"hydrated":false,"sameRefAsLastByPage":false}
+[CloudSync][hook][state-obs] callout change {"prevCount":0,"currentCount":0,"delta":0,"hydrated":false,"sameRefAsLastCallouts":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":null,"userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605"}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":false,"hasUserId":true,"hasPdfId":true}
+[DebugBridge +14424.5ms] zoom_end {"source":"keyboard_toolbar_settle"}
+[PrintPanel] RENDER — panel closed
+[CloudSync][hook][state-obs] change {"prevCount":0,"currentCount":3056,"delta":3056,"hydrated":false,"sameRefAsLastByPage":false}
+[CloudSync][hook][state-obs] callout change {"prevCount":0,"currentCount":0,"delta":0,"hydrated":false,"sameRefAsLastCallouts":false}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +15159.9ms] pdf_loaded {"pageCount":36,"currentPage":1}
+[DebugBridge +15259.4ms] zoom_start {"scale":0.1,"targetScale":0.9,"source":"zoomChange"}
+[HyperlinkDiag] post-load scan {"hyperlinkCount":0,"samples":[]}
+[HyperlinkDiag] page 1 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 2 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 3 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 4 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[DebugBridge +16504.5ms] zoom_end {"source":"zoomChange_settle"}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +20779.3ms] zoom_start {"scale":0.67,"source":"overlay_wheel_zoom_pre"}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":67,"nextZoom":68.50042372931308,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":18,"scrollTop":3965}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":68,"nextZoom":71.3332010540774,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":41,"scrollTop":4122.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":71,"nextZoom":73.97174600560662,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":72.5,"scrollTop":4312}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":73,"nextZoom":77.13203026834779,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":105.5,"scrollTop":4510}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":77,"nextZoom":80.45553468775887,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":114.5,"scrollTop":4567.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":80,"nextZoom":81.41232784357487,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":146,"scrollTop":4759}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":81,"nextZoom":84.62191188762965,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":155,"scrollTop":4812}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":84,"nextZoom":85.50788402904762,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":164.5,"scrollTop":4871}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":85,"nextZoom":86.50123498719724,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":162.5,"scrollTop":4862.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":86,"nextZoom":86.35640706943805,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":162.5,"scrollTop":4862}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":86,"nextZoom":86.56521159610887,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":168.5,"scrollTop":4899}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":86,"nextZoom":86.97624020095977,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":201,"scrollTop":5095.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":86,"nextZoom":90.26951618710694,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":253.5,"scrollTop":5413}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":90,"nextZoom":95.58129169227982,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":292.5,"scrollTop":5646.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":95,"nextZoom":99.49554585922813,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":345.5,"scrollTop":5968.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":99,"nextZoom":104.88522761934112,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":373,"scrollTop":6136}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":104,"nextZoom":107.68264397398528,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":387.5,"scrollTop":6225.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":107,"nextZoom":109.1831684581459,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":395,"scrollTop":6273}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":109,"nextZoom":109.9845457964993,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":395.5,"scrollTop":6279}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":109,"nextZoom":110.08945524761292,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":398.5,"scrollTop":6296.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":110,"nextZoom":110.39058752105655,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":398,"scrollTop":6296}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":110,"nextZoom":110.38560752586969,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":397.5,"scrollTop":6296}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":110,"nextZoom":110.77053759572699,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":406.5,"scrollTop":6351.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":110,"nextZoom":111.32072076183387,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":426.5,"scrollTop":6473}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":111,"nextZoom":113.3511900492419,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":462,"scrollTop":6691.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":113,"nextZoom":117.01351928108811,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":526,"scrollTop":7078.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":117,"nextZoom":123.49443024814515,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":619.5,"scrollTop":7645}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":123,"nextZoom":132.9802862579277,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":718,"scrollTop":8240}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":132,"nextZoom":142.94006620187466,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":767,"scrollTop":8539.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":142,"nextZoom":147.94623820362764,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":767,"scrollTop":8541}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":147,"nextZoom":147.9822886196189,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":766.5,"scrollTop":8541}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":147,"nextZoom":149.305152069556,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":800.5,"scrollTop":8749}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":149,"nextZoom":151.46688296770523,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":826.5,"scrollTop":8905}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":151,"nextZoom":154.07644268499865,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":888,"scrollTop":9281}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":154,"nextZoom":160.37397616359806,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":976,"scrollTop":9814}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":160,"nextZoom":169.30161093360107,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":1078,"scrollTop":10433}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":169,"nextZoom":179.66236085992557,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":1130,"scrollTop":10747.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":179,"nextZoom":184.92697072162053,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":1248,"scrollTop":11464.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":184,"nextZoom":196.9267453910395,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":1245.5,"scrollTop":11452.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":196,"nextZoom":196.73009416197473,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":1245.5,"scrollTop":11452.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":196,"nextZoom":198.9044395659697,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":1284,"scrollTop":11687}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":198,"nextZoom":200.65462583528281,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":1308,"scrollTop":11834}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":200,"nextZoom":203.12309609925782,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":1386.5,"scrollTop":12312}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":203,"nextZoom":211.12795715304856,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":1511,"scrollTop":13069}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":211,"nextZoom":223.7926172585054,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":1608.5,"scrollTop":13663}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":223,"nextZoom":233.739185607896,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":1734.5,"scrollTop":14429.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":233,"nextZoom":246.57094689809975,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":1955.5,"scrollTop":15768}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":246,"nextZoom":268.9778140496715,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":1956,"scrollTop":15775}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":268,"nextZoom":269.0990188539387,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":1956,"scrollTop":15774.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":269,"nextZoom":271.5277622749426,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":2002,"scrollTop":16055}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":271,"nextZoom":273.79632271555636,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":2024,"scrollTop":16192}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":273,"nextZoom":276.0917677798691,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":2184.5,"scrollTop":17168}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":276,"nextZoom":292.4259434930673,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":2313.5,"scrollTop":17949}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":292,"nextZoom":305.4987675762589,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":2419,"scrollTop":18590}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":305,"nextZoom":316.242895020777,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":2547,"scrollTop":19370.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":316,"nextZoom":329.3006535370995,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":2603,"scrollTop":19711.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":329,"nextZoom":335.01531106530007,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":2889,"scrollTop":21445.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":335,"nextZoom":364.0400723954313,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":2901.5,"scrollTop":21524.5}
+[SyncfusionZoom] cursor-anchor applied {"source":"overlay-wheel-zoom","currentZoom":364,"nextZoom":365.37796001088793,"cursorX":695,"cursorY":305,"pageAnchor":true,"scrollLeft":2901.5,"scrollTop":21524.5}
+[DebugBridge +24427.4ms] zoom_end {"source":"zoomChange_settle"}
+[Diag] tool-switch DETECTED → select (scheduling t+1000ms capture)
+[Diag select] screenshot saved (623 KB) → /Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/TestLogs/testlog-screenshot-select.png
+[Diag select] CAPTURED @ t+1063ms — annotations=410 callouts=0 svgWrappers=4 svgVis=[visible,visible,visible,visible] svgElems=949 svgVisElems=949 eraserCanvases=0 svgMarkupBytes=3280685
