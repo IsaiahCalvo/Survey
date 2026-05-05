@@ -248,7 +248,7 @@ const SYNCFUSION_INTERACTION_COMMIT_FRAME_BUDGET_MS = 6;
 const SYNCFUSION_INTERACTION_EVENT_THROTTLE_MS = 96;
 const SYNCFUSION_INTERACTION_MARK_THROTTLE_MS = 96;
 const SYNCFUSION_ZOOM_OVERLAY_SETTLE_MS = 1000;
-const SYNCFUSION_TRACKPAD_SCROLL_SENSITIVITY = 0.72;
+const SYNCFUSION_TRACKPAD_SCROLL_SENSITIVITY = 0.58;
 // Trackpad pinch/wheel zoom sensitivity. Keep this centralized so both
 // Syncfusion wheel paths stay cursor-anchored and feel equally responsive.
 const SYNCFUSION_WHEEL_ZOOM_EXPONENT = 0.0030;
