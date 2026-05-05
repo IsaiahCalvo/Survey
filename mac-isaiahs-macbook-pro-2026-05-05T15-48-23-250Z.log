@@ -1,0 +1,40 @@
+===== SurveyApp Save Log =====
+version:   0.1.45
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1203x826
+locale:    en-US
+timestamp: 2026-05-05T15:48:23.248Z (5/5/2026, 11:48:23 AM)
+==============================
+[dev-auto-login] boot {"hasDevEmail":true,"devEmailHint":"isai***","hasDevPassword":true,"hasCachedSession":true,"cachedSessionEmail":"isaiahcalvo123@gmail.com","cachedSessionExpiresAt":1777997345}
+[dev-auto-login] cached session matches dev email, keeping it
+[dev-auto-login] decision {"needsAutoLogin":false,"willAttemptSignIn":false}
+[DocumentDelete] selection:enter {"activeSection":"documents","visibleItems":3}
+[DocumentDelete] selection:toggle {"id":"70dadd86-35f0-432b-925f-c59e919a4e4d","wasSelected":false,"selectedIds":["70dadd86-35f0-432b-925f-c59e919a4e4d"]}
+[DocumentDelete] bulk:start {"ctx":"documents","selectedIds":["70dadd86-35f0-432b-925f-c59e919a4e4d"],"selectedCount":1,"visibleDocumentCount":3}
+[DocumentDelete] start {"docId":"70dadd86-35f0-432b-925f-c59e919a4e4d","filePath":"170d915c-5741-4e0b-b03f-deaeedae27bd/general/1774670188924.pdf","source":"bulk-documents"}
+[DocumentDelete] related:deleted {"docId":"70dadd86-35f0-432b-925f-c59e919a4e4d","table":"document_presence","source":"bulk-documents","count":1}
+[DocumentDelete] related:deleted {"docId":"70dadd86-35f0-432b-925f-c59e919a4e4d","table":"document_collaborators","source":"bulk-documents","count":10}
+[DocumentDelete] bulk:start {"ctx":"documents","selectedIds":["70dadd86-35f0-432b-925f-c59e919a4e4d"],"selectedCount":1,"visibleDocumentCount":3}
+[DocumentDelete] start {"docId":"70dadd86-35f0-432b-925f-c59e919a4e4d","filePath":"170d915c-5741-4e0b-b03f-deaeedae27bd/general/1774670188924.pdf","source":"bulk-documents"}
+[DocumentDelete] related:deleted {"docId":"70dadd86-35f0-432b-925f-c59e919a4e4d","table":"document_presence","source":"bulk-documents","count":0}
+[DocumentDelete] related:deleted {"docId":"70dadd86-35f0-432b-925f-c59e919a4e4d","table":"document_collaborators","source":"bulk-documents","count":0}
+[DocumentDelete] bulk:start {"ctx":"documents","selectedIds":["70dadd86-35f0-432b-925f-c59e919a4e4d"],"selectedCount":1,"visibleDocumentCount":3}
+[DocumentDelete] start {"docId":"70dadd86-35f0-432b-925f-c59e919a4e4d","filePath":"170d915c-5741-4e0b-b03f-deaeedae27bd/general/1774670188924.pdf","source":"bulk-documents"}
+[DocumentDelete] related:deleted {"docId":"70dadd86-35f0-432b-925f-c59e919a4e4d","table":"document_presence","source":"bulk-documents","count":0}
+[DocumentDelete] bulk:start {"ctx":"documents","selectedIds":["70dadd86-35f0-432b-925f-c59e919a4e4d"],"selectedCount":1,"visibleDocumentCount":3}
+[DocumentDelete] start {"docId":"70dadd86-35f0-432b-925f-c59e919a4e4d","filePath":"170d915c-5741-4e0b-b03f-deaeedae27bd/general/1774670188924.pdf","source":"bulk-documents"}
+[DocumentDelete] bulk:start {"ctx":"documents","selectedIds":["70dadd86-35f0-432b-925f-c59e919a4e4d"],"selectedCount":1,"visibleDocumentCount":3}
+[DocumentDelete] start {"docId":"70dadd86-35f0-432b-925f-c59e919a4e4d","filePath":"170d915c-5741-4e0b-b03f-deaeedae27bd/general/1774670188924.pdf","source":"bulk-documents"}
+[DocumentDelete] bulk:start {"ctx":"documents","selectedIds":["70dadd86-35f0-432b-925f-c59e919a4e4d"],"selectedCount":1,"visibleDocumentCount":3}
+[DocumentDelete] start {"docId":"70dadd86-35f0-432b-925f-c59e919a4e4d","filePath":"170d915c-5741-4e0b-b03f-deaeedae27bd/general/1774670188924.pdf","source":"bulk-documents"}
+[DocumentDelete] related:deleted {"docId":"70dadd86-35f0-432b-925f-c59e919a4e4d","table":"document_collaborators","source":"bulk-documents","count":0}
+[DocumentDelete] related:deleted {"docId":"70dadd86-35f0-432b-925f-c59e919a4e4d","table":"document_presence","source":"bulk-documents","count":0}
+[DocumentDelete] related:deleted {"docId":"70dadd86-35f0-432b-925f-c59e919a4e4d","table":"document_presence","source":"bulk-documents","count":0}
+[DocumentDelete] related:deleted {"docId":"70dadd86-35f0-432b-925f-c59e919a4e4d","table":"document_collaborators","source":"bulk-documents","count":0}
+[DocumentDelete] related:deleted {"docId":"70dadd86-35f0-432b-925f-c59e919a4e4d","table":"document_collaborators","source":"bulk-documents","count":0}
+[DocumentDelete] related:deleted {"docId":"70dadd86-35f0-432b-925f-c59e919a4e4d","table":"document_presence","source":"bulk-documents","count":0}
+[DocumentDelete] related:deleted {"docId":"70dadd86-35f0-432b-925f-c59e919a4e4d","table":"document_collaborators","source":"bulk-documents","count":0}
