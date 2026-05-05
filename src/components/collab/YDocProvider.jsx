@@ -77,6 +77,7 @@ import { useRemoteEditors } from '../../hooks/useRemoteEditors.js';
 // (sync_queue_stuck banner gate + QuarantineMarkerOverlay sibling). Existing
 // Phase 27/28/29 code is byte-identical.
 import { runBackfill } from '../../lib/collab/crdtBackfill.js';
+import { dedupePdfImports } from '../../lib/collab/crdtDedupePdfImports.js';
 import { drainQueue } from '../../lib/collab/crdtDualWriteQueue.js';
 import { useDualWriteQueue } from '../../hooks/useDualWriteQueue.js';
 import { QuarantineMarkerOverlay } from './QuarantineMarkerOverlay.jsx';
@@ -753,6 +754,28 @@ function YDocProviderInner({ docId, children, closeDocument }) {
           // "First-open import feel" decision preserved verbatim).
           markCutoverComplete: true,
         });
+        // 2026-05-03 — Auto-dedupe pass for PDF-imported annotations.
+        // UX: pre-Phase-31 the same PDF could be imported into a document
+        // multiple times, leaving 2-4 visually-identical strokes stacked on
+        // top of each other. Always-run (idempotent) so re-imported
+        // duplicates from a recovery loop also get trimmed.
+        if (!cancelled) {
+          try {
+            const dedupeResult = dedupePdfImports(ydoc);
+            // 2026-05-04 — Notify the cloud-sync hook to re-hydrate state
+            // when dedupe actually removed entries. Without this, the user
+            // sees the pre-dedupe duplicate-laden state on screen even
+            // though the Y.Map (source of truth) has been trimmed.
+            if (dedupeResult && dedupeResult.removed > 0 && typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('crdt:dedupe-resync', {
+                detail: { documentId: docId, removed: dedupeResult.removed },
+              }));
+            }
+          } catch (dedupeErr) {
+            // eslint-disable-next-line no-console
+            console.warn('[YDocProvider] dedupe pass failed', dedupeErr?.message);
+          }
+        }
       } catch (err) {
         // Silent retry on partial failure per CONTEXT.md. Next first-open
         // tries again.
@@ -873,11 +896,13 @@ function YDocProviderInner({ docId, children, closeDocument }) {
   // Phase 35 Plan 05 — cleanup-banner audit effect. Runs once per document
   // open. Flow:
   //   1. Resolve viewerId from supabase.auth.getSession().
-  //   2. Resolve documentOwnerId from the documents table by docId.
+  //   2. Resolve documentOwnerId + cutover seal from the documents table by docId.
   //   3. Short-circuit when viewer is not the owner (collaborators never see
   //      the banner per CONTEXT.md decision).
   //   4. Short-circuit when documentId is in the sticky-dismissed set.
-  //   5. Load the cloud snapshot via loadAllNonHighlightAnnotations and pass
+  //   5. Skip sealed CRDT/Y.Doc docs; legacy rows are rollback residue there,
+  //      not the display source of truth.
+  //   6. Load the cloud snapshot via loadAllNonHighlightAnnotations and pass
   //      the rawRows (mapped to the audit's expected shape) to auditResidue.
   //   6. Persist the resulting residueIds in state — banner gate reads it.
   //
@@ -920,10 +945,11 @@ function YDocProviderInner({ docId, children, closeDocument }) {
       // fails (network blip, RLS denial), the audit bails — no banner, no
       // false alarm.
       let documentOwnerId = null;
+      let cutoverCompletedAt = null;
       try {
         const { data, error } = await supabase
           .from('documents')
-          .select('user_id')
+          .select('user_id, cutover_completed_at')
           .eq('id', docId)
           .maybeSingle();
         if (error) {
@@ -931,6 +957,7 @@ function YDocProviderInner({ docId, children, closeDocument }) {
           console.warn('[Phase35][cleanup] documents owner lookup failed', error?.message);
         } else {
           documentOwnerId = data?.user_id ?? null;
+          cutoverCompletedAt = data?.cutover_completed_at ?? null;
         }
       } catch (err) {
         // eslint-disable-next-line no-console
@@ -947,6 +974,15 @@ function YDocProviderInner({ docId, children, closeDocument }) {
       // Sticky-per-document dismissal short-circuit.
       const dismissedDocIds = readDismissedDocIds();
       if (dismissedDocIds.has(docId)) {
+        setCleanupResidueIds([]);
+        return;
+      }
+
+      if (cutoverCompletedAt) {
+        // 2026-05-05 — Cutover-sealed documents render from Y.Doc. The legacy
+        // annotation table can still hold duplicate pre-dedupe Drawboard/PDF
+        // rows, so scanning it here slows startup and can confuse debugging
+        // without changing what the user should see.
         setCleanupResidueIds([]);
         return;
       }

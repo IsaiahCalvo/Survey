@@ -146,6 +146,7 @@ export function useUndoToast() {
 
   useEffect(() => {
     const queue = queueRef.current;
+    if (!queue || typeof queue.onChange !== 'function') return undefined;
     const off = queue.onChange((next) => {
       setToast(next);
     });

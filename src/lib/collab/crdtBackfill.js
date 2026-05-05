@@ -249,7 +249,23 @@ export async function runBackfill(args) {
         // so the cost is one paginated SELECT plus the cheap probe. The seal
         // timestamp stays as-is (we don't unseal); the loop tops up Y.Map.
         const yMapForProbe = args.yMapAnnotations || ydoc.getMap('annotations');
-        const yMapSize = (yMapForProbe && typeof yMapForProbe.size === 'number') ? yMapForProbe.size : 0;
+        // 2026-05-04 — IndexedDB-load race guard. The backfill kickoff fires
+        // synchronously after the Y.Doc constructor, racing the
+        // IndexeddbPersistence load. Pre-guard: if the doc is sealed AND the
+        // Y.Map looks empty AND IndexedDB hasn't finished syncing yet, wait
+        // up to ~1.5s for IndexedDB to load its cached state. Otherwise the
+        // probe sees Y.Map=0, the recovery loop fires, and re-imports
+        // duplicate-laden legacy rows on top of (eventual) IndexedDB cache —
+        // the dupes-after-dedupe regression.
+        let probedSize = (yMapForProbe && typeof yMapForProbe.size === 'number') ? yMapForProbe.size : 0;
+        if (probedSize === 0) {
+          for (let waitedMs = 0; waitedMs < 1500 && probedSize === 0; waitedMs += 100) {
+            // eslint-disable-next-line no-await-in-loop
+            await new Promise((r) => setTimeout(r, 100));
+            probedSize = (yMapForProbe && typeof yMapForProbe.size === 'number') ? yMapForProbe.size : 0;
+          }
+        }
+        const yMapSize = probedSize;
         let legacyCount = null;
         let probeOk = false;
         try {
@@ -267,9 +283,69 @@ export async function runBackfill(args) {
           // don't trust a potentially-empty Y.Map.
         }
         const tolerance = probeOk ? Math.max(100, Math.ceil((legacyCount || 0) * 0.05)) : 0;
-        const yMapLooksHealthy = probeOk && (yMapSize >= (legacyCount || 0) - tolerance);
+        // 2026-05-04 — Dedupe-aware health check. After dedupePdfImports
+        // trims duplicate-import legacy rows from the Y.Map, yMapSize is
+        // legitimately smaller than legacyCount (legacy still holds the
+        // duplicate rows). The dedupe marker on yMapMeta is the contract
+        // saying "Y.Map has been intentionally trimmed; don't compare to
+        // legacy count." When the marker is set we trust Y.Map outright,
+        // skipping the recovery loop that would otherwise re-import the
+        // duplicates and undo the dedupe on every doc open.
+        const __ymapMeta = ydoc.getMap('meta');
+        const dedupeRan = !!__ymapMeta.get('dedupe_pdf_imports_v1_done');
+        const lastGoodSize = __ymapMeta.get('dedupe_pdf_imports_v1_last_good_size') || 0;
+        const dedupeAnchorOk = lastGoodSize > 0
+          ? yMapSize >= Math.floor(lastGoodSize * 0.7)
+          : yMapSize > 0;
+        // 2026-05-05 — Once PDF-import dedupe has recorded a healthy Y.Doc
+        // size, do not compare the sealed Y.Doc to legacy rows again. The
+        // legacy table intentionally still contains duplicate Drawboard/PDF
+        // imports; re-reading it can repaint jagged duplicate shapes over the
+        // smoothed Y.Doc state and makes startup crawl through 20k+ rows.
+        if (dedupeRan && dedupeAnchorOk && yMapSize >= 50) {
+          console.log('[Phase31 UAT] backfill:cutover-dedupe-anchor-skip ' + JSON.stringify({
+            documentId, userId, yMapSize, lastGoodSize,
+          }));
+          return {
+            ranAs: 'cutover_already_complete_dedupe_anchor',
+            cutoverCompleted: true,
+            cutoverAt: docRow.cutover_completed_at,
+            yMapSize,
+            legacyCount: null,
+          };
+        }
+        // 2026-05-04 — Tighter dedupe-aware health check. After dedupe, we
+        // know roughly how many entries should be in Y.Map (lastGoodSize).
+        // Recovery should re-run if Y.Map has dropped well below that
+        // anchor — that's an accidental wipe, not a legitimate state. We
+        // tolerate a 30% drop from the last known good (room for user-
+        // intentional deletes) but anything smaller triggers recovery.
+        // 2026-05-04 — Sanity floor. A previous session wiped Y.Map to 3
+        // entries before the lastGoodSize anchor was being written, so
+        // dedupeAnchorOk falls back to "yMapSize > 0" and the recovery
+        // never fires. If legacy still holds substantial data and Y.Map
+        // is suspiciously tiny (<100 against thousands in legacy), force
+        // recovery regardless of dedupe marker — that's an orphan-wipe
+        // scenario, not legitimate state.
+        // 2026-05-04 — Hard floor for sealed docs: a sealed doc that wrote
+        // cutover_completed_at had real data at seal time. If Y.Map now
+        // holds fewer than 50 entries, that's a wipe regardless of what
+        // the dedupe anchor or legacy probe say. The previous anchor-only
+        // check was poisoned when an earlier dedupe ran on a wiped Y.Map
+        // and recorded 3 as "last known good." This hard floor unblocks
+        // recovery without trusting the corrupted anchor.
+        const hardFloorBreached = yMapSize < 50;
+        const sanityFloorBreached = hardFloorBreached || (probeOk
+          && legacyCount > 1000
+          && yMapSize < 100);
+        const yMapLooksHealthy =
+          sanityFloorBreached
+            ? false
+            : dedupeRan
+              ? dedupeAnchorOk
+              : (probeOk && (yMapSize >= (legacyCount || 0) - tolerance));
         console.log('[Phase31 UAT] backfill:degeneracy-probe ' + JSON.stringify({
-          documentId, userId, yMapSize, legacyCount, probeOk, tolerance, yMapLooksHealthy,
+          documentId, userId, yMapSize, legacyCount, probeOk, tolerance, yMapLooksHealthy, dedupeRan, lastGoodSize,
         }));
         if (yMapLooksHealthy) {
           return {
@@ -437,65 +513,88 @@ async function runBackfillUnlocked(args) {
 
   let imported = 0;
   let skipped = 0;
+  // 2026-05-03 — Targeted diag for "native in-app annotations not showing"
+  // regression. Counts each row's annotation_type at the import / skip
+  // decision so the closing log line can answer "did all 42 squares + 4
+  // freetext + N counters get into Y.Map, or did some kinds silently fail?"
+  // Keyed by legacy row.annotation_type (matches the legacy rowsByType log
+  // shape) for direct comparison.
+  const importedByType = {};
+  const skippedByType = {};
 
-  for (const row of rows) {
-    try {
-      const { fabricObject, pageNumber, highlightId } = deserializeRowDefensive(row);
-      fabricObject.pageNumber = pageNumber;
+  // 2026-05-03 — Batched-transact migration. Pre-batch the loop wrapped each
+  // row in two separate ydoc.transact calls (one inside applyFabricCreate,
+  // one for the createdAt override). On a 22,630-row migration that fired
+  // ~45,000 transactions, each paying observer-fan-out and y-indexeddb
+  // commit overhead. Wrapping a window of rows in one outer transact
+  // coalesces all inner transacts into a single transaction at the
+  // observer level (Yjs nested-transact contract). Phase 33 activity log
+  // contract preserved: the outer batchOrigin still carries source =
+  // 'crdt-backfill' so the log renders one "Document migrated" row.
+  // Per-row meta.authorId attribution still flows through ctx.userId on
+  // the bridge call (separate from the transaction-tag origin).
+  const BACKFILL_BATCH_SIZE = 100;
+  const batchOrigin = buildBackfillOrigin({
+    originPayloadFactory,
+    userId,
+    deviceId: LEGACY_DEVICE_ID,
+    sessionId,
+    clientID,
+  });
+  for (let batchStart = 0; batchStart < rows.length; batchStart += BACKFILL_BATCH_SIZE) {
+    const batchEnd = Math.min(batchStart + BACKFILL_BATCH_SIZE, rows.length);
+    ydoc.transact(() => {
+      for (let i = batchStart; i < batchEnd; i++) {
+        const row = rows[i];
+        const __rowType = row?.annotation_type || 'unknown';
+        try {
+          const { fabricObject, pageNumber, highlightId } = deserializeRowDefensive(row);
+          fabricObject.pageNumber = pageNumber;
 
-      // ORIGIN: source = 'crdt-backfill' so Phase 33 activity log can render
-      // a single "Document migrated" row per migrated document.
-      // userId in the origin = LEGACY ROW's user_id (original creator), NOT
-      // the importing user - preserves MIGRATE-01 author attribution at the
-      // transaction-tag level (Phase 33 reads origins to attribute log rows).
-      const originPayload = buildBackfillOrigin({
-        originPayloadFactory,
-        userId: row.user_id,                    // ORIGINAL CREATOR
-        deviceId: LEGACY_DEVICE_ID,             // CONTEXT.md literal decision: 'before-v2.4'
-        sessionId,
-        clientID,
-      });
+          // Per-row origin still built — used as the inner originPayload arg
+          // for applyFabricCreate so the bridge's nested transact carries
+          // matching source attribution. The outer batch transact's origin
+          // wins at the observer level; this preserves the contract for
+          // any code path that inspects originPayload directly.
+          const originPayload = buildBackfillOrigin({
+            originPayloadFactory,
+            userId: row.user_id,
+            deviceId: LEGACY_DEVICE_ID,
+            sessionId,
+            clientID,
+          });
 
-      // CTX: bridge consumes ctx.userId / ctx.deviceId for meta.authorId /
-      // meta.deviceId (line 242-243 of crdtAnnotationBridge.js).
-      const ctx = {
-        userId: row.user_id,                    // sets meta.authorId (Pitfall 30-2 fix)
-        deviceId: LEGACY_DEVICE_ID,             // sets meta.deviceId
-        sessionId,
-        clientID,
-      };
+          const ctx = {
+            userId: row.user_id,                    // sets meta.authorId (Pitfall 30-2 fix)
+            deviceId: LEGACY_DEVICE_ID,             // sets meta.deviceId
+            sessionId,
+            clientID,
+          };
 
-      // Pass 1: bridge CREATE branch seeds meta.authorId / meta.deviceId /
-      // meta.createdAt = Date.now(). The bridge's idempotency catches re-runs
-      // because metaYMap.get('authorId') will be non-null on second pass.
-      applyFabricCreate(ydoc, yMapAnnotations, fabricObject, originPayload, ctx);
+          applyFabricCreate(ydoc, yMapAnnotations, fabricObject, originPayload, ctx);
 
-      // Pass 2: override meta.createdAt with the legacy row's timestamp.
-      // Pitfall 30-1 fix per RESEARCH.md Open Question 1 recommendation b.
-      // Wrapped in its own ydoc.transact so the override carries the same
-      // 'crdt-backfill' origin tag - Phase 33 activity log filters by origin.
-      const legacyCreatedAtMs = row.created_at ? new Date(row.created_at).getTime() : Date.now();
-      const annoId = fabricObject.data.id || highlightId;
-      ydoc.transact(() => {
-        const annoYMap = yMapAnnotations.get(annoId);
-        if (!annoYMap) return;
-        const metaYMap = annoYMap.get('meta');
-        if (!metaYMap) return;
-        // Only override if the bridge actually wrote createdAt = Date.now()
-        // on this pass (i.e. CREATE branch fired). On re-run, bridge skips
-        // CREATE and the existing legacy createdAt is already in place; setting
-        // again is a no-op per Y.Map same-key-same-value semantics.
-        metaYMap.set('createdAt', legacyCreatedAtMs);
-      }, originPayload);
+          // Inline createdAt override (no inner transact — coalesced into
+          // the outer batch transact). Pitfall 30-1 fix preserved.
+          const legacyCreatedAtMs = row.created_at ? new Date(row.created_at).getTime() : Date.now();
+          const annoId = fabricObject.data.id || highlightId;
+          const annoYMap = yMapAnnotations.get(annoId);
+          if (annoYMap) {
+            const metaYMap = annoYMap.get('meta');
+            if (metaYMap) {
+              metaYMap.set('createdAt', legacyCreatedAtMs);
+            }
+          }
 
-      imported++;
-    } catch (err) {
-      // Skip this row, log to console, keep going. One bad row never blocks
-      // the rest. Next first-open retries via the missing-doneKey path.
-      // eslint-disable-next-line no-console
-      console.warn('[crdtBackfill] skipping row', row?.highlight_id, err?.message);
-      skipped++;
-    }
+          imported++;
+          importedByType[__rowType] = (importedByType[__rowType] || 0) + 1;
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn('[crdtBackfill] skipping row', row?.highlight_id, err?.message);
+          skipped++;
+          skippedByType[__rowType] = (skippedByType[__rowType] || 0) + 1;
+        }
+      }
+    }, batchOrigin);
   }
 
   // Mark done. Stored INSIDE Y.Doc so it propagates via CRDT sync. A second
@@ -576,6 +675,8 @@ async function runBackfillUnlocked(args) {
     yMapSizeAfter: yMapAnnotations.size,
     cutoverRequested: !!args.markCutoverComplete,
     cutoverCompleted,
+    importedByType,
+    skippedByType,
   }));
   return { ranAs: 'leader', imported, skipped, cutoverCompleted };
 }

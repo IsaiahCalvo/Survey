@@ -42,6 +42,23 @@ function isVisiblePaint(value) {
   return value != null && value !== '' && value !== 'none' && value !== 'transparent';
 }
 
+function extractRgbaAlpha(value) {
+  if (typeof value !== 'string') return null;
+  const match = value.match(/rgba\(\s*[^,]+,\s*[^,]+,\s*[^,]+,\s*([^)]+)\)/i);
+  if (!match) return null;
+  const alpha = Number(match[1]);
+  return Number.isFinite(alpha) ? alpha : null;
+}
+
+function getEffectivePathAlpha(obj) {
+  const fillAlpha = extractRgbaAlpha(obj?.fill);
+  const strokeAlpha = extractRgbaAlpha(obj?.stroke);
+  const paintAlpha = fillAlpha ?? strokeAlpha;
+  const objectOpacity = Number(obj?.opacity ?? 1);
+  if (Number.isFinite(paintAlpha)) return paintAlpha * (Number.isFinite(objectOpacity) ? objectOpacity : 1);
+  return Number.isFinite(objectOpacity) ? objectOpacity : 1;
+}
+
 function getPathEndpoint(seg) {
   if (!Array.isArray(seg) || seg.length === 0) return null;
   const cmd = seg[0];
@@ -72,6 +89,23 @@ function getPathBounds(path) {
   }
   if (!Number.isFinite(minX) || !Number.isFinite(minY)) return null;
   return { width: maxX - minX, height: maxY - minY };
+}
+
+function getPathBoundsWithOrigin(path) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const seg of path || []) {
+    for (let j = 1; j + 1 < seg.length; j += 2) {
+      const x = seg[j];
+      const y = seg[j + 1];
+      if (typeof x !== 'number' || typeof y !== 'number') continue;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+    }
+  }
+  if (!Number.isFinite(minX) || !Number.isFinite(minY)) return null;
+  return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
 }
 
 function allSubpathsAreClosed(path) {
@@ -124,16 +158,27 @@ function shouldFillPdfInkOutline(obj) {
     obj?.layer === 'pdf-annotations' ||
     obj?.data?.pdfAnnotationType === 'Ink' ||
     obj?.data?.pdfInkRenderMode === FILLED_PDF_INK_MODE;
-  if (!isPdfInk) return false;
   if (obj?.pdfInkRenderMode === FILLED_PDF_INK_MODE || obj?.data?.pdfInkRenderMode === FILLED_PDF_INK_MODE) {
     return true;
   }
 
   // Drawboard/Adobe often save marker dots and pressure ink as closed
   // zero-width outlines. Existing cloud rows may only have our 0.9 fallback
-  // width, and some rows may already have a fill but lack the marker, so
-  // detect the geometry too instead of relying only on new imports.
+  // width, and sync/edit round-trips can strip PDF provenance entirely. Keep
+  // this geometry fallback broad on purpose: a visible fill plus a closed
+  // thin/no-stroke path is already a filled outline, so it must render filled
+  // and smoothed even if Drawboard-specific metadata is missing.
   const rawWidth = Number(obj?.strokeWidth ?? 1);
+  const hasVisibleFill = isVisiblePaint(obj?.fill);
+  const hasVisibleStroke = isVisiblePaint(obj?.stroke);
+  const isThinOrNoStroke = rawWidth <= 1.1 || !hasVisibleStroke;
+  const hasFilledClosedOutlineGeometry =
+    hasVisibleFill &&
+    isThinOrNoStroke &&
+    hasSubstantiveClosedSubpath(obj?.path);
+  if (hasFilledClosedOutlineGeometry) return true;
+  if (!isPdfInk) return false;
+
   return rawWidth <= 1.1 && hasSubstantiveClosedSubpath(obj?.path);
 }
 
@@ -249,6 +294,44 @@ function closedCatmullRomToCubicPath(points) {
   return commands.join(' ');
 }
 
+function ellipsePathDFromBounds(bounds) {
+  if (!bounds || bounds.width <= 0 || bounds.height <= 0) return null;
+  const cx = bounds.minX + bounds.width / 2;
+  const cy = bounds.minY + bounds.height / 2;
+  const rx = bounds.width / 2;
+  const ry = bounds.height / 2;
+  // Four cubic arcs. This is intentionally deterministic and smooth; Drawboard
+  // marker dots are stored as low-point closed ink outlines, but Adobe/Drawboard
+  // render them as soft round blobs, not as the raw polygon vertices.
+  const k = 0.5522847498307936;
+  return [
+    `M ${cx + rx} ${cy}`,
+    `C ${cx + rx} ${cy + ry * k} ${cx + rx * k} ${cy + ry} ${cx} ${cy + ry}`,
+    `C ${cx - rx * k} ${cy + ry} ${cx - rx} ${cy + ry * k} ${cx - rx} ${cy}`,
+    `C ${cx - rx} ${cy - ry * k} ${cx - rx * k} ${cy - ry} ${cx} ${cy - ry}`,
+    `C ${cx + rx * k} ${cy - ry} ${cx + rx} ${cy - ry * k} ${cx + rx} ${cy}`,
+    'Z',
+  ].join(' ');
+}
+
+function shouldRenderClosedInkAsEllipse(obj) {
+  // Drawboard stores the blue/yellow/purple marker dots as low-point closed
+  // Ink outlines with transparency baked into rgba(...) paint, not always in
+  // Fabric's top-level opacity. If we only look at `opacity`, later sync/cache
+  // round-trips render those dots as jagged polygons instead of round blobs.
+  const alpha = getEffectivePathAlpha(obj);
+  if (!(alpha > 0 && alpha < 0.65)) return false;
+  const bounds = getPathBoundsWithOrigin(obj?.path);
+  if (!bounds || bounds.width < 4 || bounds.height < 4) return false;
+  const aspect = bounds.width / bounds.height;
+  if (aspect < 0.45 || aspect > 2.2) return false;
+  const subpaths = collectSubpaths(obj?.path);
+  if (subpaths.length !== 1) return false;
+  const pointCount = subpaths[0]?.points?.length || 0;
+  if (pointCount < 6) return false;
+  return true;
+}
+
 function smoothClosedOutlinePathD(path) {
   const subpaths = collectSubpaths(path);
   if (subpaths.length === 0) return null;
@@ -269,6 +352,10 @@ export function renderPathToSvgD(obj, attrs = renderPathToSvgAttrs(obj)) {
   if (!Array.isArray(obj?.path) || obj.path.length === 0) return '';
 
   if (attrs?.smoothClosedOutline) {
+    if (attrs?.smoothClosedOutlineAsEllipse) {
+      const ellipseD = ellipsePathDFromBounds(getPathBoundsWithOrigin(obj.path));
+      if (ellipseD) return ellipseD;
+    }
     const smoothed = smoothClosedOutlinePathD(obj.path);
     if (smoothed) return smoothed;
   }
@@ -294,6 +381,7 @@ export function renderPathToSvgAttrs(obj) {
       fill,
       fillRule: 'nonzero',
       smoothClosedOutline: true,
+      smoothClosedOutlineAsEllipse: shouldRenderClosedInkAsEllipse(obj),
       strokeLinecap: obj.strokeLineCap ?? 'round',
       strokeLinejoin: obj.strokeLineJoin ?? 'round',
       vectorEffect: undefined,

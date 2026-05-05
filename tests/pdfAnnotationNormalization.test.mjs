@@ -278,6 +278,85 @@ test('synced PDF-layer filled Ink rows keep smoothing even if import flags are m
   assert.match(d, /\bC\b/, 'metadata-stripped synced PDF outline should stay smooth');
 });
 
+test('metadata-stripped filled outlines stay filled and smooth after sync/edit round-trips', () => {
+  const strippedFilledOutline = {
+    type: 'path',
+    path: [
+      ['M', 0, 0],
+      ['L', 8, 0],
+      ['L', 8, 8],
+      ['L', 0, 8],
+      ['L', 0.1, 0.1],
+    ],
+    stroke: 'none',
+    strokeWidth: 0,
+    fill: 'rgba(164, 103, 243, 0.301961)',
+  };
+
+  const attrs = renderPathToSvgAttrs(strippedFilledOutline);
+  assert.equal(attrs.stroke, 'none');
+  assert.equal(attrs.fill, strippedFilledOutline.fill);
+  assert.equal(attrs.smoothClosedOutline, true);
+
+  const d = renderPathToSvgD(strippedFilledOutline, attrs);
+  assert.match(d, /\bC\b/, 'filled outline should be smoothed without PDF metadata');
+});
+
+test('semi-transparent Drawboard marker dots render as true smooth ellipses', () => {
+  const markerDot = {
+    type: 'path',
+    path: [
+      ['M', 10, 0],
+      ['L', 4, 1],
+      ['L', 0, 7],
+      ['L', 2, 14],
+      ['L', 8, 19],
+      ['L', 16, 18],
+      ['L', 20, 11],
+      ['L', 18, 4],
+      ['L', 10.2, 0.1],
+    ],
+    stroke: null,
+    strokeWidth: 0,
+    fill: 'rgba(164, 103, 243, 0.301961)',
+    opacity: 0.301961,
+    layer: 'pdf-annotations',
+  };
+
+  const attrs = renderPathToSvgAttrs(markerDot);
+  assert.equal(attrs.smoothClosedOutline, true);
+  assert.equal(attrs.smoothClosedOutlineAsEllipse, true);
+
+  const d = renderPathToSvgD(markerDot, attrs);
+  assert.match(d, /M 20 9.5/, 'ellipse starts at the right edge of the bbox');
+  assert.match(d, /\bC\b/, 'ellipse is rendered with cubic arcs');
+  assert.match(d, /\bZ\b/, 'ellipse remains closed for fill rendering');
+});
+
+test('synced Drawboard marker dots use rgba alpha even when opacity round-trips to 1', () => {
+  const syncedMarkerDot = {
+    type: 'path',
+    path: [
+      ['M', 20, 12],
+      ['C', 20, 17, 16, 21, 10, 21],
+      ['C', 4, 21, 0, 17, 0, 12],
+      ['C', 0, 6, 4, 0, 10, 0],
+      ['C', 16, 0, 20, 6, 20, 12],
+    ],
+    stroke: 'none',
+    strokeWidth: 0,
+    fill: 'rgba(87, 142, 255, 0.301961)',
+    opacity: 1,
+    layer: 'pdf-annotations',
+  };
+
+  const attrs = renderPathToSvgAttrs(syncedMarkerDot);
+  assert.equal(attrs.smoothClosedOutlineAsEllipse, true);
+
+  const d = renderPathToSvgD(syncedMarkerDot, attrs);
+  assert.match(d, /M 20 10.5/, 'ellipse should replace the cached cubic outline');
+});
+
 test('synced filled Ink rows with tiny open subpaths still smooth the main outline', () => {
   const syncedRow = {
     type: 'path',
