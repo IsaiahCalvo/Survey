@@ -9286,6 +9286,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const syncfusionRefreshFrameRef = useRef(null);
   const overlayVisibilityObserverRef = useRef(null);
   const syncfusionEventTimesRef = useRef({});
+  const syncfusionPageVisitPerfRef = useRef({ seq: 0, seenPages: new Set(), pending: null });
   const lastViewStateEmittedRef = useRef(null);
   const lastAppliedInitialViewStateRef = useRef(null);
   const syncfusionNavigateResetTimerRef = useRef(null);
@@ -13816,6 +13817,88 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     pendingRendererRestoreRef.current = null;
   }, [finishSyncfusionInteractionWindow]);
 
+  const readSyncfusionPageVisitState = useCallback((pageNumber) => {
+    const pageContainerMap = syncfusionPageContainersStateRef.current || pageContainersRef.current || {};
+    const directHost = pageContainerMap[pageNumber] || pageContainersRef.current?.[pageNumber] || null;
+    const domHost = typeof document !== 'undefined'
+      ? document.querySelector(`.e-pv-page-div[data-page-number="${pageNumber}"]`)
+      : null;
+    const host = directHost?.isConnected ? directHost : domHost;
+    const hasContainer = !!host?.isConnected;
+    const hasPdfSurface = !!host?.querySelector?.([
+      'img[id*="_tileimg_"]',
+      'img[id*="_pageCanvas_"]',
+      'canvas[id*="_pageCanvas_"]',
+      '.e-pv-page-canvas',
+      '.e-pv-text-layer',
+      '.e-pv-image-canvas'
+    ].join(','));
+    const activeSpinner = !!host?.querySelector?.([
+      '.e-spinner-pane:not(.e-spin-hide)',
+      '.e-spinner-pane[aria-hidden="false"]'
+    ].join(','));
+    const hasAnnotationOverlay = !!host?.querySelector?.('.canvas-container');
+
+    return {
+      hasContainer,
+      hasPdfSurface,
+      spinnerVisible: activeSpinner,
+      hasAnnotationOverlay,
+      ready: hasContainer && hasPdfSurface && !activeSpinner
+    };
+  }, []);
+
+  const startSyncfusionPageVisitPerf = useCallback((pageNumber, pageCount) => {
+    if (!Number.isFinite(pageNumber) || pageNumber <= 0) return;
+
+    const perfState = syncfusionPageVisitPerfRef.current;
+    const previousPending = perfState.pending;
+    if (previousPending?.timerId) {
+      cancelAnimationFrame(previousPending.timerId);
+    }
+
+    const nowMs = performance.now();
+    const seenBefore = perfState.seenPages.has(pageNumber);
+    perfState.seenPages.add(pageNumber);
+    const seq = perfState.seq + 1;
+    const initialState = readSyncfusionPageVisitState(pageNumber);
+    perfState.seq = seq;
+    perfState.pending = { seq, pageNumber, startedAtMs: nowMs, timerId: null };
+
+    // Keep this narrow: measure page-change to real PDF surface readiness.
+    // Broad FPS logs mix scrolling, zooming, annotation work, and network timing;
+    // this isolates whether already-visited pages are being needlessly rebuilt.
+    debugMark('page_visit_start', {
+      page: pageNumber,
+      pageCount: pageCount || 0,
+      revisited: seenBefore,
+      ...initialState
+    });
+
+    const checkReady = () => {
+      const pending = syncfusionPageVisitPerfRef.current.pending;
+      if (!pending || pending.seq !== seq) return;
+      const elapsedMs = performance.now() - nowMs;
+      const nextState = readSyncfusionPageVisitState(pageNumber);
+
+      if (nextState.ready || elapsedMs >= 2000) {
+        syncfusionPageVisitPerfRef.current.pending = null;
+        debugMark(nextState.ready ? 'page_visit_ready' : 'page_visit_timeout', {
+          page: pageNumber,
+          pageCount: pageCount || 0,
+          revisited: seenBefore,
+          waitMs: Math.round(elapsedMs),
+          ...nextState
+        });
+        return;
+      }
+
+      pending.timerId = requestAnimationFrame(checkReady);
+    };
+
+    syncfusionPageVisitPerfRef.current.pending.timerId = requestAnimationFrame(checkReady);
+  }, [readSyncfusionPageVisitState]);
+
   const handleSyncfusionPageChange = useCallback((payload) => {
     const viewer = syncfusionViewerRef.current;
     const reportedPageCount = coercePageNumber(
@@ -13838,6 +13921,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         currentPage,
         pageCount: reportedPageCount || numPages || 0
       });
+      startSyncfusionPageVisitPerf(currentPage, reportedPageCount || numPages || 0);
     }
     if (syncfusionNavigateResetTimerRef.current) {
       clearTimeout(syncfusionNavigateResetTimerRef.current);
@@ -13849,7 +13933,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // Release navigation guards after Syncfusion applies the page change.
     isNavigatingRef.current = false;
     targetPageRef.current = null;
-  }, [bumpOverlayLagEventTotal, markInteractionPerfActive, markSyncfusionInteractionActive, numPages]);
+  }, [bumpOverlayLagEventTotal, markInteractionPerfActive, markSyncfusionInteractionActive, numPages, startSyncfusionPageVisitPerf]);
 
   const handleSyncfusionZoomChange = useCallback((payload) => {
     const rawZoomValue = Number(
