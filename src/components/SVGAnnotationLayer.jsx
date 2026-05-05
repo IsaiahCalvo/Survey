@@ -101,7 +101,7 @@ const summarizeImportedSvgAnnotationForDebug = (obj, index) => ({
 
 const shouldPrioritizeLiveReveal = (obj) => {
   const type = String(obj?.type || '').toLowerCase();
-  if (type === 'circle' || type === 'ellipse' || type === 'rect' || type === 'polygon') {
+  if (type === 'circle' || type === 'ellipse') {
     const fill = String(obj?.fill || '').trim().toLowerCase();
     return !!fill && fill !== 'none' && fill !== 'transparent';
   }
