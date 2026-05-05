@@ -249,6 +249,8 @@ const SYNCFUSION_INTERACTION_EVENT_THROTTLE_MS = 96;
 const SYNCFUSION_INTERACTION_MARK_THROTTLE_MS = 96;
 const SYNCFUSION_ZOOM_OVERLAY_SETTLE_MS = 1000;
 const SYNCFUSION_DIAGONAL_SCROLL_SENSITIVITY = 0.82;
+const SYNCFUSION_SCROLL_MAX_STEP_PX = 72;
+const SYNCFUSION_SCROLL_MIN_STEP_PX = 28;
 // Trackpad pinch/wheel zoom sensitivity. Keep this centralized so both
 // Syncfusion wheel paths stay cursor-anchored and feel equally responsive.
 const SYNCFUSION_WHEEL_ZOOM_EXPONENT = 0.0030;
@@ -292,6 +294,13 @@ const getNormalizedWheelDeltas = (event) => {
     return { x: rawX * pageSize, y: rawY * pageSize };
   }
   return { x: rawX, y: rawY };
+};
+
+const clampWheelDelta = (value, maxStep) => {
+  const numeric = Number(value) || 0;
+  const limit = Math.max(SYNCFUSION_SCROLL_MIN_STEP_PX, Number(maxStep) || SYNCFUSION_SCROLL_MAX_STEP_PX);
+  if (Math.abs(numeric) <= limit) return numeric;
+  return Math.sign(numeric) * limit;
 };
 const HISTORY_DEBUG_TRACE_LIMIT = 250;
 const HISTORY_PAGE_PREVIEW_LIMIT = 12;
@@ -13163,12 +13172,21 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         });
       } else {
         const wheelDelta = getNormalizedWheelDeltas(event);
+        const currentZoomForScroll = Math.max(1, Number(scaleRef.current) || 1);
+        const maxScrollStep = Math.max(
+          SYNCFUSION_SCROLL_MIN_STEP_PX,
+          SYNCFUSION_SCROLL_MAX_STEP_PX / Math.sqrt(currentZoomForScroll)
+        );
+        const clippedX = clampWheelDelta(wheelDelta.x, maxScrollStep);
+        const clippedY = clampWheelDelta(wheelDelta.y, maxScrollStep);
         const isDiagonalTrackpadScroll = Math.abs(wheelDelta.x) > 0.5 && Math.abs(wheelDelta.y) > 0.5;
-        if (isDiagonalTrackpadScroll) {
+        const isLargeWheelStep = Math.abs(clippedX - wheelDelta.x) > 0.01 || Math.abs(clippedY - wheelDelta.y) > 0.01;
+        if (isDiagonalTrackpadScroll || isLargeWheelStep) {
           event.preventDefault();
           event.stopPropagation();
-          viewerContainer.scrollLeft += wheelDelta.x * SYNCFUSION_DIAGONAL_SCROLL_SENSITIVITY;
-          viewerContainer.scrollTop += wheelDelta.y * SYNCFUSION_DIAGONAL_SCROLL_SENSITIVITY;
+          const sensitivity = isDiagonalTrackpadScroll ? SYNCFUSION_DIAGONAL_SCROLL_SENSITIVITY : 1;
+          viewerContainer.scrollLeft += clippedX * sensitivity;
+          viewerContainer.scrollTop += clippedY * sensitivity;
         }
         queueInteractionMark('wheel-scroll', 'syncfusion-wheel-scroll', INTERACTION_PERF_SCROLL_HOLD_MS);
       }
