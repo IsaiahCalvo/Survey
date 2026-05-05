@@ -14238,6 +14238,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const zoomControllerRef = useRef(null);
   const zoomMenuRef = useRef(null);
   const zoomPreferencesRef = useRef(initialZoomPreferences);
+  const zoomModeRef = useRef(initialZoomPreferences.mode);
   const scaleRef = useRef(initialZoomPreferences.manualScale);
   const pageNumRef = useRef(1);
   // Late-bound handler + flag for "apply fit-page on first open" (set in the
@@ -14393,6 +14394,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // in handleSyncfusionDocumentLoad — the earlier useEffect version fired too early,
   // before scaleRef had been reconciled from the DOM, locking in a bad Electron factor.)
 
+  const applyLayoutDrivenZoom = useCallback(() => {
+    if (useSyncfusionRenderer) {
+      const currentMode = zoomModeRef.current;
+      // In Syncfusion mode, manual trackpad/toolbar zoom must stay manual when
+      // the window regains focus or layout changes. The generic zoom controller
+      // can still hold an old fit-page mode, which caused the surprise zoom-out.
+      if (!currentMode || currentMode === ZOOM_MODES.MANUAL) return;
+      handleZoomModeSelectRef.current?.(currentMode);
+      return;
+    }
+    zoomControllerRef.current?.applyZoom({ persist: false, force: true });
+  }, [useSyncfusionRenderer]);
+
   useEffect(() => {
     scaleRef.current = scale;
     // Bug #2.6 opportunistic calibration: at the first post-load scale change where
@@ -14431,6 +14445,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       mode: zoomMode,
       manualScale: manualZoomScale
     };
+    zoomModeRef.current = zoomMode;
   }, [zoomMode, manualZoomScale]);
 
   useEffect(() => {
@@ -14470,12 +14485,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     if (typeof window === 'undefined') return undefined;
 
     const handleResize = () => {
-      zoomControllerRef.current?.applyZoom({ persist: false, force: true });
+      applyLayoutDrivenZoom();
     };
 
     const handleVisibility = () => {
       if (document.hidden) return;
-      zoomControllerRef.current?.applyZoom({ persist: false, force: true });
+      applyLayoutDrivenZoom();
     };
 
     window.addEventListener('resize', handleResize);
@@ -14485,14 +14500,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       window.removeEventListener('resize', handleResize);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, []);
+  }, [applyLayoutDrivenZoom]);
 
   useEffect(() => {
     if (!pdfDoc) return;
     if (!zoomControllerRef.current) return;
     if (!pageSizes || Object.keys(pageSizes).length === 0) return;
-    zoomControllerRef.current.applyZoom({ persist: false, force: true });
-  }, [pdfDoc, pageSizes]);
+    applyLayoutDrivenZoom();
+  }, [applyLayoutDrivenZoom, pdfDoc, pageSizes]);
 
   useEffect(() => {
     // In Syncfusion mode, the viewer owns zoom persistence across page navigation
@@ -14508,12 +14523,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, [pageNum, zoomMode, useSyncfusionRenderer]);
 
   useEffect(() => {
-    zoomControllerRef.current?.applyZoom({ persist: false, force: true });
-  }, [tabId]);
+    applyLayoutDrivenZoom();
+  }, [applyLayoutDrivenZoom, tabId]);
 
   useEffect(() => {
-    zoomControllerRef.current?.applyZoom({ persist: false, force: true });
-  }, [scrollMode]);
+    applyLayoutDrivenZoom();
+  }, [applyLayoutDrivenZoom, scrollMode]);
 
   // Sidebar state: Pages, Bookmarks, Spaces
   const [pageNames, setPageNames] = useState({}); // { [pageNumber]: name }
@@ -27332,9 +27347,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // from running until settle, making template open feel sluggish.
   useEffect(() => {
     requestAnimationFrame(() => {
-      zoomControllerRef.current?.applyZoom({ persist: false, force: true });
+      applyLayoutDrivenZoom();
     });
-  }, [isLeftSidebarCollapsed]);
+  }, [applyLayoutDrivenZoom, isLeftSidebarCollapsed]);
 
   // Ensure survey panel always opens in expanded state
   useEffect(() => {
@@ -29742,7 +29757,7 @@ ${pageBlocks}
             onToggleCollapse={(isCollapsed) => {
               setIsLeftSidebarCollapsed(isCollapsed);
               requestAnimationFrame(() => {
-                zoomControllerRef.current?.applyZoom({ persist: false, force: true });
+                applyLayoutDrivenZoom();
               });
             }}
           />
@@ -34673,7 +34688,7 @@ ${pageBlocks}
                     onClick={() => {
                       setIsSurveyPanelCollapsed(prev => !prev);
                       requestAnimationFrame(() => {
-                        zoomControllerRef.current?.applyZoom({ persist: false, force: true });
+                        applyLayoutDrivenZoom();
                       });
                     }}
                     style={{
@@ -34713,7 +34728,7 @@ ${pageBlocks}
                       onClick={() => {
                         setIsSurveyPanelCollapsed(prev => !prev);
                         requestAnimationFrame(() => {
-                          zoomControllerRef.current?.applyZoom({ persist: false, force: true });
+                          applyLayoutDrivenZoom();
                         });
                       }}
                       style={{

@@ -49,8 +49,9 @@ const MESSAGE_AWARENESS = 1;
 
 // UX comment: 600KB pre-base64 cap leaves headroom for the ~33% base64 inflation
 // to land under Supabase Realtime Broadcast's documented ~1MB payload ceiling.
-// Updates exceeding this cap are skipped (not silently dropped — a console.warn
-// fires) and Phase 32 compaction will fold pending overflow into snapshots.
+// Updates exceeding this cap are skipped as realtime broadcasts and Phase 32
+// compaction folds pending overflow into snapshots. This is expected for large
+// imported Drawboard PDFs, so the provider logs one quiet info line per mount.
 const SOFT_PAYLOAD_CAP_BYTES = 600 * 1024;
 
 // Re-export REMOTE_REALTIME_ORIGIN so the scaffold's `await import(TARGET)` round-trip
@@ -173,6 +174,7 @@ export function connect(documentId, ydoc, options = {}) {
   const channelName = `yjs:${documentId}`;
   let channel = null;
   let detached = false;
+  let largeUpdateSkipLogged = false;
 
   // -------------------------------------------------------------------------
   // Local update fan-out — broadcast outbound, guard echo loops.
@@ -193,12 +195,18 @@ export function connect(documentId, ydoc, options = {}) {
 
     const frameBytes = encodeUpdate(update);
     if (frameBytes.byteLength > SOFT_PAYLOAD_CAP_BYTES) {
-      // UX comment: soft cap. Phase 32 compaction folds the pending edits into
-      // a snapshot; here we log + skip rather than risk a Realtime payload error
-      // that might desync the channel. The console.warn surfaces the threshold
-      // crossing to the developer dashboard during the spike.
-      // eslint-disable-next-line no-console
-      console.warn('[SupabaseYjsProvider] update exceeds soft cap', frameBytes.byteLength, 'bytes — skipping broadcast');
+      // Large imported PDFs can produce a full-document local update that is
+      // too big for realtime broadcast. That is OK: cloud/Y.Doc snapshots and
+      // row hydration carry the data; realtime is only skipped for this frame.
+      if (!largeUpdateSkipLogged) {
+        largeUpdateSkipLogged = true;
+        // eslint-disable-next-line no-console
+        console.info('[SupabaseYjsProvider] large local Y.Doc update kept out of realtime broadcast', {
+          bytes: frameBytes.byteLength,
+          capBytes: SOFT_PAYLOAD_CAP_BYTES,
+          documentId
+        });
+      }
       return;
     }
 
