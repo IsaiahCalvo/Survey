@@ -289,6 +289,7 @@ const SYNCFUSION_SCROLL_MIN_STEP_PX = 22;
 // Trackpad pinch/wheel zoom sensitivity. Keep this centralized so both
 // Syncfusion wheel paths stay cursor-anchored and feel equally responsive.
 const SYNCFUSION_WHEEL_ZOOM_EXPONENT = 0.0018;
+const SYNCFUSION_WHEEL_ZOOM_MAX_STEP_PERCENT = 32;
 const SYNCFUSION_INTERACTION_FORCE_PROXY_ALL_PAGES = true;
 const ZOOM_ONLY_INTERACTION_REASONS = new Set([
   'wheel-zoom', 'syncfusion-wheel-zoom', 'syncfusion-zoom-change', 'overlay-wheel-zoom'
@@ -315,7 +316,12 @@ const getSmoothSyncfusionWheelZoom = (currentZoom, wheelDelta) => {
   const safeCurrent = Number.isFinite(Number(currentZoom)) ? Number(currentZoom) : 100;
   const safeDelta = Number.isFinite(Number(wheelDelta)) ? Number(wheelDelta) : 0;
   const factor = Math.exp(safeDelta * SYNCFUSION_WHEEL_ZOOM_EXPONENT);
-  return Math.max(10, Math.min(400, safeCurrent * factor));
+  const targetZoom = safeCurrent * factor;
+  const cappedZoom = safeCurrent + Math.max(
+    -SYNCFUSION_WHEEL_ZOOM_MAX_STEP_PERCENT,
+    Math.min(SYNCFUSION_WHEEL_ZOOM_MAX_STEP_PERCENT, targetZoom - safeCurrent)
+  );
+  return Math.max(10, Math.min(400, cappedZoom));
 };
 
 const getNormalizedWheelDeltas = (event) => {
