@@ -195,6 +195,31 @@ const isSuspiciousWheelZoomPercent = (reportedPercent, trustedPercent) => (
   trustedPercent / Math.max(1, reportedPercent) >= 2
 );
 
+const hasVisibleSyncfusionSpinner = (host) => {
+  if (!host?.querySelectorAll) return false;
+  const spinners = Array.from(host.querySelectorAll([
+    '.e-spinner-pane:not(.e-spin-hide)',
+    '.e-spinner-pane[aria-hidden="false"]'
+  ].join(',')));
+  return spinners.some((spinner) => {
+    if (!spinner?.isConnected) return false;
+    if (spinner.classList?.contains?.('e-spin-hide')) return false;
+    if (spinner.getAttribute?.('aria-hidden') === 'true') return false;
+    if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
+      const style = window.getComputedStyle(spinner);
+      if (
+        style.display === 'none' ||
+        style.visibility === 'hidden' ||
+        Number(style.opacity || 1) <= 0.01
+      ) {
+        return false;
+      }
+    }
+    const rect = spinner.getBoundingClientRect?.();
+    return !rect || (rect.width > 0 && rect.height > 0);
+  });
+};
+
 // Set up the PDF.js worker
 // Set up the PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
@@ -9321,6 +9346,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const overlayVisibilityObserverRef = useRef(null);
   const syncfusionEventTimesRef = useRef({});
   const syncfusionPageVisitPerfRef = useRef({ seq: 0, seenPages: new Set(), pending: null });
+  const syncfusionPagePdfEverReadyRef = useRef(new Set());
   const lastViewStateEmittedRef = useRef(null);
   const lastAppliedInitialViewStateRef = useRef(null);
   const syncfusionNavigateResetTimerRef = useRef(null);
@@ -12948,6 +12974,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Memoize document unload handler to prevent re-renders
   const handleDocumentUnload = useCallback(() => {
     pageContainersRef.current = {};
+    syncfusionPagePdfEverReadyRef.current = new Set();
     setSyncfusionPageContainers({});
     setSyncfusionCommittedPageScales({});
     finishSyncfusionInteractionWindow();
@@ -13571,6 +13598,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   const handleSyncfusionDocumentLoad = useCallback((payload) => {
     const viewer = syncfusionViewerRef.current;
+    syncfusionPagePdfEverReadyRef.current = new Set();
     const resolvedPageCount = coercePageNumber(
       payload?.pageCount ?? viewer?.getPageCount?.() ?? viewer?.pageCount,
       Number.POSITIVE_INFINITY
@@ -13730,6 +13758,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     console.error('Syncfusion documentLoadFailed:', detail, args);
     setLastDebugError('SYNCFUSION_DOCUMENT_LOAD_FAILED', args);
     emitPdfDebugEvent('app_syncfusion_document_load_failed');
+    syncfusionPagePdfEverReadyRef.current = new Set();
     setSyncfusionPageContainers({});
     setSyncfusionCommittedPageScales({});
     finishSyncfusionInteractionWindow();
@@ -13752,10 +13781,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       '.e-pv-text-layer',
       '.e-pv-image-canvas'
     ].join(','));
-    const activeSpinner = !!host?.querySelector?.([
-      '.e-spinner-pane:not(.e-spin-hide)',
-      '.e-spinner-pane[aria-hidden="false"]'
-    ].join(','));
+    const activeSpinner = hasVisibleSyncfusionSpinner(host);
     const hasAnnotationOverlay = !!host?.querySelector?.([
       '.canvas-container',
       '.annotation-layer',
@@ -15117,11 +15143,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         '.e-pv-text-layer',
         '.e-pv-image-canvas'
       ].join(','));
-      const spinnerVisible = !!pageHost.querySelector?.([
-        '.e-spinner-pane:not(.e-spin-hide)',
-        '.e-spinner-pane[aria-hidden="false"]'
-      ].join(','));
-      const pdfReady = hasPdfSurface;
+      const spinnerVisible = hasVisibleSyncfusionSpinner(pageHost);
+      const pdfReady = hasPdfSurface || snapshotVisible || paintReady;
       const overlayStyle = typeof window !== 'undefined' && window.getComputedStyle
         ? window.getComputedStyle(overlayLayer)
         : null;
@@ -30084,7 +30107,13 @@ ${pageBlocks}
                       if (!pageSize) return null;  // Page size not yet known -- skip this render
                       const pagePdfReadyState = readSyncfusionPageVisitState(pageNumber);
                       const pageAnnotationObjects = Array.isArray(pageAnnotations?.objects) ? pageAnnotations.objects : [];
-                      const hideOverlayUntilPdfReady = pageAnnotationObjects.length > 0 && !pagePdfReadyState.hasPdfSurface;
+                      if (pagePdfReadyState.ready) {
+                        syncfusionPagePdfEverReadyRef.current.add(pageNumber);
+                      }
+                      const pagePdfHasEverBeenReady = syncfusionPagePdfEverReadyRef.current.has(pageNumber);
+                      const hideOverlayUntilPdfReady = pageAnnotationObjects.length > 0 &&
+                        !pagePdfHasEverBeenReady &&
+                        !pagePdfReadyState.ready;
 
                       if (showRegionSelection && regionSelectionPage === pageNumber) {
                         console.log(
@@ -30189,6 +30218,7 @@ ${pageBlocks}
                             visibility: hideOverlayUntilPdfReady ? 'hidden' : undefined,
                           }}
                           data-pdf-ready={pagePdfReadyState.ready ? 'true' : 'false'}
+                          data-pdf-ever-ready={pagePdfHasEverBeenReady ? 'true' : 'false'}
                           data-pdf-spinner-visible={pagePdfReadyState.spinnerVisible ? 'true' : 'false'}
                           data-overlay-hidden-pending-pdf={hideOverlayUntilPdfReady ? 'true' : 'false'}
                         >

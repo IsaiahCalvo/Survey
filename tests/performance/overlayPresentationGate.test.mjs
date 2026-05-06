@@ -7,15 +7,17 @@ const APP_SOURCE = readFileSync(new URL('../../src/App.jsx', import.meta.url), '
 test('overlay recorder samples include PDF/annotation presentation-gap metrics', () => {
   assert.match(APP_SOURCE, /const visiblePresentationGapPages = \[\];/);
   assert.match(APP_SOURCE, /const viewportPresentationGapPages = \[\];/);
-  assert.match(APP_SOURCE, /const pdfReady = hasPdfSurface;/);
+  assert.match(APP_SOURCE, /const pdfReady = hasPdfSurface \|\| snapshotVisible \|\| paintReady;/);
   assert.match(APP_SOURCE, /visiblePresentationGapCount: visiblePresentationGapPages\.length/);
   assert.match(APP_SOURCE, /viewportPresentationGapCount: viewportPresentationGapPages\.length/);
 });
 
 test('Syncfusion overlay portals are hidden until the PDF page surface is ready', () => {
   assert.match(APP_SOURCE, /const pagePdfReadyState = readSyncfusionPageVisitState\(pageNumber\);/);
-  assert.match(APP_SOURCE, /const hideOverlayUntilPdfReady = pageAnnotationObjects\.length > 0 && !pagePdfReadyState\.hasPdfSurface;/);
+  assert.match(APP_SOURCE, /const pagePdfHasEverBeenReady = syncfusionPagePdfEverReadyRef\.current\.has\(pageNumber\);/);
+  assert.match(APP_SOURCE, /const hideOverlayUntilPdfReady = pageAnnotationObjects\.length > 0 &&\s*!pagePdfHasEverBeenReady &&\s*!pagePdfReadyState\.ready;/);
   assert.match(APP_SOURCE, /visibility: hideOverlayUntilPdfReady \? 'hidden' : undefined/);
+  assert.match(APP_SOURCE, /data-pdf-ever-ready=\{pagePdfHasEverBeenReady \? 'true' : 'false'\}/);
   assert.match(APP_SOURCE, /data-overlay-hidden-pending-pdf=\{hideOverlayUntilPdfReady \? 'true' : 'false'\}/);
 });
 
@@ -27,6 +29,9 @@ test('page visit diagnostics recognize SVG annotation overlays', () => {
 });
 
 test('page visit diagnostics do not mark spinner-covered pages ready', () => {
+  assert.match(APP_SOURCE, /const hasVisibleSyncfusionSpinner = \(host\) =>/);
+  assert.match(APP_SOURCE, /const activeSpinner = hasVisibleSyncfusionSpinner\(host\);/);
+  assert.match(APP_SOURCE, /const spinnerVisible = hasVisibleSyncfusionSpinner\(pageHost\);/);
   assert.match(APP_SOURCE, /ready: hasContainer && hasPdfSurface && !activeSpinner/);
 });
 
