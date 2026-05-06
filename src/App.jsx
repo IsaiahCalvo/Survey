@@ -9436,6 +9436,27 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     overlayPointerDown: 0,
     overlayPointerDrag: 0
   });
+  const syncfusionWheelPerfTotalsRef = useRef({
+    scrollEvents: 0,
+    scrollRawAbsX: 0,
+    scrollRawAbsY: 0,
+    scrollClippedAbsX: 0,
+    scrollClippedAbsY: 0,
+    scrollAppliedAbsX: 0,
+    scrollAppliedAbsY: 0,
+    scrollActualAbsX: 0,
+    scrollActualAbsY: 0,
+    scrollPreventedEvents: 0,
+    scrollClippedEvents: 0,
+    scrollDiagonalEvents: 0,
+    zoomEvents: 0,
+    zoomRawDeltaAbs: 0,
+    zoomRequestedDeltaAbs: 0,
+    zoomReportedLagAbs: 0,
+    zoomReportedLagMax: 0,
+    zoomRequestedDeltaMax: 0,
+    zoomBigJumpEvents: 0
+  });
   const bumpOverlayLagEventTotal = useCallback((key, delta = 1) => {
     if (!key) return;
     const safeDelta = Number(delta);
@@ -12878,6 +12899,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         : reportedCurrentZoom;
 
       const nextZoom = getSmoothSyncfusionWheelZoom(currentZoom, delta);
+      const zoomRequestedDeltaAbs = Math.abs(nextZoom - currentZoom);
+      const zoomReportedLagAbs = Math.abs(currentZoom - reportedCurrentZoom);
+      const wheelPerfTotals = syncfusionWheelPerfTotalsRef.current;
+      wheelPerfTotals.zoomEvents += 1;
+      wheelPerfTotals.zoomRawDeltaAbs += Math.abs(delta);
+      wheelPerfTotals.zoomRequestedDeltaAbs += zoomRequestedDeltaAbs;
+      wheelPerfTotals.zoomReportedLagAbs += zoomReportedLagAbs;
+      wheelPerfTotals.zoomReportedLagMax = Math.max(wheelPerfTotals.zoomReportedLagMax || 0, zoomReportedLagAbs);
+      wheelPerfTotals.zoomRequestedDeltaMax = Math.max(wheelPerfTotals.zoomRequestedDeltaMax || 0, zoomRequestedDeltaAbs);
+      if (zoomRequestedDeltaAbs >= 25) {
+        wheelPerfTotals.zoomBigJumpEvents += 1;
+      }
       debugMark('zoom_wheel_request', {
         rawDeltaY: delta,
         reportedZoom,
@@ -12885,6 +12918,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         currentZoom,
         reportedCurrentZoom,
         nextZoom,
+        requestedDeltaAbs: zoomRequestedDeltaAbs,
+        reportedLagAbs: zoomReportedLagAbs,
         rawGetZoomValue,
         rawViewerZoomValue,
         rawMagnificationZoom,
@@ -13101,8 +13136,44 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         const diagonalSensitivity = isDiagonalTrackpadScroll ? SYNCFUSION_DIAGONAL_SCROLL_SENSITIVITY : 1;
         const largeWheelSensitivity = isLargeWheelStep ? SYNCFUSION_LARGE_WHEEL_SCROLL_SENSITIVITY : 1;
         const sensitivity = SYNCFUSION_BASE_SCROLL_SENSITIVITY * diagonalSensitivity * largeWheelSensitivity;
-        viewerContainer.scrollLeft += clippedX * sensitivity;
-        viewerContainer.scrollTop += clippedY * sensitivity;
+        const beforeLeft = viewerContainer.scrollLeft;
+        const beforeTop = viewerContainer.scrollTop;
+        const appliedX = clippedX * sensitivity;
+        const appliedY = clippedY * sensitivity;
+        viewerContainer.scrollLeft += appliedX;
+        viewerContainer.scrollTop += appliedY;
+        const actualX = viewerContainer.scrollLeft - beforeLeft;
+        const actualY = viewerContainer.scrollTop - beforeTop;
+        const wheelPerfTotals = syncfusionWheelPerfTotalsRef.current;
+        wheelPerfTotals.scrollEvents += 1;
+        wheelPerfTotals.scrollRawAbsX += Math.abs(wheelDelta.x);
+        wheelPerfTotals.scrollRawAbsY += Math.abs(wheelDelta.y);
+        wheelPerfTotals.scrollClippedAbsX += Math.abs(clippedX);
+        wheelPerfTotals.scrollClippedAbsY += Math.abs(clippedY);
+        wheelPerfTotals.scrollAppliedAbsX += Math.abs(appliedX);
+        wheelPerfTotals.scrollAppliedAbsY += Math.abs(appliedY);
+        wheelPerfTotals.scrollActualAbsX += Math.abs(actualX);
+        wheelPerfTotals.scrollActualAbsY += Math.abs(actualY);
+        wheelPerfTotals.scrollPreventedEvents += 1;
+        if (isLargeWheelStep) wheelPerfTotals.scrollClippedEvents += 1;
+        if (isDiagonalTrackpadScroll) wheelPerfTotals.scrollDiagonalEvents += 1;
+        if (isLargeWheelStep || Math.abs(actualX - appliedX) > 1 || Math.abs(actualY - appliedY) > 1) {
+          debugMark('wheel_scroll_motion', {
+            rawX: wheelDelta.x,
+            rawY: wheelDelta.y,
+            clippedX,
+            clippedY,
+            appliedX,
+            appliedY,
+            actualX,
+            actualY,
+            sensitivity,
+            currentZoomForScroll,
+            maxScrollStep,
+            diagonal: isDiagonalTrackpadScroll,
+            clipped: isLargeWheelStep
+          });
+        }
       }
       queueInteractionMark('wheel-scroll', 'syncfusion-wheel-scroll', INTERACTION_PERF_SCROLL_HOLD_MS);
     };
@@ -14858,6 +14929,86 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       .slice(0, 6)
       .map(([eventType, count]) => ({ eventType, count }));
 
+    const wheelPerfTotals = {};
+    samples.forEach((sample) => {
+      if (!sample?.wheelPerfDeltas || typeof sample.wheelPerfDeltas !== 'object') return;
+      Object.entries(sample.wheelPerfDeltas).forEach(([key, value]) => {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric) || numeric === 0) return;
+        wheelPerfTotals[key] = (wheelPerfTotals[key] || 0) + numeric;
+      });
+    });
+    const scrollRawAbsTotal = (Number(wheelPerfTotals.scrollRawAbsX) || 0) + (Number(wheelPerfTotals.scrollRawAbsY) || 0);
+    const scrollClippedAbsTotal = (Number(wheelPerfTotals.scrollClippedAbsX) || 0) + (Number(wheelPerfTotals.scrollClippedAbsY) || 0);
+    const scrollAppliedAbsTotal = (Number(wheelPerfTotals.scrollAppliedAbsX) || 0) + (Number(wheelPerfTotals.scrollAppliedAbsY) || 0);
+    const scrollActualAbsTotal = (Number(wheelPerfTotals.scrollActualAbsX) || 0) + (Number(wheelPerfTotals.scrollActualAbsY) || 0);
+    const zoomEvents = Number(wheelPerfTotals.zoomEvents) || 0;
+    const scrollEvents = Number(wheelPerfTotals.scrollEvents) || 0;
+    const wheelMotionSummary = {
+      scrollEvents,
+      scrollPreventedEvents: Number(wheelPerfTotals.scrollPreventedEvents) || 0,
+      scrollClippedEvents: Number(wheelPerfTotals.scrollClippedEvents) || 0,
+      scrollDiagonalEvents: Number(wheelPerfTotals.scrollDiagonalEvents) || 0,
+      scrollRawAbsTotal: roundOverlayRecorderValue(scrollRawAbsTotal, 3),
+      scrollClippedAbsTotal: roundOverlayRecorderValue(scrollClippedAbsTotal, 3),
+      scrollAppliedAbsTotal: roundOverlayRecorderValue(scrollAppliedAbsTotal, 3),
+      scrollActualAbsTotal: roundOverlayRecorderValue(scrollActualAbsTotal, 3),
+      scrollClippedVsRawRatio: scrollRawAbsTotal > 0
+        ? roundOverlayRecorderValue(scrollClippedAbsTotal / scrollRawAbsTotal, 4)
+        : null,
+      scrollAppliedVsRawRatio: scrollRawAbsTotal > 0
+        ? roundOverlayRecorderValue(scrollAppliedAbsTotal / scrollRawAbsTotal, 4)
+        : null,
+      scrollActualVsRawRatio: scrollRawAbsTotal > 0
+        ? roundOverlayRecorderValue(scrollActualAbsTotal / scrollRawAbsTotal, 4)
+        : null,
+      scrollActualVsAppliedRatio: scrollAppliedAbsTotal > 0
+        ? roundOverlayRecorderValue(scrollActualAbsTotal / scrollAppliedAbsTotal, 4)
+        : null,
+      zoomEvents,
+      zoomRawDeltaAbsTotal: roundOverlayRecorderValue(Number(wheelPerfTotals.zoomRawDeltaAbs) || 0, 3),
+      zoomRequestedDeltaAbsTotal: roundOverlayRecorderValue(Number(wheelPerfTotals.zoomRequestedDeltaAbs) || 0, 3),
+      zoomAvgRequestedDelta: zoomEvents > 0
+        ? roundOverlayRecorderValue((Number(wheelPerfTotals.zoomRequestedDeltaAbs) || 0) / zoomEvents, 3)
+        : null,
+      zoomMaxRequestedDelta: roundOverlayRecorderValue(Number(wheelPerfTotals.zoomRequestedDeltaMax) || 0, 3),
+      zoomAvgReportedLag: zoomEvents > 0
+        ? roundOverlayRecorderValue((Number(wheelPerfTotals.zoomReportedLagAbs) || 0) / zoomEvents, 3)
+        : null,
+      zoomMaxReportedLag: roundOverlayRecorderValue(Number(wheelPerfTotals.zoomReportedLagMax) || 0, 3),
+      zoomBigJumpEvents: Number(wheelPerfTotals.zoomBigJumpEvents) || 0
+    };
+
+    const worstFrameSample = samples.reduce((worst, sample) => {
+      const frameMs = Number(sample?.frameMs);
+      if (!Number.isFinite(frameMs)) return worst;
+      if (!worst || frameMs > Number(worst.frameMs)) return sample;
+      return worst;
+    }, null);
+    const worstFrameContext = worstFrameSample
+      ? {
+        tMs: worstFrameSample.tMs,
+        frameMs: worstFrameSample.frameMs,
+        currentPage: worstFrameSample.currentPage,
+        appScale: worstFrameSample.appScale,
+        viewerScale: worstFrameSample.viewerScale,
+        interactionReason: worstFrameSample.interactionReason,
+        interactionPhase: worstFrameSample.interactionPhase,
+        scrollLeft: worstFrameSample.scrollLeft,
+        scrollTop: worstFrameSample.scrollTop,
+        wheelPerfDeltas: worstFrameSample.wheelPerfDeltas || {},
+        interactionEventDeltas: worstFrameSample.interactionEventDeltas || {},
+        longTaskCount: worstFrameSample.longTaskCount,
+        longTaskTotalMs: worstFrameSample.longTaskTotalMs,
+        eventTimingTotalMs: worstFrameSample.eventTimingTotalMs,
+        missingOverlayCount: worstFrameSample.missingOverlayCount,
+        visiblePresentationGapCount: worstFrameSample.visiblePresentationGapCount,
+        viewportPresentationGapCount: worstFrameSample.viewportPresentationGapCount,
+        sampledPageCount: worstFrameSample.sampledPageCount,
+        pageModeCounts: worstFrameSample.pageModeCounts
+      }
+      : null;
+
     const longTaskSourceTotals = {};
     samples.forEach((sample) => {
       if (!Array.isArray(sample?.longTaskTopSources)) return;
@@ -14938,6 +15089,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       eventTimingTotalMs: roundOverlayRecorderValue(eventTimingTotals.length ? eventTimingTotals.reduce((sum, value) => sum + value, 0) : 0, 3),
       eventTimingMsP95: roundOverlayRecorderValue(percentileOverlayRecorder(eventTimingTotals, 0.95), 3),
       interactionEventHotspots,
+      wheelMotionSummary,
+      worstFrameContext,
       longTaskHotspots
     };
   }, []);
@@ -15013,6 +15166,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       skips: Math.max(0, (Number(currentTransformTotals.skips) || 0) - (Number(previousTransformTotals.skips) || 0))
     };
     recorder.lastTransformTotals = { ...currentTransformTotals };
+    const currentWheelPerfTotals = syncfusionWheelPerfTotalsRef.current || {};
+    const previousWheelPerfTotals = recorder.lastWheelPerfTotals || {};
+    const wheelPerfDeltas = {};
+    Object.keys(currentWheelPerfTotals).forEach((key) => {
+      const nextValue = Number(currentWheelPerfTotals[key]) || 0;
+      const previousValue = Number(previousWheelPerfTotals[key]) || 0;
+      wheelPerfDeltas[key] = Math.max(0, nextValue - previousValue);
+    });
+    recorder.lastWheelPerfTotals = { ...currentWheelPerfTotals };
 
     const container = containerRef.current;
     const viewer = syncfusionViewerRef.current;
@@ -15273,6 +15435,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       commitQueueDepth: syncfusionCommitQueueRef.current?.length || 0,
       interactionEventDeltas,
       overlayTransformDeltas,
+      wheelPerfDeltas,
       overlayWindowPages: syncfusionOverlayWindowPagesRef.current.size,
       sampleIntervalMs: recorder.options?.sampleIntervalMs || null,
       overlayLayerRefCount: Object.keys(overlayLayerRefs).length,
@@ -15381,6 +15544,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     recorder.lastSampleAtMs = 0;
     recorder.lastEventTotals = { ...(overlayLagEventTotalsRef.current || {}) };
     recorder.lastTransformTotals = { ...(syncfusionOverlayTransformStatsRef.current || {}) };
+    recorder.lastWheelPerfTotals = { ...(syncfusionWheelPerfTotalsRef.current || {}) };
 
     emitPdfDebugEvent('overlay_lag_recorder_start', {
       samplePageLimit,
