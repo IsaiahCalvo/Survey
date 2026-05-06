@@ -301,7 +301,7 @@ const SYNCFUSION_SCROLL_FRAME_MAX_PX = 18;
 // Trackpad pinch/wheel zoom sensitivity. Keep this centralized so both
 // Syncfusion wheel paths stay cursor-anchored and feel equally responsive.
 const SYNCFUSION_WHEEL_ZOOM_EXPONENT = 0.0018;
-const SYNCFUSION_WHEEL_ZOOM_MAX_STEP_PERCENT = 32;
+const SYNCFUSION_WHEEL_ZOOM_MAX_STEP_PERCENT = 24;
 const SYNCFUSION_INTERACTION_FORCE_PROXY_ALL_PAGES = true;
 const ZOOM_ONLY_INTERACTION_REASONS = new Set([
   'wheel-zoom', 'syncfusion-wheel-zoom', 'syncfusion-zoom-change', 'overlay-wheel-zoom'

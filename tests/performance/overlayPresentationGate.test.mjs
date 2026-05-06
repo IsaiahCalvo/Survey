@@ -52,7 +52,7 @@ test('cursor wheel zoom response stays capped below runaway speed', () => {
   const maxStepMatch = APP_SOURCE.match(/const SYNCFUSION_WHEEL_ZOOM_MAX_STEP_PERCENT = (\d+);/);
   assert.ok(maxStepMatch, 'wheel zoom max-step cap should exist');
   const maxStepPercent = Number(maxStepMatch[1]);
-  assert.ok(maxStepPercent <= 32, `wheel zoom max step should not exceed 32%, got ${maxStepPercent}%`);
+  assert.ok(maxStepPercent < 25, `wheel zoom max step should stay below the recorder's big-jump threshold, got ${maxStepPercent}%`);
 });
 
 test('overlay recorder expected scale accounts for active zoom transform', () => {
