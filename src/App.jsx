@@ -281,6 +281,7 @@ const SYNCFUSION_INTERACTION_COMMIT_FRAME_BUDGET_MS = 6;
 const SYNCFUSION_INTERACTION_EVENT_THROTTLE_MS = 96;
 const SYNCFUSION_INTERACTION_MARK_THROTTLE_MS = 96;
 const SYNCFUSION_ZOOM_OVERLAY_SETTLE_MS = 1000;
+const SYNCFUSION_BASE_SCROLL_SENSITIVITY = 0.68;
 const SYNCFUSION_DIAGONAL_SCROLL_SENSITIVITY = 0.82;
 const SYNCFUSION_LARGE_WHEEL_SCROLL_SENSITIVITY = 0.8;
 const SYNCFUSION_SCROLL_MAX_STEP_PX = 48;
@@ -12861,7 +12862,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         null
       );
       const correctedSuspiciousZoom = isSuspiciousWheelZoomPercent(reportedZoom, trustedReactZoom);
-      const currentZoom = correctedSuspiciousZoom
+      const reportedCurrentZoom = correctedSuspiciousZoom
         ? trustedReactZoom
         : coerceSyncfusionZoomPercent(
           rawGetZoomValue,
@@ -12870,6 +12871,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           trustedReactZoom,
           100
         );
+      // Wheel zoom must advance from the live React zoom, not Syncfusion's rounded
+      // reported value, otherwise trackpads feel like they move in tiny stale steps.
+      const currentZoom = Number.isFinite(Number(trustedReactZoom))
+        ? Number(trustedReactZoom)
+        : reportedCurrentZoom;
 
       const nextZoom = getSmoothSyncfusionWheelZoom(currentZoom, delta);
       debugMark('zoom_wheel_request', {
@@ -12877,6 +12883,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         reportedZoom,
         trustedReactZoom,
         currentZoom,
+        reportedCurrentZoom,
         nextZoom,
         rawGetZoomValue,
         rawViewerZoomValue,
@@ -13085,14 +13092,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       );
       const clippedX = clampWheelDelta(wheelDelta.x, maxScrollStep);
       const clippedY = clampWheelDelta(wheelDelta.y, maxScrollStep);
+      const isTrackpadScroll = Math.abs(wheelDelta.x) > 0.5 || Math.abs(wheelDelta.y) > 0.5;
       const isDiagonalTrackpadScroll = Math.abs(wheelDelta.x) > 0.5 && Math.abs(wheelDelta.y) > 0.5;
       const isLargeWheelStep = Math.abs(clippedX - wheelDelta.x) > 0.01 || Math.abs(clippedY - wheelDelta.y) > 0.01;
-      if (isDiagonalTrackpadScroll || isLargeWheelStep) {
+      if (isTrackpadScroll || isLargeWheelStep) {
         event.preventDefault();
         event.stopPropagation();
         const diagonalSensitivity = isDiagonalTrackpadScroll ? SYNCFUSION_DIAGONAL_SCROLL_SENSITIVITY : 1;
         const largeWheelSensitivity = isLargeWheelStep ? SYNCFUSION_LARGE_WHEEL_SCROLL_SENSITIVITY : 1;
-        const sensitivity = diagonalSensitivity * largeWheelSensitivity;
+        const sensitivity = SYNCFUSION_BASE_SCROLL_SENSITIVITY * diagonalSensitivity * largeWheelSensitivity;
         viewerContainer.scrollLeft += clippedX * sensitivity;
         viewerContainer.scrollTop += clippedY * sensitivity;
       }
