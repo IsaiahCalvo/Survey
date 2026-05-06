@@ -1,0 +1,285 @@
+===== SurveyApp Save Log =====
+version:   0.1.45
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1512x826
+locale:    en-US
+timestamp: 2026-05-06T13:29:28.387Z (5/6/2026, 9:29:28 AM)
+==============================
+[dev-auto-login] boot {"hasDevEmail":true,"devEmailHint":"isai***","hasDevPassword":true,"hasCachedSession":true,"cachedSessionEmail":"isaiahcalvo123@gmail.com","cachedSessionExpiresAt":1778077691}
+[dev-auto-login] cached session matches dev email, keeping it
+[dev-auto-login] decision {"needsAutoLogin":false,"willAttemptSignIn":false}
+[CloudSync][hook] session id minted {"sessionId":"2f60aa10-2f17-437b-8d17-0a841c9999da"}
+[CloudSync][hook][state-obs] annotationsByPage initial {"currentCount":0,"pages":0,"hydrated":false}
+[CloudSync][hook][state-obs] callouts initial {"currentCount":0,"hydrated":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":null}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":false}
+[Cloud render cache] doc=Package 2 - Rev 4 -- IC.pdf-6291605 painting verified cloud snapshot immediately — count=2867.
+[CSeries wipe] doc=Package 2 - Rev 4 -- IC.pdf-6291605 totalCounters=0 legacyRemoved=0 — nothing to wipe.
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":null,"alreadyRanFor":null,"willRun":false}
+[CloudSync][hook][state-obs] change {"prevCount":0,"currentCount":2867,"delta":2867,"hydrated":false,"sameRefAsLastByPage":false}
+[CloudSync][hook][state-obs] callout change {"prevCount":0,"currentCount":0,"delta":0,"hydrated":false,"sameRefAsLastCallouts":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605"}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":true}
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","alreadyRanFor":null,"willRun":true}
+[Phase31 UAT] backfill:start {"hasYdoc":true,"hasSupabase":true,"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","markCutoverComplete":true}
+[PDFImport] skipped embedded PDF annotation import — cloud/Y.Doc is authoritative {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86"}
+[PrintPanel] RENDER — panel closed
+[DebugBridge +6221.0ms] zoom_start {"scale":1,"targetScale":0.9,"source":"zoomChange"}
+[DebugBridge +6640.9ms] pdf_loaded {"pageCount":36,"currentPage":1}
+[HIGHLIGHT-SYNC][load.legacy][pdf=Package 2 - Rev 4 -- IC.pdf] {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","totalRows":0,"fabricCarryingDropped":0,"keptCount":0,"keptIds":[]}
+[HyperlinkDiag] post-load scan {"hyperlinkCount":0,"samples":[]}
+[HyperlinkDiag] page 1 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 2 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 3 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 4 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[Phase31 UAT] backfill:cutover-dedupe-anchor-skip {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapSize":2867,"lastGoodSize":2867}
+[DebugBridge +7733.2ms] zoom_end {"source":"zoomChange_settle"}
+[CloudSync][hook] hydrate effect fired {"enabled":true,"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605"}
+[CloudSync][hook] stage=hydrating
+[CloudSync][hook] fabric push skipped — not hydrated yet
+[CloudSync][hook] callout push skipped — not hydrated yet
+[CloudSync][realtime] subscribing {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","currentUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","currentSessionId":"2f60aa10-2f17-437b-8d17-0a841c9999da","hasFabricInsert":true,"hasFabricUpdate":true,"hasFabricDelete":true,"hasCalloutInsert":true,"hasCalloutUpdate":true,"hasCalloutDelete":true}
+[CloudSync][realtime] subscribe status {"status":"SUBSCRIBED","error":null}
+[CloudSync][hook] post-subscribe catch-up skipped — startup sync already in flight
+[CloudSync][hook] cutover-complete hydrate — reading from Y.Doc {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","cutoverTs":"2026-05-05T16:30:00.778+00:00"}
+[Phase31 UAT] hydrate:cutover-sealed {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605","cutoverTs":"2026-05-05T16:30:00.778+00:00","yMapSize":2867,"materializedTotal":2867,"materializedDrawnByMe":2867,"materializedDrawnByOthers":0,"materializedImported":0,"pages":6,"perPage":{"6":359,"7":146,"8":393,"9":1382,"10":330,"11":257},"currentStateCount":2867,"ydocLooksDegenerate":false}
+[Phase31 UAT] hydrate:cutover-sealed:by-type {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","pdfFile":"Package 2 - Rev 4 -- IC.pdf-6291605","viewerUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapTotal":2867,"yMapByType":{"path":2860,"rect":6,"textbox":1},"yMapByAuthor":{"byMe":2867,"byOthers":0,"anonymous":0},"yMapByTypeByAuthor":{"path":{"byMe":2860,"byOthers":0,"anonymous":0},"rect":{"byMe":6,"byOthers":0,"anonymous":0},"textbox":{"byMe":1,"byOthers":0,"anonymous":0}},"yMapPerTypePerPage":{"path":{"6":357,"7":145,"8":392,"9":1381,"10":329,"11":256},"rect":{"6":1,"7":1,"8":1,"9":1,"10":1,"11":1},"textbox":{"6":1}},"byPageTotal":2867,"byPageByType":{"path":2860,"rect":6,"textbox":1},"byPagePerPagePerType":{"6":{"path":357,"rect":1,"textbox":1},"7":{"path":145,"rect":1},"8":{"path":392,"rect":1},"9":{"path":1381,"rect":1},"10":{"rect":1,"path":329},"11":{"path":256,"rect":1}}}
+[CloudSync][hook][state-obs] change {"prevCount":2867,"currentCount":2867,"delta":0,"hydrated":true,"sameRefAsLastByPage":true}
+[DebugBridge +8772.6ms] page_visit_start {"page":2,"pageCount":36,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +8773.2ms] page_visit_ready {"page":2,"pageCount":36,"revisited":false,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +8838.1ms] page_visit_start {"page":3,"pageCount":36,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":true,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +8838.6ms] page_visit_ready {"page":3,"pageCount":36,"revisited":false,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":true,"hasAnnotationOverlay":false,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +8887.1ms] page_visit_start {"page":4,"pageCount":36,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":true,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +8887.5ms] page_visit_ready {"page":4,"pageCount":36,"revisited":false,"waitMs":0,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":true,"hasAnnotationOverlay":false,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +8967.2ms] page_visit_start {"page":5,"pageCount":36,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +8967.7ms] page_visit_ready {"page":5,"pageCount":36,"revisited":false,"waitMs":0,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +9170.4ms] page_visit_start {"page":6,"pageCount":36,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +9171.0ms] page_visit_ready {"page":6,"pageCount":36,"revisited":false,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +11153.6ms] zoom_start {"scale":0.67,"source":"overlay_wheel_zoom_pre"}
+[DebugBridge +12527.7ms] zoom_end {"source":"zoomChange_settle"}
+[DebugBridge +13265.1ms] zoom_start {"scale":1.15,"source":"overlay_wheel_zoom_pre"}
+[DebugBridge +14575.5ms] zoom_end {"source":"zoomChange_settle"}
+[DebugBridge +20569.5ms] page_visit_start {"page":7,"pageCount":36,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +20570.9ms] page_visit_ready {"page":7,"pageCount":36,"revisited":false,"waitMs":2,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +23217.8ms] page_visit_start {"page":8,"pageCount":36,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +23223.5ms] page_visit_ready {"page":8,"pageCount":36,"revisited":false,"waitMs":6,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +24624.3ms] zoom_start {"scale":1.76,"source":"overlay_wheel_zoom_pre"}
+[DebugBridge +25783.6ms] zoom_end {"source":"zoomChange_settle"}
+[DebugBridge +27035.4ms] zoom_start {"scale":1.54,"source":"overlay_wheel_zoom_pre"}
+[DebugBridge +28256.7ms] zoom_end {"source":"zoomChange_settle"}
+[DebugBridge +29563.3ms] page_visit_start {"page":9,"pageCount":36,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +29573.6ms] page_visit_ready {"page":9,"pageCount":36,"revisited":false,"waitMs":11,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +29807.3ms] page_visit_start {"page":10,"pageCount":36,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +29808.9ms] page_visit_ready {"page":10,"pageCount":36,"revisited":false,"waitMs":2,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +31279.4ms] page_visit_start {"page":11,"pageCount":36,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +31283.4ms] page_visit_ready {"page":11,"pageCount":36,"revisited":false,"waitMs":4,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +31452.5ms] page_visit_start {"page":10,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +31453.2ms] page_visit_ready {"page":10,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +31676.8ms] page_visit_start {"page":11,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +31678.2ms] page_visit_ready {"page":11,"pageCount":36,"revisited":true,"waitMs":2,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +32013.0ms] page_visit_start {"page":12,"pageCount":36,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +32013.7ms] page_visit_ready {"page":12,"pageCount":36,"revisited":false,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +32280.9ms] page_visit_start {"page":14,"pageCount":36,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +32281.5ms] page_visit_ready {"page":14,"pageCount":36,"revisited":false,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +32422.9ms] page_visit_start {"page":15,"pageCount":36,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":true,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +32423.3ms] page_visit_ready {"page":15,"pageCount":36,"revisited":false,"waitMs":0,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":true,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +32490.1ms] page_visit_start {"page":16,"pageCount":36,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +32490.3ms] page_visit_ready {"page":16,"pageCount":36,"revisited":false,"waitMs":0,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +32578.5ms] page_visit_start {"page":17,"pageCount":36,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +32578.8ms] page_visit_ready {"page":17,"pageCount":36,"revisited":false,"waitMs":0,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +34655.1ms] page_visit_start {"page":16,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +34655.8ms] page_visit_ready {"page":16,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +34730.6ms] page_visit_start {"page":15,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +34731.2ms] page_visit_ready {"page":15,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +34816.1ms] page_visit_start {"page":14,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +34816.5ms] page_visit_ready {"page":14,"pageCount":36,"revisited":true,"waitMs":0,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +34889.6ms] page_visit_start {"page":13,"pageCount":36,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +34890.3ms] page_visit_ready {"page":13,"pageCount":36,"revisited":false,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +35064.0ms] page_visit_start {"page":12,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +35064.4ms] page_visit_ready {"page":12,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +35361.7ms] page_visit_start {"page":11,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +35362.5ms] page_visit_ready {"page":11,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +35571.6ms] page_visit_start {"page":12,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +35572.7ms] page_visit_ready {"page":12,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +35763.9ms] page_visit_start {"page":11,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +35764.4ms] page_visit_ready {"page":11,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +36000.1ms] page_visit_start {"page":12,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +36001.1ms] page_visit_ready {"page":12,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +36053.2ms] page_visit_start {"page":11,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +36053.8ms] page_visit_ready {"page":11,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +36630.9ms] page_visit_start {"page":10,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +36631.5ms] page_visit_ready {"page":10,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +37314.8ms] page_visit_start {"page":9,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +37315.7ms] page_visit_ready {"page":9,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +37668.5ms] page_visit_start {"page":7,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +37669.4ms] page_visit_ready {"page":7,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +38549.8ms] page_visit_start {"page":8,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +38551.3ms] page_visit_ready {"page":8,"pageCount":36,"revisited":true,"waitMs":2,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +39347.5ms] zoom_start {"scale":0.95,"source":"overlay_wheel_zoom_pre"}
+[DebugBridge +40624.6ms] zoom_end {"source":"zoomChange_settle"}
+[DebugBridge +40879.7ms] page_visit_start {"page":7,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +40880.8ms] page_visit_ready {"page":7,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +40953.2ms] page_visit_start {"page":6,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +40954.4ms] page_visit_ready {"page":6,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +41060.8ms] page_visit_start {"page":5,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +41061.3ms] page_visit_ready {"page":5,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +41420.3ms] page_visit_start {"page":4,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +41421.0ms] page_visit_ready {"page":4,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +41765.5ms] page_visit_start {"page":5,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +41766.2ms] page_visit_ready {"page":5,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +41837.9ms] page_visit_start {"page":6,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +41838.8ms] page_visit_ready {"page":6,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +41926.2ms] page_visit_start {"page":7,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +41927.1ms] page_visit_ready {"page":7,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +42077.5ms] page_visit_start {"page":8,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +42078.7ms] page_visit_ready {"page":8,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +42426.5ms] page_visit_start {"page":10,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +42428.1ms] page_visit_ready {"page":10,"pageCount":36,"revisited":true,"waitMs":2,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +42606.8ms] page_visit_start {"page":11,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +42608.1ms] page_visit_ready {"page":11,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +43302.3ms] page_visit_start {"page":12,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +43303.4ms] page_visit_ready {"page":12,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +43489.1ms] page_visit_start {"page":11,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +43489.8ms] page_visit_ready {"page":11,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +44271.4ms] zoom_start {"scale":0.59,"source":"overlay_wheel_zoom_pre"}
+[DebugBridge +44754.5ms] page_visit_start {"page":10,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +44755.5ms] page_visit_ready {"page":10,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +46661.4ms] zoom_end {"source":"zoomChange_settle"}
+[DebugBridge +48242.2ms] page_visit_start {"page":9,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +48243.6ms] page_visit_ready {"page":9,"pageCount":36,"revisited":true,"waitMs":2,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +48482.4ms] page_visit_start {"page":8,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +48483.6ms] page_visit_ready {"page":8,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +48872.7ms] page_visit_start {"page":7,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +48873.8ms] page_visit_ready {"page":7,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +51190.7ms] page_visit_start {"page":6,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +51191.9ms] page_visit_ready {"page":6,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +51937.3ms] zoom_start {"scale":1.19,"source":"overlay_wheel_zoom_pre"}
+[DebugBridge +53934.4ms] zoom_end {"source":"zoomChange_settle"}
+[DebugBridge +61412.6ms] zoom_start {"scale":3.16,"source":"overlay_wheel_zoom_pre"}
+[DebugBridge +63049.5ms] zoom_end {"source":"zoomChange_settle"}
+[DebugBridge +63134.7ms] page_visit_start {"page":5,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +63135.4ms] page_visit_ready {"page":5,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +63207.5ms] page_visit_start {"page":4,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":true,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +63207.9ms] page_visit_ready {"page":4,"pageCount":36,"revisited":true,"waitMs":0,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":true,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +63314.4ms] page_visit_start {"page":3,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +63314.8ms] page_visit_ready {"page":3,"pageCount":36,"revisited":true,"waitMs":0,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +64123.4ms] page_visit_start {"page":4,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":true,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +64124.1ms] page_visit_ready {"page":4,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":true,"hasAnnotationOverlay":false,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +66248.2ms] page_visit_start {"page":5,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +66249.0ms] page_visit_ready {"page":5,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +66355.3ms] page_visit_start {"page":6,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +66356.2ms] page_visit_ready {"page":6,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +67665.2ms] page_visit_start {"page":5,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +67666.1ms] page_visit_ready {"page":5,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +67696.9ms] page_visit_start {"page":6,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +67697.7ms] page_visit_ready {"page":6,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +67871.8ms] page_visit_start {"page":7,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +67872.8ms] page_visit_ready {"page":7,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +68496.9ms] page_visit_start {"page":8,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +68498.7ms] page_visit_ready {"page":8,"pageCount":36,"revisited":true,"waitMs":2,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +69215.7ms] page_visit_start {"page":9,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +69217.3ms] page_visit_ready {"page":9,"pageCount":36,"revisited":true,"waitMs":2,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
