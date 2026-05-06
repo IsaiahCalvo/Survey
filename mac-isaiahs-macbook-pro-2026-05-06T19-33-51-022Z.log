@@ -1,0 +1,441 @@
+===== SurveyApp Save Log =====
+version:   0.1.45
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1512x826
+locale:    en-US
+timestamp: 2026-05-06T19:33:51.021Z (5/6/2026, 3:33:51 PM)
+==============================
+[dev-auto-login] boot {"hasDevEmail":true,"devEmailHint":"isai***","hasDevPassword":true,"hasCachedSession":true,"cachedSessionEmail":"isaiahcalvo123@gmail.com","cachedSessionExpiresAt":1778098925}
+[dev-auto-login] cached session matches dev email, keeping it
+[dev-auto-login] decision {"needsAutoLogin":false,"willAttemptSignIn":false}
+[CloudSync][hook] session id minted {"sessionId":"5ba07991-3eba-4066-89b8-5d9d73b88d83"}
+[CloudSync][hook][state-obs] annotationsByPage initial {"currentCount":0,"pages":0,"hydrated":false}
+[CloudSync][hook][state-obs] callouts initial {"currentCount":0,"hydrated":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":null}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":false}
+[Cloud render cache] doc=Package 2 - Rev 4 -- IC.pdf-6291605 painting verified cloud snapshot immediately — count=2867.
+[CSeries wipe] doc=Package 2 - Rev 4 -- IC.pdf-6291605 totalCounters=0 legacyRemoved=0 — nothing to wipe.
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":null,"alreadyRanFor":null,"willRun":false}
+[CloudSync][hook][state-obs] change {"prevCount":0,"currentCount":2867,"delta":2867,"hydrated":false,"sameRefAsLastByPage":false}
+[CloudSync][hook][state-obs] callout change {"prevCount":0,"currentCount":0,"delta":0,"hydrated":false,"sameRefAsLastCallouts":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605"}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":true}
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","alreadyRanFor":null,"willRun":true}
+[Phase31 UAT] backfill:start {"hasYdoc":true,"hasSupabase":true,"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","markCutoverComplete":true}
+[HIGHLIGHT-SYNC][load.legacy][pdf=Package 2 - Rev 4 -- IC.pdf] {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","totalRows":0,"fabricCarryingDropped":0,"keptCount":0,"keptIds":[]}
+[PDFImport] skipped embedded PDF annotation import — cloud/Y.Doc is authoritative {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86"}
+[PrintPanel] RENDER — panel closed
+[DebugBridge +2846.7ms] zoom_start {"scale":1,"targetScale":0.9,"source":"zoomChange"}
+[CloudSync][hook] hydrate effect fired {"enabled":true,"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605"}
+[CloudSync][hook] stage=hydrating
+[CloudSync][hook] fabric push skipped — not hydrated yet
+[CloudSync][hook] callout push skipped — not hydrated yet
+[CloudSync][realtime] subscribing {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","currentUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","currentSessionId":"5ba07991-3eba-4066-89b8-5d9d73b88d83","hasFabricInsert":true,"hasFabricUpdate":true,"hasFabricDelete":true,"hasCalloutInsert":true,"hasCalloutUpdate":true,"hasCalloutDelete":true}
+[CloudSync][realtime] subscribe status {"status":"SUBSCRIBED","error":null}
+[CloudSync][hook] post-subscribe catch-up skipped — startup sync already in flight
+[CloudSync][hook] cutover-complete hydrate — reading from Y.Doc {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","cutoverTs":"2026-05-05T16:30:00.778+00:00"}
+[Phase31 UAT] hydrate:cutover-sealed {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605","cutoverTs":"2026-05-05T16:30:00.778+00:00","yMapSize":2867,"materializedTotal":2867,"materializedDrawnByMe":2867,"materializedDrawnByOthers":0,"materializedImported":0,"pages":6,"perPage":{"6":359,"7":146,"8":393,"9":1382,"10":330,"11":257},"currentStateCount":2867,"ydocLooksDegenerate":false}
+[Phase31 UAT] hydrate:cutover-sealed:by-type {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","pdfFile":"Package 2 - Rev 4 -- IC.pdf-6291605","viewerUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapTotal":2867,"yMapByType":{"path":2860,"rect":6,"textbox":1},"yMapByAuthor":{"byMe":2867,"byOthers":0,"anonymous":0},"yMapByTypeByAuthor":{"path":{"byMe":2860,"byOthers":0,"anonymous":0},"rect":{"byMe":6,"byOthers":0,"anonymous":0},"textbox":{"byMe":1,"byOthers":0,"anonymous":0}},"yMapPerTypePerPage":{"path":{"6":357,"7":145,"8":392,"9":1381,"10":329,"11":256},"rect":{"6":1,"7":1,"8":1,"9":1,"10":1,"11":1},"textbox":{"6":1}},"byPageTotal":2867,"byPageByType":{"path":2860,"rect":6,"textbox":1},"byPagePerPagePerType":{"6":{"path":357,"rect":1,"textbox":1},"7":{"path":145,"rect":1},"8":{"path":392,"rect":1},"9":{"path":1381,"rect":1},"10":{"rect":1,"path":329},"11":{"path":256,"rect":1}}}
+[CloudSync][hook][state-obs] change {"prevCount":2867,"currentCount":2867,"delta":0,"hydrated":true,"sameRefAsLastByPage":true}
+[DebugBridge +3410.5ms] pdf_loaded {"pageCount":36,"currentPage":1}
+[DebugBridge +3912.7ms] page_visit_start {"page":2,"pageCount":36,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":true,"hasAnnotationOverlay":false,"ready":false}
+[DebugBridge +4030.2ms] page_visit_start {"page":3,"pageCount":36,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":true,"hasAnnotationOverlay":false,"ready":false}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[Phase31 UAT] backfill:cutover-dedupe-anchor-skip {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapSize":2867,"lastGoodSize":2867}
+[DebugBridge +4146.0ms] page_visit_start {"page":4,"pageCount":36,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":true,"hasAnnotationOverlay":false,"ready":false}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[HyperlinkDiag] post-load scan {"hyperlinkCount":0,"samples":[]}
+[HyperlinkDiag] page 1 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 2 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 3 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 4 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","DIV","e-pv-annotation-canvas"]}
+[HyperlinkDiag] page 5 layers {"hyperlinkChildren":0,"layerClasses":["e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-text-layer","DIV"]}
+[HyperlinkDiag] page 6 layers {"hyperlinkChildren":0,"layerClasses":["e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-text-layer","DIV"]}
+[DebugBridge +4338.7ms] page_visit_start {"page":5,"pageCount":36,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":true,"hasAnnotationOverlay":false,"ready":false}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +4393.8ms] page_visit_start {"page":6,"pageCount":36,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +4394.4ms] page_visit_ready {"page":6,"pageCount":36,"revisited":false,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +4487.5ms] zoom_end {"source":"zoomChange_settle"}
+[DebugBridge +4541.3ms] page_visit_start {"page":7,"pageCount":36,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +4541.8ms] page_visit_ready {"page":7,"pageCount":36,"revisited":false,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +4678.5ms] page_visit_start {"page":8,"pageCount":36,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +4679.6ms] page_visit_ready {"page":8,"pageCount":36,"revisited":false,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +9480.0ms] page_visit_start {"page":9,"pageCount":36,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +9484.5ms] page_visit_ready {"page":9,"pageCount":36,"revisited":false,"waitMs":5,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +9732.9ms] page_visit_start {"page":11,"pageCount":36,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +9734.3ms] page_visit_ready {"page":11,"pageCount":36,"revisited":false,"waitMs":2,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +11099.7ms] page_visit_start {"page":10,"pageCount":36,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +11100.8ms] page_visit_ready {"page":10,"pageCount":36,"revisited":false,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +11331.8ms] page_visit_start {"page":9,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +11332.9ms] page_visit_ready {"page":9,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +11366.7ms] page_visit_start {"page":8,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +11367.6ms] page_visit_ready {"page":8,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +11621.5ms] page_visit_start {"page":6,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +11622.4ms] page_visit_ready {"page":6,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +12451.3ms] zoom_wheel_request {"rawDeltaY":5.715878009796143,"reportedZoom":67,"trustedReactZoom":67,"currentZoom":67,"nextZoom":67.46113626325662,"rawGetZoomValue":67,"rawViewerZoomValue":67,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +12451.5ms] zoom_start {"scale":0.67,"source":"overlay_wheel_zoom_pre","reportedScale":0.67,"correctedSuspiciousZoom":false}
+[DebugBridge +12484.6ms] zoom_wheel_request {"rawDeltaY":12.486499786376953,"reportedZoom":67,"trustedReactZoom":67.46113626325662,"currentZoom":67,"nextZoom":68.01147351702282,"rawGetZoomValue":67,"rawViewerZoomValue":67,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +12502.3ms] zoom_wheel_request {"rawDeltaY":49.1910285949707,"reportedZoom":68,"trustedReactZoom":68.01147351702282,"currentZoom":68,"nextZoom":72.13482515163255,"rawGetZoomValue":68,"rawViewerZoomValue":68,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +12519.4ms] zoom_wheel_request {"rawDeltaY":23.788766860961914,"reportedZoom":72,"trustedReactZoom":72.13482515163255,"currentZoom":72,"nextZoom":74.08496714986717,"rawGetZoomValue":72,"rawViewerZoomValue":72,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +12535.9ms] zoom_wheel_request {"rawDeltaY":19.596790313720703,"reportedZoom":74,"trustedReactZoom":74.08496714986717,"currentZoom":74,"nextZoom":75.7608176595774,"rawGetZoomValue":74,"rawViewerZoomValue":74,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +12551.2ms] zoom_wheel_request {"rawDeltaY":12.984076499938965,"reportedZoom":75,"trustedReactZoom":75.7608176595774,"currentZoom":75,"nextZoom":76.17771800787018,"rawGetZoomValue":75,"rawViewerZoomValue":75,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +12568.4ms] zoom_wheel_request {"rawDeltaY":14.398637771606445,"reportedZoom":76,"trustedReactZoom":76.17771800787018,"currentZoom":76,"nextZoom":77.3245659791731,"rawGetZoomValue":76,"rawViewerZoomValue":76,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +12583.7ms] zoom_wheel_request {"rawDeltaY":7.715875625610352,"reportedZoom":77,"trustedReactZoom":77.3245659791731,"currentZoom":77,"nextZoom":77.71625772405673,"rawGetZoomValue":77,"rawViewerZoomValue":77,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +12598.4ms] zoom_wheel_request {"rawDeltaY":3.6718738079071045,"reportedZoom":77,"trustedReactZoom":77.71625772405673,"currentZoom":77,"nextZoom":77.34002971743831,"rawGetZoomValue":77,"rawViewerZoomValue":77,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +12613.1ms] zoom_wheel_request {"rawDeltaY":1.1957590579986572,"reportedZoom":77,"trustedReactZoom":77.34002971743831,"currentZoom":77,"nextZoom":77.1105674452023,"rawGetZoomValue":77,"rawViewerZoomValue":77,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +12825.0ms] zoom_wheel_request {"rawDeltaY":2.580328941345215,"reportedZoom":77,"trustedReactZoom":77.1105674452023,"currentZoom":77,"nextZoom":77.23879190038328,"rawGetZoomValue":77,"rawViewerZoomValue":77,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +12842.0ms] zoom_wheel_request {"rawDeltaY":6.807265281677246,"reportedZoom":77,"trustedReactZoom":77.23879190038328,"currentZoom":77,"nextZoom":77.63156734798612,"rawGetZoomValue":77,"rawViewerZoomValue":77,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +12859.9ms] zoom_wheel_request {"rawDeltaY":9.149608612060547,"reportedZoom":77,"trustedReactZoom":77.63156734798612,"currentZoom":77,"nextZoom":77.85008204679265,"rawGetZoomValue":77,"rawViewerZoomValue":77,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +12877.5ms] zoom_wheel_request {"rawDeltaY":18.673669815063477,"reportedZoom":77,"trustedReactZoom":77.85008204679265,"currentZoom":77,"nextZoom":78.74492456273686,"rawGetZoomValue":77,"rawViewerZoomValue":77,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +12895.9ms] zoom_wheel_request {"rawDeltaY":23.47945213317871,"reportedZoom":78,"trustedReactZoom":78.74492456273686,"currentZoom":78,"nextZoom":80.22892969752782,"rawGetZoomValue":78,"rawViewerZoomValue":78,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +12911.0ms] zoom_wheel_request {"rawDeltaY":22.718246459960938,"reportedZoom":80,"trustedReactZoom":80.22892969752782,"currentZoom":80,"nextZoom":82.21095210104524,"rawGetZoomValue":80,"rawViewerZoomValue":80,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +12959.9ms] zoom_wheel_request {"rawDeltaY":22.80512237548828,"reportedZoom":82,"trustedReactZoom":82.21095210104524,"currentZoom":82,"nextZoom":84.27501120813031,"rawGetZoomValue":82,"rawViewerZoomValue":82,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +13004.8ms] zoom_wheel_request {"rawDeltaY":41.03974533081055,"reportedZoom":84,"trustedReactZoom":84.27501120813031,"currentZoom":84,"nextZoom":88.24036339910255,"rawGetZoomValue":84,"rawViewerZoomValue":84,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +13049.8ms] zoom_wheel_request {"rawDeltaY":12.85817813873291,"reportedZoom":88,"trustedReactZoom":88.24036339910255,"currentZoom":88,"nextZoom":89.36835318090145,"rawGetZoomValue":88,"rawViewerZoomValue":88,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +13300.0ms] zoom_wheel_request {"rawDeltaY":5.32698392868042,"reportedZoom":89,"trustedReactZoom":89.36835318090145,"currentZoom":89,"nextZoom":89.57074414701931,"rawGetZoomValue":89,"rawViewerZoomValue":89,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +13317.3ms] zoom_wheel_request {"rawDeltaY":7.552134037017822,"reportedZoom":89,"trustedReactZoom":89.57074414701931,"currentZoom":89,"nextZoom":89.81023376618768,"rawGetZoomValue":89,"rawViewerZoomValue":89,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +13334.5ms] zoom_wheel_request {"rawDeltaY":8.604344367980957,"reportedZoom":89,"trustedReactZoom":89.81023376618768,"currentZoom":89,"nextZoom":89.92370449511019,"rawGetZoomValue":89,"rawViewerZoomValue":89,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +13352.4ms] zoom_wheel_request {"rawDeltaY":30.90560531616211,"reportedZoom":89,"trustedReactZoom":89.92370449511019,"currentZoom":89,"nextZoom":92.36268878884447,"rawGetZoomValue":89,"rawViewerZoomValue":89,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +13371.0ms] zoom_wheel_request {"rawDeltaY":24.840152740478516,"reportedZoom":92,"trustedReactZoom":92.36268878884447,"currentZoom":92,"nextZoom":94.78363429486666,"rawGetZoomValue":92,"rawViewerZoomValue":92,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +13389.0ms] zoom_wheel_request {"rawDeltaY":20.99553680419922,"reportedZoom":94,"trustedReactZoom":94.78363429486666,"currentZoom":94,"nextZoom":96.39838288607127,"rawGetZoomValue":94,"rawViewerZoomValue":94,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +13436.1ms] zoom_wheel_request {"rawDeltaY":20.19892120361328,"reportedZoom":96,"trustedReactZoom":96.39838288607127,"currentZoom":96,"nextZoom":98.35534567205607,"rawGetZoomValue":96,"rawViewerZoomValue":96,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +13480.6ms] zoom_wheel_request {"rawDeltaY":30.134550094604492,"reportedZoom":98,"trustedReactZoom":98.35534567205607,"currentZoom":98,"nextZoom":101.6086773803298,"rawGetZoomValue":98,"rawViewerZoomValue":98,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +13523.3ms] zoom_wheel_request {"rawDeltaY":15.418307304382324,"reportedZoom":101,"trustedReactZoom":101.6086773803298,"currentZoom":101,"nextZoom":102.88609326049371,"rawGetZoomValue":101,"rawViewerZoomValue":101,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +13563.4ms] zoom_wheel_request {"rawDeltaY":0.8253211379051208,"reportedZoom":102,"trustedReactZoom":102.88609326049371,"currentZoom":102,"nextZoom":102.10106934781982,"rawGetZoomValue":102,"rawViewerZoomValue":102,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +13800.7ms] zoom_wheel_request {"rawDeltaY":5.523009777069092,"reportedZoom":102,"trustedReactZoom":102.10106934781982,"currentZoom":102,"nextZoom":102.6782615410554,"rawGetZoomValue":102,"rawViewerZoomValue":102,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +13813.5ms] zoom_wheel_request {"rawDeltaY":8.896455764770508,"reportedZoom":102,"trustedReactZoom":102.67826154105542,"currentZoom":102,"nextZoom":103.0947594755545,"rawGetZoomValue":102,"rawViewerZoomValue":102,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +13826.1ms] zoom_wheel_request {"rawDeltaY":8.659878730773926,"reportedZoom":103,"trustedReactZoom":103.09475947555448,"currentZoom":103,"nextZoom":104.07594184403821,"rawGetZoomValue":103,"rawViewerZoomValue":103,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +13839.0ms] zoom_wheel_request {"rawDeltaY":6.225341796875,"reportedZoom":104,"trustedReactZoom":104.07594184403821,"currentZoom":104,"nextZoom":104.7798318615077,"rawGetZoomValue":104,"rawViewerZoomValue":104,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +13852.3ms] zoom_wheel_request {"rawDeltaY":21.489051818847656,"reportedZoom":104,"trustedReactZoom":104.7798318615077,"currentZoom":104,"nextZoom":106.71671085028794,"rawGetZoomValue":104,"rawViewerZoomValue":104,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +13865.7ms] zoom_wheel_request {"rawDeltaY":23.871896743774414,"reportedZoom":106,"trustedReactZoom":106.71671085028794,"currentZoom":106,"nextZoom":109.08041583853657,"rawGetZoomValue":106,"rawViewerZoomValue":106,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +13879.7ms] zoom_wheel_request {"rawDeltaY":13.646103858947754,"reportedZoom":109,"trustedReactZoom":109.08041583853657,"currentZoom":109,"nextZoom":110.79960472687917,"rawGetZoomValue":109,"rawViewerZoomValue":109,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +13893.9ms] zoom_wheel_request {"rawDeltaY":18.571857452392578,"reportedZoom":110,"trustedReactZoom":110.79960472687918,"currentZoom":110,"nextZoom":112.4790064317597,"rawGetZoomValue":110,"rawViewerZoomValue":110,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +13933.9ms] zoom_wheel_request {"rawDeltaY":15.973355293273926,"reportedZoom":112,"trustedReactZoom":112.4790064317597,"currentZoom":112,"nextZoom":114.16752618653621,"rawGetZoomValue":112,"rawViewerZoomValue":112,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +13975.1ms] zoom_wheel_request {"rawDeltaY":29.295530319213867,"reportedZoom":114,"trustedReactZoom":114.16752618653621,"currentZoom":114,"nextZoom":118.07890468619014,"rawGetZoomValue":114,"rawViewerZoomValue":114,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +14019.3ms] zoom_wheel_request {"rawDeltaY":16.333450317382812,"reportedZoom":118,"trustedReactZoom":118.07890468619013,"currentZoom":118,"nextZoom":120.33563114214272,"rawGetZoomValue":118,"rawViewerZoomValue":118,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +14060.1ms] zoom_wheel_request {"rawDeltaY":8.14349365234375,"reportedZoom":120,"trustedReactZoom":120.33563114214272,"currentZoom":120,"nextZoom":121.17841154031757,"rawGetZoomValue":120,"rawViewerZoomValue":120,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +14358.4ms] zoom_wheel_request {"rawDeltaY":6.878044605255127,"reportedZoom":121,"trustedReactZoom":121.17841154031757,"currentZoom":121,"nextZoom":122.0028248682584,"rawGetZoomValue":121,"rawViewerZoomValue":121,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +14373.5ms] zoom_wheel_request {"rawDeltaY":10.721227645874023,"reportedZoom":122,"trustedReactZoom":122.0028248682584,"currentZoom":122,"nextZoom":123.57972791118235,"rawGetZoomValue":122,"rawViewerZoomValue":122,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +14388.7ms] zoom_wheel_request {"rawDeltaY":8.411316871643066,"reportedZoom":123,"trustedReactZoom":123.57972791118235,"currentZoom":123,"nextZoom":124.2477971467528,"rawGetZoomValue":123,"rawViewerZoomValue":123,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +14403.0ms] zoom_wheel_request {"rawDeltaY":16.6966495513916,"reportedZoom":124,"trustedReactZoom":124.2477971467528,"currentZoom":124,"nextZoom":126.50951782578156,"rawGetZoomValue":124,"rawViewerZoomValue":124,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +14416.8ms] zoom_wheel_request {"rawDeltaY":20.34552574157715,"reportedZoom":126,"trustedReactZoom":126.50951782578154,"currentZoom":126,"nextZoom":129.1141036528781,"rawGetZoomValue":126,"rawViewerZoomValue":126,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +14430.4ms] zoom_wheel_request {"rawDeltaY":7.530322551727295,"reportedZoom":129,"trustedReactZoom":129.1141036528781,"currentZoom":129,"nextZoom":130.17097666206348,"rawGetZoomValue":129,"rawViewerZoomValue":129,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +14443.4ms] zoom_wheel_request {"rawDeltaY":13.015778541564941,"reportedZoom":130,"trustedReactZoom":130.17097666206348,"currentZoom":130,"nextZoom":132.04640115336602,"rawGetZoomValue":130,"rawViewerZoomValue":130,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +14456.7ms] zoom_wheel_request {"rawDeltaY":9.812738418579102,"reportedZoom":132,"trustedReactZoom":132.04640115336602,"currentZoom":132,"nextZoom":133.56352517750148,"rawGetZoomValue":132,"rawViewerZoomValue":132,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +14503.7ms] zoom_wheel_request {"rawDeltaY":4.632875919342041,"reportedZoom":133,"trustedReactZoom":133.56352517750148,"currentZoom":133,"nextZoom":133.7414661594184,"rawGetZoomValue":133,"rawViewerZoomValue":133,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +14542.7ms] zoom_wheel_request {"rawDeltaY":5.3163275718688965,"reportedZoom":133,"trustedReactZoom":133.7414661594184,"currentZoom":133,"nextZoom":133.85119814244032,"rawGetZoomValue":133,"rawViewerZoomValue":133,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +14917.8ms] page_visit_start {"page":5,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":true,"hasAnnotationOverlay":false,"ready":false}
+[DebugBridge +15358.2ms] page_visit_ready {"page":5,"pageCount":36,"revisited":true,"waitMs":441,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +15525.4ms] zoom_wheel_request {"rawDeltaY":6.878044605255127,"reportedZoom":133,"trustedReactZoom":133.85119814244032,"currentZoom":133,"nextZoom":134.1022785742014,"rawGetZoomValue":133,"rawViewerZoomValue":133,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +15541.4ms] zoom_wheel_request {"rawDeltaY":9.185227394104004,"reportedZoom":134,"trustedReactZoom":134.1022785742014,"currentZoom":134,"nextZoom":135.4851544176144,"rawGetZoomValue":134,"rawViewerZoomValue":134,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +15552.1ms] zoom_wheel_request {"rawDeltaY":9.822545051574707,"reportedZoom":135,"trustedReactZoom":135.4851544176144,"currentZoom":135,"nextZoom":136.60066734230188,"rawGetZoomValue":135,"rawViewerZoomValue":135,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +15564.2ms] zoom_wheel_request {"rawDeltaY":20.20290756225586,"reportedZoom":136,"trustedReactZoom":136.60066734230188,"currentZoom":136,"nextZoom":139.3374062391335,"rawGetZoomValue":136,"rawViewerZoomValue":136,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +15574.6ms] zoom_wheel_request {"rawDeltaY":16.951318740844727,"reportedZoom":139,"trustedReactZoom":139.3374062391335,"currentZoom":139,"nextZoom":141.85643366254953,"rawGetZoomValue":139,"rawViewerZoomValue":139,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +15584.9ms] zoom_wheel_request {"rawDeltaY":28.461536407470703,"reportedZoom":141,"trustedReactZoom":141.85643366254953,"currentZoom":141,"nextZoom":145.8988734431009,"rawGetZoomValue":141,"rawViewerZoomValue":141,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +15594.8ms] zoom_wheel_request {"rawDeltaY":9.668062210083008,"reportedZoom":145,"trustedReactZoom":145.8988734431009,"currentZoom":145,"nextZoom":146.69203908922597,"rawGetZoomValue":145,"rawViewerZoomValue":145,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +15604.8ms] zoom_wheel_request {"rawDeltaY":11.286606788635254,"reportedZoom":146,"trustedReactZoom":146.69203908922597,"currentZoom":146,"nextZoom":147.99086514332882,"rawGetZoomValue":146,"rawViewerZoomValue":146,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +15616.2ms] zoom_wheel_request {"rawDeltaY":7.657348155975342,"reportedZoom":147,"trustedReactZoom":147.99086514332882,"currentZoom":147,"nextZoom":148.35698119320202,"rawGetZoomValue":147,"rawViewerZoomValue":147,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +15714.3ms] zoom_wheel_request {"rawDeltaY":8.677412986755371,"reportedZoom":148,"trustedReactZoom":148.35698119320202,"currentZoom":148,"nextZoom":149.5491601702753,"rawGetZoomValue":148,"rawViewerZoomValue":148,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +15801.2ms] zoom_wheel_request {"rawDeltaY":40.517452239990234,"reportedZoom":149,"trustedReactZoom":149.5491601702753,"currentZoom":149,"nextZoom":156.42352753914582,"rawGetZoomValue":149,"rawViewerZoomValue":149,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +16189.5ms] page_visit_start {"page":6,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":true,"hasAnnotationOverlay":true,"ready":false}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +16808.3ms] page_visit_ready {"page":6,"pageCount":36,"revisited":true,"waitMs":619,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +16813.7ms] zoom_end {"source":"zoomChange_settle"}
+[DebugBridge +17290.0ms] zoom_wheel_request {"rawDeltaY":5.523009777069092,"reportedZoom":156,"trustedReactZoom":156.42352753914582,"currentZoom":156,"nextZoom":157.0373411804377,"rawGetZoomValue":156,"rawViewerZoomValue":156,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +17290.1ms] zoom_start {"scale":1.56,"source":"overlay_wheel_zoom_pre","reportedScale":1.56,"correctedSuspiciousZoom":false}
+[DebugBridge +17312.9ms] zoom_wheel_request {"rawDeltaY":72.44342803955078,"reportedZoom":157,"trustedReactZoom":157.0373411804377,"currentZoom":157,"nextZoom":171.2591521619527,"rawGetZoomValue":157,"rawViewerZoomValue":157,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +17327.0ms] zoom_wheel_request {"rawDeltaY":36.68539047241211,"reportedZoom":171,"trustedReactZoom":171.2591521619527,"currentZoom":171,"nextZoom":178.69599768379584,"rawGetZoomValue":171,"rawViewerZoomValue":171,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +17343.3ms] zoom_wheel_request {"rawDeltaY":12.886188507080078,"reportedZoom":178,"trustedReactZoom":178.69599768379584,"currentZoom":178,"nextZoom":180.77388144722306,"rawGetZoomValue":178,"rawViewerZoomValue":178,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +17358.4ms] zoom_wheel_request {"rawDeltaY":16.972061157226562,"reportedZoom":180,"trustedReactZoom":180.77388144722306,"currentZoom":180,"nextZoom":183.70355133334544,"rawGetZoomValue":180,"rawViewerZoomValue":180,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +17372.9ms] zoom_wheel_request {"rawDeltaY":9.902952194213867,"reportedZoom":183,"trustedReactZoom":183.70355133334544,"currentZoom":183,"nextZoom":185.18766113924983,"rawGetZoomValue":183,"rawViewerZoomValue":183,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +17386.7ms] zoom_wheel_request {"rawDeltaY":7.065053939819336,"reportedZoom":185,"trustedReactZoom":185.18766113924983,"currentZoom":185,"nextZoom":186.57510948012578,"rawGetZoomValue":185,"rawViewerZoomValue":185,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +17504.3ms] zoom_wheel_request {"rawDeltaY":6.999614238739014,"reportedZoom":186,"trustedReactZoom":186.57510948012578,"currentZoom":186,"nextZoom":187.56889366427833,"rawGetZoomValue":186,"rawViewerZoomValue":186,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +17550.0ms] zoom_wheel_request {"rawDeltaY":13.054266929626465,"reportedZoom":187,"trustedReactZoom":187.56889366427833,"currentZoom":187,"nextZoom":189.95244230475987,"rawGetZoomValue":187,"rawViewerZoomValue":187,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +17763.0ms] zoom_wheel_request {"rawDeltaY":6.299283981323242,"reportedZoom":189,"trustedReactZoom":189.95244230475987,"currentZoom":189,"nextZoom":190.43409102621186,"rawGetZoomValue":189,"rawViewerZoomValue":189,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +17775.3ms] zoom_wheel_request {"rawDeltaY":10.040339469909668,"reportedZoom":190,"trustedReactZoom":190.43409102621186,"currentZoom":190,"nextZoom":192.30304354265542,"rawGetZoomValue":190,"rawViewerZoomValue":190,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +17787.6ms] zoom_wheel_request {"rawDeltaY":10.602602005004883,"reportedZoom":192,"trustedReactZoom":192.30304354265542,"currentZoom":192,"nextZoom":194.45844589205586,"rawGetZoomValue":192,"rawViewerZoomValue":192,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +17801.4ms] zoom_wheel_request {"rawDeltaY":16.585926055908203,"reportedZoom":194,"trustedReactZoom":194.45844589205586,"currentZoom":194,"nextZoom":197.89988476719716,"rawGetZoomValue":194,"rawViewerZoomValue":194,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +17816.7ms] zoom_wheel_request {"rawDeltaY":27.24959945678711,"reportedZoom":197,"trustedReactZoom":197.89988476719716,"currentZoom":197,"nextZoom":203.54828471929312,"rawGetZoomValue":197,"rawViewerZoomValue":197,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +17829.1ms] zoom_wheel_request {"rawDeltaY":22.16697120666504,"reportedZoom":203,"trustedReactZoom":203.54828471929315,"currentZoom":203,"nextZoom":208.47233456341607,"rawGetZoomValue":203,"rawViewerZoomValue":203,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +17839.8ms] zoom_wheel_request {"rawDeltaY":14.83643627166748,"reportedZoom":208,"trustedReactZoom":208.47233456341607,"currentZoom":208,"nextZoom":211.73633614882007,"rawGetZoomValue":208,"rawViewerZoomValue":208,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +17850.3ms] zoom_wheel_request {"rawDeltaY":8.972334861755371,"reportedZoom":211,"trustedReactZoom":211.73633614882007,"currentZoom":211,"nextZoom":213.28406918229587,"rawGetZoomValue":211,"rawViewerZoomValue":211,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +17860.2ms] zoom_wheel_request {"rawDeltaY":18.792293548583984,"reportedZoom":213,"trustedReactZoom":213.28406918229587,"currentZoom":213,"nextZoom":217.85787877578994,"rawGetZoomValue":213,"rawViewerZoomValue":213,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +17897.9ms] zoom_wheel_request {"rawDeltaY":6.9761528968811035,"reportedZoom":217,"trustedReactZoom":217.8578787757899,"currentZoom":217,"nextZoom":218.8242151632719,"rawGetZoomValue":217,"rawViewerZoomValue":217,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +17935.0ms] zoom_wheel_request {"rawDeltaY":18.23052978515625,"reportedZoom":218,"trustedReactZoom":218.8242151632719,"currentZoom":218,"nextZoom":222.82165509084857,"rawGetZoomValue":218,"rawViewerZoomValue":218,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +17974.2ms] zoom_wheel_request {"rawDeltaY":6.990105628967285,"reportedZoom":222,"trustedReactZoom":222.82165509084857,"currentZoom":222,"nextZoom":223.86999605703372,"rawGetZoomValue":222,"rawViewerZoomValue":222,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +18011.5ms] zoom_wheel_request {"rawDeltaY":0.6885108351707458,"reportedZoom":223,"trustedReactZoom":223.86999605703372,"currentZoom":223,"nextZoom":223.1843216334715,"rawGetZoomValue":223,"rawViewerZoomValue":223,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +18246.6ms] zoom_wheel_request {"rawDeltaY":-1.4026119709014893,"reportedZoom":223,"trustedReactZoom":223.1843216334715,"currentZoom":223,"nextZoom":222.62497673239636,"rawGetZoomValue":223,"rawViewerZoomValue":223,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +18257.9ms] zoom_wheel_request {"rawDeltaY":-2.8182249069213867,"reportedZoom":222,"trustedReactZoom":222.62497673239636,"currentZoom":222,"nextZoom":221.25049296677477,"rawGetZoomValue":222,"rawViewerZoomValue":222,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +18269.2ms] zoom_wheel_request {"rawDeltaY":-6.917581081390381,"reportedZoom":221,"trustedReactZoom":221.25049296677477,"currentZoom":221,"nextZoom":219.173050829598,"rawGetZoomValue":221,"rawViewerZoomValue":221,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +18281.3ms] zoom_wheel_request {"rawDeltaY":-15.37072467803955,"reportedZoom":219,"trustedReactZoom":219.17305082959803,"currentZoom":219,"nextZoom":214.99759890957358,"rawGetZoomValue":219,"rawViewerZoomValue":219,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +18295.0ms] zoom_wheel_request {"rawDeltaY":-8.264751434326172,"reportedZoom":214,"trustedReactZoom":214.99759890957358,"currentZoom":214,"nextZoom":211.88810173085434,"rawGetZoomValue":214,"rawViewerZoomValue":214,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +18306.4ms] zoom_wheel_request {"rawDeltaY":-8.226588249206543,"reportedZoom":211,"trustedReactZoom":211.88810173085434,"currentZoom":211,"nextZoom":208.927275558625,"rawGetZoomValue":211,"rawViewerZoomValue":211,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +18318.9ms] zoom_wheel_request {"rawDeltaY":-11.894649505615234,"reportedZoom":208,"trustedReactZoom":208.927275558625,"currentZoom":208,"nextZoom":205.05218347763298,"rawGetZoomValue":208,"rawViewerZoomValue":208,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +18330.7ms] zoom_wheel_request {"rawDeltaY":-22.7379150390625,"reportedZoom":205,"trustedReactZoom":205.05218347763298,"currentZoom":205,"nextZoom":199.48209463350443,"rawGetZoomValue":205,"rawViewerZoomValue":205,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +18375.7ms] zoom_wheel_request {"rawDeltaY":-10.852262496948242,"reportedZoom":199,"trustedReactZoom":199.48209463350443,"currentZoom":199,"nextZoom":196.42528101882294,"rawGetZoomValue":199,"rawViewerZoomValue":199,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +18419.5ms] zoom_wheel_request {"rawDeltaY":-50.284080505371094,"reportedZoom":196,"trustedReactZoom":196.42528101882294,"currentZoom":196,"nextZoom":184.52293461732103,"rawGetZoomValue":196,"rawViewerZoomValue":196,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +18466.6ms] zoom_wheel_request {"rawDeltaY":-29.092710494995117,"reportedZoom":184,"trustedReactZoom":184.52293461732103,"currentZoom":184,"nextZoom":177.6871651666609,"rawGetZoomValue":184,"rawViewerZoomValue":184,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +18512.4ms] zoom_wheel_request {"rawDeltaY":-18.17360496520996,"reportedZoom":177,"trustedReactZoom":177.6871651666609,"currentZoom":177,"nextZoom":173.18171286187237,"rawGetZoomValue":177,"rawViewerZoomValue":177,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +18555.7ms] zoom_wheel_request {"rawDeltaY":-2.0089573860168457,"reportedZoom":173,"trustedReactZoom":173.18171286187237,"currentZoom":173,"nextZoom":172.58344275585677,"rawGetZoomValue":173,"rawViewerZoomValue":173,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +18813.6ms] zoom_wheel_request {"rawDeltaY":4.740730285644531,"reportedZoom":172,"trustedReactZoom":172.58344275585677,"currentZoom":172,"nextZoom":172.98127526132512,"rawGetZoomValue":172,"rawViewerZoomValue":172,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +18834.3ms] zoom_wheel_request {"rawDeltaY":8.896455764770508,"reportedZoom":172,"trustedReactZoom":172.98127526132512,"currentZoom":172,"nextZoom":173.84606499799386,"rawGetZoomValue":172,"rawViewerZoomValue":172,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +18850.9ms] zoom_wheel_request {"rawDeltaY":27.17720603942871,"reportedZoom":173,"trustedReactZoom":173.84606499799386,"currentZoom":173,"nextZoom":178.73499638527124,"rawGetZoomValue":173,"rawViewerZoomValue":173,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +18866.4ms] zoom_wheel_request {"rawDeltaY":22.187435150146484,"reportedZoom":178,"trustedReactZoom":178.73499638527124,"currentZoom":178,"nextZoom":182.8028907219203,"rawGetZoomValue":178,"rawViewerZoomValue":178,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +18881.6ms] zoom_wheel_request {"rawDeltaY":14.465871810913086,"reportedZoom":182,"trustedReactZoom":182.8028907219203,"currentZoom":182,"nextZoom":185.18692738559935,"rawGetZoomValue":182,"rawViewerZoomValue":182,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +18896.2ms] zoom_wheel_request {"rawDeltaY":14.343942642211914,"reportedZoom":185,"trustedReactZoom":185.18692738559935,"currentZoom":185,"nextZoom":188.21191891359015,"rawGetZoomValue":185,"rawViewerZoomValue":185,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +18939.3ms] zoom_wheel_request {"rawDeltaY":20.148225784301758,"reportedZoom":188,"trustedReactZoom":188.21191891359015,"currentZoom":188,"nextZoom":192.600834808614,"rawGetZoomValue":188,"rawViewerZoomValue":188,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +18979.7ms] zoom_wheel_request {"rawDeltaY":28.90009880065918,"reportedZoom":192,"trustedReactZoom":192.600834808614,"currentZoom":192,"nextZoom":198.77538936105515,"rawGetZoomValue":192,"rawViewerZoomValue":192,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +19021.7ms] zoom_wheel_request {"rawDeltaY":14.773490905761719,"reportedZoom":198,"trustedReactZoom":198.77538936105515,"currentZoom":198,"nextZoom":201.54148070554885,"rawGetZoomValue":198,"rawViewerZoomValue":198,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +19060.6ms] zoom_wheel_request {"rawDeltaY":3.8325295448303223,"reportedZoom":201,"trustedReactZoom":201.54148070554885,"currentZoom":201,"nextZoom":201.9265350769426,"rawGetZoomValue":201,"rawViewerZoomValue":201,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +19099.2ms] zoom_wheel_request {"rawDeltaY":-0.8011630773544312,"reportedZoom":201,"trustedReactZoom":201.92653507694257,"currentZoom":201,"nextZoom":200.8068523262898,"rawGetZoomValue":201,"rawViewerZoomValue":201,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +19134.3ms] zoom_wheel_request {"rawDeltaY":-22.16029167175293,"reportedZoom":200,"trustedReactZoom":200.8068523262898,"currentZoom":200,"nextZoom":194.75162262307163,"rawGetZoomValue":200,"rawViewerZoomValue":200,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +19172.7ms] zoom_wheel_request {"rawDeltaY":-32.54181671142578,"reportedZoom":194,"trustedReactZoom":194.75162262307163,"currentZoom":194,"nextZoom":186.57027523306365,"rawGetZoomValue":194,"rawViewerZoomValue":194,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +19216.2ms] zoom_wheel_request {"rawDeltaY":-44.36350631713867,"reportedZoom":186,"trustedReactZoom":186.57027523306365,"currentZoom":186,"nextZoom":176.3570205363496,"rawGetZoomValue":186,"rawViewerZoomValue":186,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +19259.6ms] zoom_wheel_request {"rawDeltaY":-48.85507583618164,"reportedZoom":176,"trustedReactZoom":176.3570205363496,"currentZoom":176,"nextZoom":165.9784406027238,"rawGetZoomValue":176,"rawViewerZoomValue":176,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +19303.2ms] zoom_wheel_request {"rawDeltaY":-43.64191436767578,"reportedZoom":165,"trustedReactZoom":165.9784406027238,"currentZoom":165,"nextZoom":156.5812706799779,"rawGetZoomValue":165,"rawViewerZoomValue":165,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +19346.8ms] zoom_wheel_request {"rawDeltaY":-26.330175399780273,"reportedZoom":156,"trustedReactZoom":156.5812706799779,"currentZoom":156,"nextZoom":151.14804648115015,"rawGetZoomValue":156,"rawViewerZoomValue":156,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +19390.3ms] zoom_wheel_request {"rawDeltaY":-15.887260437011719,"reportedZoom":151,"trustedReactZoom":151.14804648115015,"currentZoom":151,"nextZoom":148.14849632527014,"rawGetZoomValue":151,"rawViewerZoomValue":151,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +19437.7ms] zoom_wheel_request {"rawDeltaY":-4.921986103057861,"reportedZoom":148,"trustedReactZoom":148.14849632527014,"currentZoom":148,"nextZoom":147.12843171005014,"rawGetZoomValue":148,"rawViewerZoomValue":148,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +19480.8ms] zoom_wheel_request {"rawDeltaY":-1.163858413696289,"reportedZoom":147,"trustedReactZoom":147.12843171005014,"currentZoom":147,"nextZoom":146.7948386764121,"rawGetZoomValue":147,"rawViewerZoomValue":147,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +19896.8ms] page_visit_start {"page":7,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +19897.8ms] page_visit_ready {"page":7,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +20435.3ms] page_visit_start {"page":8,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":true,"hasAnnotationOverlay":true,"ready":false}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +20752.2ms] zoom_end {"source":"zoomChange_settle"}
+[DebugBridge +20754.9ms] page_visit_ready {"page":8,"pageCount":36,"revisited":true,"waitMs":325,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +21882.1ms] page_visit_start {"page":9,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +21883.7ms] page_visit_ready {"page":9,"pageCount":36,"revisited":true,"waitMs":2,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +22110.0ms] page_visit_start {"page":10,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +22111.4ms] page_visit_ready {"page":10,"pageCount":36,"revisited":true,"waitMs":2,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +23643.7ms] page_visit_start {"page":11,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +23645.8ms] page_visit_ready {"page":11,"pageCount":36,"revisited":true,"waitMs":2,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +23816.2ms] page_visit_start {"page":12,"pageCount":36,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +23816.9ms] page_visit_ready {"page":12,"pageCount":36,"revisited":false,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +25272.6ms] page_visit_start {"page":11,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +25273.4ms] page_visit_ready {"page":11,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +25533.3ms] page_visit_start {"page":10,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +25534.1ms] page_visit_ready {"page":10,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +25836.0ms] page_visit_start {"page":9,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +25837.0ms] page_visit_ready {"page":9,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +29590.2ms] page_visit_start {"page":8,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +29591.4ms] page_visit_ready {"page":8,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +31306.8ms] page_visit_start {"page":7,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +31308.2ms] page_visit_ready {"page":7,"pageCount":36,"revisited":true,"waitMs":2,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +31422.8ms] page_visit_start {"page":8,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +31424.3ms] page_visit_ready {"page":8,"pageCount":36,"revisited":true,"waitMs":2,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +31541.1ms] page_visit_start {"page":7,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +31542.0ms] page_visit_ready {"page":7,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +32899.7ms] page_visit_start {"page":6,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +32901.4ms] page_visit_ready {"page":6,"pageCount":36,"revisited":true,"waitMs":2,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +34245.9ms] page_visit_start {"page":7,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +34247.6ms] page_visit_ready {"page":7,"pageCount":36,"revisited":true,"waitMs":2,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +34608.1ms] page_visit_start {"page":8,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +34610.0ms] page_visit_ready {"page":8,"pageCount":36,"revisited":true,"waitMs":2,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +35273.7ms] page_visit_start {"page":9,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +35275.5ms] page_visit_ready {"page":9,"pageCount":36,"revisited":true,"waitMs":2,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +35491.9ms] page_visit_start {"page":8,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +35492.6ms] page_visit_ready {"page":8,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +35883.8ms] page_visit_start {"page":9,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +35885.5ms] page_visit_ready {"page":9,"pageCount":36,"revisited":true,"waitMs":2,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +36097.7ms] page_visit_start {"page":8,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +36098.8ms] page_visit_ready {"page":8,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +37345.8ms] page_visit_start {"page":9,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +37347.9ms] page_visit_ready {"page":9,"pageCount":36,"revisited":true,"waitMs":3,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +38790.5ms] page_visit_start {"page":10,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +38792.7ms] page_visit_ready {"page":10,"pageCount":36,"revisited":true,"waitMs":2,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +39689.4ms] page_visit_start {"page":9,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +39690.5ms] page_visit_ready {"page":9,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +40303.5ms] page_visit_start {"page":8,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +40304.4ms] page_visit_ready {"page":8,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +40531.2ms] page_visit_start {"page":9,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +40532.8ms] page_visit_ready {"page":9,"pageCount":36,"revisited":true,"waitMs":2,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +42138.6ms] page_visit_start {"page":8,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +42140.0ms] page_visit_ready {"page":8,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +43224.3ms] page_visit_start {"page":7,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +43225.4ms] page_visit_ready {"page":7,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +43921.0ms] zoom_wheel_request {"rawDeltaY":-4.243929386138916,"reportedZoom":146,"trustedReactZoom":146.7948386764121,"currentZoom":146,"nextZoom":145.25835367126635,"rawGetZoomValue":146,"rawViewerZoomValue":146,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +43921.1ms] zoom_start {"scale":1.46,"source":"overlay_wheel_zoom_pre","reportedScale":1.46,"correctedSuspiciousZoom":false}
+[DebugBridge +44000.3ms] zoom_wheel_request {"rawDeltaY":-6.7091851234436035,"reportedZoom":145,"trustedReactZoom":145.25835367126635,"currentZoom":145,"nextZoom":143.837288576703,"rawGetZoomValue":145,"rawViewerZoomValue":145,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +44024.8ms] zoom_wheel_request {"rawDeltaY":-87.1280288696289,"reportedZoom":143,"trustedReactZoom":143.837288576703,"currentZoom":143,"nextZoom":128.80388749332334,"rawGetZoomValue":143,"rawViewerZoomValue":143,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +44229.2ms] zoom_wheel_request {"rawDeltaY":-4.855836868286133,"reportedZoom":128,"trustedReactZoom":128.80388749332334,"currentZoom":128,"nextZoom":127.25631229699313,"rawGetZoomValue":128,"rawViewerZoomValue":128,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +44254.7ms] zoom_wheel_request {"rawDeltaY":-7.3286943435668945,"reportedZoom":127,"trustedReactZoom":127.25631229699313,"currentZoom":127,"nextZoom":125.8880038370307,"rawGetZoomValue":127,"rawViewerZoomValue":127,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +44280.8ms] zoom_wheel_request {"rawDeltaY":-11.554893493652344,"reportedZoom":125,"trustedReactZoom":125.8880038370307,"currentZoom":125,"nextZoom":123.27872702938089,"rawGetZoomValue":125,"rawViewerZoomValue":125,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +44308.1ms] zoom_wheel_request {"rawDeltaY":-39.87002944946289,"reportedZoom":123,"trustedReactZoom":123.2787270293809,"currentZoom":123,"nextZoom":117.253741824563,"rawGetZoomValue":123,"rawViewerZoomValue":123,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +44333.7ms] zoom_wheel_request {"rawDeltaY":-33.38711929321289,"reportedZoom":117,"trustedReactZoom":117.25374182456298,"currentZoom":117,"nextZoom":112.40510916665686,"rawGetZoomValue":117,"rawViewerZoomValue":117,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +44358.6ms] zoom_wheel_request {"rawDeltaY":-21.590797424316406,"reportedZoom":112,"trustedReactZoom":112.40510916665684,"currentZoom":112,"nextZoom":109.13546561399782,"rawGetZoomValue":112,"rawViewerZoomValue":112,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +44385.7ms] zoom_wheel_request {"rawDeltaY":-12.86175537109375,"reportedZoom":109,"trustedReactZoom":109.13546561399782,"currentZoom":109,"nextZoom":107.33059839758654,"rawGetZoomValue":109,"rawViewerZoomValue":109,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +44410.0ms] zoom_wheel_request {"rawDeltaY":-2.2462873458862305,"reportedZoom":107,"trustedReactZoom":107.33059839758654,"currentZoom":107,"nextZoom":106.71196508470365,"rawGetZoomValue":107,"rawViewerZoomValue":107,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +44637.1ms] zoom_wheel_request {"rawDeltaY":-3.835991382598877,"reportedZoom":106,"trustedReactZoom":106.71196508470364,"currentZoom":106,"nextZoom":105.51318321074935,"rawGetZoomValue":106,"rawViewerZoomValue":106,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +44666.4ms] zoom_wheel_request {"rawDeltaY":-6.088443756103516,"reportedZoom":105,"trustedReactZoom":105.51318321074933,"currentZoom":105,"nextZoom":104.23565170175107,"rawGetZoomValue":105,"rawViewerZoomValue":105,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +44694.6ms] zoom_wheel_request {"rawDeltaY":-20.897912979125977,"reportedZoom":104,"trustedReactZoom":104.23565170175107,"currentZoom":104,"nextZoom":101.42437060646924,"rawGetZoomValue":104,"rawViewerZoomValue":104,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +44724.0ms] zoom_wheel_request {"rawDeltaY":-39.073577880859375,"reportedZoom":101,"trustedReactZoom":101.42437060646925,"currentZoom":101,"nextZoom":96.37359211616686,"rawGetZoomValue":101,"rawViewerZoomValue":101,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +44758.2ms] zoom_wheel_request {"rawDeltaY":-33.52933120727539,"reportedZoom":96,"trustedReactZoom":96.37359211616686,"currentZoom":96,"nextZoom":92.2140950879791,"rawGetZoomValue":96,"rawViewerZoomValue":96,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +44789.4ms] zoom_wheel_request {"rawDeltaY":-22.34442901611328,"reportedZoom":92,"trustedReactZoom":92.2140950879791,"currentZoom":92,"nextZoom":89.56595329576098,"rawGetZoomValue":92,"rawViewerZoomValue":92,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +44818.1ms] zoom_wheel_request {"rawDeltaY":-11.433720588684082,"reportedZoom":89,"trustedReactZoom":89.56595329576098,"currentZoom":89,"nextZoom":87.78721763552278,"rawGetZoomValue":89,"rawViewerZoomValue":89,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +44842.2ms] zoom_wheel_request {"rawDeltaY":-2.4588072299957275,"reportedZoom":87,"trustedReactZoom":87.78721763552278,"currentZoom":87,"nextZoom":86.74367885771304,"rawGetZoomValue":87,"rawViewerZoomValue":87,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +45079.6ms] zoom_wheel_request {"rawDeltaY":-5.472758769989014,"reportedZoom":86,"trustedReactZoom":86.74367885771304,"currentZoom":86,"nextZoom":85.43706181314849,"rawGetZoomValue":86,"rawViewerZoomValue":86,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +45101.5ms] zoom_wheel_request {"rawDeltaY":-12.121491432189941,"reportedZoom":85,"trustedReactZoom":85.43706181314849,"currentZoom":85,"nextZoom":83.77255658263361,"rawGetZoomValue":85,"rawViewerZoomValue":85,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +45125.8ms] zoom_wheel_request {"rawDeltaY":-29.201122283935547,"reportedZoom":83,"trustedReactZoom":83.77255658263361,"currentZoom":83,"nextZoom":80.14193587303008,"rawGetZoomValue":83,"rawViewerZoomValue":83,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +45150.0ms] zoom_wheel_request {"rawDeltaY":-29.565322875976562,"reportedZoom":80,"trustedReactZoom":80.14193587303008,"currentZoom":80,"nextZoom":77.2114874574101,"rawGetZoomValue":80,"rawViewerZoomValue":80,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +45173.3ms] zoom_wheel_request {"rawDeltaY":-22.640987396240234,"reportedZoom":77,"trustedReactZoom":77.2114874574101,"currentZoom":77,"nextZoom":74.93613646392815,"rawGetZoomValue":77,"rawViewerZoomValue":77,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +45198.5ms] zoom_wheel_request {"rawDeltaY":-14.749643325805664,"reportedZoom":74,"trustedReactZoom":74.93613646392815,"currentZoom":74,"nextZoom":72.70175475735704,"rawGetZoomValue":74,"rawViewerZoomValue":74,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +45223.5ms] zoom_wheel_request {"rawDeltaY":-6.980823516845703,"reportedZoom":72,"trustedReactZoom":72.70175475735704,"currentZoom":72,"nextZoom":71.39937607027767,"rawGetZoomValue":72,"rawViewerZoomValue":72,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +45248.5ms] zoom_wheel_request {"rawDeltaY":-0.8011630773544312,"reportedZoom":71,"trustedReactZoom":71.39937607027767,"currentZoom":71,"nextZoom":70.9317737072964,"rawGetZoomValue":71,"rawViewerZoomValue":71,"rawMagnificationZoom":null,"correctedSuspiciousZoom":false}
+[DebugBridge +46038.0ms] page_visit_start {"page":8,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +46039.2ms] page_visit_ready {"page":8,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +46420.7ms] page_visit_start {"page":9,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +46431.5ms] page_visit_ready {"page":9,"pageCount":36,"revisited":true,"waitMs":11,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +46624.7ms] page_visit_start {"page":10,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +46626.3ms] page_visit_ready {"page":10,"pageCount":36,"revisited":true,"waitMs":2,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +46639.6ms] zoom_end {"source":"zoomChange_settle"}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +46906.0ms] page_visit_start {"page":11,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +46907.5ms] page_visit_ready {"page":11,"pageCount":36,"revisited":true,"waitMs":2,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +46929.5ms] page_visit_start {"page":13,"pageCount":36,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +46930.1ms] page_visit_ready {"page":13,"pageCount":36,"revisited":false,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +47446.7ms] page_visit_start {"page":12,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +47447.2ms] page_visit_ready {"page":12,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +47576.6ms] page_visit_start {"page":11,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +47577.2ms] page_visit_ready {"page":11,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +47859.6ms] page_visit_start {"page":10,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +47860.4ms] page_visit_ready {"page":10,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +48037.6ms] page_visit_start {"page":9,"pageCount":36,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +48038.5ms] page_visit_ready {"page":9,"pageCount":36,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
