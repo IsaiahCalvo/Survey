@@ -195,6 +195,17 @@ const isSuspiciousWheelZoomPercent = (reportedPercent, trustedPercent) => (
   trustedPercent / Math.max(1, reportedPercent) >= 2
 );
 
+const SYNCFUSION_PDF_SURFACE_SELECTOR = [
+  'img[id*="_tileimg_"]',
+  'img[id*="_pageCanvas_"]',
+  'canvas[id*="_pageCanvas_"]',
+  '.e-pv-page-canvas',
+  '.e-pv-text-layer',
+  '.e-pv-image-canvas'
+].join(',');
+
+const hasSyncfusionPdfSurface = (host) => !!host?.querySelector?.(SYNCFUSION_PDF_SURFACE_SELECTOR);
+
 const hasVisibleSyncfusionSpinner = (host) => {
   if (!host?.querySelectorAll) return false;
   const spinners = Array.from(host.querySelectorAll([
@@ -286,6 +297,7 @@ const SYNCFUSION_DIAGONAL_SCROLL_SENSITIVITY = 0.82;
 const SYNCFUSION_LARGE_WHEEL_SCROLL_SENSITIVITY = 0.8;
 const SYNCFUSION_SCROLL_MAX_STEP_PX = 48;
 const SYNCFUSION_SCROLL_MIN_STEP_PX = 22;
+const SYNCFUSION_SCROLL_FRAME_MAX_PX = 18;
 // Trackpad pinch/wheel zoom sensitivity. Keep this centralized so both
 // Syncfusion wheel paths stay cursor-anchored and feel equally responsive.
 const SYNCFUSION_WHEEL_ZOOM_EXPONENT = 0.0018;
@@ -13066,6 +13078,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     let scrollMarkRafId = null;
     let wheelScrollMarkRafId = null;
     let wheelZoomMarkRafId = null;
+    let wheelScrollApplyRafId = null;
+    let pendingWheelScroll = null;
     const raf =
       typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function'
         ? window.requestAnimationFrame.bind(window)
@@ -13140,6 +13154,94 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       queueInteractionMark('scroll', 'syncfusion-scroll', INTERACTION_PERF_SCROLL_HOLD_MS);
     };
 
+    const flushWheelScroll = () => {
+      wheelScrollApplyRafId = null;
+      const pending = pendingWheelScroll;
+      pendingWheelScroll = null;
+      if (!pending) return;
+
+      const beforeLeft = viewerContainer.scrollLeft;
+      const beforeTop = viewerContainer.scrollTop;
+      const frameMaxX = Math.min(SYNCFUSION_SCROLL_FRAME_MAX_PX, Math.max(1, Number(pending.frameMaxX) || SYNCFUSION_SCROLL_MIN_STEP_PX));
+      const frameMaxY = Math.min(SYNCFUSION_SCROLL_FRAME_MAX_PX, Math.max(1, Number(pending.frameMaxY) || SYNCFUSION_SCROLL_MIN_STEP_PX));
+      const appliedX = Math.max(-frameMaxX, Math.min(frameMaxX, pending.appliedX));
+      const appliedY = Math.max(-frameMaxY, Math.min(frameMaxY, pending.appliedY));
+
+      viewerContainer.scrollLeft += appliedX;
+      viewerContainer.scrollTop += appliedY;
+
+      const actualX = viewerContainer.scrollLeft - beforeLeft;
+      const actualY = viewerContainer.scrollTop - beforeTop;
+      const wheelPerfTotals = syncfusionWheelPerfTotalsRef.current;
+      wheelPerfTotals.scrollEvents += pending.eventCount;
+      wheelPerfTotals.scrollRawAbsX += pending.rawAbsX;
+      wheelPerfTotals.scrollRawAbsY += pending.rawAbsY;
+      wheelPerfTotals.scrollClippedAbsX += pending.clippedAbsX;
+      wheelPerfTotals.scrollClippedAbsY += pending.clippedAbsY;
+      wheelPerfTotals.scrollAppliedAbsX += Math.abs(appliedX);
+      wheelPerfTotals.scrollAppliedAbsY += Math.abs(appliedY);
+      wheelPerfTotals.scrollActualAbsX += Math.abs(actualX);
+      wheelPerfTotals.scrollActualAbsY += Math.abs(actualY);
+      wheelPerfTotals.scrollPreventedEvents += pending.preventedEvents;
+      wheelPerfTotals.scrollClippedEvents += pending.clippedEvents;
+      wheelPerfTotals.scrollDiagonalEvents += pending.diagonalEvents;
+
+      const recorder = overlayLagRecorderRef.current;
+      if (recorder?.active && recorder.options?.captureWheelEvents === true) {
+        const wheelEvents = recorder.wheelEvents || (recorder.wheelEvents = []);
+        wheelEvents.push({
+          tMs: Math.round((performance.now() - (recorder.startedAtMs || 0)) * 10) / 10,
+          type: 'scroll',
+          eventCount: pending.eventCount,
+          rawAbsX: pending.rawAbsX,
+          rawAbsY: pending.rawAbsY,
+          rawX: pending.rawX,
+          rawY: pending.rawY,
+          clippedAbsX: pending.clippedAbsX,
+          clippedAbsY: pending.clippedAbsY,
+          clippedX: pending.clippedX,
+          clippedY: pending.clippedY,
+          requestedAppliedX: pending.appliedX,
+          requestedAppliedY: pending.appliedY,
+          appliedX,
+          appliedY,
+          actualX,
+          actualY,
+          sensitivity: pending.lastSensitivity,
+          currentZoomForScroll: pending.currentZoomForScroll,
+          diagonalEvents: pending.diagonalEvents,
+          clippedEvents: pending.clippedEvents
+        });
+        if (wheelEvents.length > 6000) {
+          wheelEvents.splice(0, wheelEvents.length - 6000);
+        }
+      }
+
+      debugMark('wheel_scroll_motion', {
+        eventCount: pending.eventCount,
+        rawAbsX: pending.rawAbsX,
+        rawAbsY: pending.rawAbsY,
+        rawX: pending.rawX,
+        rawY: pending.rawY,
+        clippedAbsX: pending.clippedAbsX,
+        clippedAbsY: pending.clippedAbsY,
+        clippedX: pending.clippedX,
+        clippedY: pending.clippedY,
+        requestedAppliedX: pending.appliedX,
+        requestedAppliedY: pending.appliedY,
+        appliedX,
+        appliedY,
+        actualX,
+        actualY,
+        sensitivity: pending.lastSensitivity,
+        currentZoomForScroll: pending.currentZoomForScroll,
+        maxScrollStepX: frameMaxX,
+        maxScrollStepY: frameMaxY,
+        diagonalEvents: pending.diagonalEvents,
+        clippedEvents: pending.clippedEvents
+      });
+    };
+
     const onWheel = (event) => {
       if (event.ctrlKey || event.metaKey) {
         queueInteractionMark('wheel-zoom', 'syncfusion-wheel-zoom', INTERACTION_PERF_SCROLL_HOLD_MS);
@@ -13162,66 +13264,52 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         const diagonalSensitivity = isDiagonalTrackpadScroll ? SYNCFUSION_DIAGONAL_SCROLL_SENSITIVITY : 1;
         const largeWheelSensitivity = isLargeWheelStep ? SYNCFUSION_LARGE_WHEEL_SCROLL_SENSITIVITY : 1;
         const sensitivity = SYNCFUSION_BASE_SCROLL_SENSITIVITY * diagonalSensitivity * largeWheelSensitivity;
-        const beforeLeft = viewerContainer.scrollLeft;
-        const beforeTop = viewerContainer.scrollTop;
         const appliedX = clippedX * sensitivity;
         const appliedY = clippedY * sensitivity;
-        viewerContainer.scrollLeft += appliedX;
-        viewerContainer.scrollTop += appliedY;
-        const actualX = viewerContainer.scrollLeft - beforeLeft;
-        const actualY = viewerContainer.scrollTop - beforeTop;
-        const wheelPerfTotals = syncfusionWheelPerfTotalsRef.current;
-        wheelPerfTotals.scrollEvents += 1;
-        wheelPerfTotals.scrollRawAbsX += Math.abs(wheelDelta.x);
-        wheelPerfTotals.scrollRawAbsY += Math.abs(wheelDelta.y);
-        wheelPerfTotals.scrollClippedAbsX += Math.abs(clippedX);
-        wheelPerfTotals.scrollClippedAbsY += Math.abs(clippedY);
-        wheelPerfTotals.scrollAppliedAbsX += Math.abs(appliedX);
-        wheelPerfTotals.scrollAppliedAbsY += Math.abs(appliedY);
-        wheelPerfTotals.scrollActualAbsX += Math.abs(actualX);
-        wheelPerfTotals.scrollActualAbsY += Math.abs(actualY);
-        wheelPerfTotals.scrollPreventedEvents += 1;
-        if (isLargeWheelStep) wheelPerfTotals.scrollClippedEvents += 1;
-        if (isDiagonalTrackpadScroll) wheelPerfTotals.scrollDiagonalEvents += 1;
-        const recorder = overlayLagRecorderRef.current;
-        if (recorder?.active && recorder.options?.captureWheelEvents === true) {
-          const wheelEvents = recorder.wheelEvents || (recorder.wheelEvents = []);
-          wheelEvents.push({
-            tMs: Math.round((performance.now() - (recorder.startedAtMs || 0)) * 10) / 10,
-            type: 'scroll',
-            rawX: wheelDelta.x,
-            rawY: wheelDelta.y,
-            clippedX,
-            clippedY,
-            appliedX,
-            appliedY,
-            actualX,
-            actualY,
-            sensitivity,
-            currentZoomForScroll,
-            diagonal: isDiagonalTrackpadScroll,
-            clipped: isLargeWheelStep
-          });
-          if (wheelEvents.length > 6000) {
-            wheelEvents.splice(0, wheelEvents.length - 6000);
-          }
+        const frameMaxX = Math.max(SYNCFUSION_SCROLL_MIN_STEP_PX, Math.abs(clippedX) * sensitivity);
+        const frameMaxY = Math.max(SYNCFUSION_SCROLL_MIN_STEP_PX, Math.abs(clippedY) * sensitivity);
+        if (!pendingWheelScroll) {
+          pendingWheelScroll = {
+            eventCount: 0,
+            rawAbsX: 0,
+            rawAbsY: 0,
+            rawX: 0,
+            rawY: 0,
+            clippedAbsX: 0,
+            clippedAbsY: 0,
+            clippedX: 0,
+            clippedY: 0,
+            appliedX: 0,
+            appliedY: 0,
+            preventedEvents: 0,
+            clippedEvents: 0,
+            diagonalEvents: 0,
+            frameMaxX: SYNCFUSION_SCROLL_MIN_STEP_PX,
+            frameMaxY: SYNCFUSION_SCROLL_MIN_STEP_PX,
+            lastSensitivity: sensitivity,
+            currentZoomForScroll
+          };
         }
-        if (isLargeWheelStep || Math.abs(actualX - appliedX) > 1 || Math.abs(actualY - appliedY) > 1) {
-          debugMark('wheel_scroll_motion', {
-            rawX: wheelDelta.x,
-            rawY: wheelDelta.y,
-            clippedX,
-            clippedY,
-            appliedX,
-            appliedY,
-            actualX,
-            actualY,
-            sensitivity,
-            currentZoomForScroll,
-            maxScrollStep,
-            diagonal: isDiagonalTrackpadScroll,
-            clipped: isLargeWheelStep
-          });
+        pendingWheelScroll.eventCount += 1;
+        pendingWheelScroll.rawAbsX += Math.abs(wheelDelta.x);
+        pendingWheelScroll.rawAbsY += Math.abs(wheelDelta.y);
+        pendingWheelScroll.rawX += wheelDelta.x;
+        pendingWheelScroll.rawY += wheelDelta.y;
+        pendingWheelScroll.clippedAbsX += Math.abs(clippedX);
+        pendingWheelScroll.clippedAbsY += Math.abs(clippedY);
+        pendingWheelScroll.clippedX += clippedX;
+        pendingWheelScroll.clippedY += clippedY;
+        pendingWheelScroll.appliedX += appliedX;
+        pendingWheelScroll.appliedY += appliedY;
+        pendingWheelScroll.preventedEvents += 1;
+        pendingWheelScroll.clippedEvents += isLargeWheelStep ? 1 : 0;
+        pendingWheelScroll.diagonalEvents += isDiagonalTrackpadScroll ? 1 : 0;
+        pendingWheelScroll.frameMaxX = Math.max(pendingWheelScroll.frameMaxX, frameMaxX);
+        pendingWheelScroll.frameMaxY = Math.max(pendingWheelScroll.frameMaxY, frameMaxY);
+        pendingWheelScroll.lastSensitivity = sensitivity;
+        pendingWheelScroll.currentZoomForScroll = currentZoomForScroll;
+        if (wheelScrollApplyRafId === null) {
+          wheelScrollApplyRafId = raf(flushWheelScroll);
         }
       }
       queueInteractionMark('wheel-scroll', 'syncfusion-wheel-scroll', INTERACTION_PERF_SCROLL_HOLD_MS);
@@ -13273,6 +13361,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           cancelRaf(wheelScrollMarkRafId);
           wheelScrollMarkRafId = null;
         }
+        if (wheelScrollApplyRafId !== null) {
+          cancelRaf(wheelScrollApplyRafId);
+          wheelScrollApplyRafId = null;
+        }
+        pendingWheelScroll = null;
         if (wheelZoomMarkRafId !== null) {
           cancelRaf(wheelZoomMarkRafId);
           wheelZoomMarkRafId = null;
@@ -13901,14 +13994,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       : null;
     const host = directHost?.isConnected ? directHost : domHost;
     const hasContainer = !!host?.isConnected;
-    const hasPdfSurface = !!host?.querySelector?.([
-      'img[id*="_tileimg_"]',
-      'img[id*="_pageCanvas_"]',
-      'canvas[id*="_pageCanvas_"]',
-      '.e-pv-page-canvas',
-      '.e-pv-text-layer',
-      '.e-pv-image-canvas'
-    ].join(','));
+    const hasPdfSurface = hasSyncfusionPdfSurface(host);
     const activeSpinner = hasVisibleSyncfusionSpinner(host);
     const hasAnnotationOverlay = !!host?.querySelector?.([
       '.canvas-container',
@@ -13923,7 +14009,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       hasPdfSurface,
       spinnerVisible: activeSpinner,
       hasAnnotationOverlay,
-      ready: hasContainer && hasPdfSurface && !activeSpinner
+      ready: hasContainer && hasPdfSurface
     };
   }, []);
 
@@ -15354,14 +15440,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       const presentationMode = snapshotVisible
         ? 'snapshot'
         : (liveHidden ? 'none' : 'live');
-      const hasPdfSurface = !!pageHost.querySelector?.([
-        'img[id*="_tileimg_"]',
-        'img[id*="_pageCanvas_"]',
-        'canvas[id*="_pageCanvas_"]',
-        '.e-pv-page-canvas',
-        '.e-pv-text-layer',
-        '.e-pv-image-canvas'
-      ].join(','));
+      const hasPdfSurface = hasSyncfusionPdfSurface(pageHost);
       const spinnerVisible = hasVisibleSyncfusionSpinner(pageHost);
       const pdfReady = hasPdfSurface || snapshotVisible || paintReady;
       const overlayStyle = typeof window !== 'undefined' && window.getComputedStyle

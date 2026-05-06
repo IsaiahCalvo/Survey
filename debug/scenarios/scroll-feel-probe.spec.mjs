@@ -219,10 +219,12 @@ test('scroll feel probe records wheel input to rendered movement', async ({ page
       };
       probe.wheelEvents.push(entry);
       requestAnimationFrame(() => {
-        entry.afterTop = Number(viewer.scrollTop || 0);
-        entry.afterLeft = Number(viewer.scrollLeft || 0);
-        entry.appliedY = entry.afterTop - beforeTop;
-        entry.appliedX = entry.afterLeft - beforeLeft;
+        requestAnimationFrame(() => {
+          entry.afterTop = Number(viewer.scrollTop || 0);
+          entry.afterLeft = Number(viewer.scrollLeft || 0);
+          entry.appliedY = entry.afterTop - beforeTop;
+          entry.appliedX = entry.afterLeft - beforeLeft;
+        });
       });
     };
     const onScroll = () => {

@@ -173,6 +173,9 @@ test('replays user logged scroll and zoom stress pattern', async ({ page }) => {
     noVisiblePresentationGap: { pass: Number(summary.visiblePresentationGapMax ?? 0) === 0, visiblePresentationGapMax: summary.visiblePresentationGapMax ?? null },
     noViewportPresentationGap: { pass: Number(summary.viewportPresentationGapMax ?? 0) === 0, viewportPresentationGapMax: summary.viewportPresentationGapMax ?? null },
     worstFrameUnder500: { pass: Number(summary.frameMsMax ?? Number.POSITIVE_INFINITY) < 500, frameMsMax: summary.frameMsMax ?? null },
+    p95FrameUnder60: { pass: Number(summary.frameMsP95 ?? Number.POSITIVE_INFINITY) <= 60, frameMsP95: summary.frameMsP95 ?? null },
+    sampledJankUnder10Pct: { pass: Number(summary.sampleJankFrameRatePct ?? Number.POSITIVE_INFINITY) <= 10, sampleJankFrameRatePct: summary.sampleJankFrameRatePct ?? null },
+    noZoomBigJumps: { pass: Number(summary.wheelMotionSummary?.zoomBigJumpEvents ?? 0) === 0, zoomBigJumpEvents: summary.wheelMotionSummary?.zoomBigJumpEvents ?? null },
     slowVisitsUnder100ms: { pass: slowVisits.length === 0, slowVisits },
   };
   const passed = Object.values(session.manifest.criteriaResults).every((criterion) => criterion.pass === true);
@@ -195,5 +198,8 @@ test('replays user logged scroll and zoom stress pattern', async ({ page }) => {
   expect(Number(summary.visiblePresentationGapMax ?? Number.POSITIVE_INFINITY), 'Annotations must not appear before PDF pages').toBe(0);
   expect(Number(summary.viewportPresentationGapMax ?? Number.POSITIVE_INFINITY), 'Viewport annotations must not appear before PDF pages').toBe(0);
   expect(Number(summary.frameMsMax ?? Number.POSITIVE_INFINITY), 'Worst frame must stay below 500ms').toBeLessThan(500);
+  expect(Number(summary.frameMsP95 ?? Number.POSITIVE_INFINITY), '95th percentile frame must stay under 60ms').toBeLessThanOrEqual(60);
+  expect(Number(summary.sampleJankFrameRatePct ?? Number.POSITIVE_INFINITY), 'Sampled jank must stay under 10%').toBeLessThanOrEqual(10);
+  expect(Number(summary.wheelMotionSummary?.zoomBigJumpEvents ?? Number.POSITIVE_INFINITY), 'Replay must not create big zoom jumps').toBe(0);
   expect(slowVisits, 'Page revisit waits must stay under 100ms').toEqual([]);
 });

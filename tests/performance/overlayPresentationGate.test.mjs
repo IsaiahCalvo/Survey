@@ -28,11 +28,11 @@ test('page visit diagnostics recognize SVG annotation overlays', () => {
   assert.ok(APP_SOURCE.includes("'[data-overlay-hidden-pending-pdf=\"true\"]'"));
 });
 
-test('page visit diagnostics do not mark spinner-covered pages ready', () => {
+test('page visit diagnostics treat painted pages as ready even if Syncfusion spinner lingers', () => {
   assert.match(APP_SOURCE, /const hasVisibleSyncfusionSpinner = \(host\) =>/);
   assert.match(APP_SOURCE, /const activeSpinner = hasVisibleSyncfusionSpinner\(host\);/);
   assert.match(APP_SOURCE, /const spinnerVisible = hasVisibleSyncfusionSpinner\(pageHost\);/);
-  assert.match(APP_SOURCE, /ready: hasContainer && hasPdfSurface && !activeSpinner/);
+  assert.match(APP_SOURCE, /ready: hasContainer && hasPdfSurface/);
 });
 
 test('cursor wheel zoom rejects suspicious Syncfusion 10 percent reports', () => {
