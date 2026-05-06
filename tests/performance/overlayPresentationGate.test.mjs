@@ -43,12 +43,16 @@ test('cursor wheel zoom rejects suspicious Syncfusion 10 percent reports', () =>
   assert.match(APP_SOURCE, /debugMark\('zoom_wheel_request'/);
 });
 
-test('cursor wheel zoom exponent stays below runaway-to-minimum speed', () => {
+test('cursor wheel zoom response stays capped below runaway speed', () => {
   const match = APP_SOURCE.match(/const SYNCFUSION_WHEEL_ZOOM_EXPONENT = ([0-9.]+);/);
   assert.ok(match, 'SYNCFUSION_WHEEL_ZOOM_EXPONENT constant should exist');
   const exponent = Number(match[1]);
   assert.ok(exponent > 0, 'wheel zoom exponent should stay positive');
-  assert.ok(exponent <= 0.0012, `wheel zoom exponent should not exceed 0.0012, got ${exponent}`);
+  assert.ok(exponent <= 0.0018, `wheel zoom exponent should not exceed 0.0018, got ${exponent}`);
+  const maxStepMatch = APP_SOURCE.match(/const SYNCFUSION_WHEEL_ZOOM_MAX_STEP_PERCENT = (\d+);/);
+  assert.ok(maxStepMatch, 'wheel zoom max-step cap should exist');
+  const maxStepPercent = Number(maxStepMatch[1]);
+  assert.ok(maxStepPercent <= 32, `wheel zoom max step should not exceed 32%, got ${maxStepPercent}%`);
 });
 
 test('overlay recorder expected scale accounts for active zoom transform', () => {

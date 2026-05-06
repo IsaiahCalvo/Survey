@@ -295,10 +295,11 @@ const ZOOM_ONLY_INTERACTION_REASONS = new Set([
   'wheel-zoom', 'syncfusion-wheel-zoom', 'syncfusion-zoom-change', 'overlay-wheel-zoom'
 ]);
 const SYNCFUSION_SCROLL_DELAY_MS = 32;
-// Keep initial PDF work close to the visible viewport. Syncfusion defaults to
-// 2 initial pages, and PDF.js recommends rendering only visible pages to avoid
-// slow opens and excess canvas memory on large annotated documents.
-const SYNCFUSION_INITIAL_RENDER_PAGES = 2;
+// Keep enough PDF pages resident that revisiting nearby drawing sheets does not
+// briefly blank/rebuild the page under already-rendered annotations. Syncfusion
+// removes canvases outside this initial window, which caused 1s+ page revisit
+// stalls on the Package 2 test PDF.
+const SYNCFUSION_INITIAL_RENDER_PAGES = 12;
 const SYNCFUSION_RESTRICT_ZOOM_REQUEST_DURING_INTERACTION = true;
 const SYNCFUSION_DUAL_LAYER_ENABLED_KEY = 'syncfusion_interaction_dual_layer_enabled';
 const OVERLAY_LAG_RECORDER_AUTO_KEY = 'syncfusion_overlay_lag_auto';
