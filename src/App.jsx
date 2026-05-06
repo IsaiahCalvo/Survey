@@ -298,8 +298,9 @@ const SYNCFUSION_SCROLL_DELAY_MS = 32;
 // Keep enough PDF pages resident that revisiting nearby drawing sheets does not
 // briefly blank/rebuild the page under already-rendered annotations. Syncfusion
 // removes canvases outside this initial window, which caused 1s+ page revisit
-// stalls on the Package 2 test PDF.
-const SYNCFUSION_INITIAL_RENDER_PAGES = 12;
+// stalls on the Package 2 test PDF. Ten keeps the active drawing range warm
+// without making Syncfusion keep too many offscreen canvases/spinners busy.
+const SYNCFUSION_INITIAL_RENDER_PAGES = 10;
 const SYNCFUSION_RESTRICT_ZOOM_REQUEST_DURING_INTERACTION = true;
 const SYNCFUSION_DUAL_LAYER_ENABLED_KEY = 'syncfusion_interaction_dual_layer_enabled';
 const OVERLAY_LAG_RECORDER_AUTO_KEY = 'syncfusion_overlay_lag_auto';
@@ -9415,9 +9416,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       maxSamples: 3600,
       sampleIntervalMs: OVERLAY_LAG_RECORDER_AUTO_SAMPLE_INTERVAL_MS,
       captureIdlePageMetrics: false,
-      capturePerfAttribution: true
+      capturePerfAttribution: true,
+      captureWheelEvents: false
     },
     samples: [],
+    wheelEvents: [],
     summary: null
   });
   const overlayLagRecorderDebugAtRef = useRef(0);
@@ -12918,6 +12921,22 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       if (zoomRequestedDeltaAbs >= 25) {
         wheelPerfTotals.zoomBigJumpEvents += 1;
       }
+      const recorder = overlayLagRecorderRef.current;
+      if (recorder?.active && recorder.options?.captureWheelEvents === true) {
+        const wheelEvents = recorder.wheelEvents || (recorder.wheelEvents = []);
+        wheelEvents.push({
+          tMs: Math.round((performance.now() - (recorder.startedAtMs || 0)) * 10) / 10,
+          type: 'zoom',
+          rawDeltaY: delta,
+          requestedDeltaAbs: zoomRequestedDeltaAbs,
+          reportedLagAbs: zoomReportedLagAbs,
+          currentZoom,
+          nextZoom
+        });
+        if (wheelEvents.length > 6000) {
+          wheelEvents.splice(0, wheelEvents.length - 6000);
+        }
+      }
       debugMark('zoom_wheel_request', {
         rawDeltaY: delta,
         reportedZoom,
@@ -13164,6 +13183,29 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         wheelPerfTotals.scrollPreventedEvents += 1;
         if (isLargeWheelStep) wheelPerfTotals.scrollClippedEvents += 1;
         if (isDiagonalTrackpadScroll) wheelPerfTotals.scrollDiagonalEvents += 1;
+        const recorder = overlayLagRecorderRef.current;
+        if (recorder?.active && recorder.options?.captureWheelEvents === true) {
+          const wheelEvents = recorder.wheelEvents || (recorder.wheelEvents = []);
+          wheelEvents.push({
+            tMs: Math.round((performance.now() - (recorder.startedAtMs || 0)) * 10) / 10,
+            type: 'scroll',
+            rawX: wheelDelta.x,
+            rawY: wheelDelta.y,
+            clippedX,
+            clippedY,
+            appliedX,
+            appliedY,
+            actualX,
+            actualY,
+            sensitivity,
+            currentZoomForScroll,
+            diagonal: isDiagonalTrackpadScroll,
+            clipped: isLargeWheelStep
+          });
+          if (wheelEvents.length > 6000) {
+            wheelEvents.splice(0, wheelEvents.length - 6000);
+          }
+        }
         if (isLargeWheelStep || Math.abs(actualX - appliedX) > 1 || Math.abs(actualY - appliedY) > 1) {
           debugMark('wheel_scroll_motion', {
             rawX: wheelDelta.x,
@@ -15523,18 +15565,21 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const sampleIntervalMs = Math.max(24, Math.min(2000, Number(options.sampleIntervalMs) || OVERLAY_LAG_RECORDER_AUTO_SAMPLE_INTERVAL_MS));
     const captureIdlePageMetrics = options.captureIdlePageMetrics === true;
     const capturePerfAttribution = options.capturePerfAttribution !== false;
+    const captureWheelEvents = options.captureWheelEvents === true;
     const mode = options.source === 'auto' ? 'auto' : 'manual';
     const perfObserverSupport = resetOverlayLagPerfObservers(capturePerfAttribution);
     recorder.active = true;
     recorder.mode = mode;
     recorder.samples = [];
+    recorder.wheelEvents = [];
     recorder.summary = null;
     recorder.options = {
       samplePageLimit,
       maxSamples,
       sampleIntervalMs,
       captureIdlePageMetrics,
-      capturePerfAttribution
+      capturePerfAttribution,
+      captureWheelEvents
     };
     recorder.startedAtMs = (typeof performance !== 'undefined' && typeof performance.now === 'function')
       ? performance.now()
@@ -15559,6 +15604,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       sampleIntervalMs,
       captureIdlePageMetrics,
       capturePerfAttribution,
+      captureWheelEvents,
       perfObserverSupport,
       mode
     });
@@ -15626,6 +15672,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       stopOverlayLagRecorder();
     }
     recorder.samples = [];
+    recorder.wheelEvents = [];
     recorder.summary = null;
     recorder.mode = null;
     recorder.startedAtMs = 0;
@@ -15665,7 +15712,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         options: recorder.options
       },
       summary,
-      samples: recorder.samples
+      samples: recorder.samples,
+      wheelEvents: recorder.wheelEvents || []
     });
   }, [summarizeOverlayLagSamples]);
 
