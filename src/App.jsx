@@ -187,6 +187,14 @@ const coerceSyncfusionZoomPercent = (...values) => {
   return 100;
 };
 
+const isSuspiciousWheelZoomPercent = (reportedPercent, trustedPercent) => (
+  Number.isFinite(reportedPercent) &&
+  Number.isFinite(trustedPercent) &&
+  reportedPercent <= 10 &&
+  trustedPercent >= 25 &&
+  trustedPercent / Math.max(1, reportedPercent) >= 2
+);
+
 // Set up the PDF.js worker
 // Set up the PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
@@ -249,16 +257,17 @@ const SYNCFUSION_INTERACTION_EVENT_THROTTLE_MS = 96;
 const SYNCFUSION_INTERACTION_MARK_THROTTLE_MS = 96;
 const SYNCFUSION_ZOOM_OVERLAY_SETTLE_MS = 1000;
 const SYNCFUSION_DIAGONAL_SCROLL_SENSITIVITY = 0.82;
+const SYNCFUSION_LARGE_WHEEL_SCROLL_SENSITIVITY = 0.8;
 const SYNCFUSION_SCROLL_MAX_STEP_PX = 72;
 const SYNCFUSION_SCROLL_MIN_STEP_PX = 28;
 // Trackpad pinch/wheel zoom sensitivity. Keep this centralized so both
 // Syncfusion wheel paths stay cursor-anchored and feel equally responsive.
-const SYNCFUSION_WHEEL_ZOOM_EXPONENT = 0.0030;
+const SYNCFUSION_WHEEL_ZOOM_EXPONENT = 0.0012;
 const SYNCFUSION_INTERACTION_FORCE_PROXY_ALL_PAGES = true;
 const ZOOM_ONLY_INTERACTION_REASONS = new Set([
   'wheel-zoom', 'syncfusion-wheel-zoom', 'syncfusion-zoom-change', 'overlay-wheel-zoom'
 ]);
-const SYNCFUSION_SCROLL_DELAY_MS = 80;
+const SYNCFUSION_SCROLL_DELAY_MS = 32;
 // Keep initial PDF work close to the visible viewport. Syncfusion defaults to
 // 2 initial pages, and PDF.js recommends rendering only visible pages to avoid
 // slow opens and excess canvas memory on large annotated documents.
@@ -9359,6 +9368,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     stoppedAtIso: null,
     lastRafAtMs: 0,
     pendingFrameMaxMs: 0,
+    rafFrameCount: 0,
+    rafJankFrameCount: 0,
+    rafFrameMsTotal: 0,
+    rafFrameMsMax: 0,
     nextSampleAtMs: 0,
     lastSampleAtMs: 0,
     lastEventTotals: null,
@@ -12809,21 +12822,53 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
       const viewer = syncfusionViewerRef.current;
       if (!viewer) return;
-      const currentZoom = coerceSyncfusionZoomPercent(
-        typeof viewer.getZoomValue === 'function' ? viewer.getZoomValue() : null,
-        viewer.zoomValue,
-        viewer.magnificationModule?.zoomFactor ? viewer.magnificationModule.zoomFactor * 100 : null,
-        scaleRef.current ? scaleRef.current * 100 : null,
-        100
+      const rawGetZoomValue = typeof viewer.getZoomValue === 'function' ? viewer.getZoomValue() : null;
+      const rawViewerZoomValue = viewer.zoomValue;
+      const rawMagnificationZoom = viewer.magnificationModule?.zoomFactor
+        ? viewer.magnificationModule.zoomFactor * 100
+        : null;
+      const trustedReactZoom = scaleRef.current ? scaleRef.current * 100 : null;
+      const reportedZoom = coerceSyncfusionZoomPercent(
+        rawGetZoomValue,
+        rawViewerZoomValue,
+        rawMagnificationZoom,
+        null
       );
+      const correctedSuspiciousZoom = isSuspiciousWheelZoomPercent(reportedZoom, trustedReactZoom);
+      const currentZoom = correctedSuspiciousZoom
+        ? trustedReactZoom
+        : coerceSyncfusionZoomPercent(
+          rawGetZoomValue,
+          rawViewerZoomValue,
+          rawMagnificationZoom,
+          trustedReactZoom,
+          100
+        );
 
       const nextZoom = getSmoothSyncfusionWheelZoom(currentZoom, delta);
+      debugMark('zoom_wheel_request', {
+        rawDeltaY: delta,
+        reportedZoom,
+        trustedReactZoom,
+        currentZoom,
+        nextZoom,
+        rawGetZoomValue,
+        rawViewerZoomValue,
+        rawMagnificationZoom,
+        correctedSuspiciousZoom
+      });
+
       if (Math.abs(nextZoom - currentZoom) < 0.05) return;
 
       if (!zoomOverlayTransformActiveRef.current) {
         zoomOverlayBaseScaleRef.current = currentZoom / 100;
         zoomOverlayTransformActiveRef.current = true;
-        debugMark('zoom_start', { scale: currentZoom / 100, source: 'overlay_wheel_zoom_pre' });
+        debugMark('zoom_start', {
+          scale: currentZoom / 100,
+          source: 'overlay_wheel_zoom_pre',
+          reportedScale: reportedZoom / 100,
+          correctedSuspiciousZoom
+        });
         const pcMap = syncfusionPageContainersStateRef.current || pageContainersRef.current || {};
         const cachedRects = {};
         const portalHostSnapshot = {};
@@ -13001,195 +13046,30 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     };
 
     const onWheel = (event) => {
-      // 2026-05-04 — Cursor-centric Ctrl+Wheel / trackpad-pinch zoom RE-ENABLED.
-      // UX problem: Syncfusion's native handler zooms to the page center,
-      // which feels wrong on trackpad pinch — the user expects the spot
-      // under the cursor to stay still. Trackpad pinch fires wheel events
-      // with ctrlKey=true on macOS / Windows, so this single branch covers
-      // mouse Ctrl+wheel AND trackpad pinch with the same anchor math.
       if (event.ctrlKey || event.metaKey) {
-        event.preventDefault();
-        // Stop the event from reaching Syncfusion's internal magnification
-        // listeners on the inner page canvases. Without this, our cursor-
-        // anchored math runs AND Syncfusion runs its own page-center zoom
-        // on top, so the user sees a jumpy mid-page zoom that ignores the
-        // cursor anchor we just set.
-        event.stopPropagation();
         queueInteractionMark('wheel-zoom', 'syncfusion-wheel-zoom', INTERACTION_PERF_SCROLL_HOLD_MS);
-
-        const containerRect = viewerContainer.getBoundingClientRect();
-        const pointerX = Number.isFinite(event.clientX) ? event.clientX - containerRect.left : containerRect.width / 2;
-        const pointerY = Number.isFinite(event.clientY) ? event.clientY - containerRect.top : containerRect.height / 2;
-        const clientXForAnchor = Number.isFinite(event.clientX) ? event.clientX : (containerRect.left + containerRect.width / 2);
-        const clientYForAnchor = Number.isFinite(event.clientY) ? event.clientY : (containerRect.top + containerRect.height / 2);
-        const pageElementAtCursor = findSyncfusionPageAtClientPoint(clientXForAnchor, clientYForAnchor);
-        const pageRectAtCursor = pageElementAtCursor?.getBoundingClientRect?.();
-        const pageAnchor = pageElementAtCursor && pageRectAtCursor?.width > 0 && pageRectAtCursor?.height > 0
-          ? {
-              id: pageElementAtCursor.id || null,
-              ratioX: (clientXForAnchor - pageRectAtCursor.left) / pageRectAtCursor.width,
-              ratioY: (clientYForAnchor - pageRectAtCursor.top) / pageRectAtCursor.height,
-            }
-          : null;
-        // Capture the cursor in three forms so the rAF body can use whichever
-        // it needs: document-space anchor for the overlay transform; container-
-        // relative cursor for any local math; and raw client coords so we can
-        // hand them straight to Syncfusion's native cursor-anchored zoom
-        // entry point (`initiateMouseZoom`) without re-deriving them.
-        syncfusionWheelZoomAnchorRef.current = {
-          x: pointerX + viewerContainer.scrollLeft,
-          y: pointerY + viewerContainer.scrollTop,
-          cursorX: pointerX,
-          cursorY: pointerY,
-          clientX: clientXForAnchor,
-          clientY: clientYForAnchor,
-          pageAnchor,
-          scrollLeftAtEvent: viewerContainer.scrollLeft,
-          scrollTopAtEvent: viewerContainer.scrollTop,
-        };
-        syncfusionWheelZoomDeltaRef.current += (-event.deltaY);
-
-        if (syncfusionWheelZoomRafRef.current !== null) {
-          return;
-        }
-
-        syncfusionWheelZoomRafRef.current = raf(() => {
-          syncfusionWheelZoomRafRef.current = null;
-          const delta = Number(syncfusionWheelZoomDeltaRef.current) || 0;
-          syncfusionWheelZoomDeltaRef.current = 0;
-          if (Math.abs(delta) < 0.01) {
-            return;
-          }
-
-          const anchor = syncfusionWheelZoomAnchorRef.current;
-          if (anchor) {
-            setAnchor(anchor);
-          }
-
-          const viewer = syncfusionViewerRef.current;
-          if (!viewer) {
-            return;
-          }
-          const currentZoom = coerceSyncfusionZoomPercent(
-            typeof viewer.getZoomValue === 'function' ? viewer.getZoomValue() : null,
-            viewer.zoomValue,
-            viewer.magnificationModule?.zoomFactor ? viewer.magnificationModule.zoomFactor * 100 : null,
-            scaleRef.current ? scaleRef.current * 100 : null,
-            100
-          );
-
-          const nextZoom = getSmoothSyncfusionWheelZoom(currentZoom, delta);
-          if (Math.abs(nextZoom - currentZoom) < 0.05) {
-            return;
-          }
-
-          // Pre-activate zoom overlay protection BEFORE zoomTo() — Syncfusion
-          // may synchronously destroy/recreate page DOM inside zoomTo(), racing
-          // handleSyncfusionZoomChange which sets the ref AFTER zoomTo returns.
-          if (!zoomOverlayTransformActiveRef.current) {
-            zoomOverlayBaseScaleRef.current = currentZoom / 100;
-            zoomOverlayTransformActiveRef.current = true;
-            debugMark('zoom_start', { scale: currentZoom / 100, source: 'zoomTo_pre' });
-            const pcMap = syncfusionPageContainersStateRef.current || pageContainersRef.current || {};
-            const cachedRects = {};
-            const portalHostSnapshot = {};
-            Object.entries(pcMap).forEach(([pn, el]) => {
-              if (el?.isConnected) {
-                cachedRects[pn] = { top: el.offsetTop, left: el.offsetLeft, width: el.offsetWidth, height: el.offsetHeight };
-                portalHostSnapshot[Number(pn)] = el;
-              }
-            });
-            syncfusionCachedPageRectsRef.current = cachedRects;
-            const existingHosts = syncfusionInteractionPortalHostsRef.current || {};
-            if (Object.keys(existingHosts).length === 0) {
-              syncfusionInteractionPortalHostsRef.current = portalHostSnapshot;
-            }
-          }
-          // Hybrid cursor-anchored zoom strategy. The underlying viewer ships
-          // a native entry point that stamps the cursor position onto its
-          // magnification module before zooming, and on horizontal axes
-          // wider than the viewport that's enough — but on portrait PDFs
-          // (or vertically-overflowing zooms) the module forces the
-          // horizontal scroll back to page center, defeating the anchor.
-          // We hand the cursor coords to the native entry point AND
-          // overwrite the final scroll with our own cursor-anchor math
-          // so the spot under the cursor truly stays put. A second
-          // override on the next frame catches the deferred re-render
-          // path that otherwise re-centers the page after ~one frame.
-          const clientX = (anchor && Number.isFinite(anchor.clientX)) ? anchor.clientX : null;
-          const clientY = (anchor && Number.isFinite(anchor.clientY)) ? anchor.clientY : null;
-          const cursorX = (anchor && Number.isFinite(anchor.cursorX)) ? anchor.cursorX : 0;
-          const cursorY = (anchor && Number.isFinite(anchor.cursorY)) ? anchor.cursorY : 0;
-          const scrollLeftAtEvent = (anchor && Number.isFinite(anchor.scrollLeftAtEvent)) ? anchor.scrollLeftAtEvent : viewerContainer.scrollLeft;
-          const scrollTopAtEvent = (anchor && Number.isFinite(anchor.scrollTopAtEvent)) ? anchor.scrollTopAtEvent : viewerContainer.scrollTop;
-          const ratio = nextZoom > 0 && currentZoom > 0 ? (nextZoom / currentZoom) : 1;
-          const targetScrollLeft = (scrollLeftAtEvent + cursorX) * ratio - cursorX;
-          const targetScrollTop = (scrollTopAtEvent + cursorY) * ratio - cursorY;
-
-          const mag = viewer.magnificationModule;
-          if (mag && typeof mag.initiateMouseZoom === 'function' && clientX !== null && clientY !== null) {
-            mag.initiateMouseZoom(clientX, clientY, nextZoom);
-          } else if (mag && typeof mag.zoomTo === 'function') {
-            mag.zoomTo(nextZoom);
-          }
-
-          // Force the scroll position to honor the cursor anchor. Apply
-          // synchronously immediately after the zoom call (overrides the
-          // viewer's internal centering) and then again on the next two
-          // frames (overrides the deferred re-render path). The clamp
-          // matters at extreme zoom levels where the cursor-anchored
-          // scroll exceeds the new scrollable bounds.
-          const applyAnchor = () => {
-            const maxScrollLeft = Math.max(0, (viewerContainer.scrollWidth || 0) - viewerContainer.clientWidth);
-            const maxScrollTop = Math.max(0, (viewerContainer.scrollHeight || 0) - viewerContainer.clientHeight);
-            let nextLeft = targetScrollLeft;
-            let nextTop = targetScrollTop;
-            const pageAnchorInfo = anchor?.pageAnchor;
-            const pageEl = pageAnchorInfo?.id && typeof document !== 'undefined'
-              ? document.getElementById(pageAnchorInfo.id)
-              : null;
-            const pageRect = pageEl?.getBoundingClientRect?.();
-            if (pageRect && Number.isFinite(pageAnchorInfo.ratioX) && Number.isFinite(pageAnchorInfo.ratioY)) {
-              const anchoredClientX = pageRect.left + (pageRect.width * pageAnchorInfo.ratioX);
-              const anchoredClientY = pageRect.top + (pageRect.height * pageAnchorInfo.ratioY);
-              nextLeft = viewerContainer.scrollLeft + (anchoredClientX - clientX);
-              nextTop = viewerContainer.scrollTop + (anchoredClientY - clientY);
-            }
-            const finalLeft = Math.min(Math.max(0, nextLeft), maxScrollLeft);
-            const finalTop = Math.min(Math.max(0, nextTop), maxScrollTop);
-            viewerContainer.scrollLeft = finalLeft;
-            viewerContainer.scrollTop = finalTop;
-          };
-          applyAnchor();
-          if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
-            window.requestAnimationFrame(() => {
-              applyAnchor();
-              window.requestAnimationFrame(() => {
-                applyAnchor();
-              });
-            });
-          }
-        });
-      } else {
-        const wheelDelta = getNormalizedWheelDeltas(event);
-        const currentZoomForScroll = Math.max(1, Number(scaleRef.current) || 1);
-        const maxScrollStep = Math.max(
-          SYNCFUSION_SCROLL_MIN_STEP_PX,
-          SYNCFUSION_SCROLL_MAX_STEP_PX / Math.sqrt(currentZoomForScroll)
-        );
-        const clippedX = clampWheelDelta(wheelDelta.x, maxScrollStep);
-        const clippedY = clampWheelDelta(wheelDelta.y, maxScrollStep);
-        const isDiagonalTrackpadScroll = Math.abs(wheelDelta.x) > 0.5 && Math.abs(wheelDelta.y) > 0.5;
-        const isLargeWheelStep = Math.abs(clippedX - wheelDelta.x) > 0.01 || Math.abs(clippedY - wheelDelta.y) > 0.01;
-        if (isDiagonalTrackpadScroll || isLargeWheelStep) {
-          event.preventDefault();
-          event.stopPropagation();
-          const sensitivity = isDiagonalTrackpadScroll ? SYNCFUSION_DIAGONAL_SCROLL_SENSITIVITY : 1;
-          viewerContainer.scrollLeft += clippedX * sensitivity;
-          viewerContainer.scrollTop += clippedY * sensitivity;
-        }
-        queueInteractionMark('wheel-scroll', 'syncfusion-wheel-scroll', INTERACTION_PERF_SCROLL_HOLD_MS);
+        return;
       }
+      const wheelDelta = getNormalizedWheelDeltas(event);
+      const currentZoomForScroll = Math.max(1, Number(scaleRef.current) || 1);
+      const maxScrollStep = Math.max(
+        SYNCFUSION_SCROLL_MIN_STEP_PX,
+        SYNCFUSION_SCROLL_MAX_STEP_PX / Math.sqrt(currentZoomForScroll)
+      );
+      const clippedX = clampWheelDelta(wheelDelta.x, maxScrollStep);
+      const clippedY = clampWheelDelta(wheelDelta.y, maxScrollStep);
+      const isDiagonalTrackpadScroll = Math.abs(wheelDelta.x) > 0.5 && Math.abs(wheelDelta.y) > 0.5;
+      const isLargeWheelStep = Math.abs(clippedX - wheelDelta.x) > 0.01 || Math.abs(clippedY - wheelDelta.y) > 0.01;
+      if (isDiagonalTrackpadScroll || isLargeWheelStep) {
+        event.preventDefault();
+        event.stopPropagation();
+        const diagonalSensitivity = isDiagonalTrackpadScroll ? SYNCFUSION_DIAGONAL_SCROLL_SENSITIVITY : 1;
+        const largeWheelSensitivity = isLargeWheelStep ? SYNCFUSION_LARGE_WHEEL_SCROLL_SENSITIVITY : 1;
+        const sensitivity = diagonalSensitivity * largeWheelSensitivity;
+        viewerContainer.scrollLeft += clippedX * sensitivity;
+        viewerContainer.scrollTop += clippedY * sensitivity;
+      }
+      queueInteractionMark('wheel-scroll', 'syncfusion-wheel-scroll', INTERACTION_PERF_SCROLL_HOLD_MS);
     };
 
     const onPointerDown = (event) => {
@@ -13218,10 +13098,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     };
 
     viewerContainer.addEventListener('scroll', onScroll, { passive: true });
-    // IMPORTANT: Passive must be false to allow preventDefault() for zoom override.
-    // Capture must be true so trackpad-pinch wheel events reach our handler
-    // before the underlying viewer's internal magnification listener consumes
-    // them — otherwise Ctrl+Wheel zoom always falls back to page-center zoom.
+    // Keep this non-passive only for the controlled-scroll branch: large wheel
+    // deltas are normalized here, while Ctrl/Meta cursor zoom is handled by
+    // the document capture listener.
     viewerContainer.addEventListener('wheel', onWheel, { passive: false, capture: true });
     viewerContainer.addEventListener('pointerdown', onPointerDown, { passive: true });
     window.addEventListener('pointermove', onPointerMove, { passive: true });
@@ -13877,7 +13756,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       '.e-spinner-pane:not(.e-spin-hide)',
       '.e-spinner-pane[aria-hidden="false"]'
     ].join(','));
-    const hasAnnotationOverlay = !!host?.querySelector?.('.canvas-container');
+    const hasAnnotationOverlay = !!host?.querySelector?.([
+      '.canvas-container',
+      '.annotation-layer',
+      '[data-annotation-layer]',
+      '[data-svg-annotation-layer]',
+      '[data-overlay-hidden-pending-pdf="true"]'
+    ].join(','));
 
     return {
       hasContainer,
@@ -14915,10 +14800,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const samplesWithVisiblePresentationGap = visiblePresentationGapCounts.filter((count) => count > 0).length;
     const samplesWithViewportPresentationGap = viewportPresentationGapCounts.filter((count) => count > 0).length;
     const jankThresholdMs = 32;
-    const jankFrames = frameDurations.filter((frameMs) => frameMs > jankThresholdMs).length;
+    const sampleJankFrames = frameDurations.filter((frameMs) => frameMs > jankThresholdMs).length;
     const samplesWithLongTasks = longTaskCounts.filter((count) => count > 0).length;
     const jankSamples = samples.filter((sample) => Number(sample.frameMs) > jankThresholdMs);
     const jankSamplesWithLongTasks = jankSamples.filter((sample) => Number(sample.longTaskCount) > 0).length;
+    const lastSample = samples[samples.length - 1] || null;
+    const rafFrameCount = Number(lastSample?.rafFrameCount) || frameDurations.length;
+    const rafJankFrameCount = Number(lastSample?.rafJankFrameCount) || sampleJankFrames;
+    const rafFrameMsAvg = Number(lastSample?.rafFrameMsAvg);
+    const rafFrameMsMax = Number(lastSample?.rafFrameMsMax);
 
     const interactionEventTotals = {};
     samples.forEach((sample) => {
@@ -14966,10 +14856,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       fpsAvg: roundOverlayRecorderValue(frameDurations.length ? 1000 / avg(frameDurations) : null, 2),
       fpsAtP95Frame: roundOverlayRecorderValue(frameDurations.length ? 1000 / percentileOverlayRecorder(frameDurations, 0.95) : null, 2),
       fpsAtWorstFrame: roundOverlayRecorderValue(frameDurations.length ? 1000 / Math.max(...frameDurations) : null, 2),
-      jankFrames,
-      jankFrameRatePct: frameDurations.length > 0
-        ? roundOverlayRecorderValue((jankFrames / frameDurations.length) * 100, 2)
+      jankFrames: rafJankFrameCount,
+      jankFrameRatePct: rafFrameCount > 0
+        ? roundOverlayRecorderValue((rafJankFrameCount / rafFrameCount) * 100, 2)
         : null,
+      sampleJankFrames,
+      sampleJankFrameRatePct: frameDurations.length > 0
+        ? roundOverlayRecorderValue((sampleJankFrames / frameDurations.length) * 100, 2)
+        : null,
+      rafFrameCount,
+      rafFrameMsAvg: Number.isFinite(rafFrameMsAvg) ? rafFrameMsAvg : null,
+      rafFrameMsMax: Number.isFinite(rafFrameMsMax) ? rafFrameMsMax : null,
       worstDriftPxMax: roundOverlayRecorderValue(driftValues.length ? Math.max(...driftValues) : null, 3),
       worstDriftPxP95: roundOverlayRecorderValue(percentileOverlayRecorder(driftValues, 0.95), 3),
       scaleMismatchMax: roundOverlayRecorderValue(scaleMismatchValues.length ? Math.max(...scaleMismatchValues) : null, 5),
@@ -15024,6 +14921,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const rafDeltaMs = recorder.lastRafAtMs > 0 ? nowMs - recorder.lastRafAtMs : 0;
     recorder.lastRafAtMs = nowMs;
     if (Number.isFinite(rafDeltaMs) && rafDeltaMs > 0) {
+      recorder.rafFrameCount = (Number(recorder.rafFrameCount) || 0) + 1;
+      recorder.rafFrameMsTotal = (Number(recorder.rafFrameMsTotal) || 0) + rafDeltaMs;
+      recorder.rafFrameMsMax = Math.max(Number(recorder.rafFrameMsMax) || 0, rafDeltaMs);
+      if (rafDeltaMs > 32) {
+        recorder.rafJankFrameCount = (Number(recorder.rafJankFrameCount) || 0) + 1;
+      }
       recorder.pendingFrameMaxMs = Math.max(recorder.pendingFrameMaxMs || 0, rafDeltaMs);
     }
 
@@ -15119,7 +15022,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const sampledPages = candidatePages.slice(0, recorder.options.samplePageLimit);
     const pageDetails = [];
     const missingOverlayPages = [];
+    const missingOverlayDetails = [];
+    const staleOverlayRefPages = [];
+    const staleOverlayRefDetails = [];
     const missingHostPages = [];
+    const missingHostDetails = [];
+    const visiblePresentationGapPages = [];
+    const viewportPresentationGapPages = [];
     let worstDriftPx = 0;
     let worstScaleMismatch = 0;
     let worstDriftPage = null;
@@ -15128,16 +15037,53 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     sampledPages.forEach((pageNumber) => {
       const overlayLayer = overlayLayerRefs[pageNumber];
       const pageHost = pageContainerMap[pageNumber] || pageContainersRef.current[pageNumber];
+      const pageRect = pageHost?.getBoundingClientRect?.() || null;
+      const viewportVisibleWidth = pageRect && containerRect
+        ? Math.max(0, Math.min(pageRect.right, containerRect.right) - Math.max(pageRect.left, containerRect.left))
+        : 0;
+      const viewportVisibleHeight = pageRect && containerRect
+        ? Math.max(0, Math.min(pageRect.bottom, containerRect.bottom) - Math.max(pageRect.top, containerRect.top))
+        : 0;
+      const viewportVisibleArea = viewportVisibleWidth * viewportVisibleHeight;
+      const pageArea = pageRect ? Math.max(1, pageRect.width * pageRect.height) : 1;
+      const viewportVisible = viewportVisibleArea > 0;
+      const viewportOverlapPct = viewportVisible
+        ? (viewportVisibleArea / pageArea) * 100
+        : 0;
       if (!overlayLayer || !overlayLayer.isConnected) {
+        if (!pageHost?.isConnected && !viewportVisible) {
+          staleOverlayRefPages.push(pageNumber);
+          staleOverlayRefDetails.push({
+            pageNumber,
+            hasHost: !!pageHost,
+            hostConnected: !!pageHost?.isConnected,
+            viewportVisible,
+            viewportOverlapPct: roundOverlayRecorderValue(viewportOverlapPct, 2),
+            overlayRefConnected: !!overlayLayer?.isConnected
+          });
+          return;
+        }
         missingOverlayPages.push(pageNumber);
+        missingOverlayDetails.push({
+          pageNumber,
+          hasHost: !!pageHost,
+          hostConnected: !!pageHost?.isConnected,
+          viewportVisible,
+          viewportOverlapPct: roundOverlayRecorderValue(viewportOverlapPct, 2),
+          overlayRefConnected: !!overlayLayer?.isConnected
+        });
         return;
       }
       if (!pageHost || !pageHost.isConnected) {
         missingHostPages.push(pageNumber);
+        missingHostDetails.push({
+          pageNumber,
+          hasOverlay: !!overlayLayer,
+          overlayConnected: !!overlayLayer?.isConnected
+        });
         return;
       }
 
-      const pageRect = pageHost.getBoundingClientRect();
       const overlayRect = overlayLayer.getBoundingClientRect();
       if (!Number.isFinite(pageRect.width) || pageRect.width <= 0 || !Number.isFinite(pageRect.height) || pageRect.height <= 0) {
         return;
@@ -15163,18 +15109,38 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       const presentationMode = snapshotVisible
         ? 'snapshot'
         : (liveHidden ? 'none' : 'live');
-      const viewportVisibleWidth = containerRect
-        ? Math.max(0, Math.min(pageRect.right, containerRect.right) - Math.max(pageRect.left, containerRect.left))
-        : 0;
-      const viewportVisibleHeight = containerRect
-        ? Math.max(0, Math.min(pageRect.bottom, containerRect.bottom) - Math.max(pageRect.top, containerRect.top))
-        : 0;
-      const viewportVisibleArea = viewportVisibleWidth * viewportVisibleHeight;
-      const pageArea = Math.max(1, pageRect.width * pageRect.height);
-      const viewportVisible = viewportVisibleArea > 0;
-      const viewportOverlapPct = viewportVisible
-        ? (viewportVisibleArea / pageArea) * 100
-        : 0;
+      const hasPdfSurface = !!pageHost.querySelector?.([
+        'img[id*="_tileimg_"]',
+        'img[id*="_pageCanvas_"]',
+        'canvas[id*="_pageCanvas_"]',
+        '.e-pv-page-canvas',
+        '.e-pv-text-layer',
+        '.e-pv-image-canvas'
+      ].join(','));
+      const spinnerVisible = !!pageHost.querySelector?.([
+        '.e-spinner-pane:not(.e-spin-hide)',
+        '.e-spinner-pane[aria-hidden="false"]'
+      ].join(','));
+      const pdfReady = hasPdfSurface;
+      const overlayStyle = typeof window !== 'undefined' && window.getComputedStyle
+        ? window.getComputedStyle(overlayLayer)
+        : null;
+      const overlayVisible = (
+        overlayRect.width > 0 &&
+        overlayRect.height > 0 &&
+        overlayStyle?.visibility !== 'hidden' &&
+        overlayStyle?.display !== 'none' &&
+        Number(overlayStyle?.opacity ?? 1) > 0.01
+      );
+      const annotationObjects = syncfusionAnnotationsByPageRef.current?.[pageNumber]?.objects;
+      const hasAnnotationContent = Array.isArray(annotationObjects) && annotationObjects.length > 0;
+      const hasPresentationGap = hasAnnotationContent && overlayVisible && !pdfReady;
+      if (hasPresentationGap) {
+        visiblePresentationGapPages.push(pageNumber);
+        if (viewportVisible) {
+          viewportPresentationGapPages.push(pageNumber);
+        }
+      }
       const innerLayer = overlayContentRefs[pageNumber];
       let observedScale = 1;
       if (innerLayer && innerLayer.isConnected) {
@@ -15186,6 +15152,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           : null);
         observedScale = parseCssTransformScaleX(transformValue);
       }
+      const overlayContentHasScaleTransform = Math.abs(observedScale - 1) > 0.001;
 
       const committedScales = syncfusionCommittedPageScalesRef.current || {};
       const pageBaseScale = Number(committedScales[pageNumber]) || Number(syncfusionInteractionStartViewerZoomRef.current) || viewerScale || 1;
@@ -15196,9 +15163,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         viewerScale
       );
       const liveScale = normalizeInteractionMeasuredScale(liveScaleRaw, viewerScale, viewerScale);
-      const expectedScale = (syncfusionInteractionPhaseRef.current === 'interacting' || syncfusionInteractionPhaseRef.current === 'committing')
-        ? (liveScale / pageBaseScale)
-        : 1;
+      const zoomOverlayBaseScale = Number(zoomOverlayBaseScaleRef.current) || pageBaseScale;
+      const expectedScale = zoomOverlayTransformActiveRef.current && overlayContentHasScaleTransform
+        ? (viewerScale / zoomOverlayBaseScale)
+        : ((syncfusionInteractionPhaseRef.current === 'interacting' || syncfusionInteractionPhaseRef.current === 'committing')
+          ? (liveScale / pageBaseScale)
+          : 1);
       const scaleMismatch = Math.abs(observedScale - expectedScale);
 
       if (driftPx > worstDriftPx) {
@@ -15224,6 +15194,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         scalePendingHidden: hiddenPendingPages.has(pageNumber),
         viewportVisible,
         viewportOverlapPct: roundOverlayRecorderValue(viewportOverlapPct, 2),
+        hasPdfSurface,
+        spinnerVisible,
+        pdfReady,
+        hasAnnotationContent,
+        presentationGap: hasPresentationGap,
         snapshotAvailable,
         snapshotVisible,
         snapshotStatus,
@@ -15246,6 +15221,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const sample = {
       tMs: roundOverlayRecorderValue(nowMs - recorder.startedAtMs, 1),
       frameMs: roundOverlayRecorderValue(frameMs, 3),
+      rafFrameCount: Number(recorder.rafFrameCount) || 0,
+      rafJankFrameCount: Number(recorder.rafJankFrameCount) || 0,
+      rafFrameMsAvg: roundOverlayRecorderValue(
+        recorder.rafFrameCount > 0 ? recorder.rafFrameMsTotal / recorder.rafFrameCount : null,
+        3
+      ),
+      rafFrameMsMax: roundOverlayRecorderValue(recorder.rafFrameMsMax, 3),
       appScale: roundOverlayRecorderValue(scaleRef.current || scale, 5),
       viewerScale: roundOverlayRecorderValue(viewerScale, 5),
       interactionActive: syncfusionInteractionActiveRef.current,
@@ -15281,6 +15263,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       missingHostCount: missingHostPages.length,
       missingOverlayPages: missingOverlayPages.slice(0, 8),
       missingHostPages: missingHostPages.slice(0, 8),
+      missingOverlayDetails: missingOverlayDetails.slice(0, 8),
+      missingHostDetails: missingHostDetails.slice(0, 8),
+      staleOverlayRefCount: staleOverlayRefPages.length,
+      staleOverlayRefPages: staleOverlayRefPages.slice(0, 8),
+      staleOverlayRefDetails: staleOverlayRefDetails.slice(0, 8),
+      visiblePresentationGapCount: visiblePresentationGapPages.length,
+      visiblePresentationGapPages: visiblePresentationGapPages.slice(0, 8),
+      viewportPresentationGapCount: viewportPresentationGapPages.length,
+      viewportPresentationGapPages: viewportPresentationGapPages.slice(0, 8),
       hiddenPendingPageCount: syncfusionScaleConfirmHiddenPagesRef.current.size,
       snapshotAvailablePageCount: pageDetails.filter((page) => page.snapshotAvailable).length,
       snapshotVisiblePageCount: pageDetails.filter((page) => page.snapshotVisible).length,
@@ -15351,6 +15342,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     recorder.stoppedAtIso = null;
     recorder.lastRafAtMs = 0;
     recorder.pendingFrameMaxMs = 0;
+    recorder.rafFrameCount = 0;
+    recorder.rafJankFrameCount = 0;
+    recorder.rafFrameMsTotal = 0;
+    recorder.rafFrameMsMax = 0;
     recorder.nextSampleAtMs = 0;
     recorder.lastSampleAtMs = 0;
     recorder.lastEventTotals = { ...(overlayLagEventTotalsRef.current || {}) };
@@ -15436,6 +15431,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     recorder.stoppedAtIso = null;
     recorder.lastRafAtMs = 0;
     recorder.pendingFrameMaxMs = 0;
+    recorder.rafFrameCount = 0;
+    recorder.rafJankFrameCount = 0;
+    recorder.rafFrameMsTotal = 0;
+    recorder.rafFrameMsMax = 0;
     recorder.nextSampleAtMs = 0;
     recorder.lastSampleAtMs = 0;
     recorder.lastEventTotals = null;
@@ -30083,6 +30082,9 @@ ${pageBlocks}
                       const pageAnnotations = annotationsByPage[pageNumber];
                       const pageSize = pageSizes[pageNumber];
                       if (!pageSize) return null;  // Page size not yet known -- skip this render
+                      const pagePdfReadyState = readSyncfusionPageVisitState(pageNumber);
+                      const pageAnnotationObjects = Array.isArray(pageAnnotations?.objects) ? pageAnnotations.objects : [];
+                      const hideOverlayUntilPdfReady = pageAnnotationObjects.length > 0 && !pagePdfReadyState.hasPdfSurface;
 
                       if (showRegionSelection && regionSelectionPage === pageNumber) {
                         console.log(
@@ -30143,7 +30145,6 @@ ${pageBlocks}
                         (syncfusionInteractionPhase === 'interacting' && isProxyPageWhileInteracting) ||
                         (syncfusionInteractionPhase === 'committing' && isProxyPageWhileCommitting)
                       );
-                      const pageAnnotationObjects = Array.isArray(pageAnnotations?.objects) ? pageAnnotations.objects : [];
                       const firstObject = pageAnnotationObjects.length > 0 ? pageAnnotationObjects[0] : null;
                       const lastObject = pageAnnotationObjects.length > 0 ? pageAnnotationObjects[pageAnnotationObjects.length - 1] : null;
                       const annotationRevision = `${pageAnnotationObjects.length}:${firstObject?.id || firstObject?.highlightId || firstObject?.pdfAnnotationId || firstObject?.type || ''}:${lastObject?.id || lastObject?.highlightId || lastObject?.pdfAnnotationId || lastObject?.type || ''}`;
@@ -30185,7 +30186,11 @@ ${pageBlocks}
                             height: '100%',
                             pointerEvents: 'none',
                             zIndex: 20,
+                            visibility: hideOverlayUntilPdfReady ? 'hidden' : undefined,
                           }}
+                          data-pdf-ready={pagePdfReadyState.ready ? 'true' : 'false'}
+                          data-pdf-spinner-visible={pagePdfReadyState.spinnerVisible ? 'true' : 'false'}
+                          data-overlay-hidden-pending-pdf={hideOverlayUntilPdfReady ? 'true' : 'false'}
                         >
                           <div
                             ref={(node) => {
@@ -30817,10 +30822,11 @@ ${pageBlocks}
                                   removes the preview entirely. Tool stays active for rapid
                                   drops. See counterDragRef + applyCounterDragMove +
                                   commitCounterDrag + cancelCounterDrag at the top of App.jsx. */}
-                              {activeTool === 'counter' && (
-                                <div
-                                  data-counter-overlay={pageNumber}
-                                  style={{
+                                {activeTool === 'counter' && (
+                                  <div
+                                    data-counter-overlay={pageNumber}
+                                    data-counter-overlay-contract="type: 'counter'; data.id = crypto.randomUUID()"
+                                    style={{
                                     position: 'absolute',
                                     top: 0, left: 0, right: 0, bottom: 0,
                                     cursor: 'crosshair',
@@ -32199,6 +32205,7 @@ ${pageBlocks}
                                   {activeTool === 'counter' && (
                                     <div
                                       data-counter-overlay={pageNum}
+                                      data-counter-overlay-contract="type: 'counter'; data.id = crypto.randomUUID()"
                                       style={{
                                         position: 'absolute',
                                         top: 0, left: 0, right: 0, bottom: 0,

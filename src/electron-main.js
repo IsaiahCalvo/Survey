@@ -1158,6 +1158,7 @@ ipcMain.handle('logs:pushToGithub', async (event, payload = {}) => {
 ipcMain.handle('logs:saveSnapshot', async (event, payload = {}) => {
   const MAX_SNAPSHOTS = 20;
   try {
+    const startedAt = Date.now();
     const { consoleText = '', network = [], summary = {} } = payload;
     // app.getAppPath() returns the project root in dev (where electron-main.js lives)
     // and the asar root in packaged builds. We anchor Logs to the project root so
@@ -1165,30 +1166,32 @@ ipcMain.handle('logs:saveSnapshot', async (event, payload = {}) => {
     // the resources path which is fine for capture purposes.
     const projectRoot = app.getAppPath();
     const logsRoot = path.join(projectRoot, 'Logs');
-    if (!fs.existsSync(logsRoot)) fs.mkdirSync(logsRoot, { recursive: true });
+    await fs.promises.mkdir(logsRoot, { recursive: true });
 
     const now = new Date();
     const stamp = now.toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
     const snapshotDir = path.join(logsRoot, stamp);
-    fs.mkdirSync(snapshotDir, { recursive: true });
+    await fs.promises.mkdir(snapshotDir, { recursive: true });
 
-    fs.writeFileSync(path.join(snapshotDir, 'console.log'), String(consoleText), 'utf8');
-    fs.writeFileSync(
-      path.join(snapshotDir, 'network.json'),
-      JSON.stringify(Array.isArray(network) ? network : [], null, 2),
-      'utf8'
-    );
-    fs.writeFileSync(
-      path.join(snapshotDir, 'summary.json'),
-      JSON.stringify({ ...summary, savedAtIso: now.toISOString(), snapshotName: stamp }, null, 2),
-      'utf8'
-    );
+    await Promise.all([
+      fs.promises.writeFile(path.join(snapshotDir, 'console.log'), String(consoleText), 'utf8'),
+      fs.promises.writeFile(
+        path.join(snapshotDir, 'network.json'),
+        JSON.stringify(Array.isArray(network) ? network : [], null, 2),
+        'utf8'
+      ),
+      fs.promises.writeFile(
+        path.join(snapshotDir, 'summary.json'),
+        JSON.stringify({ ...summary, savedAtIso: now.toISOString(), snapshotName: stamp }, null, 2),
+        'utf8'
+      )
+    ]);
 
     // Prune to MAX_SNAPSHOTS most-recent dated subfolders. Anything that isn't a
     // dated stamp is left alone so the existing top-level "1.log" file the user
     // already has is untouched.
     const STAMP_RE = /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$/;
-    const entries = fs.readdirSync(logsRoot, { withFileTypes: true })
+    const entries = (await fs.promises.readdir(logsRoot, { withFileTypes: true }))
       .filter((d) => d.isDirectory() && STAMP_RE.test(d.name))
       .map((d) => d.name)
       .sort(); // ISO-like stamp sorts oldest-first lexicographically.
@@ -1196,15 +1199,16 @@ ipcMain.handle('logs:saveSnapshot', async (event, payload = {}) => {
     while (entries.length > MAX_SNAPSHOTS) {
       const oldest = entries.shift();
       try {
-        fs.rmSync(path.join(logsRoot, oldest), { recursive: true, force: true });
+        await fs.promises.rm(path.join(logsRoot, oldest), { recursive: true, force: true });
         removed.push(oldest);
       } catch (rmErr) {
         console.warn('[logs:saveSnapshot] failed to remove old snapshot', oldest, rmErr?.message);
       }
     }
 
-    console.log(`[logs:saveSnapshot] wrote ${snapshotDir} (pruned ${removed.length} old)`);
-    return { ok: true, dir: snapshotDir, pruned: removed };
+    const durationMs = Date.now() - startedAt;
+    console.log(`[logs:saveSnapshot] wrote ${snapshotDir} (pruned ${removed.length} old, ${durationMs}ms async)`);
+    return { ok: true, dir: snapshotDir, pruned: removed, durationMs };
   } catch (error) {
     console.error('[logs:saveSnapshot] unexpected error:', error);
     return { ok: false, error: error?.message || String(error) };
