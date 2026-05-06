@@ -283,11 +283,11 @@ const SYNCFUSION_INTERACTION_MARK_THROTTLE_MS = 96;
 const SYNCFUSION_ZOOM_OVERLAY_SETTLE_MS = 1000;
 const SYNCFUSION_DIAGONAL_SCROLL_SENSITIVITY = 0.82;
 const SYNCFUSION_LARGE_WHEEL_SCROLL_SENSITIVITY = 0.8;
-const SYNCFUSION_SCROLL_MAX_STEP_PX = 72;
-const SYNCFUSION_SCROLL_MIN_STEP_PX = 28;
+const SYNCFUSION_SCROLL_MAX_STEP_PX = 48;
+const SYNCFUSION_SCROLL_MIN_STEP_PX = 22;
 // Trackpad pinch/wheel zoom sensitivity. Keep this centralized so both
 // Syncfusion wheel paths stay cursor-anchored and feel equally responsive.
-const SYNCFUSION_WHEEL_ZOOM_EXPONENT = 0.0012;
+const SYNCFUSION_WHEEL_ZOOM_EXPONENT = 0.0018;
 const SYNCFUSION_INTERACTION_FORCE_PROXY_ALL_PAGES = true;
 const ZOOM_ONLY_INTERACTION_REASONS = new Set([
   'wheel-zoom', 'syncfusion-wheel-zoom', 'syncfusion-zoom-change', 'overlay-wheel-zoom'
