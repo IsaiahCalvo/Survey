@@ -1,0 +1,46 @@
+===== SurveyApp Save Log =====
+version:   0.1.45
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1492x826
+locale:    en-US
+timestamp: 2026-05-08T23:08:24.808Z (5/8/2026, 7:08:24 PM)
+==============================
+[CloudSync][hook] session id minted {"sessionId":"a82b369d-6716-4941-b9c4-eccb6ca80f74"}
+[CloudSync][hook][state-obs] annotationsByPage initial {"currentCount":0,"pages":0,"hydrated":false}
+[CloudSync][hook][state-obs] callouts initial {"currentCount":0,"hydrated":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":null,"userId":null,"pdfId":null}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":false,"hasUserId":false,"hasPdfId":false}
+[CSeries wipe] doc=Package 2 - Rev 4 -- IC.pdf-6300878 totalCounters=0 legacyRemoved=0 — nothing to wipe.
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":null,"userId":null,"pdfId":"Package 2 - Rev 4 -- IC.pdf-6300878"}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":false,"hasUserId":false,"hasPdfId":true}
+[PrintPanel] RENDER — panel closed
+[DebugBridge +6367.8ms] pdf_loaded {"pageCount":36,"currentPage":1}
+[DebugBridge +6528.1ms] zoom_start {"scale":0.1,"targetScale":0.9,"source":"zoomChange"}
+[HyperlinkDiag] post-load scan {"hyperlinkCount":0,"samples":[]}
+[HyperlinkDiag] page 1 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 2 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 3 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG","IMG","IMG","IMG","e-pv-text-layer"]}
+[HyperlinkDiag] page 4 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG","IMG","IMG","IMG"]}
+[HyperlinkDiag] page 5 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG","e-pv-text-layer","IMG","IMG","IMG"]}
+[HyperlinkDiag] page 6 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 7 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 8 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 9 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 10 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[DebugBridge +8192.8ms] zoom_end {"source":"zoomChange_settle"}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DrawCanvas p1] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape mousedown at (167.7, 201.0), tool=rect
+[DrawCanvas p1] shape mouseup — tool=rect, hasSize=true {"left":168.67590265082268,"top":201.9873171846435,"w":132.25959780621574,"h":76.31809872029251}
+[ShapeCommitDiag] commit geometry {"annotationId":"6917e85a-faff-4474-8038-2a9144c22696","pageNumber":1,"tool":"rect","pointerDown":{"x":167.676,"y":200.987},"lastMouseMove":{"x":301.936,"y":279.305},"mouseUp":{"x":301.936,"y":279.305},"previewOuterBounds":{"left":167.676,"top":200.987,"width":134.26,"height":78.318},"fabricPreviewBeforeCommit":{"type":"rect","left":168.676,"top":201.987,"width":132.26,"height":76.318,"rx":0,"ry":0,"strokeWidth":2},"serializedAnnotation":{"type":"rect","left":168.68,"top":201.99,"width":132.26,"height":76.32,"rx":0,"ry":0,"strokeWidth":2,"strokeRenderContract":"drawn-centered-stroke"},"serializedOuterBounds":{"left":168.68,"top":201.99,"width":132.26,"height":76.32},"deltaPreviewToSaved":{"left":1.004,"top":1.003,"width":-2,"height":-1.998}}
+[ShapeCommitDiag] svg rendered bbox after commit {"annotationId":"6917e85a-faff-4474-8038-2a9144c22696","pageNumber":1,"tool":"rect","pointerDown":{"x":167.676,"y":200.987},"lastMouseMove":{"x":301.936,"y":279.305},"mouseUp":{"x":301.936,"y":279.305},"previewOuterBounds":{"left":167.676,"top":200.987,"width":134.26,"height":78.318},"serializedOuterBounds":{"left":168.68,"top":201.99,"width":132.26,"height":76.32},"svgRenderedBBox":{"left":168.68,"top":201.99,"width":132.26,"height":76.32},"deltaPreviewToSaved":{"left":1.004,"top":1.003,"width":-2,"height":-1.998},"deltaSavedToSvg":{"left":0,"top":0,"width":0,"height":0},"deltaPreviewToSvg":{"left":1.004,"top":1.003,"width":-2,"height":-1.998}}
+[DrawCanvas p1] shape mousedown at (22.2, 22.0), tool=rect
+[DrawCanvas p1] shape mouseup — tool=rect, hasSize=false {"left":23.228005027422302,"top":22.974520109689216,"w":0,"h":0}
+[DrawCanvas p1] shape too small, discarded
+console.warn @ [CloudSync][hook][state-obs] SHRINK {"prevCount":3056,"currentCount":3055,"delta":-1,"hydrated":false,"sameRefAsLastByPage":false,"stack":"    at commitHookEffectListMount (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=4844aadd:23793:34) |     at commitPassiveMountOnFiber (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=4844aadd:25034:19) |     at commitPassiveMountEffects_complete (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=4844aadd:25007:17) |     at commitPassiveMountEffects_begin (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=4844aadd:24997:15) |     at commitPassiveMountEffects (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=4844aadd:24987:11) |     at flushPassiveEffectsImpl (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=4844aadd:26368:11)"}
