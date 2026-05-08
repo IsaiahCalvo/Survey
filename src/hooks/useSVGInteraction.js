@@ -415,7 +415,7 @@ export function useSVGInteraction({
    */
   const handleAnnotationPointerDown = useCallback((e, index) => {
     e.stopPropagation();
-    try {
+    if (typeof window !== 'undefined' && window.__LINE_BBOX_DIAG) try {
       const obj = annotations?.objects?.[index];
       console.log('[BboxScaleDiag] annotation-pointerdown ' + JSON.stringify({
         ts: new Date().toISOString(), annotationIndex: index,
@@ -1857,7 +1857,7 @@ export function useSVGInteraction({
       // share a log when the non-moving endpoint looks like it drifts.
       const epNowMs = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
       const epLastLog = dragStateRef.current.lastEndpointLogAt || 0;
-      if (!epLastLog || epNowMs - epLastLog >= 120) {
+      if (typeof window !== 'undefined' && window.__LINE_BBOX_DIAG && (!epLastLog || epNowMs - epLastLog >= 120)) {
         dragStateRef.current.lastEndpointLogAt = epNowMs;
         try {
           const payload = {
@@ -1877,23 +1877,18 @@ export function useSVGInteraction({
             pivotDelta: { dx: dX, dy: dY },
             compensationShift: { sx: shiftX, sy: shiftY },
             finalLocalPoints: { p1: finalP1, p2: finalP2, mid: finalMid },
-            committedEndpointData: endpointData,
+            previewEndpointData: endpointData,
           };
           console.log('[BboxScaleDiag] endpoint-move ' + JSON.stringify(payload));
         } catch (err) { console.warn('[BboxScaleDiag] endpoint-move log failed', err); }
       }
 
-      // Live commit: update annotation data on every move for immediate visual feedback
-      const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
-      const targetObj = updatedAnnotations.objects[ds.annotationIndex];
-      Object.assign(targetObj, endpointData);
-      if (finalMid) {
-        applyMidpointToAnnotation(targetObj, finalMid);
-      }
-      onSaveAnnotations(updatedAnnotations, {
-        source: 'object:modified',
-        action: 'endpoint-move',
-        checkpointPolicy: 'skip',
+      ds.currentEndpoint = { ...endpointData, midpoint: finalMid };
+      setVisualTransform({
+        id: ds.annotationIndex,
+        dx: 0,
+        dy: 0,
+        lineEdit: { ...endpointData, midpoint: finalMid, hasMidpoint: !!finalMid },
       });
       setInteractionState('dragging');
     } else if (ds.mode === 'midpoint') {
@@ -1976,25 +1971,23 @@ export function useSVGInteraction({
         x2: finalP2M.x - newCxM,
         y2: finalP2M.y - newCyM,
       };
-      const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
-      const targetObj = updatedAnnotations.objects[ds.annotationIndex];
-      Object.assign(targetObj, midpointData);
       // Live snap: clear midpoint when within threshold, re-apply when outside.
       // Use the SHIFTED final midpoint + endpoints so the snap threshold
       // is evaluated in the same frame the renderer will consume.
       const startPM = { x: finalP1M.x, y: finalP1M.y };
       const endPM = { x: finalP2M.x, y: finalP2M.y };
-      if (shouldSnapToLinear(finalMidM, startPM, endPM, 10)) {
-        clearMidpointFromAnnotation(targetObj);
-      } else {
-        applyMidpointToAnnotation(targetObj, finalMidM);
-      }
-      onSaveAnnotations(updatedAnnotations, {
-        source: 'object:modified',
-        action: 'midpoint-move',
-        checkpointPolicy: 'skip',
+      const snappedToLinear = shouldSnapToLinear(finalMidM, startPM, endPM, 10);
+      ds.currentMidpoint = { ...midpointData, midpoint: snappedToLinear ? null : finalMidM };
+      setVisualTransform({
+        id: ds.annotationIndex,
+        dx: 0,
+        dy: 0,
+        lineEdit: {
+          ...midpointData,
+          midpoint: snappedToLinear ? null : finalMidM,
+          hasMidpoint: !snappedToLinear,
+        },
       });
-      ds.currentMidpoint = finalMidM;
       setInteractionState('dragging');
     } else if (ds.mode === 'resize') {
       // Determine which axes this handle affects
@@ -2741,22 +2734,20 @@ export function useSVGInteraction({
         });
       }
     } else if (ds.mode === 'endpoint' && ds.currentEndpoint) {
-      // UX 2026-04-20: the pointermove branch already live-saved the
-      // compensated endpoints + midpoint via applyMidpointToAnnotation,
-      // so the annotation JSON is already correct. Re-save once with
-      // normal checkpoint policy so the whole drag produces a single
-      // undo entry. Also check the auto-revert threshold on release:
-      // if the shifted midpoint ended up on the chord within 10 px,
-      // snap it straight (matches the legacy behavior for endpoint
-      // drags that cross collinear).
+      // Pointermove is preview-only for lines/arrows; commit the real
+      // annotation once here so sync + undo see one change per drag.
       const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
       const targetObj = updatedAnnotations.objects[ds.annotationIndex];
+      const { midpoint, ...endpointData } = ds.currentEndpoint;
+      Object.assign(targetObj, endpointData);
       const newEpC = getLineEndpoints(targetObj);
-      if (targetObj.data?.midpoint) {
+      if (midpoint) {
         const newStart = { x: newEpC.x1, y: newEpC.y1 };
         const newEnd = { x: newEpC.x2, y: newEpC.y2 };
-        if (shouldRevertEndpointCurve(targetObj.data.midpoint, newStart, newEnd, 10)) {
+        if (shouldRevertEndpointCurve(midpoint, newStart, newEnd, 10)) {
           clearMidpointFromAnnotation(targetObj);
+        } else {
+          applyMidpointToAnnotation(targetObj, midpoint);
         }
       }
       onSaveAnnotations(updatedAnnotations, {
@@ -2770,15 +2761,14 @@ export function useSVGInteraction({
       // data.midpoint so the line re-enters the straight <line> render branch.
       // No visual indicator during drag (combined-tools behavior, 15-UI-SPEC §E).
       // Checkpoint policy 'normal' so this drag produces one undo entry.
-      const ep = ds.originalEndpoints;
-      const start = { x: ep.x1, y: ep.y1 };
-      const end = { x: ep.x2, y: ep.y2 };
       const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
       const targetObj = updatedAnnotations.objects[ds.annotationIndex];
-      if (shouldSnapToLinear(ds.currentMidpoint, start, end, 10)) {
+      const { midpoint, ...midpointData } = ds.currentMidpoint;
+      Object.assign(targetObj, midpointData);
+      if (!midpoint) {
         clearMidpointFromAnnotation(targetObj);
       } else {
-        applyMidpointToAnnotation(targetObj, ds.currentMidpoint);
+        applyMidpointToAnnotation(targetObj, midpoint);
       }
       onSaveAnnotations(updatedAnnotations, {
         source: 'object:modified',
@@ -3661,7 +3651,7 @@ export function useSVGInteraction({
         // coord midpoint (stored in obj.data.midpoint).
         originalProps: { angle: obj.angle || 0 },
       };
-      try {
+      if (typeof window !== 'undefined' && window.__LINE_BBOX_DIAG) try {
         console.log('[BboxScaleDiag] start ' + JSON.stringify({
           ts: new Date().toISOString(), mode: 'midpoint', handleId, annotationIndex: selectedIndex,
           objType: obj.type, objTool: obj.tool, startPointerSVG: { x: svgPoint?.x, y: svgPoint?.y },
@@ -3708,7 +3698,7 @@ export function useSVGInteraction({
     // Line/arrow endpoint drag: p1 or p2
     if (handleId === 'p1' || handleId === 'p2') {
       const ep = getLineEndpoints(obj);
-      try {
+      if (typeof window !== 'undefined' && window.__LINE_BBOX_DIAG) try {
         console.log('[BboxScaleDiag] start ' + JSON.stringify({
           ts: new Date().toISOString(), mode: 'endpoint', handleId, annotationIndex: selectedIndex,
           objType: obj.type, objTool: obj.tool, startPointerSVG: { x: svgPoint?.x, y: svgPoint?.y },

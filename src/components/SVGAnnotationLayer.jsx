@@ -2288,6 +2288,28 @@ const SVGAnnotationLayer = memo(({
     [importedDebugRows]
   );
 
+  const applyLineEditPreview = useCallback((obj, lineEdit) => {
+    if (!obj || !lineEdit) return obj;
+    const nextData = { ...(obj.data || {}) };
+    if (lineEdit.hasMidpoint && lineEdit.midpoint) {
+      nextData.midpoint = lineEdit.midpoint;
+    } else {
+      delete nextData.midpoint;
+    }
+    return {
+      ...obj,
+      left: lineEdit.left,
+      top: lineEdit.top,
+      width: lineEdit.width,
+      height: lineEdit.height,
+      x1: lineEdit.x1,
+      y1: lineEdit.y1,
+      x2: lineEdit.x2,
+      y2: lineEdit.y2,
+      data: nextData,
+    };
+  }, []);
+
   // Log mount/unmount
   // 2026-04-30: silenced — re-fires on every objectCount/calloutCount/size
   // change, not just true mount. Re-enable via window.__DIAG_SVG_MOUNT = true.
@@ -2345,6 +2367,10 @@ const SVGAnnotationLayer = memo(({
     // (Imported paths use SVG transform instead — handled in computedTransform below)
     let renderObj = obj;
     let renderElement = element;
+    if (visualTransform?.lineEdit && visualTransform.id === i) {
+      renderObj = applyLineEditPreview(obj, visualTransform.lineEdit);
+      renderElement = renderLine(renderObj, i);
+    }
     if (visualTransform?.resize && visualTransform.id === i && !isImportedPath(obj)) {
       renderObj = {
         ...obj,
@@ -3504,8 +3530,12 @@ const SVGAnnotationLayer = memo(({
           );
         }
 
+        const selectionObj = (visualTransform?.lineEdit && visualTransform.id === selectedIndex)
+          ? applyLineEditPreview(obj, visualTransform.lineEdit)
+          : obj;
+
         // Apply visualTransform to bbox so overlay follows annotation live during drag/resize/rotate
-        let bbox = getAnnotationBBox(obj);
+        let bbox = getAnnotationBBox(selectionObj);
         let overlayTransform;
         if (visualTransform && typeof visualTransform.id === 'number' && visualTransform.id === selectedIndex) {
           if (visualTransform.resize) {
@@ -3626,13 +3656,13 @@ const SVGAnnotationLayer = memo(({
         // UX 2026-04-19: when the line is in bbox edit mode (user double-clicked
         // it), fall through to the default SVGSelectionOverlay so the uniform
         // resize + rotate chrome appears instead of the endpoint handles.
-        const isLineType = String(obj.type || '').toLowerCase() === 'line';
+        const isLineType = String(selectionObj.type || '').toLowerCase() === 'line';
         const lineInBboxMode = isLineType && isBeingEditedNow && editingAnnotationEditType === 'bbox';
         if (isLineType && !lineInBboxMode) {
-          const ep = getLineEndpoints(obj);
+          const ep = getLineEndpoints(selectionObj);
           const dx = overlayTransform ? (visualTransform?.dx || 0) : 0;
           const dy = overlayTransform ? (visualTransform?.dy || 0) : 0;
-          const isArrow = obj.tool === 'arrow';
+          const isArrow = selectionObj.tool === 'arrow';
           // Arrow: handle at arrowhead tip (ep2) and line start (ep1)
           // Line: handles at both endpoints
           // Dampened inverse scale (sqrt) to match SVGSelectionOverlay handle sizing
@@ -3648,7 +3678,7 @@ const SVGAnnotationLayer = memo(({
           // it at t=0.5 by construction), geometric midpoint if straight.
           // Offset by the same visual-drag transform (dx, dy) as the endpoints
           // so all three handles move together during a 'move' drag.
-          const dataMidpoint = obj.data?.midpoint;
+          const dataMidpoint = selectionObj.data?.midpoint;
           const midpointBase = resolveMidpointHandlePosition(
             { x: ep.x1, y: ep.y1 },
             { x: ep.x2, y: ep.y2 },
@@ -3666,10 +3696,10 @@ const SVGAnnotationLayer = memo(({
           // instead of sitting at the pre-rotation endpoints. Pivot is
           // the curve-inclusive bbox center — same one renderLine, the
           // bbox-edit frame, and the hit-area wrapper all use.
-          const lineSelAngle = obj.angle ?? 0;
+          const lineSelAngle = selectionObj.angle ?? 0;
           const lineSelBC = computeLineBboxCenter(
             { x1: ep.x1, y1: ep.y1, x2: ep.x2, y2: ep.y2 },
-            obj.data?.midpoint || null,
+            selectionObj.data?.midpoint || null,
           );
           const lineSelCx = lineSelBC.x + dx;
           const lineSelCy = lineSelBC.y + dy;
