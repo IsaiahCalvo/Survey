@@ -1,0 +1,91 @@
+===== SurveyApp Save Log =====
+version:   0.1.45
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1200x772
+locale:    en-US
+timestamp: 2026-05-08T20:14:05.974Z (5/8/2026, 4:14:05 PM)
+==============================
+[dev-auto-login] boot {"hasDevEmail":true,"devEmailHint":"isai***","hasDevPassword":true,"hasCachedSession":true,"cachedSessionEmail":"isaiahcalvo123@gmail.com","cachedSessionExpiresAt":1778274703}
+[dev-auto-login] cached session matches dev email, keeping it
+[dev-auto-login] decision {"needsAutoLogin":false,"willAttemptSignIn":false}
+[CloudSync][hook] session id minted {"sessionId":"187a3632-23de-47c9-a8c6-c0a385c9f207"}
+[CloudSync][hook][state-obs] annotationsByPage initial {"currentCount":0,"pages":0,"hydrated":false}
+[CloudSync][hook][state-obs] callouts initial {"currentCount":0,"hydrated":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":null}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":false}
+[Cloud render cache] doc=Package 2 - Rev 4 -- IC.pdf-6291605 painting verified cloud snapshot immediately — count=2868.
+[CSeries wipe] doc=Package 2 - Rev 4 -- IC.pdf-6291605 totalCounters=0 legacyRemoved=0 — nothing to wipe.
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":null,"alreadyRanFor":null,"willRun":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605"}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":true}
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","alreadyRanFor":null,"willRun":true}
+[Phase31 UAT] backfill:start {"hasYdoc":true,"hasSupabase":true,"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","markCutoverComplete":true}
+[PDFImport] skipped embedded PDF annotation import — cloud/Y.Doc is authoritative {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86"}
+[PrintPanel] RENDER — panel closed
+[DebugBridge +118683.4ms] zoom_start {"scale":0.62,"targetScale":0.83,"source":"zoomChange"}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +119093.7ms] pdf_loaded {"pageCount":36,"currentPage":1}
+[HIGHLIGHT-SYNC][load.legacy][pdf=Package 2 - Rev 4 -- IC.pdf] {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","totalRows":0,"fabricCarryingDropped":0,"keptCount":0,"keptIds":[]}
+[HyperlinkDiag] post-load scan {"hyperlinkCount":0,"samples":[]}
+[HyperlinkDiag] page 1 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 2 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 3 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG","IMG","IMG","IMG","e-pv-text-layer"]}
+[HyperlinkDiag] page 4 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG","IMG","IMG","IMG"]}
+[HyperlinkDiag] page 5 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG","IMG","IMG","IMG"]}
+[HyperlinkDiag] page 6 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG","e-pv-text-layer"]}
+[HyperlinkDiag] page 7 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 8 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 9 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 10 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[Phase31 UAT] backfill:cutover-dedupe-anchor-skip {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapSize":2868,"lastGoodSize":2879}
+[DebugBridge +120607.3ms] zoom_end {"source":"zoomChange_settle"}
+[DrawCanvas p1] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p1] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[CloudSync][hook] hydrate effect fired {"enabled":true,"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605"}
+[CloudSync][hook] stage=hydrating
+[CloudSync][hook] fabric push skipped — not hydrated yet
+[CloudSync][hook] callout push skipped — not hydrated yet
+[CloudSync][realtime] subscribing {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","currentUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","currentSessionId":"187a3632-23de-47c9-a8c6-c0a385c9f207","hasFabricInsert":true,"hasFabricUpdate":true,"hasFabricDelete":true,"hasCalloutInsert":true,"hasCalloutUpdate":true,"hasCalloutDelete":true}
+[CloudSync][realtime] subscribe status {"status":"SUBSCRIBED","error":null}
+[CloudSync][hook] post-subscribe catch-up skipped — startup sync already in flight
+[CloudSync][hook] cutover-complete hydrate — reading from Y.Doc {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","cutoverTs":"2026-05-05T16:30:00.778+00:00"}
+[Phase31 UAT] hydrate:cutover-sealed {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605","cutoverTs":"2026-05-05T16:30:00.778+00:00","yMapSize":2868,"materializedTotal":2868,"materializedDrawnByMe":2868,"materializedDrawnByOthers":0,"materializedImported":0,"pages":7,"perPage":{"1":1,"6":359,"7":146,"8":393,"9":1382,"10":330,"11":257},"currentStateCount":2868,"ydocLooksDegenerate":false}
+[Phase31 UAT] hydrate:cutover-sealed:by-type {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","pdfFile":"Package 2 - Rev 4 -- IC.pdf-6291605","viewerUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapTotal":2868,"yMapByType":{"path":2861,"rect":6,"textbox":1},"yMapByAuthor":{"byMe":2868,"byOthers":0,"anonymous":0},"yMapByTypeByAuthor":{"path":{"byMe":2861,"byOthers":0,"anonymous":0},"rect":{"byMe":6,"byOthers":0,"anonymous":0},"textbox":{"byMe":1,"byOthers":0,"anonymous":0}},"yMapPerTypePerPage":{"path":{"6":357,"7":145,"8":392,"9":1381,"10":329,"11":256,"unknown":1},"rect":{"6":1,"7":1,"8":1,"9":1,"10":1,"11":1},"textbox":{"6":1}},"byPageTotal":2868,"byPageByType":{"path":2861,"rect":6,"textbox":1},"byPagePerPagePerType":{"1":{"path":1},"6":{"path":357,"rect":1,"textbox":1},"7":{"path":145,"rect":1},"8":{"path":392,"rect":1},"9":{"path":1381,"rect":1},"10":{"rect":1,"path":329},"11":{"path":256,"rect":1}}}
+[CloudSync][hook] fabric state changed — debounce push scheduled {"pageCount":7,"objectCount":2869,"priorObjectCount":2868,"isWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[Diag] tool-switch DETECTED → select (scheduling t+1000ms capture)
+[CloudSync][hook] fabric push debounce elapsed — pushing now
+[Phase31 UAT] save:start {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","legacyBulkUpsertEnabled":false,"crdtEnabled":true,"ydocMounted":true,"route":"crdt-only","currentTotal":2869,"currentDrawnByMe":2868,"currentDrawnByOthers":1,"currentImported":0,"priorTotal":2868,"priorDrawnByMe":2868,"priorImported":0,"deltaTotal":1}
+[CloudSync][hook] fabric delta prepared {"changedObjectCount":1,"totalObjectCount":2869,"priorObjectCount":2868}
+[Phase31 UAT] save:fan-out done {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","dispatched":1,"detected":1,"skippedHighlightOrCallout":0,"skippedOtherType":0,"rawTypeBreakdown":{"pen":1},"resolvedTypeBreakdown":{"ink":1},"skipReasons":{},"skipSamples":[],"yMapSizeAfter":2869}
+[CloudSync][hook] fabric push synced {"count":0}
+[Diag select] screenshot saved (688 KB) → /Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/TestLogs/testlog-screenshot-select.png
+[Diag select] CAPTURED @ t+1003ms — annotations=2 callouts=0 svgWrappers=1 svgVis=[visible] svgElems=2 svgVisElems=2 eraserCanvases=0 svgMarkupBytes=13714
+[PHASE35][marquee.filter][pdf=Package 2 - Rev 4 -- IC.pdf] {"stage":"filtered","viewerId":"170d915c-5741-4e0b-b03f-deaeedae27bd","documentOwnerId":"170d915c-5741-4e0b-b03f-deaeedae27bd","role":"owner","hitsIn":1,"hitsOut":1,"droppedCount":0,"perAnnotation":[{"index":1,"present":true,"annotationId":null,"authorId":null,"type":"path","decision":"ALLOW"}],"sameRefReturned":true}
+[CloudSync][hook] fabric state changed — debounce push scheduled {"pageCount":7,"objectCount":2869,"priorObjectCount":2869,"isWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[CloudSync][hook] fabric push debounce elapsed — pushing now
+[Phase31 UAT] save:start {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","legacyBulkUpsertEnabled":false,"crdtEnabled":true,"ydocMounted":true,"route":"crdt-only","currentTotal":2869,"currentDrawnByMe":2868,"currentDrawnByOthers":1,"currentImported":0,"priorTotal":2869,"priorDrawnByMe":2868,"priorImported":0,"deltaTotal":0}
+[CloudSync][hook] fabric delta prepared {"changedObjectCount":1,"totalObjectCount":2869,"priorObjectCount":2869}
+[Phase31 UAT] save:fan-out done {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","dispatched":1,"detected":1,"skippedHighlightOrCallout":0,"skippedOtherType":0,"rawTypeBreakdown":{"pen":1},"resolvedTypeBreakdown":{"ink":1},"skipReasons":{},"skipSamples":[],"yMapSizeAfter":2869}
+[CloudSync][hook] fabric push synced {"count":0}
+[DrawCanvas p1] MOUNT — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p1] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p1] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[CloudSync][hook] fabric state changed — debounce push scheduled {"pageCount":7,"objectCount":2870,"priorObjectCount":2869,"isWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[CloudSync][hook] fabric push debounce elapsed — pushing now
+[Phase31 UAT] save:start {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","legacyBulkUpsertEnabled":false,"crdtEnabled":true,"ydocMounted":true,"route":"crdt-only","currentTotal":2870,"currentDrawnByMe":2868,"currentDrawnByOthers":2,"currentImported":0,"priorTotal":2869,"priorDrawnByMe":2868,"priorImported":0,"deltaTotal":1}
+[CloudSync][hook] fabric delta prepared {"changedObjectCount":1,"totalObjectCount":2870,"priorObjectCount":2869}
+[Phase31 UAT] save:fan-out done {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","dispatched":1,"detected":1,"skippedHighlightOrCallout":0,"skippedOtherType":0,"rawTypeBreakdown":{"highlighter":1},"resolvedTypeBreakdown":{"ink":1},"skipReasons":{},"skipSamples":[],"yMapSizeAfter":2870}
+[CloudSync][hook] fabric push synced {"count":0}
+[Diag] tool-switch DETECTED → select (scheduling t+1000ms capture)
+[Diag select] screenshot saved (703 KB) → /Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/TestLogs/testlog-screenshot-select.png
+[Diag select] CAPTURED @ t+1001ms — annotations=3 callouts=0 svgWrappers=1 svgVis=[visible] svgElems=3 svgVisElems=3 eraserCanvases=0 svgMarkupBytes=23023
+[CloudSync][hook] fabric state changed — debounce push scheduled {"pageCount":7,"objectCount":2870,"priorObjectCount":2870,"isWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[CloudSync][hook] fabric push debounce elapsed — pushing now
+[Phase31 UAT] save:start {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","legacyBulkUpsertEnabled":false,"crdtEnabled":true,"ydocMounted":true,"route":"crdt-only","currentTotal":2870,"currentDrawnByMe":2868,"currentDrawnByOthers":2,"currentImported":0,"priorTotal":2870,"priorDrawnByMe":2868,"priorImported":0,"deltaTotal":0}
+[CloudSync][hook] fabric delta prepared {"changedObjectCount":1,"totalObjectCount":2870,"priorObjectCount":2870}
+[Phase31 UAT] save:fan-out done {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","dispatched":1,"detected":1,"skippedHighlightOrCallout":0,"skippedOtherType":0,"rawTypeBreakdown":{"highlighter":1},"resolvedTypeBreakdown":{"ink":1},"skipReasons":{},"skipSamples":[],"yMapSizeAfter":2870}
+[CloudSync][hook] fabric push synced {"count":0}
