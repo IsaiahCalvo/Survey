@@ -1,0 +1,5 @@
+console.error @ [DocumentCleanup] Failed to delete stale document row: {"code":"57014","details":null,"hint":null,"message":"canceling statement due to statement timeout"}
+[SaveLog] global menu trigger — capturing console buffer
+[SaveLog] wrote 2 lines locally
+[SaveLog] pushed to GitHub: https://github.com/IsaiahCalvo/Survey/blob/logs/mac-isaiahs-mbp-2026-05-08T23-44-11-366Z.log
+[SaveLog] global menu trigger — capturing console buffer
