@@ -1,0 +1,138 @@
+===== SurveyApp Save Log =====
+version:   0.1.45
+runtime:   web
+platform:  web
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1280x720
+locale:    en-US
+timestamp: 2026-05-08T23:42:31.484Z (5/8/2026, 7:42:31 PM)
+==============================
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 5000ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+[dev-auto-login] boot {"hasDevEmail":true,"devEmailHint":"isai***","hasDevPassword":true,"hasCachedSession":true,"cachedSessionEmail":"isaiahcalvo123@gmail.com","cachedSessionExpiresAt":1778287195}
+[dev-auto-login] cached session matches dev email, keeping it
+[dev-auto-login] decision {"needsAutoLogin":false,"willAttemptSignIn":false}
+[CloudSync][hook] session id minted {"sessionId":"70ff3eff-b0ca-49e2-9e3f-62856a4f9413"}
+[CloudSync][hook][state-obs] annotationsByPage initial {"currentCount":0,"pages":0,"hydrated":false}
+[CloudSync][hook][state-obs] callouts initial {"currentCount":0,"hydrated":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":null}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":false}
+[Cloud render cache] doc=Package 2 - Rev 4 -- IC.pdf-6291605 painting verified cloud snapshot immediately — count=2880.
+[CSeries wipe] doc=Package 2 - Rev 4 -- IC.pdf-6291605 totalCounters=0 legacyRemoved=0 — nothing to wipe.
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":null,"alreadyRanFor":null,"willRun":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605"}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":true}
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","alreadyRanFor":null,"willRun":true}
+[Phase31 UAT] backfill:start {"hasYdoc":true,"hasSupabase":true,"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","markCutoverComplete":true}
+[PDFImport] skipped embedded PDF annotation import — cloud/Y.Doc is authoritative {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86"}
+[PrintPanel] RENDER — panel closed
+[DebugBridge +21353.3ms] zoom_start {"scale":1.01307,"targetScale":0.76,"source":"zoomChange"}
+[HIGHLIGHT-SYNC][load.legacy][pdf=Package 2 - Rev 4 -- IC.pdf] {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","totalRows":0,"fabricCarryingDropped":0,"keptCount":0,"keptIds":[]}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +22290.7ms] pdf_loaded {"pageCount":36,"currentPage":1}
+[HyperlinkDiag] post-load scan {"hyperlinkCount":0,"samples":[]}
+[HyperlinkDiag] page 1 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 2 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 3 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG","IMG","IMG","IMG","e-pv-text-layer"]}
+[HyperlinkDiag] page 4 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG","IMG","IMG","IMG"]}
+[HyperlinkDiag] page 5 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG","IMG","IMG","IMG"]}
+[HyperlinkDiag] page 6 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG","e-pv-text-layer"]}
+[HyperlinkDiag] page 7 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 8 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 9 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 10 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[CloudSync][hook] hydrate effect fired {"enabled":true,"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605"}
+[CloudSync][hook] stage=hydrating
+[CloudSync][hook] fabric push skipped — not hydrated yet
+[CloudSync][hook] callout push skipped — not hydrated yet
+[CloudSync][realtime] subscribing {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","currentUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","currentSessionId":"70ff3eff-b0ca-49e2-9e3f-62856a4f9413","hasFabricInsert":true,"hasFabricUpdate":true,"hasFabricDelete":true,"hasCalloutInsert":true,"hasCalloutUpdate":true,"hasCalloutDelete":true}
+[CloudSync][realtime] subscribe status {"status":"SUBSCRIBED","error":null}
+[CloudSync][hook] post-subscribe catch-up skipped — startup sync already in flight
+[CloudSync][hook] cutover-complete hydrate — reading from Y.Doc {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","cutoverTs":"2026-05-05T16:30:00.778+00:00"}
+[Phase31 UAT] hydrate:cutover-sealed {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605","cutoverTs":"2026-05-05T16:30:00.778+00:00","yMapSize":0,"materializedTotal":0,"materializedDrawnByMe":0,"materializedDrawnByOthers":0,"materializedImported":0,"pages":0,"perPage":{},"currentStateCount":2880,"ydocLooksDegenerate":true}
+[Phase31 UAT] hydrate:cutover-sealed:by-type {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","pdfFile":"Package 2 - Rev 4 -- IC.pdf-6291605","viewerUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapTotal":0,"yMapByType":{},"yMapByAuthor":{"byMe":0,"byOthers":0,"anonymous":0},"yMapByTypeByAuthor":{},"yMapPerTypePerPage":{},"byPageTotal":0,"byPageByType":{},"byPagePerPagePerType":{}}
+console.warn @ [CloudSync][hook] cutover hydrate skipped state replace — Y.Map smaller than current state, trusting current state until backfill recovers {"ydocCount":0,"currentStateCount":2880}
+[DebugBridge +23750.9ms] zoom_end {"source":"zoomChange_settle"}
+[Phase31 UAT] backfill:degeneracy-probe {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapSize":0,"legacyCount":3069,"probeOk":true,"tolerance":154,"yMapLooksHealthy":false,"dedupeRan":false,"lastGoodSize":0}
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":3069}
+[Phase31 UAT] backfill:select-loop start {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pageSize":1000}
+[Phase31 UAT] backfill:select-loop page ok {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","page":0,"range":[0,999],"pageRows":1000,"totalSoFar":1000,"pageElapsedMs":702}
+[Phase31 UAT] backfill:select-loop page ok {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","page":1,"range":[1000,1999],"pageRows":1000,"totalSoFar":2000,"pageElapsedMs":780}
+[Phase31 UAT] backfill:select-loop page ok {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","page":2,"range":[2000,2999],"pageRows":1000,"totalSoFar":3000,"pageElapsedMs":677}
+[Phase31 UAT] backfill:select-loop page ok {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","page":3,"range":[3000,3999],"pageRows":69,"totalSoFar":3069,"pageElapsedMs":255}
+console.warn @ [crdtBackfill] cutover gate skipped — count mismatch {"yMapSize":3061,"imported":3069,"skipped":0,"expectedMinSize":3069}
+[Phase31 UAT] backfill:done {"ranAs":"leader","documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowsFetched":3069,"imported":3069,"skipped":0,"yMapSizeAfter":3061,"cutoverRequested":true,"cutoverCompleted":false,"importedByType":{"callout":13,"ink":3049,"freetext":1,"square":6},"skippedByType":{}}
+[crdtDedupePdfImports] removed 181 duplicate PDF-imported annotations across 2873 unique signatures
+[CloudSync][hook] dedupe-resync — restoring state {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","removed":181,"resyncCount":2880}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[App] TOOL ACTIVATED: callout {"isDrawingTool":false,"willMountDrawingCanvas":false,"willMountCalloutUI":true,"NOTE":"CALLOUT TOOL HAS NO CREATION UI — isDrawingTool=false, no canvas mounts, no click handler"}
+[CalloutEditEntryDiag] {"calloutId":"callout-36059ptq3-moxk645o","isPdfImported":false,"text":"","textAlign":"left","fontSize":14,"fabricTextbox":{"left":294.82086167800446,"top":324.2733467454086,"width":120,"height":32,"fontSize":14,"textAlign":"left"},"svgTextBoxClientRect":{"x":654.5595703125,"y":269.994140625,"w":82.0794677734375,"h":28.04254150390625},"pageSize":{"width":612,"height":792}}
+[CloudSync][hook] callout state changed — debounce push scheduled {"count":1,"priorCount":0,"isCalloutWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[CalloutEditCanvasDiag] {"effectiveScale":0.7598039215686274,"effectiveScaleY":0.76010101010101,"useNonUniform":false,"canvasWidth":139,"canvasHeight":72,"parentOffset":{"w":465,"h":602},"pageSize":{"w":612,"h":792},"vpt":[0.7598039215686274,0,0,0.7598039215686274,0,0],"zoom":0.7598039215686274}
+[Diag] tool-switch DETECTED → select (scheduling t+1000ms capture)
+[CloudSync][hook] callout push debounce elapsed — pushing now
+[CloudSync][push] upsertCallouts start {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","count":1}
+[Diag select] CAPTURED @ t+1001ms — annotations=11 callouts=1 svgWrappers=2 svgVis=[visible,visible] svgElems=0 svgVisElems=0 eraserCanvases=0 svgMarkupBytes=2868
+[CloudSync][push] upsertCallouts ok {"elapsedMs":618,"rowsReturned":1}
+[CloudSync][hook] callout push synced {"count":1}
+[CloudSync][realtime] echo-filtered INSERT {"highlightId":"callout-36059ptq3-moxk645o","annotationType":"callout","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"70ff3eff-b0ca-49e2-9e3f-62856a4f9413","currentSessionId":"70ff3eff-b0ca-49e2-9e3f-62856a4f9413","reason":"same-session"}
+[EditCanvas] COMMIT pre-convert — text="Callout sync test
+Ed" fontSize=14 width=108 height=31.64 scaleX=1 scaleY=1 left=38 top=34.63 isNewText=false
+[EditCanvas] COMMIT post-convert — text="Callout sync test
+Ed" fontSize=14 width=120 height=32 scaleX=1 scaleY=1 left=294.82086167800446 top=324.2733467454086
+[CloudSync][hook] callout state changed — debounce push scheduled {"count":1,"priorCount":1,"isCalloutWipePush":false,"deferredUntilPointerUp":true,"debounceMs":800}
+[CloudSync][hook] callout push deferred — pointer is down {"count":1,"priorCount":1}
+[CloudSync][hook] callout state changed — debounce push scheduled {"count":1,"priorCount":1,"isCalloutWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[CloudSync][hook] callout push debounce elapsed — pushing now
+[CloudSync][push] upsertCallouts start {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","count":1}
+[CloudSync][push] upsertCallouts ok {"elapsedMs":351,"rowsReturned":1}
+[CloudSync][hook] callout push synced {"count":1}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"callout-36059ptq3-moxk645o","annotationType":"callout","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"70ff3eff-b0ca-49e2-9e3f-62856a4f9413","currentSessionId":"70ff3eff-b0ca-49e2-9e3f-62856a4f9413","reason":"same-session"}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[CloudSync][hook] callout state changed — debounce push scheduled {"count":1,"priorCount":1,"isCalloutWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[CloudSync][hook] callout push debounce elapsed — pushing now
+[CloudSync][push] upsertCallouts start {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","count":1}
+[CloudSync][push] upsertCallouts ok {"elapsedMs":239,"rowsReturned":1}
+[CloudSync][hook] callout push synced {"count":1}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"callout-36059ptq3-moxk645o","annotationType":"callout","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"70ff3eff-b0ca-49e2-9e3f-62856a4f9413","currentSessionId":"70ff3eff-b0ca-49e2-9e3f-62856a4f9413","reason":"same-session"}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[CloudSync][hook] callout state changed — debounce push scheduled {"count":1,"priorCount":1,"isCalloutWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[CloudSync][hook] callout push debounce elapsed — pushing now
+[CloudSync][push] upsertCallouts start {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","count":1}
+[CloudSync][push] upsertCallouts ok {"elapsedMs":372,"rowsReturned":1}
+[CloudSync][hook] callout push synced {"count":1}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"callout-36059ptq3-moxk645o","annotationType":"callout","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"70ff3eff-b0ca-49e2-9e3f-62856a4f9413","currentSessionId":"70ff3eff-b0ca-49e2-9e3f-62856a4f9413","reason":"same-session"}
+[CloudSync][hook] fabric state changed — debounce push scheduled {"pageCount":8,"objectCount":2880,"priorObjectCount":2880,"isWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[CloudSync][hook] callout state changed — debounce push scheduled {"count":1,"priorCount":1,"isCalloutWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[CloudSync][hook] fabric push debounce elapsed — pushing now
+[Phase31 UAT] save:start {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","legacyBulkUpsertEnabled":false,"crdtEnabled":true,"ydocMounted":true,"route":"crdt-only","currentTotal":2880,"currentDrawnByMe":2880,"currentDrawnByOthers":0,"currentImported":0,"priorTotal":2880,"priorDrawnByMe":2880,"priorImported":0,"deltaTotal":0}
+[CloudSync][hook] fabric delta prepared {"changedObjectCount":0,"totalObjectCount":2880,"priorObjectCount":2880}
+[Phase31 UAT] save:fan-out done {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","dispatched":0,"detected":0,"skippedHighlightOrCallout":0,"skippedOtherType":0,"rawTypeBreakdown":{},"resolvedTypeBreakdown":{},"skipReasons":{},"skipSamples":[],"yMapSizeAfter":2880}
+[CloudSync][hook] fabric push synced {"count":0}
+[CloudSync][hook] callout push debounce elapsed — pushing now
+[CloudSync][push] upsertCallouts start {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","count":1}
+[CloudSync][push] upsertCallouts ok {"elapsedMs":261,"rowsReturned":1}
+[CloudSync][hook] callout push synced {"count":1}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"callout-36059ptq3-moxk645o","annotationType":"callout","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"70ff3eff-b0ca-49e2-9e3f-62856a4f9413","currentSessionId":"70ff3eff-b0ca-49e2-9e3f-62856a4f9413","reason":"same-session"}
+[CloudSync][hook] fabric state changed — debounce push scheduled {"pageCount":8,"objectCount":2880,"priorObjectCount":2880,"isWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[CloudSync][hook] callout state changed — debounce push scheduled {"count":1,"priorCount":1,"isCalloutWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[CloudSync][hook] fabric push debounce elapsed — pushing now
+[Phase31 UAT] save:start {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","legacyBulkUpsertEnabled":false,"crdtEnabled":true,"ydocMounted":true,"route":"crdt-only","currentTotal":2880,"currentDrawnByMe":2880,"currentDrawnByOthers":0,"currentImported":0,"priorTotal":2880,"priorDrawnByMe":2880,"priorImported":0,"deltaTotal":0}
+[CloudSync][hook] fabric delta prepared {"changedObjectCount":0,"totalObjectCount":2880,"priorObjectCount":2880}
+[Phase31 UAT] save:fan-out done {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","dispatched":0,"detected":0,"skippedHighlightOrCallout":0,"skippedOtherType":0,"rawTypeBreakdown":{},"resolvedTypeBreakdown":{},"skipReasons":{},"skipSamples":[],"yMapSizeAfter":2880}
+[CloudSync][hook] fabric push synced {"count":0}
+[CloudSync][hook] callout push debounce elapsed — pushing now
+[CloudSync][push] upsertCallouts start {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","count":1}
+[CloudSync][push] upsertCallouts ok {"elapsedMs":309,"rowsReturned":1}
+[CloudSync][hook] callout push synced {"count":1}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"callout-36059ptq3-moxk645o","annotationType":"callout","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"70ff3eff-b0ca-49e2-9e3f-62856a4f9413","currentSessionId":"70ff3eff-b0ca-49e2-9e3f-62856a4f9413","reason":"same-session"}
+console.warn @ [CloudSync][hook][state-obs] callout SHRINK {"prevCount":1,"currentCount":0,"delta":-1,"hydrated":true,"sameRefAsLastCallouts":false,"stack":"    at commitHookEffectListMount (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=4844aadd:23793:34) |     at commitPassiveMountOnFiber (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=4844aadd:25034:19) |     at commitPassiveMountEffects_complete (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=4844aadd:25007:17) |     at commitPassiveMountEffects_begin (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=4844aadd:24997:15) |     at commitPassiveMountEffects (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=4844aadd:24987:11) |     at flushPassiveEffectsImpl (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=4844aadd:26368:11)"}
+console.warn @ [CloudSync][hook][SUSPICIOUS] callout push scheduled with WIPE diff {"priorCount":1,"currentCount":0,"priorRef":"array","currentRef":"array"}
+[CloudSync][hook] callout state changed — debounce push scheduled {"count":0,"priorCount":1,"isCalloutWipePush":true,"deferredUntilPointerUp":false,"debounceMs":2500}
+[CloudSync][hook] callout push debounce elapsed — pushing now
+[CloudSync][hook] callout delete detected — removing rows from cloud {"count":1,"firstFew":["callout-36059ptq3-moxk645o"]}
+[CloudSync][realtime] applying DELETE {"payloadKeys":["id"]}
+[Phase31 UAT] delete-fallback refetch skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605","cutoverTs":"2026-05-05T16:30:00.778+00:00","ydocAuthoritative":true}
+[CloudSync][push] upsertCallouts: nothing to push (empty list)
+[CloudSync][hook] callout push synced {"count":0}
