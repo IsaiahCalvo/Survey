@@ -10,7 +10,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { screenToSVG, normalizeAngle, getInverseScale, constrainToPage, snapAngleToNearest45 } from '../utils/svgTransformMath';
-import { getAnnotationBBox, getGroupBBox, getLineEndpoints, computeLineBboxCenter, isImportedPath, translatePathData, scalePathData } from '../utils/svgBoundingBox';
+import { getAnnotationBBox, getGroupBBox, getLineEndpoints, computeLineBboxCenter, isImportedPath, isAbsoluteCoordPath, translatePathData, scalePathData } from '../utils/svgBoundingBox';
 // Phase 15 LINE-01/02/03 + ARROW-01/02/03 — midpoint drag mode + endpoint
 // auto-revert on collinear geometry. Pure-math from lineGeometry, drag
 // helpers from lineDragMath (unit-tested in tests/lineDragMath.test.mjs).
@@ -2652,11 +2652,7 @@ export function useSVGInteraction({
           // resize/rotate. Requiring left/top to be null-or-zero keeps the
           // old behavior for internal live-drawn strokes while letting
           // normalized imports take the standard translate branch.
-          const pathLeftZero = obj.left == null || obj.left === 0;
-          const pathTopZero = obj.top == null || obj.top === 0;
-          const isAbsolutePath = obj.type === 'path' && Array.isArray(obj.path) &&
-            pathLeftZero && pathTopZero &&
-            (!obj.pathOffset || (obj.pathOffset.x === 0 && obj.pathOffset.y === 0));
+          const isAbsolutePath = isAbsoluteCoordPath(obj);
 
           if (isAbsolutePath) {
             targetObj.path = translatePathData(targetObj.path, actualDx, actualDy);
@@ -2898,11 +2894,7 @@ export function useSVGInteraction({
           // require left/top be null-or-zero so normalized imported paths
           // (world-positioned, local path data) take the standard
           // translate-by-delta branch instead of being rebaked.
-          const pathLeftZeroGrp = obj.left == null || obj.left === 0;
-          const pathTopZeroGrp = obj.top == null || obj.top === 0;
-          const isAbsolutePath = obj.type === 'path' && Array.isArray(obj.path) &&
-            pathLeftZeroGrp && pathTopZeroGrp &&
-            (!obj.pathOffset || (obj.pathOffset.x === 0 && obj.pathOffset.y === 0));
+          const isAbsolutePath = isAbsoluteCoordPath(obj);
 
           if (isAbsolutePath) {
             obj.path = translatePathData(obj.path, actualDx, actualDy);
@@ -2986,10 +2978,15 @@ export function useSVGInteraction({
       const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
       const obj = updatedAnnotations.objects[ds.annotationIndex];
 
-      if (isImportedPath(obj)) {
-        // Imported paths: scale path coordinates around the anchor point
-        // newScaleX/newScaleY are ratios of new size to original bbox size (originalProps.scaleX was 1)
+      if (isImportedPath(obj) || isAbsoluteCoordPath(obj)) {
+        // Absolute-coordinate paths scale by rewriting path data around the
+        // anchor. User-drawn pen/highlighter strokes keep left/top at zero so
+        // the path data remains their single source of position.
         obj.path = scalePathData(obj.path, newScaleX, newScaleY, ds.anchorX, ds.anchorY);
+        if (isAbsoluteCoordPath(obj)) {
+          obj.left = 0;
+          obj.top = 0;
+        }
       } else {
         const objType = String(obj.type || '').toLowerCase();
         if (objType === 'line') {
@@ -3837,6 +3834,7 @@ export function useSVGInteraction({
 
     // Imported paths: derive position/size from bbox
     const imported = isImportedPath(obj);
+    const absolutePath = isAbsoluteCoordPath(obj);
 
     // UX: polygon/polyline are treated like imported paths for resize purposes.
     // Fabric doesn't reliably populate obj.width/height after a JSON round-trip
@@ -3888,7 +3886,7 @@ export function useSVGInteraction({
     if (objTypeForRaw === 'line') {
       rawWidth = Math.max(1, bbox.width || 0);
       rawHeight = Math.max(1, bbox.height || 0);
-    } else if (imported) {
+    } else if (imported || absolutePath) {
       rawWidth = bbox.width;
       rawHeight = bbox.height;
     } else if (isPointsShape) {
@@ -3927,10 +3925,10 @@ export function useSVGInteraction({
         // has a matching reference point. Commit branch translates back to
         // object-space for polygon/polyline. For line, commit rewrites
         // endpoints directly, so visible-bbox left/top is what we want.
-        left: (imported || isPointsShape || objTypeForRaw === 'line') ? bbox.left : (obj.left ?? 0),
-        top: (imported || isPointsShape || objTypeForRaw === 'line') ? bbox.top : (obj.top ?? 0),
-        scaleX: imported ? 1 : (obj.scaleX ?? 1),
-        scaleY: imported ? 1 : (obj.scaleY ?? 1),
+        left: (imported || absolutePath || isPointsShape || objTypeForRaw === 'line') ? bbox.left : (obj.left ?? 0),
+        top: (imported || absolutePath || isPointsShape || objTypeForRaw === 'line') ? bbox.top : (obj.top ?? 0),
+        scaleX: (imported || absolutePath) ? 1 : (obj.scaleX ?? 1),
+        scaleY: (imported || absolutePath) ? 1 : (obj.scaleY ?? 1),
         angle: isCounterPin ? (bbox.angle ?? 0) : (obj.angle ?? 0),
         width: rawWidth,
         height: rawHeight,

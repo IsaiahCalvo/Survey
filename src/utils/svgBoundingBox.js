@@ -210,6 +210,21 @@ export function isImportedPath(obj) {
 }
 
 /**
+ * True when a path stores page-space coordinates directly in `path`, with no
+ * meaningful object-space origin. User-drawn pen/highlighter strokes use this
+ * shape after FabricDrawingCanvas commits them with left/top reset to zero.
+ */
+export function isAbsoluteCoordPath(obj) {
+  const leftZero = obj?.left == null || obj.left === 0;
+  const topZero = obj?.top == null || obj.top === 0;
+  return obj?.type === 'path'
+    && Array.isArray(obj.path)
+    && leftZero
+    && topZero
+    && (!obj.pathOffset || (obj.pathOffset.x === 0 && obj.pathOffset.y === 0));
+}
+
+/**
  * Translate all coordinates in path data by (dx, dy).
  * For imported paths that store absolute coordinates.
  *

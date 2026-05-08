@@ -43,7 +43,7 @@ import { createCallout } from './Callout/types';
 import { screenToSVG } from '../utils/svgTransformMath';
 import SVGSelectionOverlay from './SVGSelectionOverlay';
 import RotationInputField from './RotationInputField';
-import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, isImportedPath, getLineEndpoints, computeLineBboxCenter } from '../utils/svgBoundingBox';
+import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, isImportedPath, isAbsoluteCoordPath, getLineEndpoints, computeLineBboxCenter } from '../utils/svgBoundingBox';
 import { resolveMidpointHandlePosition } from '../utils/lineDragMath.js';
 import { buildArrowheadRenderSpec } from '../utils/lineRenderHelpers.js';
 import { getCurvedPath, distanceToLineSegment, getCurveEndAngle } from '../utils/lineGeometry.js';
@@ -2371,7 +2371,8 @@ const SVGAnnotationLayer = memo(({
       renderObj = applyLineEditPreview(obj, visualTransform.lineEdit);
       renderElement = renderLine(renderObj, i);
     }
-    if (visualTransform?.resize && visualTransform.id === i && !isImportedPath(obj)) {
+    const absoluteCoordPath = isAbsoluteCoordPath(obj);
+    if (visualTransform?.resize && visualTransform.id === i && !isImportedPath(obj) && !absoluteCoordPath) {
       renderObj = {
         ...obj,
         scaleX: visualTransform.resize.scaleX,
@@ -2513,7 +2514,7 @@ const SVGAnnotationLayer = memo(({
       if (typeof visualTransform.id === 'number' && visualTransform.id === i) {
         if (visualTransform.resize) {
           // Imported paths: use SVG transform to scale around anchor point
-          if (isImportedPath(obj)) {
+          if (isImportedPath(obj) || absoluteCoordPath) {
             const { scaleX, scaleY, anchorX, anchorY } = visualTransform.resize;
             return `translate(${anchorX}, ${anchorY}) scale(${scaleX}, ${scaleY}) translate(${-anchorX}, ${-anchorY})`;
           }
@@ -3632,6 +3633,15 @@ const SVGAnnotationLayer = memo(({
                 width: Math.max(1, maxXL - minXL),
                 height: Math.max(1, maxYL - minYL),
                 angle: obj.angle ?? 0,
+              };
+            } else if (isImportedPath(obj) || isAbsoluteCoordPath(obj)) {
+              const sourceBbox = getAnnotationBBox(obj);
+              bbox = {
+                left: visualTransform.resize.left,
+                top: visualTransform.resize.top,
+                width: sourceBbox.width * Math.abs(visualTransform.resize.scaleX),
+                height: sourceBbox.height * Math.abs(visualTransform.resize.scaleY),
+                angle: sourceBbox.angle ?? 0,
               };
             } else {
               const transformedObj = {
