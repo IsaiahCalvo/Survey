@@ -1,0 +1,192 @@
+===== SurveyApp Save Log =====
+version:   0.1.45
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1200x772
+locale:    en-US
+timestamp: 2026-05-08T21:33:06.865Z (5/8/2026, 5:33:06 PM)
+==============================
+[dev-auto-login] boot {"hasDevEmail":true,"devEmailHint":"isai***","hasDevPassword":true,"hasCachedSession":true,"cachedSessionEmail":"isaiahcalvo123@gmail.com","cachedSessionExpiresAt":1778278213}
+[dev-auto-login] cached session matches dev email, keeping it
+[dev-auto-login] decision {"needsAutoLogin":false,"willAttemptSignIn":false}
+[CloudSync][hook] session id minted {"sessionId":"74f41508-669d-4bb6-9728-18954ff2f84b"}
+[CloudSync][hook][state-obs] annotationsByPage initial {"currentCount":0,"pages":0,"hydrated":false}
+[CloudSync][hook][state-obs] callouts initial {"currentCount":0,"hydrated":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":null}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":false}
+[Cloud render cache] doc=Package 2 - Rev 4 -- IC.pdf-6291605 painting verified cloud snapshot immediately — count=2870.
+[CSeries wipe] doc=Package 2 - Rev 4 -- IC.pdf-6291605 totalCounters=0 legacyRemoved=0 — nothing to wipe.
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":null,"alreadyRanFor":null,"willRun":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605"}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"enabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":true}
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","alreadyRanFor":null,"willRun":true}
+[Phase31 UAT] backfill:start {"hasYdoc":true,"hasSupabase":true,"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","markCutoverComplete":true}
+[PDFImport] skipped embedded PDF annotation import — cloud/Y.Doc is authoritative {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86"}
+[PrintPanel] RENDER — panel closed
+[DebugBridge +4551.2ms] zoom_start {"scale":0.59,"targetScale":0.83,"source":"zoomChange"}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[HIGHLIGHT-SYNC][load.legacy][pdf=Package 2 - Rev 4 -- IC.pdf] {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","totalRows":0,"fabricCarryingDropped":0,"keptCount":0,"keptIds":[]}
+[DebugBridge +4988.6ms] pdf_loaded {"pageCount":36,"currentPage":1}
+[Phase31 UAT] backfill:cutover-dedupe-anchor-skip {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapSize":2890,"lastGoodSize":2879}
+[HyperlinkDiag] post-load scan {"hyperlinkCount":0,"samples":[]}
+[HyperlinkDiag] page 1 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 2 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer"]}
+[HyperlinkDiag] page 3 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG","IMG","IMG","IMG","e-pv-text-layer"]}
+[HyperlinkDiag] page 4 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG","IMG","IMG","IMG"]}
+[HyperlinkDiag] page 5 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG","IMG","IMG","IMG"]}
+[HyperlinkDiag] page 6 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG","e-pv-text-layer"]}
+[HyperlinkDiag] page 7 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 8 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 9 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 10 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[DebugBridge +6547.6ms] zoom_end {"source":"zoomChange_settle"}
+[App] TOOL ACTIVATED: callout {"isDrawingTool":false,"willMountDrawingCanvas":false,"willMountCalloutUI":true,"NOTE":"CALLOUT TOOL HAS NO CREATION UI — isDrawingTool=false, no canvas mounts, no click handler"}
+[CloudSync][hook] hydrate effect fired {"enabled":true,"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605"}
+[CloudSync][hook] stage=hydrating
+[CloudSync][hook] fabric push skipped — not hydrated yet
+[CloudSync][hook] callout push skipped — not hydrated yet
+[CloudSync][realtime] subscribing {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","currentUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","currentSessionId":"74f41508-669d-4bb6-9728-18954ff2f84b","hasFabricInsert":true,"hasFabricUpdate":true,"hasFabricDelete":true,"hasCalloutInsert":true,"hasCalloutUpdate":true,"hasCalloutDelete":true}
+[CloudSync][realtime] subscribe status {"status":"SUBSCRIBED","error":null}
+[CloudSync][hook] post-subscribe catch-up skipped — startup sync already in flight
+[CloudSync][hook] cutover-complete hydrate — reading from Y.Doc {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","cutoverTs":"2026-05-05T16:30:00.778+00:00"}
+[Phase31 UAT] hydrate:cutover-sealed {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605","cutoverTs":"2026-05-05T16:30:00.778+00:00","yMapSize":2890,"materializedTotal":2890,"materializedDrawnByMe":2890,"materializedDrawnByOthers":0,"materializedImported":0,"pages":7,"perPage":{"1":14,"6":360,"7":146,"8":393,"9":1390,"10":330,"11":257},"currentStateCount":2870,"ydocLooksDegenerate":false}
+[Phase31 UAT] hydrate:cutover-sealed:by-type {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","pdfFile":"Package 2 - Rev 4 -- IC.pdf-6291605","viewerUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapTotal":2890,"yMapByType":{"path":2871,"rect":8,"textbox":1,"callout":10},"yMapByAuthor":{"byMe":2890,"byOthers":0,"anonymous":0},"yMapByTypeByAuthor":{"path":{"byMe":2871,"byOthers":0,"anonymous":0},"rect":{"byMe":8,"byOthers":0,"anonymous":0},"textbox":{"byMe":1,"byOthers":0,"anonymous":0},"callout":{"byMe":10,"byOthers":0,"anonymous":0}},"yMapPerTypePerPage":{"path":{"6":357,"7":145,"8":392,"9":1389,"10":329,"11":256,"unknown":3},"rect":{"6":1,"7":1,"8":1,"9":1,"10":1,"11":1,"unknown":2},"textbox":{"6":1},"callout":{"1":9,"6":1}},"byPageTotal":2890,"byPageByType":{"path":2871,"callout":10,"rect":8,"textbox":1},"byPagePerPagePerType":{"1":{"path":3,"callout":9,"rect":2},"6":{"path":357,"rect":1,"textbox":1,"callout":1},"7":{"path":145,"rect":1},"8":{"path":392,"rect":1},"9":{"path":1389,"rect":1},"10":{"rect":1,"path":329},"11":{"path":256,"rect":1}}}
+[Diag] tool-switch DETECTED → select (scheduling t+1000ms capture)
+[PHASE35][marquee.filter][pdf=Package 2 - Rev 4 -- IC.pdf] {"stage":"filtered","viewerId":"170d915c-5741-4e0b-b03f-deaeedae27bd","documentOwnerId":"170d915c-5741-4e0b-b03f-deaeedae27bd","role":"owner","hitsIn":2,"hitsOut":2,"droppedCount":0,"perAnnotation":[{"index":12,"present":true,"annotationId":"20c8b0de-fe22-4edd-b462-0cb7fee09278","authorId":"170d915c-5741-4e0b-b03f-deaeedae27bd","type":"rect","decision":"ALLOW"},{"index":13,"present":true,"annotationId":"5c325a0e-7fb0-4f4e-abbc-f9d230306231","authorId":"170d915c-5741-4e0b-b03f-deaeedae27bd","type":"rect","decision":"ALLOW"}],"sameRefReturned":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[Diag select] screenshot saved (686 KB) → /Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/TestLogs/testlog-screenshot-select.png
+[Diag select] CAPTURED @ t+1002ms — annotations=14 callouts=0 svgWrappers=1 svgVis=[visible] svgElems=5 svgVisElems=5 eraserCanvases=0 svgMarkupBytes=21201
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+console.warn @ [CloudSync][hook][state-obs] SHRINK {"prevCount":2890,"currentCount":2888,"delta":-2,"hydrated":true,"sameRefAsLastByPage":false,"stack":"    at commitHookEffectListMount (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=4844aadd:23793:34) |     at commitPassiveMountOnFiber (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=4844aadd:25034:19) |     at commitPassiveMountEffects_complete (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=4844aadd:25007:17) |     at commitPassiveMountEffects_begin (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=4844aadd:24997:15) |     at commitPassiveMountEffects (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=4844aadd:24987:11) |     at flushPassiveEffectsImpl (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=4844aadd:26368:11)"}
+[CloudSync][hook] fabric state changed — debounce push scheduled {"pageCount":7,"objectCount":2888,"priorObjectCount":2890,"isWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[CloudSync][hook] fabric push debounce elapsed — pushing now
+[Phase31 UAT] save:start {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","legacyBulkUpsertEnabled":false,"crdtEnabled":true,"ydocMounted":true,"route":"crdt-only","currentTotal":2888,"currentDrawnByMe":2888,"currentDrawnByOthers":0,"currentImported":0,"priorTotal":2890,"priorDrawnByMe":2890,"priorImported":0,"deltaTotal":-2}
+[CloudSync][hook] fabric delta prepared {"changedObjectCount":0,"totalObjectCount":2888,"priorObjectCount":2890}
+[CloudSync][hook] eraser/delete detected — removing rows from cloud {"count":2,"firstFew":["20c8b0de-fe22-4edd-b462-0cb7fee09278","5c325a0e-7fb0-4f4e-abbc-f9d230306231"]}
+[Phase31 UAT] delete:fan-out done {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","requested":2,"deleted":2,"yMapSizeAfter":2888}
+[Phase31 UAT] save:fan-out done {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","dispatched":0,"detected":0,"skippedHighlightOrCallout":0,"skippedOtherType":0,"rawTypeBreakdown":{},"resolvedTypeBreakdown":{},"skipReasons":{},"skipSamples":[],"yMapSizeAfter":2888}
+[CloudSync][hook] fabric push synced {"count":0}
+[App] TOOL ACTIVATED: callout {"isDrawingTool":false,"willMountDrawingCanvas":false,"willMountCalloutUI":true,"NOTE":"CALLOUT TOOL HAS NO CREATION UI — isDrawingTool=false, no canvas mounts, no click handler"}
+[CalloutEditEntryDiag] {"calloutId":"callout-mai6znevs-moxfkw5x","isPdfImported":false,"text":"","textAlign":"left","fontSize":14,"fabricTextbox":{"left":322.5954568618064,"top":379.03613192687703,"width":120,"height":32,"fontSize":14,"textAlign":"left"},"svgTextBoxClientRect":{"x":637.17333984375,"y":397.2850341796875,"w":89.27899169921875,"h":30.502655029296875},"pageSize":{"width":612,"height":792}}
+[CloudSync][hook] callout state changed — debounce push scheduled {"count":1,"priorCount":0,"isCalloutWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[CalloutEditCanvasDiag] {"effectiveScale":0.826797385620915,"effectiveScaleY":0.827020202020202,"useNonUniform":false,"canvasWidth":152,"canvasHeight":79,"parentOffset":{"w":506,"h":655},"pageSize":{"w":612,"h":792},"vpt":[0.826797385620915,0,0,0.826797385620915,0,0],"zoom":0.826797385620915}
+[Diag] tool-switch DETECTED → select (scheduling t+1000ms capture)
+[CloudSync][hook] callout push debounce elapsed — pushing now
+[CloudSync][push] upsertCallouts start {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","count":1}
+[CloudSync][push] upsertCallouts ok {"elapsedMs":177,"rowsReturned":1}
+[CloudSync][hook] callout push synced {"count":1}
+[Diag select] screenshot saved (690 KB) → /Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/TestLogs/testlog-screenshot-select.png
+[Diag select] CAPTURED @ t+1001ms — annotations=12 callouts=1 svgWrappers=1 svgVis=[visible] svgElems=3 svgVisElems=3 eraserCanvases=0 svgMarkupBytes=22075
+[CloudSync][realtime] echo-filtered INSERT {"highlightId":"callout-mai6znevs-moxfkw5x","annotationType":"callout","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"74f41508-669d-4bb6-9728-18954ff2f84b","currentSessionId":"74f41508-669d-4bb6-9728-18954ff2f84b","reason":"same-session"}
+[EditCanvas] COMMIT pre-convert — text="kjbkjblbljhbkbkbkjlk" fontSize=14 width=108 height=79.1 scaleX=1 scaleY=1 left=38 top=34.45 isNewText=false
+[EditCanvas] COMMIT post-convert — text="kjbkjblbljhbkbkbkjlk" fontSize=14 width=120 height=79.1 scaleX=1 scaleY=1 left=322.5954568618064 top=379.03613192687703
+[CloudSync][hook] callout state changed — debounce push scheduled {"count":1,"priorCount":1,"isCalloutWipePush":false,"deferredUntilPointerUp":true,"debounceMs":800}
+[CloudSync][hook] callout push deferred — pointer is down {"count":1,"priorCount":1}
+[CloudSync][hook] callout state changed — debounce push scheduled {"count":1,"priorCount":1,"isCalloutWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[CloudSync][hook] callout push debounce elapsed — pushing now
+[CloudSync][push] upsertCallouts start {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","count":1}
+[CloudSync][push] upsertCallouts ok {"elapsedMs":139,"rowsReturned":1}
+[CloudSync][hook] callout push synced {"count":1}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"callout-mai6znevs-moxfkw5x","annotationType":"callout","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"74f41508-669d-4bb6-9728-18954ff2f84b","currentSessionId":"74f41508-669d-4bb6-9728-18954ff2f84b","reason":"same-session"}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[CloudSync][hook] callout state changed — debounce push scheduled {"count":1,"priorCount":1,"isCalloutWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[CloudSync][hook] callout push debounce elapsed — pushing now
+[CloudSync][push] upsertCallouts start {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","count":1}
+[CloudSync][hook] callout state changed — debounce push scheduled {"count":1,"priorCount":1,"isCalloutWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"callout-mai6znevs-moxfkw5x","annotationType":"callout","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"74f41508-669d-4bb6-9728-18954ff2f84b","currentSessionId":"74f41508-669d-4bb6-9728-18954ff2f84b","reason":"same-session"}
+[CloudSync][push] upsertCallouts ok {"elapsedMs":1260,"rowsReturned":1}
+[CloudSync][hook] callout push synced {"count":1}
+[CloudSync][hook] callout state changed — debounce push scheduled {"count":1,"priorCount":1,"isCalloutWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[CloudSync][hook] callout state changed — debounce push scheduled {"count":1,"priorCount":1,"isCalloutWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[CloudSync][hook] callout state changed — debounce push scheduled {"count":1,"priorCount":1,"isCalloutWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[CloudSync][hook] callout push debounce elapsed — pushing now
+[CloudSync][push] upsertCallouts start {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","count":1}
+[CloudSync][push] upsertCallouts ok {"elapsedMs":126,"rowsReturned":1}
+[CloudSync][hook] callout push synced {"count":1}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"callout-mai6znevs-moxfkw5x","annotationType":"callout","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"74f41508-669d-4bb6-9728-18954ff2f84b","currentSessionId":"74f41508-669d-4bb6-9728-18954ff2f84b","reason":"same-session"}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[CloudSync][hook] callout state changed — debounce push scheduled {"count":1,"priorCount":1,"isCalloutWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[CloudSync][hook] callout push debounce elapsed — pushing now
+[CloudSync][push] upsertCallouts start {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","count":1}
+[CloudSync][push] upsertCallouts ok {"elapsedMs":161,"rowsReturned":1}
+[CloudSync][hook] callout push synced {"count":1}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"callout-mai6znevs-moxfkw5x","annotationType":"callout","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"74f41508-669d-4bb6-9728-18954ff2f84b","currentSessionId":"74f41508-669d-4bb6-9728-18954ff2f84b","reason":"same-session"}
+[CloudSync][hook] callout state changed — debounce push scheduled {"count":1,"priorCount":1,"isCalloutWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[CloudSync][hook] callout push debounce elapsed — pushing now
+[CloudSync][push] upsertCallouts start {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","count":1}
+[CloudSync][hook] callout state changed — debounce push scheduled {"count":1,"priorCount":1,"isCalloutWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[CloudSync][push] upsertCallouts ok {"elapsedMs":478,"rowsReturned":1}
+[CloudSync][hook] callout push synced {"count":1}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"callout-mai6znevs-moxfkw5x","annotationType":"callout","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"74f41508-669d-4bb6-9728-18954ff2f84b","currentSessionId":"74f41508-669d-4bb6-9728-18954ff2f84b","reason":"same-session"}
+[CloudSync][hook] callout push debounce elapsed — pushing now
+[CloudSync][push] upsertCallouts start {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","count":1}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[CloudSync][push] upsertCallouts ok {"elapsedMs":205,"rowsReturned":1}
+[CloudSync][hook] callout push synced {"count":1}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"callout-mai6znevs-moxfkw5x","annotationType":"callout","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"74f41508-669d-4bb6-9728-18954ff2f84b","currentSessionId":"74f41508-669d-4bb6-9728-18954ff2f84b","reason":"same-session"}
+[CloudSync][hook] callout state changed — debounce push scheduled {"count":1,"priorCount":1,"isCalloutWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[CloudSync][hook] callout state changed — debounce push scheduled {"count":1,"priorCount":1,"isCalloutWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[CloudSync][hook] callout state changed — debounce push scheduled {"count":1,"priorCount":1,"isCalloutWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[CloudSync][hook] callout push debounce elapsed — pushing now
+[CloudSync][push] upsertCallouts start {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","count":1}
+[CloudSync][push] upsertCallouts ok {"elapsedMs":437,"rowsReturned":1}
+[CloudSync][hook] callout push synced {"count":1}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"callout-mai6znevs-moxfkw5x","annotationType":"callout","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"74f41508-669d-4bb6-9728-18954ff2f84b","currentSessionId":"74f41508-669d-4bb6-9728-18954ff2f84b","reason":"same-session"}
+[CloudSync][hook] callout state changed — debounce push scheduled {"count":1,"priorCount":1,"isCalloutWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[CloudSync][hook] callout push debounce elapsed — pushing now
+[CloudSync][push] upsertCallouts start {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","count":1}
+[CloudSync][push] upsertCallouts ok {"elapsedMs":270,"rowsReturned":1}
+[CloudSync][hook] callout push synced {"count":1}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"callout-mai6znevs-moxfkw5x","annotationType":"callout","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"74f41508-669d-4bb6-9728-18954ff2f84b","currentSessionId":"74f41508-669d-4bb6-9728-18954ff2f84b","reason":"same-session"}
+[CloudSync][hook] callout state changed — debounce push scheduled {"count":1,"priorCount":1,"isCalloutWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[CloudSync][hook] callout push debounce elapsed — pushing now
+[CloudSync][push] upsertCallouts start {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","count":1}
+[CloudSync][push] upsertCallouts ok {"elapsedMs":93,"rowsReturned":1}
+[CloudSync][hook] callout push synced {"count":1}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"callout-mai6znevs-moxfkw5x","annotationType":"callout","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"74f41508-669d-4bb6-9728-18954ff2f84b","currentSessionId":"74f41508-669d-4bb6-9728-18954ff2f84b","reason":"same-session"}
+[CloudSync][hook] callout state changed — debounce push scheduled {"count":1,"priorCount":1,"isCalloutWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[CloudSync][hook] callout push debounce elapsed — pushing now
+[CloudSync][push] upsertCallouts start {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","count":1}
+[CloudSync][push] upsertCallouts ok {"elapsedMs":177,"rowsReturned":1}
+[CloudSync][hook] callout push synced {"count":1}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"callout-mai6znevs-moxfkw5x","annotationType":"callout","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"74f41508-669d-4bb6-9728-18954ff2f84b","currentSessionId":"74f41508-669d-4bb6-9728-18954ff2f84b","reason":"same-session"}
+[CloudSync][hook] callout state changed — debounce push scheduled {"count":1,"priorCount":1,"isCalloutWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[CloudSync][hook] callout push debounce elapsed — pushing now
+[CloudSync][push] upsertCallouts start {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","count":1}
+[CloudSync][hook] callout state changed — debounce push scheduled {"count":1,"priorCount":1,"isCalloutWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[CloudSync][push] upsertCallouts ok {"elapsedMs":508,"rowsReturned":1}
+[CloudSync][hook] callout push synced {"count":1}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"callout-mai6znevs-moxfkw5x","annotationType":"callout","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"74f41508-669d-4bb6-9728-18954ff2f84b","currentSessionId":"74f41508-669d-4bb6-9728-18954ff2f84b","reason":"same-session"}
+[CloudSync][hook] callout push debounce elapsed — pushing now
+[CloudSync][push] upsertCallouts start {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","count":1}
+[CloudSync][hook] callout state changed — debounce push scheduled {"count":1,"priorCount":1,"isCalloutWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"callout-mai6znevs-moxfkw5x","annotationType":"callout","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"74f41508-669d-4bb6-9728-18954ff2f84b","currentSessionId":"74f41508-669d-4bb6-9728-18954ff2f84b","reason":"same-session"}
+[CloudSync][push] upsertCallouts ok {"elapsedMs":551,"rowsReturned":1}
+[CloudSync][hook] callout push synced {"count":1}
+[CloudSync][hook] callout push debounce elapsed — pushing now
+[CloudSync][push] upsertCallouts start {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","count":1}
+[CloudSync][push] upsertCallouts ok {"elapsedMs":58,"rowsReturned":1}
+[CloudSync][hook] callout push synced {"count":1}
+[CloudSync][realtime] echo-filtered UPDATE {"highlightId":"callout-mai6znevs-moxfkw5x","annotationType":"callout","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"74f41508-669d-4bb6-9728-18954ff2f84b","currentSessionId":"74f41508-669d-4bb6-9728-18954ff2f84b","reason":"same-session"}
