@@ -2050,15 +2050,27 @@ export function useSVGInteraction({
         newScaleY = (newScaleY < 0 ? -1 : 1) * avgMag;
       }
 
+      const objForFlip = annotations?.objects?.[ds.annotationIndex];
+      const isCounterResize = !!(ds.originalProps?.isCounterPin || objForFlip?.data?.type === 'counter');
+      if (isCounterResize) {
+        const uniformScale = affectsX && affectsY
+          ? Math.max(Math.abs(newScaleX), Math.abs(newScaleY))
+          : affectsX
+            ? Math.abs(newScaleX)
+            : Math.abs(newScaleY);
+        const safeUniformScale = Math.max(0.1, uniformScale || 1);
+        newScaleX = safeUniformScale;
+        newScaleY = safeUniformScale;
+      }
+
       // Flip support is scoped to symmetric shapes (rect/circle/ellipse)
       // where a mirror is visually identical to a non-flipped shape at a
       // different position. For line/arrow (endpoint-driven), path (pen
       // strokes), and text (orientation matters), we clamp to positive to
       // preserve prior behavior until those shape types need real flip
       // semantics. See FEATURE-BACKLOG.md if the user ever asks for it.
-      const objForFlip = annotations?.objects?.[ds.annotationIndex];
       const typeForFlip = String(objForFlip?.type || '').toLowerCase();
-      const supportsFlip = typeForFlip === 'rect' || typeForFlip === 'circle' || typeForFlip === 'ellipse';
+      const supportsFlip = !isCounterResize && (typeForFlip === 'rect' || typeForFlip === 'circle' || typeForFlip === 'ellipse');
       if (!supportsFlip) {
         newScaleX = Math.max(0.1, newScaleX);
         newScaleY = Math.max(0.1, newScaleY);
@@ -2107,8 +2119,24 @@ export function useSVGInteraction({
       const newLeft = newCenterX - newWidth / 2;
       const newTop = newCenterY - newHeight / 2;
 
+      let resizeCommitLeft = newLeft;
+      let resizeCommitTop = newTop;
+      let counterNewRadius = null;
+      if (isCounterResize) {
+        const baseRadius = ds.originalProps?.counterBaseRadius || objForFlip?.radius || 14;
+        counterNewRadius = baseRadius * Math.abs(newScaleX);
+        const counterTipExtension = Math.max(5, counterNewRadius * 0.5);
+        resizeCommitTop = newTop + counterTipExtension;
+      }
+
       // Store resize state for commit on pointerup
-      dragStateRef.current.currentResize = { newScaleX, newScaleY, newLeft, newTop };
+      dragStateRef.current.currentResize = {
+        newScaleX,
+        newScaleY,
+        newLeft: resizeCommitLeft,
+        newTop: resizeCommitTop,
+        counterNewRadius,
+      };
       setInteractionState('resizing');
 
       // UX 2026-04-19 diag: throttle-logged pointermove during resize so
@@ -2127,7 +2155,7 @@ export function useSVGInteraction({
             pointerSVG: { x: svgPoint?.x, y: svgPoint?.y },
             pointerDelta: { dx: (svgPoint?.x || 0) - (ds.startSVGPoint?.x || 0), dy: (svgPoint?.y || 0) - (ds.startSVGPoint?.y || 0) },
             computedScale: { newScaleX, newScaleY },
-            computedPos: { newLeft, newTop },
+            computedPos: { newLeft: resizeCommitLeft, newTop: resizeCommitTop },
             originalProps: ds.originalProps,
             anchor: { x: ds.anchorX, y: ds.anchorY },
             liveBboxGuess: curObj ? getAnnotationBBox({ ...curObj, scaleX: newScaleX, scaleY: newScaleY, left: newLeft, top: newTop }) : null,
@@ -2152,6 +2180,10 @@ export function useSVGInteraction({
       // instead of drifting off the page.
       let visualLeft = newLeft;
       let visualTop = newTop;
+      if (isCounterResize) {
+        visualLeft = resizeCommitLeft;
+        visualTop = resizeCommitTop;
+      }
       if (ds.originalProps.isPointsShape) {
         const sxAbs = Math.abs(newScaleX);
         const syAbs = Math.abs(newScaleY);
@@ -2949,7 +2981,7 @@ export function useSVGInteraction({
         }
       }
     } else if (ds.mode === 'resize' && ds.currentResize) {
-      const { newScaleX, newScaleY, newLeft, newTop } = ds.currentResize;
+      const { newScaleX, newScaleY, newLeft, newTop, counterNewRadius } = ds.currentResize;
 
       const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
       const obj = updatedAnnotations.objects[ds.annotationIndex];
@@ -3026,6 +3058,12 @@ export function useSVGInteraction({
           if (finalMidR) {
             obj.data = { ...obj.data, midpoint: finalMidR };
           }
+        } else if (obj?.data?.type === 'counter') {
+          obj.radius = Math.max(4, counterNewRadius || (obj.radius || 14) * Math.abs(newScaleX));
+          obj.scaleX = 1;
+          obj.scaleY = 1;
+          obj.left = newLeft;
+          obj.top = newTop;
         } else if (objType === 'textbox' || objType === 'i-text' || objType === 'text') {
           // Text: absorb scale into width/height so text reflows instead of stretching.
           // Honor the user's chosen size — do NOT re-tighten to fit current text.
@@ -3621,7 +3659,24 @@ export function useSVGInteraction({
     const ctm = svgRef.current?.getScreenCTM();
     const ctmInverse = ctm ? ctm.inverse() : null;
     const svgPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
-    const bbox = getAnnotationBBox(obj);
+    let bbox = getAnnotationBBox(obj);
+    const isCounterPin = obj?.data?.type === 'counter';
+    let counterBaseRadius = null;
+    let counterBaseTipExtension = null;
+    if (isCounterPin) {
+      counterBaseRadius = (obj.radius || 14) * Math.abs(obj.scaleX || 1);
+      const bodyX = (obj.left || 0) + counterBaseRadius;
+      const bodyY = (obj.top || 0) + counterBaseRadius;
+      counterBaseTipExtension = Math.max(5, counterBaseRadius * 0.5);
+      const pointerAngleDeg = obj.data?.pointerAngle != null ? obj.data.pointerAngle : 225;
+      bbox = {
+        left: bodyX - counterBaseRadius,
+        top: bodyY - counterBaseRadius - counterBaseTipExtension,
+        width: 2 * counterBaseRadius,
+        height: 2 * counterBaseRadius + counterBaseTipExtension,
+        angle: ((pointerAngleDeg + 90) % 360 + 360) % 360,
+      };
+    }
 
     // Phase 15 LINE-01 / ARROW-01 — midpoint curvature drag.
     // Capture the ORIGINAL midpoint (either data.midpoint if the line was
@@ -3755,14 +3810,15 @@ export function useSVGInteraction({
     // world positions.
     let cx = bbox.left + bbox.width / 2;
     let cy = bbox.top + bbox.height / 2;
+    let rotationCx = cx;
+    let rotationCy = cy;
 
     // UX 2026-04-20: counters rotate around the bubble center (not the
     // bbox center, which is offset toward the nub side). The visible pin
     // pivots in place while the nub swings.
-    if (obj?.data?.type === 'counter') {
-      const cr = (obj.radius || 14) * Math.abs(obj.scaleX || 1);
-      cx = (obj.left || 0) + cr;
-      cy = (obj.top || 0) + cr;
+    if (isCounterPin) {
+      rotationCx = (obj.left || 0) + counterBaseRadius;
+      rotationCy = (obj.top || 0) + counterBaseRadius;
     }
 
     // Anchor: opposite corner/edge from the dragged handle
@@ -3845,7 +3901,10 @@ export function useSVGInteraction({
       rawHeight = bbox.height / curSy;
     } else {
       const type = objType;
-      if (type === 'circle') {
+      if (isCounterPin) {
+        rawWidth = bbox.width;
+        rawHeight = bbox.height;
+      } else if (type === 'circle') {
         rawWidth = (obj.radius ?? 0) * 2;
         rawHeight = (obj.radius ?? 0) * 2;
       } else if (type === 'ellipse') {
@@ -3872,9 +3931,12 @@ export function useSVGInteraction({
         top: (imported || isPointsShape || objTypeForRaw === 'line') ? bbox.top : (obj.top ?? 0),
         scaleX: imported ? 1 : (obj.scaleX ?? 1),
         scaleY: imported ? 1 : (obj.scaleY ?? 1),
-        angle: obj.angle ?? 0,
+        angle: isCounterPin ? (bbox.angle ?? 0) : (obj.angle ?? 0),
         width: rawWidth,
         height: rawHeight,
+        isCounterPin,
+        counterBaseRadius,
+        counterBaseTipExtension,
         // Points-based shapes need these at commit time to convert the
         // visible-space newLeft/newTop back to object-space obj.left/top.
         isPointsShape,
@@ -3887,8 +3949,8 @@ export function useSVGInteraction({
       ctmInverse,
       anchorX: anchor.x,
       anchorY: anchor.y,
-      centerX: cx,
-      centerY: cy,
+      centerX: rotationCx,
+      centerY: rotationCy,
       currentResize: null,
       currentAngle: undefined,
     };
@@ -3914,7 +3976,7 @@ export function useSVGInteraction({
         bboxAtStart: { left: bbox.left, top: bbox.top, width: bbox.width, height: bbox.height, angle: bbox.angle },
         startPointerSVG: { x: svgPoint?.x, y: svgPoint?.y },
         anchor,
-        center: { x: cx, y: cy },
+        center: { x: rotationCx, y: rotationCy },
         rawWidth,
         rawHeight,
         objSnapshot: {
