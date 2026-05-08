@@ -1,0 +1,2 @@
+console.error @ [DocumentCleanup] Failed to delete stale document row: {"code":"57014","details":null,"hint":null,"message":"canceling statement due to statement timeout"}
+[SaveLog] global menu trigger — capturing console buffer
