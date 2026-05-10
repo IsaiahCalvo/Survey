@@ -10412,23 +10412,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, []);
 
   const buildSyncfusionProxyPayloadForPage = useCallback((pageNumber) => {
-    const selectedModuleId = syncfusionSelectedModuleIdRef.current;
-    const showSurveyPanel = syncfusionShowSurveyPanelRef.current === true;
-
     const annotations = syncfusionAnnotationsByPageRef.current?.[pageNumber];
     const objects = Array.isArray(annotations?.objects) ? annotations.objects : [];
     const proxyObjects = objects
-      .filter((object) => {
-        if (!object || object.visible === false) return false;
-        if (!(showSurveyPanel && selectedModuleId)) return true;
-        const moduleId = object?.moduleId;
-        if (moduleId === null || moduleId === undefined) return false;
-        return moduleId === selectedModuleId;
-      })
+      .filter((object) => !!object)
       .slice(0, 520)
       .map((object, index) => ({
         id: object?.id || object?.highlightId || object?.pdfAnnotationId || `obj-${pageNumber}-${index}`,
+        highlightId: object?.highlightId || null,
+        pdfAnnotationId: object?.pdfAnnotationId || null,
         type: object?.type || null,
+        moduleId: object?.moduleId ?? null,
+        regionId: object?.regionId ?? null,
+        layer: object?.layer || null,
+        data: object?.data || null,
         text: typeof object?.text === 'string' ? object.text : '',
         left: Number(object?.left) || 0,
         top: Number(object?.top) || 0,
@@ -10442,19 +10439,25 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         opacity: Number.isFinite(Number(object?.opacity)) ? Number(object.opacity) : 1,
         angle: Number.isFinite(Number(object?.angle)) ? Number(object.angle) : 0,
         fontSize: Number.isFinite(Number(object?.fontSize)) ? Number(object.fontSize) : 12,
-        globalCompositeOperation: object?.globalCompositeOperation || null
+        globalCompositeOperation: object?.globalCompositeOperation || null,
+        x1: Number.isFinite(Number(object?.x1)) ? Number(object.x1) : undefined,
+        y1: Number.isFinite(Number(object?.y1)) ? Number(object.y1) : undefined,
+        x2: Number.isFinite(Number(object?.x2)) ? Number(object.x2) : undefined,
+        y2: Number.isFinite(Number(object?.y2)) ? Number(object.y2) : undefined,
+        path: Array.isArray(object?.path) ? object.path : undefined,
+        points: Array.isArray(object?.points) ? object.points : undefined,
+        objects: Array.isArray(object?.objects) ? object.objects : undefined
       }));
 
     const proxyCallouts = (calloutsRef.current || [])
       .filter((callout) => Number(callout?.pageNumber) === pageNumber)
-      .filter((callout) => {
-        if (!(showSurveyPanel && selectedModuleId)) return true;
-        return callout?.moduleId === selectedModuleId;
-      })
       .slice(0, 180)
       .map((callout, index) => ({
         id: callout?.id || `callout-${pageNumber}-${index}`,
         pageNumber,
+        moduleId: callout?.moduleId ?? null,
+        regionId: callout?.regionId ?? null,
+        layer: callout?.layer || null,
         arrowTip: {
           x: Number(callout?.arrowTip?.x) || 0,
           y: Number(callout?.arrowTip?.y) || 0
@@ -30420,6 +30423,7 @@ ${pageBlocks}
                       const hideOverlayUntilPdfReady = pageAnnotationObjects.length > 0 &&
                         !pagePdfHasEverBeenReady &&
                         !pagePdfReadyState.ready;
+                      const hasSurveyHighlights = (newHighlightsByPage[pageNumber]?.length ?? 0) > 0;
 
                       if (showRegionSelection && regionSelectionPage === pageNumber) {
                         console.log(
@@ -30497,6 +30501,7 @@ ${pageBlocks}
                       const isProxyReady = syncfusionProxyReadyPages.has(pageNumber);
                       const shouldHideFullLayer = (
                         shouldRenderLightweightAnnotations &&
+                          !hasSurveyHighlights &&
                           proxyHasRenderablePayload &&
                           isProxyReady
                       );
@@ -30642,6 +30647,15 @@ ${pageBlocks}
                                 callouts={callouts}
                                 selectedModuleId={selectedModuleId}
                                 showSurveyPanel={showSurveyPanel}
+                                selectedSpaceId={annotationSpaceId}
+                                activeSpaceId={activeSpaceId}
+                                activeRegions={pageRegions}
+                                activeRegionId={activeRegionId}
+                                spaces={spaces}
+                                getCanvasAnnotationVisibilityState={getCanvasAnnotationVisibilityState}
+                                getSurveyAnnotationVisibilityState={getSurveyAnnotationVisibilityState}
+                                isRegionOverlayEnabled={isRegionOverlayEnabled}
+                                layerVisibility={annotationLayerVisibility}
                                 annotationRevision={proxyPayload ? proxyRevision : annotationRevision}
                                 calloutRevision={proxyPayload ? proxyRevision : calloutRevision}
                                 onRenderReady={markSyncfusionProxyPageReady}

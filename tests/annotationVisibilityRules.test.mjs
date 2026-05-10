@@ -8,7 +8,9 @@ import {
   getAnnotationVisibilityScope,
   getPageAnnotationVisibilityState,
   getPageVisibilityControlMode,
+  getSpaceIdForRegionFromSpaces,
   isAnnotationVisibleByPageControl,
+  isAnnotationVisibleInContext,
   normalizeRegionVisibility,
 } from '../src/utils/annotationVisibilityRules.js';
 
@@ -199,6 +201,103 @@ describe('isAnnotationVisibleByPageControl', () => {
         scope: ANNOTATION_VISIBILITY_SCOPE.SURVEY_REGION,
         canvasVisible: false,
         surveyVisible: false,
+      }),
+      true
+    );
+  });
+});
+
+describe('isAnnotationVisibleInContext', () => {
+  const spaces = [{
+    id: 'space-1',
+    assignedPages: [{
+      pageId: 1,
+      regions: [{ regionId: 'region-1' }],
+    }],
+  }];
+
+  it('uses the shared survey filter for regular and survey-scoped annotations', () => {
+    assert.equal(
+      isAnnotationVisibleInContext({
+        annotation: { moduleId: null, regionId: null },
+        pageNumber: 1,
+        selectedSpaceId: 'space-1',
+        selectedModuleId: 'module-1',
+        showSurveyPanel: true,
+      }),
+      false
+    );
+
+    assert.equal(
+      isAnnotationVisibleInContext({
+        annotation: { moduleId: 'module-1', regionId: null },
+        pageNumber: 1,
+        selectedSpaceId: 'space-1',
+        selectedModuleId: 'module-1',
+        showSurveyPanel: true,
+      }),
+      true
+    );
+  });
+
+  it('uses page visibility controls for canvas and survey annotations', () => {
+    assert.equal(
+      isAnnotationVisibleInContext({
+        annotation: { moduleId: null, regionId: null },
+        pageNumber: 1,
+        selectedSpaceId: 'space-1',
+        getCanvasAnnotationVisibilityState: () => false,
+      }),
+      false
+    );
+
+    assert.equal(
+      isAnnotationVisibleInContext({
+        annotation: { moduleId: 'module-1', regionId: null },
+        pageNumber: 1,
+        selectedSpaceId: 'space-1',
+        selectedModuleId: 'module-1',
+        showSurveyPanel: true,
+        getSurveyAnnotationVisibilityState: () => false,
+      }),
+      false
+    );
+  });
+
+  it('keeps region annotations scoped to the active space', () => {
+    assert.equal(getSpaceIdForRegionFromSpaces('region-1', spaces), 'space-1');
+
+    assert.equal(
+      isAnnotationVisibleInContext({
+        annotation: { moduleId: null, regionId: 'region-1' },
+        pageNumber: 1,
+        selectedSpaceId: 'space-1',
+        activeSpaceId: 'space-1',
+        activeRegionId: 'region-1',
+        spaces,
+      }),
+      true
+    );
+
+    assert.equal(
+      isAnnotationVisibleInContext({
+        annotation: { moduleId: null, regionId: 'region-1' },
+        pageNumber: 1,
+        selectedSpaceId: 'space-1',
+        activeSpaceId: 'space-2',
+        activeRegionId: 'region-1',
+        spaces,
+      }),
+      false
+    );
+  });
+
+  it('does not treat the transient Fabric visible flag as a visibility rule', () => {
+    assert.equal(
+      isAnnotationVisibleInContext({
+        annotation: { moduleId: null, regionId: null, visible: false },
+        pageNumber: 1,
+        selectedSpaceId: 'space-1',
       }),
       true
     );

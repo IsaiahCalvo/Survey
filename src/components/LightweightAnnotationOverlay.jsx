@@ -1,5 +1,6 @@
 import React, { memo, useEffect, useMemo } from 'react';
 import { calculateCalloutConnection } from '../utils/calloutGeometry';
+import { isAnnotationVisibleInContext } from '../utils/annotationVisibilityRules';
 
 const MAX_PREVIEW_OBJECTS = 420;
 const MAX_PREVIEW_CALLOUTS = 140;
@@ -41,6 +42,15 @@ const LightweightAnnotationOverlay = memo(({
   callouts = [],
   selectedModuleId = null,
   showSurveyPanel = false,
+  selectedSpaceId = null,
+  activeSpaceId = null,
+  activeRegions = null,
+  activeRegionId = null,
+  spaces = [],
+  getCanvasAnnotationVisibilityState = null,
+  getSurveyAnnotationVisibilityState = null,
+  isRegionOverlayEnabled = null,
+  layerVisibility = null,
   annotationRevision = null,
   calloutRevision = null,
   onRenderReady = null
@@ -60,17 +70,25 @@ const LightweightAnnotationOverlay = memo(({
 
     for (let index = 0; index < objects.length; index += 1) {
       const object = objects[index];
-      if (!object || object.visible === false) continue;
+      if (!object) continue;
+      if (object.highlightId) continue;
       if (previews.length >= MAX_PREVIEW_OBJECTS) break;
-
-      if (!useProxyPayload) {
-        const isSurveyScoped = object.moduleId !== null && object.moduleId !== undefined;
-        if (showSurveyPanel && selectedModuleId && isSurveyScoped && object.moduleId !== selectedModuleId) {
-          continue;
-        }
-        if (showSurveyPanel && selectedModuleId && !isSurveyScoped) {
-          continue;
-        }
+      if (!isAnnotationVisibleInContext({
+        annotation: object,
+        pageNumber,
+        selectedModuleId,
+        showSurveyPanel,
+        selectedSpaceId,
+        activeSpaceId,
+        activeRegions,
+        activeRegionId,
+        spaces,
+        getCanvasAnnotationVisibilityState,
+        getSurveyAnnotationVisibilityState,
+        isRegionOverlayEnabled,
+        layerVisibility
+      })) {
+        continue;
       }
 
       const objectType = String(object.type || '').toLowerCase();
@@ -87,18 +105,29 @@ const LightweightAnnotationOverlay = memo(({
       const lineChild = isGroup ? object.objects.find(o => o && (o.type === 'line' || o.type === 'polyline' || o.type === 'path')) : null;
       const arrowHeadChild = isGroup ? object.objects.find(o => o && (o.name === 'arrowHead' || o.type === 'triangle')) : null;
       const isArrow = isGroup && lineChild;
+      const isPolygon = objectType === 'polygon' && Array.isArray(object.points) && object.points.length > 0;
+      const isPolyline = objectType === 'polyline' && Array.isArray(object.points) && object.points.length > 0;
+      const isCounter = object?.data?.type === 'counter';
 
       // Determine render type
       let renderType = 'shape';
       if (isPath) renderType = 'path';
       else if (isLine) renderType = 'line';
       else if (isArrow) renderType = 'arrow';
+      else if (isPolygon) renderType = 'polygon';
+      else if (isPolyline) renderType = 'polyline';
+      else if (isCounter) renderType = 'counter';
 
       // Build type-specific data
       let pathData = null;
       if (isPath) {
         pathData = object.path.map(seg => seg.join(' ')).join(' ');
       }
+      const pointData = (isPolygon || isPolyline)
+        ? object.points
+          .map((point) => `${toNumber(point?.x, 0)},${toNumber(point?.y, 0)}`)
+          .join(' ')
+        : null;
 
       // For path objects, capture object scaleX/scaleY for SVG transform
       const objScaleX = toNumber(object.scaleX, 1);
@@ -117,13 +146,14 @@ const LightweightAnnotationOverlay = memo(({
         borderRadius: objectType === 'circle' || objectType === 'ellipse' ? '999px' : '2px',
         angle: toNumber(object.angle, 0),
         blendMode: object.globalCompositeOperation === 'multiply' ? 'multiply' : 'normal',
-        text: objectType === 'textbox' || objectType === 'i-text' || objectType === 'text'
+        text: (objectType === 'textbox' || objectType === 'i-text' || objectType === 'text')
           ? String(object.text || '')
           : '',
         fontSizeBase: Math.max(9, toNumber(object.fontSize, 12)),
         // SVG rendering fields
         renderType,
         pathData,
+        pointData,
         objScaleX,
         objScaleY,
         // Line coordinates (for line objects)
@@ -136,7 +166,8 @@ const LightweightAnnotationOverlay = memo(({
         lineY1: isArrow ? toNumber(lineChild.y1, 0) : 0,
         lineX2: isArrow ? toNumber(lineChild.x2, 0) : 0,
         lineY2: isArrow ? toNumber(lineChild.y2, 0) : 0,
-        hasArrowHead: isArrow && !!arrowHeadChild
+        hasArrowHead: isArrow && !!arrowHeadChild,
+        counterText: isCounter ? String(object?.data?.displayNumber ?? object?.text ?? '') : ''
       });
     }
 
@@ -144,11 +175,20 @@ const LightweightAnnotationOverlay = memo(({
   }, [
     annotationRevision,
     annotations?.objects,
+    activeRegions,
+    activeRegionId,
+    activeSpaceId,
+    getCanvasAnnotationVisibilityState,
+    getSurveyAnnotationVisibilityState,
+    isRegionOverlayEnabled,
     interactionSessionId,
+    layerVisibility,
     pageNumber,
     proxyObjects,
     selectedModuleId,
-    showSurveyPanel
+    selectedSpaceId,
+    showSurveyPanel,
+    spaces
   ]);
 
   const objectPreviews = useMemo(() => objectPreviewBase.map((preview) => {
@@ -190,15 +230,26 @@ const LightweightAnnotationOverlay = memo(({
       ? calloutSource.slice(0, MAX_PREVIEW_CALLOUTS)
       : calloutSource
         .filter((callout) => callout?.pageNumber === pageNumber)
-        .filter((callout) => {
-          if (!(showSurveyPanel && selectedModuleId)) {
-            return true;
-          }
-          return callout.moduleId === selectedModuleId;
-        })
         .slice(0, MAX_PREVIEW_CALLOUTS);
 
-    return pageCallouts.map((callout, index) => {
+    return pageCallouts.filter((callout) => (
+      callout?.pageNumber === undefined ||
+      Number(callout.pageNumber) === Number(pageNumber)
+    )).filter((callout) => isAnnotationVisibleInContext({
+      annotation: callout,
+      pageNumber,
+      selectedModuleId,
+      showSurveyPanel,
+      selectedSpaceId,
+      activeSpaceId,
+      activeRegions,
+      activeRegionId,
+      spaces,
+      getCanvasAnnotationVisibilityState,
+      getSurveyAnnotationVisibilityState,
+      isRegionOverlayEnabled,
+      layerVisibility
+    })).map((callout, index) => {
       const style = callout?.style || {};
       return {
         key: callout.id || `callout-${index}`,
@@ -226,10 +277,18 @@ const LightweightAnnotationOverlay = memo(({
   }, [
     calloutRevision,
     callouts,
+    activeRegions,
+    activeRegionId,
+    activeSpaceId,
+    getCanvasAnnotationVisibilityState,
+    getSurveyAnnotationVisibilityState,
+    isRegionOverlayEnabled,
+    layerVisibility,
     interactionSessionId,
     pageNumber,
     proxyCallouts,
     selectedModuleId,
+    selectedSpaceId,
     showSurveyPanel
   ]);
 
@@ -285,6 +344,9 @@ const LightweightAnnotationOverlay = memo(({
 
   return (
     <div
+      data-lightweight-annotation-overlay={pageNumber}
+      data-lightweight-object-count={objectPreviews.length}
+      data-lightweight-callout-count={calloutPreviews.length}
       style={{
         position: 'absolute',
         top: 0,
@@ -397,6 +459,35 @@ const LightweightAnnotationOverlay = memo(({
           );
         }
 
+        if ((preview.renderType === 'polygon' || preview.renderType === 'polyline') && preview.pointData) {
+          const ShapeTag = preview.renderType === 'polygon' ? 'polygon' : 'polyline';
+          return (
+            <svg
+              key={preview.key}
+              style={{
+                position: 'absolute',
+                left: 0,
+                top: 0,
+                width: overlayWidth,
+                height: overlayHeight,
+                pointerEvents: 'none',
+                overflow: 'visible'
+              }}
+            >
+              <ShapeTag
+                points={preview.pointData}
+                stroke={preview.stroke}
+                strokeWidth={preview.strokeWidth}
+                fill={preview.renderType === 'polygon' ? preview.fill : 'none'}
+                opacity={preview.opacity}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                transform={`translate(${preview.left}, ${preview.top}) scale(${preview.objScaleX * safeScale}, ${preview.objScaleY * safeScale})`}
+              />
+            </svg>
+          );
+        }
+
         // Default: div-based rendering for shapes, text, and other types
         return (
           <div
@@ -417,7 +508,24 @@ const LightweightAnnotationOverlay = memo(({
               mixBlendMode: preview.blendMode
             }}
           >
-            {preview.text ? (
+            {preview.counterText ? (
+              <span
+                style={{
+                  display: 'flex',
+                  width: '100%',
+                  height: '100%',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: `${preview.fontSize}px`,
+                  lineHeight: 1,
+                  color: preview.stroke,
+                  fontWeight: 700,
+                  opacity: 0.92
+                }}
+              >
+                {preview.counterText}
+              </span>
+            ) : preview.text ? (
               <span
                 style={{
                   display: 'inline-block',

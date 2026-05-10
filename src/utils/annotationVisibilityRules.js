@@ -142,3 +142,117 @@ export function isAnnotationVisibleByPageControl({
       return true;
   }
 }
+
+export function getSpaceIdForRegionFromSpaces(regionId, spaces = []) {
+  if (!regionId || !Array.isArray(spaces) || spaces.length === 0) return null;
+
+  for (const space of spaces) {
+    for (const page of (space?.assignedPages || [])) {
+      for (const region of (page?.regions || [])) {
+        if (region?.regionId === regionId) return space.id;
+      }
+    }
+  }
+
+  return null;
+}
+
+export function isAnnotationVisibleInContext({
+  annotation,
+  pageNumber,
+  selectedModuleId = null,
+  showSurveyPanel = false,
+  selectedSpaceId = null,
+  activeSpaceId = null,
+  activeRegions = null,
+  activeRegionId = null,
+  spaces = [],
+  getCanvasAnnotationVisibilityState = null,
+  getSurveyAnnotationVisibilityState = null,
+  isRegionOverlayEnabled = null,
+  layerVisibility = null
+} = {}) {
+  if (!annotation) return false;
+
+  const layer = annotation.layer || 'native';
+  if (layerVisibility && layerVisibility[layer] === false) {
+    return false;
+  }
+
+  const visibilityScope = getAnnotationVisibilityScope({
+    moduleId: annotation.moduleId,
+    regionId: annotation.regionId
+  });
+  const isSurveyAnnotation =
+    visibilityScope === ANNOTATION_VISIBILITY_SCOPE.SURVEY ||
+    visibilityScope === ANNOTATION_VISIBILITY_SCOPE.SURVEY_REGION;
+  const isScopedRegionAnnotation =
+    visibilityScope === ANNOTATION_VISIBILITY_SCOPE.REGION ||
+    visibilityScope === ANNOTATION_VISIBILITY_SCOPE.SURVEY_REGION;
+
+  let isOverlayEnabledForThisPage = false;
+  if (activeRegions !== null && selectedSpaceId && typeof isRegionOverlayEnabled === 'function') {
+    const space = Array.isArray(spaces)
+      ? spaces.find((candidate) => candidate?.id === selectedSpaceId)
+      : null;
+    const page = space?.assignedPages?.find((candidate) => candidate?.pageId === pageNumber);
+    if (page) {
+      isOverlayEnabledForThisPage = isRegionOverlayEnabled(selectedSpaceId, pageNumber, page);
+    }
+  }
+  const hasActiveRegions =
+    activeRegions !== null &&
+    Array.isArray(activeRegions) &&
+    activeRegions.length > 0 &&
+    isOverlayEnabledForThisPage;
+
+  const derivedSpaceId = isScopedRegionAnnotation
+    ? getSpaceIdForRegionFromSpaces(annotation.regionId, spaces)
+    : null;
+
+  let matchesSpace = true;
+  if (hasActiveRegions && !isScopedRegionAnnotation) {
+    matchesSpace = true;
+  } else if (isScopedRegionAnnotation && derivedSpaceId !== null) {
+    matchesSpace = activeSpaceId !== null && derivedSpaceId === activeSpaceId;
+  }
+
+  let surveyAnnotationVisible = true;
+  if (isSurveyAnnotation) {
+    surveyAnnotationVisible =
+      showSurveyPanel && selectedModuleId !== null && annotation.moduleId === selectedModuleId;
+  } else if (!isScopedRegionAnnotation) {
+    surveyAnnotationVisible = !(showSurveyPanel && selectedModuleId !== null);
+  }
+
+  let scopedRegionAnnotationVisible = true;
+  if (isScopedRegionAnnotation) {
+    if (activeSpaceId === null) {
+      scopedRegionAnnotationVisible = false;
+    } else if (hasActiveRegions) {
+      scopedRegionAnnotationVisible = true;
+    } else if (activeRegionId !== null) {
+      scopedRegionAnnotationVisible = annotation.regionId === activeRegionId;
+    } else {
+      scopedRegionAnnotationVisible = false;
+    }
+  }
+
+  let pageScopedAnnotationVisible = true;
+  if (!isScopedRegionAnnotation && selectedSpaceId !== null) {
+    pageScopedAnnotationVisible = isAnnotationVisibleByPageControl({
+      scope: visibilityScope,
+      canvasVisible: typeof getCanvasAnnotationVisibilityState === 'function'
+        ? getCanvasAnnotationVisibilityState(selectedSpaceId, pageNumber)
+        : true,
+      surveyVisible: typeof getSurveyAnnotationVisibilityState === 'function'
+        ? getSurveyAnnotationVisibilityState(selectedSpaceId, pageNumber)
+        : true
+    });
+  }
+
+  return matchesSpace &&
+    surveyAnnotationVisible &&
+    scopedRegionAnnotationVisible &&
+    pageScopedAnnotationVisible;
+}
