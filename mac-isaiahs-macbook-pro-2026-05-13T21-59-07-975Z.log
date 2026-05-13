@@ -1,0 +1,460 @@
+===== SurveyApp Save Log =====
+version:   0.1.45
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1512x826
+locale:    en-US
+timestamp: 2026-05-13T21:59:07.960Z (5/13/2026, 5:59:07 PM)
+==============================
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+[Phase31 UAT] focus rehydrate skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"d30ac66b-5d2e-4a93-aab3-8fdd84a0af86","pdfId":"Package 2 - Rev 4 -- IC.pdf-6291605","cutoverTs":"2026-05-13T14:37:10.17+00:00","ydocAuthoritative":true}
+[Phase31 UAT] focus rehydrate skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","cutoverTs":"2026-05-13T21:46:54.397+00:00","ydocAuthoritative":true}
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+[DebugBridge +204755.6ms] page_visit_start {"page":2,"pageCount":36,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +204759.5ms] page_visit_ready {"page":2,"pageCount":36,"revisited":false,"waitMs":4,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+[DebugBridge +208545.1ms] page_visit_start {"page":30,"pageCount":36,"revisited":false,"hasContainer":false,"hasPdfSurface":false,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":false}
+[DebugBridge +208555.5ms] page_visit_ready {"page":30,"pageCount":36,"revisited":false,"waitMs":10,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":true,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +214913.7ms] page_visit_start {"page":1,"pageCount":36,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +214932.0ms] page_visit_ready {"page":1,"pageCount":36,"revisited":false,"waitMs":18,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+[DebugBridge +217532.0ms] page_visit_start {"page":6,"pageCount":36,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +217536.3ms] page_visit_ready {"page":6,"pageCount":36,"revisited":false,"waitMs":5,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+[DrawCanvas p6] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p6] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p7] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p7] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p8] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p8] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p9] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p9] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p10] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p10] shape effect — tool=pen, isShape=false, isDrawingMode=true
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+[DebugBridge +235617.1ms] zoom_start {"scale":0.6624915724129863,"targetScale":0.63,"source":"zoomChange"}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DrawCanvas p10] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p10] shape effect — tool=pen, isShape=false, isDrawingMode=true
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+[DebugBridge +237503.7ms] zoom_end {"source":"zoomChange_settle"}
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+[Counter] TOOL ACTIVATED — activeTool=counter, lastShapeTool=counter, ref will sync next render
+[App] TOOL ACTIVATED: callout {"isDrawingTool":false,"willMountDrawingCanvas":false,"willMountCalloutUI":true,"NOTE":"CALLOUT TOOL HAS NO CREATION UI — isDrawingTool=false, no canvas mounts, no click handler"}
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+[Diag] tool-switch DETECTED → select (scheduling t+1000ms capture)
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778708921757:11760:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778708921757:41554:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:16:5)
+[Diag select] screenshot saved (694 KB) → /Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/TestLogs/testlog-screenshot-select.png
+[Diag select] CAPTURED @ t+1013ms — annotations=410 callouts=0 svgWrappers=6 svgVis=[visible,visible,visible,visible,visible,visible] svgElems=7 svgVisElems=7 eraserCanvases=0 svgMarkupBytes=19823
+
+===== Undo/Redo Chronology =====
+events=1
+lanes=local annotation history | callout history | legacy history | Yjs/CRDT history
+{"seq":1,"order":null,"at":"2026-05-13T21:55:11.189Z","event":"history_reset_for_pdf_change","actionType":"pdf:change","rawActionType":"pdf:change","annotationType":null,"annotationId":null,"pageNumber":null,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+===== End Undo/Redo Chronology =====
