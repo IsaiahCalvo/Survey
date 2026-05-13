@@ -1,0 +1,460 @@
+===== SurveyApp Save Log =====
+version:   0.1.45
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1512x826
+locale:    en-US
+timestamp: 2026-05-13T12:46:25.412Z (5/13/2026, 8:46:25 AM)
+==============================
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 5000ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ Error fetching subscription tier: {"message":"TypeError: Failed to fetch","details":"TypeError: Failed to fetch\n    at instrumentedFetch (http://localhost:5173/src/utils/networkLogger.js:45:32)\n    at http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=4844aadd:19670:23\n    at http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=4844aadd:19684:12\n    at async executeWithRetry (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=4844aadd:591:19)\n    at async fetchSubscriptionTier (http://localhost:5173/src/contexts/AuthContext.jsx:51:31)","hint":"","code":""}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 5000ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ Error fetching subscription tier: {"message":"TypeError: Failed to fetch","details":"TypeError: Failed to fetch\n    at instrumentedFetch (http://localhost:5173/src/utils/networkLogger.js:45:32)\n    at http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=4844aadd:19670:23\n    at http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=4844aadd:19684:12\n    at async executeWithRetry (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=4844aadd:591:19)\n    at async fetchSubscriptionTier (http://localhost:5173/src/contexts/AuthContext.jsx:51:31)","hint":"","code":""}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 5000ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ Error fetching subscription tier: {"message":"TypeError: Failed to fetch","details":"TypeError: Failed to fetch\n    at instrumentedFetch (http://localhost:5173/src/utils/networkLogger.js:45:32)\n    at http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=4844aadd:19670:23\n    at http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=4844aadd:19684:12\n    at async executeWithRetry (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=4844aadd:591:19)\n    at async fetchSubscriptionTier (http://localhost:5173/src/contexts/AuthContext.jsx:51:31)","hint":"","code":""}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 5000ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ Error fetching subscription tier: {"message":"TypeError: Failed to fetch","details":"TypeError: Failed to fetch\n    at instrumentedFetch (http://localhost:5173/src/utils/networkLogger.js:45:32)\n    at http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=4844aadd:19670:23\n    at http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=4844aadd:19684:12\n    at async executeWithRetry (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=4844aadd:591:19)\n    at async fetchSubscriptionTier (http://localhost:5173/src/contexts/AuthContext.jsx:51:31)","hint":"","code":""}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 5000ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ {}
+console.error @ Error fetching subscription tier: {"message":"TypeError: Failed to fetch","details":"TypeError: Failed to fetch\n    at instrumentedFetch (http://localhost:5173/src/utils/networkLogger.js:45:32)\n    at http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=4844aadd:19670:23\n    at http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=4844aadd:19684:12\n    at async executeWithRetry (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=4844aadd:591:19)\n    at async fetchSubscriptionTier (http://localhost:5173/src/contexts/AuthContext.jsx:51:31)","hint":"","code":""}
+[DrawCanvas p1] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p1] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-5","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-5","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] pointer release {"id":"gesture-5","frames":43,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"99ef9245-755b-44ca-a121-0613c6163869"}
+[PreviewDiag] final commit {"id":"gesture-5","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"99ef9245-755b-44ca-a121-0613c6163869","source":"path:created","objectDelta":1,"previousObjectCount":4,"nextObjectCount":5,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[CounterRenumber] skipped {"pageNumber":1,"source":"path:created","action":"path:created","reason":"non-numbering-save","preserveExistingCounters":true,"intentionalCounterChangeIds":[]}
+[UndoDiag] {"seq":31,"order":9,"at":"2026-05-13T12:44:52.982Z","event":"local_annotation_history_added","actionType":"create","rawActionType":"fabric:create","annotationType":"path","annotationId":"99ef9245-755b-44ca-a121-0613c6163869","pageNumber":1,"lane":"local annotation history","receivedStack":"localAnnotationUndo","chosenStack":null,"chosenLane":"local annotation history","decisionReason":null,"undoDepth":5,"redoDepth":0}
+[UndoDiag] {"seq":33,"order":10,"at":"2026-05-13T12:44:52.983Z","event":"checkpoint_added_annotation_fast","actionType":"annotations:save","rawActionType":"annotations:save","annotationType":"fabric","annotationId":null,"pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":1,"redoDepth":0}
+[PrintPanel] window keydown Cmd/Ctrl+P intercepted (no markup)
+[PrintPanel] OPEN requested via window keydown, withMarkup=false, panel enabled=false, inFlight=false
+[PrintPanel] disabled — base PDF blob print, file: clickable-link-test.pdf
+[PrintPanel] blob-URL iframe.print() called
+[PreviewDiag] summary path:created started, 43 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-5","durationMs":1877.7,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"99ef9245-755b-44ca-a121-0613c6163869","source":"path:created","objectDelta":1,"previousObjectCount":4,"nextObjectCount":5,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] pointer release {"id":"gesture-6","frames":0,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"6131c986-f6b3-4695-9688-cd45258b2e87"}
+[PreviewDiag] final commit {"id":"gesture-6","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"6131c986-f6b3-4695-9688-cd45258b2e87","source":"path:created","objectDelta":1,"previousObjectCount":5,"nextObjectCount":6,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[CounterRenumber] skipped {"pageNumber":1,"source":"path:created","action":"path:created","reason":"non-numbering-save","preserveExistingCounters":true,"intentionalCounterChangeIds":[]}
+[UndoDiag] {"seq":34,"order":11,"at":"2026-05-13T12:45:18.922Z","event":"local_annotation_history_added","actionType":"create","rawActionType":"fabric:create","annotationType":"path","annotationId":"6131c986-f6b3-4695-9688-cd45258b2e87","pageNumber":1,"lane":"local annotation history","receivedStack":"localAnnotationUndo","chosenStack":null,"chosenLane":"local annotation history","decisionReason":null,"undoDepth":6,"redoDepth":0}
+[UndoDiag] {"seq":36,"order":12,"at":"2026-05-13T12:45:18.922Z","event":"checkpoint_added_annotation_fast","actionType":"annotations:save","rawActionType":"annotations:save","annotationType":"fabric","annotationId":null,"pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":2,"redoDepth":0}
+[PDFSaveExport] action start {"actionType":"app-state-save","documentId":null,"supabaseAnnotationSaveRan":false,"pdfBytesGenerated":false,"localFilesystemWrite":false,"outputPath":null,"annotationCountsByType":{"path":6},"annotationCountSummary":{"totalObjects":6,"calloutCount":0,"highlightCount":0,"importedPdfObjects":4,"byType":{"path":6}},"embeddedPdfNativeAnnotationHandling":"not-applicable-app-state-only","silent":false}
+[PDFSaveExport] action complete {"actionType":"app-state-save","documentId":null,"supabaseAnnotationSaveRan":false,"supabaseAnnotationSaveError":null,"pdfBytesGenerated":false,"localFilesystemWrite":false,"outputPath":null,"annotationCountsByType":{"path":6},"annotationCountSummary":{"totalObjects":6,"calloutCount":0,"highlightCount":0,"importedPdfObjects":4,"byType":{"path":6}},"embeddedPdfNativeAnnotationHandling":"not-applicable-app-state-only","localBackupSaved":true,"surveyDataStorageSaveRequested":true,"silent":false}
+[PreviewDiag] preview {"id":"gesture-6","frames":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"6131c986-f6b3-4695-9688-cd45258b2e87","source":"path:created","objectDelta":1,"previousObjectCount":5,"nextObjectCount":6,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] preview {"id":"gesture-6","frames":25,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"6131c986-f6b3-4695-9688-cd45258b2e87","source":"path:created","objectDelta":1,"previousObjectCount":5,"nextObjectCount":6,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] summary path:created started, 31 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-6","durationMs":1539.5,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"6131c986-f6b3-4695-9688-cd45258b2e87","source":"path:created","objectDelta":1,"previousObjectCount":5,"nextObjectCount":6,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[PrintPanel] window keydown Cmd/Ctrl+P intercepted (no markup)
+[PrintPanel] OPEN requested via window keydown, withMarkup=false, panel enabled=false, inFlight=false
+[PrintPanel] disabled — base PDF blob print, file: clickable-link-test.pdf
+[PrintPanel] blob-URL iframe.print() called
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-7","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-7","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-7","frames":50,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] pointer release {"id":"gesture-7","frames":53,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"1e26a1d3-b797-44b5-8d0e-c86da00454db"}
+[PreviewDiag] final commit {"id":"gesture-7","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"1e26a1d3-b797-44b5-8d0e-c86da00454db","source":"path:created","objectDelta":1,"previousObjectCount":6,"nextObjectCount":7,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[CounterRenumber] skipped {"pageNumber":1,"source":"path:created","action":"path:created","reason":"non-numbering-save","preserveExistingCounters":true,"intentionalCounterChangeIds":[]}
+[UndoDiag] {"seq":37,"order":13,"at":"2026-05-13T12:45:35.099Z","event":"local_annotation_history_added","actionType":"create","rawActionType":"fabric:create","annotationType":"path","annotationId":"1e26a1d3-b797-44b5-8d0e-c86da00454db","pageNumber":1,"lane":"local annotation history","receivedStack":"localAnnotationUndo","chosenStack":null,"chosenLane":"local annotation history","decisionReason":null,"undoDepth":7,"redoDepth":0}
+[UndoDiag] {"seq":39,"order":14,"at":"2026-05-13T12:45:35.099Z","event":"checkpoint_added_annotation_fast","actionType":"annotations:save","rawActionType":"annotations:save","annotationType":"fabric","annotationId":null,"pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":3,"redoDepth":0}
+[PreviewDiag] preview {"id":"gesture-7","frames":75,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"1e26a1d3-b797-44b5-8d0e-c86da00454db","source":"path:created","objectDelta":1,"previousObjectCount":6,"nextObjectCount":7,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] summary path:created started, 80 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-7","durationMs":2014.4,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"1e26a1d3-b797-44b5-8d0e-c86da00454db","source":"path:created","objectDelta":1,"previousObjectCount":6,"nextObjectCount":7,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[EditCanvas] COMMIT pre-convert — text="kdnfklfhq" fontSize=16 width=148 height=18.08 scaleX=1 scaleY=1 left=38 top=38 isNewText=true
+[EditCanvas] COMMIT post-convert — text="kdnfklfhq" fontSize=16 width=79 height=30.08 scaleX=1 scaleY=1 left=261.029296875 top=374.8505859375
+[PreviewDiag] final commit {"surface":"App.handleSaveAnnotations","source":"edit:commit","action":"text","pageNumber":1,"objectDelta":1,"previousObjectCount":7,"nextObjectCount":8,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[CounterRenumber] skipped {"pageNumber":1,"source":"edit:commit","action":"text","reason":"non-numbering-save","preserveExistingCounters":true,"intentionalCounterChangeIds":[]}
+[UndoDiag] {"seq":40,"order":15,"at":"2026-05-13T12:45:39.374Z","event":"local_annotation_history_added","actionType":"create","rawActionType":"fabric:create","annotationType":"textbox","annotationId":"05c19aa0-d907-4328-876b-8086893203bf","pageNumber":1,"lane":"local annotation history","receivedStack":"localAnnotationUndo","chosenStack":null,"chosenLane":"local annotation history","decisionReason":null,"undoDepth":8,"redoDepth":0}
+[UndoDiag] {"seq":42,"order":16,"at":"2026-05-13T12:45:39.376Z","event":"checkpoint_added","actionType":"annotations:save","rawActionType":"annotations:save","annotationType":"fabric","annotationId":null,"pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":4,"redoDepth":0}
+[EditCanvas] COMMIT pre-convert — text="qq" fontSize=16 width=21.36 height=18.08 scaleX=1 scaleY=1 left=38 top=38 isNewText=true
+[EditCanvas] COMMIT post-convert — text="qq" fontSize=16 width=32 height=30.08 scaleX=1 scaleY=1 left=161.455078125 top=387.240234375
+[PreviewDiag] final commit {"surface":"App.handleSaveAnnotations","source":"edit:commit","action":"text","pageNumber":1,"objectDelta":1,"previousObjectCount":8,"nextObjectCount":9,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[CounterRenumber] skipped {"pageNumber":1,"source":"edit:commit","action":"text","reason":"non-numbering-save","preserveExistingCounters":true,"intentionalCounterChangeIds":[]}
+[UndoDiag] {"seq":43,"order":17,"at":"2026-05-13T12:45:42.534Z","event":"local_annotation_history_added","actionType":"create","rawActionType":"fabric:create","annotationType":"textbox","annotationId":"413f3886-6da8-489b-93bb-3dc07ab933ca","pageNumber":1,"lane":"local annotation history","receivedStack":"localAnnotationUndo","chosenStack":null,"chosenLane":"local annotation history","decisionReason":null,"undoDepth":9,"redoDepth":0}
+[UndoDiag] {"seq":45,"order":18,"at":"2026-05-13T12:45:42.535Z","event":"checkpoint_added","actionType":"annotations:save","rawActionType":"annotations:save","annotationType":"fabric","annotationId":null,"pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":5,"redoDepth":0}
+[App] TOOL ACTIVATED: callout {"isDrawingTool":false,"willMountDrawingCanvas":false,"willMountCalloutUI":true,"NOTE":"CALLOUT TOOL HAS NO CREATION UI — isDrawingTool=false, no canvas mounts, no click handler"}
+[UndoDiag] {"seq":46,"order":19,"at":"2026-05-13T12:45:44.280Z","event":"checkpoint_added","actionType":"create","rawActionType":"callouts:create","annotationType":"callout","annotationId":"callout-k9d3oe2q1-mp41yyty","pageNumber":1,"lane":"callout history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"callout history","decisionReason":null,"undoDepth":6,"redoDepth":0}
+[PreviewDiag] backup write {"kind":"callout-localStorage","count":1,"calloutCount":1,"bytes":519}
+[CalloutEditCanvasDiag] {"effectiveScale":1.3333333333333333,"effectiveScaleY":1.3333333333333333,"useNonUniform":false,"canvasWidth":245,"canvasHeight":128,"parentOffset":{"w":816,"h":1056},"pageSize":{"w":612,"h":792},"vpt":[1.3333333333333333,0,0,1.3333333333333333,0,0],"zoom":1.3333333333333333}
+[Diag] tool-switch DETECTED → select (scheduling t+1000ms capture)
+[Diag select] screenshot saved (182 KB) → /Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/TestLogs/testlog-screenshot-select.png
+[Diag select] CAPTURED @ t+1001ms — annotations=9 callouts=1 svgWrappers=1 svgVis=[visible] svgElems=9 svgVisElems=9 eraserCanvases=0 svgMarkupBytes=25701
+[EditCanvas] COMMIT pre-convert — text="dfgdfgdfgfg" fontSize=14 width=108 height=15.82 scaleX=1 scaleY=1 left=38 top=42.54 isNewText=false
+[EditCanvas] COMMIT post-convert — text="dfgdfgdfgfg" fontSize=14 width=120 height=32 scaleX=1 scaleY=1 left=327.8671875 top=480.73242187499994
+[CalloutBlankCommitDiag] {"calloutId":"callout-k9d3oe2q1-mp41yyty","isNewCallout":true,"originalText":"","editedTextboxText":"dfgdfgdfgfg","synthesizedText":"dfgdfgdfgfg","resolvedText":"dfgdfgdfgfg","deleteBlank":false,"preservedExistingText":false}
+[UndoDiag] {"seq":47,"order":20,"at":"2026-05-13T12:45:45.542Z","event":"checkpoint_added","actionType":"callout edit","rawActionType":"callouts:edit-commit","annotationType":"callout","annotationId":"callout-k9d3oe2q1-mp41yyty","pageNumber":null,"lane":"callout history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"callout history","decisionReason":null,"undoDepth":7,"redoDepth":0}
+[PreviewDiag] backup write {"kind":"callout-localStorage","count":1,"calloutCount":1,"bytes":530}
+[PDFSaveExport] action start {"actionType":"app-state-save","documentId":null,"supabaseAnnotationSaveRan":false,"pdfBytesGenerated":false,"localFilesystemWrite":false,"outputPath":null,"annotationCountsByType":{"path":7,"textbox":2,"callout":1},"annotationCountSummary":{"totalObjects":9,"calloutCount":1,"highlightCount":0,"importedPdfObjects":4,"byType":{"path":7,"textbox":2,"callout":1}},"embeddedPdfNativeAnnotationHandling":"not-applicable-app-state-only","silent":false}
+[PDFSaveExport] action complete {"actionType":"app-state-save","documentId":null,"supabaseAnnotationSaveRan":false,"supabaseAnnotationSaveError":null,"pdfBytesGenerated":false,"localFilesystemWrite":false,"outputPath":null,"annotationCountsByType":{"path":7,"textbox":2,"callout":1},"annotationCountSummary":{"totalObjects":9,"calloutCount":1,"highlightCount":0,"importedPdfObjects":4,"byType":{"path":7,"textbox":2,"callout":1}},"embeddedPdfNativeAnnotationHandling":"not-applicable-app-state-only","localBackupSaved":true,"surveyDataStorageSaveRequested":true,"silent":false}
+[PrintPanel] window keydown Cmd/Ctrl+P intercepted (no markup)
+[PrintPanel] OPEN requested via window keydown, withMarkup=false, panel enabled=false, inFlight=false
+[PrintPanel] disabled — base PDF blob print, file: clickable-link-test.pdf
+[PrintPanel] blob-URL iframe.print() called
+[PrintPanel] OPEN requested via electron menu:print-pdf-markup (regular annotations), withMarkup=true, panel enabled=false, inFlight=false
+[PDFSaveExport] pdf bytes generated {"actionType":"pdf-print-regular-annotations","documentId":"clickable-link-test.pdf","pdfBytesGenerated":true,"byteLength":10123,"exportContract":{"version":1,"defaultScope":"all-app-created-annotations-for-document","includedScopes":["canvas","survey","region","survey-region"],"importedPdfNativeHandling":"preserve-existing-pdf-native-annots-and-skip-imported-app-copies","visibilityHandling":"export-all-app-created-annotations-independent-of-current-ui-visibility"},"exportDiagnostics":{"totalObjectsConsidered":10,"objectsExported":6,"objectsSkipped":4,"pdfAnnotationsAdded":8,"byScope":{"canvas":10},"byType":{"path":7,"textbox":2,"callout":1},"bySource":{"fabric":9,"callout":1},"byRegion":{},"bySpace":{},"bySurvey":{},"skippedByReason":{"imported-pdf-native-preserved":4},"skipped":[{"source":"fabric","pageNumber":1,"id":"22R","type":"path","scope":"canvas","reason":"imported-pdf-native-preserved"},{"source":"fabric","pageNumber":1,"id":"26R","type":"path","scope":"canvas","reason":"imported-pdf-native-preserved"},{"source":"fabric","pageNumber":1,"id":"30R","type":"path","scope":"canvas","reason":"imported-pdf-native-preserved"},{"source":"fabric","pageNumber":1,"id":"34R","type":"path","scope":"canvas","reason":"imported-pdf-native-preserved"}]},"appObjectsSeen":10,"pdfAnnotationsAdded":8,"annotationCountsByType":{"path":7,"textbox":2,"callout":1},"annotationCountsByScope":{"canvas":10},"annotationCountsBySource":{"fabric":9,"callout":1},"annotationSkippedByReason":{"imported-pdf-native-preserved":4},"embeddedPdfNativeAnnotationHandling":"preserve-existing-pdf-native-annots-and-skip-imported-app-copies","importedAppAnnotationsSkipped":4,"countersExported":0,"counterMetadataMarker":"survey-counter","counterMetadataKeys":["SurveyApp","Subj","NM","Contents"],"counterMetadataFailures":0,"localFilesystemWrite":false,"outputPath":null}
+[PrintPanel] disabled — temporary annotated PDF print with regular app annotations only; diagnostics={"included":{"fabric":9,"callouts":1,"counters":0},"excluded":{"fabric":0,"callouts":0,"counters":0,"surveyHighlights":0},"excludedByScope":{"survey":0,"region":0,"space":0,"survey-region":0}}
+[PrintPanel] blob-URL iframe.print() called
+[SaveLog] global menu trigger — capturing console buffer
+
+===== Undo/Redo Chronology =====
+events=47
+lanes=local annotation history | callout history | legacy history | Yjs/CRDT history
+{"seq":1,"order":null,"at":"2026-05-13T03:16:11.779Z","event":"history_reset_for_pdf_change","actionType":"pdf:change","rawActionType":"pdf:change","annotationType":null,"annotationId":null,"pageNumber":null,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+{"seq":2,"order":1,"at":"2026-05-13T03:16:24.460Z","event":"local_annotation_history_added","actionType":"text edit","rawActionType":"fabric:update","annotationType":"Squiggly","annotationId":"34R","pageNumber":1,"lane":"local annotation history","receivedStack":"localAnnotationUndo","chosenStack":null,"chosenLane":"local annotation history","decisionReason":null,"undoDepth":1,"redoDepth":0}
+{"seq":3,"order":null,"at":"2026-05-13T03:16:24.460Z","event":"annotations_save_detected","actionType":"annotations:save","rawActionType":"annotations:save","annotationType":null,"annotationId":null,"pageNumber":1,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+{"seq":4,"order":2,"at":"2026-05-13T03:16:24.461Z","event":"checkpoint_added","actionType":"annotations:save","rawActionType":"annotations:save","annotationType":"fabric","annotationId":null,"pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":1,"redoDepth":0}
+{"seq":5,"order":3,"at":"2026-05-13T03:16:29.762Z","event":"local_annotation_history_added","actionType":"text edit","rawActionType":"fabric:update","annotationType":"Squiggly","annotationId":"34R","pageNumber":1,"lane":"local annotation history","receivedStack":"localAnnotationUndo","chosenStack":null,"chosenLane":"local annotation history","decisionReason":null,"undoDepth":2,"redoDepth":0}
+{"seq":6,"order":null,"at":"2026-05-13T03:16:29.762Z","event":"annotations_save_detected","actionType":"annotations:save","rawActionType":"annotations:save","annotationType":null,"annotationId":null,"pageNumber":1,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":1,"redoDepth":0}
+{"seq":7,"order":4,"at":"2026-05-13T03:16:29.763Z","event":"checkpoint_added","actionType":"annotations:save","rawActionType":"annotations:save","annotationType":"fabric","annotationId":null,"pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":2,"redoDepth":0}
+{"seq":8,"order":5,"at":"2026-05-13T03:16:41.975Z","event":"local_annotation_history_added","actionType":"text edit","rawActionType":"fabric:update","annotationType":"Squiggly","annotationId":"34R","pageNumber":1,"lane":"local annotation history","receivedStack":"localAnnotationUndo","chosenStack":null,"chosenLane":"local annotation history","decisionReason":null,"undoDepth":3,"redoDepth":0}
+{"seq":9,"order":null,"at":"2026-05-13T03:16:41.975Z","event":"annotations_save_detected","actionType":"annotations:save","rawActionType":"annotations:save","annotationType":null,"annotationId":null,"pageNumber":1,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":2,"redoDepth":0}
+{"seq":10,"order":6,"at":"2026-05-13T03:16:41.977Z","event":"checkpoint_added","actionType":"annotations:save","rawActionType":"annotations:save","annotationType":"fabric","annotationId":null,"pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":3,"redoDepth":0}
+{"seq":11,"order":7,"at":"2026-05-13T03:16:58.690Z","event":"local_annotation_history_added","actionType":"text edit","rawActionType":"fabric:update","annotationType":"Squiggly","annotationId":"34R","pageNumber":1,"lane":"local annotation history","receivedStack":"localAnnotationUndo","chosenStack":null,"chosenLane":"local annotation history","decisionReason":null,"undoDepth":4,"redoDepth":0}
+{"seq":12,"order":null,"at":"2026-05-13T03:16:58.690Z","event":"annotations_save_detected","actionType":"annotations:save","rawActionType":"annotations:save","annotationType":null,"annotationId":null,"pageNumber":1,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":3,"redoDepth":0}
+{"seq":13,"order":8,"at":"2026-05-13T03:16:58.692Z","event":"checkpoint_added","actionType":"annotations:save","rawActionType":"annotations:save","annotationType":"fabric","annotationId":null,"pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":4,"redoDepth":0}
+{"seq":14,"order":null,"at":"2026-05-13T04:13:37.130Z","event":"history_reset_for_pdf_change","actionType":"pdf:change","rawActionType":"pdf:change","annotationType":null,"annotationId":null,"pageNumber":null,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+{"seq":15,"order":null,"at":"2026-05-13T04:13:46.108Z","event":"history_reset_for_pdf_change","actionType":"pdf:change","rawActionType":"pdf:change","annotationType":null,"annotationId":null,"pageNumber":null,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+{"seq":16,"order":null,"at":"2026-05-13T04:13:52.105Z","event":"history_reset_for_pdf_change","actionType":"pdf:change","rawActionType":"pdf:change","annotationType":null,"annotationId":null,"pageNumber":null,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+{"seq":17,"order":null,"at":"2026-05-13T04:14:04.104Z","event":"history_reset_for_pdf_change","actionType":"pdf:change","rawActionType":"pdf:change","annotationType":null,"annotationId":null,"pageNumber":null,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+{"seq":18,"order":null,"at":"2026-05-13T04:14:20.106Z","event":"history_reset_for_pdf_change","actionType":"pdf:change","rawActionType":"pdf:change","annotationType":null,"annotationId":null,"pageNumber":null,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+{"seq":19,"order":null,"at":"2026-05-13T04:14:29.088Z","event":"history_reset_for_pdf_change","actionType":"pdf:change","rawActionType":"pdf:change","annotationType":null,"annotationId":null,"pageNumber":null,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+{"seq":20,"order":null,"at":"2026-05-13T04:15:27.088Z","event":"history_reset_for_pdf_change","actionType":"pdf:change","rawActionType":"pdf:change","annotationType":null,"annotationId":null,"pageNumber":null,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+{"seq":21,"order":null,"at":"2026-05-13T04:22:45.104Z","event":"history_reset_for_pdf_change","actionType":"pdf:change","rawActionType":"pdf:change","annotationType":null,"annotationId":null,"pageNumber":null,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+{"seq":22,"order":null,"at":"2026-05-13T04:22:59.112Z","event":"history_reset_for_pdf_change","actionType":"pdf:change","rawActionType":"pdf:change","annotationType":null,"annotationId":null,"pageNumber":null,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+{"seq":23,"order":null,"at":"2026-05-13T04:23:16.093Z","event":"history_reset_for_pdf_change","actionType":"pdf:change","rawActionType":"pdf:change","annotationType":null,"annotationId":null,"pageNumber":null,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+{"seq":24,"order":null,"at":"2026-05-13T04:26:05.191Z","event":"history_reset_for_pdf_change","actionType":"pdf:change","rawActionType":"pdf:change","annotationType":null,"annotationId":null,"pageNumber":null,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+{"seq":25,"order":null,"at":"2026-05-13T04:32:40.117Z","event":"history_reset_for_pdf_change","actionType":"pdf:change","rawActionType":"pdf:change","annotationType":null,"annotationId":null,"pageNumber":null,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+{"seq":26,"order":null,"at":"2026-05-13T04:40:50.136Z","event":"history_reset_for_pdf_change","actionType":"pdf:change","rawActionType":"pdf:change","annotationType":null,"annotationId":null,"pageNumber":null,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+{"seq":27,"order":null,"at":"2026-05-13T05:01:37.144Z","event":"history_reset_for_pdf_change","actionType":"pdf:change","rawActionType":"pdf:change","annotationType":null,"annotationId":null,"pageNumber":null,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+{"seq":28,"order":null,"at":"2026-05-13T05:01:42.135Z","event":"history_reset_for_pdf_change","actionType":"pdf:change","rawActionType":"pdf:change","annotationType":null,"annotationId":null,"pageNumber":null,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+{"seq":29,"order":null,"at":"2026-05-13T05:02:16.126Z","event":"history_reset_for_pdf_change","actionType":"pdf:change","rawActionType":"pdf:change","annotationType":null,"annotationId":null,"pageNumber":null,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+{"seq":30,"order":null,"at":"2026-05-13T05:02:35.148Z","event":"history_reset_for_pdf_change","actionType":"pdf:change","rawActionType":"pdf:change","annotationType":null,"annotationId":null,"pageNumber":null,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+{"seq":31,"order":9,"at":"2026-05-13T12:44:52.982Z","event":"local_annotation_history_added","actionType":"create","rawActionType":"fabric:create","annotationType":"path","annotationId":"99ef9245-755b-44ca-a121-0613c6163869","pageNumber":1,"lane":"local annotation history","receivedStack":"localAnnotationUndo","chosenStack":null,"chosenLane":"local annotation history","decisionReason":null,"undoDepth":5,"redoDepth":0}
+{"seq":32,"order":null,"at":"2026-05-13T12:44:52.983Z","event":"annotations_save_detected","actionType":"annotations:save","rawActionType":"annotations:save","annotationType":null,"annotationId":null,"pageNumber":1,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+{"seq":33,"order":10,"at":"2026-05-13T12:44:52.983Z","event":"checkpoint_added_annotation_fast","actionType":"annotations:save","rawActionType":"annotations:save","annotationType":"fabric","annotationId":null,"pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":1,"redoDepth":0}
+{"seq":34,"order":11,"at":"2026-05-13T12:45:18.922Z","event":"local_annotation_history_added","actionType":"create","rawActionType":"fabric:create","annotationType":"path","annotationId":"6131c986-f6b3-4695-9688-cd45258b2e87","pageNumber":1,"lane":"local annotation history","receivedStack":"localAnnotationUndo","chosenStack":null,"chosenLane":"local annotation history","decisionReason":null,"undoDepth":6,"redoDepth":0}
+{"seq":35,"order":null,"at":"2026-05-13T12:45:18.922Z","event":"annotations_save_detected","actionType":"annotations:save","rawActionType":"annotations:save","annotationType":null,"annotationId":null,"pageNumber":1,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":1,"redoDepth":0}
+{"seq":36,"order":12,"at":"2026-05-13T12:45:18.922Z","event":"checkpoint_added_annotation_fast","actionType":"annotations:save","rawActionType":"annotations:save","annotationType":"fabric","annotationId":null,"pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":2,"redoDepth":0}
+{"seq":37,"order":13,"at":"2026-05-13T12:45:35.099Z","event":"local_annotation_history_added","actionType":"create","rawActionType":"fabric:create","annotationType":"path","annotationId":"1e26a1d3-b797-44b5-8d0e-c86da00454db","pageNumber":1,"lane":"local annotation history","receivedStack":"localAnnotationUndo","chosenStack":null,"chosenLane":"local annotation history","decisionReason":null,"undoDepth":7,"redoDepth":0}
+{"seq":38,"order":null,"at":"2026-05-13T12:45:35.099Z","event":"annotations_save_detected","actionType":"annotations:save","rawActionType":"annotations:save","annotationType":null,"annotationId":null,"pageNumber":1,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":2,"redoDepth":0}
+{"seq":39,"order":14,"at":"2026-05-13T12:45:35.099Z","event":"checkpoint_added_annotation_fast","actionType":"annotations:save","rawActionType":"annotations:save","annotationType":"fabric","annotationId":null,"pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":3,"redoDepth":0}
+{"seq":40,"order":15,"at":"2026-05-13T12:45:39.374Z","event":"local_annotation_history_added","actionType":"create","rawActionType":"fabric:create","annotationType":"textbox","annotationId":"05c19aa0-d907-4328-876b-8086893203bf","pageNumber":1,"lane":"local annotation history","receivedStack":"localAnnotationUndo","chosenStack":null,"chosenLane":"local annotation history","decisionReason":null,"undoDepth":8,"redoDepth":0}
+{"seq":41,"order":null,"at":"2026-05-13T12:45:39.374Z","event":"annotations_save_detected","actionType":"annotations:save","rawActionType":"annotations:save","annotationType":null,"annotationId":null,"pageNumber":1,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":3,"redoDepth":0}
+{"seq":42,"order":16,"at":"2026-05-13T12:45:39.376Z","event":"checkpoint_added","actionType":"annotations:save","rawActionType":"annotations:save","annotationType":"fabric","annotationId":null,"pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":4,"redoDepth":0}
+{"seq":43,"order":17,"at":"2026-05-13T12:45:42.534Z","event":"local_annotation_history_added","actionType":"create","rawActionType":"fabric:create","annotationType":"textbox","annotationId":"413f3886-6da8-489b-93bb-3dc07ab933ca","pageNumber":1,"lane":"local annotation history","receivedStack":"localAnnotationUndo","chosenStack":null,"chosenLane":"local annotation history","decisionReason":null,"undoDepth":9,"redoDepth":0}
+{"seq":44,"order":null,"at":"2026-05-13T12:45:42.534Z","event":"annotations_save_detected","actionType":"annotations:save","rawActionType":"annotations:save","annotationType":null,"annotationId":null,"pageNumber":1,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":4,"redoDepth":0}
+{"seq":45,"order":18,"at":"2026-05-13T12:45:42.535Z","event":"checkpoint_added","actionType":"annotations:save","rawActionType":"annotations:save","annotationType":"fabric","annotationId":null,"pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":5,"redoDepth":0}
+{"seq":46,"order":19,"at":"2026-05-13T12:45:44.280Z","event":"checkpoint_added","actionType":"create","rawActionType":"callouts:create","annotationType":"callout","annotationId":"callout-k9d3oe2q1-mp41yyty","pageNumber":1,"lane":"callout history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"callout history","decisionReason":null,"undoDepth":6,"redoDepth":0}
+{"seq":47,"order":20,"at":"2026-05-13T12:45:45.542Z","event":"checkpoint_added","actionType":"callout edit","rawActionType":"callouts:edit-commit","annotationType":"callout","annotationId":"callout-k9d3oe2q1-mp41yyty","pageNumber":null,"lane":"callout history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"callout history","decisionReason":null,"undoDepth":7,"redoDepth":0}
+===== End Undo/Redo Chronology =====
