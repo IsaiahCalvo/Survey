@@ -12,7 +12,7 @@ Approach: extract the entire bottom-toolbar JSX into a stable component (either 
 
 - [x] **A1. Enumerate the api.** Read the entire current bottom toolbar JSX and list every distinct state value, handler, and ref it touches. Write the list as a comment block at the new component's definition site so future readers can audit it. Verification: the comment exists and matches what the JSX uses (no missing reference, no extra unused field).
 
-- [ ] **A2. Create the component shell.** Define `BottomToolbar(props)` either inline near the top of `App.jsx` or in `src/components/BottomToolbar.jsx`. Initially have it return `null`. Verification: `npx vite build 2>&1 | tail -5` ends with `✓ built`.
+- [x] **A2. Create the component shell.** Define `BottomToolbar(props)` either inline near the top of `App.jsx` or in `src/components/BottomToolbar.jsx`. Initially have it return `null`. Verification: `npx vite build 2>&1 | tail -5` ends with `✓ built`.
 
 - [ ] **A3. Move the JSX.** Move the bottom-toolbar JSX (currently in PDFViewer) into `BottomToolbar`. Replace every direct state/handler reference with `props.<name>`. Keep the original JSX in PDFViewer commented out for one commit so a `git diff` is reviewable. Verification: build passes; visually nothing is different yet (component is defined but not yet rendered).
 

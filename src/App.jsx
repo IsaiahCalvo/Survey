@@ -9675,6 +9675,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
  * - handlePageInputChange, handlePageInputKeyDown, handlePageInputBlur
  */
 
+function BottomToolbar(_props) {
+  return null;
+}
+
 // PDF Viewer Component with improved typography
 function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, ballInCourtEntities, setBallInCourtEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
