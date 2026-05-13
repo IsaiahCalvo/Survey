@@ -4,6 +4,7 @@
 /node_modules
 /.pnp
 .pnp.js
+.npm-cache/
 
 # testing
 /coverage
@@ -20,6 +21,7 @@
 
 # misc
 .DS_Store
+.claude/scheduled_tasks.lock
 .env
 .env.local
 .env.development.local
