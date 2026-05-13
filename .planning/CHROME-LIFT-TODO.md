@@ -44,7 +44,7 @@ The left rail is `<PDFSidebar>` — the second of the two render sites in `src/A
 
 - [x] **B5. Remove the now-duplicate renders from PDFViewer.** There are TWO `<PDFSidebar>` sites inside PDFViewer: one for the loading state (around line 32015 in the current file) and one for the fully wired state (around line 32739). BOTH must be removed. Anything inside PDFViewer that called `pdfSidebarRef.current` may need to read the App-level ref instead — search for `pdfSidebarRef` references and reconcile each one. After removal: `grep -c "<PDFSidebar" src/App.jsx` must return **1** (only the App-level host renders it).
 
-- [ ] **B6. Visual + behavioral smoke.** Read the newest `Logs/` folder. Confirm no errors. Confirm the rail stays put across tab switches and the home tab still hides it. Confirm page click / search / bookmark / space CRUD still work (the user can verify by clicking through them after a save-log capture).
+- [x] **B6. Visual + behavioral smoke.** Read the newest `Logs/` folder. Confirm no errors. Confirm the rail stays put across tab switches and the home tab still hides it. Confirm page click / search / bookmark / space CRUD still work (the user can verify by clicking through them after a save-log capture).
 
 - [ ] **B7. Session moment + reconciliation note.** Append a DECISION entry in today's session-moments file. If anything was skipped (e.g. region selection still flickers because it owns its own state), capture exact reason.
 
