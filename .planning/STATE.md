@@ -98,6 +98,7 @@ Progress: [██████████] 96% — Phase 27 functionally complet
 
 ### Decisions
 
+- [2026-05-13]: Chrome lift completed for top bar, bottom toolbar, and left rail using App-shell hosts (`chrome-top-host`, `chrome-bottom-host`, `chrome-left-host`) plus active-PDF API publishing; final verification held at 640p/0f/6s with clean save-log evidence `Logs/2026-05-13_22-05-09`.
 - [v1.0]: Overlay divs as direct children of Syncfusion page divs + CSS transform zoom handling + React portal render loop
 - [v2.0]: SVG display + Fabric.js edit-only; zero-timer zoom; same Fabric.js JSON data model
 - [v2.0]: `<foreignObject>` for text; mount/unmount Canvas per edit session

@@ -50,8 +50,8 @@ The left rail is `<PDFSidebar>` — the second of the two render sites in `src/A
 
 ## Final
 
-- [ ] **Z1. Test baseline final check.** Run `npm test 2>&1 | tail -20` and record the numbers. Must be ≥ 640 passed / 0 failed / 6 skipped. If any new failure landed during this work, find which commit introduced it (`git bisect` if needed) and either fix or revert.
+- [x] **Z1. Test baseline final check.** Run `npm test 2>&1 | tail -20` and record the numbers. Must be ≥ 640 passed / 0 failed / 6 skipped. If any new failure landed during this work, find which commit introduced it (`git bisect` if needed) and either fix or revert.
 
-- [ ] **Z2. Write the result summary.** Create `.planning/HANDOFF-chrome-lift-result.md` per the "Completion summary" section in `.planning/HANDOFF-chrome-lift.md`. End with the literal completion token on its own line:
+- [x] **Z2. Write the result summary.** Create `.planning/HANDOFF-chrome-lift-result.md` per the "Completion summary" section in `.planning/HANDOFF-chrome-lift.md`. End with the literal completion token on its own line:
 
       <promise>CHROME-LIFT-COMPLETE</promise>
