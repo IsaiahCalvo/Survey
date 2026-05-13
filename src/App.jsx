@@ -43612,6 +43612,7 @@ export default function App() {
    * Loading-state sidebar currently passes inert defaults for the subset needed
    * to keep the rail, sync chip, and presence row visible before the PDF loads.
    */
+  const [leftRailApi, setLeftRailApi] = useState(null);
 
   // Tab management state
   const HOME_TAB_ID = 'home-tab';
@@ -44014,8 +44015,24 @@ export default function App() {
             onPageDrop={handlePageDrop}
           />
         )}
-        <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-          <Dashboard
+        <div style={{ flex: 1, overflow: 'hidden', position: 'relative', display: 'flex' }}>
+          <div
+            id="chrome-left-host"
+            style={{
+              display: isViewerVisible ? 'flex' : 'none',
+              flexShrink: 0,
+              minWidth: '48px',
+              alignSelf: 'stretch',
+              background: '#252525',
+              borderRight: '1px solid #3a3a3a',
+              color: '#ddd',
+              fontFamily: FONT_FAMILY
+            }}
+          >
+            {leftRailApi && <PDFSidebar {...leftRailApi} />}
+          </div>
+          <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', position: 'relative' }}>
+            <Dashboard
             ref={dashboardRef}
             onDocumentSelect={handleDocumentSelect}
             onBack={handleBack}
@@ -44076,6 +44093,7 @@ export default function App() {
               </div>
             );
           })}
+          </div>
         </div>
         <div
           id="chrome-bottom-host"
