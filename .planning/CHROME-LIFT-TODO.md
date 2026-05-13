@@ -46,7 +46,7 @@ The left rail is `<PDFSidebar>` — the second of the two render sites in `src/A
 
 - [x] **B6. Visual + behavioral smoke.** Read the newest `Logs/` folder. Confirm no errors. Confirm the rail stays put across tab switches and the home tab still hides it. Confirm page click / search / bookmark / space CRUD still work (the user can verify by clicking through them after a save-log capture).
 
-- [ ] **B7. Session moment + reconciliation note.** Append a DECISION entry in today's session-moments file. If anything was skipped (e.g. region selection still flickers because it owns its own state), capture exact reason.
+- [x] **B7. Session moment + reconciliation note.** Append a DECISION entry in today's session-moments file. If anything was skipped (e.g. region selection still flickers because it owns its own state), capture exact reason.
 
 ## Final
 
