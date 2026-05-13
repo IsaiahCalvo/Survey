@@ -9646,6 +9646,35 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   );
 });
 
+/*
+ * BottomToolbar API audit (UX 2026-05-13 chrome lift)
+ *
+ * Component/helpers used by JSX:
+ * - CompactColorPicker, Icon, FONT_FAMILY, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, ZOOM_MODES
+ *
+ * Refs:
+ * - zoomInputRef, zoomMenuRef, pageInputRef
+ *
+ * State values / derived values:
+ * - activeTool, activeCategoryDropdown, lastDrawTool, lastShapeTool, lastReviewTool
+ * - showSurveyPanel, showAnnotationColorPicker
+ * - strokeColor, strokeOpacity, strokeWidthInputValue
+ * - eraserSizeInputValue
+ * - zoomInputValue, isZoomMenuOpen, zoomDropdownLabel, zoomMode, manualZoomScale
+ * - pageNum, pageInputValue, numPages
+ *
+ * State setters / handlers:
+ * - setActiveTool, setActiveCategoryDropdown, setTooltip, setShowAnnotationColorPicker
+ * - handleStrokeColorChange, handleStrokeOpacityChange
+ * - handleStrokeWidthInputChange, handleStrokeWidthInputBlur, setIsStrokeWidthFocused
+ * - handleEraserSizeInputChange, handleEraserSizeInputBlur, setIsEraserSizeFocused
+ * - zoomOut, zoomIn, resetZoom
+ * - handleZoomInputChange, handleZoomInputKeyDown, handleZoomInputBlur
+ * - toggleZoomMenu, handleZoomModeSelect
+ * - goToPreviousPage, goToNextPage
+ * - handlePageInputChange, handlePageInputKeyDown, handlePageInputBlur
+ */
+
 // PDF Viewer Component with improved typography
 function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, ballInCourtEntities, setBallInCourtEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
