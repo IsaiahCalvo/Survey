@@ -42,7 +42,7 @@ The left rail is `<PDFSidebar>` — the second of the two render sites in `src/A
 
 - [x] **B4. Render the rail at App level.** Inside the host div, render `{leftRailApi && <PDFSidebar {...leftRailApi} />}`. The rail's collapsed / expanded state may need its own App-level useState if PDFViewer previously owned it — if so, lift it up; if not, pass through the api.
 
-- [ ] **B5. Remove the now-duplicate renders from PDFViewer.** There are TWO `<PDFSidebar>` sites inside PDFViewer: one for the loading state (around line 32015 in the current file) and one for the fully wired state (around line 32739). BOTH must be removed. Anything inside PDFViewer that called `pdfSidebarRef.current` may need to read the App-level ref instead — search for `pdfSidebarRef` references and reconcile each one. After removal: `grep -c "<PDFSidebar" src/App.jsx` must return **1** (only the App-level host renders it).
+- [x] **B5. Remove the now-duplicate renders from PDFViewer.** There are TWO `<PDFSidebar>` sites inside PDFViewer: one for the loading state (around line 32015 in the current file) and one for the fully wired state (around line 32739). BOTH must be removed. Anything inside PDFViewer that called `pdfSidebarRef.current` may need to read the App-level ref instead — search for `pdfSidebarRef` references and reconcile each one. After removal: `grep -c "<PDFSidebar" src/App.jsx` must return **1** (only the App-level host renders it).
 
 - [ ] **B6. Visual + behavioral smoke.** Read the newest `Logs/` folder. Confirm no errors. Confirm the rail stays put across tab switches and the home tab still hides it. Confirm page click / search / bookmark / space CRUD still work (the user can verify by clicking through them after a save-log capture).
 
