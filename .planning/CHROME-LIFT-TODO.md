@@ -14,7 +14,7 @@ Approach: extract the entire bottom-toolbar JSX into a stable component (either 
 
 - [x] **A2. Create the component shell.** Define `BottomToolbar(props)` either inline near the top of `App.jsx` or in `src/components/BottomToolbar.jsx`. Initially have it return `null`. Verification: `npx vite build 2>&1 | tail -5` ends with `✓ built`.
 
-- [ ] **A3. Move the JSX.** Move the bottom-toolbar JSX (currently in PDFViewer) into `BottomToolbar`. Replace every direct state/handler reference with `props.<name>`. Keep the original JSX in PDFViewer commented out for one commit so a `git diff` is reviewable. Verification: build passes; visually nothing is different yet (component is defined but not yet rendered).
+- [x] **A3. Move the JSX.** Move the bottom-toolbar JSX (currently in PDFViewer) into `BottomToolbar`. Replace every direct state/handler reference with `props.<name>`. Keep the original JSX in PDFViewer commented out for one commit so a `git diff` is reviewable. Verification: build passes; visually nothing is different yet (component is defined but not yet rendered).
 
 - [ ] **A4. Add App-level host + state + publish wiring.** Add `<div id="chrome-bottom-host" ...>` in `App.jsx` below the flex:1 area (or wherever the bottom rail belongs visually). Add `const [bottomToolbarApi, setBottomToolbarApi] = useState(null)`. Pass `onBottomToolbarApiChange={setBottomToolbarApi}` to PDFViewer. Render `{bottomToolbarApi && <BottomToolbar {...bottomToolbarApi} />}` inside the host. Verification: build passes; host appears at the bottom when a PDF tab is active, hidden on home.
 
