@@ -32695,7 +32695,14 @@ ${pageBlocks}
     onLeftRailApiChange((prev) => {
       if (prev) {
         const keys = Object.keys(nextLeftRailApi);
-        if (keys.length === Object.keys(prev).length && keys.every((key) => prev[key] === nextLeftRailApi[key])) {
+        if (keys.length === Object.keys(prev).length && keys.every((key) => {
+          const previousValue = prev[key];
+          const nextValue = nextLeftRailApi[key];
+          if (typeof previousValue === 'function' && typeof nextValue === 'function') {
+            return true;
+          }
+          return previousValue === nextValue;
+        })) {
           return prev;
         }
       }
