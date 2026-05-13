@@ -26,7 +26,7 @@ Approach: extract the entire bottom-toolbar JSX into a stable component (either 
 
 - [x] **A8. Behavior smoke — cold open.** Cold-open behavior: the bottom strip should be visible at its final dimensions before the PDF area paints. Confirm the host has `display: flex` set the moment a PDF tab becomes active and is styled with the correct background / border so it looks like the chrome even if the inner component hasn't published its first api yet. If the host is briefly empty / has wrong dimensions, fix the host's styling. Verification: build passes, test baseline holds, host has min-height matching the previous toolbar height (~49px).
 
-- [ ] **A9. Session moment + reconciliation note.** Append a DECISION entry in today's session-moments file describing the lift approach + any deviations. If you skipped any sub-step above, capture the reason in the same entry. Verification: file exists, entry is present.
+- [x] **A9. Session moment + reconciliation note.** Append a DECISION entry in today's session-moments file describing the lift approach + any deviations. If you skipped any sub-step above, capture the reason in the same entry. Verification: file exists, entry is present.
 
 ## Phase B — Left Tool Rail Lift
 
