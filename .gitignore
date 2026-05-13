@@ -13,6 +13,7 @@
 # GitHub Actions release workflow needs the icons to build Mac + Windows
 # installers; everything else here is electron-builder output noise.
 /build/*
+!/build/README.md
 !/build/icon.icns
 !/build/icon.png
 /dist

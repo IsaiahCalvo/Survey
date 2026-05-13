@@ -1,7 +1,7 @@
 import React from 'react';
 import { useMSGraph } from '../contexts/MSGraphContext';
 
-import oneDriveLogo from './onedrive-logo.png';
+import oneDriveLogo from '../assets/brand/onedrive-logo.png';
 
 export const OneDriveConnectButton = ({ onConnect }) => {
     const { isAuthenticated, login, logout, account, isLoading } = useMSGraph();
