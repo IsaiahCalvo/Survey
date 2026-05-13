@@ -32604,10 +32604,17 @@ ${pageBlocks}
   }, [printPanelGetThumbnail]);
 
   const handleLeftRailToggleCollapse = useCallback((isCollapsed) => {
-    setIsLeftSidebarCollapsed(isCollapsed);
-    requestAnimationFrame(() => {
-      applyLayoutDrivenZoom();
+    let didChange = false;
+    setIsLeftSidebarCollapsed((prev) => {
+      if (prev === isCollapsed) return prev;
+      didChange = true;
+      return isCollapsed;
     });
+    if (didChange) {
+      requestAnimationFrame(() => {
+        applyLayoutDrivenZoom();
+      });
+    }
   }, [applyLayoutDrivenZoom]);
 
   // UX 2026-05-13: Publish left rail state to the App shell when this tab is
@@ -32615,7 +32622,7 @@ ${pageBlocks}
   // sidebar prop and handler in the API has already been declared.
   useEffect(() => {
     if (!isActive || typeof onLeftRailApiChange !== 'function') return;
-    onLeftRailApiChange({
+    const nextLeftRailApi = {
       ref: pdfSidebarRef,
       features,
       pdfDoc,
@@ -32684,6 +32691,15 @@ ${pageBlocks}
       currentUserEmail: user?.email || null,
       currentUserDisplayName: user?.user_metadata?.full_name || null,
       onToggleCollapse: handleLeftRailToggleCollapse
+    };
+    onLeftRailApiChange((prev) => {
+      if (prev) {
+        const keys = Object.keys(nextLeftRailApi);
+        if (keys.length === Object.keys(prev).length && keys.every((key) => prev[key] === nextLeftRailApi[key])) {
+          return prev;
+        }
+      }
+      return nextLeftRailApi;
     });
   }, [
     isActive,
