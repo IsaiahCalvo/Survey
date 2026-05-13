@@ -43580,6 +43580,39 @@ export default function App() {
   // wiring step.
   const [bottomToolbarApi, setBottomToolbarApi] = useState(null);
 
+  /*
+   * LeftRail/PDFSidebar API audit (UX 2026-05-13 chrome lift)
+   *
+   * Ref:
+   * - pdfSidebarRef
+   *
+   * Props currently passed to PDFSidebar:
+   * - features, pdfDoc, numPages, pageNum
+   * - onNavigateToPage, onNavigateToMatch
+   * - searchResults, currentMatchIndex, onSearchResultsChange, onCurrentMatchIndexChange
+   * - onDuplicatePage, onDeletePage, onCutPage, onCopyPage, onPastePage
+   * - clipboardPage, clipboardType
+   * - onRotatePage, onMirrorPage, onResetPage, onReorderPages, pageTransformations, getThumbnail
+   * - bookmarks, onBookmarkCreate, onBookmarkUpdate, onBookmarkDelete
+   * - spaces, onSpaceCreate, onSpaceUpdate, onSpaceDelete
+   * - activeSpaceId, onSetActiveSpace, onExitSpaceMode
+   * - onRequestRegionEdit, onCancelRegionEdit
+   * - onSpaceAssignPages, onSpaceRenamePage, onSpaceRemovePage, onReorderSpaces
+   * - onExportSpaceCSV, onExportSpacePDF
+   * - isRegionSelectionActive, shouldShowPage, activeSpacePages
+   * - scale, tabId, onPageDrop
+   * - getCanvasAnnotationVisibilityState, onToggleCanvasAnnotations
+   * - getSurveyAnnotationVisibilityState, onToggleSurveyAnnotations
+   * - selectedSpaceId, onToggleRegionOverlay, getRegionOverlayEnabled, isRegionOverlayToggleEnabled
+   * - showSurveyPanel, selectedModuleId
+   * - cloudSyncStatus, cloudSyncQueueSize, cloudSyncEnabled, cloudSyncOnRetry
+   * - presence, currentUserId, currentUserEmail, currentUserDisplayName
+   * - onToggleCollapse
+   *
+   * Loading-state sidebar currently passes inert defaults for the subset needed
+   * to keep the rail, sync chip, and presence row visible before the PDF loads.
+   */
+
   // Tab management state
   const HOME_TAB_ID = 'home-tab';
   const [tabs, setTabs] = useState([{ id: HOME_TAB_ID, name: 'Home', file: null, isHome: true }]); // Array of { id, name, file, isHome? }

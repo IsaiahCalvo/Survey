@@ -34,7 +34,7 @@ Only start Phase B after every item in Phase A is `[x]` or has a `skipped` note.
 
 The left rail is `<PDFSidebar>` — the second of the two render sites in `src/App.jsx`. It receives roughly **sixty** props from PDFViewer (page list / search / bookmarks / spaces / page operations / cloud sync state / presence / region selection / canvas + survey visibility toggles / scale / tab id). The lift is structurally identical to the bottom toolbar but with a much wider props object.
 
-- [ ] **B1. Enumerate the api.** List every prop `<PDFSidebar>` currently receives. Write it as a comment block at the App-level render site (or in the api state declaration) so the contract is auditable.
+- [x] **B1. Enumerate the api.** List every prop `<PDFSidebar>` currently receives. Write it as a comment block at the App-level render site (or in the api state declaration) so the contract is auditable.
 
 - [ ] **B2. Add App-level host + state.** Add a host div (e.g. `<div id="chrome-left-host">`) in the right structural place — alongside the flex:1 area inside the App return, so the rail sits to the left of the PDF panel and is independent of which PDF is active. Add `const [leftRailApi, setLeftRailApi] = useState(null)`.
 
