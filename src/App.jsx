@@ -10194,7 +10194,7 @@ function BottomToolbar(props) {
 }
 
 // PDF Viewer Component with improved typography
-function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, ballInCourtEntities, setBallInCourtEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
+function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onBottomToolbarApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, ballInCourtEntities, setBallInCourtEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
   // phase35Diag logger can prefix every gate decision with the file under test.
   // Production-stripped via import.meta.env.MODE check; tree-shakes from prod.
@@ -43930,6 +43930,12 @@ export default function App() {
   const [documents, setDocuments] = useState([]);
   const dashboardRef = useRef(null);
 
+  // UX 2026-05-13: App-level bottom toolbar state. The chrome-bottom host
+  // mounts with final rail dimensions as soon as a PDF tab is active; the active
+  // PDFViewer will publish the live toolbar API into this object in the next
+  // wiring step.
+  const [bottomToolbarApi, setBottomToolbarApi] = useState(null);
+
   // Tab management state
   const HOME_TAB_ID = 'home-tab';
   const [tabs, setTabs] = useState([{ id: HOME_TAB_ID, name: 'Home', file: null, isHome: true }]); // Array of { id, name, file, isHome? }
@@ -44367,6 +44373,8 @@ export default function App() {
                     pdfFilePath={tab.filePath}
                     onBack={handleBack}
                     tabId={tab.id}
+                    isActive={isVisible}
+                    onBottomToolbarApiChange={setBottomToolbarApi}
                     onPageDrop={handlePageDrop}
                     onUpdatePDFFile={handleUpdatePDFFile}
                     onUnsavedAnnotationsChange={handleUnsavedAnnotationsChange}
@@ -44391,6 +44399,26 @@ export default function App() {
               </div>
             );
           })}
+        </div>
+        <div
+          id="chrome-bottom-host"
+          style={{
+            display: isViewerVisible ? 'flex' : 'none',
+            flexShrink: 0,
+            minHeight: '49px',
+            padding: '10px 20px 18px 20px',
+            background: '#2b2b2b',
+            borderTop: '1px solid #444',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '12px',
+            fontSize: '14px',
+            fontFamily: FONT_FAMILY,
+            color: '#ddd',
+            position: 'relative'
+          }}
+        >
+          {bottomToolbarApi && <BottomToolbar {...bottomToolbarApi} />}
         </div>
       </div>
 
