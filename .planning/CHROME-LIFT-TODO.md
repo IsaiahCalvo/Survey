@@ -38,7 +38,7 @@ The left rail is `<PDFSidebar>` — the second of the two render sites in `src/A
 
 - [x] **B2. Add App-level host + state.** Add a host div (e.g. `<div id="chrome-left-host">`) in the right structural place — alongside the flex:1 area inside the App return, so the rail sits to the left of the PDF panel and is independent of which PDF is active. Add `const [leftRailApi, setLeftRailApi] = useState(null)`.
 
-- [ ] **B3. Wire publish callback.** Pass `onLeftRailApiChange={setLeftRailApi}` to PDFViewer. Add a publish `useEffect` in PDFViewer with the full api. Critical: place AFTER all dependency variables are declared in the function body (same TDZ rule as Phase A).
+- [x] **B3. Wire publish callback.** Pass `onLeftRailApiChange={setLeftRailApi}` to PDFViewer. Add a publish `useEffect` in PDFViewer with the full api. Critical: place AFTER all dependency variables are declared in the function body (same TDZ rule as Phase A).
 
 - [ ] **B4. Render the rail at App level.** Inside the host div, render `{leftRailApi && <PDFSidebar {...leftRailApi} />}`. The rail's collapsed / expanded state may need its own App-level useState if PDFViewer previously owned it — if so, lift it up; if not, pass through the api.
 

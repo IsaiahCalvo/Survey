@@ -10195,7 +10195,7 @@ function BottomToolbar(props) {
 }
 
 // PDF Viewer Component with improved typography
-function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onBottomToolbarApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, ballInCourtEntities, setBallInCourtEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
+function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onBottomToolbarApiChange, onLeftRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, ballInCourtEntities, setBallInCourtEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
   // phase35Diag logger can prefix every gate decision with the file under test.
   // Production-stripped via import.meta.env.MODE check; tree-shakes from prod.
@@ -32603,6 +32603,159 @@ ${pageBlocks}
     setPrintPanelOpen(false);
   }, [printPanelGetThumbnail]);
 
+  const handleLeftRailToggleCollapse = useCallback((isCollapsed) => {
+    setIsLeftSidebarCollapsed(isCollapsed);
+    requestAnimationFrame(() => {
+      applyLayoutDrivenZoom();
+    });
+  }, [applyLayoutDrivenZoom]);
+
+  // UX 2026-05-13: Publish left rail state to the App shell when this tab is
+  // active. Placed immediately before the loading/full render branches so every
+  // sidebar prop and handler in the API has already been declared.
+  useEffect(() => {
+    if (!isActive || typeof onLeftRailApiChange !== 'function') return;
+    onLeftRailApiChange({
+      ref: pdfSidebarRef,
+      features,
+      pdfDoc,
+      numPages,
+      pageNum,
+      onNavigateToPage: goToPage,
+      onNavigateToMatch: navigateToMatch,
+      searchResults,
+      currentMatchIndex,
+      onSearchResultsChange: handleSearchResultsChange,
+      onCurrentMatchIndexChange: handleCurrentMatchIndexChange,
+      onDuplicatePage: handleDuplicatePage,
+      onDeletePage: handleDeletePage,
+      onCutPage: handleCutPage,
+      onCopyPage: handleCopyPage,
+      onPastePage: handlePastePage,
+      clipboardPage,
+      clipboardType,
+      onRotatePage: handleRotatePage,
+      onMirrorPage: handleMirrorPage,
+      onResetPage: handleResetPage,
+      onReorderPages: handleReorderPages,
+      pageTransformations,
+      getThumbnail: printPanelGetThumbnail,
+      bookmarks,
+      onBookmarkCreate: handleBookmarkCreate,
+      onBookmarkUpdate: handleBookmarkUpdate,
+      onBookmarkDelete: handleBookmarkDelete,
+      spaces,
+      onSpaceCreate: handleSpaceCreate,
+      onSpaceUpdate: handleSpaceUpdate,
+      onSpaceDelete: handleSpaceDelete,
+      activeSpaceId,
+      onSetActiveSpace: handleSetActiveSpace,
+      onExitSpaceMode: handleExitSpaceMode,
+      onRequestRegionEdit: handleRequestRegionEdit,
+      onCancelRegionEdit: handleCancelRegionEdit,
+      onSpaceAssignPages: handleSpaceAssignPages,
+      onSpaceRenamePage: handleSpaceRenamePage,
+      onSpaceRemovePage: handleSpaceRemovePage,
+      onReorderSpaces: handleReorderSpaces,
+      onExportSpaceCSV: handleExportSpaceToCSV,
+      onExportSpacePDF: handleExportSpaceToPDF,
+      isRegionSelectionActive: showRegionSelection,
+      shouldShowPage,
+      activeSpacePages,
+      scale,
+      tabId,
+      onPageDrop,
+      getCanvasAnnotationVisibilityState,
+      onToggleCanvasAnnotations: handleToggleCanvasAnnotations,
+      getSurveyAnnotationVisibilityState,
+      onToggleSurveyAnnotations: handleToggleSurveyAnnotations,
+      selectedSpaceId,
+      onToggleRegionOverlay: handleToggleRegionOverlay,
+      getRegionOverlayEnabled: isRegionOverlayEnabled,
+      isRegionOverlayToggleEnabled,
+      showSurveyPanel,
+      selectedModuleId,
+      cloudSyncStatus,
+      cloudSyncQueueSize,
+      cloudSyncEnabled,
+      cloudSyncOnRetry: cloudSyncForceFlush,
+      presence: documentPresenceList,
+      currentUserId: user?.id || null,
+      currentUserEmail: user?.email || null,
+      currentUserDisplayName: user?.user_metadata?.full_name || null,
+      onToggleCollapse: handleLeftRailToggleCollapse
+    });
+  }, [
+    isActive,
+    onLeftRailApiChange,
+    pdfSidebarRef,
+    features,
+    pdfDoc,
+    numPages,
+    pageNum,
+    goToPage,
+    navigateToMatch,
+    searchResults,
+    currentMatchIndex,
+    handleSearchResultsChange,
+    handleCurrentMatchIndexChange,
+    handleDuplicatePage,
+    handleDeletePage,
+    handleCutPage,
+    handleCopyPage,
+    handlePastePage,
+    clipboardPage,
+    clipboardType,
+    handleRotatePage,
+    handleMirrorPage,
+    handleResetPage,
+    handleReorderPages,
+    pageTransformations,
+    printPanelGetThumbnail,
+    bookmarks,
+    handleBookmarkCreate,
+    handleBookmarkUpdate,
+    handleBookmarkDelete,
+    spaces,
+    handleSpaceCreate,
+    handleSpaceUpdate,
+    handleSpaceDelete,
+    activeSpaceId,
+    handleSetActiveSpace,
+    handleExitSpaceMode,
+    handleRequestRegionEdit,
+    handleCancelRegionEdit,
+    handleSpaceAssignPages,
+    handleSpaceRenamePage,
+    handleSpaceRemovePage,
+    handleReorderSpaces,
+    handleExportSpaceToCSV,
+    handleExportSpaceToPDF,
+    showRegionSelection,
+    shouldShowPage,
+    activeSpacePages,
+    scale,
+    tabId,
+    onPageDrop,
+    getCanvasAnnotationVisibilityState,
+    handleToggleCanvasAnnotations,
+    getSurveyAnnotationVisibilityState,
+    handleToggleSurveyAnnotations,
+    selectedSpaceId,
+    handleToggleRegionOverlay,
+    isRegionOverlayEnabled,
+    isRegionOverlayToggleEnabled,
+    showSurveyPanel,
+    selectedModuleId,
+    cloudSyncStatus,
+    cloudSyncQueueSize,
+    cloudSyncEnabled,
+    cloudSyncForceFlush,
+    documentPresenceList,
+    user,
+    handleLeftRailToggleCollapse
+  ]);
+
   // Show loading state when PDF is not loaded yet
   if (!pdfDoc || isLoadingPDF) {
     return (
@@ -44069,6 +44222,7 @@ export default function App() {
                     tabId={tab.id}
                     isActive={isVisible}
                     onBottomToolbarApiChange={setBottomToolbarApi}
+                    onLeftRailApiChange={setLeftRailApi}
                     onPageDrop={handlePageDrop}
                     onUpdatePDFFile={handleUpdatePDFFile}
                     onUnsavedAnnotationsChange={handleUnsavedAnnotationsChange}
