@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.3
-milestone_name: Tools Polish
-status: verifying
-stopped_at: "Plan 31-05 Tasks 1+2 complete; checkpoint:human-verify pending user UAT against 31-UAT-CHECKLIST.md"
-last_updated: "2026-05-01T04:19:28.216Z"
-last_activity: "2026-05-01 — Phase 31 Plan 04 shipped (3 tasks, 3 files, 3 commits, ~19 min, baseline 439p/14f/6s → 444p/9f/6s with 7 RED contracts flipped GREEN). Cutover seal contract complete: post-cutover doc opens read from Y.Doc snapshot and skip the legacy SELECT entirely."
+milestone: v2.4
+milestone_name: CRDT Foundation + Real-Time Sync
+status: phase-closed
+stopped_at: "Phase 31 CLOSED (5/5 plans + 31-VERIFICATION.md + 31-RECONCILIATION.md). Next session: toolbar / chrome instant-render polish — see .planning/HANDOFF-toolbar-polish.md"
+last_updated: "2026-05-13T19:35:00.000Z"
+last_activity: "2026-05-13 — Phase 31 closed out. 31-VERIFICATION.md (7/7 ACs PASS) + 31-RECONCILIATION.md (DONE) written. Test baseline 640p / 0f / 6s — all 8 pre-existing failures from the 2026-05-01 baseline cleaned up by the 2026-05-13 annotation-lifecycle stabilization commit. Undo end-to-end verified in live log."
 progress:
   total_phases: 15
-  completed_phases: 8
-  total_plans: 44
-  completed_plans: 43
-  percent: 95
+  completed_phases: 9
+  total_plans: 49
+  completed_plans: 48
+  percent: 96
 ---
 
 # Project State
@@ -25,13 +25,13 @@ See: .planning/PROJECT.md (updated 2026-04-14)
 
 ## Current Position
 
-Milestone: v2.4 — CRDT Foundation + Real-Time Sync (Yjs port; SVG/Fabric layers immutable). Phase 31 (migration cutover seal) lean variant in flight: kill switch + per-doc backfill + ID-at-creation stamping + cutover-aware hydrate.
-Phase: **Phase 31 IN FLIGHT (4/5 plans complete)** — Plans 31-01 + 31-02 + 31-03 + 31-04 shipped. Plan 31-05 ahead.
-Plan: Plan 31-04 closed 2026-05-01 — Three coordinated changes complete the cutover seal. (1) `src/lib/collab/crdtBackfill.js` gains a pre-loop short-circuit (`cutover_already_complete` on already-sealed docs, before Web Lock acquire) AND a post-loop count-match gate (`yMapSize >= imported` → `UPDATE documents.cutover_completed_at = NOW()`). (2) `src/components/collab/YDocProvider.jsx` mount effect requests the seal via `markCutoverComplete: true` (single-line addition). (3) `src/hooks/useAnnotationCloudSync.js` hydrate effect branches on `documents.cutover_completed_at`: NOT NULL → materialize annotationsByPage from `phase30Ydoc.getMap('annotations')`; NULL → fall through to legacy `loadCloudWithEmptyVerify`. All 7 Plan 31-01 contract tests (4 cutoverBackfill + 3 cutoverHydrate) flipped RED→GREEN. npm test 439p/14f/6s → 444p/9f/6s (5 net green, zero regressions). Existing Phase 30 backfill behavior byte-identical when `markCutoverComplete` is not passed (8/8 existing tests preserved). Commits 8e4e989b + 53a29a63 + 18a460a9.
-Status: Phase 31 in flight (4/5 plans). Plan 35 functionally complete (verification + reconciliation still pending). Next: Plan 31-05 (final wave — likely final polish / additional cutover-aware behaviors layered on the flag).
-Last activity: 2026-05-01 — Phase 31 Plan 04 shipped (3 tasks, 3 files, 3 commits, ~19 min, baseline 439p/14f/6s → 444p/9f/6s with 7 RED contracts flipped GREEN). Cutover seal contract complete: post-cutover doc opens read from Y.Doc snapshot and skip the legacy SELECT entirely.
+Milestone: v2.4 — CRDT Foundation + Real-Time Sync (Yjs port; SVG/Fabric layers immutable). **Phase 31 CLOSED 2026-05-13** — verification + reconciliation written, cutover seal verified end-to-end via 2026-05-13 sync test log (undo round-trip working through three-lane history system).
+Phase: **Phase 31 CLOSED (5/5 plans + paperwork DONE).** Next focus: toolbar / chrome instant-render polish (see `.planning/HANDOFF-toolbar-polish.md`).
+Plan: Phase 31 closed out — 31-VERIFICATION.md (7/7 ACs PASS) + 31-RECONCILIATION.md (DONE) written 2026-05-13. The 2026-05-01 functional UAT and the 2026-05-13 post-stabilize log capture both confirm the cutover contract: kill switch OFF (zero legacy bulk-upserts), per-doc lazy backfill on first post-cutover open, hydrate from Y.Map on cutover-sealed docs. Test baseline IMPROVED 429p/8f/6s → 640p/0f/6s after the 2026-05-13 annotation-lifecycle stabilization commit (681d90a9) cleaned up the 8 pre-existing failures and added a three-lane undo system.
+Status: Phase 31 CLOSED. Phase 30 CLOSED. Phase 35 still owes verification + reconciliation paperwork. v2.4 milestone phases shipped: 27 (modulo reconciliation), 28, 29, 30, 31, 35 functionally. Open: 32, 33, 34, plus Phase 35 close-out paperwork. Next session focus per user direction: toolbar / chrome instant-render polish.
+Last activity: 2026-05-13 — Phase 31 closed out. 31-VERIFICATION.md (7/7 ACs PASS) + 31-RECONCILIATION.md (DONE) written. Test baseline 640p / 0f / 6s. Undo end-to-end verified in live log capture (Logs/2026-05-13_19-01-59).
 
-Progress: [██████████] 95% — Phase 27 functionally complete (5/5 plans, reconciliation pending); Phase 28 functionally complete (6/6 plans); Phase 29 functionally complete (6/6 plans, 29-RECONCILIATION.md DONE_WITH_CONCERNS); **Phase 30 CLOSED (7/7 plans, verifier 19/19, reconciliation DONE)**; **Phase 35 functionally complete (6/6 plans shipped 2026-04-30; verification + reconciliation pending)**; **Phase 31 IN FLIGHT (4/5 plans: 01 + 02 + 03 + 04 shipped 2026-05-01; cutover seal contract complete — post-cutover docs read from Y.Doc, skip legacy SELECT)**; v2.4 milestone overall: 5 of 8 phases shipped (27 modulo reconciliation, 28, 29, 30, 35 functionally); Phase 31 in flight; 0 Phase 32/33/34; v2.3 closed at Phase 15
+Progress: [██████████] 96% — Phase 27 functionally complete (5/5 plans, reconciliation pending); Phase 28 functionally complete (6/6 plans); Phase 29 functionally complete (6/6 plans, 29-RECONCILIATION.md DONE_WITH_CONCERNS); **Phase 30 CLOSED (7/7 plans, verifier 19/19, reconciliation DONE)**; **Phase 31 CLOSED (5/5 plans, verifier 7/7, reconciliation DONE 2026-05-13)**; **Phase 35 functionally complete (6/6 plans shipped 2026-04-30; verification + reconciliation pending)**; v2.4 milestone overall: 6 of 8 phases shipped (27 modulo reconciliation, 28, 29, 30, 31, 35 functionally); 0 Phase 32/33/34; v2.3 closed at Phase 15
 
 ## Performance Metrics
 
