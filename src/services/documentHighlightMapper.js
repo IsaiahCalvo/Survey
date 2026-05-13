@@ -1,0 +1,84 @@
+import { ANNOTATION_VISIBILITY_SCOPE, getAnnotationVisibilityScope } from '../utils/annotationVisibilityRules.js';
+
+const getSurveyHighlightScope = (annotation) => getAnnotationVisibilityScope({
+  moduleId: annotation?.moduleId ?? null,
+  regionId: annotation?.regionId ?? null,
+});
+
+export function buildHighlightRow({
+  documentId,
+  userId,
+  highlightId,
+  annotation = {},
+}) {
+  const regionId = annotation.regionId ?? null;
+  const scope = getSurveyHighlightScope(annotation);
+
+  return {
+    document_id: documentId,
+    user_id: userId,
+    highlight_id: highlightId,
+    annotation_type: 'highlight',
+    page_number: annotation.pageNumber || 1,
+    bounds: annotation.bounds || {},
+    category_id: annotation.categoryId || null,
+    module_id: annotation.moduleId || null,
+    space_id: annotation.spaceId || null,
+    name: annotation.name || null,
+    notes: annotation.notes || annotation.note || null,
+    ball_in_court_entity_id: annotation.ballInCourtEntityId || null,
+    ball_in_court_name: annotation.ballInCourtEntityName || annotation.ballInCourtName || null,
+    checklist_responses: annotation.checklistResponses || {},
+    changed_by: annotation.changedBy || null,
+    changed_date: annotation.changedDate || null,
+    color: annotation.color || '#FFFF00',
+    opacity: annotation.opacity || 0.3,
+    last_modified_by: userId,
+    version: (annotation.version || 0) + 1,
+    annotation_data: {
+      ...(annotation.annotationData || {}),
+      regionId,
+      scope,
+    },
+  };
+}
+
+export function mapHighlightRowToLocalAnnotation(row) {
+  if (!row) return null;
+  const annotationData = row.annotation_data && typeof row.annotation_data === 'object'
+    ? row.annotation_data
+    : {};
+  const regionId = annotationData.regionId ?? null;
+
+  return {
+    highlightId: row.highlight_id,
+    pageNumber: row.page_number,
+    bounds: row.bounds,
+    categoryId: row.category_id,
+    moduleId: row.module_id,
+    spaceId: row.space_id,
+    regionId,
+    name: row.name,
+    notes: row.notes,
+    note: row.notes,
+    ballInCourtEntityId: row.ball_in_court_entity_id,
+    ballInCourtEntityName: row.ball_in_court_name,
+    ballInCourtName: row.ball_in_court_name,
+    checklistResponses: row.checklist_responses || {},
+    changedBy: row.changed_by,
+    changedDate: row.changed_date,
+    color: row.color,
+    opacity: row.opacity,
+    version: row.version,
+    supabaseId: row.id,
+    lastSyncedAt: row.updated_at,
+    userId: row.user_id,
+    lastModifiedBy: row.last_modified_by,
+    annotationData,
+    visibilityScope: annotationData.scope || (
+      regionId
+        ? ANNOTATION_VISIBILITY_SCOPE.SURVEY_REGION
+        : ANNOTATION_VISIBILITY_SCOPE.SURVEY
+    ),
+  };
+}

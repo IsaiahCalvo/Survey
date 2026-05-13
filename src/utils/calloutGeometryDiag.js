@@ -209,7 +209,7 @@ export const captureSvgCallout = (callout, pageNumber, extras = {}) => {
 
     // Verbose console dump — single block per callout so the log file is scannable.
     // Guarded by a window flag so you can mute it if it ever gets noisy.
-    if (!window.__calloutGeomMute) {
+    if (window.__CALLOUT_GEOM_DIAG === true) {
       // eslint-disable-next-line no-console
       console.log(`[CalloutGeom svg p${pageNumber}] id=${id} text=${JSON.stringify(src.text)}`, capture);
     }
@@ -354,7 +354,7 @@ export const captureFabricCallout = (calloutId, canvas, enlivenedObjects, extras
       activeObjectType: canvasInfo?.activeObject?.type || null,
     });
 
-    if (!window.__calloutGeomMute) {
+    if (window.__CALLOUT_GEOM_DIAG === true) {
       // eslint-disable-next-line no-console
       console.log(`[CalloutGeom fabric] id=${calloutId} — ${capture.objects.length} objects`, capture);
     }

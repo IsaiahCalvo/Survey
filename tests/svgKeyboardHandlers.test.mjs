@@ -30,17 +30,24 @@ function dispatchDelete({
   selectedCalloutIds,
   deleteSelected,
   onDeleteSelectedCallouts,
+  onBeginBatchDelete,
 }) {
   if (key !== 'Delete' && key !== 'Backspace') return null;
   if (isTyping) return null;
-  if (selectedIds && selectedIds.length > 0) {
+  const hasAnnotations = selectedIds && selectedIds.length > 0;
+  const hasCallouts = selectedCalloutIds && selectedCalloutIds.length > 0;
+  if (hasAnnotations && hasCallouts) {
+    onBeginBatchDelete?.(2, selectedCalloutIds);
+  }
+  if (hasAnnotations) {
     deleteSelected();
-    return 'annotations';
   }
-  if (selectedCalloutIds && selectedCalloutIds.length > 0) {
+  if (hasCallouts) {
     onDeleteSelectedCallouts(selectedCalloutIds);
-    return 'callouts';
   }
+  if (hasAnnotations && hasCallouts) return 'batch';
+  if (hasAnnotations) return 'annotations';
+  if (hasCallouts) return 'callouts';
   return null;
 }
 
@@ -102,6 +109,25 @@ test('dispatchDelete calls onDeleteSelectedCallouts when callouts selected', () 
   });
   assert.deepEqual(calledWith, ['c1']);
   assert.equal(result, 'callouts');
+});
+
+test('dispatchDelete starts mixed batch delete with selected callout ids', () => {
+  let batchArgs = null;
+  let annotationDeleted = false;
+  let calloutsDeleted = null;
+  const result = dispatchDelete({
+    key: 'Delete',
+    isTyping: false,
+    selectedIds: ['shape-1'],
+    selectedCalloutIds: ['callout-1', 'callout-2'],
+    deleteSelected: () => { annotationDeleted = true; },
+    onDeleteSelectedCallouts: (ids) => { calloutsDeleted = ids; },
+    onBeginBatchDelete: (...args) => { batchArgs = args; },
+  });
+  assert.deepEqual(batchArgs, [2, ['callout-1', 'callout-2']]);
+  assert.equal(annotationDeleted, true);
+  assert.deepEqual(calloutsDeleted, ['callout-1', 'callout-2']);
+  assert.equal(result, 'batch');
 });
 
 test('dispatchDelete is no-op when isTyping=true', () => {

@@ -7,7 +7,7 @@
  * Also exposes `window.__debugReady` with `waitFor()` promise-based readiness
  * signal system. Four signals: pdfLoaded, zoomSettled, domSettled,
  * annotationsMounted. Cascading invalidation ensures Playwright waits for
- * full DOM settle + React/Fabric.js remount before proceeding.
+ * full DOM settle + React annotation remount before proceeding.
  *
  * Everything is compile-time guarded via `import.meta.env.DEV`.
  * Vite dead-code-eliminates all function bodies in production builds,
@@ -94,7 +94,56 @@ function getDomVisiblePages() {
   return pages;
 }
 
+function pageHasAnnotationLayer(pageDiv) {
+  if (!pageDiv) return false;
+  return !!(
+    pageDiv.querySelector('.annotation-layer') ||
+    pageDiv.querySelector('[data-annotation-layer]') ||
+    pageDiv.querySelector('[data-svg-annotation-layer]') ||
+    pageDiv.querySelector('[data-overlay-hidden-pending-pdf="true"]')
+  );
+}
+
+function pageHasAnnotationRuntime(pageDiv) {
+  if (!pageDiv) return false;
+  return !!(
+    pageDiv.querySelector('.canvas-container') ||
+    pageHasAnnotationLayer(pageDiv)
+  );
+}
+
+function getNodeElement(node) {
+  return node?.nodeType === Node.ELEMENT_NODE ? node : null;
+}
+
+function findAnnotationLayerPage(node) {
+  const el = getNodeElement(node);
+  if (!el) return null;
+  const annotationNode = el.matches?.('.annotation-layer, [data-annotation-layer], [data-svg-annotation-layer], [data-overlay-hidden-pending-pdf="true"]')
+    ? el
+    : el.querySelector?.('.annotation-layer, [data-annotation-layer], [data-svg-annotation-layer], [data-overlay-hidden-pending-pdf="true"]');
+  const pageDiv = annotationNode?.closest?.('.e-pv-page-div[data-page-number]');
+  return pageDiv ? Number(pageDiv.dataset.pageNumber) : null;
+}
+
+function refreshAnnotationMountedSignal(page) {
+  const domPages = page != null ? [page] : getDomVisiblePages();
+  const pagesWithAnnotations = domPages.filter(p => {
+    const div = document.querySelector(`.e-pv-page-div[data-page-number="${p}"]`);
+    return pageHasAnnotationRuntime(div);
+  });
+  for (const pageNumber of pagesWithAnnotations) {
+    perPageAnnotationStatus[pageNumber] = true;
+  }
+  signals.annotationsMounted = pagesWithAnnotations.length > 0 &&
+    pagesWithAnnotations.every(p => perPageAnnotationStatus[p] === true);
+}
+
 function isConditionMet(condition, page) {
+  if (condition === 'ready' || condition === 'annotationsMounted') {
+    refreshAnnotationMountedSignal(page);
+  }
+
   if (condition === 'ready') {
     if (!signals.pdfLoaded || !signals.zoomSettled || !signals.domSettled || !signals.annotationsMounted) {
       return false;
@@ -102,31 +151,30 @@ function isConditionMet(condition, page) {
     if (page != null) {
       return perPageAnnotationStatus[page] === true;
     }
-    // All DOM-present pages with canvas containers must be tracked as mounted
+    // All DOM-present pages with annotation runtimes must be tracked as mounted.
     const domPages = getDomVisiblePages();
     if (domPages.length === 0) return false;
-    // Only check pages that have canvas containers (PAL-rendered pages)
-    const pagesWithCanvas = domPages.filter(p => {
+    const pagesWithAnnotations = domPages.filter(p => {
       const div = document.querySelector(`.e-pv-page-div[data-page-number="${p}"]`);
-      return div && div.querySelector('.canvas-container');
+      return pageHasAnnotationRuntime(div);
     });
-    if (pagesWithCanvas.length === 0) return false;
-    return pagesWithCanvas.every(p => perPageAnnotationStatus[p] === true);
+    if (pagesWithAnnotations.length === 0) return false;
+    return pagesWithAnnotations.every(p => perPageAnnotationStatus[p] === true);
   }
 
   if (condition === 'annotationsMounted') {
     if (page != null) {
       return perPageAnnotationStatus[page] === true;
     }
-    // Check DOM-present pages that have canvas containers
+    // Check DOM-present pages that have annotation runtimes.
     const domPages = getDomVisiblePages();
     if (domPages.length === 0) return false;
-    const pagesWithCanvas = domPages.filter(p => {
+    const pagesWithAnnotations = domPages.filter(p => {
       const div = document.querySelector(`.e-pv-page-div[data-page-number="${p}"]`);
-      return div && div.querySelector('.canvas-container');
+      return pageHasAnnotationRuntime(div);
     });
-    if (pagesWithCanvas.length === 0) return false;
-    return pagesWithCanvas.every(p => perPageAnnotationStatus[p] === true);
+    if (pagesWithAnnotations.length === 0) return false;
+    return pagesWithAnnotations.every(p => perPageAnnotationStatus[p] === true);
   }
 
   // Single signal check: pdfLoaded, zoomSettled, domSettled
@@ -182,15 +230,10 @@ function settleSignal(name, debounceMs) {
 }
 
 function checkPageAnnotationComplete(pageNumber) {
-  // Check if the page has Fabric.js canvas (created by PAL after mount).
-  // Fabric.js wraps the PAL's <canvas> element in a .canvas-container div,
-  // so its presence proves both PAL mounted AND Fabric.js initialized.
   const pageDiv = document.querySelector(
     `.e-pv-page-div[data-page-number="${pageNumber}"]`
   );
-  if (!pageDiv) return false;
-
-  return !!pageDiv.querySelector('.canvas-container');
+  return pageHasAnnotationRuntime(pageDiv);
 }
 
 function markPageAnnotationMounted(pageNumber) {
@@ -198,13 +241,13 @@ function markPageAnnotationMounted(pageNumber) {
 
   perPageAnnotationStatus[pageNumber] = true;
 
-  // Check if ALL DOM-present pages with canvas containers have annotations tracked
+  // Check if ALL DOM-present pages with annotation runtimes have annotations tracked.
   const domPages = getDomVisiblePages();
-  const pagesWithCanvas = domPages.filter(p => {
+  const pagesWithAnnotations = domPages.filter(p => {
     const div = document.querySelector(`.e-pv-page-div[data-page-number="${p}"]`);
-    return div && div.querySelector('.canvas-container');
+    return pageHasAnnotationRuntime(div);
   });
-  if (pagesWithCanvas.length > 0 && pagesWithCanvas.every(p => perPageAnnotationStatus[p] === true)) {
+  if (pagesWithAnnotations.length > 0 && pagesWithAnnotations.every(p => perPageAnnotationStatus[p] === true)) {
     settleSignal('annotationsMounted');
   }
 }
@@ -354,6 +397,11 @@ function handleMutations(mutations) {
 
     const processNodes = (nodeList, type) => {
       for (const node of nodeList) {
+        const annotationLayerPage = type === 'added' ? findAnnotationLayerPage(node) : null;
+        if (Number.isFinite(annotationLayerPage) && annotationLayerPage > 0) {
+          setTimeout(() => markPageAnnotationMounted(annotationLayerPage), 10);
+        }
+
         if (!node.classList?.contains('e-pv-page-div')) continue;
 
         const pageNumber = extractPageNumber(node);
@@ -362,10 +410,7 @@ function handleMutations(mutations) {
         hadPageDivChanges = true;
         affectedPages.add(pageNumber);
 
-        const hasAnnotationLayer = !!(
-          node.querySelector('.annotation-layer') ||
-          node.querySelector('[data-annotation-layer]')
-        );
+        const hasAnnotationLayer = pageHasAnnotationLayer(node);
         const hasFabricCanvas = !!node.querySelector('.canvas-container');
 
         const record = {
@@ -492,6 +537,7 @@ export function snapshot(options) {
           scaleConfirmPending: refs?.scaleConfirmPending?.current ?? false
         },
         canvasContainerCount: document.querySelectorAll('.canvas-container').length,
+        svgAnnotationLayerCount: document.querySelectorAll('[data-svg-annotation-layer]').length,
         isZooming: state.isZooming ?? false,
         currentPage: state.pageNum ?? null,
         visiblePages: state.visiblePages ?? [],
@@ -506,9 +552,7 @@ export function snapshot(options) {
           `.e-pv-page-div[data-page-number="${page}"]`
         );
         const syncfusionDom = !!pageDiv;
-        const palMounted = syncfusionDom
-          ? !!(pageDiv.querySelector('.annotation-layer') || pageDiv.querySelector('[data-annotation-layer]'))
-          : false;
+        const palMounted = syncfusionDom ? pageHasAnnotationLayer(pageDiv) : false;
         const fabricCanvas = syncfusionDom
           ? !!pageDiv.querySelector('.canvas-container')
           : false;

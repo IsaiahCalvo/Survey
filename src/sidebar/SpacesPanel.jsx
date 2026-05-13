@@ -555,6 +555,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                         setIsExportMenuOpen(false);
                         onExportSpacePDF?.(space.id);
                       }}
+                      title="Exports base PDF pages only; app annotations are not embedded."
                       style={{
                         padding: '8px 12px',
                         background: 'transparent',
@@ -568,7 +569,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                       onMouseEnter={(e) => e.currentTarget.style.background = '#333'}
                       onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                     >
-                      PDF
+                      PDF Pages
                     </button>
                   </div>
                 )}

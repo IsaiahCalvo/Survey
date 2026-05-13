@@ -29,6 +29,18 @@
 
 import * as Y from 'yjs';
 
+const UNDO_BOUNDARY_REGISTRY_KEY = '__surveyCrdtUndoBoundaryRegistry';
+
+function stopUndoCaptureForDoc(ydoc) {
+  const managers = globalThis?.[UNDO_BOUNDARY_REGISTRY_KEY]?.get?.(ydoc);
+  if (!managers) return;
+  for (const manager of managers) {
+    if (typeof manager?.stopCapturing === 'function') {
+      manager.stopCapturing();
+    }
+  }
+}
+
 // --- Module-scoped applyingRemote belt ---------------------------------------
 //
 // UX comment: this flag is the SECONDARY defense against the echo loop. The
@@ -148,6 +160,34 @@ function snapshotYMapLike(yMapLike) {
   return null;
 }
 
+function writePlainObjectToYMap(target, values) {
+  if (!target || !values) return;
+  for (const key of Object.keys(values)) {
+    const prev = typeof target.get === 'function' ? target.get(key) : undefined;
+    if (shallowEqual(prev, values[key])) continue;
+    target.set(key, values[key]);
+  }
+}
+
+function getCalloutAuthorId(callout) {
+  return callout?.meta?.authorId
+    || callout?.authorId
+    || callout?.data?.authorId
+    || callout?.data?.userId
+    || null;
+}
+
+function getCalloutId(callout) {
+  return callout?.id || callout?.highlightId || callout?.data?.id || null;
+}
+
+function cloneCalloutForYDoc(callout, id) {
+  const out = { ...(callout || {}) };
+  out.id = out.id || id;
+  if (out.highlightId == null && id) out.highlightId = id;
+  return out;
+}
+
 // --- Public API --------------------------------------------------------------
 
 /**
@@ -194,6 +234,11 @@ export function applyFabricCommit(ydoc, yMapAnnotations, fabricObject, originPay
   const pageNumber = fabricObject?.pageNumber;
 
   ydoc.transact(() => {
+    if (fabricJson && typeof ydoc.getMap === 'function') {
+      const latestFabricById = ydoc.getMap('__annotationLatestFabric');
+      latestFabricById.set(annoId, fabricJson);
+    }
+
     // Resolve or allocate the per-annotation Y.Map. Production Y.Map.get returns
     // undefined for missing keys; allocate a real Y.Map and attach. Test fakes
     // sometimes auto-vivify on get — in that case the returned object is the
@@ -247,13 +292,7 @@ export function applyFabricCommit(ydoc, yMapAnnotations, fabricObject, originPay
     // Per-property writes — DO NOT clear-and-set. Each set() is one mergeable
     // op for COLLAB-03 LWW. If A changes fill and B changes left in the same
     // window, both survive sync because Y.Map merges per-key, not per-Map.
-    if (fabricJson) {
-      for (const key of Object.keys(fabricJson)) {
-        const prev = typeof fabricYMap.get === 'function' ? fabricYMap.get(key) : undefined;
-        if (shallowEqual(prev, fabricJson[key])) continue;
-        fabricYMap.set(key, fabricJson[key]);
-      }
-    }
+    writePlainObjectToYMap(fabricYMap, fabricJson);
 
     // EDIT-path meta — overwritten on every commit. meta.updatedAt is for
     // human display only (e.g. "edited 2 min ago" tooltips); Yjs internal
@@ -293,9 +332,110 @@ export function applyFabricDelete(ydoc, yMapAnnotations, annoId, originPayload) 
     console.warn('[crdtAnnotationBridge] applyFabricDelete: missing annoId — dropped');
     return;
   }
+  stopUndoCaptureForDoc(ydoc);
   ydoc.transact(() => {
     yMapAnnotations.delete(annoId);
   }, originPayload);
+}
+
+/**
+ * Apply a callout create/edit to ydoc.getMap('callouts').
+ *
+ * Callouts are not Fabric annotations in App state; they live in the separate
+ * callouts[] slice. The reload path for cutover-sealed documents must therefore
+ * read and write the dedicated callouts Y.Map instead of relying on Supabase
+ * rows or the Fabric annotations Y.Map.
+ */
+export function applyCalloutCommit(ydoc, yMapCallouts, callout, originPayload, ctx) {
+  const calloutId = getCalloutId(callout);
+  if (!calloutId) {
+    console.warn('[crdtAnnotationBridge] applyCalloutCommit: callout without stable id — dropped');
+    return;
+  }
+  const pageNumber = callout?.pageNumber ?? callout?.page_number ?? 1;
+  const calloutSnapshot = cloneCalloutForYDoc(callout, calloutId);
+
+  ydoc.transact(() => {
+    let calloutYMap = yMapCallouts.get(calloutId);
+    if (!calloutYMap) {
+      calloutYMap = new Y.Map();
+      yMapCallouts.set(calloutId, calloutYMap);
+    }
+
+    let dataYMap = typeof calloutYMap.get === 'function' ? calloutYMap.get('callout') : undefined;
+    if (!dataYMap) {
+      dataYMap = new Y.Map();
+      calloutYMap.set('callout', dataYMap);
+    }
+
+    let metaYMap = typeof calloutYMap.get === 'function' ? calloutYMap.get('meta') : undefined;
+    if (!metaYMap) {
+      metaYMap = new Y.Map();
+      calloutYMap.set('meta', metaYMap);
+    }
+
+    const existingAuthorId = typeof metaYMap.get === 'function' ? metaYMap.get('authorId') : undefined;
+    const isCreate = existingAuthorId == null;
+
+    if (isCreate) {
+      calloutYMap.set('id', calloutId);
+      calloutYMap.set('type', 'callout');
+      calloutYMap.set('pageNumber', pageNumber);
+      metaYMap.set('authorId', getCalloutAuthorId(callout) || ctx?.userId);
+      metaYMap.set('deviceId', ctx?.deviceId);
+      metaYMap.set('createdAt', Date.now());
+    } else if (pageNumber !== undefined && calloutYMap.get('pageNumber') !== pageNumber) {
+      calloutYMap.set('pageNumber', pageNumber);
+    }
+
+    writePlainObjectToYMap(dataYMap, calloutSnapshot);
+    metaYMap.set('updatedAt', Date.now());
+    metaYMap.set('lastEditorId', ctx?.userId);
+  }, originPayload);
+}
+
+export function applyCalloutDelete(ydoc, yMapCallouts, calloutId, originPayload) {
+  if (!calloutId) {
+    console.warn('[crdtAnnotationBridge] applyCalloutDelete: missing calloutId — dropped');
+    return;
+  }
+  stopUndoCaptureForDoc(ydoc);
+  ydoc.transact(() => {
+    yMapCallouts.delete(calloutId);
+  }, originPayload);
+}
+
+export function materializeCalloutFromYMap(calloutYMap, fallbackId = null) {
+  if (!calloutYMap || typeof calloutYMap.get !== 'function') return null;
+  const dataYMap = calloutYMap.get('callout');
+  let callout = null;
+  if (dataYMap) {
+    if (typeof dataYMap.toJSON === 'function') {
+      try { callout = dataYMap.toJSON(); } catch (_e) { callout = null; }
+    }
+    if (!callout && typeof dataYMap.forEach === 'function') {
+      callout = {};
+      dataYMap.forEach((v, k) => { callout[k] = v; });
+    }
+  }
+  if (!callout) return null;
+  const id = calloutYMap.get('id') || fallbackId || callout.id || callout.highlightId;
+  if (id && callout.id == null) callout.id = id;
+  if (id && callout.highlightId == null) callout.highlightId = id;
+  const pageNumber = calloutYMap.get('pageNumber');
+  if (pageNumber != null && callout.pageNumber == null) callout.pageNumber = pageNumber;
+  try {
+    const metaYMap = calloutYMap.get('meta');
+    if (metaYMap && typeof metaYMap.get === 'function') {
+      const authorId = metaYMap.get('authorId');
+      if (authorId) {
+        callout.meta = { ...(callout.meta || {}), authorId: callout.meta?.authorId || authorId };
+      }
+      const lastEditorId = metaYMap.get('lastEditorId');
+      if (lastEditorId) callout.lastEditorId = callout.lastEditorId || lastEditorId;
+    }
+  } catch (_e) { /* ignore */ }
+  return callout;
 }
 
 /**

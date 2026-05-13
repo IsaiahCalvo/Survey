@@ -15,7 +15,9 @@
 // signal off the end. Key by obj.id (falls back to a WeakMap for anon
 // objects) with a 150ms cadence so each distinct line emits ~6x/second.
 const __lineBboxLogState = { idMap: new Map(), refMap: new WeakMap() };
+const __lineBboxDiagEnabled = () => Boolean(globalThis?.__LINE_BBOX_DIAG);
 function __lineBboxShouldLog(obj) {
+  if (!__lineBboxDiagEnabled()) return false;
   const nowMs = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
   const id = obj && obj.id;
   if (id != null) {

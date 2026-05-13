@@ -55,7 +55,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   onPrintPdfMarkup: (callback) => {
     const subscription = () => {
-      console.log('[preload] menu:print-pdf-markup received, forwarding to renderer');
+      console.log('[preload] menu:print-pdf-markup received, forwarding regular annotation print request to renderer');
       callback();
     };
     ipcRenderer.on('menu:print-pdf-markup', subscription);

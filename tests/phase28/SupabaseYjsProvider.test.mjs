@@ -152,3 +152,73 @@ test(
     if (handle && typeof handle.disconnect === 'function') handle.disconnect();
   }
 );
+
+test(
+  'SupabaseYjsProvider: sync_request replies with a valid sync step2 update',
+  { skip: !existsSync(TARGET) ? 'src/lib/collab/SupabaseYjsProvider.js not yet present (Plan 28-02)' : !YJS_INSTALLED ? 'yjs not installed yet' : false },
+  async () => {
+    const Y = await import('yjs');
+    const {
+      connect,
+      base64ToUint8Array,
+      uint8ArrayToBase64,
+      decodeAndApply,
+      REMOTE_REALTIME_ORIGIN,
+    } = await import(TARGET);
+
+    const docWithState = new Y.Doc();
+    docWithState.getMap('annotations').set('sync-request-id', 'anno-from-step2');
+    const emptyPeer = new Y.Doc();
+
+    const sentMessages = [];
+    const handlers = {};
+    const fakeChannel = {
+      on: (_type, filter, cb) => {
+        handlers[filter.event] = cb;
+        return fakeChannel;
+      },
+      subscribe: (cb) => {
+        if (cb) cb('SUBSCRIBED');
+        return fakeChannel;
+      },
+      send: (msg) => {
+        sentMessages.push(msg);
+        return Promise.resolve();
+      },
+      unsubscribe: () => Promise.resolve(),
+    };
+    const fakeSupabase = {
+      channel: () => fakeChannel,
+      removeChannel: () => Promise.resolve(),
+      auth: { getSession: async () => ({ data: { session: { access_token: 't' } } }) },
+      realtime: { setAuth: () => {} },
+    };
+
+    const handle = connect('test-doc-id', docWithState, { supabase: fakeSupabase });
+    await Promise.resolve();
+    sentMessages.length = 0;
+
+    handlers.sync_request({
+      payload: {
+        stateVector: uint8ArrayToBase64(Y.encodeStateVector(emptyPeer)),
+        fromClientId: emptyPeer.clientID,
+      },
+    });
+
+    const reply = sentMessages.find((msg) => msg.event === 'sync');
+    ok(reply, 'sync_request must send a sync reply');
+    decodeAndApply(
+      emptyPeer,
+      null,
+      base64ToUint8Array(reply.payload.update),
+      REMOTE_REALTIME_ORIGIN
+    );
+    strictEqual(
+      emptyPeer.getMap('annotations').get('sync-request-id'),
+      'anno-from-step2',
+      'sync step2 reply must be decodable and apply the missing Y.Doc state'
+    );
+
+    if (handle && typeof handle.disconnect === 'function') handle.disconnect();
+  }
+);

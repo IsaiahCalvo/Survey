@@ -1,4 +1,19 @@
 import { makeInternalPenPathSpec } from './nativeShapeFactory.js';
+import {
+  PDF_COUNTER_METADATA_KEY,
+  PDF_COUNTER_SUBJECT,
+  parsePdfCounterMetadata,
+} from './pdfCounterMetadata.js';
+import {
+  PDF_CALLOUT_METADATA_KEY,
+  PDF_CALLOUT_SUBJECT,
+  parsePdfCalloutMetadata,
+} from './pdfCalloutMetadata.js';
+import {
+  PDF_APP_ANNOTATION_METADATA_KEY,
+  applyPdfAppAnnotationMetadata,
+  parsePdfAppAnnotationMetadata,
+} from './pdfAppAnnotationMetadata.js';
 
 /**
  * PDF Annotation Importer
@@ -52,6 +67,85 @@ const UNSUPPORTED_SUBTYPES = [
   'Stamp', 'Link', 'Widget', 'Popup', 'FileAttachment', 'Sound', 'Movie',
   'Screen', 'PrinterMark', 'TrapNet', 'Watermark', '3D', 'Redact', 'RichMedia'
 ];
+
+function summarizePdfAnnotationForDiag(annotation, rawMetadata = null) {
+  if (!annotation || typeof annotation !== 'object') return null;
+  const subtype = annotation.subtype || rawMetadata?.subtype || null;
+  const borderWidth = getBorderWidth(
+    applyRawMetadataToAnnotation(annotation, rawMetadata),
+    null,
+    { allowExplicitZero: true }
+  );
+  return {
+    id: annotation.id || annotation.name || null,
+    subtype,
+    rect: annotation.rect || null,
+    color: toNumericArray(annotation.color || rawMetadata?.color) || null,
+    strokeColor: toNumericArray(annotation.color || rawMetadata?.color) || null,
+    fillColor: toNumericArray(annotation.interiorColor || rawMetadata?.interiorColor) || null,
+    opacity: annotation.opacity ?? rawMetadata?.opacity ?? rawMetadata?.CA ?? null,
+    fillOpacity: annotation.fillOpacity ?? rawMetadata?.fillOpacity ?? rawMetadata?.ca ?? null,
+    borderStyle: {
+      width: borderWidth,
+      style: annotation.borderStyle?.style || rawMetadata?.borderStyleType || null,
+      dashArray: toNumericArray(annotation.borderStyle?.dashArray || rawMetadata?.borderDashArray) || null,
+    },
+    vertices: normalizePdfPointList(annotation.vertices || rawMetadata?.vertices),
+    inkLists: Array.isArray(annotation.inkLists)
+      ? annotation.inkLists.map((list) => normalizePdfPointList(list))
+      : [],
+    appearance: {
+      present: Boolean(annotation.hasAppearance || rawMetadata?.appearance),
+      hasFill: rawMetadata?.appearance?.hasFill ?? null,
+      hasStroke: rawMetadata?.appearance?.hasStroke ?? null,
+      strokeWidth: rawMetadata?.appearance?.strokeWidth ?? null,
+      strokeColor: rawMetadata?.appearance?.strokeColor || null,
+      fillColor: rawMetadata?.appearance?.fillColor || null,
+      bbox: rawMetadata?.appearance?.bbox || null,
+      matrix: rawMetadata?.appearance?.matrix || null,
+      pathCommandCount: Array.isArray(rawMetadata?.appearance?.path)
+        ? rawMetadata.appearance.path.length
+        : null,
+    },
+    title: getAnnotationTitle(annotation) || rawMetadata?.title || '',
+    contents: getAnnotationContents(annotation) || rawMetadata?.contents || '',
+    flags: annotation.annotationFlags ?? null,
+    nativeAppearanceCouldRender: Boolean(annotation.hasAppearance || rawMetadata?.appearance),
+  };
+}
+
+function summarizeFabricImportForDiag(fabricObj, sourceAnnotation = null, status = 'imported', reason = null) {
+  return {
+    status,
+    reason,
+    rawId: sourceAnnotation?.id || sourceAnnotation?.name || fabricObj?.pdfAnnotationId || null,
+    rawSubtype: sourceAnnotation?.subtype || fabricObj?.pdfAnnotationType || null,
+    appId: fabricObj?.id || fabricObj?.highlightId || fabricObj?.pdfAnnotationId || null,
+    appType: fabricObj?.type || null,
+    selectable: fabricObj?.selectable ?? null,
+    evented: fabricObj?.evented ?? null,
+    stroke: fabricObj?.stroke ?? null,
+    fill: fabricObj?.fill ?? null,
+    opacity: fabricObj?.opacity ?? null,
+    strokeWidth: fabricObj?.strokeWidth ?? null,
+    pointCount: Array.isArray(fabricObj?.points) ? fabricObj.points.length : null,
+    pathCommandCount: Array.isArray(fabricObj?.path) ? fabricObj.path.length : null,
+    left: fabricObj?.left ?? null,
+    top: fabricObj?.top ?? null,
+    width: fabricObj?.width ?? null,
+    height: fabricObj?.height ?? null,
+    isPdfImported: fabricObj?.isPdfImported === true,
+    pdfAnnotationId: fabricObj?.pdfAnnotationId || null,
+    pdfAnnotationType: fabricObj?.pdfAnnotationType || null,
+    savedToAppState: status === 'imported',
+  };
+}
+
+function isPotentiallyVisibleNativeAnnotation(annotation, rawMetadata = null) {
+  const subtype = annotation?.subtype || rawMetadata?.subtype;
+  if (!subtype || SILENT_IGNORE_SUBTYPES.includes(subtype)) return false;
+  return Boolean(annotation?.hasAppearance || rawMetadata?.appearance);
+}
 
 /**
  * Extract annotations from a PDF.js page
@@ -1240,6 +1334,13 @@ async function buildRawAnnotationMetadataById(rawPdfBytes) {
         const rcText = readPdfLibText(dict.get(PDFName.of('RC')));
         const contents = readPdfLibText(dict.get(PDFName.of('Contents')));
         const title = readPdfLibText(dict.get(PDFName.of('T')));
+        const subject = readPdfLibText(dict.get(PDFName.of('Subj')));
+        const surveyAppMetadataText = readPdfLibText(dict.get(PDFName.of(PDF_COUNTER_METADATA_KEY)));
+        const counterMetadata = parsePdfCounterMetadata(surveyAppMetadataText);
+        const surveyAppCalloutMetadataText = readPdfLibText(dict.get(PDFName.of(PDF_CALLOUT_METADATA_KEY)));
+        const calloutMetadata = parsePdfCalloutMetadata(surveyAppCalloutMetadataText);
+        const surveyAppAnnotationMetadataText = readPdfLibText(dict.get(PDFName.of(PDF_APP_ANNOTATION_METADATA_KEY)));
+        const appAnnotationMetadata = parsePdfAppAnnotationMetadata(surveyAppAnnotationMetadataText);
         // UX: 2026-04-19 — DA/DS carry the *default* style; Acrobat embeds
         // per-span overrides in /RC (XHTML rich text). On this PDF's
         // "hello" callout DA/DS both say red but the inline <span>
@@ -1325,6 +1426,13 @@ async function buildRawAnnotationMetadataById(rawPdfBytes) {
           ...(stateModel ? { stateModel } : {}),
           ...(contents ? { contents } : {}),
           ...(title ? { title } : {}),
+          ...(subject ? { subject } : {}),
+          ...(surveyAppMetadataText ? { surveyAppMetadataText } : {}),
+          ...(counterMetadata ? { counterMetadata } : {}),
+          ...(surveyAppCalloutMetadataText ? { surveyAppCalloutMetadataText } : {}),
+          ...(calloutMetadata ? { calloutMetadata } : {}),
+          ...(surveyAppAnnotationMetadataText ? { surveyAppAnnotationMetadataText } : {}),
+          ...(appAnnotationMetadata ? { appAnnotationMetadata } : {}),
           ...(daText ? { defaultAppearanceString: daText } : {}),
           ...(dsText ? { defaultStyleString: dsText } : {}),
           ...(Object.keys(defaultAppearanceData).length > 0 ? { defaultAppearanceData } : {}),
@@ -1380,6 +1488,13 @@ function applyRawMetadataToAnnotation(annotation, rawMetadata) {
     borderStyle.style = rawMetadata.borderStyleType;
   }
   if (
+    !borderStyle.style &&
+    Array.isArray(rawMetadata.borderDashArray) &&
+    rawMetadata.borderDashArray.length > 0
+  ) {
+    borderStyle.style = 'D';
+  }
+  if (
     (!Array.isArray(borderStyle.dashArray) || borderStyle.dashArray.length === 0) &&
     Array.isArray(rawMetadata.borderDashArray) &&
     rawMetadata.borderDashArray.length > 0
@@ -1429,6 +1544,13 @@ function applyRawMetadataToAnnotation(annotation, rawMetadata) {
     stateModel: annotation.stateModel || rawMetadata.stateModel || annotation.stateModel,
     contents: annotation.contents || rawMetadata.contents || annotation.contents,
     title: annotation.title || rawMetadata.title || annotation.title,
+    subject: annotation.subject || rawMetadata.subject || annotation.subject,
+    surveyAppMetadataText: annotation.surveyAppMetadataText || rawMetadata.surveyAppMetadataText || annotation.surveyAppMetadataText,
+    counterMetadata: annotation.counterMetadata || rawMetadata.counterMetadata || null,
+    surveyAppCalloutMetadataText: annotation.surveyAppCalloutMetadataText || rawMetadata.surveyAppCalloutMetadataText || annotation.surveyAppCalloutMetadataText,
+    calloutMetadata: annotation.calloutMetadata || rawMetadata.calloutMetadata || null,
+    surveyAppAnnotationMetadataText: annotation.surveyAppAnnotationMetadataText || rawMetadata.surveyAppAnnotationMetadataText || annotation.surveyAppAnnotationMetadataText,
+    appAnnotationMetadata: annotation.appAnnotationMetadata || rawMetadata.appAnnotationMetadata || null,
     defaultAppearanceData: {
       ...(annotation.defaultAppearanceData || {}),
       ...(rawMetadata.defaultAppearanceData || {})
@@ -2422,6 +2544,62 @@ function convertCircleToFabricCircle(annotation, viewport, scale = 1) {
     return null;
   }
 
+  const counterMetadata = annotation.counterMetadata || null;
+  if (counterMetadata?.app === 'SurveyApp' && counterMetadata?.kind === PDF_COUNTER_SUBJECT) {
+    const radiusFromMetadata = Number(counterMetadata.radius);
+    const radius = Number.isFinite(radiusFromMetadata) && radiusFromMetadata > 0
+      ? radiusFromMetadata * scale
+      : Math.min(viewportRect.width, viewportRect.height) / 2;
+    if (radius <= 0) {
+      console.warn('[PDFCounterImport] counter metadata parse failed: invalid radius', {
+        id: annotation.id,
+        radius: counterMetadata.radius
+      });
+      return null;
+    }
+
+    const displayNumber = counterMetadata.displayNumber ?? counterMetadata.number ?? null;
+    const color = counterMetadata.color || getShapeFillColor(annotation, pdfColorToHex(annotation.color || [0, 0, 0], annotation));
+    const data = {
+      type: 'counter',
+      id: counterMetadata.id || annotation.id || undefined,
+      ...(counterMetadata.data?.createdAt ? { createdAt: counterMetadata.data.createdAt } : {}),
+      ...(counterMetadata.pointerAngle != null ? { pointerAngle: counterMetadata.pointerAngle } : {}),
+      ...(displayNumber != null ? { displayNumber } : {}),
+      ...(counterMetadata.series?.id != null ? { seriesId: counterMetadata.series.id } : {}),
+      ...(counterMetadata.series?.name != null ? { seriesName: counterMetadata.series.name } : {}),
+      ...(counterMetadata.series?.color != null ? { seriesColor: counterMetadata.series.color } : {}),
+      ...(counterMetadata.series?.start != null ? { seriesStart: counterMetadata.series.start } : {}),
+      ...(counterMetadata.group?.id != null ? { groupId: counterMetadata.group.id } : {}),
+      ...(counterMetadata.group?.sequence != null ? { sequence: counterMetadata.group.sequence } : {}),
+      ...(counterMetadata.data?.numberColor != null ? { numberColor: counterMetadata.data.numberColor } : {}),
+    };
+
+    return {
+      type: 'circle',
+      id: counterMetadata.id || annotation.id,
+      left: viewportRect.left,
+      top: viewportRect.top,
+      radius,
+      fill: color,
+      stroke: '#ffffff',
+      strokeWidth: 1.5 * scale,
+      strokeUniform: true,
+      hasControls: false,
+      lockScalingX: true,
+      lockScalingY: true,
+      lockRotation: true,
+      selectable: true,
+      evented: true,
+      data,
+      isPdfImported: true,
+      pdfAnnotationId: annotation.id,
+      pdfAnnotationType: 'Circle',
+      pdfAnnotationSubject: PDF_COUNTER_SUBJECT,
+      layer: 'pdf-annotations'
+    };
+  }
+
   const strokeColor = pdfColorToHex(annotation.color || [0, 0, 0], annotation);
   const strokeOpacity = extractAnnotationOpacity(annotation, 1);
   const fillColor = getShapeFillColor(annotation, strokeColor);
@@ -2650,7 +2828,7 @@ function convertUnderlineToFabricRect(annotation, viewport, scale = 1) {
   };
 }
 
-function convertSquigglyToFabricPolyline(annotation, viewport, scale = 1) {
+function convertSquigglyToFabricPath(annotation, viewport, scale = 1) {
   const viewportRect = convertPdfRectToViewportRect(annotation.rect, viewport, scale);
   if (!viewportRect) {
     return null;
@@ -2660,35 +2838,49 @@ function convertSquigglyToFabricPolyline(annotation, viewport, scale = 1) {
   const amplitude = Math.max(1.5 * scale, viewportRect.height * 0.2);
   const wavelength = Math.max(6 * scale, amplitude * 3);
   const segmentCount = Math.max(4, Math.round(width / wavelength) * 2);
+  const top = viewportRect.top + viewportRect.height - amplitude * 2;
 
   const points = [];
-  for (let i = 0; i <= segmentCount; i++) {
+  for (let i = 0; i <= segmentCount; i += 1) {
     const t = i / segmentCount;
     points.push({
-      x: t * width,
-      y: amplitude + (i % 2 === 0 ? -amplitude : amplitude)
+      x: viewportRect.left + t * width,
+      y: top + amplitude + (i % 2 === 0 ? -amplitude : amplitude)
     });
+  }
+
+  const path = [];
+  if (points.length > 0) {
+    path.push(['M', points[0].x, points[0].y]);
+    for (let i = 1; i < points.length; i += 1) {
+      path.push(['L', points[i].x, points[i].y]);
+    }
   }
 
   const strokeColor = pdfColorToHex(annotation.color || [1, 0, 0], annotation);
   const strokeOpacity = extractAnnotationOpacity(annotation, 1);
   const strokeWidth = Math.max(1, getBorderWidth(annotation, 1)) * scale;
+  const internal = makeInternalPenPathSpec({
+    stroke: hexToRgba(strokeColor, strokeOpacity),
+    strokeWidth
+  });
 
   return {
-    type: 'polyline',
-    left: viewportRect.left,
-    top: viewportRect.top + viewportRect.height - amplitude * 2,
-    points,
-    fill: 'transparent',
-    stroke: hexToRgba(strokeColor, strokeOpacity),
-    strokeWidth,
-    strokeUniform: true,
-    strokeLineCap: 'round',
-    strokeLineJoin: 'round',
+    ...internal,
+    type: 'path',
+    left: 0,
+    top: 0,
+    width,
+    height: amplitude * 2,
+    path,
     selectable: true,
     evented: true,
     hasControls: true,
     hasBorders: true,
+    lockMovementX: false,
+    lockMovementY: false,
+    perPixelTargetFind: true,
+    targetFindTolerance: 5,
     isPdfImported: true,
     pdfAnnotationId: annotation.id,
     pdfAnnotationType: 'Squiggly',
@@ -2744,34 +2936,39 @@ function convertCaretToFabricPolyline(annotation, viewport, scale = 1) {
 export function convertPdfAnnotationToFabric(annotation, viewport, scale = 1, rawMetadata = null) {
   const normalizedAnnotation = applyRawMetadataToAnnotation(annotation, rawMetadata);
   const subtype = normalizedAnnotation.subtype;
+  const finish = (fabricObj) => (
+    normalizedAnnotation.appAnnotationMetadata
+      ? applyPdfAppAnnotationMetadata(fabricObj, normalizedAnnotation.appAnnotationMetadata)
+      : fabricObj
+  );
 
   switch (subtype) {
     case 'Ink':
-      return convertInkToFabricPath(normalizedAnnotation, viewport, scale);
+      return finish(convertInkToFabricPath(normalizedAnnotation, viewport, scale));
     case 'Highlight':
-      return convertHighlightToFabricRect(normalizedAnnotation, viewport, scale);
+      return finish(convertHighlightToFabricRect(normalizedAnnotation, viewport, scale));
     case 'FreeText':
-      return convertFreeTextToFabricTextbox(normalizedAnnotation, viewport, scale);
+      return finish(convertFreeTextToFabricTextbox(normalizedAnnotation, viewport, scale));
     case 'Square':
       if (isAutoCadShxTextAnnotation(normalizedAnnotation)) {
-        return convertAutoCadShxTextToFabricProxy(normalizedAnnotation, viewport, scale);
+        return finish(convertAutoCadShxTextToFabricProxy(normalizedAnnotation, viewport, scale));
       }
-      return convertSquareToFabricRect(normalizedAnnotation, viewport, scale);
+      return finish(convertSquareToFabricRect(normalizedAnnotation, viewport, scale));
     case 'Circle':
-      return convertCircleToFabricCircle(normalizedAnnotation, viewport, scale);
+      return finish(convertCircleToFabricCircle(normalizedAnnotation, viewport, scale));
     case 'Line':
-      return convertLineToFabricLine(normalizedAnnotation, viewport, scale);
+      return finish(convertLineToFabricLine(normalizedAnnotation, viewport, scale));
     case 'PolyLine':
-      return convertPolyLineToFabricPolyline(normalizedAnnotation, viewport, scale);
+      return finish(convertPolyLineToFabricPolyline(normalizedAnnotation, viewport, scale));
     case 'Polygon':
-      return convertPolygonToFabricPolygon(normalizedAnnotation, viewport, scale);
+      return finish(convertPolygonToFabricPolygon(normalizedAnnotation, viewport, scale));
     case 'Text':
       return convertTextToFabricNote(normalizedAnnotation, viewport, scale);
     case 'Underline':
     case 'StrikeOut':
       return convertUnderlineToFabricRect(normalizedAnnotation, viewport, scale);
     case 'Squiggly':
-      return convertSquigglyToFabricPolyline(normalizedAnnotation, viewport, scale);
+      return convertSquigglyToFabricPath(normalizedAnnotation, viewport, scale);
     case 'Caret':
       return convertCaretToFabricPolyline(normalizedAnnotation, viewport, scale);
     default:
@@ -2804,6 +3001,58 @@ export function categorizeAnnotations(annotations) {
   return { supported, unsupported };
 }
 
+function normalizeImportedAppCallout(metadata) {
+  if (!metadata || metadata.kind !== PDF_CALLOUT_SUBJECT || metadata.type !== 'callout') {
+    return null;
+  }
+
+  const point = (value) => {
+    const x = Number(value?.x);
+    const y = Number(value?.y);
+    return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+  };
+
+  const arrowTip = point(metadata.arrowTip);
+  const knee = point(metadata.knee);
+  const textBoxPosition = point(metadata.textBoxPosition);
+  const textBoxWidth = Number(metadata.textBoxWidth);
+  const textBoxHeight = Number(metadata.textBoxHeight);
+  const pageNumber = Number(metadata.pageNumber);
+
+  if (
+    !metadata.id ||
+    !arrowTip ||
+    !knee ||
+    !textBoxPosition ||
+    !Number.isFinite(textBoxWidth) ||
+    !Number.isFinite(textBoxHeight)
+  ) {
+    return null;
+  }
+
+  return {
+    id: metadata.id,
+    pageNumber: Number.isFinite(pageNumber) ? pageNumber : 1,
+    arrowTip,
+    knee,
+    textBoxPosition,
+    textBoxWidth,
+    textBoxHeight,
+    text: metadata.text || '',
+    style: metadata.style && typeof metadata.style === 'object' ? metadata.style : {},
+    ...(metadata.moduleId ? { moduleId: metadata.moduleId } : {}),
+    ...(metadata.regionId ? { regionId: metadata.regionId } : {}),
+    ...(metadata.spaceId ? { spaceId: metadata.spaceId } : {}),
+    ...(metadata.layer ? { layer: metadata.layer } : {}),
+    ...(metadata.groupId ? { groupId: metadata.groupId } : {}),
+    isSelected: false,
+    isPdfImported: true,
+    pdfAnnotationId: metadata.id,
+    pdfAnnotationType: 'SurveyAppCallout',
+    pdfAnnotationSubject: PDF_CALLOUT_SUBJECT,
+  };
+}
+
 /**
  * Import all annotations from a PDF document
  * @param {PDFDocumentProxy} pdfDoc - PDF.js document
@@ -2811,9 +3060,17 @@ export function categorizeAnnotations(annotations) {
  */
 export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
   const annotationsByPage = {};
+  const calloutsByPage = {};
   const unsupportedTypes = new Set();
   const numPages = pdfDoc.numPages;
   const rawMetadataById = await buildRawAnnotationMetadataById(options.rawPdfBytes);
+  const diagnosticsByPage = {};
+  const nativeLayerPolicyByPage = {};
+  let counterAnnotationsImported = 0;
+  let plainCirclesImported = 0;
+  let counterMetadataParseFailures = 0;
+  let appCalloutAnnotationsImported = 0;
+  let appCalloutPiecesSkipped = 0;
 
   for (let pageNum = 1; pageNum <= numPages; pageNum++) {
     try {
@@ -2822,6 +3079,10 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
 
       const annotations = await extractAnnotationsFromPage(page);
       const { supported: supportedRaw, unsupported } = categorizeAnnotations(annotations);
+      const rawDiag = annotations.map((annotation) => {
+        const rawMetadata = getRawAnnotationMetadataForAnnotation(annotation, rawMetadataById);
+        return summarizePdfAnnotationForDiag(annotation, rawMetadata);
+      }).filter(Boolean);
 
       // Track unsupported types
       unsupported.forEach(ann => {
@@ -2854,19 +3115,109 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
 
       // Convert supported annotations to Fabric.js objects
       const fabricObjects = [];
+      const appCalloutsById = new Map();
+      const importedDiag = [];
       supported.forEach(annotation => {
         const rawMetadata = getRawAnnotationMetadataForAnnotation(annotation, rawMetadataById);
+        const normalized = applyRawMetadataToAnnotation(annotation, rawMetadata);
+        if (
+          normalized.calloutMetadata?.kind === PDF_CALLOUT_SUBJECT &&
+          normalized.calloutMetadata?.type === 'callout'
+        ) {
+          const appCallout = normalizeImportedAppCallout(normalized.calloutMetadata);
+          if (appCallout) {
+            appCalloutsById.set(appCallout.id, appCallout);
+            appCalloutPiecesSkipped++;
+            importedDiag.push({
+              status: 'app-callout-piece-grouped',
+              reason: 'survey-app-callout-metadata',
+              rawId: annotation?.id || annotation?.name || null,
+              rawSubtype: annotation?.subtype || null,
+              appId: appCallout.id,
+              appType: 'callout',
+              calloutPart: normalized.calloutMetadata.part || null,
+              savedToAppState: true,
+            });
+            return;
+          }
+        }
+        if (
+          normalized.subtype === 'Circle' &&
+          normalized.subject === PDF_COUNTER_SUBJECT &&
+          !normalized.counterMetadata
+        ) {
+          counterMetadataParseFailures++;
+          console.warn('[PDFCounterImport] counter marker found but metadata was not parseable', {
+            id: normalized.id || normalized.name || null,
+            metadataKey: PDF_COUNTER_METADATA_KEY
+          });
+        }
 
         const fabricObj = convertPdfAnnotationToFabric(annotation, viewport, 1, rawMetadata);
         if (fabricObj) {
-          fabricObjects.push(fabricObj);
+          if (!options.diagnosticsOnly) {
+            fabricObjects.push(fabricObj);
+          }
+          if (fabricObj?.data?.type === 'counter') {
+            counterAnnotationsImported++;
+          } else if (fabricObj?.pdfAnnotationType === 'Circle' || fabricObj?.type === 'circle') {
+            plainCirclesImported++;
+          }
+          importedDiag.push(summarizeFabricImportForDiag(fabricObj, annotation));
+        } else {
+          importedDiag.push(summarizeFabricImportForDiag(null, annotation, 'skipped', 'converter-returned-null'));
         }
       });
+
+      unsupported.forEach((annotation) => {
+        const rawMetadata = getRawAnnotationMetadataForAnnotation(annotation, rawMetadataById);
+        if (isPotentiallyVisibleNativeAnnotation(annotation, rawMetadata)) {
+          importedDiag.push(summarizeFabricImportForDiag(null, annotation, 'native-only', 'unsupported-renderable-native-annotation'));
+        }
+      });
+
+      const importedIds = new Set(importedDiag
+        .filter((entry) => (
+          (entry?.status === 'imported' || entry?.status === 'app-callout-piece-grouped') &&
+          entry.rawId
+        ))
+        .map((entry) => entry.rawId));
+      const renderableNative = annotations.filter((annotation) => {
+        const rawMetadata = getRawAnnotationMetadataForAnnotation(annotation, rawMetadataById);
+        return isPotentiallyVisibleNativeAnnotation(annotation, rawMetadata);
+      });
+      const nativeOnly = renderableNative.filter((annotation) => !importedIds.has(annotation.id || annotation.name));
+      const hideNativeLayer = renderableNative.length > 0 && nativeOnly.length === 0;
+
+      diagnosticsByPage[pageNum] = {
+        pageNumber: pageNum,
+        rawAnnotations: rawDiag,
+        importedAnnotations: importedDiag,
+        nativeRenderableAnnotationIds: renderableNative.map((annotation) => annotation.id || annotation.name || null).filter(Boolean),
+        nativeOnlyAnnotationIds: nativeOnly.map((annotation) => annotation.id || annotation.name || null).filter(Boolean),
+      };
+      nativeLayerPolicyByPage[pageNum] = {
+        pageNumber: pageNum,
+        hideNativeLayer,
+        reason: hideNativeLayer
+          ? 'all-renderable-native-annotations-imported-as-editable-app-annotations'
+          : (renderableNative.length === 0
+              ? 'no-renderable-native-annotations'
+              : 'renderable-native-annotations-not-imported'),
+        importedIds: Array.from(importedIds),
+        nativeRenderableAnnotationIds: diagnosticsByPage[pageNum].nativeRenderableAnnotationIds,
+        nativeOnlyAnnotationIds: diagnosticsByPage[pageNum].nativeOnlyAnnotationIds,
+      };
 
       if (fabricObjects.length > 0) {
         annotationsByPage[pageNum] = {
           objects: fabricObjects
         };
+      }
+      if (appCalloutsById.size > 0) {
+        const calloutEntries = Array.from(appCalloutsById.values());
+        calloutsByPage[pageNum] = calloutEntries;
+        appCalloutAnnotationsImported += calloutEntries.length;
       }
     } catch (error) {
       console.error(
@@ -2877,9 +3228,30 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
     }
   }
 
+  if (typeof window !== 'undefined') {
+    window.__pdfEmbeddedAnnotationDiag = diagnosticsByPage;
+    window.__pdfImportedAnnotationDiag = diagnosticsByPage;
+    window.__nativePdfAnnotationLayerDiag = nativeLayerPolicyByPage;
+  }
+
+  console.log('[PDFCounterImport] summary ' + JSON.stringify({
+    marker: PDF_COUNTER_SUBJECT,
+    metadataKey: PDF_COUNTER_METADATA_KEY,
+    counterAnnotationsImported,
+    plainCirclesImported,
+    counterMetadataParseFailures,
+    appCalloutMarker: PDF_CALLOUT_SUBJECT,
+    appCalloutMetadataKey: PDF_CALLOUT_METADATA_KEY,
+    appCalloutAnnotationsImported,
+    appCalloutPiecesSkipped
+  }));
+
   return {
     annotationsByPage,
-    unsupportedTypes: Array.from(unsupportedTypes)
+    calloutsByPage,
+    unsupportedTypes: Array.from(unsupportedTypes),
+    diagnosticsByPage,
+    nativeLayerPolicyByPage
   };
 }
 

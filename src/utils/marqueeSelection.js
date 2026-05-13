@@ -113,26 +113,58 @@ export function resolveMarqueeHits({
   callouts,
   pageWidth,
   pageHeight,
+  selectableAnnotationIndices,
+  onCandidateDiagnostic,
 }) {
   const annotationIndices = [];
   const calloutIds = [];
+  const selectableSet = selectableAnnotationIndices instanceof Set
+    ? selectableAnnotationIndices
+    : Array.isArray(selectableAnnotationIndices)
+      ? new Set(selectableAnnotationIndices)
+      : null;
+
+  const emitDiag = (entry) => {
+    if (typeof onCandidateDiagnostic === 'function') {
+      try { onCandidateDiagnostic(entry); } catch (_) {}
+    }
+  };
 
   const objects = annotations?.objects || [];
   for (let i = 0; i < objects.length; i++) {
     const obj = objects[i];
-    if (!obj || !obj.type) continue;
+    if (!obj || !obj.type) {
+      emitDiag({ index: i, included: false, reason: 'missing-object-or-type', obj });
+      continue;
+    }
+    if (selectableSet && !selectableSet.has(i)) {
+      emitDiag({ index: i, included: false, reason: 'not-rendered-or-not-interactive', obj });
+      continue;
+    }
     const bbox = bboxFromAnnotation(obj);
-    if (!bbox) continue;
+    if (!bbox) {
+      emitDiag({ index: i, included: false, reason: 'missing-bbox', obj });
+      continue;
+    }
 
     if (direction === 'window') {
       if (isBBoxFullyContained(marqueeRect, bbox)) {
+        emitDiag({ index: i, included: true, reason: 'window-contained', bbox, obj });
         annotationIndices.push(i);
+      } else {
+        emitDiag({ index: i, included: false, reason: 'window-not-contained', bbox, obj });
       }
     } else {
-      if (!isBBoxOverlapping(marqueeRect, bbox)) continue;
+      if (!isBBoxOverlapping(marqueeRect, bbox)) {
+        emitDiag({ index: i, included: false, reason: 'crossing-bbox-miss', bbox, obj });
+        continue;
+      }
       const shape = toFabricShape(obj);
       if (doesRectIntersectObject(marqueeRect, shape)) {
+        emitDiag({ index: i, included: true, reason: 'crossing-geometry-hit', bbox, obj });
         annotationIndices.push(i);
+      } else {
+        emitDiag({ index: i, included: false, reason: 'crossing-geometry-miss', bbox, obj });
       }
     }
   }

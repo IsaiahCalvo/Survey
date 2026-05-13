@@ -280,7 +280,7 @@ export function connect(documentId, ydoc, options = {}) {
             const remoteSV = base64ToUint8Array(payload.stateVector);
             const reply = encoding.createEncoder();
             encoding.writeVarUint(reply, MESSAGE_SYNC);
-            syncProtocol.writeSyncStep2(reply, remoteSV, ydoc);
+            syncProtocol.writeSyncStep2(reply, ydoc, remoteSV);
             const replyBytes = encoding.toUint8Array(reply);
             if (replyBytes.byteLength > 1 && channel) {
               channel.send({

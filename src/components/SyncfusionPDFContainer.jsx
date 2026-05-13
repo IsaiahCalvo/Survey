@@ -659,7 +659,10 @@ const SyncfusionPDFContainer = forwardRef(({
   const [zoomValue, setZoomValue] = useState(100);
   const getViewerInstance = useCallback(() => viewerRef.current, []);
   const normalizedScrollDelayMs = useMemo(
-    () => Math.max(40, Math.min(1000, Number(scrollDelayMs) || 100)),
+    () => {
+      const delay = Number(scrollDelayMs);
+      return Math.max(0, Math.min(1000, Number.isFinite(delay) ? delay : 100));
+    },
     [scrollDelayMs]
   );
 

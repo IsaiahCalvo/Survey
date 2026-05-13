@@ -213,7 +213,43 @@ export const useDocuments = (projectId = null) => {
       const { data, error } = await query;
 
       if (error) throw error;
-      setDocuments(data || []);
+
+      let collaboratorDocuments = [];
+      const collaboratorRows = await supabase
+        .from('document_collaborators')
+        .select('document_id')
+        .eq('user_id', user.id)
+        .eq('status', 'active');
+
+      if (!collaboratorRows.error) {
+        const collaboratorIds = [...new Set((collaboratorRows.data || [])
+          .map((row) => row.document_id)
+          .filter(Boolean))];
+        const ownIds = new Set((data || []).map((doc) => doc.id));
+        const missingIds = collaboratorIds.filter((id) => !ownIds.has(id));
+        if (missingIds.length > 0) {
+          let collaboratorQuery = supabase
+            .from('documents')
+            .select('*')
+            .in('id', missingIds)
+            .eq('archived', false)
+            .order('updated_at', { ascending: false });
+          if (projectId) {
+            collaboratorQuery = collaboratorQuery.eq('project_id', projectId);
+          }
+          const collaboratorResult = await collaboratorQuery;
+          if (collaboratorResult.error) throw collaboratorResult.error;
+          collaboratorDocuments = collaboratorResult.data || [];
+        }
+      } else {
+        console.warn('Error fetching collaborator documents:', collaboratorRows.error);
+      }
+
+      const byId = new Map();
+      for (const doc of [...(data || []), ...collaboratorDocuments]) {
+        byId.set(doc.id, doc);
+      }
+      setDocuments([...byId.values()]);
     } catch (err) {
       setError(err.message);
     } finally {

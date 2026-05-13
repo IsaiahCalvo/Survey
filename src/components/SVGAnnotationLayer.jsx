@@ -52,6 +52,7 @@ import { renderPathToSvgAttrs, renderPathToSvgD } from '../utils/svgPathAttrs.js
 import {
   ANNOTATION_VISIBILITY_SCOPE,
   getAnnotationVisibilityScope,
+  isAnnotationVisibleInContext,
   isAnnotationVisibleByPageControl
 } from '../utils/annotationVisibilityRules';
 // Diagnostic: record every SVG callout's source data + DOM rects so Save Log
@@ -224,6 +225,10 @@ const SVGAnnotationLayer = memo(({
   // is a monotonically increasing counter so that clicking the same
   // annotation twice in a row still re-fires the effect.
   pendingSelection,
+  // Parent-driven UI-only deselect signal. App.jsx increments this when the
+  // visible annotation context changes so stale selection chrome disappears
+  // without saving or deleting any annotation data.
+  selectionClearToken = 0,
   // UX: pan-mode hover glow — App.jsx runs a document-level mousemove
   // listener in pan mode and, via resolveAnnotationAt, broadcasts
   // { pageNumber, annotationIndex } (or null) whenever the cursor enters
@@ -286,6 +291,13 @@ const SVGAnnotationLayer = memo(({
   // the counter center (in viewBox/page space) without recomputing it each frame.
   // Cleared on pointerup.
   const counterRotateDragRef = useRef(null);
+  const [counterHandlePreview, setCounterHandlePreview] = useState(null);
+  const counterHandlePreviewRef = useRef(null);
+  const annotationsRef = useRef(annotations);
+  const renderedAnnotationEntriesRef = useRef([]);
+  useEffect(() => {
+    annotationsRef.current = annotations;
+  }, [annotations]);
 
   // ---------------------------------------------------------------------------
   // Interaction hook (Phase 9)
@@ -346,6 +358,7 @@ const SVGAnnotationLayer = memo(({
     // hook's marquee post-filter + click hit-test gate.
     viewerId,
     documentOwnerId,
+    getSelectableAnnotationIndices: () => renderedAnnotationEntriesRef.current.map((entry) => entry.index),
     // Phase 35 Plan 04 — page number + bulk-delete interceptor for
     // deleteSelected snapshot capture and App.jsx modal routing.
     pageNumber,
@@ -368,6 +381,10 @@ const SVGAnnotationLayer = memo(({
   // the deselect arrive in separate renders otherwise.
   useLayoutEffect(() => {
     if (!pendingSelection) return;
+    if (pendingSelection.clearAll === true) {
+      deselectAll();
+      return;
+    }
     if (pendingSelection.pageNumber !== pageNumber) return;
     // UX: 2026-04-20 — multi-index restore (Ungroup). When App broadcasts
     // an `annotationIndices` array (instead of the singular index), replace
@@ -386,6 +403,11 @@ const SVGAnnotationLayer = memo(({
     if (typeof pendingSelection.annotationIndex !== 'number') return;
     selectAnnotation(pendingSelection.annotationIndex, false);
   }, [pendingSelection, pageNumber, selectAnnotation, selectAnnotations, deselectAll]);
+
+  useLayoutEffect(() => {
+    if (!selectionClearToken) return;
+    deselectAll();
+  }, [selectionClearToken, deselectAll]);
 
   // UX: apply a pan-mode hover target from App.jsx. If pendingHover is null
   // OR targets a different page, clear this layer's hoveredId (a previously
@@ -574,9 +596,16 @@ const SVGAnnotationLayer = memo(({
       // separate undo entries).
       const hasShapes = selectedIds.size > 0;
       const hasCallouts = calloutSelectionSize > 0;
+      const idsArray = hasCallouts
+        ? effectiveSelectedCalloutIds instanceof Set
+          ? Array.from(effectiveSelectedCalloutIds)
+          : Array.isArray(effectiveSelectedCalloutIds)
+            ? effectiveSelectedCalloutIds.slice()
+            : []
+        : [];
 
       if (hasShapes && hasCallouts && typeof onBeginBatchDelete === 'function') {
-        onBeginBatchDelete(2);
+        onBeginBatchDelete(2, idsArray);
       }
 
       if (hasShapes) {
@@ -584,11 +613,6 @@ const SVGAnnotationLayer = memo(({
       }
 
       if (hasCallouts) {
-        const idsArray = effectiveSelectedCalloutIds instanceof Set
-          ? Array.from(effectiveSelectedCalloutIds)
-          : Array.isArray(effectiveSelectedCalloutIds)
-            ? effectiveSelectedCalloutIds.slice()
-            : [];
         effectiveDeleteCalloutsCallback(idsArray);
       }
     };
@@ -987,9 +1011,16 @@ const SVGAnnotationLayer = memo(({
     ? annotations?.objects?.[selectedAnnotationIndex]
     : null;
   const _selectedIsCounter = _selectedObjForAngle?.data?.type === 'counter';
+  const _selectedCounterPreviewAngle = (
+    _selectedIsCounter
+    && counterHandlePreview?.annotationIndex === selectedAnnotationIndex
+    && Number.isFinite(Number(counterHandlePreview.pointerAngle))
+  )
+    ? Number(counterHandlePreview.pointerAngle)
+    : null;
   const persistedAngle = (selectedAnnotationIndex !== null)
     ? (_selectedIsCounter
-        ? (((_selectedObjForAngle?.data?.pointerAngle ?? 225) + 90 + 360) % 360)
+        ? (((_selectedCounterPreviewAngle ?? _selectedObjForAngle?.data?.pointerAngle ?? 225) + 90 + 360) % 360)
         : (_selectedObjForAngle?.angle || 0))
     : 0;
   const liveRotationAngle = isRotating ? visualTransform.rotate.angle : persistedAngle;
@@ -1117,6 +1148,36 @@ const SVGAnnotationLayer = memo(({
     // track typed value. Escape simply blurs the input and the displayed
     // angle snaps back to props.angle (the persisted value).
   }, [clearOptimisticRotation]);
+
+  const commitCounterHandlePreview = useCallback((preview) => {
+    if (!preview || preview.annotationIndex == null) return;
+    const currentAnnotations = annotationsRef.current;
+    const currentObj = currentAnnotations?.objects?.[preview.annotationIndex];
+    if (currentObj?.data?.type !== 'counter') return;
+    const currentAngle = Number(currentObj.data?.pointerAngle ?? 225);
+    const nextAngle = Number(preview.pointerAngle);
+    if (!Number.isFinite(nextAngle)) return;
+    if (Math.abs(currentAngle - nextAngle) < 0.001) return;
+
+    const updatedAnnotations = JSON.parse(JSON.stringify(currentAnnotations));
+    const targetObj = updatedAnnotations.objects?.[preview.annotationIndex];
+    if (!targetObj) return;
+    targetObj.data = { ...(targetObj.data || {}), pointerAngle: nextAngle };
+    onSaveAnnotations(updatedAnnotations, {
+      source: 'counter:rotate-commit',
+      action: 'counter-rotate',
+      checkpointPolicy: 'normal',
+    });
+  }, [onSaveAnnotations]);
+
+  useEffect(() => {
+    const preview = counterHandlePreviewRef.current;
+    if (!preview) return;
+    if (selectedIds?.has?.(preview.annotationIndex)) return;
+    commitCounterHandlePreview(preview);
+    counterHandlePreviewRef.current = null;
+    setCounterHandlePreview(null);
+  }, [commitCounterHandlePreview, selectedIds]);
 
   // Issue 4 flicker fix: handleRotationInputHoverChange is a child callback,
   // so its identity matters — every reference change invalidates the child's
@@ -1505,7 +1566,9 @@ const SVGAnnotationLayer = memo(({
       let element = null;
 
       if (obj.data && obj.data.type === 'counter') {
-        console.log(`[Counter SVG p${pageNumber}] dispatching renderCounter — i=${i}, displayNumber=${obj.data.displayNumber}, fill=${obj.fill}, numberColor=${obj.data.numberColor || 'unset'}, left=${obj.left}, top=${obj.top}, radius=${obj.radius}`);
+        if (window.__COUNTER_SVG_DIAG) {
+          console.log(`[Counter SVG p${pageNumber}] dispatching renderCounter — i=${i}, displayNumber=${obj.data.displayNumber}, fill=${obj.fill}, numberColor=${obj.data.numberColor || 'unset'}, left=${obj.left}, top=${obj.top}, radius=${obj.radius}`);
+        }
         element = renderCounter(obj, i);
       } else if (objectType === 'path' && Array.isArray(obj.path) && obj.path.length > 0) {
         element = renderPath(obj, i);
@@ -1601,6 +1664,27 @@ const SVGAnnotationLayer = memo(({
     isPageInRenderWindow,
   ]);
 
+  useLayoutEffect(() => {
+    renderedAnnotationEntriesRef.current = Array.isArray(filteredAnnotations)
+      ? filteredAnnotations.filter((entry) => entry?.isObjectInteractive)
+      : [];
+    if (typeof window !== 'undefined') {
+      if (!window.__renderedAnnotationRegistry) window.__renderedAnnotationRegistry = {};
+      window.__renderedAnnotationRegistry[pageNumber] = renderedAnnotationEntriesRef.current.map((entry) => ({
+        index: entry.index,
+        id: entry.obj?.id || null,
+        fabricId: entry.obj?.data?.fabricId || null,
+        highlightId: entry.obj?.highlightId || entry.obj?.data?.highlightId || null,
+        type: entry.obj?.type || null,
+        tool: entry.obj?.tool || null,
+        dataType: entry.obj?.data?.type || null,
+        moduleId: entry.obj?.moduleId || null,
+        regionId: entry.obj?.regionId || null,
+        spaceId: entry.obj?.spaceId || null,
+      }));
+    }
+  }, [filteredAnnotations, pageNumber]);
+
   // ---------------------------------------------------------------------------
   // Survey highlight rects — synthesized from the surveyHighlights prop and
   // filtered through the same three-layer visibility rules as annotation
@@ -1628,9 +1712,19 @@ const SVGAnnotationLayer = memo(({
       isOverlayEnabledForThisPage;
 
     const elements = [];
+    const dropReasons = {
+      nullHighlight: [],
+      spaceMismatch: [],
+      surveyHidden: [],
+      scopedRegionHidden: [],
+      pageScopedHidden: [],
+    };
     for (let i = 0; i < surveyHighlights.length; i++) {
       const h = surveyHighlights[i];
-      if (!h) continue;
+      if (!h) {
+        dropReasons.nullHighlight.push({ i });
+        continue;
+      }
 
       const visibilityScope = getAnnotationVisibilityScope({
         moduleId: h.moduleId,
@@ -1691,7 +1785,26 @@ const SVGAnnotationLayer = memo(({
         scopedRegionAnnotationVisible &&
         pageScopedAnnotationVisible;
 
-      if (!isVisible) continue;
+      if (!isVisible) {
+        const detail = {
+          i,
+          highlightId: h.highlightId || null,
+          moduleId: h.moduleId || null,
+          regionId: h.regionId || null,
+          scope: visibilityScope,
+          selectedModuleId,
+          showSurveyPanel,
+          derivedSpaceId,
+          activeSpaceId,
+          activeRegionId,
+          pageNumber,
+        };
+        if (!matchesSpace) dropReasons.spaceMismatch.push(detail);
+        else if (!surveyAnnotationVisible) dropReasons.surveyHidden.push(detail);
+        else if (!scopedRegionAnnotationVisible) dropReasons.scopedRegionHidden.push(detail);
+        else if (!pageScopedAnnotationVisible) dropReasons.pageScopedHidden.push(detail);
+        continue;
+      }
 
       const pseudoRect = {
         type: 'rect',
@@ -1711,6 +1824,35 @@ const SVGAnnotationLayer = memo(({
         angle: 0,
       };
       elements.push(renderRect(pseudoRect, `survey-hl-${h.highlightId || i}`));
+    }
+    if (typeof window !== 'undefined') {
+      if (!window.__diagSurveyHighlightVisibilityStats) window.__diagSurveyHighlightVisibilityStats = {};
+      window.__diagSurveyHighlightVisibilityStats[pageNumber] = {
+        inputCount: surveyHighlights.length,
+        renderedCount: elements.length,
+        context: {
+          selectedModuleId,
+          showSurveyPanel,
+          selectedSpaceId,
+          activeSpaceId,
+          activeRegionId,
+          hasActiveRegions,
+        },
+        dropReasons: {
+          nullHighlight: dropReasons.nullHighlight.length,
+          spaceMismatch: dropReasons.spaceMismatch.length,
+          surveyHidden: dropReasons.surveyHidden.length,
+          scopedRegionHidden: dropReasons.scopedRegionHidden.length,
+          pageScopedHidden: dropReasons.pageScopedHidden.length,
+        },
+        dropDetails: dropReasons,
+      };
+      if (window.__DIAG_SURVEY_REGION_VISIBILITY) {
+        console.log(
+          `[SurveyHighlightVisibility p${pageNumber}] ` +
+          JSON.stringify(window.__diagSurveyHighlightVisibilityStats[pageNumber])
+        );
+      }
     }
     return elements;
   }, [
@@ -2085,11 +2227,26 @@ const SVGAnnotationLayer = memo(({
       // UX: per-page filter — only show callouts for this page
       if (callout.pageNumber !== pageNumber) continue;
 
-      // UX: module filter — when survey panel is open with a selected module,
-      // only show callouts matching that module (existing rule, preserved)
-      if (showSurveyPanel && selectedModuleId) {
-        if (callout.moduleId !== selectedModuleId) continue;
+      if (!isAnnotationVisibleInContext({
+        annotation: callout,
+        pageNumber,
+        selectedModuleId,
+        showSurveyPanel,
+        selectedSpaceId,
+        activeSpaceId,
+        activeRegions,
+        activeRegionId,
+        spaces,
+        getCanvasAnnotationVisibilityState,
+        getSurveyAnnotationVisibilityState,
+        isRegionOverlayEnabled,
+        layerVisibility,
+      })) {
+        continue;
       }
+
+      const previewPatch = visualTransform?.calloutPreviews?.[callout.id] || null;
+      const displayCallout = previewPatch ? { ...callout, ...previewPatch } : callout;
 
       // UX: Phase 15 UAT-1 restructure (2026-04-17) — when a callout is in
       // edit mode, render its 4 static chrome parts (line1, line2, arrowTip,
@@ -2108,7 +2265,7 @@ const SVGAnnotationLayer = memo(({
       // UX: Phase 15 UAT-2 — pass live textbox bounds only to the currently-
       // editing callout so line1 retracts to the live edge as the textbox
       // auto-grows. Other callouts render from stored normalized dims.
-      const liveBoundsForCallout = (editingCalloutId && callout.id === editingCalloutId)
+      const liveBoundsForCallout = (editingCalloutId && displayCallout.id === editingCalloutId)
         ? (liveCalloutEditBounds || null)
         : null;
 
@@ -2117,14 +2274,14 @@ const SVGAnnotationLayer = memo(({
       // auto-routing branch so line1/line2 meet at the raw stored knee.
       // Release-time rollback handles invalid drops. Other drags keep
       // the auto-routing path.
-      const dragPart = activeCalloutDrag && activeCalloutDrag.id === callout.id
+      const dragPart = activeCalloutDrag && activeCalloutDrag.id === displayCallout.id
         ? activeCalloutDrag.partType
         : null;
       const skipAutoRoute = dragPart === 'knee'
         || dragPart === 'textBox'
         || dragPart === 'textBoxResize';
       // UX: CALL-10 — new signature takes pageSize object, emits data attributes
-      const element = renderCallout(callout, i, pageSize, calculateCalloutConnection, hideText, liveBoundsForCallout, skipAutoRoute);
+      const element = renderCallout(displayCallout, i, pageSize, calculateCalloutConnection, hideText, liveBoundsForCallout, skipAutoRoute);
       if (!element) continue;
 
       // UX: Phase 14 Task 2 — invisible hit-target overlays for callout
@@ -2137,7 +2294,7 @@ const SVGAnnotationLayer = memo(({
       // UX: Phase 15 UAT-3 — visible handles paint only when this callout
       // is in the current selection set.
       const isSelected = effectiveSelectedCalloutIds.has
-        ? effectiveSelectedCalloutIds.has(callout.id)
+        ? effectiveSelectedCalloutIds.has(displayCallout.id)
         : false;
       // UX: Phase 15 UAT-3 (2026-04-18) — during knee / textbox / textbox
       // resize drags the knee handle stays pinned to its stored location
@@ -2160,17 +2317,17 @@ const SVGAnnotationLayer = memo(({
       const totalSelected =
         (selectedIds?.size || 0) + (effectiveSelectedCalloutIds?.size || 0);
       const isMultiSelect = totalSelected > 1;
-      const isHovered = hoveredCalloutId === callout.id;
+      const isHovered = hoveredCalloutId === displayCallout.id;
       // UX 2026-04-20: hide the callout's corner/knee/arrow-tip handles
       // while the user is in text-edit mode for that same callout. Edit is
       // text-content-only; the user doesn't need resize/knee chrome
       // competing with the growing text box. Handles re-appear after
       // commit because editingCalloutId clears.
-      const isEditingThisCallout = editingCalloutId === callout.id;
+      const isEditingThisCallout = editingCalloutId === displayCallout.id;
       const showHandles = isSelected && !isMultiSelect && !isEditingThisCallout;
       const showGlow = (isSelected && isMultiSelect) || (!isSelected && isHovered);
       const hitTargets = renderCalloutHitTargets(
-        callout,
+        displayCallout,
         pageSize,
         isSelected,
         isKneeDragging,
@@ -2187,7 +2344,7 @@ const SVGAnnotationLayer = memo(({
       const groupMoveTransform = (
         visualTransform?.id === 'group'
         && visualTransform?.affectedCalloutIds
-        && visualTransform.affectedCalloutIds.has?.(callout.id)
+        && visualTransform.affectedCalloutIds.has?.(displayCallout.id)
       )
         ? `translate(${visualTransform.dx || 0}, ${visualTransform.dy || 0})`
         : undefined;
@@ -2198,10 +2355,10 @@ const SVGAnnotationLayer = memo(({
         // visible chrome (on top of it, catching pointer events).
         // eslint-disable-next-line react/jsx-key
         <g
-          key={`callout-wrap-${callout.id || i}`}
+          key={`callout-wrap-${displayCallout.id || i}`}
           transform={groupMoveTransform}
-          onPointerEnter={() => handleCalloutPointerEnter(callout.id)}
-          onPointerLeave={() => handleCalloutPointerLeave(callout.id)}
+          onPointerEnter={() => handleCalloutPointerEnter(displayCallout.id)}
+          onPointerLeave={() => handleCalloutPointerLeave(displayCallout.id)}
         >
           {element}
           {hitTargets}
@@ -2219,7 +2376,7 @@ const SVGAnnotationLayer = memo(({
     // ride-along translate so callouts stay in lockstep with annotations
     // during group drag.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [callouts, pageNumber, showSurveyPanel, selectedModuleId, width, height, editingCalloutId, liveCalloutEditBounds, effectiveSelectedCalloutIds, activeCalloutDrag, visualTransform, isPageInRenderWindow]);
+  }, [callouts, pageNumber, selectedModuleId, showSurveyPanel, selectedSpaceId, activeSpaceId, activeRegions, activeRegionId, spaces, getCanvasAnnotationVisibilityState, getSurveyAnnotationVisibilityState, isRegionOverlayEnabled, layerVisibility, width, height, editingCalloutId, liveCalloutEditBounds, effectiveSelectedCalloutIds, activeCalloutDrag, visualTransform, isPageInRenderWindow]);
 
   // Diagnostic: after the SVG callouts are laid out, walk the DOM and record
   // the source data + every rendered element's screen rect per callout id.
@@ -2367,6 +2524,57 @@ const SVGAnnotationLayer = memo(({
     // (Imported paths use SVG transform instead — handled in computedTransform below)
     let renderObj = obj;
     let renderElement = element;
+    if (visualTransform?.previewObjects && visualTransform.previewObjects[i]) {
+      renderObj = visualTransform.previewObjects[i];
+      const previewType = String(renderObj.type || '').toLowerCase();
+      if (renderObj?.data?.type === 'counter') {
+        renderElement = renderCounter(renderObj, i);
+      } else if (previewType === 'path' && Array.isArray(renderObj.path) && renderObj.path.length > 0) {
+        renderElement = renderPath(renderObj, i);
+      } else if (previewType === 'rect') {
+        renderElement = renderRect(renderObj, i);
+      } else if (previewType === 'line') {
+        renderElement = renderLine(renderObj, i);
+      } else if (previewType === 'group' && Array.isArray(renderObj.objects) && renderObj.objects.length > 0) {
+        renderElement = renderArrow(renderObj, i);
+      } else if (previewType === 'circle' || previewType === 'ellipse') {
+        renderElement = renderEllipse(renderObj, i);
+      } else if (previewType === 'polygon' && Array.isArray(renderObj.points) && renderObj.points.length > 0) {
+        renderElement = renderPolygon(renderObj, i);
+      } else if (previewType === 'polyline' && Array.isArray(renderObj.points) && renderObj.points.length > 0) {
+        renderElement = renderPolyline(renderObj, i);
+      } else if (previewType === 'textbox' || previewType === 'i-text' || previewType === 'text') {
+        renderElement = renderText(renderObj, i);
+      }
+    }
+    if (
+      obj?.data?.type === 'counter'
+      && counterHandlePreview?.annotationIndex === i
+      && Number.isFinite(Number(counterHandlePreview.pointerAngle))
+    ) {
+      renderObj = {
+        ...obj,
+        data: {
+          ...(obj.data || {}),
+          pointerAngle: Number(counterHandlePreview.pointerAngle),
+        },
+      };
+      renderElement = renderCounter(renderObj, i);
+    }
+    if (
+      obj?.data?.type === 'counter'
+      && visualTransform?.id === i
+      && Number.isFinite(Number(visualTransform.counterPointerAngle))
+    ) {
+      renderObj = {
+        ...renderObj,
+        data: {
+          ...(renderObj.data || {}),
+          pointerAngle: Number(visualTransform.counterPointerAngle),
+        },
+      };
+      renderElement = renderCounter(renderObj, i);
+    }
     if (visualTransform?.lineEdit && visualTransform.id === i) {
       renderObj = applyLineEditPreview(obj, visualTransform.lineEdit);
       renderElement = renderLine(renderObj, i);
@@ -2527,6 +2735,9 @@ const SVGAnnotationLayer = memo(({
           // its committed angle internally, so we only add the change to avoid double-rotation.
           const { deltaAngle, cx, cy } = visualTransform.rotate;
           return `rotate(${deltaAngle}, ${cx}, ${cy})`;
+        }
+        if (visualTransform.counterPointerAngle != null) {
+          return undefined;
         }
         // Move: simple translate
         return `translate(${visualTransform.dx}, ${visualTransform.dy})`;
@@ -3106,10 +3317,13 @@ const SVGAnnotationLayer = memo(({
               : Math.max(6, sw + 4);
             const hitStrokeWidth = isFilledPdfInkOutline
               ? Math.max(0.75 * inverseScale, 0.75)
-              : Math.max(pathAttrs.strokeWidth || sw || 1, 1.5 * inverseScale);
+              : Math.max(6, pathAttrs.strokeWidth || sw || 1, 1.5 * inverseScale);
             const pathPointerEvents = isSelectTool && isObjectInteractive
-              ? (isFilledPdfInkOutline ? 'fill' : 'stroke')
+              ? 'all'
               : 'none';
+            const pathRawWidth = pathHasBounds ? Math.max(0, pathRawMaxX - pathRawMinX) : 0;
+            const pathRawHeight = pathHasBounds ? Math.max(0, pathRawMaxY - pathRawMinY) : 0;
+            const useThinPathHitBox = pathHasBounds && Math.min(pathRawWidth, pathRawHeight) <= 10;
             return (
               <g>
                 {annotationIsHovered && (
@@ -3139,10 +3353,37 @@ const SVGAnnotationLayer = memo(({
                   pointerEvents={pathPointerEvents}
                   data-path-hit-target="true"
                   onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
+                  onPointerMove={handlePointerMove}
+                  onPointerUp={handlePointerUp}
+                  onMouseDown={(e) => handleAnnotationPointerDown(e, i)}
+                  onMouseMove={handlePointerMove}
+                  onMouseUp={handlePointerUp}
                   onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
                   onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
                   onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
                 />
+                {useThinPathHitBox && (
+                  <rect
+                    x={pathRawMinX - 4}
+                    y={pathRawMinY - 6}
+                    width={Math.max(1, pathRawWidth) + 8}
+                    height={Math.max(1, pathRawHeight) + 12}
+                    transform={pathTransform}
+                    fill="rgba(0,0,0,0.001)"
+                    stroke="none"
+                    pointerEvents={pathPointerEvents}
+                    data-path-bbox-hit-target="true"
+                    onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
+                    onPointerMove={handlePointerMove}
+                    onPointerUp={handlePointerUp}
+                    onMouseDown={(e) => handleAnnotationPointerDown(e, i)}
+                    onMouseMove={handlePointerMove}
+                    onMouseUp={handlePointerUp}
+                    onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
+                    onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
+                    onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
+                  />
+                )}
               </g>
             );
           }
@@ -3234,6 +3475,14 @@ const SVGAnnotationLayer = memo(({
             setCalloutCreation({ arrowTip: pt, currentPointer: pt });
             e.preventDefault();
             return;
+          }
+          const annotationWrapper = e.target?.closest?.('[data-annotation-index]');
+          if (annotationWrapper && svgRef.current?.contains?.(annotationWrapper)) {
+            const annotationIndex = Number(annotationWrapper.getAttribute('data-annotation-index'));
+            if (Number.isInteger(annotationIndex)) {
+              handleAnnotationPointerDown(e, annotationIndex);
+              return;
+            }
           }
           handleSvgPointerDown(e);
         }
@@ -3395,7 +3644,8 @@ const SVGAnnotationLayer = memo(({
           is > 1, which means the outer group union bbox should be the
           only chrome — same as two annotations. */}
       {selectedIds.size === 1 && (effectiveSelectedCalloutIds?.size || 0) === 0 && Array.from(selectedIds).map((selectedIndex) => {
-        const obj = annotations?.objects?.[selectedIndex];
+        const obj = visualTransform?.previewObjects?.[selectedIndex]
+          || annotations?.objects?.[selectedIndex];
         if (!obj) return null;
 
         // During edit: FabricEditCanvas provides its own handles. For border-flush types
@@ -3438,7 +3688,9 @@ const SVGAnnotationLayer = memo(({
           const cx = (obj.left || 0) + radius;
           const cy = (obj.top || 0) + radius;
           // Use existing data.pointerAngle (default 225°, matches renderCounter default).
-          const pointerAngleDeg = obj.data?.pointerAngle ?? 225;
+          const pointerAngleDeg = counterHandlePreview?.annotationIndex === selectedIndex
+            ? Number(counterHandlePreview.pointerAngle)
+            : (obj.data?.pointerAngle ?? 225);
           const angleRad = (pointerAngleDeg * Math.PI) / 180;
           // Match renderCounter's tipExtension formula exactly so the handle sits ON
           // the visible nubbin tip, not floating beside it.
@@ -3483,6 +3735,12 @@ const SVGAnnotationLayer = memo(({
                     centerX: cx,
                     centerY: cy,
                   };
+                  const preview = {
+                    annotationIndex: selectedIndex,
+                    pointerAngle: pointerAngleDeg,
+                  };
+                  counterHandlePreviewRef.current = preview;
+                  setCounterHandlePreview(preview);
                 }}
                 onPointerMove={(e) => {
                   const drag = counterRotateDragRef.current;
@@ -3497,31 +3755,18 @@ const SVGAnnotationLayer = memo(({
                   const px = ((e.clientX - rect.left) / rect.width) * width;
                   const py = ((e.clientY - rect.top) / rect.height) * height;
                   const newAngleDeg = Math.atan2(py - drag.centerY, px - drag.centerX) * 180 / Math.PI;
-                  const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
-                  const targetObj = updatedAnnotations.objects?.[selectedIndex];
-                  if (!targetObj) return;
-                  targetObj.data = { ...(targetObj.data || {}), pointerAngle: newAngleDeg };
-                  onSaveAnnotations(updatedAnnotations, {
-                    source: 'counter:rotate-live',
-                    action: 'counter-rotate',
-                    checkpointPolicy: 'skip',
-                  });
+                  const preview = {
+                    annotationIndex: selectedIndex,
+                    pointerAngle: newAngleDeg,
+                  };
+                  counterHandlePreviewRef.current = preview;
+                  setCounterHandlePreview(preview);
                 }}
                 onPointerUp={(e) => {
                   const drag = counterRotateDragRef.current;
                   counterRotateDragRef.current = null;
                   try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
                   if (!drag || drag.annotationIndex !== selectedIndex) return;
-                  // Commit a single normal checkpoint so the entire rotation is one
-                  // undo step. The SVG already shows the final angle from the last
-                  // skip-checkpointed save, so we re-save the same JSON with normal
-                  // policy to flush the checkpoint.
-                  if (!annotations?.objects?.[selectedIndex]) return;
-                  onSaveAnnotations(annotations, {
-                    source: 'counter:rotate-commit',
-                    action: 'counter-rotate',
-                    checkpointPolicy: 'normal',
-                  });
                 }}
                 onPointerCancel={() => {
                   counterRotateDragRef.current = null;
@@ -3531,9 +3776,22 @@ const SVGAnnotationLayer = memo(({
           );
         }
 
-        const selectionObj = (visualTransform?.lineEdit && visualTransform.id === selectedIndex)
+        let selectionObj = (visualTransform?.lineEdit && visualTransform.id === selectedIndex)
           ? applyLineEditPreview(obj, visualTransform.lineEdit)
           : obj;
+        if (
+          selectionObj?.data?.type === 'counter'
+          && visualTransform?.id === selectedIndex
+          && Number.isFinite(Number(visualTransform.counterPointerAngle))
+        ) {
+          selectionObj = {
+            ...selectionObj,
+            data: {
+              ...(selectionObj.data || {}),
+              pointerAngle: Number(visualTransform.counterPointerAngle),
+            },
+          };
+        }
 
         // Apply visualTransform to bbox so overlay follows annotation live during drag/resize/rotate
         let bbox = getAnnotationBBox(selectionObj);
@@ -3858,13 +4116,22 @@ const SVGAnnotationLayer = memo(({
         // bubble + number stay upright because the renderer never reads
         // obj.angle for counters.
         if (counterInBboxMode) {
-          const rawRadius = obj.radius || 14;
-          const r = rawRadius * Math.abs(obj.scaleX || 1);
-          const bodyX = (obj.left || 0) + r;
-          const bodyY = (obj.top || 0) + r;
+          const counterBboxObj = (visualTransform?.resize && visualTransform.id === selectedIndex)
+            ? {
+                ...selectionObj,
+                scaleX: visualTransform.resize.scaleX,
+                scaleY: visualTransform.resize.scaleY,
+                left: visualTransform.resize.left,
+                top: visualTransform.resize.top,
+              }
+            : selectionObj;
+          const rawRadius = counterBboxObj.radius || 14;
+          const r = rawRadius * Math.abs(counterBboxObj.scaleX || 1);
+          const bodyX = (counterBboxObj.left || 0) + r;
+          const bodyY = (counterBboxObj.top || 0) + r;
           const tipExt = Math.max(5, r * 0.5);
-          const pointerAngleDeg = obj.data?.pointerAngle != null
-            ? obj.data.pointerAngle
+          const pointerAngleDeg = counterBboxObj.data?.pointerAngle != null
+            ? counterBboxObj.data.pointerAngle
             : 225;
           const overlayAngleDeg = ((pointerAngleDeg + 90) % 360 + 360) % 360;
           bbox = {
@@ -3886,7 +4153,7 @@ const SVGAnnotationLayer = memo(({
         // renderLine. Drop this side-by-side next to [LineBboxDiag]
         // getLineBBox entries to see exactly what the overlay pivot was
         // when the user clicked/rotated/released.
-        try {
+        if (window.__LINE_BBOX_DIAG) try {
           const objTypeLower = String(obj.type || '').toLowerCase();
           if (objTypeLower === 'line' || objTypeLower === 'group') {
             const nowMs = (typeof performance !== 'undefined' && performance.now)
@@ -3990,7 +4257,7 @@ const SVGAnnotationLayer = memo(({
             // arc of a rotated curved line or arrow when combined with a
             // non-rotated shape.
             const bboxes = Array.from(selectedIds)
-              .map(idx => annotations?.objects?.[idx])
+              .map(idx => visualTransform?.previewObjects?.[idx] || annotations?.objects?.[idx])
               .filter(Boolean)
               .map(obj => getAnnotationWorldAABB(obj));
             // UX: Phase 19 follow-up — callouts participate in the group
@@ -4002,21 +4269,23 @@ const SVGAnnotationLayer = memo(({
               const pageH = height;
               for (const callout of callouts) {
                 if (!callout || !effectiveSelectedCalloutIds.has?.(callout.id)) continue;
+                const previewPatch = visualTransform?.calloutPreviews?.[callout.id] || null;
+                const displayCallout = previewPatch ? { ...callout, ...previewPatch } : callout;
                 // UX: Phase 19 follow-up bugfix — the app-wide callouts
                 // array mixes callouts from every PDF page. Without
                 // this page filter, a selection that included callouts
                 // on OTHER pages would balloon this page's outer
                 // dashed box to cover those off-page callouts. Match
                 // the same filter the callout render loop uses.
-                if (callout.pageNumber !== pageNumber) continue;
+                if (displayCallout.pageNumber !== pageNumber) continue;
                 // Defensive: skip callouts with missing anchors so a
                 // malformed record can't drag the bbox toward (0,0).
-                const at = callout.arrowTip;
-                const kn = callout.knee;
-                const tp = callout.textBoxPosition;
+                const at = displayCallout.arrowTip;
+                const kn = displayCallout.knee;
+                const tp = displayCallout.textBoxPosition;
                 if (!at || !kn || !tp) continue;
-                const tbW = Number.isFinite(callout.textBoxWidth) ? callout.textBoxWidth : 0;
-                const tbH = Number.isFinite(callout.textBoxHeight) ? callout.textBoxHeight : 0;
+                const tbW = Number.isFinite(displayCallout.textBoxWidth) ? displayCallout.textBoxWidth : 0;
+                const tbH = Number.isFinite(displayCallout.textBoxHeight) ? displayCallout.textBoxHeight : 0;
                 const xs = [at.x, kn.x, tp.x, tp.x + tbW].map((n) => n * pageW);
                 const ys = [at.y, kn.y, tp.y, tp.y + tbH].map((n) => n * pageH);
                 bboxes.push({

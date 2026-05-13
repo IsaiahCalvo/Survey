@@ -43,6 +43,158 @@ import * as Y from 'yjs';
  * + eraser swipe + per-word boundary) both share this cache.
  */
 const memoizedOriginByUser = new Map();
+const UNDO_BOUNDARY_REGISTRY_KEY = '__surveyCrdtUndoBoundaryRegistry';
+
+function getUndoBoundaryRegistry() {
+  const root = globalThis;
+  if (!root[UNDO_BOUNDARY_REGISTRY_KEY]) {
+    root[UNDO_BOUNDARY_REGISTRY_KEY] = new WeakMap();
+  }
+  return root[UNDO_BOUNDARY_REGISTRY_KEY];
+}
+
+function shallowEqual(a, b) {
+  if (a === b) return true;
+  if (a == null || b == null) return false;
+  if (typeof a !== typeof b) return false;
+  if (typeof a !== 'object') return false;
+  if (Array.isArray(a)) {
+    if (!Array.isArray(b) || a.length !== b.length) return false;
+    return a.every((value, index) => value === b[index]);
+  }
+  if (Array.isArray(b)) return false;
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every((key) => a[key] === b[key]);
+}
+
+function reconcileResurrectedAnnotations(ydoc) {
+  const annotations = ydoc.getMap('annotations');
+  const latestFabricById = ydoc.getMap('__annotationLatestFabric');
+  if (!annotations || !latestFabricById || latestFabricById.size === 0) return;
+
+  const pending = [];
+  annotations.forEach((annotationMap, annoId) => {
+    const latestFabric = latestFabricById.get(annoId);
+    if (!latestFabric || typeof annotationMap?.get !== 'function') return;
+    const fabricMap = annotationMap.get('fabric');
+    if (!fabricMap || typeof fabricMap.get !== 'function') return;
+    for (const key of Object.keys(latestFabric)) {
+      if (!shallowEqual(fabricMap.get(key), latestFabric[key])) {
+        pending.push({ fabricMap, key, value: latestFabric[key] });
+      }
+    }
+  });
+
+  if (pending.length === 0) return;
+  ydoc.transact(() => {
+    for (const { fabricMap, key, value } of pending) {
+      fabricMap.set(key, value);
+    }
+  }, { source: 'crdt-resurrection-reconcile' });
+}
+
+function getYEventPath(event) {
+  if (Array.isArray(event?.path)) return event.path;
+  if (typeof event?.path === 'function') {
+    try {
+      const path = event.path();
+      return Array.isArray(path) ? path : [];
+    } catch (_) {
+      return [];
+    }
+  }
+  return [];
+}
+
+function summarizeYjsStackEvent(ydoc, event) {
+  const changes = [];
+  const changedParentTypes = event?.changedParentTypes;
+  if (!changedParentTypes || typeof changedParentTypes.forEach !== 'function') return changes;
+
+  const annotationsMap = ydoc.getMap('annotations');
+  const calloutsMap = ydoc.getMap('callouts');
+
+  changedParentTypes.forEach((events) => {
+    const list = Array.isArray(events) ? events : [];
+    list.forEach((changeEvent) => {
+      const target = changeEvent?.target;
+      const path = getYEventPath(changeEvent);
+      const parentStack =
+        target === annotationsMap || path[0] === 'annotations'
+          ? 'annotations'
+          : target === calloutsMap || path[0] === 'callouts'
+            ? 'callouts'
+            : null;
+      const changedKeys = [];
+      try {
+        changeEvent?.changes?.keys?.forEach?.((value, key) => {
+          changedKeys.push({ key, action: value?.action || null });
+        });
+      } catch (_) {
+        // diagnostics only
+      }
+      const firstChangedKey = changedKeys[0]?.key ?? null;
+      const annotationId = target === annotationsMap || target === calloutsMap
+        ? firstChangedKey
+        : parentStack
+          ? (path[0] === parentStack ? path[1] : null)
+          : path[0] ?? null;
+      const annotationMap = (() => {
+        try {
+          if (!annotationId) return null;
+          if (target === annotationsMap || parentStack === 'annotations') {
+            return annotationsMap.get(annotationId) || changeEvent?.changes?.keys?.get?.(annotationId)?.oldValue || null;
+          }
+          if (target === calloutsMap || parentStack === 'callouts') {
+            return calloutsMap.get(annotationId) || changeEvent?.changes?.keys?.get?.(annotationId)?.oldValue || null;
+          }
+        } catch (_) {
+          return null;
+        }
+        return null;
+      })();
+      const pageNumber = (() => {
+        try {
+          const parent = target === annotationsMap || target === calloutsMap ? annotationMap : target?.parent;
+          return typeof parent?.get === 'function' ? parent.get('pageNumber') ?? null : null;
+        } catch (_) {
+          return null;
+        }
+      })();
+      const yjsAction = changedKeys.find((entry) => entry.key === annotationId)?.action
+        || (changedKeys.length === 1 ? changedKeys[0].action : null)
+        || event?.type
+        || null;
+      changes.push({
+        source: 'yjs',
+        historySource: 'Yjs history',
+        stack: event?.type === 'redo' ? 'yjsRedoStack' : 'yjsUndoStack',
+        actionType: yjsAction,
+        annotationType: parentStack === 'callouts'
+          ? 'callout'
+          : parentStack === 'annotations'
+            ? (() => {
+              try {
+                const type = annotationMap?.get?.('type');
+                const fabricType = annotationMap?.get?.('fabric')?.get?.('type');
+                return type || fabricType || 'fabric';
+              } catch (_) {
+                return 'fabric';
+              }
+            })()
+            : null,
+        annotationId,
+        pageNumber,
+        path,
+        changedKeys,
+      });
+    });
+  });
+
+  return changes.slice(0, 12);
+}
 
 /**
  * Build (or return memoized) frozen origin object for a given user.
@@ -119,17 +271,39 @@ export function createUndoManager({ ydoc, userId, deviceId, sessionId, clientID,
   // History cap: trim oldest when stack-item-added fires and undoStack > cap.
   // UX rationale (CONTEXT.md): matches Figma defaults; bounded memory; oldest-out is the
   // pattern users expect from desktop apps — recent actions remain available, ancient ones drop.
-  const onStackItemAdded = () => {
+  const onStackItemAdded = (event = {}) => {
+    try {
+      event?.stackItem?.meta?.set?.('historySource', 'Yjs history');
+      event?.stackItem?.meta?.set?.('historyDiagnostics', summarizeYjsStackEvent(ydoc, event));
+    } catch (_) {
+      // diagnostics must never affect undo behavior
+    }
     while (undoManager.undoStack.length > historyCap) {
       undoManager.undoStack.shift();
     }
   };
   undoManager.on('stack-item-added', onStackItemAdded);
+  const onAfterTransaction = (transaction) => {
+    if (transaction.origin === undoManager || transaction.origin?.source === 'local-undo') {
+      reconcileResurrectedAnnotations(ydoc);
+    }
+  };
+  ydoc.on('afterTransaction', onAfterTransaction);
+
+  const boundaryRegistry = getUndoBoundaryRegistry();
+  const registeredManagers = boundaryRegistry.get(ydoc) || new Set();
+  registeredManagers.add(undoManager);
+  boundaryRegistry.set(ydoc, registeredManagers);
 
   // dispose lets Plan 29-04's YDocProvider effect clean up cleanly when the Y.Doc
   // unmounts (PDF tab close / app shutdown). Idempotent: calling twice after the
   // Y.UndoManager destroy is a no-op because the listener is already detached.
   const dispose = () => {
+    registeredManagers.delete(undoManager);
+    if (registeredManagers.size === 0) {
+      boundaryRegistry.delete(ydoc);
+    }
+    ydoc.off('afterTransaction', onAfterTransaction);
     undoManager.off('stack-item-added', onStackItemAdded);
     undoManager.destroy();
   };

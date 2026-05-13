@@ -25,6 +25,17 @@ import { calculateCalloutConnection } from '../utils/calloutGeometry';
 // Phase 35 Plan 03 — eraser hit-test gate (AC #2: non-owner eraser swipe
 // across a foreign-author mark has no effect; owner short-circuits inside).
 import { canModify } from '../lib/collab/permissionScope.js';
+import {
+  beginAnnotationGesture,
+  markAnnotationPointerRelease,
+  markAnnotationPreviewFrame,
+} from '../utils/annotationPreviewDiag';
+import {
+  eraserStrokeTouchesObject,
+  getEraserCandidateId,
+  getEraserDeleteDiagnostics,
+  getEraserStrokeBounds,
+} from '../utils/eraserHitTest.js';
 
 // Custom properties to include in object serialization (matches PAL / FabricDrawingCanvas pattern)
 // UX 2026-04-25: 'tool' added so arrows survive an erase commit. Without it,
@@ -180,6 +191,7 @@ const FabricEraserCanvas = memo(({
 
   const eraserPathRef = useRef([]);
   const isErasingRef = useRef(false);
+  const eraserDiagGestureRef = useRef(null);
 
   // Closure-safe refs for props
   const annotationsRef = useRef(annotations);
@@ -255,9 +267,43 @@ const FabricEraserCanvas = memo(({
     const mode = eraserModeRef.current === 'entire' ? 'entire' : 'partial';
 
     const objects = [...canvas.getObjects()];
+    const beforeSerializedObjects = [];
+    const candidateAnnotationIds = [];
+    const rejectedAnnotations = [];
+    const touchedAnnotationIds = [];
     let changed = false;
 
-    for (const obj of objects) {
+    const serializeObjectForCommit = (obj) => {
+      if (obj.type === 'textbox' && obj.__importedJSON) {
+        return { ...obj.__importedJSON };
+      }
+      const json = obj.toJSON(CUSTOM_PROPS);
+      if (json.type === 'path' && !obj.isPdfImported) {
+        json.left = 0;
+        json.top = 0;
+      }
+      if (obj.isPdfImported && obj.__origOpacity !== undefined) {
+        json.opacity = obj.__origOpacity;
+        const wasConverted = (obj.strokeWidth || 0) === 0 && !!obj.fill && obj.fill !== 'transparent';
+        if (!wasConverted) {
+          if (obj.__origStroke !== undefined) json.stroke = obj.__origStroke;
+          if (obj.__origStrokeWidth !== undefined) json.strokeWidth = obj.__origStrokeWidth;
+        }
+      } else if (obj.__origOpacity !== undefined) {
+        json.opacity = obj.__origOpacity;
+      }
+      return json;
+    };
+
+    for (let objectIndex = 0; objectIndex < objects.length; objectIndex += 1) {
+      const obj = objects[objectIndex];
+      const candidateId = getEraserCandidateId(obj, objectIndex);
+      try {
+        beforeSerializedObjects.push(serializeObjectForCommit(obj));
+      } catch (_) {
+        beforeSerializedObjects.push(obj?.__importedJSON ? { ...obj.__importedJSON } : null);
+      }
+
       // Phase 35 Plan 03 — AC #2 eraser gate. canModify reads authorId via
       // its meta > authorId > data.authorId > data.userId chain, so the shim
       // forwards every surface Fabric might carry it on. Owner short-circuits.
@@ -268,6 +314,7 @@ const FabricEraserCanvas = memo(({
         viewerId: _vId,
         documentOwnerId: _oId,
       })) {
+        rejectedAnnotations.push({ id: candidateId, reason: 'permission' });
         continue;
       }
 
@@ -291,23 +338,25 @@ const FabricEraserCanvas = memo(({
       }
 
       if (shouldSkip) {
+        rejectedAnnotations.push({ id: candidateId, reason: 'space-scope' });
         continue;
       }
 
-      if (obj.type === 'path' && obj.path) {
-        const pathBounds = obj.getBoundingRect ? obj.getBoundingRect(true) : null;
-        const eraserTouchesPath = pathBounds
-          ? eraserPoints.some((point) => (
-              point.x >= pathBounds.left - currentEraserSize &&
-              point.x <= pathBounds.left + pathBounds.width + currentEraserSize &&
-              point.y >= pathBounds.top - currentEraserSize &&
-              point.y <= pathBounds.top + pathBounds.height + currentEraserSize
-            ))
-          : true;
-        if (!eraserTouchesPath) {
-          continue;
-        }
+      candidateAnnotationIds.push(candidateId);
 
+      const isTouchingObject = eraserStrokeTouchesObject({
+        eraserPoints,
+        eraserRadius: currentEraserSize,
+        object: obj,
+      });
+
+      if (!isTouchingObject) {
+        rejectedAnnotations.push({ id: candidateId, reason: 'geometry-miss' });
+        continue;
+      }
+      touchedAnnotationIds.push(candidateId);
+
+      if (obj.type === 'path' && obj.path) {
         const isStrokePath =
           obj.tool === 'pen' ||
           obj.tool === 'highlighter' ||
@@ -441,28 +490,20 @@ const FabricEraserCanvas = memo(({
           }
         }
       } else {
-        // Non-path objects: remove if eraser touched them (same as PAL partial eraser fallback)
-        const bounds = obj.getBoundingRect ? obj.getBoundingRect(true) : null;
-        if (bounds) {
-          const isTouching = eraserPoints.some(point => {
-            return (
-              point.x >= bounds.left - currentEraserSize &&
-              point.x <= bounds.left + bounds.width + currentEraserSize &&
-              point.y >= bounds.top - currentEraserSize &&
-              point.y <= bounds.top + bounds.height + currentEraserSize
-            );
-          });
-          if (isTouching) {
-            canvas.remove(obj);
-            changed = true;
-          }
-        }
+        // Non-path objects are erased only when the eraser stroke touches
+        // their rendered geometry. Do not use expanded bounding boxes here:
+        // they are the source of nearby-but-untouched deletes.
+        canvas.remove(obj);
+        changed = true;
       }
     }
 
     const unsupportedAnnotationObjects = Array.isArray(unsupportedAnnotationObjectsRef.current)
       ? unsupportedAnnotationObjectsRef.current
       : [];
+    unsupportedAnnotationObjects.forEach((entry, index) => {
+      beforeSerializedObjects.push({ ...entry.object });
+    });
     let calloutHitIds = [];
     const calloutCallback = onEraseCalloutRef.current;
     if (calloutCallback) {
@@ -517,70 +558,73 @@ const FabricEraserCanvas = memo(({
     // Canvas uses left=pathOffset for display, but SVG expects left=0 with
     // absolute path data (translate(0,0) is a no-op, path coords render directly).
     const canvasObjects = canvas.getObjects();
-    const serializedObjects = canvasObjects.map((obj) => {
-      // Bypass toJSON for any textbox with stashed original JSON. Two
-      // reasons this matters: (1) Fabric 5.5.2 throws inside Text.toObject
-      // on PDF-imported Textboxes (styles/textLines indexing crash), so
-      // imported textboxes can't be serialized at all. (2) For
-      // internally-drawn textboxes, Fabric's toJSON writes back the
-      // auto-laid-out width/height, which differs from stored after
-      // enliven and would shrink the visible textbox on first eraser
-      // click. Textboxes are never partially erased on this canvas —
-      // kept whole or removed entirely — so the stashed original JSON is
-      // always the correct serialization. Shallow-copy so the caller
-      // can't retroactively mutate our stashed reference.
-      if (obj.type === 'textbox' && obj.__importedJSON) {
-        return { ...obj.__importedJSON };
-      }
-      const json = obj.toJSON(CUSTOM_PROPS);
-      // Internal live-drawn pen strokes store left=0, top=0 with absolute
-      // world-coord path data; reset here to match that storage convention.
-      // Imported pen strokes store left/top as the world placement with
-      // local-coord path data starting at (0, 0); leaving those values
-      // alone preserves the imported convention so the stroke does NOT
-      // snap to the top-left of the page on commit.
-      if (json.type === 'path' && !obj.isPdfImported) {
-        json.left = 0;
-        json.top = 0;
-      }
-      // UX: imported-shape parity override (see post-enliven block in the
-      // canvas init useEffect) sets opacity: 0 on the live Fabric object
-      // to hide it under the SVG visual. Fabric's default toJSON includes
-      // opacity/stroke/strokeWidth, so without this restore the override
-      // would be persisted back to stored annotation state on every erase
-      // commit and corrupt the selector-mode render. Restore from the
-      // __orig* values stashed at load time.
-      //
-      // EXCEPTION: when booleanErasePath converted a stroked polyline into
-      // a filled-outline polygon (strokeWidth -> 0, fill -> originalStroke),
-      // that conversion is INTENTIONAL and must persist — restoring the
-      // original stroke/strokeWidth here would stamp a second stroke on
-      // top of the filled polygon and make it render visibly thicker than
-      // before the erase (the "first erase makes imported ink fatter" bug).
-      // Detect post-conversion by the strokeWidth the eraser set to 0.
-      if (obj.isPdfImported && obj.__origOpacity !== undefined) {
-        json.opacity = obj.__origOpacity;
-        const wasConverted = (obj.strokeWidth || 0) === 0 && !!obj.fill && obj.fill !== 'transparent';
-        if (!wasConverted) {
-          if (obj.__origStroke !== undefined) json.stroke = obj.__origStroke;
-          if (obj.__origStrokeWidth !== undefined) json.strokeWidth = obj.__origStrokeWidth;
-        }
-      } else if (obj.__origOpacity !== undefined) {
-        // UX 2026-04-25 — Internally-drawn marks also get opacity:0 in
-        // eraser mode (see post-enliven block). Stroke/strokeWidth were
-        // not modified for non-imported types so they don't need
-        // restoration here, only opacity.
-        json.opacity = obj.__origOpacity;
-      }
-      return json;
-    });
+    const serializedObjects = canvasObjects.map((obj) => serializeObjectForCommit(obj));
     unsupportedAnnotationObjects.forEach((entry) => {
       const legacyCallout = getLegacyCalloutPayload(entry.object, pageNumber);
       if (legacyCallout?.id && calloutHitIdSet.has(legacyCallout.id)) return;
       serializedObjects.push({ ...entry.object });
     });
     const updatedJSON = { objects: serializedObjects };
-    onEraseCommitRef.current(updatedJSON);
+    const deleteDiagnostics = getEraserDeleteDiagnostics({
+      beforeObjects: beforeSerializedObjects,
+      afterObjects: serializedObjects,
+    });
+    const afterById = new Map();
+    serializedObjects.forEach((obj, index) => {
+      const id = getEraserCandidateId(obj, index);
+      if (id) afterById.set(id, obj);
+    });
+    const beforeById = new Map();
+    beforeSerializedObjects.forEach((obj, index) => {
+      const id = getEraserCandidateId(obj, index);
+      if (id) beforeById.set(id, obj);
+    });
+    const deletedIdSet = new Set(deleteDiagnostics.finalDeletedAnnotationIds);
+    const finalChangedAnnotationIds = touchedAnnotationIds.filter((id, index, list) => {
+      if (!id || deletedIdSet.has(id) || list.indexOf(id) !== index) return false;
+      const before = beforeById.get(id);
+      const after = afterById.get(id);
+      if (!before || !after) return false;
+      try {
+        return JSON.stringify(before) !== JSON.stringify(after);
+      } catch (_) {
+        return before !== after;
+      }
+    });
+    const eraserDiagnostics = {
+      source: 'eraser:commit',
+      tool: 'eraser',
+      action: 'eraser:apply',
+      eraserGestureId: eraserDiagGestureRef.current || null,
+      eraserPointerBounds: getEraserStrokeBounds(eraserPoints, currentEraserSize),
+      candidateAnnotationIds,
+      rejectedAnnotations,
+      touchedAnnotationIds,
+      finalDeletedAnnotationIds: deleteDiagnostics.finalDeletedAnnotationIds,
+      finalChangedAnnotationIds,
+      objectDelta: deleteDiagnostics.objectDelta,
+      changedObjectsCount: deleteDiagnostics.changedObjectsCount,
+    };
+    try {
+      console.log('[EraserHitTest] ' + JSON.stringify({
+        pageNumber,
+        gestureId: eraserDiagnostics.eraserGestureId,
+        pointerBounds: eraserDiagnostics.eraserPointerBounds,
+        candidateAnnotationIds,
+        rejectedAnnotations,
+        touchedAnnotationIds,
+        finalDeletedAnnotationIds: eraserDiagnostics.finalDeletedAnnotationIds,
+        finalChangedAnnotationIds: eraserDiagnostics.finalChangedAnnotationIds,
+        objectDelta: eraserDiagnostics.objectDelta,
+        changedObjectsCount: eraserDiagnostics.changedObjectsCount,
+      }));
+    } catch (_) {}
+    if (
+      eraserDiagnostics.finalDeletedAnnotationIds.length > 0
+      || eraserDiagnostics.finalChangedAnnotationIds.length > 0
+    ) {
+      onEraseCommitRef.current(updatedJSON, eraserDiagnostics);
+    }
 
     if (calloutCallback && calloutHitIds.length > 0) {
       try {
@@ -939,6 +983,14 @@ const FabricEraserCanvas = memo(({
       }
 
       isErasingRef.current = true;
+      eraserDiagGestureRef.current = beginAnnotationGesture({
+        surface: 'FabricEraserCanvas',
+        tool: 'eraser',
+        type: 'annotation',
+        action: 'eraser-stroke',
+        pointerDown: true,
+        pageNumber,
+      });
       const pointer = canvas.getPointer(opt.e);
       eraserPathRef.current = [['M', pointer.x, pointer.y]];
     });
@@ -946,6 +998,9 @@ const FabricEraserCanvas = memo(({
     // mouse:move
     canvas.on('mouse:move', (opt) => {
       if (!isErasingRef.current) return;
+      markAnnotationPreviewFrame(eraserDiagGestureRef.current, {
+        action: 'eraser-stroke',
+      });
       const pointer = canvas.getPointer(opt.e);
       eraserPathRef.current.push(['L', pointer.x, pointer.y]);
     });
@@ -956,6 +1011,9 @@ const FabricEraserCanvas = memo(({
         return;
       }
       isErasingRef.current = false;
+      markAnnotationPointerRelease(eraserDiagGestureRef.current, {
+        action: 'eraser-stroke',
+      });
 
       applyEraserAndCommit(canvas);
       eraserPathRef.current = [];

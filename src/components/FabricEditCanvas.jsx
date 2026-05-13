@@ -25,6 +25,12 @@ import { createPortal } from 'react-dom';
 import { flushSync } from 'react-dom';
 import { fabric } from 'fabric';
 import { useFabricCanvas } from '../hooks/useFabricCanvas';
+import {
+  beginAnnotationGesture,
+  isAnnotationPreviewDiagEnabled,
+  markAnnotationPointerRelease,
+  markAnnotationPreviewFrame,
+} from '../utils/annotationPreviewDiag';
 // Plan 15-04 Issue 4 (2026-04-17): TEXT_PADDING is the gutter between the
 // Fabric Textbox wrap boundary and the visible SVG border. Fabric.width =
 // visible - 2*TEXT_PADDING so wrap parity with CSS `word-break: break-all`
@@ -96,6 +102,24 @@ const CUSTOM_PROPS = [
   'globalCompositeOperation', 'layer',
   'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode',
 ];
+
+function createAnnotationId(prefix = 'anno') {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function ensureJsonAnnotationId(json, prefix) {
+  if (!json || typeof json !== 'object') return;
+  const existing = json?.data?.id || json?.data?.annoId || json?.id || json?.highlightId;
+  if (!json.data || typeof json.data !== 'object') {
+    json.data = {};
+  }
+  if (!json.data.id) {
+    json.data.id = existing || createAnnotationId(prefix);
+  }
+}
 
 // UX: BBOX_PADDING is the page-unit buffer added on every side of a shape
 // when sizing the edit canvas. It determines how much PIXEL SPACE Fabric has
@@ -888,6 +912,7 @@ MiniToolbar.displayName = 'MiniToolbar';
 // can be diffed field-by-field to isolate the cursor drift source.
 // ---------------------------------------------------------------------------
 const dumpCursorParity = (phase, source, id, fabricObj, svgEl, canvas, containerEl) => {
+  if (!isAnnotationPreviewDiagEnabled()) return;
   try {
     const pickComputed = (el) => {
       if (!el) return null;
@@ -1153,6 +1178,7 @@ const FabricEditCanvas = memo(({
   // the SVG live preview and Fabric handles desync on any handle that moves
   // obj.left or obj.top (tl/tr/bl/mt/ml/mb).
   const scaleStartRef = useRef(null);
+  const editDiagGestureRef = useRef(null);
 
   // -------------------------------------------------------------------------
   // Commit logic
@@ -1372,6 +1398,7 @@ const FabricEditCanvas = memo(({
       json.left = 0;
       json.top = 0;
     }
+    ensureJsonAnnotationId(json, json.type || 'anno');
 
     // Build updated annotations
     const currentAnnotations = annotationsRef.current;
@@ -2404,6 +2431,20 @@ const FabricEditCanvas = memo(({
       canvas.renderAll();
 
       canvas.on('object:moving', (e) => {
+        if (!editDiagGestureRef.current) {
+          const annData = annotationDataRef.current;
+          editDiagGestureRef.current = beginAnnotationGesture({
+            surface: 'FabricEditCanvas',
+            tool: editTypeRef.current,
+            type: annData?.data?.type || annData?.type || editTypeRef.current,
+            action: 'bbox-move',
+            annotationId: reactCalloutId || annData?.id || annData?.data?.id || annotationIndex,
+            pointerDown: true,
+          });
+        }
+        markAnnotationPreviewFrame(editDiagGestureRef.current, {
+          action: 'bbox-move',
+        });
         const o = e.target;
         const dx = o.left - BBOX_PADDING;
         const dy = o.top - BBOX_PADDING;
@@ -2437,6 +2478,20 @@ const FabricEditCanvas = memo(({
       });
 
       canvas.on('object:scaling', (e) => {
+        if (!editDiagGestureRef.current) {
+          const annData = annotationDataRef.current;
+          editDiagGestureRef.current = beginAnnotationGesture({
+            surface: 'FabricEditCanvas',
+            tool: editTypeRef.current,
+            type: annData?.data?.type || annData?.type || editTypeRef.current,
+            action: 'bbox-resize',
+            annotationId: reactCalloutId || annData?.id || annData?.data?.id || annotationIndex,
+            pointerDown: true,
+          });
+        }
+        markAnnotationPreviewFrame(editDiagGestureRef.current, {
+          action: 'bbox-resize',
+        });
         const o = e.target;
         const containerEl = containerRef.current;
         const parentEl = containerEl?.parentElement;
@@ -2531,6 +2586,10 @@ const FabricEditCanvas = memo(({
       });
 
       canvas.on('object:modified', (e) => {
+        markAnnotationPointerRelease(editDiagGestureRef.current, {
+          action: scaleStartRef.current ? 'bbox-resize' : 'bbox-move',
+        });
+        editDiagGestureRef.current = null;
         // Phase 29 — Echo-loop belt (Pitfall 8 from 29-RESEARCH.md).
         // Bridge sets applyingRemote=true synchronously before applying remote
         // Y.Doc updates. If we are mid-apply, this object:modified was triggered

@@ -427,7 +427,7 @@ function createAppMenu() {
           }
         },
         {
-          label: 'Export Annotated PDF…',
+          label: 'Export',
           accelerator: 'CmdOrCtrl+Shift+E',
           click: () => {
             const win = getTargetWindow();
@@ -459,11 +459,11 @@ function createAppMenu() {
           }
         },
         {
-          label: 'Print with Markup…',
+          label: 'Print PDF with Annotations…',
           accelerator: 'CmdOrCtrl+Shift+P',
           click: () => {
             const win = getTargetWindow();
-            console.log('[electron-main] Print with Markup menu clicked, targetWindow alive:', !!(win && !win.isDestroyed()));
+            console.log('[electron-main] Print PDF with Annotations menu clicked, targetWindow alive:', !!(win && !win.isDestroyed()));
             if (win && !win.isDestroyed()) {
               win.webContents.send('menu:print-pdf-markup');
             }

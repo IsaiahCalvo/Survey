@@ -496,6 +496,25 @@ test('callout bounds enclose anchor, knee, and label', () => {
   assert.equal(row.bounds.width, 150); // 60+100=160 - 10 = 150
 });
 
+test('callout bounds enclose current SVG callout schema', () => {
+  const callout = {
+    id: 'co-svg-1',
+    pageNumber: 1,
+    arrowTip: { x: 0.2, y: 0.3 },
+    knee: { x: 0.25, y: 0.35 },
+    textBoxPosition: { x: 0.3, y: 0.3 },
+    textBoxWidth: 0.1,
+    textBoxHeight: 0.05,
+    text: 'See note'
+  };
+  const row = serializeCalloutToRow(callout, { documentId: DOC_ID, userId: USER_ID });
+
+  assert.equal(row.bounds.x, 0.2);
+  assert.equal(row.bounds.y, 0.3);
+  assert.equal(row.bounds.width, 0.2);
+  assert.ok(Math.abs(row.bounds.height - 0.05) < 1e-12);
+});
+
 test('deserializeRowsToCallouts: pulls only callout rows', () => {
   const rows = [
     {

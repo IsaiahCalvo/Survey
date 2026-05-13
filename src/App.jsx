@@ -1,6 +1,6 @@
 // App.jsx - PDF Management Dashboard
 import React, { useRef, useState, useEffect, useLayoutEffect, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
-import { createPortal } from 'react-dom';
+import { createPortal, flushSync } from 'react-dom';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.js?url';
 import { PDFDocument, degrees } from 'pdf-lib';
@@ -21,8 +21,11 @@ import {
 } from './services/excelSessionService';
 import PageAnnotationLayer, { ARROWHEAD_STYLES, ARROWHEAD_STYLE_LABELS } from './PageAnnotationLayer';
 import TextLayer from './TextLayer';
-import { savePDFWithAnnotationsPdfLib } from './utils/pdfAnnotationsPdfLib';
-import { saveAnnotatedPDFFile } from './utils/saveAnnotatedPDFFile';
+import {
+  buildPrintableRegularAnnotationPayload,
+  savePDFWithFlattenedRegularAnnotationsForPrint,
+  savePDFWithAnnotationsPdfLib
+} from './utils/pdfAnnotationsPdfLib';
 import { importAnnotationsFromPdf } from './utils/pdfAnnotationImporter';
 import { resolveAnnotationAt } from './utils/annotationHitTest';
 import { splitImportedCalloutsFromPage } from './utils/calloutImportAdapter';
@@ -39,6 +42,43 @@ import {
   getCounterSeriesList,
   pickNextSeriesColor,
 } from './utils/counterNumbering';
+import {
+  preserveExistingCountersOnPage,
+  shouldRenumberCountersForSave,
+  summarizeCounterRenumberEffect,
+} from './utils/counterRenumberSavePolicy';
+import {
+  applyAnnotationHistoryAction,
+  buildAnnotationHistoryAction,
+  buildPreciseAnnotationHistoryAction,
+  filterAnnotationHistoryActionByOwner,
+  invertAnnotationHistoryAction,
+} from './utils/annotationLocalHistory';
+import {
+  getHistoryOrder,
+  shouldRedoLocalBeforeLegacy,
+  shouldUndoLocalBeforeLegacy,
+} from './utils/historyStacks';
+import { sanitizeConsoleLogText } from './utils/consoleLogFilter';
+import {
+  recordAnnotationBackupWrite,
+  recordAnnotationCommit,
+  recordAnnotationSyncPush,
+  recordAnnotationUndoRedo,
+} from './utils/annotationPreviewDiag';
+import {
+  getCalloutSyncFingerprint,
+  normalizeCalloutsForSync,
+} from './utils/calloutSyncPayload';
+import { markCalloutRemovalIntent } from './utils/calloutRemovalIntent';
+import {
+  getCalloutIdsFromHistoryMeta,
+  scopeHistoryStateForCalloutRestore,
+} from './utils/calloutHistoryScope';
+import {
+  buildAnnotationSelectionContextKey,
+  didAnnotationSelectionContextChange,
+} from './utils/annotationSelectionContext';
 import PDFPageCanvas from './components/PDFPageCanvas';
 import { pdfWorkerManager } from './utils/PDFWorkerManager';
 import Icon from './Icons';
@@ -85,10 +125,12 @@ import YDocProvider from './components/collab/YDocProvider.jsx';
 // (Pitfall 7) holds across the bridge and the keyboard handler call sites.
 import { useYDoc } from './hooks/useYDoc.js';
 import { userUndo, userRedo } from './lib/collab/crdtUndoManager.js';
+import { materializeCalloutFromYMap } from './lib/collab/crdtAnnotationBridge.js';
 // Phase 35 Plan 04 — bulk-delete modals + undo toast layer. The planner
 // builds the BulkDeletePlan in scope of viewerId/documentOwnerId; the modal
 // branches on plan.mode; the toast hook owns the 5/6s auto-dismiss.
 import { buildBulkDeletePlan } from './lib/collab/bulkDeletePlan.js';
+import { canModify, getAnnotationAuthorId } from './lib/collab/permissionScope.js';
 import { ConfirmDeleteModal } from './components/collab/ConfirmDeleteModal.jsx';
 import { UndoToast } from './components/collab/UndoToast.jsx';
 import { useUndoToast } from './hooks/useUndoToast.js';
@@ -109,6 +151,11 @@ import CalloutOverlay from './components/Callout';
 // entering edit mode; fromFabricGroup is used in the save-callback
 // wrapper on edit-mode exit.
 import { toFabricGroup, fromFabricGroup } from './utils/calloutEditAdapter';
+import {
+  isBlankCalloutText,
+  resolveCommittedCalloutText,
+  shouldDeleteBlankCalloutOnCommit,
+} from './utils/calloutBlankCommit';
 import { COLORS, BORDERS, SHADOWS, TYPOGRAPHY } from './theme';
 import { useProjects, useDocuments, useTemplates, useStorage, useDocumentToolPreferences, DEFAULT_TOOL_PREFERENCES, TOOLS_WITH_STROKE_WIDTH, TOOLS_WITH_FILL } from './hooks/useDatabase';
 import { useSubscriptionLimits } from './hooks/useSubscriptionLimits';
@@ -148,6 +195,12 @@ import {
   normalizePageRegions,
   normalizeRegionVisibility
 } from './utils/annotationVisibilityRules';
+import {
+  ANNOTATION_HYDRATION_PENDING,
+  ANNOTATION_HYDRATION_READY_LOCAL,
+  resolveFirstVisibleAnnotationPage,
+  shouldGateFirstVisibleAnnotationPage,
+} from './utils/annotationHydrationGate';
 
 const NATIVE_TEXT_MARKUP_TOOLS = new Set(['text-highlight', 'underline', 'strikeout', 'squiggly']);
 const REVIEW_TOOL_IDS = ['text', 'callout'];
@@ -277,36 +330,43 @@ const ensureRgbaOpacity = (color, opacity = 0.2) => {
 
 const DEFAULT_SURVEY_HIGHLIGHT_OPACITY = 0.4;
 const INTERACTION_PERF_MIN_HOLD_MS = 900;
-const INTERACTION_PERF_SCROLL_HOLD_MS = 1200;
+const INTERACTION_PERF_SCROLL_HOLD_MS = 1800;
 const INTERACTION_PERF_DRAW_HOLD_MS = 1600;
 const SYNCFUSION_OVERLAY_PREFETCH_PAGES = 2;
 const SYNCFUSION_OVERLAY_ROOT_MARGIN = '720px 0px';
 const SYNCFUSION_OVERLAY_WINDOW_LINGER_MS = 260;
-const SYNCFUSION_INTERACTION_SETTLE_MS = 300;
+const SYNCFUSION_INTERACTION_SETTLE_MS = 1800;
 const SYNCFUSION_INTERACTION_PROXY_OBJECT_THRESHOLD = 180;
 const SYNCFUSION_INTERACTION_PROXY_CALLOUT_THRESHOLD = 30;
 const SYNCFUSION_INTERACTION_PROXY_FORCE_OBJECT_THRESHOLD = 320;
 const SYNCFUSION_INTERACTION_MAX_RESIDENT_PAGES = 12;
-const SYNCFUSION_INTERACTION_COMMIT_MAX_PAGES_PER_FRAME = 2;
+const SYNCFUSION_INTERACTION_COMMIT_MAX_PAGES_PER_FRAME = 1;
 const SYNCFUSION_INTERACTION_COMMIT_FRAME_BUDGET_MS = 6;
+const SYNCFUSION_INTERACTION_COMMIT_FRAME_SPACING_MS = 24;
 const SYNCFUSION_INTERACTION_EVENT_THROTTLE_MS = 96;
 const SYNCFUSION_INTERACTION_MARK_THROTTLE_MS = 96;
-const SYNCFUSION_ZOOM_OVERLAY_SETTLE_MS = 1000;
-const SYNCFUSION_BASE_SCROLL_SENSITIVITY = 0.68;
-const SYNCFUSION_DIAGONAL_SCROLL_SENSITIVITY = 0.82;
-const SYNCFUSION_LARGE_WHEEL_SCROLL_SENSITIVITY = 0.8;
-const SYNCFUSION_SCROLL_MAX_STEP_PX = 48;
-const SYNCFUSION_SCROLL_MIN_STEP_PX = 22;
-const SYNCFUSION_SCROLL_FRAME_MAX_PX = 18;
+const SYNCFUSION_INTERACTION_VISIBLE_PAGE_REFRESH_MS = 160;
+const SYNCFUSION_ZOOM_OVERLAY_SETTLE_MS = 1400;
+const SYNCFUSION_BASE_SCROLL_SENSITIVITY = 1.08;
+const SYNCFUSION_SCROLL_ZOOM_OUT_GAIN = 1;
+const SYNCFUSION_SCROLL_ZOOM_IN_GAIN = 0.9;
+const SYNCFUSION_DIAGONAL_SCROLL_SENSITIVITY = 0.95;
+const SYNCFUSION_LARGE_WHEEL_SCROLL_SENSITIVITY = 1;
+const SYNCFUSION_SCROLL_MAX_STEP_PX = 220;
+const SYNCFUSION_SCROLL_MIN_STEP_PX = 16;
+const SYNCFUSION_SCROLL_FRAME_MAX_PX = 180;
+const SYNCFUSION_WHEEL_SCROLL_BATCH_MS = 24;
 // Trackpad pinch/wheel zoom sensitivity. Keep this centralized so both
 // Syncfusion wheel paths stay cursor-anchored and feel equally responsive.
-const SYNCFUSION_WHEEL_ZOOM_EXPONENT = 0.0018;
+const SYNCFUSION_WHEEL_ZOOM_EXPONENT = 0.004;
 const SYNCFUSION_WHEEL_ZOOM_MAX_STEP_PERCENT = 24;
+const SYNCFUSION_WHEEL_ZOOM_BATCH_MS = 16;
+const TOOLBAR_ZOOM_STEP_FACTOR = 1.25;
 const SYNCFUSION_INTERACTION_FORCE_PROXY_ALL_PAGES = true;
 const ZOOM_ONLY_INTERACTION_REASONS = new Set([
   'wheel-zoom', 'syncfusion-wheel-zoom', 'syncfusion-zoom-change', 'overlay-wheel-zoom'
 ]);
-const SYNCFUSION_SCROLL_DELAY_MS = 32;
+const SYNCFUSION_SCROLL_DELAY_MS = 8;
 // Keep enough PDF pages resident that revisiting nearby drawing sheets does not
 // briefly blank/rebuild the page under already-rendered annotations. Syncfusion
 // removes canvases outside this initial window, which caused 1s+ page revisit
@@ -322,6 +382,14 @@ const OVERLAY_LAG_RECORDER_AUTO_SAMPLE_INTERVAL_MS = 180;
 const OVERLAY_LAG_RECORDER_DEBUG_UI_INTERVAL_MS = 1000;
 const OVERLAY_LAG_RECORDER_PERF_ENTRY_LIMIT = 6000;
 const OVERLAY_LAG_RECORDER_EVENT_TIMING_THRESHOLD_MS = 24;
+const OVERLAY_LAG_RECORDER_WORK_CATEGORIES = [
+  'annotationRestoration',
+  'pageRenderCatchup',
+  'syncfusionInternals',
+  'measurementWork'
+];
+const OVERLAY_LAG_RECORDER_ATTRIBUTION_MIN_MS = 8;
+const OVERLAY_LAG_RECORDER_ATTRIBUTION_MIN_FRAME_RATIO = 0.2;
 const DOCUMENT_SYNC_STRUCTURAL_DISABLED_KEY = 'document_sync_structural_disabled';
 const DOCUMENT_SYNC_STRUCTURAL_DISABLED_TTL_MS = 10 * 60 * 1000;
 const HISTORY_DEBUG_CONSOLE_KEY = 'pdf_history_debug_console';
@@ -336,6 +404,15 @@ const getSmoothSyncfusionWheelZoom = (currentZoom, wheelDelta) => {
     Math.min(SYNCFUSION_WHEEL_ZOOM_MAX_STEP_PERCENT, targetZoom - safeCurrent)
   );
   return Math.max(10, Math.min(400, cappedZoom));
+};
+
+const getSyncfusionZoomAwareScrollGain = (zoomScale) => {
+  const safeZoom = Math.max(0.5, Math.min(4, Number(zoomScale) || 1));
+  const zoomT = Math.max(-1, Math.min(1, Math.log2(safeZoom)));
+  const targetGain = zoomT < 0
+    ? 1 + ((SYNCFUSION_SCROLL_ZOOM_OUT_GAIN - 1) * -zoomT)
+    : 1 - ((1 - SYNCFUSION_SCROLL_ZOOM_IN_GAIN) * zoomT);
+  return SYNCFUSION_BASE_SCROLL_SENSITIVITY * targetGain;
 };
 
 const getNormalizedWheelDeltas = (event) => {
@@ -360,6 +437,7 @@ const clampWheelDelta = (value, maxStep) => {
 const HISTORY_DEBUG_TRACE_LIMIT = 250;
 const HISTORY_PAGE_PREVIEW_LIMIT = 12;
 const HISTORY_OBJECT_CHANGE_PREVIEW_LIMIT = 10;
+const HISTORY_SAVELOG_EVENT_LIMIT = 180;
 const PHASE_2_DEBUG_INDICATORS = false; // 2026-04-29 user-waived flip: removes the leftover blue debug tint over the PDF overlay div that was used during Phase 2 development.
 
 const roundHistoryDebugNumber = (value, digits = 2) => {
@@ -427,6 +505,182 @@ const getHistoryObjectSignature = (object) => [
   object?.scaleY ?? '',
   object?.angle ?? ''
 ].join('|');
+
+const getHistoryAnnotationId = (annotation) => (
+  annotation?.data?.id
+  || annotation?.data?.annoId
+  || annotation?.id
+  || annotation?.highlightId
+  || annotation?.pdfAnnotationId
+  || null
+);
+
+const getHistoryAnnotationType = (annotation) => (
+  annotation?.data?.annotationType
+  || annotation?.data?.type
+  || annotation?.pdfAnnotationType
+  || annotation?.type
+  || null
+);
+
+const normalizeHistoryLaneLabel = (source) => {
+  const text = String(source || '').toLowerCase();
+  if (text.includes('local')) return 'local annotation history';
+  if (text.includes('callout')) return 'callout history';
+  if (text.includes('yjs') || text.includes('crdt')) return 'Yjs/CRDT history';
+  if (text.includes('legacy')) return 'legacy history';
+  return source || null;
+};
+
+const normalizeHistoryActionType = (actionType, annotation = null, fallback = null) => {
+  const type = String(actionType || '').toLowerCase();
+  const dataType = String(annotation?.data?.type || annotation?.type || '').toLowerCase();
+  const source = String(fallback || '').toLowerCase();
+  if (type.includes('create') || source.includes('create')) return 'create';
+  if (type.includes('delete') || source.includes('delete')) return 'delete';
+  if (type.includes('undo')) return 'undo';
+  if (type.includes('redo')) return 'redo';
+  if (source.includes('callout')) return source.includes('create') ? 'create' : 'callout edit';
+  if (source.includes('text')) return 'text edit';
+  if (type.includes('update') || source.includes('modified') || source.includes('update')) {
+    if (dataType === 'callout') return 'callout edit';
+    if (dataType === 'textbox' || dataType === 'text') return 'text edit';
+    return 'move';
+  }
+  return actionType || fallback || null;
+};
+
+const inferHistoryUpdateType = (before, after) => {
+  if (!before || !after) return null;
+  const moved = before.left !== after.left || before.top !== after.top;
+  const resized = before.width !== after.width || before.height !== after.height
+    || before.scaleX !== after.scaleX || before.scaleY !== after.scaleY;
+  const rotated = before.angle !== after.angle;
+  const textChanged = before.text !== after.text || before.data?.text !== after.data?.text;
+  const annotationType = getHistoryAnnotationType(after || before);
+  if (annotationType === 'callout') return 'callout edit';
+  if (textChanged) return annotationType === 'textbox' || annotationType === 'text' ? 'text edit' : 'callout edit';
+  if (rotated && !moved && !resized) return 'rotate';
+  if (resized && !moved && !rotated) return 'resize';
+  if (moved && !resized && !rotated) return 'move';
+  if (moved || resized || rotated) return 'move';
+  return 'text edit';
+};
+
+const summarizeHistoryActionForLog = (action) => {
+  if (!action || typeof action !== 'object') return null;
+  const firstAnnotation = action.annotation || action.after || action.before;
+  const batchCreated = Array.isArray(action.created) ? action.created : [];
+  const batchDeleted = Array.isArray(action.deleted) ? action.deleted : [];
+  const batchUpdated = Array.isArray(action.updated) ? action.updated : [];
+  const batchFirst = batchCreated[0]?.annotation || batchDeleted[0]?.annotation || batchUpdated[0]?.after || batchUpdated[0]?.before || null;
+  const ids = [
+    action.annotationId,
+    ...batchCreated.map((entry) => entry?.id),
+    ...batchDeleted.map((entry) => entry?.id),
+    ...batchUpdated.map((entry) => entry?.id),
+  ].filter(Boolean);
+  const inferredActionType = action.type === 'fabric:update'
+    ? inferHistoryUpdateType(action.before, action.after)
+    : normalizeHistoryActionType(action.type, firstAnnotation || batchFirst);
+  return {
+    actionType: inferredActionType,
+    rawActionType: action.type || null,
+    annotationType: getHistoryAnnotationType(firstAnnotation || batchFirst),
+    annotationId: action.annotationId || getHistoryAnnotationId(firstAnnotation) || ids[0] || null,
+    annotationIds: ids.length > 1 ? ids : undefined,
+    pageNumber: action.pageNumber ?? null,
+    itemCount: ids.length || (action.type ? 1 : 0),
+    historySource: 'local annotation history',
+  };
+};
+
+const summarizeHistoryMetaForLog = (meta) => {
+  if (!meta || typeof meta !== 'object') return null;
+  const context = meta.context || {};
+  const hasScopedCalloutIds = getCalloutIdsFromHistoryMeta(meta).length > 0;
+  const lane = meta.reason?.startsWith?.('callouts:') || (meta.reason === 'delete:batch' && hasScopedCalloutIds)
+    ? 'callout history'
+    : 'legacy history';
+  return {
+    actionType: normalizeHistoryActionType(meta.reason, null, meta.reason),
+    rawActionType: meta.reason || null,
+    annotationType: context.calloutId || context.calloutIds ? 'callout' : context.pageNumber ? 'fabric' : null,
+    annotationId: context.annotationId || context.calloutId || context.highlightId || null,
+    annotationIds: Array.isArray(context.calloutIds) ? context.calloutIds : undefined,
+    pageNumber: context.pageNumber ?? null,
+    checkpointId: meta.checkpointId ?? null,
+    order: meta.checkpointId ?? null,
+    createdAt: meta.createdAt || null,
+    historySource: lane,
+  };
+};
+
+const shouldScopeCalloutHistoryRestore = (meta) => {
+  const reason = typeof meta?.reason === 'string' ? meta.reason : '';
+  if (reason.startsWith('callouts:')) return true;
+  return reason === 'delete:batch' && getCalloutIdsFromHistoryMeta(meta).length > 0;
+};
+
+const shouldEchoHistoryDebugEvent = (event) => (
+  event?.type === 'local_annotation_history_added'
+  || event?.type === 'checkpoint_added'
+  || event?.type === 'checkpoint_added_annotation_fast'
+  || event?.type === 'yjs_history_added'
+  || event?.type === 'undo_choice'
+  || event?.type === 'redo_choice'
+  || event?.type?.endsWith?.('_undo_applied')
+  || event?.type?.endsWith?.('_redo_applied')
+  || event?.type === 'yjs_undo_invoked'
+  || event?.type === 'yjs_redo_invoked'
+  || event?.type === 'yjs_history_popped'
+);
+
+const compactHistoryEventForLog = (event) => {
+  if (!event || typeof event !== 'object') return event;
+  return {
+    seq: event.seq,
+    order: event.order ?? event.checkpointId ?? null,
+    at: event.at,
+    event: event.type,
+    actionType: normalizeHistoryActionType(event.actionType || event.rawActionType, null, event.reason),
+    rawActionType: event.rawActionType || event.reason || event.actionType || null,
+    annotationType: event.annotationType || null,
+    annotationId: event.annotationId || null,
+    annotationIds: event.annotationIds || undefined,
+    pageNumber: event.pageNumber ?? event.context?.pageNumber ?? null,
+    lane: normalizeHistoryLaneLabel(event.historySource || event.chosenSource),
+    receivedStack: event.receivedStack || null,
+    chosenStack: event.chosenStack || null,
+    chosenLane: normalizeHistoryLaneLabel(event.chosenSource || event.historySource),
+    decisionReason: event.decisionReason || null,
+    checkedLanes: event.checkedLanes || undefined,
+    undoDepth: event.undoDepth ?? event.localUndoDepth ?? event.legacyUndoDepth ?? event.yUndoDepth ?? null,
+    redoDepth: event.redoDepth ?? event.localRedoDepth ?? event.legacyRedoDepth ?? event.yRedoDepth ?? null,
+    localCandidate: event.localCandidate || undefined,
+    legacyCandidate: event.legacyCandidate || undefined,
+    yjsCandidate: event.yjsCandidate ? {
+      historySource: normalizeHistoryLaneLabel(event.yjsCandidate.historySource),
+      undoDepth: event.yjsCandidate.undoDepth,
+      redoDepth: event.yjsCandidate.redoDepth,
+      topMeta: event.yjsCandidate.topMeta ? {
+        pageNumber: event.yjsCandidate.topMeta.pageNumber ?? null,
+        historyDiagnostics: event.yjsCandidate.topMeta.historyDiagnostics || undefined,
+      } : undefined,
+    } : undefined,
+  };
+};
+
+const mapYjsMeta = (meta) => {
+  if (!meta || typeof meta.get !== 'function') return {};
+  const out = {};
+  try {
+    meta.forEach((value, key) => { out[key] = value; });
+  } catch (_) {
+    // diagnostics only
+  }
+  return out;
+};
 
 const readHistoryDebugConsoleEnabled = () => {
   if (typeof window === 'undefined') return false;
@@ -1384,6 +1638,9 @@ const TemplateModuleSortableRow = React.memo(function TemplateModuleSortableRow(
           transition: 'background 0.18s ease, border-color 0.18s ease'
         }}
       >
+        <style>
+          {`@keyframes annotationHydrationSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}
+        </style>
         <div
           {...attributes}
           {...listeners}
@@ -1897,6 +2154,34 @@ const countAnnotationPageObjects = (pages) => Object.values(pages || {}).reduce(
   0
 );
 
+const summarizeAnnotationCountsForSaveExport = (annotationsByPage, callouts = [], highlightAnnotations = {}) => {
+  const byType = {};
+  let totalObjects = 0;
+  let importedPdfObjects = 0;
+  for (const page of Object.values(annotationsByPage || {})) {
+    if (!page || !Array.isArray(page.objects)) continue;
+    for (const obj of page.objects) {
+      totalObjects += 1;
+      const type = obj?.data?.annotationType || obj?.type || 'unknown';
+      byType[type] = (byType[type] || 0) + 1;
+      if (obj?.isPdfImported || obj?.pdfAnnotationId) importedPdfObjects += 1;
+    }
+  }
+  const calloutCount = Array.isArray(callouts) ? callouts.length : 0;
+  if (calloutCount > 0) byType.callout = (byType.callout || 0) + calloutCount;
+  const highlightCount = highlightAnnotations && typeof highlightAnnotations === 'object'
+    ? Object.keys(highlightAnnotations).length
+    : 0;
+  if (highlightCount > 0) byType.highlight = (byType.highlight || 0) + highlightCount;
+  return {
+    totalObjects,
+    calloutCount,
+    highlightCount,
+    importedPdfObjects,
+    byType
+  };
+};
+
 const saveCloudRenderAnnotationsByPage = (pdfId, metadata, annotationsByPage) => {
   if (!pdfId) return;
   try {
@@ -1946,8 +2231,15 @@ const saveCallouts = (pdfId, callouts) => {
   if (!pdfId) return;
   try {
     const key = `callouts_${pdfId}`;
-    const data = JSON.stringify(callouts);
+    const normalizedCallouts = normalizeCalloutsForSync(callouts);
+    const data = JSON.stringify(normalizedCallouts);
     localStorage.setItem(key, data);
+    recordAnnotationBackupWrite({
+      kind: 'callout-localStorage',
+      count: 1,
+      calloutCount: normalizedCallouts.length,
+      bytes: data.length,
+    });
   } catch (e) {
     console.error('Error saving callouts:', e);
   }
@@ -4274,6 +4566,26 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     }
   };
 
+  useEffect(() => {
+    if (!import.meta.env.DEV || typeof window === 'undefined') return undefined;
+    window.__fix20OpenDocumentById = async (documentId) => {
+      if (!documentId) throw new Error('Fix20 open requires documentId');
+      const { data, error } = await supabase
+        .from('documents')
+        .select('id,name,file_path,file_size,page_count,user_id,project_id')
+        .eq('id', documentId)
+        .single();
+      if (error) throw error;
+      await handleDocumentClick(data);
+      return data;
+    };
+    return () => {
+      if (window.__fix20OpenDocumentById) {
+        delete window.__fix20OpenDocumentById;
+      }
+    };
+  }, [handleDocumentClick]);
+
   const handleDeleteDocument = async (docId, event) => {
     event.stopPropagation();
 
@@ -6043,9 +6355,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
             <div
               onClick={() => {
                 const buf = window.__consoleLogBuffer;
-                const consoleText = Array.isArray(buf) && buf.length > 0
+                const rawConsoleText = Array.isArray(buf) && buf.length > 0
                   ? buf.join('\n')
                   : '(no console output captured)';
+                const consoleText = sanitizeConsoleLogText(rawConsoleText, window);
                 window.dispatchEvent(new CustomEvent('save-log-banner-start', {
                   detail: { consoleText }
                 }));
@@ -9458,6 +9771,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     overlayPointerDown: 0,
     overlayPointerDrag: 0
   });
+  const syncfusionIdleWorkTotalsRef = useRef({
+    annotationRestorationMs: 0,
+    annotationRestorationCount: 0,
+    pageRenderCatchupMs: 0,
+    pageRenderCatchupCount: 0,
+    syncfusionInternalsMs: 0,
+    syncfusionInternalsCount: 0,
+    measurementWorkMs: 0,
+    measurementWorkCount: 0
+  });
   const syncfusionWheelPerfTotalsRef = useRef({
     scrollEvents: 0,
     scrollRawAbsX: 0,
@@ -9485,6 +9808,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     if (!Number.isFinite(safeDelta) || safeDelta === 0) return;
     const totals = overlayLagEventTotalsRef.current;
     totals[key] = (Number(totals[key]) || 0) + safeDelta;
+  }, []);
+  const recordSyncfusionIdleWork = useCallback((category, durationMs, count = 1) => {
+    if (!OVERLAY_LAG_RECORDER_WORK_CATEGORIES.includes(category)) return;
+    const safeDuration = Number(durationMs);
+    if (!Number.isFinite(safeDuration) || safeDuration <= 0) return;
+    const safeCount = Math.max(1, Number(count) || 1);
+    const totals = syncfusionIdleWorkTotalsRef.current;
+    const durationKey = `${category}Ms`;
+    const countKey = `${category}Count`;
+    totals[durationKey] = (Number(totals[durationKey]) || 0) + safeDuration;
+    totals[countKey] = (Number(totals[countKey]) || 0) + safeCount;
   }, []);
 
   const renderTasksRef = useRef({});
@@ -9605,8 +9939,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const syncfusionCommittingProxyPagesRef = useRef(new Set());
   const syncfusionProxyReadyPagesRef = useRef(new Set());
   const syncfusionVisiblePagesRef = useRef(new Set());
+  const syncfusionVisiblePagesRefreshRef = useRef({ timer: null, lastAt: 0 });
   const syncfusionCommitQueueRef = useRef([]);
   const syncfusionCommitRafRef = useRef(null);
+  const syncfusionLastCommitFrameAtRef = useRef(0);
   const syncfusionOverlayTransformSyncRafRef = useRef(null);
   const syncfusionOverlayTransformLoopActiveRef = useRef(false);
   const syncfusionOverlayTransformRatioByPageRef = useRef({});
@@ -10377,12 +10713,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   }, []);
 
   const determineSyncfusionPageMode = useCallback((pageNumber, previousMode = 'full') => {
-    // For zoom-only interactions, keep all pages in 'full' mode — the CSS transform
-    // handles visual scaling and the Fabric.js canvas stays visible (no proxy swap needed).
     if (
       SYNCFUSION_INTERACTION_FORCE_PROXY_ALL_PAGES &&
-      syncfusionInteractionPhaseRef.current === 'interacting' &&
-      !syncfusionInteractionIsZoomOnlyRef.current
+      syncfusionInteractionPhaseRef.current === 'interacting'
     ) {
       return 'proxy';
     }
@@ -10779,6 +11112,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     clearSyncfusionOverlayTransformSyncRaf();
     clearSyncfusionCommitRaf();
     syncfusionCommitQueueRef.current = [];
+    syncfusionLastCommitFrameAtRef.current = 0;
     setSyncfusionCommitQueueDepth(0);
     syncfusionInteractionUntilRef.current = 0;
     syncfusionInteractionReasonRef.current = null;
@@ -10895,6 +11229,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       const frameStart = (typeof performance !== 'undefined' && typeof performance.now === 'function')
         ? performance.now()
         : Date.now();
+      if (
+        syncfusionLastCommitFrameAtRef.current > 0 &&
+        frameStart - syncfusionLastCommitFrameAtRef.current < SYNCFUSION_INTERACTION_COMMIT_FRAME_SPACING_MS
+      ) {
+        syncfusionCommitRafRef.current = raf(flushFrame);
+        return;
+      }
+      syncfusionLastCommitFrameAtRef.current = frameStart;
       const committedScaleUpdates = {};
       const committedPages = [];
       let processedPages = 0;
@@ -10959,15 +11301,31 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
       setSyncfusionCommitQueueDepth(queue.length);
       if (queue.length === 0) {
+        const frameEnd = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+          ? performance.now()
+          : Date.now();
+        recordSyncfusionIdleWork(
+          'annotationRestoration',
+          frameEnd - frameStart,
+          Math.max(1, committedPages.length)
+        );
         finalizeSyncfusionInteractionIdle('commit-complete');
         return;
       }
 
+      const frameEnd = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+        ? performance.now()
+        : Date.now();
+      recordSyncfusionIdleWork(
+        'annotationRestoration',
+        frameEnd - frameStart,
+        Math.max(1, committedPages.length)
+      );
       syncfusionCommitRafRef.current = raf(flushFrame);
     };
 
     syncfusionCommitRafRef.current = raf(flushFrame);
-  }, [finalizeSyncfusionInteractionIdle, getSyncfusionViewerScale, syncSyncfusionLightweightPages]);
+  }, [finalizeSyncfusionInteractionIdle, getSyncfusionViewerScale, recordSyncfusionIdleWork, syncSyncfusionLightweightPages]);
 
   const enterSyncfusionCommitPhase = useCallback(() => {
     if (syncfusionInteractionPhaseRef.current !== 'interacting') {
@@ -10976,30 +11334,33 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     clearSyncfusionInteractionTimer();
     clearSyncfusionOverlayTransformSyncRaf();
     clearSyncfusionCommitRaf();
-    syncfusionCommitQueueRef.current = [];
-    setSyncfusionCommitQueueDepth(0);
-    syncfusionCommittingProxyPagesRef.current = new Set();
-    setSyncfusionCommittingProxyPages(new Set());
 
-    const settledSessionId = syncfusionInteractionSessionIdRef.current;
-    const raf =
-      typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function'
-        ? window.requestAnimationFrame.bind(window)
-        : (callback) => setTimeout(callback, 16);
-    raf(() => {
-      if (syncfusionInteractionSessionIdRef.current !== settledSessionId) {
-        return;
-      }
-      if (syncfusionInteractionPhaseRef.current !== 'interacting') {
-        return;
-      }
+    const residentPages = Array.from(syncfusionInteractionResidentPagesRef.current || [])
+      .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0);
+    if (residentPages.length === 0) {
       finalizeSyncfusionInteractionIdle('settled');
-    });
+      return;
+    }
+
+    syncfusionInteractionPhaseRef.current = 'committing';
+    setSyncfusionInteractionPhase('committing');
+    const currentPage = coercePageNumber(pageNumRef.current, Number.POSITIVE_INFINITY) || 1;
+    syncfusionCommitQueueRef.current = sortSyncfusionPagesByDistance(residentPages, currentPage);
+    syncfusionLastCommitFrameAtRef.current = 0;
+    setSyncfusionCommitQueueDepth(residentPages.length);
+    const committingPages = new Set(residentPages);
+    syncfusionCommittingProxyPagesRef.current = committingPages;
+    setSyncfusionCommittingProxyPages(committingPages);
+    syncSyncfusionLightweightPages('committing');
+    runSyncfusionCommitQueue();
   }, [
     clearSyncfusionCommitRaf,
     clearSyncfusionInteractionTimer,
     clearSyncfusionOverlayTransformSyncRaf,
-    finalizeSyncfusionInteractionIdle
+    finalizeSyncfusionInteractionIdle,
+    runSyncfusionCommitQueue,
+    sortSyncfusionPagesByDistance,
+    syncSyncfusionLightweightPages
   ]);
 
   const scheduleSyncfusionInteractionSettleCheck = useCallback(() => {
@@ -11129,6 +11490,31 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     finalizeSyncfusionInteractionIdle('forced-reset');
   }, [finalizeSyncfusionInteractionIdle]);
 
+  const scheduleSyncfusionVisiblePagesRefresh = useCallback(() => {
+    const state = syncfusionVisiblePagesRefreshRef.current;
+    const now = Date.now();
+    const elapsed = now - (Number(state.lastAt) || 0);
+    const flush = () => {
+      state.timer = null;
+      state.lastAt = Date.now();
+      setSyncfusionVisiblePagesVersion((prev) => prev + 1);
+    };
+    if (elapsed >= SYNCFUSION_INTERACTION_VISIBLE_PAGE_REFRESH_MS) {
+      if (state.timer) {
+        clearTimeout(state.timer);
+        state.timer = null;
+      }
+      flush();
+      return;
+    }
+    if (!state.timer) {
+      state.timer = setTimeout(
+        flush,
+        Math.max(24, SYNCFUSION_INTERACTION_VISIBLE_PAGE_REFRESH_MS - elapsed)
+      );
+    }
+  }, []);
+
   const markSyncfusionInteractionActive = useCallback((reason = 'interaction', holdMs = SYNCFUSION_INTERACTION_SETTLE_MS) => {
     if (!useSyncfusionRenderer || !syncfusionLiveStableOverlayEnabled || !syncfusionDualLayerEnabled) {
       return;
@@ -11148,6 +11534,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     if (syncfusionInteractionPhaseRef.current === 'committing') {
       clearSyncfusionCommitRaf();
       syncfusionCommitQueueRef.current = [];
+      syncfusionLastCommitFrameAtRef.current = 0;
       setSyncfusionCommitQueueDepth(0);
       setSyncfusionCommittingProxyPages(new Set());
       syncfusionCommittingProxyPagesRef.current = new Set();
@@ -11190,6 +11577,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     clearInteractionPerfTimer();
     clearSyncfusionCommitRaf();
     clearSyncfusionOverlayTransformSyncRaf();
+    const visiblePageRefreshState = syncfusionVisiblePagesRefreshRef.current;
+    if (visiblePageRefreshState.timer) {
+      clearTimeout(visiblePageRefreshState.timer);
+      visiblePageRefreshState.timer = null;
+    }
     resetSyncfusionOverlayTransformStyles();
     clearSyncfusionInteractionTimer();
     if (syncfusionWheelZoomRafRef.current !== null) {
@@ -11246,7 +11638,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return () => window.removeEventListener('keydown', handleRendererToggle);
   }, []);
 
-  // Keyboard shortcut: Ctrl+Z / Cmd+Z for undo, Ctrl+Shift+Z / Cmd+Shift+Z for redo
+  // Keyboard shortcut: Ctrl+Z / Cmd+Z for undo, Ctrl+Shift+Z / Cmd+Shift+Z for redo.
+  // 2026-05-07 — Listener is bound in capture phase AND calls
+  // stopImmediatePropagation when the keystroke is for us. Reason: the
+  // underlying viewer ships its own keydown listener whose handler crashes
+  // (`Cannot read properties of undefined (reading 'annotationToolbarModule')`)
+  // when Cmd+Z is pressed, swallowing the event before our undo can run.
+  // Capturing first + stopping propagation prevents the crash from firing
+  // and keeps undo/redo responsive.
   useEffect(() => {
     const handleUndoRedoKey = (e) => {
       if (e.key !== 'z' && e.key !== 'Z') return;
@@ -11257,14 +11656,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
 
       e.preventDefault();
+      if (typeof e.stopImmediatePropagation === 'function') {
+        e.stopImmediatePropagation();
+      } else {
+        e.stopPropagation();
+      }
       if (e.shiftKey) {
         handleRedoRef.current?.();
       } else {
         handleUndoRef.current?.();
       }
     };
-    window.addEventListener('keydown', handleUndoRedoKey);
-    return () => window.removeEventListener('keydown', handleUndoRedoKey);
+    window.addEventListener('keydown', handleUndoRedoKey, { capture: true });
+    return () => window.removeEventListener('keydown', handleUndoRedoKey, { capture: true });
   }, []);
 
   // Force cursor re-evaluation on tool switch.
@@ -11403,8 +11807,82 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   //   cursorOffsetY: number,
   //   lastCursorPageX: number,   // remembered last cursor for Shift-down/up transitions
   //   lastCursorPageY: number,
+  //   previewSvg: SVGSVGElement|null, // lightweight live preview, not app state
+  //   previewPath: SVGPathElement|null,
+  //   previewText: SVGTextElement|null,
+  //   counter: object,           // final Fabric-style counter JSON to save on release
   // }
   const counterDragRef = useRef(null);
+
+  const getCounterRenderGeometry = useCallback((bodyX, bodyY, radius, pointerAngleDeg) => {
+    const angleRad = (pointerAngleDeg * Math.PI) / 180;
+    const tipExtension = Math.max(5, radius * 0.5);
+    const tipDistance = radius + tipExtension;
+    const tipX = bodyX + Math.cos(angleRad) * tipDistance;
+    const tipY = bodyY + Math.sin(angleRad) * tipDistance;
+    const tangentHalfAngle = Math.acos(radius / tipDistance);
+    const t1Angle = angleRad + tangentHalfAngle;
+    const t2Angle = angleRad - tangentHalfAngle;
+    const t1x = bodyX + Math.cos(t1Angle) * radius;
+    const t1y = bodyY + Math.sin(t1Angle) * radius;
+    const t2x = bodyX + Math.cos(t2Angle) * radius;
+    const t2y = bodyY + Math.sin(t2Angle) * radius;
+    return {
+      pathD: `M ${tipX},${tipY} L ${t1x},${t1y} A ${radius},${radius} 0 1 1 ${t2x},${t2y} Z`,
+      fontSize: Math.max(11, radius * 1.05),
+    };
+  }, []);
+
+  const updateCounterDragPreview = useCallback((drag) => {
+    if (!drag?.previewPath || !drag?.previewText) return;
+    const geometry = getCounterRenderGeometry(drag.bodyX, drag.bodyY, drag.radius, drag.angle);
+    drag.previewPath.setAttribute('d', geometry.pathD);
+    drag.previewPath.setAttribute('fill', drag.color || '#ef4444');
+    drag.previewText.setAttribute('x', String(drag.bodyX));
+    drag.previewText.setAttribute('y', String(drag.bodyY));
+    drag.previewText.setAttribute('font-size', String(geometry.fontSize));
+    drag.previewText.textContent = String(drag.displayNumber ?? 1);
+  }, [getCounterRenderGeometry]);
+
+  const removeCounterDragPreview = useCallback((drag) => {
+    if (drag?.previewSvg?.parentNode) {
+      drag.previewSvg.parentNode.removeChild(drag.previewSvg);
+    }
+  }, []);
+
+  const createCounterDragPreview = useCallback((overlayEl, drag) => {
+    if (!overlayEl || !drag) return;
+    const svgNs = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNs, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${drag.pageWidth} ${drag.pageHeight}`);
+    svg.setAttribute('preserveAspectRatio', 'none');
+    svg.style.position = 'absolute';
+    svg.style.inset = '0';
+    svg.style.width = '100%';
+    svg.style.height = '100%';
+    svg.style.overflow = 'visible';
+    svg.style.pointerEvents = 'none';
+    svg.setAttribute('aria-hidden', 'true');
+
+    const path = document.createElementNS(svgNs, 'path');
+    path.setAttribute('stroke', 'none');
+    const text = document.createElementNS(svgNs, 'text');
+    text.setAttribute('fill', drag.numberColor || '#ffffff');
+    text.setAttribute('font-weight', '700');
+    text.setAttribute('font-family', '-apple-system, system-ui, sans-serif');
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('dominant-baseline', 'central');
+    text.style.userSelect = 'none';
+    text.style.pointerEvents = 'none';
+
+    svg.appendChild(path);
+    svg.appendChild(text);
+    overlayEl.appendChild(svg);
+    drag.previewSvg = svg;
+    drag.previewPath = path;
+    drag.previewText = text;
+    updateCounterDragPreview(drag);
+  }, [updateCounterDragPreview]);
 
   // [COUNTER MULTI-LIST] Active series state — which series the next pin
   // joins. Both null until the user drops the very first pin (or picks
@@ -11472,6 +11950,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   // Callout overlay state
   const [callouts, setCallouts] = useState([]);
+  const lastSavedCalloutsFingerprintRef = useRef(null);
+  const setCalloutsIfPersistedChanged = useCallback((updater) => {
+    setCallouts((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      if (getCalloutSyncFingerprint(prev) === getCalloutSyncFingerprint(next)) {
+        return prev;
+      }
+      return next;
+    });
+  }, []);
   const [selectedCalloutId, setSelectedCalloutId] = useState(null);
   // UX: Phase 14 CALL-10 — selectedCalloutIds is a Set<string> parallel to
   // selectedIds Set<number> for annotations. Clicking a callout sets this Set
@@ -11507,6 +11995,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Null when no command is pending. Callouts are handled by a separate
   // session and are intentionally skipped here.
   const [pendingSvgSelection, setPendingSvgSelection] = useState(null);
+  const [annotationSelectionClearToken, setAnnotationSelectionClearToken] = useState(0);
   // UX: pan-mode hover broadcast. Set by the document-level mousemove
   // listener (declared after the mousedown/mouseup pair below) to
   // { pageNumber, annotationIndex } whenever the cursor is over an
@@ -11517,6 +12006,34 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // re-renders only fire when the (pageNumber, annotationIndex) pair
   // changes, which matches our needs.
   const [pendingSvgHover, setPendingSvgHover] = useState(null);
+  const clearAnnotationSelectionForContextChange = useCallback((reason = 'annotation-context-change') => {
+    setAnnotationSelectionClearToken((token) => token + 1);
+    setSelectedCalloutId(null);
+    setSelectedCalloutIds((prev) => {
+      if (prev instanceof Set && prev.size === 0) return prev;
+      return new Set();
+    });
+    setEditingAnnotation(null);
+    setLiveCalloutEditBounds(null);
+    setLiveTextEditBounds(null);
+    setAnnotationContextMenu(null);
+    setAnnotationPropertiesPanel(null);
+    setPendingSvgHover(null);
+    setPendingSvgSelection({
+      pageNumber: null,
+      annotationIndex: null,
+      clearAll: true,
+      reason,
+      tick: Date.now(),
+    });
+    if (typeof window !== 'undefined' && window.__phase29InteractionState) {
+      window.__phase29InteractionState.selectedId = null;
+      window.__phase29InteractionState.draggingId = null;
+      window.__phase29InteractionState.scalingId = null;
+      window.__phase29InteractionState.editCanvasId = null;
+    }
+  }, []);
+
   const lightweightCalloutCountByPage = useMemo(() => {
     const counts = {};
     callouts.forEach((callout) => {
@@ -11541,12 +12058,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     if (callout) {
       setClipboardCallout(callout);
       setClipboardCalloutType('cut');
-      setCallouts(prev => prev.filter(c => c.id !== calloutId));
+      markCalloutRemovalIntent({
+        source: 'delete',
+        reason: 'callouts:cut',
+        calloutIds: [calloutId],
+        count: 1,
+      }, window);
+      setCalloutsIfPersistedChanged(prev => prev.filter(c => c.id !== calloutId));
       if (selectedCalloutId === calloutId) {
         setSelectedCalloutId(null);
       }
     }
-  }, [callouts, selectedCalloutId]);
+  }, [callouts, selectedCalloutId, setCalloutsIfPersistedChanged]);
 
   const handleCopyCallout = useCallback((calloutId) => {
     const callout = callouts.find(c => c.id === calloutId);
@@ -11794,6 +12317,30 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // back without also moving addHistoryCheckpoint.
 
   const [annotationsByPage, setAnnotationsByPage] = useState({}); // Fabric.js canvas annotations
+  const [pdfNativeAnnotationLayerPolicyByPage, setPdfNativeAnnotationLayerPolicyByPage] = useState({});
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const diag = {};
+    Object.entries(pdfNativeAnnotationLayerPolicyByPage || {}).forEach(([pageKey, policy]) => {
+      const pageObjects = annotationsByPage?.[pageKey]?.objects || annotationsByPage?.[Number(pageKey)]?.objects || [];
+      const appImportedIds = Array.isArray(pageObjects)
+        ? pageObjects
+            .filter((obj) => obj?.isPdfImported && obj?.pdfAnnotationId)
+            .map((obj) => obj.pdfAnnotationId)
+        : [];
+      const requiredIds = Array.isArray(policy?.importedIds) ? policy.importedIds : [];
+      const importedCopiesAvailable = requiredIds.length > 0 &&
+        requiredIds.every((id) => appImportedIds.includes(id));
+      diag[pageKey] = {
+        ...policy,
+        appImportedIds,
+        importedCopiesAvailable,
+        nativeLayerHidden: Boolean(policy?.hideNativeLayer && importedCopiesAvailable),
+      };
+    });
+    window.__nativePdfAnnotationLayerDiag = diag;
+  }, [annotationsByPage, pdfNativeAnnotationLayerPolicyByPage]);
 
   // [COUNTER MULTI-LIST] Reactive series list — recomputed whenever
   // annotationsByPage changes. Used by the toolbar caret button (hide
@@ -12785,9 +13332,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     if (rafId !== null) {
       if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
         window.cancelAnimationFrame(rafId);
-      } else {
-        clearTimeout(rafId);
       }
+      clearTimeout(rafId);
       syncfusionWheelZoomRafRef.current = null;
     }
     syncfusionWheelZoomDeltaRef.current = 0;
@@ -12850,11 +13396,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     markInteractionPerfActive(reason, INTERACTION_PERF_SCROLL_HOLD_MS);
     markSyncfusionInteractionActive(reason);
 
-    const raf =
-      typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function'
-        ? window.requestAnimationFrame.bind(window)
-        : (callback) => setTimeout(callback, 16);
-
     const containerRect = viewerContainer.getBoundingClientRect();
     const pointerX = Number.isFinite(event.clientX) ? event.clientX - containerRect.left : containerRect.width / 2;
     const pointerY = Number.isFinite(event.clientY) ? event.clientY - containerRect.top : containerRect.height / 2;
@@ -12884,7 +13425,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     if (syncfusionWheelZoomRafRef.current !== null) return true;
 
-    syncfusionWheelZoomRafRef.current = raf(() => {
+    syncfusionWheelZoomRafRef.current = setTimeout(() => {
+      const workStartMs = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+        ? performance.now()
+        : Date.now();
       syncfusionWheelZoomRafRef.current = null;
       const delta = Number(syncfusionWheelZoomDeltaRef.current) || 0;
       syncfusionWheelZoomDeltaRef.current = 0;
@@ -13042,7 +13586,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           });
         });
       }
-    });
+      const workEndMs = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+        ? performance.now()
+        : Date.now();
+      recordSyncfusionIdleWork('syncfusionInternals', workEndMs - workStartMs);
+    }, SYNCFUSION_WHEEL_ZOOM_BATCH_MS);
 
     return true;
   }, [
@@ -13050,6 +13598,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     findSyncfusionPageAtClientPoint,
     markInteractionPerfActive,
     markSyncfusionInteractionActive,
+    recordSyncfusionIdleWork,
     setAnchor,
     setActiveTool,
   ]);
@@ -13158,6 +13707,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     };
 
     const flushWheelScroll = () => {
+      const workStartMs = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+        ? performance.now()
+        : Date.now();
       wheelScrollApplyRafId = null;
       const pending = pendingWheelScroll;
       pendingWheelScroll = null;
@@ -13243,6 +13795,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         diagonalEvents: pending.diagonalEvents,
         clippedEvents: pending.clippedEvents
       });
+      const workEndMs = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+        ? performance.now()
+        : Date.now();
+      recordSyncfusionIdleWork('syncfusionInternals', workEndMs - workStartMs, pending.eventCount);
     };
 
     const onWheel = (event) => {
@@ -13266,7 +13822,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         event.stopPropagation();
         const diagonalSensitivity = isDiagonalTrackpadScroll ? SYNCFUSION_DIAGONAL_SCROLL_SENSITIVITY : 1;
         const largeWheelSensitivity = isLargeWheelStep ? SYNCFUSION_LARGE_WHEEL_SCROLL_SENSITIVITY : 1;
-        const sensitivity = SYNCFUSION_BASE_SCROLL_SENSITIVITY * diagonalSensitivity * largeWheelSensitivity;
+        const zoomAwareSensitivity = getSyncfusionZoomAwareScrollGain(currentZoomForScroll);
+        const sensitivity = zoomAwareSensitivity * diagonalSensitivity * largeWheelSensitivity;
         const appliedX = clippedX * sensitivity;
         const appliedY = clippedY * sensitivity;
         const frameMaxX = Math.max(SYNCFUSION_SCROLL_MIN_STEP_PX, Math.abs(clippedX) * sensitivity);
@@ -13312,7 +13869,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         pendingWheelScroll.lastSensitivity = sensitivity;
         pendingWheelScroll.currentZoomForScroll = currentZoomForScroll;
         if (wheelScrollApplyRafId === null) {
-          wheelScrollApplyRafId = raf(flushWheelScroll);
+          wheelScrollApplyRafId = setTimeout(flushWheelScroll, SYNCFUSION_WHEEL_SCROLL_BATCH_MS);
         }
       }
       queueInteractionMark('wheel-scroll', 'syncfusion-wheel-scroll', INTERACTION_PERF_SCROLL_HOLD_MS);
@@ -13365,7 +13922,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           wheelScrollMarkRafId = null;
         }
         if (wheelScrollApplyRafId !== null) {
-          cancelRaf(wheelScrollApplyRafId);
+          clearTimeout(wheelScrollApplyRafId);
           wheelScrollApplyRafId = null;
         }
         pendingWheelScroll = null;
@@ -13389,6 +13946,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     findSyncfusionPageAtClientPoint,
     markInteractionPerfActive,
     markSyncfusionInteractionActive,
+    recordSyncfusionIdleWork,
     setAnchor
   ]);
 
@@ -14115,8 +14673,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     scaleRef.current = nextScale;
 
     // Live-update zoom input display — decoupled from deferred setScale so the
-    // toolbar % matches the canvas during rapid zoom (setScale lags ~1000ms
-    // while zoomOverlayTransformActiveRef gates PAL unmount churn).
+    // toolbar % matches the canvas during rapid zoom while
+    // zoomOverlayTransformActiveRef gates PAL unmount churn.
     if (document.activeElement !== zoomInputRef.current) {
       setZoomInputValue(String(Math.round(nextScale * 100)));
     }
@@ -14196,7 +14754,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         }
       }
     }
-    // (Re)start safety settle timer — releases zoom overlay transform after 1000ms.
+    // (Re)start safety settle timer — releases zoom overlay transform after the
+    // short zoom-settle window.
     if (zoomOverlaySettleTimerRef.current) {
       clearTimeout(zoomOverlaySettleTimerRef.current);
     }
@@ -14302,6 +14861,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const [pendingHighlight, setPendingHighlight] = useState(null); // { pageNumber, x, y, width, height, id }
   const [showSpaceSelection, setShowSpaceSelection] = useState(false);
   const [highlightAnnotations, setHighlightAnnotations] = useState({}); // { [highlightId]: { pageNumber, bounds, categoryId, spaceId, checklistResponses: { [itemId]: { selection, note } } } }
+  const [surveyAnnotationHydration, setSurveyAnnotationHydration] = useState(ANNOTATION_HYDRATION_READY_LOCAL);
   const [expandedCategories, setExpandedCategories] = useState({}); // { [categoryId]: boolean }
   const [expandedHighlights, setExpandedHighlights] = useState({}); // { [highlightId]: boolean }
 
@@ -15116,6 +15676,132 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       zoomMaxReportedLag: roundOverlayRecorderValue(Number(wheelPerfTotals.zoomReportedLagMax) || 0, 3),
       zoomBigJumpEvents: Number(wheelPerfTotals.zoomBigJumpEvents) || 0
     };
+    const idleWorkTotals = {};
+    samples.forEach((sample) => {
+      if (!sample?.idleWorkDeltas || typeof sample.idleWorkDeltas !== 'object') return;
+      Object.entries(sample.idleWorkDeltas).forEach(([key, value]) => {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric) || numeric <= 0) return;
+        idleWorkTotals[key] = (idleWorkTotals[key] || 0) + numeric;
+      });
+    });
+    const idleWorkHotspots = Object.entries(idleWorkTotals)
+      .filter(([key]) => key.endsWith('Ms'))
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 8)
+      .map(([workType, durationMs]) => ({
+        workType,
+        durationMs: roundOverlayRecorderValue(durationMs, 3),
+        count: roundOverlayRecorderValue(idleWorkTotals[workType.replace(/Ms$/, 'Count')] || 0, 3)
+      }));
+    const rawZoomSignalCount = (Number(interactionEventTotals.overlayWheelZoom) || 0) +
+      (Number(interactionEventTotals.syncfusionWheelZoom) || 0);
+    const workReductionSummary = {
+      rawZoomSignalCount,
+      pdfZoomWorkCount: zoomEvents,
+      zoomSignalsCombined: rawZoomSignalCount > zoomEvents ? rawZoomSignalCount - zoomEvents : 0,
+      zoomWorkReductionPct: rawZoomSignalCount > 0
+        ? roundOverlayRecorderValue(((rawZoomSignalCount - zoomEvents) / rawZoomSignalCount) * 100, 2)
+        : null
+    };
+
+    const slowFrameBuckets = {};
+    jankSamples.forEach((sample) => {
+      const phase = sample?.interactionPhase || 'unknown';
+      const reason = sample?.interactionReason || 'idle';
+      const key = `${phase}:${reason}`;
+      const frameMs = Number(sample?.frameMs);
+      if (!Number.isFinite(frameMs)) return;
+      const bucket = slowFrameBuckets[key] || {
+        phase,
+        reason,
+        count: 0,
+        frameMsTotal: 0,
+        frameMsMax: 0
+      };
+      bucket.count += 1;
+      bucket.frameMsTotal += frameMs;
+      bucket.frameMsMax = Math.max(bucket.frameMsMax, frameMs);
+      slowFrameBuckets[key] = bucket;
+    });
+    const slowFrameHotspots = Object.values(slowFrameBuckets)
+      .sort((left, right) => {
+        if (right.frameMsTotal !== left.frameMsTotal) return right.frameMsTotal - left.frameMsTotal;
+        return right.frameMsMax - left.frameMsMax;
+      })
+      .slice(0, 6)
+      .map((bucket) => ({
+        phase: bucket.phase,
+        reason: bucket.reason,
+        count: bucket.count,
+        frameMsAvg: roundOverlayRecorderValue(bucket.frameMsTotal / bucket.count, 3),
+        frameMsMax: roundOverlayRecorderValue(bucket.frameMsMax, 3),
+        frameMsTotal: roundOverlayRecorderValue(bucket.frameMsTotal, 3)
+      }));
+    const classifySlowFrameWork = (sample) => {
+      const idleWork = sample?.idleWorkDeltas || {};
+      const events = sample?.interactionEventDeltas || {};
+      const wheel = sample?.wheelPerfDeltas || {};
+      const frameMs = Number(sample?.frameMs) || 0;
+      if (Number(sample?.longTaskTotalMs) > 0) return 'longTask';
+      const measuredWork = [
+        ['annotationRestoration', Number(idleWork.annotationRestorationMs) || 0],
+        ['pageRenderCatchup', Number(idleWork.pageRenderCatchupMs) || 0],
+        ['syncfusionInternals', Number(idleWork.syncfusionInternalsMs) || 0],
+        ['measurementWork', Math.max(Number(idleWork.measurementWorkMs) || 0, Number(sample?.sampleCaptureCostMs) || 0)]
+      ].sort((left, right) => right[1] - left[1]);
+      const strongestMeasuredMs = measuredWork[0]?.[1] || 0;
+      const measuredFrameRatio = frameMs > 0 ? strongestMeasuredMs / frameMs : 0;
+      if (
+        strongestMeasuredMs >= OVERLAY_LAG_RECORDER_ATTRIBUTION_MIN_MS ||
+        measuredFrameRatio >= OVERLAY_LAG_RECORDER_ATTRIBUTION_MIN_FRAME_RATIO
+      ) {
+        return measuredWork[0][0];
+      }
+      if (
+        Number(events.syncfusionContainerMutation) > 0 ||
+        Number(events.syncfusionContainerMapChange) > 0 ||
+        Number(events.syncfusionPageChange) > 0
+      ) return 'pageRenderCatchup';
+      if (
+        Number(wheel.scrollEvents) > 0 ||
+        Number(wheel.zoomEvents) > 0 ||
+        Number(events.syncfusionWheelScroll) > 0 ||
+        Number(events.syncfusionScroll) > 0 ||
+        Number(events.syncfusionZoomChange) > 0 ||
+        Number(events.overlayWheelZoom) > 0
+      ) return 'syncfusionInternals';
+      return 'unattributedRafPause';
+    };
+    const slowFrameAttributionBuckets = {};
+    jankSamples.forEach((sample) => {
+      const workType = classifySlowFrameWork(sample);
+      const frameMs = Number(sample?.frameMs);
+      if (!Number.isFinite(frameMs)) return;
+      const bucket = slowFrameAttributionBuckets[workType] || {
+        workType,
+        count: 0,
+        frameMsTotal: 0,
+        frameMsMax: 0
+      };
+      bucket.count += 1;
+      bucket.frameMsTotal += frameMs;
+      bucket.frameMsMax = Math.max(bucket.frameMsMax, frameMs);
+      slowFrameAttributionBuckets[workType] = bucket;
+    });
+    const slowFrameAttributionHotspots = Object.values(slowFrameAttributionBuckets)
+      .sort((left, right) => {
+        if (right.frameMsTotal !== left.frameMsTotal) return right.frameMsTotal - left.frameMsTotal;
+        return right.frameMsMax - left.frameMsMax;
+      })
+      .slice(0, 6)
+      .map((bucket) => ({
+        workType: bucket.workType,
+        count: bucket.count,
+        frameMsAvg: roundOverlayRecorderValue(bucket.frameMsTotal / bucket.count, 3),
+        frameMsMax: roundOverlayRecorderValue(bucket.frameMsMax, 3),
+        frameMsTotal: roundOverlayRecorderValue(bucket.frameMsTotal, 3)
+      }));
 
     const worstFrameSample = samples.reduce((worst, sample) => {
       const frameMs = Number(sample?.frameMs);
@@ -15135,6 +15821,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         scrollLeft: worstFrameSample.scrollLeft,
         scrollTop: worstFrameSample.scrollTop,
         wheelPerfDeltas: worstFrameSample.wheelPerfDeltas || {},
+        idleWorkDeltas: worstFrameSample.idleWorkDeltas || {},
         interactionEventDeltas: worstFrameSample.interactionEventDeltas || {},
         longTaskCount: worstFrameSample.longTaskCount,
         longTaskTotalMs: worstFrameSample.longTaskTotalMs,
@@ -15228,6 +15915,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       eventTimingMsP95: roundOverlayRecorderValue(percentileOverlayRecorder(eventTimingTotals, 0.95), 3),
       interactionEventHotspots,
       wheelMotionSummary,
+      idleWorkHotspots,
+      workReductionSummary,
+      slowFrameHotspots,
+      slowFrameAttributionHotspots,
       worstFrameContext,
       longTaskHotspots
     };
@@ -15313,6 +16004,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       wheelPerfDeltas[key] = Math.max(0, nextValue - previousValue);
     });
     recorder.lastWheelPerfTotals = { ...currentWheelPerfTotals };
+    const currentIdleWorkTotals = syncfusionIdleWorkTotalsRef.current || {};
+    const previousIdleWorkTotals = recorder.lastIdleWorkTotals || {};
+    const idleWorkDeltas = {};
+    Object.keys(currentIdleWorkTotals).forEach((key) => {
+      const nextValue = Number(currentIdleWorkTotals[key]) || 0;
+      const previousValue = Number(previousIdleWorkTotals[key]) || 0;
+      idleWorkDeltas[key] = roundOverlayRecorderValue(Math.max(0, nextValue - previousValue), 3);
+    });
+    recorder.lastIdleWorkTotals = { ...currentIdleWorkTotals };
 
     const container = containerRef.current;
     const viewer = syncfusionViewerRef.current;
@@ -15567,6 +16267,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       interactionEventDeltas,
       overlayTransformDeltas,
       wheelPerfDeltas,
+      idleWorkDeltas,
       overlayWindowPages: syncfusionOverlayWindowPagesRef.current.size,
       sampleIntervalMs: recorder.options?.sampleIntervalMs || null,
       overlayLayerRefCount: Object.keys(overlayLayerRefs).length,
@@ -15611,6 +16312,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       ? performance.now()
       : Date.now();
     sample.sampleCaptureCostMs = roundOverlayRecorderValue(Math.max(0, sampleEndMs - captureStartMs), 3);
+    if (sample.sampleCaptureCostMs > 0) {
+      idleWorkDeltas.measurementWorkMs = roundOverlayRecorderValue(
+        (Number(idleWorkDeltas.measurementWorkMs) || 0) + sample.sampleCaptureCostMs,
+        3
+      );
+      idleWorkDeltas.measurementWorkCount = (Number(idleWorkDeltas.measurementWorkCount) || 0) + 1;
+    }
+    recordSyncfusionIdleWork('measurementWork', sample.sampleCaptureCostMs);
+    recorder.lastIdleWorkTotals = { ...(syncfusionIdleWorkTotalsRef.current || {}) };
 
     recorder.samples.push(sample);
     if (recorder.samples.length > recorder.options.maxSamples) {
@@ -15630,7 +16340,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         overlayLagSampleCaptureCostMs: sample.sampleCaptureCostMs
       });
     }
-  }, [consumeOverlayLagPerfAttribution, scale]);
+  }, [consumeOverlayLagPerfAttribution, recordSyncfusionIdleWork, scale]);
 
   const startOverlayLagRecorder = useCallback((options = {}) => {
     const recorder = overlayLagRecorderRef.current;
@@ -15679,6 +16389,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     recorder.lastEventTotals = { ...(overlayLagEventTotalsRef.current || {}) };
     recorder.lastTransformTotals = { ...(syncfusionOverlayTransformStatsRef.current || {}) };
     recorder.lastWheelPerfTotals = { ...(syncfusionWheelPerfTotalsRef.current || {}) };
+    recorder.lastIdleWorkTotals = { ...(syncfusionIdleWorkTotalsRef.current || {}) };
 
     emitPdfDebugEvent('overlay_lag_recorder_start', {
       samplePageLimit,
@@ -15885,11 +16596,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
     };
 
-    const consoleBuffer = window.__consoleLogBuffer;
-    const consoleText = Array.isArray(consoleBuffer) && consoleBuffer.length > 0
-      ? consoleBuffer.join('\n')
-      : '(no console output captured)';
-    await writeSafe('console.log', consoleText);
+	    const consoleBuffer = window.__consoleLogBuffer;
+	    const rawConsoleText = Array.isArray(consoleBuffer) && consoleBuffer.length > 0
+	      ? consoleBuffer.join('\n')
+	      : '(no console output captured)';
+	    const builtConsoleText = typeof window.__buildSaveLogConsoleText === 'function'
+	      ? window.__buildSaveLogConsoleText(rawConsoleText)
+	      : rawConsoleText;
+	    const consoleText = sanitizeConsoleLogText(builtConsoleText, window);
+	    await writeSafe('console.log', consoleText);
 
     // UX: 2026-04-19 (updated) — OVERWRITE 1.log at the project root with the
     // current session's console dump. User explicitly asked to wipe each time
@@ -16330,11 +17045,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // src/utils/calloutGeometryDiag.js. Also snapshots a screenshot right
     // at the moment Save Log is pressed (the "after double-click" frame).
     // --------------------------------------------------------------------
-    try {
-      const geomBuf = window.__calloutGeomBuffer;
-      if (geomBuf && typeof geomBuf.dump === 'function') {
-        const geomJson = geomBuf.dump();
-        await writeSafe('callout-geom.json', geomJson);
+	    try {
+	      const geomBuf = window.__calloutGeomBuffer;
+	      const calloutGeomDiagEnabled = window.__CALLOUT_GEOM_DIAG === true;
+	      if (calloutGeomDiagEnabled && geomBuf && typeof geomBuf.dump === 'function') {
+	        const geomJson = geomBuf.dump();
+	        await writeSafe('callout-geom.json', geomJson);
 
         // Plain-text human-readable summary so we can scan it without opening JSON.
         try {
@@ -16369,9 +17085,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         } catch (txtErr) {
           console.warn('[SaveLog] callout-geom-summary build failed:', txtErr?.message || txtErr);
         }
-      } else {
-        await writeSafe('callout-geom.json', '{}');
-      }
+	      } else {
+	        console.log('[SaveLog] callout geometry dump skipped; enable window.__CALLOUT_GEOM_DIAG=true for full geometry JSON');
+	      }
 
       // After-double-click screenshot — capture right now (Save Log time).
       if (window.electronAPI?.capturePage && window.electronAPI?.writeFile) {
@@ -16782,6 +17498,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Undo/Redo history state
   const [undoHistory, setUndoHistory] = useState([]); // Array of { annotationsByPage, highlightAnnotations, spaces }
   const [redoHistory, setRedoHistory] = useState([]); // Array of { annotationsByPage, highlightAnnotations, spaces }
+  const [localAnnotationHistoryVersion, setLocalAnnotationHistoryVersion] = useState(0);
   const isUndoingRef = useRef(false); // Flag to prevent saving history during undo/redo
   // UX 2026-04-21: short-window suppression counter used by batch operations
   // (e.g. marquee-delete of shape+callout) that must produce exactly ONE undo
@@ -16796,12 +17513,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const redoHistoryRef = useRef(redoHistory);
   const undoHistoryMetaRef = useRef([]);
   const redoHistoryMetaRef = useRef([]);
+  const localAnnotationUndoRef = useRef([]);
+  const localAnnotationRedoRef = useRef([]);
   const historyDebugTraceRef = useRef([]);
   const historyDebugSeqRef = useRef(0);
   const historyCheckpointSeqRef = useRef(0);
   const historyDebugConsoleRef = useRef(readHistoryDebugConsoleEnabled());
   const lastCheckpointHashRef = useRef(null);
   const objectModifiedInteractionCheckpointRef = useRef(new Map());
+  const previewBaselineByPageRef = useRef(new Map());
+  const calloutLiveHistoryBaselineRef = useRef(new Map());
 
   useEffect(() => {
     annotationsByPageRef.current = annotationsByPage;
@@ -17059,12 +17780,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       historyEventReason: event.reason || event.undoneReason || event.redoReason || null
     });
 
-    if (historyDebugConsoleRef.current) {
-      console.info(`[HistoryDebug #${event.seq}] ${type}`, event);
-    }
+	    if (historyDebugConsoleRef.current) {
+	      console.log(`[HistoryDebug #${event.seq}] ${type}`, event);
+	    }
+	    if (shouldEchoHistoryDebugEvent(event)) {
+	      try {
+	        console.log('[UndoDiag] ' + JSON.stringify(compactHistoryEventForLog(event)));
+	      } catch (_err) {
+	        // Diagnostics only.
+	      }
+	    }
 
-    return event;
-  }, []);
+	    return event;
+	  }, []);
 
   const getHistoryDebugRows = useCallback((events) => (
     events.map((event) => {
@@ -17125,15 +17853,32 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           .filter((event) => resolvePageFromEvent(event) === targetPage)
           .slice(-Math.max(1, Math.min(500, Number(limit) || 100)));
       },
-      dump(limit = 100) {
-        const events = getLimitedEvents(limit);
-        const rows = getHistoryDebugRows(events);
-        console.table(rows);
-        return rows;
-      },
-      dumpPage(pageNumber, limit = 100) {
-        const events = api.getPageTimeline(pageNumber, limit);
-        const rows = getHistoryDebugRows(events);
+	      dump(limit = 100) {
+	        const events = getLimitedEvents(limit);
+	        const rows = getHistoryDebugRows(events);
+	        console.table(rows);
+	        return rows;
+	      },
+	      dumpCompact(limit = HISTORY_SAVELOG_EVENT_LIMIT) {
+	        return getLimitedEvents(limit).map(compactHistoryEventForLog);
+	      },
+	      buildSaveLogSection(limit = HISTORY_SAVELOG_EVENT_LIMIT) {
+	        const rows = api.dumpCompact(limit);
+	        const lines = [
+	          '',
+	          '===== Undo/Redo Chronology =====',
+	          `events=${rows.length}`,
+	          'lanes=local annotation history | callout history | legacy history | Yjs/CRDT history',
+	        ];
+	        rows.forEach((row) => {
+	          lines.push(JSON.stringify(row));
+	        });
+	        lines.push('===== End Undo/Redo Chronology =====');
+	        return lines.join('\n');
+	      },
+	      dumpPage(pageNumber, limit = 100) {
+	        const events = api.getPageTimeline(pageNumber, limit);
+	        const rows = getHistoryDebugRows(events);
         console.table(rows);
         return rows;
       },
@@ -17154,23 +17899,35 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         historyDebugConsoleRef.current = false;
         writeHistoryDebugConsoleEnabled(false);
       },
-      state() {
-        return {
-          consoleEnabled: historyDebugConsoleRef.current,
-          undoDepth: undoHistoryRef.current.length,
-          redoDepth: redoHistoryRef.current.length,
-          eventsTracked: historyDebugTraceRef.current.length
-        };
-      }
-    };
+	      state() {
+	        return {
+	          consoleEnabled: historyDebugConsoleRef.current,
+	          undoDepth: undoHistoryRef.current.length,
+	          redoDepth: redoHistoryRef.current.length,
+	          localAnnotationUndoDepth: localAnnotationUndoRef.current.length,
+	          localAnnotationRedoDepth: localAnnotationRedoRef.current.length,
+	          yjsUndoDepth: yjsUndoManager?.undoStack?.length ?? null,
+	          yjsRedoDepth: yjsUndoManager?.redoStack?.length ?? null,
+	          eventsTracked: historyDebugTraceRef.current.length
+	        };
+	      }
+	    };
 
-    window.__pdfHistoryDebug = api;
-    return () => {
-      if (window.__pdfHistoryDebug === api) {
-        delete window.__pdfHistoryDebug;
-      }
-    };
-  }, [getHistoryDebugRows]);
+	    window.__pdfHistoryDebug = api;
+	    window.__buildSaveLogConsoleText = (consoleText = '') => {
+	      const base = sanitizeConsoleLogText(consoleText || '(no console output captured)', window);
+	      if (base.includes('===== Undo/Redo Chronology =====')) return base;
+	      return `${base}\n${api.buildSaveLogSection(HISTORY_SAVELOG_EVENT_LIMIT)}\n`;
+	    };
+	    return () => {
+	      if (window.__pdfHistoryDebug === api) {
+	        delete window.__pdfHistoryDebug;
+	      }
+	      if (window.__buildSaveLogConsoleText) {
+	        delete window.__buildSaveLogConsoleText;
+	      }
+	    };
+	  }, [getHistoryDebugRows, yjsUndoManager]);
 
   // ── Debug Bridge Registration ──
   // Mirror current render state into a ref so the debug bridge can always
@@ -17221,6 +17978,22 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     callouts: JSON.parse(JSON.stringify(calloutsRef.current || []))
   }), []);
 
+  const getAnnotationPageHistorySnapshot = useCallback((pageNumber) => {
+    const pageKey = String(pageNumber);
+    const annotationsState = annotationsByPageRef.current || {};
+    const pageState = annotationsState[pageKey] || annotationsState[pageNumber] || { objects: [] };
+
+    return {
+      annotationsByPage: {
+        ...annotationsState,
+        [pageKey]: JSON.parse(JSON.stringify(pageState || { objects: [] }))
+      },
+      highlightAnnotations: highlightAnnotationsRef.current || {},
+      spaces: spacesRef.current || [],
+      callouts: calloutsRef.current || []
+    };
+  }, []);
+
   const migrateHistorySpaces = useCallback((historySpaces = []) => (
     historySpaces.map(space => ({
       ...space,
@@ -17246,11 +18019,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     spacesRef.current = restoredSpaces;
     calloutsRef.current = restoredCallouts;
 
-    setAnnotationsByPage(restoredAnnotationsByPage);
-    setHighlightAnnotations(restoredHighlights);
-    setSpaces(restoredSpaces);
-    setCallouts(restoredCallouts);
-  }, [migrateHistorySpaces]);
+    const applyRestoredState = () => {
+      setAnnotationsByPage(restoredAnnotationsByPage);
+      setHighlightAnnotations(restoredHighlights);
+      setSpaces(restoredSpaces);
+      setCalloutsIfPersistedChanged(restoredCallouts);
+    };
+
+    try {
+      flushSync(applyRestoredState);
+    } catch (_err) {
+      applyRestoredState();
+    }
+  }, [migrateHistorySpaces, setCalloutsIfPersistedChanged]);
 
   const createHistoryMeta = useCallback((snapshot, reason, context = null, previousSnapshot = null) => {
     const snapshotFingerprint = getHistoryFingerprint(snapshot);
@@ -17266,8 +18047,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     };
   }, [getHistoryFingerprint, normalizeHistoryReason, summarizeHistoryDelta, summarizeHistorySnapshot]);
 
+  const isLegacyAnnotationHistoryMeta = useCallback((meta) => {
+    const reason = typeof meta?.reason === 'string' ? meta.reason : '';
+    return reason.startsWith('callouts:')
+      || reason.startsWith('highlight:')
+      || reason === 'delete:batch'
+      || reason === 'annotations:save';
+  }, []);
+
   // Explicitly add a checkpoint to history BEFORE making changes
-  const addHistoryCheckpoint = useCallback((reason = 'unspecified', context = null) => {
+  const addHistoryCheckpoint = useCallback((reason = 'unspecified', context = null, snapshotOverride = null) => {
     const normalizedReason = normalizeHistoryReason(reason);
     if (isUndoingRef.current) {
       pushHistoryDebugEvent('checkpoint_skipped_while_restoring', {
@@ -17294,7 +18083,97 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       return;
     }
 
-    const currentState = getHistorySnapshot();
+    const useFastAnnotationCheckpoint =
+      context?.checkpointMode === 'annotation-create-fast'
+      && Number.isFinite(Number(context?.pageNumber));
+    const currentState = snapshotOverride
+      ? JSON.parse(JSON.stringify(snapshotOverride))
+      : useFastAnnotationCheckpoint
+      ? getAnnotationPageHistorySnapshot(context.pageNumber)
+      : getHistorySnapshot();
+
+    if (useFastAnnotationCheckpoint) {
+      const checkpointId = historyCheckpointSeqRef.current + 1;
+      const sanitizedContext = {
+        ...context,
+        checkpointMode: undefined
+      };
+      delete sanitizedContext.checkpointMode;
+      const previousUndoDepth = undoHistoryRef.current.length;
+      const predictedUndoDepth = Math.min(50, previousUndoDepth + 1);
+      const didTrimOldest = undoHistoryRef.current.length >= 50;
+      const previousRedoDepth = redoHistoryRef.current.length;
+      const checkpointMeta = {
+        checkpointId,
+        createdAt: new Date().toISOString(),
+        reason: normalizedReason,
+        context: sanitizedContext,
+        summary: {
+          mode: 'annotation-create-fast',
+          pageNumber: Number(context.pageNumber),
+          previousObjectCount: context.previousObjectCount ?? null,
+          nextObjectCount: context.nextObjectCount ?? null
+        },
+        delta: {
+          annotationObjectDelta: context.objectDelta ?? null,
+          changedPagesCount: 1,
+          changedPagesPreview: [String(context.pageNumber)]
+        },
+        snapshotHash: `annotation-create-fast:${checkpointId}`,
+        snapshotBytes: 0
+      };
+
+      historyCheckpointSeqRef.current = checkpointId;
+      setUndoHistory(prev => {
+        const newHistory = [...prev, currentState];
+        const newMeta = [...undoHistoryMetaRef.current, checkpointMeta];
+        if (newHistory.length > 50) {
+          const trimmedHistory = newHistory.slice(1);
+          undoHistoryRef.current = trimmedHistory;
+          undoHistoryMetaRef.current = newMeta.slice(1);
+          return trimmedHistory;
+        }
+        undoHistoryRef.current = newHistory;
+        undoHistoryMetaRef.current = newMeta;
+        return newHistory;
+      });
+      setRedoHistory([]);
+      redoHistoryRef.current = [];
+      redoHistoryMetaRef.current = [];
+      lastCheckpointHashRef.current = null;
+
+      pushHistoryDebugEvent('checkpoint_added_annotation_fast', {
+        checkpointId: checkpointMeta.checkpointId,
+        order: checkpointMeta.checkpointId,
+        timestamp: checkpointMeta.createdAt,
+        historySource: shouldScopeCalloutHistoryRestore(checkpointMeta) ? 'callout history' : 'legacy history',
+        receivedStack: 'legacyUndoHistory',
+        clearedRedoStack: previousRedoDepth > 0 ? 'legacyRedoHistory' : null,
+        clearedRedoEntries: previousRedoDepth,
+        ...summarizeHistoryMetaForLog(checkpointMeta),
+        reason: checkpointMeta.reason,
+        context: checkpointMeta.context,
+        undoDepth: predictedUndoDepth,
+        redoDepth: 0,
+        didTrimOldest,
+        summary: checkpointMeta.summary,
+        delta: checkpointMeta.delta,
+        snapshotHash: checkpointMeta.snapshotHash,
+        snapshotBytes: checkpointMeta.snapshotBytes
+      });
+
+      if (previousRedoDepth > 0) {
+        pushHistoryDebugEvent('redo_cleared_on_new_checkpoint', {
+          reason: checkpointMeta.reason,
+          undoDepth: predictedUndoDepth,
+          redoDepth: 0,
+          clearedRedoEntries: previousRedoDepth,
+          snapshotHash: checkpointMeta.snapshotHash
+        });
+      }
+      return;
+    }
+
     const currentFingerprint = getHistoryFingerprint(currentState);
     if (lastCheckpointHashRef.current === currentFingerprint.hash) {
       pushHistoryDebugEvent('checkpoint_skipped_duplicate_fast', {
@@ -17352,6 +18231,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
     pushHistoryDebugEvent('checkpoint_added', {
       checkpointId: checkpointMeta.checkpointId,
+      order: checkpointMeta.checkpointId,
+      timestamp: checkpointMeta.createdAt,
+      historySource: shouldScopeCalloutHistoryRestore(checkpointMeta) ? 'callout history' : 'legacy history',
+      receivedStack: 'legacyUndoHistory',
+      clearedRedoStack: previousRedoDepth > 0 ? 'legacyRedoHistory' : null,
+      clearedRedoEntries: previousRedoDepth,
+      ...summarizeHistoryMetaForLog(checkpointMeta),
       reason: checkpointMeta.reason,
       context: checkpointMeta.context,
       undoDepth: predictedUndoDepth,
@@ -17372,7 +18258,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         snapshotHash: checkpointMeta.snapshotHash
       });
     }
-  }, [createHistoryMeta, getHistoryFingerprint, getHistorySnapshot, normalizeHistoryReason, pushHistoryDebugEvent]);
+  }, [createHistoryMeta, getAnnotationPageHistorySnapshot, getHistoryFingerprint, getHistorySnapshot, normalizeHistoryReason, pushHistoryDebugEvent]);
 
   // UX: Phase 14 KBD-01 — handler for Delete/Backspace on selected callouts.
   // Called by SVGAnnotationLayer's extended keydown effect via
@@ -17388,9 +18274,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       calloutIds: calloutIdsToDelete,
       count: calloutIdsToDelete.length,
     });
-    setCallouts((prev) => prev.filter((c) => !idsSet.has(c.id)));
+    markCalloutRemovalIntent({
+      source: 'delete',
+      reason: 'callouts:delete',
+      calloutIds: calloutIdsToDelete,
+      count: calloutIdsToDelete.length,
+    }, window);
+    setCalloutsIfPersistedChanged((prev) => prev.filter((c) => !idsSet.has(c.id)));
     setSelectedCalloutIds(new Set());
-  }, [addHistoryCheckpoint]);
+  }, [addHistoryCheckpoint, setCalloutsIfPersistedChanged]);
 
   // UX 2026-04-21: single-checkpoint opener for marquee delete of a mixed
   // shape+callout selection. The SVGAnnotationLayer delete handler calls
@@ -17399,9 +18291,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // downstream checkpoints (annotations:save from deleteSelected + the
   // callouts:delete from handleDeleteSelectedCallouts), so the user
   // experiences a single undo that brings back everything deleted.
-  const handleBeginBatchDelete = useCallback((suppressCount = 2) => {
+  const handleBeginBatchDelete = useCallback((suppressCount = 2, calloutIds = []) => {
+    const selectedCalloutIds = calloutIds instanceof Set
+      ? Array.from(calloutIds).filter(Boolean)
+      : Array.isArray(calloutIds)
+        ? calloutIds.filter(Boolean)
+        : [];
+    const scopedCalloutIds = [...new Set(selectedCalloutIds)];
     addHistoryCheckpoint('delete:batch', {
       suppressCount,
+      ...(scopedCalloutIds.length > 0 ? {
+        calloutIds: scopedCalloutIds,
+        count: scopedCalloutIds.length,
+      } : {}),
     });
     suppressBatchCheckpointsRef.current = suppressCount;
   }, [addHistoryCheckpoint]);
@@ -17412,6 +18314,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // the text box). Ref holds { calloutId, pageNumber } between the
   // setCallouts call and the commit effect below; cleared after firing.
   const pendingAutoEditCalloutRef = useRef(null);
+  const newlyCreatedCalloutIdsRef = useRef(new Set());
 
   // UX: Phase 14 CREATE-01 (callout half) — handler for click-drag callout
   // creation. Called from SVGAnnotationLayer's transient creation state
@@ -17434,6 +18337,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       calloutId: newCallout.id,
       pageNumber: newCallout.pageNumber,
     };
+    newlyCreatedCalloutIdsRef.current.add(newCallout.id);
     setCallouts((prev) => [...prev, newCallout]);
   }, [addHistoryCheckpoint]);
 
@@ -17445,9 +18349,33 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Accepts an optional updatedFields patch for compatibility but ignores it
   // because live-paint already applied the changes. Empty-patch == commit-
   // only signal from the hook.
-  const handleUpdateCallout = useCallback((calloutId, _updatedFields) => {
-    addHistoryCheckpoint('callouts:update', { calloutId });
-  }, [addHistoryCheckpoint]);
+  const handleUpdateCallout = useCallback((calloutId, updatedFields = null) => {
+    const hasPatch = updatedFields
+      && typeof updatedFields === 'object'
+      && Object.keys(updatedFields).length > 0;
+    const baselineSnapshot = calloutLiveHistoryBaselineRef.current.get(calloutId) || null;
+    calloutLiveHistoryBaselineRef.current.delete(calloutId);
+    if (!hasPatch && !baselineSnapshot) {
+      return;
+    }
+    recordAnnotationCommit({
+      surface: 'App.handleUpdateCallout',
+      source: 'callout:update',
+      action: 'callout-commit',
+      calloutId,
+      fieldNames: hasPatch ? Object.keys(updatedFields) : [],
+    });
+    addHistoryCheckpoint('callouts:update', {
+      calloutId,
+      fieldNames: hasPatch ? Object.keys(updatedFields) : [],
+      usedLiveBaseline: Boolean(baselineSnapshot),
+    }, baselineSnapshot);
+    if (hasPatch) {
+      setCalloutsIfPersistedChanged((prev) => prev.map((c) =>
+        c.id === calloutId ? { ...c, ...updatedFields } : c
+      ));
+    }
+  }, [addHistoryCheckpoint, setCalloutsIfPersistedChanged]);
 
   // UX: Phase 14 CALL-10 — live paint during callout drag. No undo
   // checkpoint; the checkpoint is saved once at pointerup via
@@ -17458,10 +18386,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // name (e.g. { arrowTip, knee, textBoxPosition }).
   const handleUpdateCalloutLive = useCallback((calloutId, updatedFields) => {
     if (!calloutId || !updatedFields) return;
-    setCallouts((prev) => prev.map((c) =>
+    if (!calloutLiveHistoryBaselineRef.current.has(calloutId)) {
+      calloutLiveHistoryBaselineRef.current.set(calloutId, getHistorySnapshot());
+    }
+    setCalloutsIfPersistedChanged((prev) => prev.map((c) =>
       c.id === calloutId ? { ...c, ...updatedFields } : c
     ));
-  }, []);
+  }, [getHistorySnapshot, setCalloutsIfPersistedChanged]);
 
   // UX: Phase 14 CALL-10 — edit-mode entry for a React callout. Called
   // from SVGAnnotationLayer's double-click dispatch (useSVGInteraction
@@ -17527,6 +18458,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       // through fromFabricGroup to setCallouts. Non-null = callout edit.
       reactCalloutId: calloutId,
       originalReactCallout: reactCallout,
+      isNewCallout: newlyCreatedCalloutIdsRef.current.has(calloutId),
       calloutChildren: nonTextChildren,
       pageSize: pageSizeObj,
     });
@@ -17576,6 +18508,212 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     handleRequestCalloutEditMode(pending.calloutId, pending.pageNumber);
   }, [callouts, handleRequestCalloutEditMode]);
 
+  const applyLocalAnnotationHistoryAction = useCallback((action) => {
+    if (!action) return false;
+    const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    const scopedAction = filterAnnotationHistoryActionByOwner(action, viewerId);
+    if (!scopedAction) {
+      pushHistoryDebugEvent('local_annotation_history_owner_scope_noop', {
+        requestedAction: summarizeHistoryActionForLog(action),
+        viewerId,
+      });
+      return false;
+    }
+    const nextAnnotationsByPage = applyAnnotationHistoryAction(annotationsByPageRef.current || {}, scopedAction);
+    if (nextAnnotationsByPage === annotationsByPageRef.current) return false;
+
+    const counterRenumberDecision = shouldRenumberCountersForSave({
+      source: scopedAction.type,
+      action: scopedAction.type,
+      localHistoryAction: scopedAction,
+    });
+    if (counterRenumberDecision.shouldRenumber) {
+      const before = JSON.parse(JSON.stringify(nextAnnotationsByPage || {}));
+      renumberCounters(nextAnnotationsByPage);
+      const effect = summarizeCounterRenumberEffect(before, nextAnnotationsByPage);
+      try {
+        console.log('[CounterRenumber] ran ' + JSON.stringify({
+          pageNumber: scopedAction.pageNumber,
+          source: scopedAction.type,
+          action: scopedAction.type,
+          reason: counterRenumberDecision.reason,
+          affectedCounterIds: effect.affectedCounterIds,
+          affectedCount: effect.affectedCount,
+        }));
+      } catch (_) {}
+    } else {
+      try {
+        console.log('[CounterRenumber] skipped ' + JSON.stringify({
+          pageNumber: scopedAction.pageNumber,
+          source: scopedAction.type,
+          action: scopedAction.type,
+          reason: counterRenumberDecision.reason,
+        }));
+      } catch (_) {}
+    }
+
+    annotationsByPageRef.current = nextAnnotationsByPage;
+    try {
+      flushSync(() => setAnnotationsByPage(nextAnnotationsByPage));
+    } catch (_err) {
+      setAnnotationsByPage(nextAnnotationsByPage);
+    }
+	    pushHistoryDebugEvent('local_annotation_history_applied', {
+	      ...summarizeHistoryActionForLog(scopedAction),
+	      pageNumber: scopedAction.pageNumber,
+	      annotationId: scopedAction.annotationId,
+        requestedAction: summarizeHistoryActionForLog(action),
+        viewerId,
+	    });
+    return true;
+  }, [pushHistoryDebugEvent, user?.id, yjsUndoCtx?.userId]);
+
+  const getYjsHistoryTarget = useCallback((stackItem) => {
+    const diagnostics = (() => {
+      try {
+        const value = stackItem?.meta?.get?.('historyDiagnostics');
+        return Array.isArray(value) ? value : [];
+      } catch (_err) {
+        return [];
+      }
+    })();
+    for (const diagnostic of diagnostics) {
+      const id = diagnostic?.annotationId
+        || diagnostic?.changedKeys?.find?.((entry) => typeof entry?.key === 'string' && entry.key)?.key
+        || null;
+      if (!id) continue;
+      const annotationType = String(diagnostic?.annotationType || '').toLowerCase();
+      const stack = String(diagnostic?.stack || diagnostic?.parentStack || '').toLowerCase();
+      const path = Array.isArray(diagnostic?.path) ? diagnostic.path : [];
+      const isCallout = annotationType === 'callout' || stack === 'callouts' || path[0] === 'callouts';
+      return {
+        id,
+        kind: isCallout ? 'callout' : 'fabric',
+        pageNumber: diagnostic?.pageNumber ?? stackItem?.meta?.get?.('pageNumber') ?? null,
+        diagnostic,
+      };
+    }
+    return null;
+  }, []);
+
+  const materializeFabricAnnotationFromYMap = useCallback((annoYMap, fallbackId = null) => {
+    if (!annoYMap || typeof annoYMap.get !== 'function') return null;
+    const fabricYMap = annoYMap.get('fabric');
+    let fabricObj = null;
+    if (fabricYMap?.toJSON) {
+      try { fabricObj = fabricYMap.toJSON(); } catch (_err) { fabricObj = null; }
+    }
+    if (!fabricObj && fabricYMap?.forEach) {
+      fabricObj = {};
+      fabricYMap.forEach((value, key) => { fabricObj[key] = value; });
+    }
+    if (!fabricObj) return null;
+    const id = annoYMap.get('id') || fallbackId || fabricObj?.data?.id || fabricObj?.id;
+    if (!fabricObj.data || typeof fabricObj.data !== 'object') fabricObj.data = {};
+    if (id && !fabricObj.data.id) fabricObj.data.id = id;
+    if (id && !fabricObj.id) fabricObj.id = id;
+    const pageNumber = annoYMap.get('pageNumber') ?? fabricObj?.data?.pageNumber ?? fabricObj?.pageNumber ?? 1;
+    fabricObj.data.pageNumber = pageNumber;
+    try {
+      const metaYMap = annoYMap.get('meta');
+      if (metaYMap && typeof metaYMap.get === 'function') {
+        const authorId = metaYMap.get('authorId');
+        if (authorId) {
+          fabricObj.meta = { ...(fabricObj.meta || {}), authorId: fabricObj.meta?.authorId || authorId };
+        }
+        const lastEditorId = metaYMap.get('lastEditorId');
+        if (lastEditorId) fabricObj.lastEditorId = fabricObj.lastEditorId || lastEditorId;
+      }
+    } catch (_err) {
+      // Best-effort attribution hydration for local materialization only.
+    }
+    return { fabricObj, id, pageNumber };
+  }, []);
+
+  const refreshYjsHistoryTargetFromDoc = useCallback((target, reason = 'yjs-history-pop') => {
+    if (!yjsDoc || !target?.id) return false;
+    const annotationId = target.id;
+    try {
+      const yMapCallouts = yjsDoc.getMap('callouts');
+      const yMapAnnotations = yjsDoc.getMap('annotations');
+      const calloutYMap = yMapCallouts?.get?.(annotationId);
+      const legacyAnnotationYMap = yMapAnnotations?.get?.(annotationId);
+      const legacyIsCallout = legacyAnnotationYMap?.get?.('type') === 'callout';
+
+      if (target.kind === 'callout' || calloutYMap || legacyIsCallout) {
+        const materializedCallout = calloutYMap
+          ? materializeCalloutFromYMap(calloutYMap, annotationId)
+          : legacyIsCallout
+            ? materializeCalloutFromYMap(legacyAnnotationYMap, annotationId)
+            : null;
+        if (!materializedCallout) {
+          markCalloutRemovalIntent({
+            source: reason,
+            reason: 'yjs-history-pop',
+            calloutIds: [annotationId],
+            count: 1,
+          }, window);
+        }
+        setCalloutsIfPersistedChanged((prev) => {
+          const list = Array.isArray(prev) ? prev : [];
+          if (!materializedCallout) return list.filter((callout) => callout?.id !== annotationId && callout?.highlightId !== annotationId);
+          let replaced = false;
+          const next = list.map((callout) => {
+            if (callout?.id === annotationId || callout?.highlightId === annotationId) {
+              replaced = true;
+              return materializedCallout;
+            }
+            return callout;
+          });
+          return replaced ? next : [...next, materializedCallout];
+        });
+        pushHistoryDebugEvent('yjs_target_refreshed_after_history_pop', {
+          reason,
+          annotationId,
+          annotationType: 'callout',
+          materialized: !!materializedCallout,
+        });
+        return true;
+      }
+
+      const materialized = materializeFabricAnnotationFromYMap(yMapAnnotations?.get?.(annotationId), annotationId);
+      const nextByPage = {};
+      Object.entries(annotationsByPageRef.current || {}).forEach(([pageKey, page]) => {
+        const objects = Array.isArray(page?.objects)
+          ? page.objects.filter((object) => getHistoryAnnotationId(object) !== annotationId)
+          : [];
+        if (objects.length > 0 || pageKey === String(materialized?.pageNumber ?? target.pageNumber ?? '')) {
+          nextByPage[pageKey] = { ...(page || { version: '5.3.0' }), objects };
+        }
+      });
+      if (materialized?.fabricObj) {
+        const pageKey = String(materialized.pageNumber || target.pageNumber || 1);
+        const page = nextByPage[pageKey] || { version: '5.3.0', objects: [] };
+        nextByPage[pageKey] = {
+          ...page,
+          objects: [...(Array.isArray(page.objects) ? page.objects : []), materialized.fabricObj],
+        };
+      }
+      annotationsByPageRef.current = nextByPage;
+      try {
+        flushSync(() => setAnnotationsByPage(nextByPage));
+      } catch (_err) {
+        setAnnotationsByPage(nextByPage);
+      }
+      pushHistoryDebugEvent('yjs_target_refreshed_after_history_pop', {
+        reason,
+        annotationId,
+        annotationType: 'fabric',
+        pageNumber: materialized?.pageNumber ?? target.pageNumber ?? null,
+        materialized: !!materialized?.fabricObj,
+      });
+      return true;
+    } catch (err) {
+      console.warn('[UndoDiag] refreshYjsHistoryTargetFromDoc failed', err?.message || err);
+      return false;
+    }
+  }, [annotationsByPageRef, materializeFabricAnnotationFromYMap, pushHistoryDebugEvent, setCalloutsIfPersistedChanged, yjsDoc]);
+
   // Undo function — Phase 29 narrow waiver (Plan 29-04).
   //
   // Routes through the per-user Y.UndoManager (Plan 29-03) instead of the legacy
@@ -17608,9 +18746,185 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // session. During that brief window (and when CRDT is off) Cmd+Z is a no-op,
   // matching the empty-stack-silent contract.
   const handleUndo = useCallback(() => {
+    recordAnnotationUndoRedo('undo', {
+      localUndoDepth: localAnnotationUndoRef.current.length,
+      localRedoDepth: localAnnotationRedoRef.current.length,
+      yUndoDepth: yjsUndoManager?.undoStack?.length ?? null,
+      yRedoDepth: yjsUndoManager?.redoStack?.length ?? null,
+    });
+	    const localAction = localAnnotationUndoRef.current[localAnnotationUndoRef.current.length - 1] || null;
+	    const legacyUndoMeta = undoHistoryMetaRef.current[undoHistoryMetaRef.current.length - 1] || null;
+	    const shouldUndoLocal = shouldUndoLocalBeforeLegacy(localAction, legacyUndoMeta);
+	    const chosenUndoSource = localAction && shouldUndoLocal
+	      ? 'local annotation history'
+	      : isLegacyAnnotationHistoryMeta(legacyUndoMeta)
+	        ? (shouldScopeCalloutHistoryRestore(legacyUndoMeta) ? 'callout history' : 'legacy history')
+	        : (yjsUndoManager?.undoStack?.length || 0) > 0
+	          ? 'Yjs/CRDT history'
+	          : 'none';
+	    pushHistoryDebugEvent('undo_choice', {
+	      chosenSource: chosenUndoSource,
+	      chosenStack: chosenUndoSource === 'local annotation history'
+	        ? 'localAnnotationUndo'
+	        : chosenUndoSource === 'callout history' || chosenUndoSource === 'legacy history'
+	          ? 'legacyUndoHistory'
+	          : chosenUndoSource === 'Yjs/CRDT history'
+	            ? 'yjsUndoStack'
+	            : null,
+	      decisionReason: localAction && shouldUndoLocal
+	        ? 'local annotation history has the newest order number'
+	        : isLegacyAnnotationHistoryMeta(legacyUndoMeta)
+	          ? 'legacy/callout checkpoint is next by order or local stack is empty'
+	          : (yjsUndoManager?.undoStack?.length || 0) > 0
+	            ? 'local and legacy/callout stacks were empty or ineligible; Yjs/CRDT undo stack has entries'
+	            : 'all undo stacks were empty or ineligible',
+	      checkedLanes: [
+	        {
+	          lane: 'local annotation history',
+	          stack: 'localAnnotationUndo',
+	          depth: localAnnotationUndoRef.current.length,
+	          topOrder: getHistoryOrder(localAction),
+	          topAction: summarizeHistoryActionForLog(localAction),
+	        },
+	        {
+	          lane: shouldScopeCalloutHistoryRestore(legacyUndoMeta) ? 'callout history' : 'legacy history',
+	          stack: 'legacyUndoHistory',
+	          depth: undoHistoryRef.current.length,
+	          topOrder: getHistoryOrder(legacyUndoMeta),
+	          topAction: summarizeHistoryMetaForLog(legacyUndoMeta),
+	        },
+	        {
+	          lane: 'Yjs/CRDT history',
+	          stack: 'yjsUndoStack',
+	          depth: yjsUndoManager?.undoStack?.length ?? null,
+	          topAction: mapYjsMeta(yjsUndoManager?.undoStack?.[yjsUndoManager.undoStack.length - 1]?.meta),
+	        },
+	      ],
+	      localCandidate: summarizeHistoryActionForLog(localAction),
+	      legacyCandidate: summarizeHistoryMetaForLog(legacyUndoMeta),
+	      yjsCandidate: {
+	        historySource: 'Yjs/CRDT history',
+	        undoDepth: yjsUndoManager?.undoStack?.length ?? null,
+	        redoDepth: yjsUndoManager?.redoStack?.length ?? null,
+	        topMeta: mapYjsMeta(yjsUndoManager?.undoStack?.[yjsUndoManager.undoStack.length - 1]?.meta),
+      },
+      localUndoDepth: localAnnotationUndoRef.current.length,
+      localRedoDepth: localAnnotationRedoRef.current.length,
+      legacyUndoDepth: undoHistoryRef.current.length,
+      legacyRedoDepth: redoHistoryRef.current.length,
+      yUndoDepth: yjsUndoManager?.undoStack?.length ?? null,
+      yRedoDepth: yjsUndoManager?.redoStack?.length ?? null,
+    });
+    if (localAction && shouldUndoLocal) {
+      const inverse = invertAnnotationHistoryAction(localAction);
+      isUndoingRef.current = true;
+      try {
+	        if (applyLocalAnnotationHistoryAction(inverse)) {
+	          localAnnotationUndoRef.current = localAnnotationUndoRef.current.slice(0, -1);
+	          localAnnotationRedoRef.current = [...localAnnotationRedoRef.current, localAction].slice(-100);
+	          setLocalAnnotationHistoryVersion((prev) => prev + 1);
+	          pushHistoryDebugEvent('local_annotation_undo_applied', {
+	            historySource: 'local annotation history',
+	            chosenStack: 'localAnnotationUndo',
+	            receivedStack: 'localAnnotationRedo',
+	            ...summarizeHistoryActionForLog(localAction),
+	            pageNumber: localAction.pageNumber,
+	            annotationId: localAction.annotationId,
+	            undoDepth: localAnnotationUndoRef.current.length,
+            redoDepth: localAnnotationRedoRef.current.length
+          });
+          return;
+        }
+      } finally {
+        isUndoingRef.current = false;
+      }
+    }
+
+    if (isLegacyAnnotationHistoryMeta(legacyUndoMeta)) {
+      const stateToRestore = undoHistoryRef.current[undoHistoryRef.current.length - 1] || null;
+      if (stateToRestore) {
+        const currentState = getHistorySnapshot();
+        const shouldScopeCallouts = shouldScopeCalloutHistoryRestore(legacyUndoMeta);
+        const scopedStateToRestore = shouldScopeCallouts
+          ? scopeHistoryStateForCalloutRestore({
+            currentState,
+            targetState: stateToRestore,
+            meta: legacyUndoMeta,
+            userId: yjsUndoCtx?.userId || user?.id || null,
+          })
+          : stateToRestore;
+        isUndoingRef.current = true;
+        try {
+          if (shouldScopeCallouts) {
+            markCalloutRemovalIntent({
+              source: 'undo',
+              reason: legacyUndoMeta.reason,
+              calloutIds: [
+                legacyUndoMeta.context?.calloutId,
+                ...(Array.isArray(legacyUndoMeta.context?.calloutIds) ? legacyUndoMeta.context.calloutIds : []),
+              ].filter(Boolean),
+              count: legacyUndoMeta.context?.count ?? null,
+            }, window);
+          }
+          restoreHistoryState(scopedStateToRestore);
+          undoHistoryRef.current = undoHistoryRef.current.slice(0, -1);
+          undoHistoryMetaRef.current = undoHistoryMetaRef.current.slice(0, -1);
+          setUndoHistory(undoHistoryRef.current);
+          redoHistoryRef.current = [currentState, ...redoHistoryRef.current].slice(0, 50);
+          redoHistoryMetaRef.current = [legacyUndoMeta, ...redoHistoryMetaRef.current].slice(0, 50);
+          setRedoHistory(redoHistoryRef.current);
+          pushHistoryDebugEvent('legacy_annotation_undo_applied', {
+            historySource: shouldScopeCallouts ? 'callout history' : 'legacy history',
+            chosenStack: 'legacyUndoHistory',
+            receivedStack: 'legacyRedoHistory',
+            ...summarizeHistoryMetaForLog(legacyUndoMeta),
+            reason: legacyUndoMeta.reason,
+            context: legacyUndoMeta.context || null,
+            ownerScopedCallouts: scopedStateToRestore !== stateToRestore,
+            undoDepth: undoHistoryRef.current.length,
+            redoDepth: redoHistoryRef.current.length
+          });
+          return;
+        } finally {
+          isUndoingRef.current = false;
+        }
+      }
+    }
+
+    // 2026-05-07 — Diagnostic logging for undo path. Surfaces the three
+    // most likely failure modes: missing per-user manager, empty undo
+    // stack (nothing tracked), or trackedOrigin mismatch (drawn strokes
+    // not registered with this user's manager).
+    const undoStackLen = yjsUndoManager?.undoStack?.length ?? null;
+    const redoStackLen = yjsUndoManager?.redoStack?.length ?? null;
+    const trackedOriginsCount = yjsUndoManager?.trackedOrigins?.size ?? null;
+    const yMapAnnotationsSize = (() => {
+      try { return yjsDoc?.getMap?.('annotations')?.size ?? null; } catch (_e) { return null; }
+    })();
+	    pushHistoryDebugEvent('yjs_undo_invoked', {
+	      historySource: 'Yjs/CRDT history',
+      chosenStack: 'yjsUndoStack',
+      hasYDoc: !!yjsDoc,
+      hasUndoMgr: !!yjsUndoManager,
+      hasCtx: !!yjsUndoCtx,
+      undoStackLen,
+      redoStackLen,
+      trackedOriginsCount,
+      ctxUserId: yjsUndoCtx?.userId ?? null,
+      yMapAnnotationsSize,
+    });
     if (!yjsUndoManager || !yjsDoc || !yjsUndoCtx) return;
+    const yjsHistoryTarget = getYjsHistoryTarget(yjsUndoManager.undoStack?.[yjsUndoManager.undoStack.length - 1]);
     userUndo(yjsDoc, yjsUndoManager, yjsUndoCtx);
-  }, [yjsDoc, yjsUndoManager, yjsUndoCtx]);
+    refreshYjsHistoryTargetFromDoc(yjsHistoryTarget, 'undo');
+	    pushHistoryDebugEvent('yjs_undo_after', {
+	      historySource: 'Yjs/CRDT history',
+      receivedStack: 'yjsRedoStack',
+      undoStackLen: yjsUndoManager?.undoStack?.length ?? null,
+      redoStackLen: yjsUndoManager?.redoStack?.length ?? null,
+      yMapAnnotationsSize: (() => { try { return yjsDoc?.getMap?.('annotations')?.size ?? null; } catch (_e) { return null; } })(),
+    });
+	  }, [applyLocalAnnotationHistoryAction, getHistoryOrder, getHistorySnapshot, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, pushHistoryDebugEvent, refreshYjsHistoryTargetFromDoc, restoreHistoryState, shouldUndoLocalBeforeLegacy, user?.id, yjsDoc, yjsUndoManager, yjsUndoCtx]);
 
   // Redo function — Phase 29 narrow waiver (Plan 29-04).
   //
@@ -17624,9 +18938,168 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   //
   // Null-shape guard mirrors handleUndo above.
   const handleRedo = useCallback(() => {
+    recordAnnotationUndoRedo('redo', {
+      localUndoDepth: localAnnotationUndoRef.current.length,
+      localRedoDepth: localAnnotationRedoRef.current.length,
+      yUndoDepth: yjsUndoManager?.undoStack?.length ?? null,
+      yRedoDepth: yjsUndoManager?.redoStack?.length ?? null,
+    });
+    const localAction = localAnnotationRedoRef.current[localAnnotationRedoRef.current.length - 1] || null;
+    const legacyRedoState = redoHistoryRef.current[0] || null;
+	    const legacyRedoMeta = redoHistoryMetaRef.current[0] || null;
+	    const shouldRedoLocal = shouldRedoLocalBeforeLegacy(localAction, legacyRedoMeta);
+	    const chosenRedoSource = localAction && shouldRedoLocal
+	      ? 'local annotation history'
+	      : legacyRedoState && isLegacyAnnotationHistoryMeta(legacyRedoMeta)
+	        ? (shouldScopeCalloutHistoryRestore(legacyRedoMeta) ? 'callout history' : 'legacy history')
+	        : (yjsUndoManager?.redoStack?.length || 0) > 0
+	          ? 'Yjs/CRDT history'
+	          : 'none';
+	    pushHistoryDebugEvent('redo_choice', {
+	      chosenSource: chosenRedoSource,
+	      chosenStack: chosenRedoSource === 'local annotation history'
+	        ? 'localAnnotationRedo'
+	        : chosenRedoSource === 'callout history' || chosenRedoSource === 'legacy history'
+	          ? 'legacyRedoHistory'
+	          : chosenRedoSource === 'Yjs/CRDT history'
+	            ? 'yjsRedoStack'
+	            : null,
+	      decisionReason: localAction && shouldRedoLocal
+	        ? 'local annotation redo history has the oldest redo order number'
+	        : legacyRedoState && isLegacyAnnotationHistoryMeta(legacyRedoMeta)
+	          ? 'legacy/callout redo checkpoint is next by order or local redo stack is empty'
+	          : (yjsUndoManager?.redoStack?.length || 0) > 0
+	            ? 'local and legacy/callout redo stacks were empty or ineligible; Yjs/CRDT redo stack has entries'
+	            : 'all redo stacks were empty or ineligible',
+	      checkedLanes: [
+	        {
+	          lane: 'local annotation history',
+	          stack: 'localAnnotationRedo',
+	          depth: localAnnotationRedoRef.current.length,
+	          topOrder: getHistoryOrder(localAction),
+	          topAction: summarizeHistoryActionForLog(localAction),
+	        },
+	        {
+	          lane: shouldScopeCalloutHistoryRestore(legacyRedoMeta) ? 'callout history' : 'legacy history',
+	          stack: 'legacyRedoHistory',
+	          depth: redoHistoryRef.current.length,
+	          topOrder: getHistoryOrder(legacyRedoMeta),
+	          topAction: summarizeHistoryMetaForLog(legacyRedoMeta),
+	        },
+	        {
+	          lane: 'Yjs/CRDT history',
+	          stack: 'yjsRedoStack',
+	          depth: yjsUndoManager?.redoStack?.length ?? null,
+	          topAction: mapYjsMeta(yjsUndoManager?.redoStack?.[yjsUndoManager.redoStack.length - 1]?.meta),
+	        },
+	      ],
+	      localCandidate: summarizeHistoryActionForLog(localAction),
+	      legacyCandidate: summarizeHistoryMetaForLog(legacyRedoMeta),
+	      yjsCandidate: {
+	        historySource: 'Yjs/CRDT history',
+        undoDepth: yjsUndoManager?.undoStack?.length ?? null,
+        redoDepth: yjsUndoManager?.redoStack?.length ?? null,
+        topMeta: mapYjsMeta(yjsUndoManager?.redoStack?.[yjsUndoManager.redoStack.length - 1]?.meta),
+      },
+      localUndoDepth: localAnnotationUndoRef.current.length,
+      localRedoDepth: localAnnotationRedoRef.current.length,
+      legacyUndoDepth: undoHistoryRef.current.length,
+      legacyRedoDepth: redoHistoryRef.current.length,
+      yUndoDepth: yjsUndoManager?.undoStack?.length ?? null,
+      yRedoDepth: yjsUndoManager?.redoStack?.length ?? null,
+    });
+    if (localAction && shouldRedoLocal) {
+      isUndoingRef.current = true;
+      try {
+	        if (applyLocalAnnotationHistoryAction(localAction)) {
+	          localAnnotationRedoRef.current = localAnnotationRedoRef.current.slice(0, -1);
+	          localAnnotationUndoRef.current = [...localAnnotationUndoRef.current, localAction].slice(-100);
+	          setLocalAnnotationHistoryVersion((prev) => prev + 1);
+	          pushHistoryDebugEvent('local_annotation_redo_applied', {
+	            historySource: 'local annotation history',
+	            chosenStack: 'localAnnotationRedo',
+	            receivedStack: 'localAnnotationUndo',
+	            ...summarizeHistoryActionForLog(localAction),
+	            pageNumber: localAction.pageNumber,
+	            annotationId: localAction.annotationId,
+            undoDepth: localAnnotationUndoRef.current.length,
+            redoDepth: localAnnotationRedoRef.current.length
+          });
+          return;
+        }
+      } finally {
+        isUndoingRef.current = false;
+      }
+    }
+
+    if (legacyRedoState && isLegacyAnnotationHistoryMeta(legacyRedoMeta)) {
+      const currentState = getHistorySnapshot();
+      const shouldScopeCallouts = shouldScopeCalloutHistoryRestore(legacyRedoMeta);
+      const scopedRedoState = shouldScopeCallouts
+        ? scopeHistoryStateForCalloutRestore({
+          currentState,
+          targetState: legacyRedoState,
+          meta: legacyRedoMeta,
+          userId: yjsUndoCtx?.userId || user?.id || null,
+        })
+        : legacyRedoState;
+      isUndoingRef.current = true;
+      try {
+        if (shouldScopeCallouts) {
+          markCalloutRemovalIntent({
+            source: 'redo',
+            reason: legacyRedoMeta.reason,
+            calloutIds: [
+              legacyRedoMeta.context?.calloutId,
+              ...(Array.isArray(legacyRedoMeta.context?.calloutIds) ? legacyRedoMeta.context.calloutIds : []),
+            ].filter(Boolean),
+            count: legacyRedoMeta.context?.count ?? null,
+          }, window);
+        }
+        restoreHistoryState(scopedRedoState);
+        redoHistoryRef.current = redoHistoryRef.current.slice(1);
+        redoHistoryMetaRef.current = redoHistoryMetaRef.current.slice(1);
+        setRedoHistory(redoHistoryRef.current);
+        undoHistoryRef.current = [...undoHistoryRef.current, currentState].slice(-50);
+        undoHistoryMetaRef.current = [...undoHistoryMetaRef.current, legacyRedoMeta].slice(-50);
+        setUndoHistory(undoHistoryRef.current);
+        pushHistoryDebugEvent('legacy_annotation_redo_applied', {
+          historySource: shouldScopeCallouts ? 'callout history' : 'legacy history',
+          chosenStack: 'legacyRedoHistory',
+          receivedStack: 'legacyUndoHistory',
+          ...summarizeHistoryMetaForLog(legacyRedoMeta),
+          reason: legacyRedoMeta.reason,
+          context: legacyRedoMeta.context || null,
+          ownerScopedCallouts: scopedRedoState !== legacyRedoState,
+          undoDepth: undoHistoryRef.current.length,
+          redoDepth: redoHistoryRef.current.length
+        });
+        return;
+      } finally {
+        isUndoingRef.current = false;
+      }
+    }
+
+	    pushHistoryDebugEvent('yjs_redo_invoked', {
+	      historySource: 'Yjs/CRDT history',
+      chosenStack: 'yjsRedoStack',
+      hasYDoc: !!yjsDoc,
+      hasUndoMgr: !!yjsUndoManager,
+      hasCtx: !!yjsUndoCtx,
+      undoStackLen: yjsUndoManager?.undoStack?.length ?? null,
+      redoStackLen: yjsUndoManager?.redoStack?.length ?? null,
+    });
     if (!yjsUndoManager || !yjsDoc || !yjsUndoCtx) return;
+    const yjsHistoryTarget = getYjsHistoryTarget(yjsUndoManager.redoStack?.[yjsUndoManager.redoStack.length - 1]);
     userRedo(yjsDoc, yjsUndoManager, yjsUndoCtx);
-  }, [yjsDoc, yjsUndoManager, yjsUndoCtx]);
+    refreshYjsHistoryTargetFromDoc(yjsHistoryTarget, 'redo');
+	    pushHistoryDebugEvent('yjs_redo_after', {
+	      historySource: 'Yjs/CRDT history',
+      receivedStack: 'yjsUndoStack',
+      undoStackLen: yjsUndoManager?.undoStack?.length ?? null,
+      redoStackLen: yjsUndoManager?.redoStack?.length ?? null,
+    });
+	  }, [applyLocalAnnotationHistoryAction, getHistoryOrder, getHistorySnapshot, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, pushHistoryDebugEvent, refreshYjsHistoryTargetFromDoc, restoreHistoryState, shouldRedoLocalBeforeLegacy, user?.id, yjsDoc, yjsUndoManager, yjsUndoCtx]);
 
   // Refs for undo/redo to avoid stale closures in keyboard shortcut handler
   const handleUndoRef = useRef(handleUndo);
@@ -17653,7 +19126,38 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   const currentPageRef = useRef(1);
   useEffect(() => {
     if (!yjsUndoManager) return undefined;
-    const onStackPopped = ({ stackItem }) => {
+    const onStackAdded = ({ stackItem, type, origin }) => {
+	      const meta = mapYjsMeta(stackItem?.meta);
+	      pushHistoryDebugEvent('yjs_history_added', {
+	        historySource: 'Yjs/CRDT history',
+	        receivedStack: type === 'redo' ? 'yjsRedoStack' : 'yjsUndoStack',
+        actionType: type || null,
+        annotationType: meta.historyDiagnostics?.[0]?.annotationType || null,
+        annotationId: meta.historyDiagnostics?.[0]?.annotationId || null,
+        pageNumber: meta.pageNumber ?? meta.historyDiagnostics?.[0]?.pageNumber ?? null,
+        timestamp: new Date().toISOString(),
+        originSource: origin?.source || null,
+        originUserId: origin?.userId || null,
+        undoDepth: yjsUndoManager.undoStack?.length ?? null,
+        redoDepth: yjsUndoManager.redoStack?.length ?? null,
+        meta,
+      });
+    };
+    const onStackPopped = ({ stackItem, type }) => {
+	      const meta = mapYjsMeta(stackItem?.meta);
+	      pushHistoryDebugEvent('yjs_history_popped', {
+	        historySource: 'Yjs/CRDT history',
+        chosenStack: type === 'redo' ? 'yjsRedoStack' : 'yjsUndoStack',
+        receivedStack: type === 'redo' ? 'yjsUndoStack' : 'yjsRedoStack',
+        actionType: type || null,
+        annotationType: meta.historyDiagnostics?.[0]?.annotationType || null,
+        annotationId: meta.historyDiagnostics?.[0]?.annotationId || null,
+        pageNumber: meta.pageNumber ?? meta.historyDiagnostics?.[0]?.pageNumber ?? null,
+        timestamp: new Date().toISOString(),
+        undoDepth: yjsUndoManager.undoStack?.length ?? null,
+        redoDepth: yjsUndoManager.redoStack?.length ?? null,
+        meta,
+      });
       const affectedPage = stackItem?.meta?.get?.('pageNumber');
       if (typeof affectedPage !== 'number') return;
       if (affectedPage === currentPageRef.current) return;
@@ -17662,15 +19166,21 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         try { nav(affectedPage); } catch { /* swallow — navigation can fail mid-tear-down */ }
       }
     };
+    yjsUndoManager.on('stack-item-added', onStackAdded);
     yjsUndoManager.on('stack-item-popped', onStackPopped);
-    return () => yjsUndoManager.off('stack-item-popped', onStackPopped);
-  }, [yjsUndoManager]);
+    return () => {
+      yjsUndoManager.off('stack-item-added', onStackAdded);
+      yjsUndoManager.off('stack-item-popped', onStackPopped);
+    };
+  }, [pushHistoryDebugEvent, yjsUndoManager]);
 
   // Check if undo is possible
-  const canUndo = undoHistory.length > 0;
+  const canUndo = localAnnotationHistoryVersion >= 0
+    && (localAnnotationUndoRef.current.length > 0 || undoHistory.length > 0 || (yjsUndoManager?.undoStack?.length || 0) > 0);
 
   // Check if redo is possible
-  const canRedo = redoHistory.length > 0;
+  const canRedo = localAnnotationHistoryVersion >= 0
+    && (localAnnotationRedoRef.current.length > 0 || redoHistory.length > 0 || (yjsUndoManager?.redoStack?.length || 0) > 0);
 
 
 
@@ -21890,6 +23400,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Load annotations from Supabase when document is opened
   useEffect(() => {
     const documentId = pdfFile?.id;
+    const hydrationPdfId = pdfFile ? getPDFId(pdfFile) : pdfId;
     if (!documentId || !user?.id) {
       setDocumentSyncEnabled(false);
       presenceCheckDocumentIdRef.current = null;
@@ -21929,35 +23440,46 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // Note: Don't reset syncRLSErrorShownRef - if RLS failed before, it'll fail again
 
     setIsLoadingRemoteAnnotations(true);
+    setSurveyAnnotationHydration({
+      ready: false,
+      source: 'supabase-highlight-starting',
+      documentId,
+      pdfId: hydrationPdfId,
+    });
     documentSyncInitInFlightRef.current = true;
     let deferredInitialPresenceTimer = null;
+    let cancelled = false;
 
     loadAnnotationsFromSupabase(documentId)
       .then(async ({ highlightAnnotations: remoteAnnotations, error }) => {
+        if (cancelled) return;
         if (error) {
           console.error('[DocumentSync] Error loading annotations:', error);
+          setSurveyAnnotationHydration({
+            ready: true,
+            source: 'supabase-highlight-error',
+            documentId,
+            pdfId: hydrationPdfId,
+            count: Object.keys(highlightAnnotationsRef.current || {}).length,
+          });
           return;
         }
 
-        if (Object.keys(remoteAnnotations).length > 0) {
-          setHighlightAnnotations(prev => {
-            // Merge remote annotations with local, preferring remote
-            const merged = { ...prev };
-            for (const [highlightId, annotation] of Object.entries(remoteAnnotations)) {
-              // If local version is newer (based on lastSyncedAt), keep local
-              if (!prev[highlightId] || !prev[highlightId].lastSyncedAt) {
-                merged[highlightId] = annotation;
-              } else {
-                const localTime = new Date(prev[highlightId].lastSyncedAt || 0).getTime();
-                const remoteTime = new Date(annotation.lastSyncedAt || 0).getTime();
-                if (remoteTime >= localTime) {
-                  merged[highlightId] = annotation;
-                }
-              }
-            }
-            return merged;
-          });
-        }
+        const remoteCount = Object.keys(remoteAnnotations || {}).length;
+        console.log('[AnnotationHydrationGate][survey] supabase highlights complete ' + JSON.stringify({
+          documentId,
+          pdfId: hydrationPdfId,
+          count: remoteCount,
+        }));
+        setHighlightAnnotations(remoteAnnotations || {});
+        lastSyncedAnnotationsRef.current = JSON.stringify(remoteAnnotations || {});
+        setSurveyAnnotationHydration({
+          ready: true,
+          source: 'supabase-highlight',
+          documentId,
+          pdfId: hydrationPdfId,
+          count: remoteCount,
+        });
 
         setDocumentSyncEnabled(false);
         setPresenceDebugStatus({
@@ -22031,12 +23553,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         }
       })
       .finally(() => {
+        if (cancelled) return;
         documentSyncInitInFlightRef.current = false;
         setIsLoadingRemoteAnnotations(false);
       });
 
     // Cleanup: remove presence when leaving document
     return () => {
+      cancelled = true;
       if (deferredInitialPresenceTimer) {
         clearTimeout(deferredInitialPresenceTimer);
       }
@@ -22087,6 +23611,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             categoryId: annotation.categoryId,
             moduleId: annotation.moduleId,
             spaceId: annotation.spaceId,
+            regionId: annotation.regionId ?? null,
             name: annotation.name,
             notes: annotation.notes,
             note: annotation.notes,
@@ -22099,7 +23624,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             opacity: annotation.opacity,
             version: annotation.version,
             supabaseId: annotation.supabaseId,
-            lastSyncedAt: annotation.lastSyncedAt
+            lastSyncedAt: annotation.lastSyncedAt,
+            userId: annotation.userId,
+            lastModifiedBy: annotation.lastModifiedBy,
+            annotationData: annotation.annotationData
           }
         }));
       },
@@ -22116,6 +23644,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             categoryId: annotation.categoryId,
             moduleId: annotation.moduleId,
             spaceId: annotation.spaceId,
+            regionId: annotation.regionId ?? null,
             name: annotation.name,
             notes: annotation.notes,
             note: annotation.notes,
@@ -22128,7 +23657,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             opacity: annotation.opacity,
             version: annotation.version,
             supabaseId: annotation.supabaseId,
-            lastSyncedAt: annotation.lastSyncedAt
+            lastSyncedAt: annotation.lastSyncedAt,
+            userId: annotation.userId,
+            lastModifiedBy: annotation.lastModifiedBy,
+            annotationData: annotation.annotationData
           }
         }));
       },
@@ -22164,7 +23696,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       syncRLSErrorShownRef.current ||
       syncStructuralAutoDisabledRef.current
     ) return;
-    if (Object.keys(highlightAnnotations).length === 0) return;
+    if (Object.keys(highlightAnnotations).length === 0) {
+      const priorHadHighlights = lastSyncedAnnotationsRef.current
+        && lastSyncedAnnotationsRef.current !== '{}';
+      if (!priorHadHighlights) return;
+    }
 
     // Check if annotations actually changed (avoid syncing our own remote updates)
     const annotationsString = JSON.stringify(highlightAnnotations);
@@ -22208,6 +23744,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         lastSyncedAnnotationsRef.current = annotationsString;
         syncErrorCountRef.current = 0; // Reset error count on success
         syncStructuralErrorShownRef.current = false;
+        recordAnnotationSyncPush({
+          kind: 'survey-highlight',
+          count: 1,
+          highlightCount: Object.keys(highlightAnnotations || {}).length,
+        });
       } else {
         syncErrorCountRef.current++;
 
@@ -22524,7 +24065,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     [annotationsByPage, user, documentOwnerId, enqueueUndoToast],
   );
 
-  const { status: cloudSyncStatus, queueSize: cloudSyncQueueSize, forceFlush: cloudSyncForceFlush } = useAnnotationCloudSync({
+  const {
+    status: cloudSyncStatus,
+    queueSize: cloudSyncQueueSize,
+    forceFlush: cloudSyncForceFlush,
+    initialHydration: normalAnnotationHydration,
+  } = useAnnotationCloudSync({
     documentId: pdfFile?.id || null,
     userId: user?.id || null,
     pdfId,
@@ -22532,7 +24078,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     callouts,
     setAnnotationsByPage,
     setCallouts,
-    enabled: cloudSyncActive
+    enabled: cloudSyncActive,
+    hydrateEnabled: cloudSyncEnabled && !!pdfFile?.id && !!user?.id
   });
   // Live presence list — feeds the stacked-avatars row in the toolbar.
   // Uses cloudSyncActive (operational flag) so presence stops fetching when
@@ -22665,7 +24212,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         const centerY = (obj.top || 0) + height / 2;
 
         if (mode === 'region' && regions.length > 0) {
-          const inRegion = regions.some(region => regionContainsPoint(centerX, centerY, region, scale));
+          const inRegion = regions.some(region => regionContainsPoint(centerX, centerY, region, 1));
           if (!inRegion) {
             return;
           }
@@ -22731,7 +24278,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-  }, [spaces, annotationsByPage, scale]);
+  }, [spaces, annotationsByPage]);
 
   const handleExportSpaceToPDF = useCallback(async (spaceId) => {
     if (!features?.excelExport) {
@@ -22819,13 +24366,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   const handleSetActiveSpace = useCallback((spaceId) => {
     debugLog('[SPACE TOGGLE] Activating space - regions enabled, annotations with regionId should be shown:', { spaceId, previousActiveSpaceId: activeSpaceId });
+    clearAnnotationSelectionForContextChange('region-open');
     setActiveSpaceId(spaceId);
-  }, [activeSpaceId, selectedSpaceId]);
+  }, [activeSpaceId, selectedSpaceId, clearAnnotationSelectionForContextChange]);
 
   const handleExitSpaceMode = useCallback(() => {
     debugLog('[SPACE TOGGLE] Deactivating space - regions disabled, all annotations with regionId should be hidden:', { previousActiveSpaceId: activeSpaceId });
+    clearAnnotationSelectionForContextChange('region-close');
     setActiveSpaceId(null);
-  }, [activeSpaceId, selectedSpaceId]);
+  }, [activeSpaceId, selectedSpaceId, clearAnnotationSelectionForContextChange]);
 
   // Helper to check if a region has valid areas (reused from SpaceRegionOverlay logic)
   const hasValidRegionAreas = useCallback((page) => {
@@ -22845,6 +24394,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // Toggle region overlay visibility
   const handleToggleRegionOverlay = useCallback((spaceId, pageId) => {
     debugLog('[REGION TOGGLE] Called:', { spaceId, pageId, activeSpaceId });
+    clearAnnotationSelectionForContextChange('region-overlay-toggle');
     setRegionOverlayDisabled(prev => {
       const key = `${spaceId}-${pageId}`;
       const newMap = new Map(prev);
@@ -22859,7 +24409,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
       return newMap;
     });
-  }, [activeSpaceId]);
+  }, [activeSpaceId, clearAnnotationSelectionForContextChange]);
 
   // Check if a region overlay is enabled
   const isRegionOverlayEnabled = useCallback((spaceId, pageId, page) => {
@@ -22905,6 +24455,33 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
   const annotationSpaceId = activeSpaceId ?? selectedSpaceId ?? null;
 
+  const annotationSelectionContextKey = useMemo(() => buildAnnotationSelectionContextKey({
+    showSurveyPanel,
+    selectedModuleId,
+    selectedSpaceId: annotationSpaceId,
+    activeSpaceId,
+    activeRegionId,
+    showRegionSelection,
+    regionSelectionPage,
+  }), [
+    showSurveyPanel,
+    selectedModuleId,
+    annotationSpaceId,
+    activeSpaceId,
+    activeRegionId,
+    showRegionSelection,
+    regionSelectionPage,
+  ]);
+
+  const previousAnnotationSelectionContextKeyRef = useRef(null);
+  useLayoutEffect(() => {
+    const previousKey = previousAnnotationSelectionContextKeyRef.current;
+    if (didAnnotationSelectionContextChange(previousKey, annotationSelectionContextKey)) {
+      clearAnnotationSelectionForContextChange('annotation-context-key-change');
+    }
+    previousAnnotationSelectionContextKeyRef.current = annotationSelectionContextKey;
+  }, [annotationSelectionContextKey, clearAnnotationSelectionForContextChange]);
+
   const requiresLegacyAnnotationLayer = useMemo(() => {
     if (rendererMode !== 'svg') return true;
 
@@ -22914,6 +24491,125 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // is retired in SVG mode.
     return false;
   }, [rendererMode]);
+
+  const firstVisibleAnnotationPage = useMemo(() => resolveFirstVisibleAnnotationPage({
+    visiblePages: visiblePagesSet,
+    currentPage: pageNum,
+    fallbackPage: 1,
+  }), [visiblePagesSet, pageNum]);
+
+  const isCloudBackedAnnotationDocument = !!pdfFile?.id && cloudSyncEnabled;
+  const isFirstVisibleAnnotationPageGated = useCallback((pageNumber) => {
+    const gated = shouldGateFirstVisibleAnnotationPage({
+      isCloudBackedDocument: isCloudBackedAnnotationDocument,
+      pageNumber,
+      firstVisiblePageNumber: firstVisibleAnnotationPage,
+      normalHydration: normalAnnotationHydration,
+      surveyHydration: surveyAnnotationHydration,
+    });
+    if (typeof window !== 'undefined') {
+      window.__annotationFirstPaintGate = gated ? {
+        documentId: pdfFile?.id || null,
+        pdfId,
+        pageNumber,
+        firstVisiblePageNumber: firstVisibleAnnotationPage,
+        normalHydration: normalAnnotationHydration,
+        surveyHydration: surveyAnnotationHydration,
+      } : null;
+    }
+    return gated;
+  }, [
+    firstVisibleAnnotationPage,
+    isCloudBackedAnnotationDocument,
+    normalAnnotationHydration,
+    pdfFile?.id,
+    pdfId,
+    surveyAnnotationHydration,
+  ]);
+
+  useEffect(() => {
+    if (!isCloudBackedAnnotationDocument) return;
+    const ready = !shouldGateFirstVisibleAnnotationPage({
+      isCloudBackedDocument: true,
+      pageNumber: firstVisibleAnnotationPage,
+      firstVisiblePageNumber: firstVisibleAnnotationPage,
+      normalHydration: normalAnnotationHydration,
+      surveyHydration: surveyAnnotationHydration,
+    });
+    console.log('[AnnotationHydrationGate][first-page] ' + JSON.stringify({
+      documentId: pdfFile?.id || null,
+      pdfId,
+      pageNumber: firstVisibleAnnotationPage,
+      ready,
+      visualCoverActive: !ready,
+      normal: normalAnnotationHydration,
+      survey: surveyAnnotationHydration,
+    }));
+    console.log('[AnnotationHydrationGate][visual-cover] ' + JSON.stringify({
+      documentId: pdfFile?.id || null,
+      pdfId,
+      pageNumber: firstVisibleAnnotationPage,
+      active: !ready,
+      reason: ready ? 'hydration-ready' : 'annotation-hydration-gated',
+    }));
+  }, [
+    firstVisibleAnnotationPage,
+    isCloudBackedAnnotationDocument,
+    normalAnnotationHydration,
+    pdfFile?.id,
+    pdfId,
+    surveyAnnotationHydration,
+  ]);
+
+  const renderAnnotationHydrationPageCover = useCallback((pageNumber, renderer, active) => {
+    if (!active) return null;
+    return (
+      <div
+        data-annotation-hydration-cover="true"
+        data-annotation-hydration-cover-active="true"
+        data-annotation-hydration-cover-page={pageNumber}
+        data-annotation-hydration-cover-renderer={renderer}
+        role="status"
+        aria-live="polite"
+        aria-label="Loading annotations"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          zIndex: 1000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: '#f3f4f6',
+          color: '#4b5563',
+          pointerEvents: 'auto',
+          boxShadow: 'inset 0 0 0 1px rgba(17, 24, 39, 0.08)',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '10px',
+            fontSize: '13px',
+            fontWeight: 500,
+          }}
+        >
+          <div
+            style={{
+              width: '26px',
+              height: '26px',
+              borderRadius: '50%',
+              border: '3px solid rgba(75, 85, 99, 0.22)',
+              borderTopColor: '#4b5563',
+              animation: 'annotationHydrationSpin 0.8s linear infinite',
+            }}
+          />
+          <span>Loading annotations...</span>
+        </div>
+      </div>
+    );
+  }, []);
 
   useEffect(() => {
     if (!useSyncfusionRenderer) return undefined;
@@ -23396,6 +25092,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       return;
     }
 
+    clearAnnotationSelectionForContextChange('region-creation-start');
     setActiveSpaceId(spaceId);
     setSelectedSpaceId(spaceId); // Automatically select the space when entering edit mode
     setRegionSelectionPage(pageId);
@@ -23411,7 +25108,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       alert('The Region Selection Tool is a Pro feature. Please upgrade to use this tool.');
     }
     goToPage(pageId, { fallback: 'nearest' });
-  }, [spaces, goToPage, features, getRegionEditReturnTool, showSurveyPanel, selectedModuleId, activeRegionId]);
+  }, [spaces, goToPage, features, getRegionEditReturnTool, showSurveyPanel, selectedModuleId, activeRegionId, clearAnnotationSelectionForContextChange]);
 
   const handleCancelRegionEdit = useCallback(() => {
     finishRegionEditSession();
@@ -23613,6 +25310,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       setItems({});
       setAnnotations({});
       setHighlightAnnotations({});
+      setSurveyAnnotationHydration(ANNOTATION_HYDRATION_READY_LOCAL);
       return;
     }
 
@@ -23621,10 +25319,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const data = loadPDFData(id);
     setItems(data.items);
     setAnnotations(data.annotations);
-    // Load highlightAnnotations from localStorage
-    const loadedHighlights = loadHighlightAnnotations(id);
-    setHighlightAnnotations(loadedHighlights);
     const isCloudBackedDoc = !!pdfFile?.id;
+    setSurveyAnnotationHydration(isCloudBackedDoc ? {
+      ...ANNOTATION_HYDRATION_PENDING,
+      documentId: pdfFile.id,
+      pdfId: id,
+      source: 'supabase-highlight-starting',
+    } : ANNOTATION_HYDRATION_READY_LOCAL);
+    // Cloud-backed survey highlights are Supabase-owned. Painting the
+    // localStorage snapshot first causes the same visible pop-in/out as
+    // normal annotations, so keep them gated until the highlight SELECT
+    // below returns.
+    const loadedHighlights = isCloudBackedDoc ? {} : loadHighlightAnnotations(id);
+    setHighlightAnnotations(loadedHighlights);
     // Cloud-backed docs use the CRDT/Y.Doc snapshot as the annotation source.
     // Loading the older annotationsByPage_* localStorage cache here causes a
     // visible stale-state flash: correct smooth Drawboard paths hydrate, then a
@@ -23784,6 +25491,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   useEffect(() => {
     if (!pdfId) return;
     if (pdfFile?.id) return;
+    const fingerprint = getCalloutSyncFingerprint(callouts);
+    if (fingerprint === lastSavedCalloutsFingerprintRef.current) return;
+    lastSavedCalloutsFingerprintRef.current = fingerprint;
     saveCallouts(pdfId, callouts);
   }, [pdfId, pdfFile?.id, callouts]);
 
@@ -23922,11 +25632,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
   }, [downloadFromStorage, pdfFile, numPages]);
 
-  // UX 2026-04-22: File menu → "Export Annotated PDF…" — prompts for a new
+  // UX 2026-04-22: File menu → "Export" — prompts for a new
   // file path and writes the currently-open PDF with annotations baked in.
-  // Unlike Cmd+S which overwrites the source file, this Save As flow lets
-  // the user park an exported copy alongside (or anywhere) without
-  // touching the original.
+  // Cmd+S only saves app/cloud state; this explicit export path is the only
+  // place the app generates PDF bytes and writes/downloads a PDF copy.
   const handleExportAnnotatedPDF = useCallback(async () => {
     if (!pdfFile) {
       alert('Open a PDF first.');
@@ -23934,11 +25643,24 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     }
     const api = window.electronAPI;
     if (!api?.saveFile) {
-      alert('Export Annotated PDF is only available in the desktop app.');
+      alert('Export is only available in the desktop app.');
       return;
     }
     try {
       const defaultName = (pdfFile.name || 'document').replace(/\.pdf$/i, '') + '-annotated.pdf';
+      const annotationCounts = summarizeAnnotationCountsForSaveExport(annotationsByPage, callouts, highlightAnnotations);
+      console.log('[PDFSaveExport] action start ' + JSON.stringify({
+        actionType: 'pdf-export',
+        documentId: pdfFile?.id || null,
+        supabaseAnnotationSaveRan: false,
+        pdfBytesGenerated: false,
+        localFilesystemWrite: false,
+        outputPath: null,
+        annotationCountsByType: annotationCounts.byType,
+        annotationCountSummary: annotationCounts,
+        embeddedPdfNativeAnnotationHandling: 'preserve-native-layer-and-skip-imported-app-copies',
+        note: 'Explicit export generates a PDF copy. Imported PDF-native annotations remain in the source PDF and their app-imported copies are skipped during export to avoid duplication.'
+      }));
       let sourcePdfForExport = pdfFile;
       const saveAsBlob = syncfusionViewerRef.current?.saveAsBlob;
       if (typeof saveAsBlob === 'function') {
@@ -23956,7 +25678,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         annotationsByPage,
         pageSizes,
         null,
-        { returnBytes: true }
+        {
+          returnBytes: true,
+          actionType: 'pdf-export',
+          documentId: pdfFile?.id || null,
+          callouts,
+          highlightAnnotations,
+          spaces
+        }
       );
       if (!buffer) {
         alert('Nothing to export.');
@@ -23964,7 +25693,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
       const bytes = Array.from(new Uint8Array(buffer));
       const result = await api.saveFile({
-        title: 'Export Annotated PDF',
+        title: 'Export',
         defaultPath: defaultName,
         filters: [{ name: 'PDF Files', extensions: ['pdf'] }],
         data: bytes
@@ -23974,12 +25703,25 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         alert(`Export failed: ${result.error}`);
         return;
       }
-      alert(`Exported to ${result?.filePath || 'selected location'}.`);
+      console.log('[PDFSaveExport] action complete ' + JSON.stringify({
+        actionType: 'pdf-export',
+        documentId: pdfFile?.id || null,
+        supabaseAnnotationSaveRan: false,
+        pdfBytesGenerated: true,
+        localFilesystemWrite: true,
+        outputPath: result?.filePath || null,
+        annotationCountsByType: annotationCounts.byType,
+        annotationCountSummary: annotationCounts,
+        embeddedPdfNativeAnnotationHandling: 'preserve-native-layer-and-skip-imported-app-copies'
+      }));
+      // Successful Export already completed through the explicit Save As flow.
+      // Keep success feedback non-blocking; the output path is preserved in
+      // the [PDFSaveExport] action-complete diagnostic above.
     } catch (err) {
       console.error('[ExportAnnotatedPDF] failed:', err);
       alert(`Export failed: ${err?.message || err}`);
     }
-  }, [pdfFile, annotationsByPage, pageSizes]);
+  }, [pdfFile, annotationsByPage, pageSizes, callouts, highlightAnnotations, spaces]);
 
   // Subscribe to the File menu item.
   useEffect(() => {
@@ -23994,22 +25736,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     };
   }, [handleExportAnnotatedPDF]);
 
-  const getPdfFileForExplicitSave = useCallback(async () => {
-    const saveAsBlob = syncfusionViewerRef.current?.saveAsBlob;
-    if (typeof saveAsBlob !== 'function') return pdfFile;
-
-    try {
-      const blob = await saveAsBlob();
-      if (blob && Number(blob.size) > 0) {
-        return blob;
-      }
-    } catch (error) {
-      console.warn('[App] Falling back to original PDF bytes after Syncfusion saveAsBlob failed:', error);
-    }
-
-    return pdfFile;
-  }, [pdfFile]);
-
   // Save function for annotations (triggered by Cmd/Ctrl+S or auto-save)
   // silent=true skips alerts (for auto-save)
   const handleSaveDocument = useCallback(async (silent = false) => {
@@ -24023,6 +25749,21 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       // prompts. The file output runs second and only on explicit user action.
 
       // --- Step 1: cloud / local annotation backup (silent, always runs) ---
+      const annotationCounts = summarizeAnnotationCountsForSaveExport(annotationsByPage, callouts, highlightAnnotations);
+      let supabaseAnnotationSaveRan = false;
+      let supabaseAnnotationSaveError = null;
+      console.log('[PDFSaveExport] action start ' + JSON.stringify({
+        actionType: 'app-state-save',
+        documentId: pdfFile?.id || null,
+        supabaseAnnotationSaveRan: false,
+        pdfBytesGenerated: false,
+        localFilesystemWrite: false,
+        outputPath: null,
+        annotationCountsByType: annotationCounts.byType,
+        annotationCountSummary: annotationCounts,
+        embeddedPdfNativeAnnotationHandling: 'not-applicable-app-state-only',
+        silent
+      }));
       saveAnnotationsByPage(pdfId, annotationsByPage);
       savedAnnotationsByPageRef.current = { ...annotationsByPage };
       setHasUnsavedAnnotations(false);
@@ -24031,59 +25772,44 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
       if (features?.cloudSync) {
         await saveSurveyDataToSupabase(highlightAnnotations, spaces, selectedTemplate);
-      }
-
-      // --- Step 2: PDF file output (only on user-triggered save) ---
-      // Auto-saves (silent=true) NEVER write a file or prompt — cloud backup
-      // above already preserved the user's work.
-      if (!silent) {
-        // Desktop with a known local original path: standard "Save" semantics —
-        // silently overwrite the file in place. No prompt, no picker. This
-        // matches what every other desktop app does on Cmd/Ctrl+S.
-        const hasLocalOriginal = !!(
-          typeof window !== 'undefined' && window.electronAPI && pdfFilePath
-        );
-
-        if (hasLocalOriginal) {
-          const sourcePdfForSave = await getPdfFileForExplicitSave();
-          await savePDFWithAnnotationsPdfLib(sourcePdfForSave, annotationsByPage, pageSizes, pdfFilePath);
-          alert('PDF saved with annotations! The file has been updated.');
-        } else {
-          // Web mode OR desktop where the PDF was opened from the cloud and
-          // there's no local file to overwrite. Ask the user before writing
-          // anything — annotations are already saved either way.
-          const wantsDownload = window.confirm(
-            'Annotations saved to your account.\n\nDo you also want to download a PDF copy with the annotations baked in?'
-          );
-          if (!wantsDownload) {
-            alert('Annotations saved. No file downloaded.');
-          } else {
-            // saveAnnotatedPDFFile picks the best available save mechanism:
-            //   1. Electron native dialog (when bridge present)
-            //   2. File System Access API picker (Chrome / Edge)
-            //   3. Legacy <a download> auto-download (Safari / Firefox)
-            // Result shape lets us phrase the toast accurately for each path.
-            const sourcePdfForSave = await getPdfFileForExplicitSave();
-            const result = await saveAnnotatedPDFFile({
-              pdfFile: sourcePdfForSave,
-              annotationsByPage,
-              pageSizes,
-              defaultName: pdfFile.name,
-            });
-            if (result.canceled) {
-              alert('Annotations saved. Download canceled.');
-            } else if (result.error) {
-              alert('Annotations saved. Download failed: ' + result.error);
-            } else if (result.filePath) {
-              alert('Annotations saved. PDF saved to ' + result.filePath + '.');
-            } else if (result.autoDownloaded) {
-              alert('Annotations saved. PDF downloaded to your default downloads folder.');
-            } else {
-              alert('Annotations saved. PDF downloaded as "' + (result.fileName || 'file.pdf') + '".');
-            }
+        if (pdfFile?.id && user?.id && typeof cloudSyncForceFlush === 'function') {
+          try {
+            await cloudSyncForceFlush();
+            supabaseAnnotationSaveRan = true;
+          } catch (flushError) {
+            supabaseAnnotationSaveError = flushError?.message || String(flushError);
+            console.warn('[PDFSaveExport] app-state-save Supabase annotation flush failed ' + JSON.stringify({
+              actionType: 'app-state-save',
+              documentId: pdfFile?.id || null,
+              error: supabaseAnnotationSaveError
+            }));
           }
         }
       }
+
+      console.log('[PDFSaveExport] action complete ' + JSON.stringify({
+        actionType: 'app-state-save',
+        documentId: pdfFile?.id || null,
+        supabaseAnnotationSaveRan,
+        supabaseAnnotationSaveError,
+        pdfBytesGenerated: false,
+        localFilesystemWrite: false,
+        outputPath: null,
+        annotationCountsByType: annotationCounts.byType,
+        annotationCountSummary: annotationCounts,
+        embeddedPdfNativeAnnotationHandling: 'not-applicable-app-state-only',
+        localBackupSaved: true,
+        surveyDataStorageSaveRequested: !!features?.cloudSync,
+        silent
+      }));
+
+      // --- Step 2: no PDF file output on normal Save ---
+      // Normal Save is app-state persistence only. PDF generation and local
+      // filesystem writes are reserved for the explicit Export
+      // menu action so the original desktop file is never silently overwritten.
+      // Manual Save intentionally shows no blocking success alert. The
+      // existing SyncStatusChip and [PDFSaveExport] diagnostics provide
+      // non-blocking confirmation that app/cloud state saved.
 
       // Check if we should sync to linked Excel file
       const shouldOfferExcelSync = (
@@ -24104,10 +25830,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     } catch (error) {
       console.error('Error saving document:', error);
       if (!silent) {
-        alert('Error saving PDF: ' + error.message);
+        alert('Error saving annotations: ' + error.message);
       }
     }
-  }, [pdfId, pdfFile, annotationsByPage, pageSizes, pdfFilePath, onUnsavedAnnotationsChange, selectedTemplate, pushToExcelWithRetry, features?.cloudSync, features?.excelExport, highlightAnnotations, spaces, tabId, hasPendingExcelSyncChanges, getPdfFileForExplicitSave]);
+  }, [pdfId, pdfFile, annotationsByPage, callouts, onUnsavedAnnotationsChange, selectedTemplate, saveSurveyDataToSupabase, pushToExcelWithRetry, features?.cloudSync, features?.excelExport, highlightAnnotations, spaces, tabId, hasPendingExcelSyncChanges, user?.id, cloudSyncForceFlush]);
 
   // Auto-save every 30 seconds when there are unsaved changes and a file path is available
   useEffect(() => {
@@ -24577,12 +26303,29 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           console.log('[PDFImport] skipped embedded PDF annotation import — cloud/Y.Doc is authoritative ' + JSON.stringify({
             documentId: pdfFile.id,
           }));
+          try {
+            const { nativeLayerPolicyByPage } = await importAnnotationsFromPdf(pdf, {
+              rawPdfBytes: arrayBuffer,
+              diagnosticsOnly: true
+            });
+            if (isCancelled) return;
+            setPdfNativeAnnotationLayerPolicyByPage(nativeLayerPolicyByPage || {});
+          } catch (diagError) {
+            console.warn('[PDFImport] embedded PDF annotation diagnostics failed:', diagError);
+            setPdfNativeAnnotationLayerPolicyByPage({});
+          }
         } else {
         try {
-          const { annotationsByPage: importedAnnotations, unsupportedTypes } = await importAnnotationsFromPdf(pdf, {
+          const {
+            annotationsByPage: importedAnnotations,
+            calloutsByPage: importedAppCalloutsByPage,
+            unsupportedTypes,
+            nativeLayerPolicyByPage
+          } = await importAnnotationsFromPdf(pdf, {
             rawPdfBytes: arrayBuffer
           });
           if (isCancelled) return;
+          setPdfNativeAnnotationLayerPolicyByPage(nativeLayerPolicyByPage || {});
 
           // UX: Phase 14 CALL-10 hotfix — FreeText annotations with
           // /IT=FreeTextCallout arrive from the importer as fabric textboxes
@@ -24594,6 +26337,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           // state via the import adapter, so they render through the unified
           // SVG callout pipeline.
           const importedCalloutsByPage = {};
+          Object.entries(importedAppCalloutsByPage || {}).forEach(([pageKey, entries]) => {
+            if (Array.isArray(entries) && entries.length > 0) {
+              importedCalloutsByPage[pageKey] = [
+                ...(importedCalloutsByPage[pageKey] || []),
+                ...entries,
+              ];
+            }
+          });
           const filteredImportedAnnotations = {};
           Object.entries(importedAnnotations || {}).forEach(([pageKey, pageData]) => {
             const pageNumber = Number(pageKey);
@@ -24618,12 +26369,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
             }
           });
 
-          setCallouts((prev) => {
-            const preserved = Array.isArray(prev)
-              ? prev.filter((c) => !c?.isPdfImported)
-              : [];
-            const importedFlat = Object.values(importedCalloutsByPage).flat();
-            return [...preserved, ...importedFlat];
+      setCalloutsIfPersistedChanged((prev) => {
+        const preserved = Array.isArray(prev)
+          ? prev.filter((c) => !c?.isPdfImported)
+          : [];
+        const importedFlat = Object.values(importedCalloutsByPage).flat();
+        return [...preserved, ...importedFlat];
           });
 
           // Replace previously imported PDF annotations (stale styling) while preserving user-created annotations.
@@ -25412,7 +27163,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const controller = zoomControllerRef.current;
     if (!controller) return;
     const basisScale = scaleRef.current || manualZoomScaleRef.current || 1.0;
-    const nextScale = clampScale(basisScale * 1.2);
+    const nextScale = clampScale(basisScale * TOOLBAR_ZOOM_STEP_FACTOR);
     controller.setScale(nextScale);
   }, []);
 
@@ -25420,7 +27171,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const controller = zoomControllerRef.current;
     if (!controller) return;
     const basisScale = scaleRef.current || manualZoomScaleRef.current || 1.0;
-    const nextScale = clampScale(basisScale / 1.2);
+    const nextScale = clampScale(basisScale / TOOLBAR_ZOOM_STEP_FACTOR);
     controller.setScale(nextScale);
   }, []);
 
@@ -26244,6 +27995,48 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     return walk(value);
   }, []);
 
+  const pushLocalAnnotationHistoryAction = useCallback((action) => {
+    if (!action || isUndoingRef.current) return;
+    const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    const scopedAction = filterAnnotationHistoryActionByOwner(action, viewerId);
+    if (!scopedAction) {
+      pushHistoryDebugEvent('local_annotation_history_skipped_owner_scope', {
+        requestedAction: summarizeHistoryActionForLog(action),
+        viewerId,
+      });
+      return;
+    }
+    const checkpointId = historyCheckpointSeqRef.current + 1;
+    historyCheckpointSeqRef.current = checkpointId;
+    const actionWithMeta = {
+      ...scopedAction,
+      __historyMeta: {
+        checkpointId,
+        createdAt: new Date().toISOString(),
+        reason: scopedAction.type || 'annotations:local',
+      },
+    };
+    const nextUndo = [...localAnnotationUndoRef.current, actionWithMeta].slice(-100);
+    localAnnotationUndoRef.current = nextUndo;
+    const clearedRedoEntries = localAnnotationRedoRef.current.length;
+    localAnnotationRedoRef.current = [];
+    setLocalAnnotationHistoryVersion((prev) => prev + 1);
+	    pushHistoryDebugEvent('local_annotation_history_added', {
+	      checkpointId,
+	      order: checkpointId,
+	      timestamp: actionWithMeta.__historyMeta.createdAt,
+	      historySource: 'local annotation history',
+	      receivedStack: 'localAnnotationUndo',
+	      clearedRedoStack: clearedRedoEntries > 0 ? 'localAnnotationRedo' : null,
+	      clearedRedoEntries,
+	      ...summarizeHistoryActionForLog(actionWithMeta),
+	      pageNumber: actionWithMeta.pageNumber,
+	      annotationId: actionWithMeta.annotationId,
+	      undoDepth: nextUndo.length,
+      redoDepth: 0
+    });
+  }, [pushHistoryDebugEvent, user?.id, yjsUndoCtx?.userId]);
+
   const handleSaveAnnotations = useCallback((pageNumber, json, saveContext = null) => {
     const source_ = saveContext?.source || 'unknown';
     const prevCount_ = annotationsByPageRef.current?.[pageNumber]?.objects?.length ?? 0;
@@ -26262,6 +28055,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       ? saveContext
       : null;
     const source = normalizeHistoryReason(normalizedSaveContext?.source || 'annotations:save');
+    const isEraserCommit = source === 'eraser:commit' || normalizedSaveContext?.tool === 'eraser';
+    const eraserDeletedIds = Array.isArray(normalizedSaveContext?.finalDeletedAnnotationIds)
+      ? normalizedSaveContext.finalDeletedAnnotationIds.filter(Boolean)
+      : [];
+    const eraserChangedIds = Array.isArray(normalizedSaveContext?.finalChangedAnnotationIds)
+      ? normalizedSaveContext.finalChangedAnnotationIds.filter(Boolean)
+      : [];
     const interactionId = typeof normalizedSaveContext?.interactionId === 'string' && normalizedSaveContext.interactionId.trim()
       ? normalizedSaveContext.interactionId.trim()
       : null;
@@ -26272,20 +28072,61 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       ? checkpointPolicyRaw
       : 'normal';
     const interactionPageKey = String(pageNumber);
+    const hadPreviewBaseline = previewBaselineByPageRef.current.has(interactionPageKey);
+    if (checkpointPolicy === 'skip' && !hadPreviewBaseline) {
+      previewBaselineByPageRef.current.set(
+        interactionPageKey,
+        JSON.parse(JSON.stringify(normalizedCurrentAnnotations || { objects: [] }))
+      );
+    }
+    const previewBaseline = checkpointPolicy === 'skip'
+      ? null
+      : (previewBaselineByPageRef.current.get(interactionPageKey) || null);
+    const historyPreviousAnnotations = previewBaseline || normalizedCurrentAnnotations;
     const lastInteractionIdForPage = objectModifiedInteractionCheckpointRef.current.get(interactionPageKey) || null;
     const shouldSkipCheckpointByPolicy = checkpointPolicy === 'skip';
     const shouldSkipCheckpointByInteraction = checkpointPolicy !== 'force'
       && source === 'object:modified'
       && Boolean(interactionId)
       && lastInteractionIdForPage === interactionId;
-    const previousPageFingerprint = getHistoryFingerprint(normalizedCurrentAnnotations);
+    const currentPageFingerprint = getHistoryFingerprint(normalizedCurrentAnnotations);
+    const previousPageFingerprint = getHistoryFingerprint(historyPreviousAnnotations);
     const nextPageFingerprint = getHistoryFingerprint(normalizedIncomingAnnotations);
     const pageTransition = summarizeAnnotationPageTransitionForDebug(
-      normalizedCurrentAnnotations,
+      historyPreviousAnnotations,
       normalizedIncomingAnnotations
     );
 
-    if (previousPageFingerprint.serialized === nextPageFingerprint.serialized) {
+    if (isEraserCommit && eraserDeletedIds.length === 0 && eraserChangedIds.length === 0) {
+      pushHistoryDebugEvent('annotations_save_noop', {
+        reason: 'eraser:precise-noop',
+        source,
+        interactionId,
+        checkpointPolicy,
+        pageNumber,
+        previousPageHash: previousPageFingerprint.hash,
+        nextPageHash: nextPageFingerprint.hash,
+        changedObjectsCount: pageTransition.changedObjectsCount,
+        pageTransition,
+        undoDepth: undoHistoryRef.current.length,
+        redoDepth: redoHistoryRef.current.length,
+        saveContext: normalizedSaveContext
+      });
+      try {
+        console.log('[EraserSaveContract] noop ' + JSON.stringify({
+          pageNumber,
+          deletedIds: eraserDeletedIds,
+          changedIds: eraserChangedIds,
+          serializedChangedObjects: pageTransition.changedObjectsCount,
+        }));
+      } catch (_) {}
+      return;
+    }
+
+    if (
+      currentPageFingerprint.serialized === nextPageFingerprint.serialized
+      && (!previewBaseline || previousPageFingerprint.serialized === nextPageFingerprint.serialized)
+    ) {
       pushHistoryDebugEvent('annotations_save_noop', {
         reason: 'annotations:save',
         source,
@@ -26306,10 +28147,117 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const previousObjectCount = Array.isArray(normalizedCurrentAnnotations?.objects)
       ? normalizedCurrentAnnotations.objects.length
       : 0;
+    const historyPreviousObjectCount = Array.isArray(historyPreviousAnnotations?.objects)
+      ? historyPreviousAnnotations.objects.length
+      : previousObjectCount;
     const nextObjectCount = Array.isArray(normalizedIncomingAnnotations?.objects)
       ? normalizedIncomingAnnotations.objects.length
       : 0;
-    const objectDelta = nextObjectCount - previousObjectCount;
+    const objectDelta = nextObjectCount - historyPreviousObjectCount;
+    if (!shouldSkipCheckpointByPolicy) {
+      recordAnnotationCommit({
+        surface: 'App.handleSaveAnnotations',
+        source,
+        action: normalizedSaveContext?.action || source,
+        pageNumber,
+        objectDelta,
+        previousObjectCount: historyPreviousObjectCount,
+        nextObjectCount,
+        changedObjectsCount: pageTransition.changedObjectsCount,
+        checkpointPolicy,
+      });
+    }
+    const provisionalLocalHistoryAction = isEraserCommit
+      ? buildPreciseAnnotationHistoryAction({
+        pageNumber,
+        previousPage: historyPreviousAnnotations,
+        nextPage: normalizedIncomingAnnotations,
+        deletedIds: eraserDeletedIds,
+        changedIds: eraserChangedIds,
+      })
+      : buildAnnotationHistoryAction({
+        pageNumber,
+        previousPage: historyPreviousAnnotations,
+        nextPage: normalizedIncomingAnnotations
+      });
+    const counterRenumberDecision = shouldRenumberCountersForSave({
+      source,
+      action: normalizedSaveContext?.action || source,
+      localHistoryAction: provisionalLocalHistoryAction,
+    });
+    const shouldRenumberCounters = counterRenumberDecision.shouldRenumber;
+    const shouldPreserveExistingCounters = counterRenumberDecision.shouldPreserveExistingCounters === true;
+    const intentionalCounterChangeIds = Array.isArray(counterRenumberDecision.intentionalCounterChangeIds)
+      ? counterRenumberDecision.intentionalCounterChangeIds
+      : [];
+    const shouldApplyCounterPreservation = shouldPreserveExistingCounters || intentionalCounterChangeIds.length > 0;
+    const finalIncomingAnnotations = shouldApplyCounterPreservation
+      ? preserveExistingCountersOnPage(normalizedIncomingAnnotations, normalizedCurrentAnnotations, {
+        intentionalCounterChangeIds,
+      })
+      : normalizedIncomingAnnotations;
+    const finalLocalHistoryAction = finalIncomingAnnotations === normalizedIncomingAnnotations
+      ? provisionalLocalHistoryAction
+      : (isEraserCommit
+        ? buildPreciseAnnotationHistoryAction({
+          pageNumber,
+          previousPage: historyPreviousAnnotations,
+          nextPage: finalIncomingAnnotations,
+          deletedIds: eraserDeletedIds,
+          changedIds: eraserChangedIds,
+        })
+        : buildAnnotationHistoryAction({
+          pageNumber,
+          previousPage: historyPreviousAnnotations,
+          nextPage: finalIncomingAnnotations
+        }));
+    const finalNextPageFingerprint = finalIncomingAnnotations === normalizedIncomingAnnotations
+      ? nextPageFingerprint
+      : getHistoryFingerprint(finalIncomingAnnotations);
+    const finalPageTransition = finalIncomingAnnotations === normalizedIncomingAnnotations
+      ? pageTransition
+      : summarizeAnnotationPageTransitionForDebug(
+        historyPreviousAnnotations,
+        finalIncomingAnnotations
+      );
+    const logCounterRenumberSkip = () => {
+      try {
+        console.log('[CounterRenumber] skipped ' + JSON.stringify({
+          pageNumber,
+          source,
+          action: normalizedSaveContext?.action || source,
+          reason: counterRenumberDecision.reason,
+          preserveExistingCounters: shouldPreserveExistingCounters,
+          intentionalCounterChangeIds,
+        }));
+      } catch (_) {}
+    };
+    const renumberCountersWithLog = (nextByPage, phase) => {
+      const before = JSON.parse(JSON.stringify(nextByPage || {}));
+      const result = renumberCounters(nextByPage);
+      const effect = summarizeCounterRenumberEffect(before, result);
+      try {
+        console.log('[CounterRenumber] ran ' + JSON.stringify({
+          pageNumber,
+          phase,
+          source,
+          action: normalizedSaveContext?.action || source,
+          reason: counterRenumberDecision.reason,
+          affectedCounterIds: effect.affectedCounterIds,
+          affectedCount: effect.affectedCount,
+        }));
+      } catch (_) {}
+      return result;
+    };
+    if (!shouldRenumberCounters) {
+      logCounterRenumberSkip();
+    }
+    if (!shouldSkipCheckpointByPolicy && !shouldSkipCheckpointByInteraction) {
+      pushLocalAnnotationHistoryAction(finalLocalHistoryAction);
+    }
+    if (!shouldSkipCheckpointByPolicy) {
+      previewBaselineByPageRef.current.delete(interactionPageKey);
+    }
 
     pushHistoryDebugEvent('annotations_save_detected', {
       reason: 'annotations:save',
@@ -26320,10 +28268,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       previousObjectCount,
       nextObjectCount,
       objectDelta,
-      changedObjectsCount: pageTransition.changedObjectsCount,
-      pageTransition,
+      changedObjectsCount: finalPageTransition.changedObjectsCount,
+      pageTransition: finalPageTransition,
       previousPageHash: previousPageFingerprint.hash,
-      nextPageHash: nextPageFingerprint.hash,
+      nextPageHash: finalNextPageFingerprint.hash,
       undoDepth: undoHistoryRef.current.length,
       redoDepth: redoHistoryRef.current.length,
       saveContext: normalizedSaveContext
@@ -26339,10 +28287,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         previousObjectCount,
         nextObjectCount,
         objectDelta,
-        changedObjectsCount: pageTransition.changedObjectsCount,
-        pageTransition,
+        changedObjectsCount: finalPageTransition.changedObjectsCount,
+        pageTransition: finalPageTransition,
         previousPageHash: previousPageFingerprint.hash,
-        nextPageHash: nextPageFingerprint.hash,
+        nextPageHash: finalNextPageFingerprint.hash,
         undoDepth: undoHistoryRef.current.length,
         redoDepth: redoHistoryRef.current.length,
         saveContext: normalizedSaveContext
@@ -26357,10 +28305,28 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         previousObjectCount,
         nextObjectCount,
         objectDelta,
-        changedObjectsCount: pageTransition.changedObjectsCount,
-        pageTransition,
+        changedObjectsCount: finalPageTransition.changedObjectsCount,
+        pageTransition: finalPageTransition,
         previousPageHash: previousPageFingerprint.hash,
-        nextPageHash: nextPageFingerprint.hash,
+        nextPageHash: finalNextPageFingerprint.hash,
+        undoDepth: undoHistoryRef.current.length,
+        redoDepth: redoHistoryRef.current.length,
+        saveContext: normalizedSaveContext
+      });
+    } else if (yjsDoc || yjsUndoManager) {
+      pushHistoryDebugEvent('annotations_checkpoint_skipped_crdt_history', {
+        reason: 'annotations:save',
+        source,
+        interactionId,
+        checkpointPolicy,
+        pageNumber,
+        previousObjectCount,
+        nextObjectCount,
+        objectDelta,
+        changedObjectsCount: finalPageTransition.changedObjectsCount,
+        pageTransition: finalPageTransition,
+        previousPageHash: previousPageFingerprint.hash,
+        nextPageHash: finalNextPageFingerprint.hash,
         undoDepth: undoHistoryRef.current.length,
         redoDepth: redoHistoryRef.current.length,
         saveContext: normalizedSaveContext
@@ -26371,26 +28337,77 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
 
       // Checkpoint history before saving annotation changes
+      const shouldUseFastCreateCheckpoint =
+        source === 'path:created'
+        && objectDelta === 1
+        && finalPageTransition.changedObjectsCount <= 1;
+
       addHistoryCheckpoint('annotations:save', {
         pageNumber,
         source,
         interactionId,
         checkpointPolicy,
+        ...(shouldUseFastCreateCheckpoint ? { checkpointMode: 'annotation-create-fast' } : {}),
         previousObjectCount,
         nextObjectCount,
         objectDelta,
-        changedObjectsCount: pageTransition.changedObjectsCount,
-        changedObjectsPreview: pageTransition.changedObjectsPreview,
+        changedObjectsCount: finalPageTransition.changedObjectsCount,
+        changedObjectsPreview: finalPageTransition.changedObjectsPreview,
         previousPageHash: previousPageFingerprint.hash,
-        nextPageHash: nextPageFingerprint.hash,
+        nextPageHash: finalNextPageFingerprint.hash,
         saveContext: normalizedSaveContext
       });
     }
 
+    if (isEraserCommit && typeof window !== 'undefined') {
+      const detail = {
+        source: 'eraser:commit',
+        pageNumber,
+        deletedIds: eraserDeletedIds,
+        changedIds: eraserChangedIds,
+        nextObjectCount,
+        previousObjectCount,
+      };
+      try {
+        window.dispatchEvent(new CustomEvent('annotations:precise-fabric-commit', { detail }));
+        console.log('[EraserSaveContract] precise commit ' + JSON.stringify(detail));
+      } catch (_) {}
+    }
+
+    if (typeof window !== 'undefined') {
+      try {
+        const changedIds = [];
+        const deletedIds = [];
+        if (finalLocalHistoryAction?.annotationId) {
+          if (finalLocalHistoryAction.type === 'fabric:delete') deletedIds.push(finalLocalHistoryAction.annotationId);
+          else changedIds.push(finalLocalHistoryAction.annotationId);
+        }
+        for (const entry of finalLocalHistoryAction?.created || []) {
+          if (entry?.id) changedIds.push(entry.id);
+        }
+        for (const entry of finalLocalHistoryAction?.updated || []) {
+          if (entry?.id) changedIds.push(entry.id);
+        }
+        for (const entry of finalLocalHistoryAction?.deleted || []) {
+          if (entry?.id) deletedIds.push(entry.id);
+        }
+        window.dispatchEvent(new CustomEvent('annotations:fabric-save-action', {
+          detail: {
+            source,
+            action: normalizedSaveContext?.action || source,
+            pageNumber,
+            objectDelta,
+            changedCount: finalPageTransition.changedObjectsCount,
+            changedIds: [...new Set(changedIds)],
+            deletedIds: [...new Set(deletedIds)],
+          }
+        }));
+      } catch (_) {}
+    }
+
     // Only update if changes actually occurred
     setAnnotationsByPage(prev => {
-      // Deep compare to avoid unnecessary updates/renders
-      if (JSON.stringify(normalizeCanvasJsonForHistory(prev[pageNumber])) === JSON.stringify(normalizedIncomingAnnotations)) {
+      if (prev[pageNumber] === finalIncomingAnnotations) {
         if (source_.includes('text')) {
           console.log(`[App p${pageNumber}] setAnnotationsByPage TEXT — NOOP (no change detected)`);
         }
@@ -26399,16 +28416,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
 
       if (source_.includes('text')) {
         const prevC = prev[pageNumber]?.objects?.length ?? 0;
-        const nextC = normalizedIncomingAnnotations?.objects?.length ?? 0;
+        const nextC = finalIncomingAnnotations?.objects?.length ?? 0;
         console.log(`[App p${pageNumber}] setAnnotationsByPage TEXT — APPLYING state update: ${prevC} → ${nextC} objects`);
       }
       const next = {
         ...prev,
-        [pageNumber]: normalizedIncomingAnnotations
+        [pageNumber]: finalIncomingAnnotations
       };
       // Re-derive counter display numbers across the whole document so
       // delete-renumber works automatically (Shottr+ behavior).
-      renumberCounters(next);
+      if (shouldRenumberCounters) {
+        renumberCountersWithLog(next, 'state');
+      }
       if (source_.includes('counter')) {
         const allCounters = [];
         for (const k of Object.keys(next)) {
@@ -26422,10 +28441,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
       return next;
     });
-    annotationsByPageRef.current = renumberCounters({
+    const nextAnnotationsByPageRef = {
       ...(annotationsByPageRef.current || {}),
-      [pageNumber]: normalizedIncomingAnnotations
-    });
+      [pageNumber]: finalIncomingAnnotations
+    };
+    annotationsByPageRef.current = shouldRenumberCounters
+      ? renumberCountersWithLog(nextAnnotationsByPageRef, 'ref')
+      : nextAnnotationsByPageRef;
 
     // 2026-05-04 — Single-delete undo toast suppressed entirely. UX: a
     // banner saying "Annotation deleted" on every single deletion was
@@ -26441,9 +28463,602 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     getHistoryFingerprint,
     normalizeCanvasJsonForHistory,
     normalizeHistoryReason,
+    pushLocalAnnotationHistoryAction,
     pushHistoryDebugEvent,
     summarizeAnnotationPageTransitionForDebug,
-    enqueueUndoToast
+    enqueueUndoToast,
+    yjsDoc,
+    yjsUndoManager
+  ]);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV || typeof window === 'undefined') return undefined;
+
+    const allowedPdfTypes = new Set(['Squiggly', 'PolyLine', 'Polygon']);
+
+    const api = async () => {
+      if (!pdfDoc || !pdfFile?.id) {
+        throw new Error('Fix19 import harness requires an authenticated PDF document');
+      }
+
+      const rawPdfBytes = typeof pdfFile.arrayBuffer === 'function'
+        ? await pdfFile.arrayBuffer()
+        : null;
+      const {
+        annotationsByPage: importedAnnotations,
+        nativeLayerPolicyByPage
+      } = await importAnnotationsFromPdf(pdfDoc, {
+        rawPdfBytes
+      });
+
+      setPdfNativeAnnotationLayerPolicyByPage(nativeLayerPolicyByPage || {});
+
+      const imported = [];
+      const duplicates = [];
+      const pagesCommitted = [];
+      Object.entries(importedAnnotations || {}).forEach(([pageKey, pageData]) => {
+        const pageNumber = Number(pageKey);
+        const currentPage = annotationsByPageRef.current?.[pageKey]
+          || annotationsByPageRef.current?.[pageNumber]
+          || { objects: [] };
+        const currentObjects = Array.isArray(currentPage.objects) ? currentPage.objects : [];
+        const existingKeys = new Set(currentObjects
+          .filter((obj) => obj?.isPdfImported && obj?.pdfAnnotationId)
+          .map((obj) => `${obj.pdfAnnotationType || obj.type}:${obj.pdfAnnotationId}`));
+        const nextImported = [];
+
+        (pageData?.objects || []).forEach((obj) => {
+          if (!allowedPdfTypes.has(obj?.pdfAnnotationType)) return;
+          const pdfAnnotationId = obj.pdfAnnotationId;
+          const key = `${obj.pdfAnnotationType}:${pdfAnnotationId}`;
+          if (existingKeys.has(key)) {
+            duplicates.push({ pageNumber, pdfAnnotationType: obj.pdfAnnotationType, pdfAnnotationId });
+            return;
+          }
+          existingKeys.add(key);
+          const stableId = obj.id || obj.data?.id || pdfAnnotationId;
+          const stamped = {
+            ...obj,
+            id: stableId,
+            data: {
+              ...(obj.data || {}),
+              id: stableId,
+            },
+          };
+          nextImported.push(stamped);
+          imported.push({
+            pageNumber,
+            appId: stableId,
+            pdfAnnotationId,
+            pdfAnnotationType: stamped.pdfAnnotationType,
+            appType: stamped.type,
+            selectable: stamped.selectable === true,
+            evented: stamped.evented === true,
+          });
+        });
+
+        if (nextImported.length > 0) {
+          const nextPage = {
+            ...currentPage,
+            objects: [...currentObjects, ...nextImported],
+          };
+          pagesCommitted.push(pageNumber);
+          handleSaveAnnotations(pageNumber, nextPage, {
+            source: 'fix19:import-pdf-annotations',
+            action: 'import-pdf-annotations',
+            checkpointPolicy: 'skip',
+          });
+        }
+      });
+
+      return {
+        documentId: pdfFile.id,
+        pdfName: pdfFile.name || null,
+        imported,
+        duplicates,
+        pagesCommitted,
+        nativeLayerPolicyByPage,
+      };
+    };
+
+    window.__fix19ImportPdfAnnotations = api;
+    window.__fix19SetActiveTool = (tool) => {
+      if (tool === 'select' || tool === 'pan') {
+        setActiveTool(tool);
+      }
+    };
+    window.__fix19SelectAnnotation = (annotationId) => {
+      if (!annotationId) return false;
+      const pages = annotationsByPageRef.current || {};
+      for (const [pageKey, pageData] of Object.entries(pages)) {
+        const objects = Array.isArray(pageData?.objects) ? pageData.objects : [];
+        const index = objects.findIndex((obj) =>
+          obj?.id === annotationId
+          || obj?.data?.id === annotationId
+          || obj?.pdfAnnotationId === annotationId
+        );
+        if (index >= 0) {
+          const pageNumber = Number(pageKey);
+          setActiveTool('select');
+          setPendingSvgSelection({
+            pageNumber: Number.isFinite(pageNumber) ? pageNumber : pageKey,
+            annotationIndex: index,
+            tick: Date.now(),
+          });
+          return true;
+        }
+      }
+      return false;
+    };
+    return () => {
+      if (window.__fix19ImportPdfAnnotations === api) {
+        delete window.__fix19ImportPdfAnnotations;
+      }
+      if (window.__fix19SetActiveTool) {
+        delete window.__fix19SetActiveTool;
+      }
+      if (window.__fix19SelectAnnotation) {
+        delete window.__fix19SelectAnnotation;
+      }
+    };
+  }, [annotationsByPageRef, handleSaveAnnotations, pdfDoc, pdfFile, setActiveTool]);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV || typeof window === 'undefined') return undefined;
+
+    const pageNumber = 1;
+    const moduleId = 'fix19-module-a';
+    const otherModuleId = 'fix19-module-b';
+    const spaceId = 'fix19-space-a';
+    const otherSpaceId = 'fix19-space-b';
+    const regionId = 'fix19-region-a';
+    const otherRegionId = 'fix19-region-b';
+    const categoryId = 'fix19-category-a';
+    const template = {
+      id: 'fix19-template-disposable',
+      name: 'Fix19 Disposable Survey Region Template',
+      visibility: 'private',
+      modules: [
+        {
+          id: moduleId,
+          name: 'Fix19 Module A',
+          categories: [{ id: categoryId, name: 'Fix19 Category', checklist: [] }],
+        },
+        {
+          id: otherModuleId,
+          name: 'Fix19 Module B',
+          categories: [{ id: 'fix19-category-b', name: 'Fix19 Other Category', checklist: [] }],
+        },
+      ],
+      spaces: [
+        {
+          id: spaceId,
+          name: 'Fix19 Space A',
+          assignedPages: [{
+            pageId: pageNumber,
+            wholePageIncluded: false,
+            regions: [{
+              regionId,
+              pageId: pageNumber,
+              shapeType: 'rectangular',
+              operation: 'add',
+              coordinates: [80, 80, 360, 80, 360, 360, 80, 360],
+              showCanvasAnnotations: true,
+              showBackgroundAnnotations: true,
+              showSurveyAnnotations: true,
+            }],
+          }],
+        },
+        {
+          id: otherSpaceId,
+          name: 'Fix19 Space B',
+          assignedPages: [{
+            pageId: pageNumber,
+            wholePageIncluded: false,
+            regions: [{
+              regionId: otherRegionId,
+              pageId: pageNumber,
+              shapeType: 'rectangular',
+              operation: 'add',
+              coordinates: [390, 80, 560, 80, 560, 260, 390, 260],
+              showCanvasAnnotations: true,
+              showBackgroundAnnotations: true,
+              showSurveyAnnotations: true,
+            }],
+          }],
+        },
+      ],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const makeRectAnnotation = ({ id, left, top, stroke, moduleId: scopedModuleId = null, regionId: scopedRegionId = null }) => ({
+      type: 'rect',
+      version: '5.3.0',
+      originX: 'left',
+      originY: 'top',
+      left,
+      top,
+      width: 52,
+      height: 34,
+      fill: 'transparent',
+      stroke,
+      strokeWidth: 3,
+      strokeUniform: true,
+      angle: 0,
+      scaleX: 1,
+      scaleY: 1,
+      opacity: 1,
+      visible: true,
+      id,
+      data: { id },
+      ...(scopedModuleId ? { moduleId: scopedModuleId } : {}),
+      ...(scopedRegionId ? { regionId: scopedRegionId } : {}),
+    });
+
+    const commitAnnotation = ({ id, scope }) => {
+      const scopeConfig = {
+        regular: { left: 90, top: 420, stroke: '#ef4444' },
+        survey: { left: 160, top: 420, stroke: '#2563eb', moduleId },
+        region: { left: 120, top: 130, stroke: '#16a34a', regionId },
+        'survey-region': { left: 210, top: 130, stroke: '#9333ea', moduleId, regionId },
+      }[scope];
+      if (!scopeConfig) throw new Error(`Unknown Fix19 scope: ${scope}`);
+
+      const currentPage = annotationsByPageRef.current?.[pageNumber] || { objects: [] };
+      const currentObjects = Array.isArray(currentPage.objects) ? currentPage.objects : [];
+      const nextObject = makeRectAnnotation({ id, ...scopeConfig });
+      const nextPage = {
+        ...currentPage,
+        objects: currentObjects.filter((obj) => (obj?.id || obj?.data?.id) !== id).concat(nextObject),
+      };
+      handleSaveAnnotations(pageNumber, nextPage, {
+        source: 'fix19:survey-region-live-contract',
+        action: `fix19-${scope}-create`,
+        checkpointPolicy: 'skip',
+      });
+      return nextObject;
+    };
+
+    window.__fix19SurveyRegionHarness = {
+      setup() {
+        clearAnnotationSelectionForContextChange('fix19-setup');
+        setSelectedTemplate(template);
+        setSpaces(template.spaces);
+        setRegionOverlayDisabled((prev) => {
+          const next = new Map(prev);
+          next.delete(`${spaceId}-${pageNumber}`);
+          next.delete(`${otherSpaceId}-${pageNumber}`);
+          return next;
+        });
+        setSelectedSpaceId(null);
+        setActiveSpaceId(null);
+        setActiveRegionId(null);
+        setSelectedModuleId(null);
+        setShowSurveyPanel(false);
+        setActiveTool('select');
+        return { template, pageNumber, moduleId, otherModuleId, spaceId, otherSpaceId, regionId, otherRegionId, categoryId };
+      },
+      setContext(context = {}) {
+        clearAnnotationSelectionForContextChange('fix19-context-switch');
+        setShowSurveyPanel(context.showSurveyPanel === true);
+        setSelectedModuleId(context.moduleId ?? null);
+        setSelectedSpaceId(context.selectedSpaceId ?? null);
+        setActiveSpaceId(context.activeSpaceId ?? null);
+        setActiveRegionId(context.activeRegionId ?? null);
+        setActiveTool('select');
+        return true;
+      },
+      createAnnotation({ id, scope }) {
+        if (!id) throw new Error('Fix19 annotation id is required');
+        return commitAnnotation({ id, scope });
+      },
+      async createSurveyHighlight({ id }) {
+        if (!pdfFile?.id || !user?.id) {
+          throw new Error('Fix19 survey highlight requires authenticated document state');
+        }
+        if (!id) throw new Error('Fix19 survey highlight id is required');
+        const highlight = {
+          highlightId: id,
+          pageNumber,
+          bounds: { x: 285, y: 145, width: 70, height: 24 },
+          moduleId,
+          regionId: null,
+          spaceId,
+          categoryId,
+          name: 'Fix19 Survey Highlight',
+          color: 'rgba(255,235,59,0.32)',
+          opacity: 0.32,
+        };
+        const nextHighlights = {
+          ...(highlightAnnotationsRef.current || {}),
+          [id]: highlight,
+        };
+        setHighlightAnnotations(nextHighlights);
+        setNewHighlightsByPage((prev) => ({
+          ...prev,
+          [pageNumber]: [
+            ...(prev?.[pageNumber] || []).filter((entry) => entry?.highlightId !== id),
+            {
+              x: highlight.bounds.x,
+              y: highlight.bounds.y,
+              width: highlight.bounds.width,
+              height: highlight.bounds.height,
+              highlightId: id,
+              moduleId,
+              regionId: null,
+              color: highlight.color,
+            },
+          ],
+        }));
+        const result = await syncAnnotationsToSupabase(pdfFile.id, user.id, { [id]: highlight });
+        return {
+          highlight,
+          sync: {
+            success: result?.success === true,
+            changedCount: result?.success ? 1 : 0,
+            supabaseUpsertCount: result?.synced ?? 0,
+            yDocUpdateCount: null,
+            fullFanOutReason: null,
+            error: result?.success ? null : (result?.error?.message || String(result?.error || 'unknown')),
+          },
+        };
+      },
+    };
+
+    return () => {
+      if (window.__fix19SurveyRegionHarness) {
+        delete window.__fix19SurveyRegionHarness;
+      }
+    };
+  }, [
+    annotationsByPageRef,
+    clearAnnotationSelectionForContextChange,
+    handleSaveAnnotations,
+    highlightAnnotationsRef,
+    pdfFile?.id,
+    setActiveTool,
+    user?.id,
+  ]);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV || typeof window === 'undefined') return undefined;
+
+    const pageNumber = 1;
+    const annotationIdOf = (obj) => obj?.id || obj?.data?.id || obj?.highlightId || null;
+    const getObjects = () => Object.values(annotationsByPageRef.current || {})
+      .flatMap((page) => Array.isArray(page?.objects) ? page.objects : []);
+    const getObjectById = (id) => getObjects().find((obj) => annotationIdOf(obj) === id) || null;
+    const getCalloutById = (id) => (calloutsRef.current || []).find((callout) => callout?.id === id) || null;
+    const canModifyAnnotation = (annotation) => {
+      if (!annotation) return false;
+      return canModify({
+        annotation,
+        viewerId: user?.id || null,
+        documentOwnerId,
+      });
+    };
+    const makeBaseMeta = () => ({
+      authorId: user?.id || null,
+      authorName: user?.email || null,
+      createdAt: Date.now(),
+    });
+    const commitObject = (object, action = 'fix20:create') => {
+      const currentPage = annotationsByPageRef.current?.[pageNumber] || { version: '5.3.0', objects: [] };
+      const currentObjects = Array.isArray(currentPage.objects) ? currentPage.objects : [];
+      const id = annotationIdOf(object);
+      const nextPage = {
+        ...currentPage,
+        objects: currentObjects.filter((candidate) => annotationIdOf(candidate) !== id).concat(object),
+      };
+      handleSaveAnnotations(pageNumber, nextPage, {
+        source: 'fix20:multi-user-collab-contract',
+        action,
+        checkpointPolicy: 'skip',
+      });
+      return object;
+    };
+    const makeRect = (id) => ({
+      type: 'rect',
+      version: '5.3.0',
+      originX: 'left',
+      originY: 'top',
+      left: user?.id?.endsWith?.('1c') ? 92 : 236,
+      top: user?.id?.endsWith?.('1c') ? 126 : 214,
+      width: 72,
+      height: 48,
+      fill: 'transparent',
+      stroke: '#dc2626',
+      strokeWidth: 3,
+      strokeUniform: true,
+      angle: 0,
+      scaleX: 1,
+      scaleY: 1,
+      opacity: 1,
+      visible: true,
+      id,
+      data: { id, annotationType: 'square', authorId: user?.id || null },
+      meta: makeBaseMeta(),
+    });
+    const makeCounter = (id) => ({
+      type: 'group',
+      version: '5.3.0',
+      left: user?.id?.endsWith?.('1c') ? 120 : 270,
+      top: user?.id?.endsWith?.('1c') ? 260 : 320,
+      width: 32,
+      height: 32,
+      radius: 16,
+      fill: '#2563eb',
+      stroke: '#1e3a8a',
+      strokeWidth: 2,
+      id,
+      data: {
+        id,
+        type: 'counter',
+        annotationType: 'counter',
+        displayNumber: user?.id?.endsWith?.('1c') ? 1 : 2,
+        seriesId: 'fix20-counter-series',
+        seriesStart: 1,
+        createdAt: Date.now(),
+        authorId: user?.id || null,
+      },
+      meta: makeBaseMeta(),
+    });
+    const makeCallout = (id) => ({
+      id,
+      highlightId: id,
+      pageNumber,
+      arrowTip: { x: user?.id?.endsWith?.('1c') ? 0.24 : 0.48, y: 0.42 },
+      knee: { x: user?.id?.endsWith?.('1c') ? 0.34 : 0.58, y: 0.36 },
+      textBoxPosition: { x: user?.id?.endsWith?.('1c') ? 0.38 : 0.62, y: 0.32 },
+      textBoxWidth: 0.16,
+      textBoxHeight: 0.06,
+      text: `Fix20 ${user?.email || user?.id || 'user'}`,
+      style: { color: '#111827', lineWidth: 2 },
+      meta: makeBaseMeta(),
+      data: { id, annotationType: 'callout', authorId: user?.id || null },
+    });
+    const tryMove = (id, kind = 'annotation') => {
+      if (kind === 'callout') {
+        const callout = getCalloutById(id);
+        if (!canModifyAnnotation(callout)) {
+          return { allowed: false, reason: 'foreign-owner', id, kind };
+        }
+        setCalloutsIfPersistedChanged((prev) => prev.map((item) => (
+          item?.id === id
+            ? {
+                ...item,
+                textBoxPosition: {
+                  ...(item.textBoxPosition || {}),
+                  x: (item.textBoxPosition?.x || 0) + 0.02,
+                  y: (item.textBoxPosition?.y || 0) + 0.01,
+                },
+              }
+            : item
+        )));
+        return { allowed: true, id, kind };
+      }
+      const object = getObjectById(id);
+      if (!canModifyAnnotation(object)) {
+        return { allowed: false, reason: 'foreign-owner', id, kind };
+      }
+      commitObject({ ...object, left: (object.left || 0) + 18, top: (object.top || 0) + 12 }, 'fix20:move');
+      return { allowed: true, id, kind };
+    };
+    const tryDelete = (id, kind = 'annotation') => {
+      if (kind === 'callout') {
+        const callout = getCalloutById(id);
+        if (!canModifyAnnotation(callout)) {
+          return { allowed: false, reason: 'foreign-owner', id, kind };
+        }
+        setCalloutsIfPersistedChanged((prev) => prev.filter((item) => item?.id !== id));
+        return { allowed: true, id, kind };
+      }
+      const object = getObjectById(id);
+      if (!canModifyAnnotation(object)) {
+        return { allowed: false, reason: 'foreign-owner', id, kind };
+      }
+      const currentPage = annotationsByPageRef.current?.[pageNumber] || { version: '5.3.0', objects: [] };
+      const nextPage = {
+        ...currentPage,
+        objects: (currentPage.objects || []).filter((candidate) => annotationIdOf(candidate) !== id),
+      };
+      handleSaveAnnotations(pageNumber, nextPage, {
+        source: 'fix20:multi-user-collab-contract',
+        action: 'fix20:delete',
+        deletedCount: 1,
+        checkpointPolicy: 'skip',
+      });
+      return { allowed: true, id, kind };
+    };
+    const getState = () => {
+      const annotations = getObjects().map((obj) => ({
+        id: annotationIdOf(obj),
+        type: obj?.data?.annotationType || obj?.type || null,
+        authorId: getAnnotationAuthorId(obj),
+        left: obj?.left ?? null,
+        top: obj?.top ?? null,
+      }));
+      const calloutState = (calloutsRef.current || []).map((callout) => ({
+        id: callout.id,
+        type: 'callout',
+        authorId: getAnnotationAuthorId(callout),
+        text: callout.text || null,
+      }));
+      const ydocState = (() => {
+        try {
+          return {
+            annotations: yjsDoc?.getMap?.('annotations')?.size ?? null,
+            callouts: yjsDoc?.getMap?.('callouts')?.size ?? null,
+          };
+        } catch {
+          return { annotations: null, callouts: null };
+        }
+      })();
+      return {
+        documentId: pdfFile?.id || null,
+        documentName: pdfFile?.name || null,
+        userId: user?.id || null,
+        email: user?.email || null,
+        documentOwnerId,
+        annotations,
+        callouts: calloutState,
+        ydoc: ydocState,
+        canUndo: yjsUndoManager?.canUndo?.() ?? null,
+        canRedo: yjsUndoManager?.canRedo?.() ?? null,
+      };
+    };
+
+    window.__fix20CollabHarness = {
+      getState,
+      createRectangle(id) {
+        if (!id) throw new Error('Fix20 rectangle id is required');
+        return commitObject(makeRect(id), 'fix20:rectangle:create');
+      },
+      createCounter(id) {
+        if (!id) throw new Error('Fix20 counter id is required');
+        return commitObject(makeCounter(id), 'fix20:counter:create');
+      },
+      createCallout(id) {
+        if (!id) throw new Error('Fix20 callout id is required');
+        const callout = makeCallout(id);
+        setCalloutsIfPersistedChanged((prev) => [
+          ...prev.filter((item) => item?.id !== id),
+          callout,
+        ]);
+        return callout;
+      },
+      tryMove,
+      tryDelete,
+      undo: () => {
+        handleUndo();
+        return true;
+      },
+      redo: () => {
+        handleRedo();
+        return true;
+      },
+    };
+
+    return () => {
+      if (window.__fix20CollabHarness) {
+        delete window.__fix20CollabHarness;
+      }
+    };
+  }, [
+    annotationsByPageRef,
+    calloutsRef,
+    documentOwnerId,
+    handleRedo,
+    handleSaveAnnotations,
+    handleUndo,
+    pdfFile?.id,
+    pdfFile?.name,
+    setCalloutsIfPersistedChanged,
+    user?.email,
+    user?.id,
+    yjsDoc,
+    yjsUndoManager,
   ]);
 
   // [COUNTER STEP 7] Group propagation hook. Called from the counter mini-
@@ -26836,13 +29451,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // Callout side: top-level groupId field, mutate via setCallouts.
     if (calIds.length > 0) {
       const calIdSet = new Set(calIds);
-      setCallouts((prev) => prev.map((c) => (
+      setCalloutsIfPersistedChanged((prev) => prev.map((c) => (
         c && calIdSet.has(c.id) && c.pageNumber === pageNumber
           ? { ...c, groupId: newId }
           : c
       )));
     }
-  }, [handleSaveAnnotations]);
+  }, [handleSaveAnnotations, setCalloutsIfPersistedChanged]);
 
   const handleUngroupSelected = useCallback((pageNumber, annotationIndices, calloutIds) => {
     if (pageNumber == null) return;
@@ -26889,7 +29504,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     // Step 4: clear groupId on callouts.
     if (members.calloutIds.length > 0) {
       const calIdSet = new Set(members.calloutIds);
-      setCallouts((prev) => prev.map((c) => {
+      setCalloutsIfPersistedChanged((prev) => prev.map((c) => {
         if (!c || !calIdSet.has(c.id) || c.pageNumber !== pageNumber) return c;
         const { groupId: _drop, ...rest } = c;
         return rest;
@@ -26908,7 +29523,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       tick: Date.now(),
     });
     setSelectedCalloutIds(new Set());
-  }, [handleSaveAnnotations, callouts]);
+  }, [handleSaveAnnotations, callouts, setCalloutsIfPersistedChanged]);
 
   // [COUNTER WIP — DO NOT TOUCH] Counter drag-to-place helpers.
   // Shared by the inline pointer handlers in the counter overlays and by the
@@ -26918,18 +29533,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
   // response to Shift / Escape events while a drag is active.
 
   // applyCounterDragMove: re-compute body position + pointer angle from the
-  // current cursor + drag mode, then patch the in-progress counter on the
-  // page via handleSaveAnnotations with checkpointPolicy:'skip' so the undo
-  // stack stays clean during the drag. Slide mode: body follows cursor with
-  // the post-Shift-release offset (zero immediately after pointerdown).
+  // current cursor + drag mode, then repaint only the lightweight SVG preview.
+  // App state/history/cloud sync see the counter once, in commitCounterDrag.
+  // Slide mode: body follows cursor with the post-Shift-release offset.
   // Shift-rotate mode: tip is frozen at drag.tipX/drag.tipY and the body
   // orbits the tip on a circle of radius tipDistance, in the direction of
   // the cursor relative to the tip.
   const applyCounterDragMove = useCallback((cursorPageX, cursorPageY) => {
     const drag = counterDragRef.current;
-    console.log(`[CDrag apply] ENTRY cursor=(${cursorPageX?.toFixed?.(1)}, ${cursorPageY?.toFixed?.(1)}) dragActive=${!!drag?.active} shiftActive=${!!drag?.shiftActive} pageKey=${drag?.pageKey} createdAt=${drag?.dragCreatedAt}`);
     if (!drag || !drag.active) {
-      console.log(`[CDrag apply] EARLY RETURN — no active drag`);
       return;
     }
 
@@ -26992,91 +29604,50 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     drag.bodyX = bodyX;
     drag.bodyY = bodyY;
     drag.angle = angleDeg;
-
-    const currentPage = annotationsByPageRef.current?.[drag.pageKey];
-    if (!currentPage?.objects) {
-      console.log(`[CDrag apply] EARLY RETURN — currentPage missing or has no objects, pageKey=${drag.pageKey}`);
-      return;
-    }
-    const idx = currentPage.objects.findIndex(o => o?.data?.createdAt === drag.dragCreatedAt);
-    console.log(`[CDrag apply] find idx=${idx} totalObjs=${currentPage.objects.length} createdAt=${drag.dragCreatedAt}`);
-    if (idx < 0) {
-      console.log(`[CDrag apply] EARLY RETURN — counter not found in page by createdAt`);
-      return;
-    }
-    const old = currentPage.objects[idx];
-    const updated = {
-      ...old,
+    drag.counter = {
+      ...(drag.counter || {}),
       left: bodyX - drag.radius,
       top: bodyY - drag.radius,
       data: {
-        ...(old.data || {}),
+        ...(drag.counter?.data || {}),
         pointerAngle: angleDeg,
       },
     };
-    const updatedJSON = {
-      ...currentPage,
-      objects: [
-        ...currentPage.objects.slice(0, idx),
-        updated,
-        ...currentPage.objects.slice(idx + 1),
-      ],
-    };
-    console.log(`[CDrag apply] saving — bodyX=${bodyX.toFixed(1)} bodyY=${bodyY.toFixed(1)} angle=${angleDeg.toFixed(1)} idx=${idx}`);
-    handleSaveAnnotations(drag.pageKey, updatedJSON, {
-      source: 'counter:drag-preview',
-      tool: 'counter',
-      checkpointPolicy: 'skip',
-    });
-  }, [handleSaveAnnotations]);
+    updateCounterDragPreview(drag);
+  }, [updateCounterDragPreview]);
 
   // cancelCounterDrag: invoked by Escape mid-drag (or pointercancel). Removes
-  // the in-progress counter from the page entirely with checkpointPolicy:'skip'
-  // so the cancelled drag leaves no entry in undo history — it's as if the
-  // user never started.
+  // the live preview only; the annotation is not saved until pointerup.
   const cancelCounterDrag = useCallback(() => {
     const drag = counterDragRef.current;
-    console.log(`[CDrag cancel] ENTRY active=${!!drag?.active} createdAt=${drag?.dragCreatedAt}`);
     if (!drag || !drag.active) return;
-
-    const currentPage = annotationsByPageRef.current?.[drag.pageKey];
-    if (currentPage?.objects) {
-      const filtered = currentPage.objects.filter(o => o?.data?.createdAt !== drag.dragCreatedAt);
-      if (filtered.length !== currentPage.objects.length) {
-        handleSaveAnnotations(drag.pageKey, {
-          ...currentPage,
-          objects: filtered,
-        }, {
-          source: 'counter:drag-cancel',
-          tool: 'counter',
-          checkpointPolicy: 'skip',
-        });
-      }
-    }
-
+    removeCounterDragPreview(drag);
     counterDragRef.current = null;
-  }, [handleSaveAnnotations]);
+  }, [removeCounterDragPreview]);
 
-  // commitCounterDrag: invoked by pointerup. Re-saves the page with normal
-  // checkpoint policy so the entire drag becomes ONE undo entry. The counter
-  // already has its final position/angle (the live drag wrote them via
-  // applyCounterDragMove with skip checkpoint); we just need a normal save
-  // to put the change in undo history.
+  // commitCounterDrag: invoked by pointerup. Appends the final counter once
+  // with normal checkpoint policy so the entire drag becomes one undo entry.
   const commitCounterDrag = useCallback(() => {
     const drag = counterDragRef.current;
-    console.log(`[CDrag commit] ENTRY active=${!!drag?.active} createdAt=${drag?.dragCreatedAt} bodyX=${drag?.bodyX?.toFixed?.(1)} bodyY=${drag?.bodyY?.toFixed?.(1)} angle=${drag?.angle?.toFixed?.(1)}`);
     if (!drag || !drag.active) return;
 
-    const currentPage = annotationsByPageRef.current?.[drag.pageKey];
-    if (currentPage?.objects) {
-      handleSaveAnnotations(drag.pageKey, currentPage, {
-        source: 'counter:create',
-        tool: 'counter',
-      });
+    removeCounterDragPreview(drag);
+    if (!drag.counter) {
+      counterDragRef.current = null;
+      return;
     }
+    const currentPage = annotationsByPageRef.current?.[drag.pageKey] || { version: '5.3.0', objects: [] };
+    const updatedJSON = {
+      ...currentPage,
+      objects: [...(currentPage.objects || []), drag.counter],
+    };
+    handleSaveAnnotations(drag.pageKey, updatedJSON, {
+      source: 'counter:create',
+      tool: 'counter',
+    });
 
     counterDragRef.current = null;
-  }, [handleSaveAnnotations]);
+  }, [handleSaveAnnotations, removeCounterDragPreview]);
 
   // [COUNTER WIP — DO NOT TOUCH] Window-level Shift/Escape listener for the
   // counter drag-to-place flow. Only acts when activeTool === 'counter' AND a
@@ -27089,7 +29660,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const onKeyDown = (e) => {
       const drag = counterDragRef.current;
       if (!drag || !drag.active) return;
-      console.log(`[CDrag keydown] key="${e.key}" shiftActive(was)=${drag.shiftActive}`);
 
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -27117,7 +29687,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     const onKeyUp = (e) => {
       const drag = counterDragRef.current;
       if (!drag || !drag.active) return;
-      console.log(`[CDrag keyup] key="${e.key}" shiftActive(was)=${drag.shiftActive}`);
 
       if (e.key === 'Shift' && drag.shiftActive) {
         // Hand control of the body back to the cursor. To avoid a visible
@@ -27363,12 +29932,27 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       // Get highlight data before deleting (since state updates are async)
       const highlightsToDelete = matchingHighlightIds
         .map(id => ({ id, highlight: highlightAnnotations[id] }))
-        .filter(({ highlight }) => highlight != null);
+        .filter(({ highlight }) => highlight != null)
+        .filter(({ highlight }) => {
+          const authorId = highlight.userId || highlight.annotationData?.userId || highlight.lastModifiedBy || null;
+          if (!authorId || !user?.id) return true;
+          return authorId === user.id;
+        });
+
+      if (highlightsToDelete.length === 0) {
+        console.warn('[App] handleHighlightDeleted blocked by ownership gate', {
+          pageNumber,
+          highlightId: highlightId || null,
+          viewerId: user?.id || null
+        });
+        return;
+      }
+      const permittedHighlightIds = highlightsToDelete.map(({ id }) => id);
 
       // Delete from highlightAnnotations
       setHighlightAnnotations(prev => {
         const updated = { ...prev };
-        matchingHighlightIds.forEach(id => delete updated[id]);
+        permittedHighlightIds.forEach(id => delete updated[id]);
         return updated;
       });
 
@@ -27492,7 +30076,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       // Delete from Supabase to persist the deletion
       const documentId = pdfFile?.id;
       if (documentId && user?.id && documentSyncEnabled) {
-        deleteAnnotations(documentId, matchingHighlightIds).catch(err => {
+        deleteAnnotations(documentId, permittedHighlightIds).catch(err => {
           console.error('[App] Error deleting annotations from Supabase:', err);
         });
       }
@@ -28136,8 +30720,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         });
       }
 
-      // Return merged highlights (pending + saved), or empty object if no highlights
-      return Object.keys(highlightsByPage).length > 0 ? highlightsByPage : prev;
+      // Cloud hydration can legitimately return no survey rows. Return an
+      // empty map so local/pending highlights do not linger after the source
+      // for this module has settled.
+      return highlightsByPage;
     });
   }, [selectedModuleId, highlightAnnotations]);
 
@@ -28390,6 +30976,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       pruneTimer = null;
     };
     const applyWindowPages = () => {
+      const workStartMs = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+        ? performance.now()
+        : Date.now();
+      const finishPageRenderCatchup = () => {
+        const workEndMs = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+          ? performance.now()
+          : Date.now();
+        recordSyncfusionIdleWork('pageRenderCatchup', workEndMs - workStartMs);
+      };
       if (syncfusionLiveStableOverlayEnabled && syncfusionDualLayerEnabled && syncfusionInteractionPhase !== 'idle') {
         const residentSource = syncfusionInteractionResidentPagesRef.current?.size > 0
           ? syncfusionInteractionResidentPagesRef.current
@@ -28412,6 +31007,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
         }
         // Keep the current window stable until resident pages are available.
         clearPruneTimer();
+        finishPageRenderCatchup();
         return;
       }
 
@@ -28501,6 +31097,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           applyWindowPages();
         }, Math.max(24, Math.ceil(shortestRemainingMs) + 8));
       }
+      finishPageRenderCatchup();
     };
 
     const observer = new IntersectionObserver((entries) => {
@@ -28523,7 +31120,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       if (changed) {
         syncfusionVisiblePagesRef.current = new Set(visiblePages);
         if (syncfusionInteractionPhaseRef.current === 'interacting') {
-          setSyncfusionVisiblePagesVersion((prev) => prev + 1);
+          scheduleSyncfusionVisiblePagesRefresh();
         }
         applyWindowPages();
       }
@@ -28552,6 +31149,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
     };
   }, [
     scale,
+    recordSyncfusionIdleWork,
+    scheduleSyncfusionVisiblePagesRefresh,
     shouldShowPage,
     syncfusionDualLayerEnabled,
     syncfusionInteractionPhase,
@@ -28748,42 +31347,82 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       }
       if (!PRINT_PANEL_ENABLED) {
         // UX 2026-04-25: two-path print. Default Cmd/Ctrl+P hands the
-        // original PDF straight to the OS via a blob URL — instant, no
-        // markup. Cmd/Ctrl+Shift+P (or "Print with Markup…" in the
-        // File menu) takes the slower bake pipeline so the user's
-        // annotations land on the printed page. Neither path mutates
-        // the live editable annotations — only a temporary print
-        // document is built and discarded after the dialog closes.
+        // original PDF straight to the OS/browser PDF viewer via a blob URL.
+        // Cmd/Ctrl+Shift+P (or "Print PDF with Annotations…" in the File menu)
+        // builds a temporary annotated PDF with regular document annotations
+        // only, then prints that temporary PDF. Survey, region, space, and
+        // survey-region scoped annotations are intentionally excluded.
+        const printPdfBlob = (blob, logLabel) => {
+          const blobUrl = URL.createObjectURL(blob);
+          console.log(logLabel);
+          const frame = document.createElement('iframe');
+          frame.style.position = 'fixed';
+          frame.style.right = '0';
+          frame.style.bottom = '0';
+          frame.style.width = '0';
+          frame.style.height = '0';
+          frame.style.border = '0';
+          frame.src = blobUrl;
+          document.body.appendChild(frame);
+          const cleanup = () => {
+            try { frame.remove(); } catch {}
+            try { URL.revokeObjectURL(blobUrl); } catch {}
+          };
+          frame.addEventListener('load', () => {
+            setTimeout(() => {
+              try {
+                frame.contentWindow?.focus();
+                frame.contentWindow?.print();
+                console.log('[PrintPanel] blob-URL iframe.print() called');
+              } catch (err) {
+                console.error('[PrintPanel] blob-URL print failed:', err);
+              }
+              setTimeout(cleanup, 30000);
+            }, 100);
+          }, { once: true });
+          setTimeout(() => { if (frame.isConnected && !frame.contentDocument) cleanup(); }, 10000);
+        };
+
+        if (withMarkup && pdfFile && typeof URL?.createObjectURL === 'function') {
+          printInFlight = true;
+          (async () => {
+            try {
+              const printableRegularPayload = buildPrintableRegularAnnotationPayload({
+                annotationsByPage: annotationsByPageRef.current || {},
+                callouts: calloutsRef.current || [],
+                highlightAnnotations: highlightAnnotationsRef.current || {},
+                spaces,
+              });
+              const annotatedBytes = await savePDFWithFlattenedRegularAnnotationsForPrint(
+                pdfFile,
+                printableRegularPayload.annotationsByPage,
+                pageSizes,
+                {
+                  returnBytes: true,
+                  actionType: 'pdf-print-flattened-regular-annotations',
+                  documentId: pdfFile?.id || pdfFile?.name || null,
+                  callouts: printableRegularPayload.callouts,
+                  spaces,
+                  printableDiagnostics: printableRegularPayload.diagnostics,
+                }
+              );
+              const annotatedBlob = new Blob([annotatedBytes], { type: 'application/pdf' });
+              printPdfBlob(
+                annotatedBlob,
+                '[PrintPanel] disabled — temporary annotated PDF print with regular app annotations only; diagnostics=' + JSON.stringify(printableRegularPayload.diagnostics)
+              );
+            } catch (err) {
+              console.error('[PrintPanel] temporary annotated PDF print failed:', err);
+            } finally {
+              setTimeout(() => { printInFlight = false; }, 1500);
+            }
+          })();
+          return;
+        }
+
         if (!withMarkup && pdfFile && typeof URL?.createObjectURL === 'function') {
           try {
-            const blobUrl = URL.createObjectURL(pdfFile);
-            console.log('[PrintPanel] disabled — blob-URL fast print, file:', pdfFile.name);
-            const frame = document.createElement('iframe');
-            frame.style.position = 'fixed';
-            frame.style.right = '0';
-            frame.style.bottom = '0';
-            frame.style.width = '0';
-            frame.style.height = '0';
-            frame.style.border = '0';
-            frame.src = blobUrl;
-            document.body.appendChild(frame);
-            const cleanup = () => {
-              try { frame.remove(); } catch {}
-              try { URL.revokeObjectURL(blobUrl); } catch {}
-            };
-            frame.addEventListener('load', () => {
-              setTimeout(() => {
-                try {
-                  frame.contentWindow?.focus();
-                  frame.contentWindow?.print();
-                  console.log('[PrintPanel] blob-URL iframe.print() called');
-                } catch (err) {
-                  console.error('[PrintPanel] blob-URL print failed:', err);
-                }
-                setTimeout(cleanup, 30000);
-              }, 100);
-            }, { once: true });
-            setTimeout(() => { if (frame.isConnected && !frame.contentDocument) cleanup(); }, 10000);
+            printPdfBlob(pdfFile, '[PrintPanel] disabled — base PDF blob print, file: ' + pdfFile.name);
             return;
           } catch (err) {
             console.warn('[PrintPanel] blob-URL print errored, falling back to render pipeline:', err);
@@ -28826,7 +31465,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
           scopes: { paper: { mode: 'all' }, orient: { mode: 'all' }, output: { mode: 'all' } },
           useNativeDialog: true,
         };
-        console.log('[PrintPanel] disabled — running native-dialog print for', perPage.length, 'pages');
+        console.log('[PrintPanel] disabled — running PDF-native annotation print; app annotations are not composited, pages=', perPage.length);
         printInFlight = true;
         Promise.resolve(handlePrintPanelPrint(jobSpec)).finally(() => {
           // Brief cooldown after the iframe print() returns so the
@@ -28857,17 +31496,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, onPageDrop, onUpdatePD
       unsubscribe = window.electronAPI.onPrintPdf(() => openPanel('electron menu:print-pdf'));
     }
     if (window.electronAPI?.onPrintPdfMarkup) {
-      unsubscribeMarkup = window.electronAPI.onPrintPdfMarkup(() => openPanel('electron menu:print-pdf-markup', { withMarkup: true }));
+      unsubscribeMarkup = window.electronAPI.onPrintPdfMarkup(() => openPanel('electron menu:print-pdf-markup (regular annotations)', { withMarkup: true }));
     }
 
-    // Safety net: intercept Cmd/Ctrl+P (no markup) and Cmd/Ctrl+Shift+P
-    // (with markup) at the renderer level so both shortcuts work even if
-    // the Electron menu accelerator doesn't round-trip during HMR.
+    // Safety net: intercept Cmd/Ctrl+P (base PDF print) and Cmd/Ctrl+Shift+P
+    // (regular annotation print) at the renderer level so both shortcuts
+    // work even if the Electron menu accelerator doesn't round-trip during HMR.
     const keyHandler = (e) => {
       const isP = e.key === 'p' || e.key === 'P' || e.keyCode === 80;
       if (!isP || !(e.metaKey || e.ctrlKey) || e.altKey) return;
       if (e.shiftKey) {
-        console.log('[PrintPanel] window keydown Cmd/Ctrl+Shift+P intercepted (with markup)');
+        console.log('[PrintPanel] window keydown Cmd/Ctrl+Shift+P intercepted (regular annotations)');
         e.preventDefault();
         e.stopPropagation();
         openPanel('window keydown shift', { withMarkup: true });
@@ -30394,6 +33033,8 @@ ${pageBlocks}
                       }
                       // Always include current page when a tool that needs Canvas is active
                       if (toolNeedsCanvas && pageNumber === currentPage) return true;
+                      if (isFirstVisibleAnnotationPageGated(pageNumber)) return true;
+                      if (!syncfusionOverlayWindowPages.has(pageNumber)) return false;
                       // Limit portals to pages with content to avoid unbounded memory growth
                       const hasAnnotations = annotationsByPage[pageNumber]?.objects?.length > 0;
                       const hasSurveyHighlights = (newHighlightsByPage[pageNumber]?.length ?? 0) > 0;
@@ -30476,11 +33117,12 @@ ${pageBlocks}
                         console.log(`[App-Debug p${pageNumber}] PAL render — pageSize={w:${pageSize.width}, h:${pageSize.height}}, layerScale=${layerScale}, measuredPageScale=${resolvedMeasuredPageScale}, committedPageScale=${hasCommittedPageScale ? committedPageScale : 'none'}, legacyCommitCompensationPending=${legacyCommitCompensationPending}, legacyCommitCompensationScale=${legacyCommitCompensationScale}, overlayContentTransformScale=${overlayContentTransformScale}, storedOverlayTransformScale=${storedOverlayTransformScale}, syncfusionViewerScale=${syncfusionViewerScale}, overlayDiv=${!!overlayDiv}, overlayDivW=${overlayDiv?.offsetWidth}, overlayDivH=${overlayDiv?.offsetHeight}, overlayDivTransform=${overlayDiv?.style?.transform || 'none'}, overlayContentTransform=${overlayContentTransform || 'none'}`);
                       }
 
-                      // Proxy rendering variables (kept -- for scroll/drag interactions, not zoom)
+                      // Proxy rendering variables. In pan mode, zoom and scroll both use
+                      // lightweight annotations during interaction to avoid SVG catch-up jank.
                       const interactionPageMode = syncfusionInteractionPageModes[pageNumber] || 'full';
                       const isProxyPageWhileInteracting = interactionPageMode === 'proxy';
                       const isProxyPageWhileCommitting = syncfusionCommittingProxyPages.has(pageNumber);
-                      const shouldRenderLightweightAnnotations = !requiresLegacyAnnotationLayer && useLiveStableOverlay && !isZoomOnlyInteraction && (
+                      const shouldRenderLightweightAnnotations = !requiresLegacyAnnotationLayer && useLiveStableOverlay && (
                         (syncfusionInteractionPhase === 'interacting' && isProxyPageWhileInteracting) ||
                         (syncfusionInteractionPhase === 'committing' && isProxyPageWhileCommitting)
                       );
@@ -30507,6 +33149,24 @@ ${pageBlocks}
                       );
                       const regionSelectionDisplayWidth = overlayDiv?.offsetWidth || (resolvedPageSize.width * layerScale);
                       const regionSelectionDisplayHeight = overlayDiv?.offsetHeight || (resolvedPageSize.height * layerScale);
+                      const annotationHydrationGated = isFirstVisibleAnnotationPageGated(pageNumber);
+                      const annotationVisualCoverActive = annotationHydrationGated;
+                      const nativePdfAnnotationPolicy = pdfNativeAnnotationLayerPolicyByPage?.[pageNumber] ||
+                        pdfNativeAnnotationLayerPolicyByPage?.[String(pageNumber)] ||
+                        null;
+                      const appImportedPdfAnnotationIds = pageAnnotationObjects
+                        .filter((obj) => obj?.isPdfImported && obj?.pdfAnnotationId)
+                        .map((obj) => obj.pdfAnnotationId);
+                      const requiredImportedPdfAnnotationIds = Array.isArray(nativePdfAnnotationPolicy?.importedIds)
+                        ? nativePdfAnnotationPolicy.importedIds
+                        : [];
+                      const importedPdfCopiesAvailable = requiredImportedPdfAnnotationIds.length > 0 &&
+                        requiredImportedPdfAnnotationIds.every((id) => appImportedPdfAnnotationIds.includes(id));
+                      const shouldHideNativePdfAnnotationLayer = Boolean(
+                        nativePdfAnnotationPolicy?.hideNativeLayer &&
+                        importedPdfCopiesAvailable
+                      );
+                      const nativePdfAnnotationCanvasId = `${syncfusionViewerElementId}_annotationCanvas_${pageNumber - 1}`;
 
                       return createPortal(
                         <div
@@ -30524,7 +33184,7 @@ ${pageBlocks}
                             left: 0,
                             width: '100%',
                             height: '100%',
-                            pointerEvents: 'none',
+                            pointerEvents: annotationVisualCoverActive ? 'auto' : 'none',
                             zIndex: 20,
                             visibility: hideOverlayUntilPdfReady ? 'hidden' : undefined,
                           }}
@@ -30532,7 +33192,16 @@ ${pageBlocks}
                           data-pdf-ever-ready={pagePdfHasEverBeenReady ? 'true' : 'false'}
                           data-pdf-spinner-visible={pagePdfReadyState.spinnerVisible ? 'true' : 'false'}
                           data-overlay-hidden-pending-pdf={hideOverlayUntilPdfReady ? 'true' : 'false'}
+                          data-annotation-hydration-gated={annotationHydrationGated ? 'true' : 'false'}
+                          data-annotation-visual-cover-active={annotationVisualCoverActive ? 'true' : 'false'}
+                          data-native-pdf-annotation-layer-hidden={shouldHideNativePdfAnnotationLayer ? 'true' : 'false'}
+                          data-native-pdf-annotation-layer-reason={nativePdfAnnotationPolicy?.reason || ''}
                         >
+                          {shouldHideNativePdfAnnotationLayer && (
+                            <style>
+                              {`[id="${nativePdfAnnotationCanvasId}"]{visibility:hidden!important;pointer-events:none!important;}`}
+                            </style>
+                          )}
                           <div
                             ref={(node) => {
                               if (node) {
@@ -30575,7 +33244,7 @@ ${pageBlocks}
                               />
                             )}
                             {requiresLegacyAnnotationLayer && (
-                            <div style={shouldHideFullLayer ? { visibility: 'hidden' } : undefined}>
+                            <div style={(shouldHideFullLayer || annotationHydrationGated) ? { visibility: 'hidden' } : undefined}>
                               <PageAnnotationLayer
                                 pageNumber={pageNumber}
                                 width={resolvedPageSize.width}
@@ -30635,6 +33304,7 @@ ${pageBlocks}
                             </div>
                             )}
                             {shouldRenderLightweightAnnotations ? (
+                              annotationHydrationGated ? null : (
                               <LightweightAnnotationOverlay
                                 pageNumber={pageNumber}
                                 width={resolvedPageSize.width}
@@ -30660,6 +33330,7 @@ ${pageBlocks}
                                 calloutRevision={proxyPayload ? proxyRevision : calloutRevision}
                                 onRenderReady={markSyncfusionProxyPageReady}
                               />
+                              )
                             ) : null}
                             {/* SVGAnnotationLayer moved outside this div — see sibling below */}
                             {requiresLegacyAnnotationLayer && pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (() => {
@@ -30745,6 +33416,13 @@ ${pageBlocks}
                             const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow' || activeTool === 'highlight';
                             const isEraserTool = activeTool === 'eraser';
                             const isEditMode = editingAnnotation?.pageNumber === pageNumber;
+                            const suspendFullSvgForProxy =
+                              activeTool === 'pan' &&
+                              syncfusionInteractionPhase === 'interacting' &&
+                              shouldRenderLightweightAnnotations &&
+                              !hasSurveyHighlights &&
+                              proxyHasRenderablePayload &&
+                              isProxyReady;
                             // UX 2026-04-19: bbox edit mode (uniform resize + rotate chrome
                             // for counter / line / arrow / polygon / polyline) is served by
                             // the SVG layer itself — there is no Fabric edit canvas mount.
@@ -30836,8 +33514,10 @@ ${pageBlocks}
                                   'none' for eraser because svgInteractive is false, so clicks still
                                   reach the eraser canvas at zIndex 101. Ref CLAUDE.md 2026-04-10
                                   rasterizer-mismatch gotcha + FabricEraserCanvas.jsx textbox override. */}
+                              {!suspendFullSvgForProxy && (
                               <div
                                 data-diag-svg-wrapper={pageNumber}
+                                data-annotation-hydration-gated={annotationHydrationGated ? 'true' : 'false'}
                                 style={{
                                   position: 'absolute',
                                   top: 0,
@@ -30846,6 +33526,7 @@ ${pageBlocks}
                                   height: '100%',
                                   pointerEvents: (svgInteractive && !isFabricEditMode) ? 'auto' : 'none',
                                   zIndex: 100,
+                                  visibility: annotationHydrationGated ? 'hidden' : undefined,
                                   // UX: Fix 3 (2026-04-16) — SVG layer stays visible during
                                   // callout edit. Previously `visibility: hidden` blanked the
                                   // ENTIRE layer to avoid double-rendering the edited callout
@@ -30864,7 +33545,7 @@ ${pageBlocks}
                               >
                                 <SVGAnnotationLayer
                                   pageNumber={pageNumber}
-                                  isPageInRenderWindow={visiblePagesSet.has(pageNumber) || Math.abs(pageNumber - pageNum) <= 2}
+                                  isPageInRenderWindow={visiblePagesSet.has(pageNumber) || Math.abs(pageNumber - pageNum) <= 1}
                                   width={resolvedPageSize.width}
                                   height={resolvedPageSize.height}
                                   annotations={pageAnnotations}
@@ -30998,6 +33679,7 @@ ${pageBlocks}
                                   // UX: pan-mode quick-click selection command. See
                                   // pendingSvgSelection state at ~line 11046 for details.
                                   pendingSelection={pendingSvgSelection}
+                                  selectionClearToken={annotationSelectionClearToken}
                                   // UX: pan-mode hover glow broadcast — see pendingSvgHover state.
                                   pendingHover={pendingSvgHover}
                                   // Phase 35 Plan 03 — per-user delete authority. viewerId
@@ -31012,6 +33694,7 @@ ${pageBlocks}
                                   onRequestBulkDelete={handleRequestBulkDelete}
                                 />
                               </div>
+                              )}
 
                               {/* Drawing Canvas -- transparent overlay for pen + highlighter */}
                               {isDrawingTool && (
@@ -31045,7 +33728,7 @@ ${pageBlocks}
                                   pageHeight={resolvedPageSize.height}
                                   annotations={pageAnnotations}
                                   callouts={callouts}
-                                  onEraseCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'eraser:commit', tool: 'eraser' })}
+                                  onEraseCommit={(updatedJSON, eraserDiagnostics = {}) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'eraser:commit', tool: 'eraser', ...eraserDiagnostics })}
                                   onEraseCallout={handleDeleteSelectedCallouts}
                                   eraserMode={eraserMode}
                                   eraserSize={eraserSize}
@@ -31214,7 +33897,10 @@ ${pageBlocks}
                                     e.stopPropagation();
                                     const rect = e.currentTarget.getBoundingClientRect();
                                     const pageW = resolvedPageSize.width;
-                                    if (!pageW || rect.width === 0) return;
+                                    if (!pageW || rect.width === 0) {
+                                      counterDragRef.current = null;
+                                      return;
+                                    }
                                     const effectiveScale = rect.width / pageW;
                                     const x = (e.clientX - rect.left) / effectiveScale;
                                     const y = (e.clientY - rect.top) / effectiveScale;
@@ -31264,6 +33950,7 @@ ${pageBlocks}
                                     // stroke change "reverted" once you drop the next pin.
                                     let seriesStart = 1;
                                     let inheritedNumberColor;
+                                    let existingSeriesCounterCount = 0;
                                     if (!seriesAutoCreated) {
                                       const allCounters = [];
                                       for (const pageKey of Object.keys(annotationsByPageRef.current || {})) {
@@ -31275,6 +33962,7 @@ ${pageBlocks}
                                           }
                                         }
                                       }
+                                      existingSeriesCounterCount = allCounters.length;
                                       if (allCounters.length > 0) {
                                         allCounters.sort((a, b) => (a.data.createdAt || 0) - (b.data.createdAt || 0));
                                         seriesStart = Number(allCounters[0].data.seriesStart) || 1;
@@ -31285,6 +33973,7 @@ ${pageBlocks}
                                     }
 
                                     const color = seriesColor || strokeColor || '#ef4444';
+                                    const displayNumber = seriesStart + existingSeriesCounterCount;
                                     const counter = {
                                       type: 'circle',
                                       left: x - COUNTER_RADIUS,
@@ -31302,7 +33991,7 @@ ${pageBlocks}
                                         type: 'counter',
                                         createdAt: dragCreatedAt,
                                         pointerAngle: initialAngle,
-                                        displayNumber: 1,
+                                        displayNumber,
                                         seriesId,
                                         seriesStart,
                                         ...(inheritedNumberColor ? { numberColor: inheritedNumberColor } : {}),
@@ -31315,24 +34004,24 @@ ${pageBlocks}
                                     // handleSaveAnnotations so the saved JSON carries the id. UUID v4
                                     // format matches what serializeFabricObjectToRow used to produce.
                                     counter.data.id = crypto.randomUUID();
-                                    const currentPage = annotationsByPageRef.current?.[pageNumber] || { version: '5.3.0', objects: [] };
-                                    const updatedJSON = {
-                                      ...currentPage,
-                                      objects: [...(currentPage.objects || []), counter],
-                                    };
                                     console.log(`[Counter p${pageNumber}] drag-start — x=${x.toFixed(1)}, y=${y.toFixed(1)}, fill=${counter.fill}, dragCreatedAt=${dragCreatedAt}, seriesId=${seriesId}, seriesStart=${seriesStart}, autoCreated=${seriesAutoCreated}`);
-                                    counterDragRef.current = {
+                                    const pageHeight = rect.height / effectiveScale;
+                                    const dragState = {
                                       active: true,
                                       pageKey: pageNumber,
                                       pointerId: e.pointerId,
                                       rect,
                                       effectiveScale,
+                                      pageWidth: pageW,
+                                      pageHeight,
                                       bodyX: x,
                                       bodyY: y,
                                       angle: initialAngle,
                                       radius: COUNTER_RADIUS,
                                       tipDistance,
                                       color,
+                                      numberColor: inheritedNumberColor || '#ffffff',
+                                      displayNumber,
                                       dragCreatedAt,
                                       shiftActive: false,
                                       tipX: null,
@@ -31341,30 +34030,21 @@ ${pageBlocks}
                                       cursorOffsetY: 0,
                                       lastCursorPageX: x,
                                       lastCursorPageY: y,
+                                      previewSvg: null,
+                                      previewPath: null,
+                                      previewText: null,
+                                      counter,
                                     };
-                                    // [COUNTER WIP — DO NOT TOUCH] Push the checkpoint HERE,
-                                    // not at commit. drag-start is the only point in the drag
-                                    // where the previous state (no new pin) differs from the
-                                    // incoming state (with new pin), so it's the only place
-                                    // handleSaveAnnotations will actually add an undo entry.
-                                    // The drag-preview saves use 'skip', and commitCounterDrag
-                                    // is intentionally a fingerprint noop (state hasn't moved
-                                    // by the time it fires) — drag-start is the single source
-                                    // of truth for "the user created a counter, undo it."
-                                    handleSaveAnnotations(pageNumber, updatedJSON, {
-                                      source: 'counter:drag-start',
-                                      tool: 'counter',
-                                    });
+                                    counterDragRef.current = dragState;
+                                    createCounterDragPreview(e.currentTarget, dragState);
                                     // setPointerCapture so move/up come through even when the
                                     // cursor leaves the overlay div.
                                     try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
                                   }}
                                   onPointerMove={(e) => {
                                     const drag = counterDragRef.current;
-                                    console.log(`[CDrag move#1 p${pageNumber}] FIRED dragActive=${!!drag?.active} dragPageKey=${drag?.pageKey} clientX=${e.clientX.toFixed(1)} clientY=${e.clientY.toFixed(1)}`);
                                     if (!drag || !drag.active) return;
                                     if (drag.pageKey !== pageNumber) {
-                                      console.log(`[CDrag move#1 p${pageNumber}] SKIP — drag belongs to page ${drag.pageKey}`);
                                       return;
                                     }
                                     e.stopPropagation();
@@ -31377,7 +34057,6 @@ ${pageBlocks}
                                   }}
                                   onPointerUp={(e) => {
                                     const drag = counterDragRef.current;
-                                    console.log(`[CDrag up#1 p${pageNumber}] FIRED dragActive=${!!drag?.active} dragPageKey=${drag?.pageKey}`);
                                     if (!drag || !drag.active) return;
                                     if (drag.pageKey !== pageNumber) return;
                                     e.stopPropagation();
@@ -31386,7 +34065,6 @@ ${pageBlocks}
                                   }}
                                   onPointerCancel={(e) => {
                                     const drag = counterDragRef.current;
-                                    console.log(`[CDrag cancel#1 p${pageNumber}] FIRED dragActive=${!!drag?.active}`);
                                     if (!drag || !drag.active) return;
                                     if (drag.pageKey !== pageNumber) return;
                                     cancelCounterDrag();
@@ -31450,35 +34128,68 @@ ${pageBlocks}
                                         ...(editingAnnotation.calloutChildren || []),
                                         editedTextbox,
                                       ].filter(Boolean);
-                                      const updatedReactCallout = fromFabricGroup(
+                                      let updatedReactCallout = fromFabricGroup(
                                         { objects: synthesized },
                                         editingAnnotation.pageSize || resolvedPageSize,
                                         editingAnnotation.originalReactCallout
                                       );
-                                      // UX: empty-text self-destruct — if the user commits
-                                      // an edit with no text, remove the callout entirely
-                                      // instead of saving a blank box. Covers the common
-                                      // flow of "draw a callout, click away without typing."
-                                      const calloutText = updatedReactCallout?.text;
-                                      const isBlankText = !calloutText || !String(calloutText).trim();
-                                      if (isBlankText) {
+                                      const isNewCallout = editingAnnotation.isNewCallout === true;
+                                      const editedTextboxText = editedTextbox?.text;
+                                      const originalText = editingAnnotation.originalReactCallout?.text;
+                                      const synthesizedText = updatedReactCallout?.text;
+                                      const resolvedText = resolveCommittedCalloutText({
+                                        isNewCallout,
+                                        editedText: editedTextboxText,
+                                        synthesizedText,
+                                        originalText,
+                                      });
+                                      if (updatedReactCallout && updatedReactCallout.text !== resolvedText) {
+                                        updatedReactCallout = { ...updatedReactCallout, text: resolvedText };
+                                      }
+                                      console.log('[CalloutBlankCommitDiag]', {
+                                        calloutId: editingAnnotation.reactCalloutId,
+                                        isNewCallout,
+                                        originalText,
+                                        editedTextboxText,
+                                        synthesizedText,
+                                        resolvedText,
+                                        deleteBlank: shouldDeleteBlankCalloutOnCommit({
+                                          isNewCallout,
+                                          committedText: resolvedText,
+                                        }),
+                                        preservedExistingText: !isNewCallout
+                                          && isBlankCalloutText(synthesizedText)
+                                          && !isBlankCalloutText(originalText),
+                                      });
+                                      if (shouldDeleteBlankCalloutOnCommit({
+                                        isNewCallout,
+                                        committedText: resolvedText,
+                                      })) {
                                         addHistoryCheckpoint('callouts:delete-blank', {
                                           calloutId: editingAnnotation.reactCalloutId,
                                         });
-                                        setCallouts((prev) => prev.filter((c) =>
+                                        markCalloutRemovalIntent({
+                                          source: 'delete-blank',
+                                          reason: 'callouts:delete-blank',
+                                          calloutIds: [editingAnnotation.reactCalloutId],
+                                          count: 1,
+                                        }, window);
+                                        setCalloutsIfPersistedChanged((prev) => prev.filter((c) =>
                                           c.id !== editingAnnotation.reactCalloutId
                                         ));
                                         editModeCooldownRef.current = Date.now();
+                                        newlyCreatedCalloutIdsRef.current.delete(editingAnnotation.reactCalloutId);
                                         setEditingAnnotation(null);
                                         return;
                                       }
                                       addHistoryCheckpoint('callouts:edit-commit', {
                                         calloutId: editingAnnotation.reactCalloutId,
                                       });
-                                      setCallouts((prev) => prev.map((c) =>
+                                      setCalloutsIfPersistedChanged((prev) => prev.map((c) =>
                                         c.id === editingAnnotation.reactCalloutId ? updatedReactCallout : c
                                       ));
                                       editModeCooldownRef.current = Date.now();
+                                      newlyCreatedCalloutIdsRef.current.delete(editingAnnotation.reactCalloutId);
                                       setEditingAnnotation(null);
                                       return;
                                     }
@@ -31496,15 +34207,20 @@ ${pageBlocks}
                                     // existing callout reverts the in-progress edit and
                                     // keeps the callout with its prior text.
                                     if (editingAnnotation?.reactCalloutId) {
-                                      const orig = editingAnnotation.originalReactCallout;
-                                      const hadPriorText = !!(orig && orig.text && String(orig.text).trim());
-                                      if (!hadPriorText) {
+                                      if (editingAnnotation.isNewCallout === true) {
                                         addHistoryCheckpoint('callouts:cancel-new', {
                                           calloutId: editingAnnotation.reactCalloutId,
                                         });
-                                        setCallouts((prev) => prev.filter((c) =>
+                                        markCalloutRemovalIntent({
+                                          source: 'cancel-new',
+                                          reason: 'callouts:cancel-new',
+                                          calloutIds: [editingAnnotation.reactCalloutId],
+                                          count: 1,
+                                        }, window);
+                                        setCalloutsIfPersistedChanged((prev) => prev.filter((c) =>
                                           c.id !== editingAnnotation.reactCalloutId
                                         ));
+                                        newlyCreatedCalloutIdsRef.current.delete(editingAnnotation.reactCalloutId);
                                       }
                                     }
                                     editModeCooldownRef.current = Date.now();
@@ -31558,6 +34274,7 @@ ${pageBlocks}
                             </>
                             );
                           })()}
+                          {renderAnnotationHydrationPageCover(pageNumber, 'syncfusion', annotationVisualCoverActive)}
                         </div>,
                         portalTarget
                       );
@@ -31574,12 +34291,14 @@ ${pageBlocks}
                     .map(pageNumber => {
                       const pageRegions = getPageRegions(pageNumber);
                       const isMounted = mountedPages.has(pageNumber);
+                      const annotationHydrationGated = isFirstVisibleAnnotationPageGated(pageNumber);
 
                       return (
                         <div
                           key={pageNumber}
                           ref={el => pageContainersRef.current[pageNumber] = el}
                           data-page-num={pageNumber}
+                          data-annotation-visual-cover-active={annotationHydrationGated ? 'true' : 'false'}
                           style={{
                             minHeight: pageHeights[pageNumber] ? `${pageHeights[pageNumber] * scale}px` : '800px',
                             display: 'flex',
@@ -31630,7 +34349,7 @@ ${pageBlocks}
                                     isActiveMatchOnThisPage={currentMatch?.pageNumber === pageNumber}
                                   />
                                 )}
-                                {pageSizes[pageNumber] && requiresLegacyAnnotationLayer && (
+                                {pageSizes[pageNumber] && requiresLegacyAnnotationLayer && !annotationHydrationGated && (
                                   <PageAnnotationLayer
                                     pageNumber={pageNumber}
                                     width={pageSizes[pageNumber].width}
@@ -31705,10 +34424,11 @@ ${pageBlocks}
                                         CLAUDE.md 2026-04-10 rasterizer-mismatch gotcha. */}
                                     <div
                                       data-diag-svg-wrapper={pageNumber}
+                                      data-annotation-hydration-gated={annotationHydrationGated ? 'true' : 'false'}
                                       // UX: Fix 3 (2026-04-16) — see first SVGAnnotationLayer
                                       // mount site. No layer-wide visibility hide; per-callout
                                       // skip happens inside SVGAnnotationLayer via editingCalloutId.
-                                      style={{ position: 'relative', width: '100%', height: '100%', pointerEvents: (svgInteractive && !isFabricEditMode) ? 'auto' : 'none', zIndex: 100, cursor: (svgInteractive && !isFabricEditMode) ? 'default' : undefined }}
+                                      style={{ position: 'relative', width: '100%', height: '100%', pointerEvents: (svgInteractive && !isFabricEditMode) ? 'auto' : 'none', zIndex: 100, visibility: annotationHydrationGated ? 'hidden' : undefined, cursor: (svgInteractive && !isFabricEditMode) ? 'default' : undefined }}
                                       onPointerDown={(svgInteractive && !isFabricEditMode) ? (e) => {
                                         if (handleSelectSyncfusionTextMarkup(pageNumber, e, pageSizes[pageNumber])) return;
                                         e.stopPropagation();
@@ -31811,6 +34531,7 @@ ${pageBlocks}
                                       liveTextEditBounds={liveTextEditBounds}
                                       // UX: pan-mode quick-click selection — see first mount site.
                                       pendingSelection={pendingSvgSelection}
+                                      selectionClearToken={annotationSelectionClearToken}
                                       // UX: pan-mode hover glow — see first mount site.
                                       pendingHover={pendingSvgHover}
                                       // Phase 35 Plan 03 — per-user delete authority.
@@ -31853,7 +34574,7 @@ ${pageBlocks}
                                         pageHeight={pageSizes[pageNumber].height}
                                         annotations={pageAnnotationsCS}
                                         callouts={callouts}
-                                        onEraseCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'eraser:commit', tool: 'eraser' })}
+                                        onEraseCommit={(updatedJSON, eraserDiagnostics = {}) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'eraser:commit', tool: 'eraser', ...eraserDiagnostics })}
                                         onEraseCallout={handleDeleteSelectedCallouts}
                                         eraserMode={eraserMode}
                                         eraserSize={eraserSize}
@@ -32004,18 +34725,38 @@ ${pageBlocks}
                                               ...(editingAnnotation.calloutChildren || []),
                                               editedTextbox,
                                             ].filter(Boolean);
-                                            const updatedReactCallout = fromFabricGroup(
+                                            let updatedReactCallout = fromFabricGroup(
                                               { objects: synthesized },
                                               editingAnnotation.pageSize || { width: pageSizes[pageNumber].width, height: pageSizes[pageNumber].height },
                                               editingAnnotation.originalReactCallout
                                             );
+                                            const isNewCallout = editingAnnotation.isNewCallout === true;
+                                            const resolvedText = resolveCommittedCalloutText({
+                                              isNewCallout,
+                                              editedText: editedTextbox?.text,
+                                              synthesizedText: updatedReactCallout?.text,
+                                              originalText: editingAnnotation.originalReactCallout?.text,
+                                            });
+                                            if (updatedReactCallout && updatedReactCallout.text !== resolvedText) {
+                                              updatedReactCallout = { ...updatedReactCallout, text: resolvedText };
+                                            }
+                                            console.log('[CalloutBlankCommitDiag]', {
+                                              calloutId: editingAnnotation.reactCalloutId,
+                                              isNewCallout,
+                                              originalText: editingAnnotation.originalReactCallout?.text,
+                                              editedTextboxText: editedTextbox?.text,
+                                              synthesizedText: updatedReactCallout?.text,
+                                              resolvedText,
+                                              deleteBlank: shouldDeleteBlankCalloutOnCommit({ isNewCallout, committedText: resolvedText }),
+                                            });
                                             addHistoryCheckpoint('callouts:edit-commit', {
                                               calloutId: editingAnnotation.reactCalloutId,
                                             });
-                                            setCallouts((prev) => prev.map((c) =>
+                                            setCalloutsIfPersistedChanged((prev) => prev.map((c) =>
                                               c.id === editingAnnotation.reactCalloutId ? updatedReactCallout : c
                                             ));
                                             editModeCooldownRef.current = Date.now();
+                                            newlyCreatedCalloutIdsRef.current.delete(editingAnnotation.reactCalloutId);
                                             setEditingAnnotation(null);
                                             return;
                                           }
@@ -32032,15 +34773,20 @@ ${pageBlocks}
                                           // rationale. Esc on a new callout removes it;
                                           // Esc on an existing one reverts the edit.
                                           if (editingAnnotation?.reactCalloutId) {
-                                            const orig = editingAnnotation.originalReactCallout;
-                                            const hadPriorText = !!(orig && orig.text && String(orig.text).trim());
-                                            if (!hadPriorText) {
+                                            if (editingAnnotation.isNewCallout === true) {
                                               addHistoryCheckpoint('callouts:cancel-new', {
                                                 calloutId: editingAnnotation.reactCalloutId,
                                               });
-                                              setCallouts((prev) => prev.filter((c) =>
+                                              markCalloutRemovalIntent({
+                                                source: 'cancel-new',
+                                                reason: 'callouts:cancel-new',
+                                                calloutIds: [editingAnnotation.reactCalloutId],
+                                                count: 1,
+                                              }, window);
+                                              setCalloutsIfPersistedChanged((prev) => prev.filter((c) =>
                                                 c.id !== editingAnnotation.reactCalloutId
                                               ));
+                                              newlyCreatedCalloutIdsRef.current.delete(editingAnnotation.reactCalloutId);
                                             }
                                           }
                                           editModeCooldownRef.current = Date.now();
@@ -32144,6 +34890,7 @@ ${pageBlocks}
                                     }} />
                                   </div>
                                 )}
+                                {renderAnnotationHydrationPageCover(pageNumber, 'pdfjs-continuous', annotationHydrationGated)}
                               </div>
                             </div>
                           ) : (
@@ -32177,8 +34924,10 @@ ${pageBlocks}
                 ) : (
                   shouldShowPage(pageNum) && (() => {
                     const pageRegions = getPageRegions(pageNum);
+                    const annotationHydrationGated = isFirstVisibleAnnotationPageGated(pageNum);
                     return (
                       <div
+                        data-annotation-visual-cover-active={annotationHydrationGated ? 'true' : 'false'}
                         style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                       >
                         <div style={{
@@ -32222,7 +34971,7 @@ ${pageBlocks}
                                 isActiveMatchOnThisPage={currentMatch?.pageNumber === pageNum}
                               />
                             )}
-                            {pageSizes[pageNum] && (
+                            {pageSizes[pageNum] && !annotationHydrationGated && (
                               <PageAnnotationLayer
                                 pageNumber={pageNum}
                                 width={pageSizes[pageNum].width}
@@ -32278,6 +35027,7 @@ ${pageBlocks}
                               const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow' || activeTool === 'highlight';
                               const isEraserTool = activeTool === 'eraser';
                               const isEditMode = editingAnnotation?.pageNumber === pageNum;
+                              const isFabricEditMode = isEditMode && editingAnnotation?.editType !== 'bbox';
                               const pageAnnotations = annotationsByPage[pageNum];
 
                               return (
@@ -32288,12 +35038,14 @@ ${pageBlocks}
                                       CLAUDE.md 2026-04-10 rasterizer-mismatch gotcha. */}
                                   <div
                                     data-diag-svg-wrapper={pageNum}
+                                    data-annotation-hydration-gated={annotationHydrationGated ? 'true' : 'false'}
                                     style={{
                                       position: 'relative',
                                       width: '100%',
                                       height: '100%',
                                       pointerEvents: (svgInteractive && !isFabricEditMode) ? 'auto' : 'none',
                                       zIndex: 100,
+                                      visibility: annotationHydrationGated ? 'hidden' : undefined,
                                       // UX: Fix 3 (2026-04-16) — see first SVGAnnotationLayer
                                       // mount site. No layer-wide visibility hide; per-callout
                                       // skip via editingCalloutId prop.
@@ -32397,6 +35149,7 @@ ${pageBlocks}
                                       liveTextEditBounds={liveTextEditBounds}
                                       // UX: pan-mode quick-click selection — see first mount site.
                                       pendingSelection={pendingSvgSelection}
+                                      selectionClearToken={annotationSelectionClearToken}
                                       // UX: pan-mode hover glow — see first mount site.
                                       pendingHover={pendingSvgHover}
                                       // Phase 35 Plan 03 — per-user delete authority.
@@ -32437,7 +35190,7 @@ ${pageBlocks}
                                       pageHeight={pageSizes[pageNum].height}
                                       annotations={pageAnnotations}
                                       callouts={callouts}
-                                      onEraseCommit={(updatedJSON) => handleSaveAnnotations(pageNum, updatedJSON, { source: 'eraser:commit', tool: 'eraser' })}
+                                      onEraseCommit={(updatedJSON, eraserDiagnostics = {}) => handleSaveAnnotations(pageNum, updatedJSON, { source: 'eraser:commit', tool: 'eraser', ...eraserDiagnostics })}
                                       onEraseCallout={handleDeleteSelectedCallouts}
                                       eraserMode={eraserMode}
                                       eraserSize={eraserSize}
@@ -32588,7 +35341,10 @@ ${pageBlocks}
                                         e.stopPropagation();
                                         const rect = e.currentTarget.getBoundingClientRect();
                                         const pageW = pageSizes[pageNum]?.width;
-                                        if (!pageW || rect.width === 0) return;
+                                        if (!pageW || rect.width === 0) {
+                                          counterDragRef.current = null;
+                                          return;
+                                        }
                                         const effectiveScale = rect.width / pageW;
                                         const x = (e.clientX - rect.left) / effectiveScale;
                                         const y = (e.clientY - rect.top) / effectiveScale;
@@ -32627,6 +35383,7 @@ ${pageBlocks}
                                         // full rationale.
                                         let seriesStart = 1;
                                         let inheritedNumberColor;
+                                        let existingSeriesCounterCount = 0;
                                         if (!seriesAutoCreated) {
                                           const allCounters = [];
                                           for (const pageKey of Object.keys(annotationsByPageRef.current || {})) {
@@ -32638,6 +35395,7 @@ ${pageBlocks}
                                               }
                                             }
                                           }
+                                          existingSeriesCounterCount = allCounters.length;
                                           if (allCounters.length > 0) {
                                             allCounters.sort((a, b) => (a.data.createdAt || 0) - (b.data.createdAt || 0));
                                             seriesStart = Number(allCounters[0].data.seriesStart) || 1;
@@ -32648,6 +35406,7 @@ ${pageBlocks}
                                         }
 
                                         const color = seriesColor || strokeColor || '#ef4444';
+                                        const displayNumber = seriesStart + existingSeriesCounterCount;
                                         const counter = {
                                           type: 'circle',
                                           left: x - COUNTER_RADIUS,
@@ -32665,7 +35424,7 @@ ${pageBlocks}
                                             type: 'counter',
                                             createdAt: dragCreatedAt,
                                             pointerAngle: initialAngle,
-                                            displayNumber: 1,
+                                            displayNumber,
                                             seriesId,
                                             seriesStart,
                                             ...(inheritedNumberColor ? { numberColor: inheritedNumberColor } : {}),
@@ -32675,24 +35434,24 @@ ${pageBlocks}
                                         // of overlay #1. Keep these two blocks in sync per the existing
                                         // two-render-path convention.
                                         counter.data.id = crypto.randomUUID();
-                                        const currentPage = annotationsByPageRef.current?.[pageNum] || { version: '5.3.0', objects: [] };
-                                        const updatedJSON = {
-                                          ...currentPage,
-                                          objects: [...(currentPage.objects || []), counter],
-                                        };
                                         console.log(`[Counter p${pageNum}] drag-start — x=${x.toFixed(1)}, y=${y.toFixed(1)}, fill=${counter.fill}, dragCreatedAt=${dragCreatedAt}, seriesId=${seriesId}, seriesStart=${seriesStart}, autoCreated=${seriesAutoCreated}`);
-                                        counterDragRef.current = {
+                                        const pageHeight = rect.height / effectiveScale;
+                                        const dragState = {
                                           active: true,
                                           pageKey: pageNum,
                                           pointerId: e.pointerId,
                                           rect,
                                           effectiveScale,
+                                          pageWidth: pageW,
+                                          pageHeight,
                                           bodyX: x,
                                           bodyY: y,
                                           angle: initialAngle,
                                           radius: COUNTER_RADIUS,
                                           tipDistance,
                                           color,
+                                          numberColor: inheritedNumberColor || '#ffffff',
+                                          displayNumber,
                                           dragCreatedAt,
                                           shiftActive: false,
                                           tipX: null,
@@ -32701,24 +35460,19 @@ ${pageBlocks}
                                           cursorOffsetY: 0,
                                           lastCursorPageX: x,
                                           lastCursorPageY: y,
+                                          previewSvg: null,
+                                          previewPath: null,
+                                          previewText: null,
+                                          counter,
                                         };
-                                        // [COUNTER WIP — DO NOT TOUCH] Push the checkpoint HERE,
-                                        // not at commit. See the matching comment in counter
-                                        // overlay #1 (~line 25559) for the full rationale —
-                                        // both overlays are mirrored line-for-line and must
-                                        // stay in sync.
-                                        handleSaveAnnotations(pageNum, updatedJSON, {
-                                          source: 'counter:drag-start',
-                                          tool: 'counter',
-                                        });
+                                        counterDragRef.current = dragState;
+                                        createCounterDragPreview(e.currentTarget, dragState);
                                         try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
                                       }}
                                       onPointerMove={(e) => {
                                         const drag = counterDragRef.current;
-                                        console.log(`[CDrag move#2 p${pageNum}] FIRED dragActive=${!!drag?.active} dragPageKey=${drag?.pageKey} clientX=${e.clientX.toFixed(1)} clientY=${e.clientY.toFixed(1)}`);
                                         if (!drag || !drag.active) return;
                                         if (drag.pageKey !== pageNum) {
-                                          console.log(`[CDrag move#2 p${pageNum}] SKIP — drag belongs to page ${drag.pageKey}`);
                                           return;
                                         }
                                         e.stopPropagation();
@@ -32728,7 +35482,6 @@ ${pageBlocks}
                                       }}
                                       onPointerUp={(e) => {
                                         const drag = counterDragRef.current;
-                                        console.log(`[CDrag up#2 p${pageNum}] FIRED dragActive=${!!drag?.active} dragPageKey=${drag?.pageKey}`);
                                         if (!drag || !drag.active) return;
                                         if (drag.pageKey !== pageNum) return;
                                         e.stopPropagation();
@@ -32737,7 +35490,6 @@ ${pageBlocks}
                                       }}
                                       onPointerCancel={(e) => {
                                         const drag = counterDragRef.current;
-                                        console.log(`[CDrag cancel#2 p${pageNum}] FIRED dragActive=${!!drag?.active}`);
                                         if (!drag || !drag.active) return;
                                         if (drag.pageKey !== pageNum) return;
                                         cancelCounterDrag();
@@ -32783,18 +35535,38 @@ ${pageBlocks}
                                             ...(editingAnnotation.calloutChildren || []),
                                             editedTextbox,
                                           ].filter(Boolean);
-                                          const updatedReactCallout = fromFabricGroup(
+                                          let updatedReactCallout = fromFabricGroup(
                                             { objects: synthesized },
                                             editingAnnotation.pageSize || { width: pageSizes[pageNum].width, height: pageSizes[pageNum].height },
                                             editingAnnotation.originalReactCallout
                                           );
+                                          const isNewCallout = editingAnnotation.isNewCallout === true;
+                                          const resolvedText = resolveCommittedCalloutText({
+                                            isNewCallout,
+                                            editedText: editedTextbox?.text,
+                                            synthesizedText: updatedReactCallout?.text,
+                                            originalText: editingAnnotation.originalReactCallout?.text,
+                                          });
+                                          if (updatedReactCallout && updatedReactCallout.text !== resolvedText) {
+                                            updatedReactCallout = { ...updatedReactCallout, text: resolvedText };
+                                          }
+                                          console.log('[CalloutBlankCommitDiag]', {
+                                            calloutId: editingAnnotation.reactCalloutId,
+                                            isNewCallout,
+                                            originalText: editingAnnotation.originalReactCallout?.text,
+                                            editedTextboxText: editedTextbox?.text,
+                                            synthesizedText: updatedReactCallout?.text,
+                                            resolvedText,
+                                            deleteBlank: shouldDeleteBlankCalloutOnCommit({ isNewCallout, committedText: resolvedText }),
+                                          });
                                           addHistoryCheckpoint('callouts:edit-commit', {
                                             calloutId: editingAnnotation.reactCalloutId,
                                           });
-                                          setCallouts((prev) => prev.map((c) =>
+                                          setCalloutsIfPersistedChanged((prev) => prev.map((c) =>
                                             c.id === editingAnnotation.reactCalloutId ? updatedReactCallout : c
                                           ));
                                           editModeCooldownRef.current = Date.now();
+                                          newlyCreatedCalloutIdsRef.current.delete(editingAnnotation.reactCalloutId);
                                           setEditingAnnotation(null);
                                           return;
                                         }
@@ -32811,15 +35583,20 @@ ${pageBlocks}
                                         // rationale. Esc on a new callout removes it;
                                         // Esc on an existing one reverts the edit.
                                         if (editingAnnotation?.reactCalloutId) {
-                                          const orig = editingAnnotation.originalReactCallout;
-                                          const hadPriorText = !!(orig && orig.text && String(orig.text).trim());
-                                          if (!hadPriorText) {
+                                          if (editingAnnotation.isNewCallout === true) {
                                             addHistoryCheckpoint('callouts:cancel-new', {
                                               calloutId: editingAnnotation.reactCalloutId,
                                             });
-                                            setCallouts((prev) => prev.filter((c) =>
+                                            markCalloutRemovalIntent({
+                                              source: 'cancel-new',
+                                              reason: 'callouts:cancel-new',
+                                              calloutIds: [editingAnnotation.reactCalloutId],
+                                              count: 1,
+                                            }, window);
+                                            setCalloutsIfPersistedChanged((prev) => prev.filter((c) =>
                                               c.id !== editingAnnotation.reactCalloutId
                                             ));
+                                            newlyCreatedCalloutIdsRef.current.delete(editingAnnotation.reactCalloutId);
                                           }
                                         }
                                         editModeCooldownRef.current = Date.now();
@@ -32923,6 +35700,7 @@ ${pageBlocks}
                               }} />
                             </div>
                           )}
+                          {renderAnnotationHydrationPageCover(pageNum, 'pdfjs-single', annotationHydrationGated)}
                         </div>
                       </div>
                     );
@@ -40474,10 +43252,14 @@ export default function App() {
         && (event.key === 'L' || event.key === 'l');
       if (!isShortcut) return;
       event.preventDefault();
-      const buf = window.__consoleLogBuffer;
-      const consoleText = Array.isArray(buf) && buf.length > 0
-        ? buf.join('\n')
-        : '(no console output captured)';
+	      const buf = window.__consoleLogBuffer;
+	      const rawConsoleText = Array.isArray(buf) && buf.length > 0
+	        ? buf.join('\n')
+	        : '(no console output captured)';
+	      const builtConsoleText = typeof window.__buildSaveLogConsoleText === 'function'
+	        ? window.__buildSaveLogConsoleText(rawConsoleText)
+	        : rawConsoleText;
+	      const consoleText = sanitizeConsoleLogText(builtConsoleText, window);
       // 2026-04-29 — Cmd+Shift+L now also writes a dated local snapshot under
       // <project>/Logs/ alongside the GitHub push. Snapshot includes console
       // text + a network trace + a small summary block. Best-effort — if the
@@ -40519,11 +43301,15 @@ export default function App() {
     }
     const unsubscribe = window.electronAPI.onSaveLogMenu(async () => {
       console.log('[SaveLog] global menu trigger — capturing console buffer');
-      const api = window.electronAPI;
-      const buf = window.__consoleLogBuffer;
-      const consoleText = Array.isArray(buf) && buf.length > 0
-        ? buf.join('\n')
-        : '(no console output captured)';
+	      const api = window.electronAPI;
+	      const buf = window.__consoleLogBuffer;
+	      const rawConsoleText = Array.isArray(buf) && buf.length > 0
+	        ? buf.join('\n')
+	        : '(no console output captured)';
+	      const builtConsoleText = typeof window.__buildSaveLogConsoleText === 'function'
+	        ? window.__buildSaveLogConsoleText(rawConsoleText)
+	        : rawConsoleText;
+	      const consoleText = sanitizeConsoleLogText(builtConsoleText, window);
 
       // Local save first so a failed GitHub push still leaves the user with a
       // copy on disk.

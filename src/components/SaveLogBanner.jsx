@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { buildLogPreamble } from '../utils/logPreamble';
+import { sanitizeConsoleLogText } from '../utils/consoleLogFilter';
 
 // UX 2026-04-22: Evolution of the old Save Log toast. When the user triggers
 // Save Log, a banner slides in from the LEFT with a 5-second progress bar
@@ -72,7 +73,8 @@ export default function SaveLogBanner() {
     // the triage workflow opens is self-describing.
     const trimmed = (descriptionText || '').trim();
     const preamble = buildLogPreamble({ description: trimmed });
-    const payload = `${preamble}${consoleTextRef.current}`;
+    const safeConsoleText = sanitizeConsoleLogText(consoleTextRef.current, typeof window !== 'undefined' ? window : {});
+    const payload = `${preamble}${safeConsoleText}`;
 
     console.log('[SaveLog] runPush start ' + JSON.stringify({
       hasElectronApi: !!api,

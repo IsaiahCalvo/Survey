@@ -89,9 +89,11 @@ export function useAnnotationsCRDT() {
       const json = calloutYMap.toJSON();
       const page = String(json.pageNumber);
       if (!byPage[page]) byPage[page] = { objects: [] };
+      const callout = json.callout || {};
       byPage[page].objects.push({
-        ...(json.fabric ?? {}),
-        data: { id, ...(json.fabric?.data ?? {}) },
+        ...callout,
+        id: callout.id || id,
+        data: { id, ...(callout.data ?? {}) },
         __meta: json.meta,
         __isCallout: true,
       });

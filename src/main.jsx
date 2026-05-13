@@ -1,18 +1,31 @@
 // src/main.jsx
+import { sanitizeConsoleLogText, shouldCaptureConsoleLine } from './utils/consoleLogFilter';
 
 // Console log capture — stores all console output for "Save Log" button
 // Writes to /Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/1.log
 (() => {
-  const MAX_LINES = 5000;
+  const MAX_LINES = 1200;
+  const MAX_LINE_CHARS = 4000;
   const buffer = [];
   window.__consoleLogBuffer = buffer;
   const _log = console.log;
   const _warn = console.warn;
   const _error = console.error;
   const capture = (prefix, origFn, args) => {
-    const line = prefix + args.map(a =>
-      typeof a === 'object' ? JSON.stringify(a) : String(a)
-    ).join(' ');
+    const rawLine = prefix + args.map((a) => {
+      try {
+        return typeof a === 'object' ? JSON.stringify(a) : String(a);
+      } catch (_err) {
+        return '[unserializable console argument]';
+      }
+    }).join(' ');
+    if (!shouldCaptureConsoleLine(rawLine, window)) {
+      origFn.apply(console, args);
+      return;
+    }
+    const line = rawLine.length > MAX_LINE_CHARS
+      ? `${rawLine.slice(0, MAX_LINE_CHARS)}… [truncated ${rawLine.length - MAX_LINE_CHARS} chars]`
+      : rawLine;
     buffer.push(line);
     if (buffer.length > MAX_LINES) buffer.shift();
     origFn.apply(console, args);
@@ -44,9 +57,13 @@
       try { event.stopPropagation(); } catch (_e) { /* swallow */ }
 
       const buf = (typeof window !== 'undefined') ? window.__consoleLogBuffer : null;
-      const consoleText = Array.isArray(buf) && buf.length > 0
-        ? buf.join('\n')
-        : '(no console output captured)';
+	      const rawConsoleText = Array.isArray(buf) && buf.length > 0
+	        ? buf.join('\n')
+	        : '(no console output captured)';
+	      const builtConsoleText = typeof window.__buildSaveLogConsoleText === 'function'
+	        ? window.__buildSaveLogConsoleText(rawConsoleText)
+	        : rawConsoleText;
+	      const consoleText = sanitizeConsoleLogText(builtConsoleText, window);
 
       let networkSnapshot = null;
       try {

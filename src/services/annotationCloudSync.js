@@ -202,6 +202,14 @@ export async function upsertAnnotationsByPage(annotationsByPage, opts = {}) {
     documentId: opts.documentId,
     pdfId: opts.pdfId,
     userId: opts.userId,
+    actionType: opts.actionType || null,
+    changedIds: Array.isArray(opts.changedIds) ? opts.changedIds : null,
+    changedCount: Number.isFinite(opts.changedCount) ? opts.changedCount : rows.length,
+    dispatchedCount: Number.isFinite(opts.dispatchedCount) ? opts.dispatchedCount : rows.length,
+    supabaseUpsertCount: rows.length,
+    debounceMs: Number.isFinite(opts.debounceMs) ? opts.debounceMs : null,
+    debounceElapsedMs: Number.isFinite(opts.debounceElapsedMs) ? opts.debounceElapsedMs : null,
+    fullFanOutReason: opts.fullFanOutReason || null,
     totalRows: rows.length,
     userDrawnObjects: userDrawnCount,
     importedObjects: importedCount,
@@ -238,6 +246,8 @@ export async function upsertAnnotationsByPage(annotationsByPage, opts = {}) {
   console.log('[CloudSync][push] upsertAnnotationsByPage ok ' + JSON.stringify({
     elapsedMs,
     pdfId: opts.pdfId,
+    actionType: opts.actionType || null,
+    supabaseUpsertCount: rows.length,
     rowsReturned: data?.length || 0
   }));
   return { data: data || [], error: null };
@@ -257,6 +267,14 @@ export async function upsertCallouts(callouts, opts = {}) {
   console.log('[CloudSync][push] upsertCallouts start ' + JSON.stringify({
     documentId: opts.documentId,
     userId: opts.userId,
+    actionType: opts.actionType || null,
+    changedIds: Array.isArray(opts.changedIds) ? opts.changedIds : null,
+    changedCount: Number.isFinite(opts.changedCount) ? opts.changedCount : rows.length,
+    dispatchedCount: Number.isFinite(opts.dispatchedCount) ? opts.dispatchedCount : rows.length,
+    supabaseUpsertCount: rows.length,
+    debounceMs: Number.isFinite(opts.debounceMs) ? opts.debounceMs : null,
+    debounceElapsedMs: Number.isFinite(opts.debounceElapsedMs) ? opts.debounceElapsedMs : null,
+    fullFanOutReason: opts.fullFanOutReason || null,
     count: rows.length
   }));
   const { data, error } = await supabase
@@ -273,6 +291,8 @@ export async function upsertCallouts(callouts, opts = {}) {
   }
   console.log('[CloudSync][push] upsertCallouts ok ' + JSON.stringify({
     elapsedMs,
+    actionType: opts.actionType || null,
+    supabaseUpsertCount: rows.length,
     rowsReturned: data?.length || 0
   }));
   return { data: data || [], error: null };
@@ -303,15 +323,30 @@ export async function deleteAnnotations(documentId, highlightIds) {
   if (!Array.isArray(highlightIds) || highlightIds.length === 0) {
     return { success: true, error: null };
   }
-  const { error } = await supabase
-    .from('document_annotations')
-    .delete()
-    .eq('document_id', documentId)
-    .in('highlight_id', highlightIds);
-  if (error) {
-    console.error('[CloudSync] deleteAnnotations failed:', error);
-    return { success: false, error };
+  const uniqueIds = [...new Set(highlightIds.filter(Boolean))];
+  const chunkSize = 200;
+  for (let start = 0; start < uniqueIds.length; start += chunkSize) {
+    const chunk = uniqueIds.slice(start, start + chunkSize);
+    const { error } = await supabase
+      .from('document_annotations')
+      .delete()
+      .eq('document_id', documentId)
+      .in('highlight_id', chunk);
+    if (error) {
+      console.error('[CloudSync] deleteAnnotations failed:', {
+        error,
+        chunkStart: start,
+        chunkCount: chunk.length,
+        totalCount: uniqueIds.length,
+      });
+      return { success: false, error };
+    }
   }
+  console.log('[CloudSync] deleteAnnotations ok ' + JSON.stringify({
+    documentId,
+    count: uniqueIds.length,
+    chunks: Math.ceil(uniqueIds.length / chunkSize),
+  }));
   return { success: true, error: null };
 }
 

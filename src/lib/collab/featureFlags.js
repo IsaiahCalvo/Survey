@@ -2,11 +2,10 @@
 //
 // Phase 31 - cutover-era feature flags.
 //
-// LEGACY_BULK_UPSERT_ENABLED gates the pre-Phase-31 bulk save path
-// (`upsertAnnotationsByPage` in src/services/annotationCloudSync.js).
-// Default: false (the CRDT path owns the cloud round-trip post-cutover).
-// Opt-in: localStorage[`pdf_app_legacy_bulk_upsert`] === 'true' for
-// emergency rollback without a redeploy.
+// LEGACY_BULK_UPSERT_ENABLED is retained as a historical/diagnostic flag.
+// As of 2026-05-10, normal annotation persistence does NOT use this flag to
+// skip Supabase writes: Supabase is durable reload/cross-device truth, and
+// Y.Doc mirrors that state for live collaboration.
 //
 // Pattern reference: src/lib/collab/crdtFeatureFlag.js (Phase 27 Plan 27-04
 // kill switch). Three-tier read order (localStorage > env > default) and
@@ -26,8 +25,8 @@ const ENV_VAR_NAME = 'VITE_LEGACY_BULK_UPSERT_ENABLED';
 /**
  * isLegacyBulkUpsertEnabled - reader for the LEGACY_BULK_UPSERT_ENABLED flag.
  *
- * Returns true if the legacy bulk-upsert path should still fire.
- * Default false (post-cutover CRDT-only writes). Override via:
+ * Returns true if the old Phase 31 rollback flag is enabled.
+ * Default false. Override via:
  *   - localStorage.setItem('pdf_app_legacy_bulk_upsert', 'true')  [per-tab]
  *   - VITE_LEGACY_BULK_UPSERT_ENABLED='true' at build time         [build-wide]
  *

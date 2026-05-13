@@ -51,6 +51,7 @@ debug/debug-sessions/
 # git worktrees (sandboxes)
 .worktrees/
 .claude/worktrees/
+.claude/projects/
 
 # Phase 28 — bot account credentials for transport spike benchmark
 # (5 dedicated test bots in real Supabase project, tagged with phase28_bot=true).

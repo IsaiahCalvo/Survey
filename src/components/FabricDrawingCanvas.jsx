@@ -20,10 +20,22 @@ import React, { memo, useEffect, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import { fabric } from 'fabric';
 import { useFabricCanvas } from '../hooks/useFabricCanvas';
+import {
+  computeDrawnBoundaryShapePreviewGeometry,
+  normalizeDrawnBoundaryShapeCommitGeometry,
+  tagDrawnCenteredStrokeGeometry,
+} from '../utils/shapeCommitGeometry';
+import {
+  beginAnnotationGesture,
+  markAnnotationPointerRelease,
+  markAnnotationPreviewFrame,
+  recordAnnotationCommit,
+  updateAnnotationGesture,
+} from '../utils/annotationPreviewDiag';
 
 // Custom properties to include in path serialization (matches PAL pattern)
 const CUSTOM_PROPS = [
-  'strokeUniform', 'spaceId', 'moduleId', 'regionId',
+  'id', 'strokeUniform', 'spaceId', 'moduleId', 'regionId',
   'data', 'name', 'highlightId', 'needsBIC',
   'globalCompositeOperation', 'layer',
   'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode',
@@ -31,6 +43,137 @@ const CUSTOM_PROPS = [
 ];
 
 const SHAPE_TOOLS = ['rect', 'ellipse', 'line', 'arrow', 'highlight'];
+
+function createAnnotationId(prefix = 'anno') {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function ensureAnnotationId(fabricObject, prefix) {
+  if (!fabricObject) return null;
+  const existing = fabricObject?.data?.id || fabricObject?.data?.annoId || fabricObject?.id || fabricObject?.highlightId;
+  if (existing) {
+    fabricObject.id = existing;
+    if (!fabricObject.data || typeof fabricObject.data !== 'object') {
+      fabricObject.set?.({ data: { id: existing } });
+    } else if (!fabricObject.data.id) {
+      fabricObject.data.id = existing;
+    }
+    return existing;
+  }
+  const id = createAnnotationId(prefix);
+  const nextData = { ...(fabricObject.data || {}), id };
+  fabricObject.id = id;
+  if (typeof fabricObject.set === 'function') {
+    fabricObject.set({ id, data: nextData });
+  } else {
+    fabricObject.data = nextData;
+  }
+  return id;
+}
+
+const roundedPoint = (point) => point && {
+  x: Number(point.x?.toFixed?.(3) ?? point.x),
+  y: Number(point.y?.toFixed?.(3) ?? point.y),
+};
+
+const roundedBox = (box) => box && {
+  left: Number(box.left?.toFixed?.(3) ?? box.left),
+  top: Number(box.top?.toFixed?.(3) ?? box.top),
+  width: Number(box.width?.toFixed?.(3) ?? box.width),
+  height: Number(box.height?.toFixed?.(3) ?? box.height),
+};
+
+const geometryFromSerializedShape = (obj) => {
+  if (!obj || typeof obj !== 'object') return null;
+  const type = String(obj.type || '').toLowerCase();
+  if (type === 'rect') {
+    return {
+      left: Number(obj.left) || 0,
+      top: Number(obj.top) || 0,
+      width: Math.abs((Number(obj.width) || 0) * (Number(obj.scaleX) || 1)),
+      height: Math.abs((Number(obj.height) || 0) * (Number(obj.scaleY) || 1)),
+    };
+  }
+  if (type === 'ellipse' || type === 'circle' || obj.radius != null) {
+    const rx = type === 'circle' || obj.radius != null
+      ? (Number(obj.radius) || 0) * Math.abs(Number(obj.scaleX) || 1)
+      : (Number(obj.rx) || 0) * Math.abs(Number(obj.scaleX) || 1);
+    const ry = type === 'circle' || obj.radius != null
+      ? (Number(obj.radius) || 0) * Math.abs(Number(obj.scaleY) || 1)
+      : (Number(obj.ry) || 0) * Math.abs(Number(obj.scaleY) || 1);
+    return {
+      left: (Number(obj.left) || 0),
+      top: (Number(obj.top) || 0),
+      width: rx * 2,
+      height: ry * 2,
+    };
+  }
+  return null;
+};
+
+const boxDelta = (from, to) => {
+  if (!from || !to) return null;
+  return {
+    left: Number((to.left - from.left).toFixed(3)),
+    top: Number((to.top - from.top).toFixed(3)),
+    width: Number((to.width - from.width).toFixed(3)),
+    height: Number((to.height - from.height).toFixed(3)),
+  };
+};
+
+const scheduleShapeCommitSvgProbe = (detail) => {
+  if (typeof window === 'undefined' || !detail?.annotationId) return;
+  const runProbe = () => {
+    try {
+      const selector = `[data-shape-id="${CSS.escape(detail.annotationId)}"]`;
+      const el = document.querySelector(selector);
+      const svg = el?.ownerSVGElement;
+      if (!el || !svg) {
+        console.log('[ShapeCommitDiag] svg probe pending', {
+          annotationId: detail.annotationId,
+          tool: detail.tool,
+          reason: 'shape element not found yet',
+        });
+        return;
+      }
+      const svgRect = svg.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      const viewBox = svg.viewBox?.baseVal;
+      const scaleX = svgRect.width ? (viewBox?.width || detail.pageSize?.width || 0) / svgRect.width : 0;
+      const scaleY = svgRect.height ? (viewBox?.height || detail.pageSize?.height || 0) / svgRect.height : 0;
+      const renderedPageBox = {
+        left: (elRect.left - svgRect.left) * scaleX,
+        top: (elRect.top - svgRect.top) * scaleY,
+        width: elRect.width * scaleX,
+        height: elRect.height * scaleY,
+      };
+      console.log('[ShapeCommitDiag] svg rendered bbox after commit', {
+        annotationId: detail.annotationId,
+        pageNumber: detail.pageNumber,
+        tool: detail.tool,
+        pointerDown: roundedPoint(detail.pointerDown),
+        lastMouseMove: roundedPoint(detail.lastMouseMove),
+        mouseUp: roundedPoint(detail.mouseUp),
+        previewOuterBounds: roundedBox(detail.previewOuterBounds),
+        serializedOuterBounds: roundedBox(detail.serializedOuterBounds),
+        svgRenderedBBox: roundedBox(renderedPageBox),
+        deltaPreviewToSaved: boxDelta(detail.previewOuterBounds, detail.serializedOuterBounds),
+        deltaSavedToSvg: boxDelta(detail.serializedOuterBounds, renderedPageBox),
+        deltaPreviewToSvg: boxDelta(detail.previewOuterBounds, renderedPageBox),
+      });
+    } catch (error) {
+      console.warn('[ShapeCommitDiag] svg probe failed', {
+        annotationId: detail.annotationId,
+        tool: detail.tool,
+        message: error?.message || String(error),
+      });
+    }
+  };
+  window.requestAnimationFrame(() => window.setTimeout(runProbe, 80));
+};
 
 const FabricDrawingCanvas = memo(({
   pageNumber,
@@ -71,6 +214,7 @@ const FabricDrawingCanvas = memo(({
   const onHighlightCreatedRef = useRef(onHighlightCreated);
   const initialZoomGenRef = useRef(zoomGeneration);
   const isDisposingRef = useRef(false);
+  const drawDiagGestureRef = useRef(null);
 
   const shouldAssignRegionId = () => {
     const regionId = activeRegionIdRef.current;
@@ -181,6 +325,10 @@ const FabricDrawingCanvas = memo(({
       }
 
       // Assign metadata
+      ensureAnnotationId(e.path, activeToolRef.current === 'highlighter' ? 'highlighter' : 'path');
+      updateAnnotationGesture(drawDiagGestureRef.current, {
+        annotationId: e.path.id || e.path.highlightId || e.path.data?.id,
+      });
       if (selectedModuleIdRef.current) {
         e.path.set({ moduleId: selectedModuleIdRef.current });
       }
@@ -215,6 +363,10 @@ const FabricDrawingCanvas = memo(({
         objects: [...(currentAnnotations?.objects || []), pathJSON],
       };
 
+      markAnnotationPointerRelease(drawDiagGestureRef.current, {
+        action: activeToolRef.current === 'highlighter' ? 'highlight-stroke' : 'pen-stroke',
+      });
+
       // During dispose: flushSync forces synchronous SVG re-render so the
       // stroke is visible before Canvas DOM is removed (prevents 1-frame flicker).
       // Dev-mode React warns about flushSync in lifecycle — harmless, no-op in prod.
@@ -225,8 +377,39 @@ const FabricDrawingCanvas = memo(({
       }
     });
 
+    const onFreeDrawMouseDown = () => {
+      if (SHAPE_TOOLS.includes(activeToolRef.current)) return;
+      drawDiagGestureRef.current = beginAnnotationGesture({
+        surface: 'FabricDrawingCanvas',
+        tool: activeToolRef.current,
+        type: activeToolRef.current === 'highlighter' ? 'highlighter' : 'path',
+        action: activeToolRef.current === 'highlighter' ? 'highlight-stroke' : 'pen-stroke',
+        pointerDown: true,
+        pageNumber,
+      });
+    };
+    const onFreeDrawMouseMove = () => {
+      if (SHAPE_TOOLS.includes(activeToolRef.current)) return;
+      markAnnotationPreviewFrame(drawDiagGestureRef.current, {
+        action: activeToolRef.current === 'highlighter' ? 'highlight-stroke' : 'pen-stroke',
+      });
+    };
+    const onFreeDrawMouseUp = () => {
+      if (SHAPE_TOOLS.includes(activeToolRef.current)) return;
+      markAnnotationPointerRelease(drawDiagGestureRef.current, {
+        action: activeToolRef.current === 'highlighter' ? 'highlight-stroke' : 'pen-stroke',
+      });
+    };
+    canvas.on('mouse:down', onFreeDrawMouseDown);
+    canvas.on('mouse:move', onFreeDrawMouseMove);
+    canvas.on('mouse:up', onFreeDrawMouseUp);
+
     // Pre-unmount flush is handled by onBeforeDisposeRef (runs before canvas.off()).
-    // No cleanup needed here.
+    return () => {
+      canvas.off('mouse:down', onFreeDrawMouseDown);
+      canvas.off('mouse:move', onFreeDrawMouseMove);
+      canvas.off('mouse:up', onFreeDrawMouseUp);
+    };
   }, []); // Mount only
 
   // -------------------------------------------------------------------------
@@ -243,15 +426,76 @@ const FabricDrawingCanvas = memo(({
 
     const getPointer = (e) => canvas.getPointer(e.e);
 
-    const commitShape = (shape) => {
-      const shapeJSON = shape.toJSON(CUSTOM_PROPS);
+    const updateBoundaryShapeFromPointer = (shape, pointer, tool) => {
+      if (!shape || !pointer) return;
+      const geometry = computeDrawnBoundaryShapePreviewGeometry({
+        tool,
+        startX: shapeDrawingRef.current.startX,
+        startY: shapeDrawingRef.current.startY,
+        pointerX: pointer.x,
+        pointerY: pointer.y,
+        strokeWidth: shape.strokeWidth,
+      });
+      shape._drawOuterBounds = geometry.outerBounds;
+      shapeDrawingRef.current.lastPreviewGeometry = geometry;
+      shape.set(geometry.fabricProps);
+    };
+
+    const commitShape = (shape, commitDiag = null) => {
+      const annotationId = ensureAnnotationId(shape, activeToolRef.current || 'shape');
+      updateAnnotationGesture(drawDiagGestureRef.current, {
+        annotationId,
+      });
+      let shapeJSON = shape.toJSON(CUSTOM_PROPS);
+      const tool = activeToolRef.current;
+      if (tool === 'rect' || tool === 'ellipse') {
+        shapeJSON = tagDrawnCenteredStrokeGeometry(shapeJSON);
+      } else {
+        shapeJSON = normalizeDrawnBoundaryShapeCommitGeometry(shapeJSON, shape._drawOuterBounds);
+      }
       if (selectedModuleIdRef.current) shapeJSON.moduleId = selectedModuleIdRef.current;
       if (shouldAssignRegionId()) shapeJSON.regionId = activeRegionIdRef.current;
 
-      const tool = activeToolRef.current;
       // Tag line/arrow with tool so SVG renderer can differentiate
       if (tool === 'line' || tool === 'arrow') {
         shapeJSON.tool = tool;
+      }
+
+      const serializedOuterBounds = geometryFromSerializedShape(shapeJSON);
+      if (commitDiag && (tool === 'rect' || tool === 'ellipse')) {
+        console.log('[ShapeCommitDiag] commit geometry', {
+          annotationId,
+          pageNumber,
+          tool,
+          pointerDown: roundedPoint(commitDiag.pointerDown),
+          lastMouseMove: roundedPoint(commitDiag.lastMouseMove),
+          mouseUp: roundedPoint(commitDiag.mouseUp),
+          previewOuterBounds: roundedBox(commitDiag.previewOuterBounds),
+          fabricPreviewBeforeCommit: {
+            type: shape.type,
+            left: Number((shape.left || 0).toFixed(3)),
+            top: Number((shape.top || 0).toFixed(3)),
+            width: Number((shape.width || 0).toFixed(3)),
+            height: Number((shape.height || 0).toFixed(3)),
+            rx: Number((shape.rx || 0).toFixed(3)),
+            ry: Number((shape.ry || 0).toFixed(3)),
+            strokeWidth: shape.strokeWidth,
+          },
+          serializedAnnotation: {
+            type: shapeJSON.type,
+            left: shapeJSON.left,
+            top: shapeJSON.top,
+            width: shapeJSON.width,
+            height: shapeJSON.height,
+            rx: shapeJSON.rx,
+            ry: shapeJSON.ry,
+            radius: shapeJSON.radius,
+            strokeWidth: shapeJSON.strokeWidth,
+            strokeRenderContract: shapeJSON.data?.strokeRenderContract,
+          },
+          serializedOuterBounds: roundedBox(serializedOuterBounds),
+          deltaPreviewToSaved: boxDelta(commitDiag.previewOuterBounds, serializedOuterBounds),
+        });
       }
 
       sessionPathsRef.current.push(shape);
@@ -263,15 +507,37 @@ const FabricDrawingCanvas = memo(({
         objects: [...(currentAnnotations?.objects || []), shapeJSON],
       };
       onStrokeCommitRef.current(updated);
+      if (commitDiag && (tool === 'rect' || tool === 'ellipse')) {
+        scheduleShapeCommitSvgProbe({
+          ...commitDiag,
+          annotationId,
+          pageNumber,
+          tool,
+          pageSize: { width: pageWidth, height: pageHeight },
+          serializedOuterBounds,
+        });
+      }
     };
 
     const onMouseDown = (opt) => {
       const pointer = getPointer(opt);
       console.log(`[DrawCanvas p${pageNumber}] shape mousedown at (${pointer.x.toFixed(1)}, ${pointer.y.toFixed(1)}), tool=${activeToolRef.current}`);
+      drawDiagGestureRef.current = beginAnnotationGesture({
+        surface: 'FabricDrawingCanvas',
+        tool: activeToolRef.current,
+        type: activeToolRef.current === 'highlight' ? 'survey-highlight' : activeToolRef.current,
+        action: activeToolRef.current === 'highlight' ? 'survey-highlight-draw' : `${activeToolRef.current}-draw`,
+        pointerDown: true,
+        pageNumber,
+      });
       const state = shapeDrawingRef.current;
       state.isDrawing = true;
       state.startX = pointer.x;
       state.startY = pointer.y;
+      state.pointerDown = { x: pointer.x, y: pointer.y };
+      state.lastMovePointer = null;
+      state.mouseUpPointer = null;
+      state.lastPreviewGeometry = null;
 
       const tool = activeToolRef.current;
       const color = strokeColor;
@@ -323,25 +589,29 @@ const FabricDrawingCanvas = memo(({
     const onMouseMove = (opt) => {
       const state = shapeDrawingRef.current;
       if (!state.isDrawing || !state.shape) return;
+      markAnnotationPreviewFrame(drawDiagGestureRef.current, {
+        action: activeToolRef.current === 'highlight' ? 'survey-highlight-draw' : `${activeToolRef.current}-draw`,
+      });
       const pointer = getPointer(opt);
+      state.lastMovePointer = { x: pointer.x, y: pointer.y };
       const tool = activeToolRef.current;
 
       if (tool === 'rect' || tool === 'highlight') {
-        const left = Math.min(state.startX, pointer.x);
-        const top = Math.min(state.startY, pointer.y);
-        state.shape.set({
-          left, top,
-          width: Math.abs(pointer.x - state.startX),
-          height: Math.abs(pointer.y - state.startY),
-        });
+        if (tool === 'rect') {
+          updateBoundaryShapeFromPointer(state.shape, pointer, tool);
+        } else {
+          const left = Math.min(state.startX, pointer.x);
+          const top = Math.min(state.startY, pointer.y);
+          const width = Math.abs(pointer.x - state.startX);
+          const height = Math.abs(pointer.y - state.startY);
+          state.shape.set({
+            left, top,
+            width,
+            height,
+          });
+        }
       } else if (tool === 'ellipse') {
-        const left = Math.min(state.startX, pointer.x);
-        const top = Math.min(state.startY, pointer.y);
-        state.shape.set({
-          left, top,
-          rx: Math.abs(pointer.x - state.startX) / 2,
-          ry: Math.abs(pointer.y - state.startY) / 2,
-        });
+        updateBoundaryShapeFromPointer(state.shape, pointer, tool);
       } else if (tool === 'line' || tool === 'arrow') {
         state.shape.set({ x2: pointer.x, y2: pointer.y });
       }
@@ -349,17 +619,34 @@ const FabricDrawingCanvas = memo(({
       canvas.renderAll();
     };
 
-    const onMouseUp = () => {
+    const onMouseUp = (opt) => {
       const state = shapeDrawingRef.current;
       if (!state.isDrawing || !state.shape) return;
+      const finalPointer = opt?.e ? getPointer(opt) : null;
+      const finalTool = activeToolRef.current;
+      if (finalPointer) {
+        state.mouseUpPointer = { x: finalPointer.x, y: finalPointer.y };
+      }
+      if (finalPointer && (finalTool === 'rect' || finalTool === 'ellipse') && !state.lastPreviewGeometry) {
+        updateBoundaryShapeFromPointer(state.shape, finalPointer, finalTool);
+      }
       state.isDrawing = false;
+      markAnnotationPointerRelease(drawDiagGestureRef.current, {
+        action: activeToolRef.current === 'highlight' ? 'survey-highlight-draw' : `${activeToolRef.current}-draw`,
+      });
 
       // Only commit if shape has meaningful size
       const s = state.shape;
       const tool = activeToolRef.current;
       let hasSize = false;
-      if (tool === 'rect' || tool === 'highlight') hasSize = s.width > 2 && s.height > 2;
-      else if (tool === 'ellipse') hasSize = s.rx > 1 && s.ry > 1;
+      if (tool === 'rect') {
+        const b = s._drawOuterBounds;
+        hasSize = (b?.width ?? s.width) > 2 && (b?.height ?? s.height) > 2;
+      } else if (tool === 'highlight') hasSize = s.width > 2 && s.height > 2;
+      else if (tool === 'ellipse') {
+        const b = s._drawOuterBounds;
+        hasSize = (b?.width ?? s.rx * 2) > 2 && (b?.height ?? s.ry * 2) > 2;
+      }
       else if (tool === 'line' || tool === 'arrow') {
         const dx = s.x2 - s.x1, dy = s.y2 - s.y1;
         hasSize = Math.sqrt(dx * dx + dy * dy) > 3;
@@ -390,6 +677,12 @@ const FabricDrawingCanvas = memo(({
           // commitShape → no entry in pageAnnotations.objects); SVG paints
           // the persisted highlight next render.
           canvas.remove(s);
+          recordAnnotationCommit({
+            surface: 'FabricDrawingCanvas',
+            source: 'survey-highlight:create',
+            action: 'survey-highlight-draw',
+            pageNumber,
+          });
           if (onHighlightCreatedRef.current) {
             onHighlightCreatedRef.current({
               x: s.left,
@@ -399,13 +692,26 @@ const FabricDrawingCanvas = memo(({
             });
           }
         } else {
-          commitShape(s);
+          const previewOuterBounds = s._drawOuterBounds
+            || state.lastPreviewGeometry?.outerBounds
+            || null;
+          const commitDiag = (tool === 'rect' || tool === 'ellipse') ? {
+            pointerDown: state.pointerDown,
+            lastMouseMove: state.lastMovePointer,
+            mouseUp: state.mouseUpPointer,
+            previewOuterBounds,
+          } : null;
+          commitShape(s, commitDiag);
         }
       } else {
         canvas.remove(s);
         console.log(`[DrawCanvas p${pageNumber}] shape too small, discarded`);
       }
       state.shape = null;
+      state.pointerDown = null;
+      state.lastMovePointer = null;
+      state.mouseUpPointer = null;
+      state.lastPreviewGeometry = null;
       canvas.renderAll();
     };
 

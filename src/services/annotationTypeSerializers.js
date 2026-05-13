@@ -446,7 +446,7 @@ function computeCalloutBounds(callout) {
       ys.push(pt.y);
     }
   };
-  push(callout.anchor);
+  push(callout.anchor || callout.arrowTip);
   push(callout.knee);
   if (callout.label) {
     push({ x: callout.label.left, y: callout.label.top });
@@ -455,6 +455,22 @@ function computeCalloutBounds(callout) {
     }
     if (Number.isFinite(callout.label.top) && Number.isFinite(callout.label.height)) {
       push({ x: callout.label.left, y: callout.label.top + callout.label.height });
+    }
+  }
+  const textBoxX = callout.textBoxPosition?.x ?? callout.textBox?.x;
+  const textBoxY = callout.textBoxPosition?.y ?? callout.textBox?.y;
+  const textBoxWidth = callout.textBoxWidth ?? callout.textBox?.width;
+  const textBoxHeight = callout.textBoxHeight ?? callout.textBox?.height;
+  if (Number.isFinite(textBoxX) && Number.isFinite(textBoxY)) {
+    push({ x: textBoxX, y: textBoxY });
+    if (Number.isFinite(textBoxWidth)) {
+      push({ x: textBoxX + textBoxWidth, y: textBoxY });
+    }
+    if (Number.isFinite(textBoxHeight)) {
+      push({ x: textBoxX, y: textBoxY + textBoxHeight });
+    }
+    if (Number.isFinite(textBoxWidth) && Number.isFinite(textBoxHeight)) {
+      push({ x: textBoxX + textBoxWidth, y: textBoxY + textBoxHeight });
     }
   }
   if (xs.length === 0) {

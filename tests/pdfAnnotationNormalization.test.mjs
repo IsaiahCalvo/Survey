@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { convertInkToFabricPath } from '../src/utils/pdfAnnotationImporter.js';
+import { convertInkToFabricPath, convertPdfAnnotationToFabric } from '../src/utils/pdfAnnotationImporter.js';
 import { makeInternalPenPathSpec } from '../src/utils/nativeShapeFactory.js';
 import { renderPathToSvgAttrs, renderPathToSvgD } from '../src/utils/svgPathAttrs.js';
 
@@ -41,6 +41,32 @@ test('imported Ink has the same core Fabric properties as an internal pen stroke
       `Field drift on ${key}: imported=${JSON.stringify(imported[key])}, internal=${JSON.stringify(internal[key])}`
     );
   }
+});
+
+test('imported PDF Squiggly has the same core stroke behavior as an internal pen stroke', () => {
+  const imported = convertPdfAnnotationToFabric({
+    id: 'squiggly-norm-1',
+    subtype: 'Squiggly',
+    rect: [10, 20, 70, 34],
+    color: [1, 0, 0],
+    borderStyle: { width: 1.5 },
+  }, viewport, 1);
+  assert.ok(imported, 'convertPdfAnnotationToFabric should return a Fabric spec');
+  const internal = makeInternalPenPathSpec({
+    stroke: imported.stroke,
+    strokeWidth: imported.strokeWidth,
+  });
+
+  const sharedKeys = ['type', 'fill', 'strokeUniform', 'strokeLineCap', 'strokeLineJoin'];
+  for (const key of sharedKeys) {
+    assert.equal(
+      imported[key],
+      internal[key],
+      `Field drift on ${key}: imported=${JSON.stringify(imported[key])}, internal=${JSON.stringify(internal[key])}`
+    );
+  }
+  assert.equal(imported.pdfAnnotationType, 'Squiggly');
+  assert.equal(imported.isPdfImported, true);
 });
 
 test('imported Ink preserves isPdfImported flag and pdfAnnotationType as metadata-only', () => {

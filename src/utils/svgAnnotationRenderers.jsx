@@ -37,6 +37,7 @@ import {
   logShapeRender as __logShapeRender,
   captureShape as __captureShape,
 } from './shapeBleedDiagnostics';
+import { DRAWN_CENTERED_STROKE_CONTRACT } from './shapeCommitGeometry.js';
 // UX 2026-04-21 (import-normalization Chunk 2): pure attr derivation for
 // path-type Fabric objects lives in svgPathAttrs.js so node-test suites
 // can import it without the JSX loader. The renderer uses it too to
@@ -80,7 +81,10 @@ export const TEXT_PADDING = 6;
  * Only called when strokeWidth > 0 — no point clipping a shape without a
  * border, and skipping the clip keeps the DOM smaller for the common case.
  */
-const shouldInsetStroke = (obj) => Number(obj?.strokeWidth) > 0;
+const shouldInsetStroke = (obj) => (
+  Number(obj?.strokeWidth) > 0
+  && obj?.data?.strokeRenderContract !== DRAWN_CENTERED_STROKE_CONTRACT
+);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -506,7 +510,7 @@ export const renderLine = (obj, index) => {
   // so the user can hand back one log slice and we can see whether the
   // render pivot and the selection-bbox pivot agreed at that moment —
   // the common source of frame-vs-shape drift.
-  try {
+  if (globalThis?.__LINE_BBOX_DIAG) try {
     const nowMs = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
     if (!renderLine._lastLog) renderLine._lastLog = new Map();
     const rid = obj && obj.id != null ? obj.id : (obj ? obj : null);

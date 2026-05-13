@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { getSyncStatusViewModel } from '../utils/syncStatusViewModel.js';
 
 /**
  * Cloud sync status indicator.
@@ -25,28 +26,7 @@ export default function SyncStatusChip({ status, queueSize = 0, enabled = true, 
   const manualTimerRef = useRef(null);
 
   if (!enabled) return null;
-  const stage = status?.stage || 'idle';
-
-  // Map internal sync stages to one of three user-facing states.
-  let state = 'synced';
-  let label = 'Up to date';
-  if (queueSize > 0 || stage === 'queued' || stage === 'error') {
-    state = 'offline';
-    label = queueSize > 0
-      ? `Offline · ${queueSize} saved locally`
-      : 'Connection issue';
-  } else if (stage === 'hydrating' || stage === 'migrating' || stage === 'syncing') {
-    state = 'syncing';
-    label = 'Syncing…';
-  }
-
-  // Manual-click visual override wins over the natural state for ~1.2s so the
-  // user can see something happen on click. Color flips to orange + spinner;
-  // label switches to "Syncing now…" to distinguish from auto-syncing.
-  if (manualSyncing) {
-    state = 'syncing';
-    label = 'Syncing now…';
-  }
+  const { state, label } = getSyncStatusViewModel(status, queueSize, manualSyncing);
 
   const colors = {
     synced:  '#2bbd7e',

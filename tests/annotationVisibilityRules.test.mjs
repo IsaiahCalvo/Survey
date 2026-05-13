@@ -302,4 +302,113 @@ describe('isAnnotationVisibleInContext', () => {
       true
     );
   });
+
+  it('applies the same page visibility rules to callout-shaped annotations', () => {
+    const callout = {
+      id: 'callout-1',
+      pageNumber: 1,
+      moduleId: null,
+      regionId: null,
+      arrowTip: { x: 0.1, y: 0.1 },
+      knee: { x: 0.2, y: 0.1 },
+      textBoxPosition: { x: 0.25, y: 0.1 },
+      textBoxWidth: 0.2,
+      textBoxHeight: 0.08,
+    };
+
+    assert.equal(
+      isAnnotationVisibleInContext({
+        annotation: callout,
+        pageNumber: 1,
+        selectedSpaceId: 'space-1',
+        getCanvasAnnotationVisibilityState: () => false,
+      }),
+      false
+    );
+  });
+
+  it('applies the same region rules to callout-shaped annotations', () => {
+    assert.equal(
+      isAnnotationVisibleInContext({
+        annotation: {
+          id: 'callout-region-1',
+          moduleId: null,
+          regionId: 'region-1',
+          arrowTip: { x: 0.1, y: 0.1 },
+          knee: { x: 0.2, y: 0.1 },
+          textBoxPosition: { x: 0.25, y: 0.1 },
+          textBoxWidth: 0.2,
+          textBoxHeight: 0.08,
+        },
+        pageNumber: 1,
+        selectedSpaceId: 'space-1',
+        activeSpaceId: 'space-1',
+        activeRegionId: 'region-2',
+        spaces,
+      }),
+      false
+    );
+  });
+
+  it('keeps normal annotations visible outside survey mode even when a survey module is selected', () => {
+    assert.equal(
+      isAnnotationVisibleInContext({
+        annotation: { moduleId: null, regionId: null },
+        pageNumber: 1,
+        selectedSpaceId: 'space-1',
+        selectedModuleId: 'module-1',
+        showSurveyPanel: false,
+      }),
+      true
+    );
+  });
+
+  it('requires both survey context and matching region context for survey-region annotations', () => {
+    const annotation = { moduleId: 'module-1', regionId: 'region-1' };
+    const baseContext = {
+      annotation,
+      pageNumber: 1,
+      selectedSpaceId: 'space-1',
+      activeSpaceId: 'space-1',
+      activeRegionId: 'region-1',
+      spaces,
+    };
+
+    assert.equal(
+      isAnnotationVisibleInContext({
+        ...baseContext,
+        selectedModuleId: 'module-1',
+        showSurveyPanel: true,
+      }),
+      true
+    );
+
+    assert.equal(
+      isAnnotationVisibleInContext({
+        ...baseContext,
+        selectedModuleId: 'module-1',
+        showSurveyPanel: false,
+      }),
+      false
+    );
+
+    assert.equal(
+      isAnnotationVisibleInContext({
+        ...baseContext,
+        selectedModuleId: 'module-2',
+        showSurveyPanel: true,
+      }),
+      false
+    );
+
+    assert.equal(
+      isAnnotationVisibleInContext({
+        ...baseContext,
+        activeRegionId: 'region-2',
+        selectedModuleId: 'module-1',
+        showSurveyPanel: true,
+      }),
+      false
+    );
+  });
 });

@@ -120,6 +120,31 @@ test('resolveMarqueeHits crossing mode: annotations whose bbox overlaps are sele
   assert.deepEqual(annotationIndices.sort(), [0, 2]);
 });
 
+test('resolveMarqueeHits skips annotations outside the rendered/selectable index set', () => {
+  const marquee = { left: 0, top: 0, right: 100, bottom: 100 };
+  const annotations = {
+    objects: [
+      { type: 'rect', left: 10, top: 10, width: 20, height: 20 },
+      { type: 'rect', left: 30, top: 30, width: 20, height: 20 },
+    ],
+  };
+  const diagnostics = [];
+  const { annotationIndices } = resolveMarqueeHits({
+    marqueeRect: marquee,
+    direction: 'window',
+    annotations,
+    callouts: [],
+    pageWidth: 1000,
+    pageHeight: 800,
+    selectableAnnotationIndices: new Set([0]),
+    onCandidateDiagnostic: (entry) => diagnostics.push(entry),
+  });
+  assert.deepEqual(annotationIndices, [0]);
+  assert.equal(diagnostics.some((entry) =>
+    entry.index === 1 && entry.reason === 'not-rendered-or-not-interactive'
+  ), true);
+});
+
 test('resolveMarqueeHits: empty annotations + empty callouts returns empty result', () => {
   const { annotationIndices, calloutIds } = resolveMarqueeHits({
     marqueeRect: { left: 0, top: 0, right: 100, bottom: 100 },

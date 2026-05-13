@@ -75,8 +75,21 @@ export const AuthProvider = ({ children }) => {
       // hook would re-sign them in. Now we also override when (a) the
       // cached session's user email doesn't match the dev creds, or
       // (b) `getUser()` rejects the cached token as expired/invalid.
-      const devEmail = import.meta.env.VITE_DEV_AUTO_LOGIN_EMAIL;
-      const devPassword = import.meta.env.VITE_DEV_AUTO_LOGIN_PASSWORD;
+      const devOverride = (() => {
+        if (!import.meta.env.DEV || typeof window === 'undefined') return {};
+        try {
+          const raw = window.localStorage?.getItem('__fix20AuthOverride');
+          const parsed = raw ? JSON.parse(raw) : null;
+          if (parsed?.email && parsed?.password) {
+            return { email: parsed.email, password: parsed.password };
+          }
+        } catch {
+          // Ignore malformed dev-only harness state.
+        }
+        return {};
+      })();
+      const devEmail = devOverride.email || import.meta.env.VITE_DEV_AUTO_LOGIN_EMAIL;
+      const devPassword = devOverride.password || import.meta.env.VITE_DEV_AUTO_LOGIN_PASSWORD;
       console.log('[dev-auto-login] boot ' + JSON.stringify({
         hasDevEmail: !!devEmail,
         devEmailHint: devEmail ? devEmail.slice(0, 4) + '***' : null,

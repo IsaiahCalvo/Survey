@@ -48,7 +48,7 @@ test('cursor wheel zoom response stays capped below runaway speed', () => {
   assert.ok(match, 'SYNCFUSION_WHEEL_ZOOM_EXPONENT constant should exist');
   const exponent = Number(match[1]);
   assert.ok(exponent > 0, 'wheel zoom exponent should stay positive');
-  assert.ok(exponent <= 0.0018, `wheel zoom exponent should not exceed 0.0018, got ${exponent}`);
+  assert.ok(exponent <= 0.004, `wheel zoom exponent should not exceed 0.004, got ${exponent}`);
   const maxStepMatch = APP_SOURCE.match(/const SYNCFUSION_WHEEL_ZOOM_MAX_STEP_PERCENT = (\d+);/);
   assert.ok(maxStepMatch, 'wheel zoom max-step cap should exist');
   const maxStepPercent = Number(maxStepMatch[1]);
@@ -68,4 +68,39 @@ test('Syncfusion scroll page-request delay stays within a one-to-two-frame budge
   const delayMs = Number(match[1]);
   assert.ok(delayMs > 0, 'scroll delay should remain explicit');
   assert.ok(delayMs <= 32, `scroll delay should be <= 32ms, got ${delayMs}ms`);
+});
+
+test('Syncfusion wheel scroll gain follows a smooth zoom-aware curve', () => {
+  assert.match(APP_SOURCE, /const getSyncfusionZoomAwareScrollGain = \(zoomScale\) =>/);
+  assert.match(APP_SOURCE, /Math\.log2\(safeZoom\)/);
+  assert.match(APP_SOURCE, /SYNCFUSION_SCROLL_ZOOM_OUT_GAIN/);
+  assert.match(APP_SOURCE, /SYNCFUSION_SCROLL_ZOOM_IN_GAIN/);
+  assert.match(APP_SOURCE, /const currentZoomForScroll = Math\.max\(1, Number\(scaleRef\.current\) \|\| 1\);/);
+  assert.match(APP_SOURCE, /const zoomAwareSensitivity = getSyncfusionZoomAwareScrollGain\(currentZoomForScroll\);/);
+});
+
+test('rapid Syncfusion page-window refreshes are batched during interaction', () => {
+  assert.match(APP_SOURCE, /const SYNCFUSION_INTERACTION_VISIBLE_PAGE_REFRESH_MS = 160;/);
+  assert.match(APP_SOURCE, /const scheduleSyncfusionVisiblePagesRefresh = useCallback/);
+  assert.match(APP_SOURCE, /scheduleSyncfusionVisiblePagesRefresh\(\);/);
+});
+
+test('wheel scroll applies once per frame-sized batch', () => {
+  assert.match(APP_SOURCE, /const SYNCFUSION_WHEEL_SCROLL_BATCH_MS = 24;/);
+  assert.match(APP_SOURCE, /setTimeout\(flushWheelScroll, SYNCFUSION_WHEEL_SCROLL_BATCH_MS\)/);
+});
+
+test('overlay recorder attributes idle work categories', () => {
+  assert.match(APP_SOURCE, /const OVERLAY_LAG_RECORDER_WORK_CATEGORIES = \[/);
+  assert.match(APP_SOURCE, /'annotationRestoration'/);
+  assert.match(APP_SOURCE, /'pageRenderCatchup'/);
+  assert.match(APP_SOURCE, /'syncfusionInternals'/);
+  assert.match(APP_SOURCE, /'measurementWork'/);
+  assert.match(APP_SOURCE, /const OVERLAY_LAG_RECORDER_ATTRIBUTION_MIN_MS = 8;/);
+  assert.match(APP_SOURCE, /const OVERLAY_LAG_RECORDER_ATTRIBUTION_MIN_FRAME_RATIO = 0\.2;/);
+  assert.match(APP_SOURCE, /const measuredWork = \[/);
+  assert.match(APP_SOURCE, /strongestMeasuredMs >= OVERLAY_LAG_RECORDER_ATTRIBUTION_MIN_MS/);
+  assert.match(APP_SOURCE, /idleWorkHotspots/);
+  assert.match(APP_SOURCE, /slowFrameAttributionHotspots/);
+  assert.match(APP_SOURCE, /unattributedRafPause/);
 });

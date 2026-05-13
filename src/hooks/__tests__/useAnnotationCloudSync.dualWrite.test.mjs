@@ -11,8 +11,8 @@
 //   - At least one fabric delete call site fans out to dualWriteFabricDelete
 //   - Kill-switch fallback path preserved (legacy-only when isCRDTEnabled() === false)
 //   - Highlight rows bypass dual-write at the call site (proximity check)
-//   - Callout sync path remains on legacy upsertCallouts (NOT replaced by
-//     dualWriteCallouts variant — v2.5 owns callout migration if any)
+//   - Callout sync path remains on the dedicated upsertCallouts service
+//     surface, with Y.Doc fan-out handled by the callout CRDT bridge.
 //
 // Two-stage skip: outer existsSync passes (file exists today), inner skip
 // happens when `dualWriteFabricCommit` is not yet referenced in the source.
@@ -111,17 +111,17 @@ test(
 );
 
 test(
-  'useAnnotationCloudSync dualWrite #5: callout sync path remains on legacy upsertCallouts (v2.5 owns callout migration)',
+  'useAnnotationCloudSync dualWrite #5: callout sync path uses upsertCallouts and not dualWriteCallouts',
   { skip: !existsSync(TARGET) ? 'useAnnotationCloudSync.js missing' : SKIP_REASON },
   () => {
     if (!dualWriteWired()) return;
     const src = readFileSync(TARGET, 'utf8');
-    // Callouts ride legacy through Phase 30. The hook should still reference
-    // upsertCallouts (Phase 14 callout sync surface). It must NOT have a
-    // dualWriteCallouts variant.
+    // Callouts have their own state slice and Supabase serializer surface.
+    // The hook should still reference upsertCallouts. It must NOT have a
+    // Fabric-style dualWriteCallouts variant.
     assert.ok(
       src.includes('upsertCallouts'),
-      'expected legacy upsertCallouts call sites to remain (callouts ride legacy through Phase 30)'
+      'expected upsertCallouts call sites to remain for callout persistence'
     );
     assert.ok(
       !/dualWriteCallouts\b/.test(src),

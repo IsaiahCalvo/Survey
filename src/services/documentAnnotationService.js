@@ -7,6 +7,11 @@
 import { supabase } from '../supabaseClient';
 import { diffDeletedHighlightIds } from './highlightSyncDiff.js';
 import { highlightSyncDiag } from './highlightSyncDiag.js';
+import { chunkRowsForAnnotationUpsert } from '../utils/annotationBatching.js';
+import {
+  buildHighlightRow,
+  mapHighlightRowToLocalAnnotation,
+} from './documentHighlightMapper.js';
 
 const SUPABASE_PAGE_SIZE = 1000;
 
@@ -149,13 +154,23 @@ export async function upsertAnnotations(annotations) {
     };
   }
 
-  const { data, error } = await supabase
-    .from('document_annotations')
-    .upsert(annotations, {
-      onConflict: 'document_id,highlight_id',
-      ignoreDuplicates: false
-    })
-    .select();
+  const data = [];
+  let error = null;
+  const batches = chunkRowsForAnnotationUpsert(annotations);
+  for (const batch of batches) {
+    const result = await supabase
+      .from('document_annotations')
+      .upsert(batch, {
+        onConflict: 'document_id,highlight_id',
+        ignoreDuplicates: false
+      })
+      .select();
+    if (result.error) {
+      error = result.error;
+      break;
+    }
+    data.push(...(result.data || []));
+  }
 
   if (error) {
     const classification = classifyAnnotationSyncError(error);
@@ -172,7 +187,7 @@ export async function upsertAnnotations(annotations) {
   }
 
   return {
-    data: data || [],
+    data,
     error: null,
     errorClass: null,
     nonRetryable: false,
@@ -277,28 +292,14 @@ export async function syncAnnotationsToSupabase(documentId, userId, highlightAnn
     }
   }
 
-  const annotations = Object.entries(highlightAnnotations || {}).map(([highlightId, annotation]) => ({
-    document_id: documentId,
-    user_id: userId,
-    highlight_id: highlightId,
-    annotation_type: 'highlight',
-    page_number: annotation.pageNumber || 1,
-    bounds: annotation.bounds || {},
-    category_id: annotation.categoryId || null,
-    module_id: annotation.moduleId || null,
-    space_id: annotation.spaceId || null,
-    name: annotation.name || null,
-    notes: annotation.notes || annotation.note || null,
-    ball_in_court_entity_id: annotation.ballInCourtEntityId || null,
-    ball_in_court_name: annotation.ballInCourtEntityName || annotation.ballInCourtName || null,
-    checklist_responses: annotation.checklistResponses || {},
-    changed_by: annotation.changedBy || null,
-    changed_date: annotation.changedDate || null,
-    color: annotation.color || '#FFFF00',
-    opacity: annotation.opacity || 0.3,
-    last_modified_by: userId,
-    version: (annotation.version || 0) + 1
-  }));
+  const annotations = Object.entries(highlightAnnotations || {}).map(([highlightId, annotation]) =>
+    buildHighlightRow({
+      documentId,
+      userId,
+      highlightId,
+      annotation,
+    })
+  );
 
   if (annotations.length === 0) {
     return { success: true, synced: 0 };
@@ -339,27 +340,9 @@ export async function loadAnnotationsFromSupabase(documentId) {
   // Convert to local highlightAnnotations format
   const highlightAnnotations = {};
   for (const annotation of data) {
-    highlightAnnotations[annotation.highlight_id] = {
-      pageNumber: annotation.page_number,
-      bounds: annotation.bounds,
-      categoryId: annotation.category_id,
-      moduleId: annotation.module_id,
-      spaceId: annotation.space_id,
-      name: annotation.name,
-      notes: annotation.notes,
-      note: annotation.notes, // Alias
-      ballInCourtEntityId: annotation.ball_in_court_entity_id,
-      ballInCourtEntityName: annotation.ball_in_court_name,
-      ballInCourtName: annotation.ball_in_court_name, // Legacy alias
-      checklistResponses: annotation.checklist_responses || {},
-      changedBy: annotation.changed_by,
-      changedDate: annotation.changed_date,
-      color: annotation.color,
-      opacity: annotation.opacity,
-      version: annotation.version,
-      supabaseId: annotation.id, // Track the Supabase record ID
-      lastSyncedAt: annotation.updated_at
-    };
+    const localAnnotation = mapHighlightRowToLocalAnnotation(annotation);
+    if (!localAnnotation?.highlightId) continue;
+    highlightAnnotations[localAnnotation.highlightId] = localAnnotation;
   }
 
   return { highlightAnnotations, error: null };
@@ -452,30 +435,7 @@ export function subscribeToDocumentAnnotations(documentId, callbacks = {}) {
  */
 function convertToLocalFormat(record) {
   if (!record) return null;
-  return {
-    highlightId: record.highlight_id,
-    pageNumber: record.page_number,
-    bounds: record.bounds,
-    categoryId: record.category_id,
-    moduleId: record.module_id,
-    spaceId: record.space_id,
-    name: record.name,
-    notes: record.notes,
-    note: record.notes,
-    ballInCourtEntityId: record.ball_in_court_entity_id,
-    ballInCourtEntityName: record.ball_in_court_name,
-    ballInCourtName: record.ball_in_court_name, // Legacy alias
-    checklistResponses: record.checklist_responses || {},
-    changedBy: record.changed_by,
-    changedDate: record.changed_date,
-    color: record.color,
-    opacity: record.opacity,
-    version: record.version,
-    supabaseId: record.id,
-    lastSyncedAt: record.updated_at,
-    userId: record.user_id,
-    lastModifiedBy: record.last_modified_by
-  };
+  return mapHighlightRowToLocalAnnotation(record);
 }
 
 // ============================================

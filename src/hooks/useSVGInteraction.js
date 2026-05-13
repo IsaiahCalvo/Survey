@@ -52,6 +52,31 @@ import {
   MIN_TEXTBOX_TO_ARROW_DISTANCE,
   calculateCalloutConnection,
 } from '../utils/calloutGeometry.js';
+import {
+  beginAnnotationGesture,
+  isAnnotationPreviewDiagEnabled,
+  markAnnotationPointerRelease,
+  markAnnotationPreviewFrame,
+} from '../utils/annotationPreviewDiag.js';
+
+const cloneAnnotations = (annotations) => JSON.parse(JSON.stringify(annotations));
+
+const diagLog = (...args) => {
+  if (!isAnnotationPreviewDiagEnabled()) return;
+  console.log(...args);
+};
+
+const buildPreviewObjects = (updatedAnnotations, originals) => {
+  const previewObjects = {};
+  const sourceObjects = updatedAnnotations?.objects || [];
+  for (const idx of Object.keys(originals || {})) {
+    const numericIdx = Number(idx);
+    if (sourceObjects[numericIdx]) {
+      previewObjects[numericIdx] = sourceObjects[numericIdx];
+    }
+  }
+  return previewObjects;
+};
 
 /**
  * @param {object} options
@@ -110,6 +135,7 @@ export function useSVGInteraction({
   // through but does not currently forward it into useSVGInteraction —
   // Plan 35-04 forwards it via SVGAnnotationLayer's prop pass-through.
   pageNumber,
+  getSelectableAnnotationIndices,
   // Phase 35 Plan 04 — bulk-delete interceptor. Optional callback. When
   // App.jsx provides it, deleteSelected invokes it with
   // ({ candidateIds, snapshotObjects, pageNumber, runDelete }) BEFORE
@@ -185,6 +211,7 @@ export function useSVGInteraction({
     // freeze in place rather than tunneling through the constraint. Updated
     // each safe frame; seeded from originalCalloutPositions at pointerdown.
     lastSafeCalloutPositions: null,
+    diagGestureId: null,
   });
   const interactionStateRef = useRef('idle');
 
@@ -415,9 +442,12 @@ export function useSVGInteraction({
    */
   const handleAnnotationPointerDown = useCallback((e, index) => {
     e.stopPropagation();
+    if (dragStateRef.current?.active && dragStateRef.current.annotationIndex === index) {
+      return;
+    }
     if (typeof window !== 'undefined' && window.__LINE_BBOX_DIAG) try {
       const obj = annotations?.objects?.[index];
-      console.log('[BboxScaleDiag] annotation-pointerdown ' + JSON.stringify({
+      diagLog('[BboxScaleDiag] annotation-pointerdown ' + JSON.stringify({
         ts: new Date().toISOString(), annotationIndex: index,
         objType: obj?.type, objTool: obj?.tool,
         shiftKey: e.shiftKey, altKey: e.altKey, metaKey: e.metaKey,
@@ -566,7 +596,9 @@ export function useSVGInteraction({
     // Initiate drag-to-move
     const obj = annotations?.objects?.[index];
     if (obj) {
-      e.target.setPointerCapture(e.pointerId);
+      if (e.pointerId != null) {
+        try { e.target.setPointerCapture(e.pointerId); } catch (_) { /* optional */ }
+      }
       const ctm = svgRef.current?.getScreenCTM();
       const ctmInverse = ctm ? ctm.inverse() : null;
       const svgPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
@@ -860,7 +892,7 @@ export function useSVGInteraction({
           groupCalloutOriginals: calloutOriginalsCO,
         };
         try {
-          console.log('[GroupTransformDiag] callout-pointerdown-group-move ' + JSON.stringify({
+          diagLog('[GroupTransformDiag] callout-pointerdown-group-move ' + JSON.stringify({
             ts: new Date().toISOString(),
             calloutId,
             selectedAnnotationIds: Array.from(selectedIds || []),
@@ -1103,6 +1135,22 @@ export function useSVGInteraction({
 
     const ds = dragStateRef.current;
     if (!ds.active) return;
+    if (!ds.diagGestureId) {
+      const targetObj = annotations?.objects?.[ds.annotationIndex];
+      ds.diagGestureId = beginAnnotationGesture({
+        surface: 'SVGAnnotationLayer',
+        tool: activeTool || targetObj?.tool || targetObj?.data?.type || targetObj?.type || null,
+        type: targetObj?.data?.type || targetObj?.type || (ds.calloutId ? 'callout' : 'annotation'),
+        action: ds.mode,
+        annotationId: ds.calloutId || targetObj?.id || targetObj?.data?.id || ds.annotationIndex,
+        pointerDown: true,
+      });
+    }
+    markAnnotationPreviewFrame(ds.diagGestureId, {
+      action: ds.mode,
+      handleId: ds.handleId || null,
+      partType: ds.partType || null,
+    });
 
     // Convert current pointer position to SVG coords using CACHED ctmInverse
     const pt = new DOMPoint(e.clientX, e.clientY);
@@ -1131,15 +1179,17 @@ export function useSVGInteraction({
         const tipDistance = radius + tipExtension;
         const tipX = bodyX + Math.cos(rad) * tipDistance;
         const tipY = bodyY + Math.sin(rad) * tipDistance;
-        const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
+        const updatedAnnotations = cloneAnnotations(annotations);
         const targetObj = updatedAnnotations.objects?.[ds.annotationIndex];
         if (targetObj) {
           targetObj.left = newLeft;
           targetObj.top = newTop;
-          onSaveAnnotations(updatedAnnotations, {
-            source: 'counter:move-to-orbit',
-            action: 'counter-move',
-            checkpointPolicy: 'skip',
+          ds.currentAnnotations = updatedAnnotations;
+          setVisualTransform({
+            id: ds.annotationIndex,
+            dx: 0,
+            dy: 0,
+            previewObjects: { [ds.annotationIndex]: targetObj },
           });
         }
         ds.mode = 'counter-orbit';
@@ -1159,7 +1209,8 @@ export function useSVGInteraction({
       // Commit the current orbit pose as 'skip' so obj.left/top reflect
       // the swung body, then start a fresh move drag from here — no jump.
       if (!e.shiftKey) {
-        const orbObj = annotations?.objects?.[ds.annotationIndex];
+        const orbObj = ds.currentAnnotations?.objects?.[ds.annotationIndex]
+          || annotations?.objects?.[ds.annotationIndex];
         if (orbObj?.data?.type === 'counter') {
           ds.mode = 'move';
           ds.startSVGPoint = { x: svgPoint.x, y: svgPoint.y };
@@ -1190,16 +1241,18 @@ export function useSVGInteraction({
       const newBodyX = ds.anchorX + ds.counterTipDistance * dirX;
       const newBodyY = ds.anchorY + ds.counterTipDistance * dirY;
       const newAngleDeg = ((Math.atan2(-dirY, -dirX) * 180 / Math.PI) + 360) % 360;
-      const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
+      const updatedAnnotations = cloneAnnotations(ds.currentAnnotations || annotations);
       const targetObj = updatedAnnotations.objects?.[ds.annotationIndex];
       if (targetObj) {
         targetObj.left = newBodyX - ds.counterRadius;
         targetObj.top = newBodyY - ds.counterRadius;
         targetObj.data = { ...(targetObj.data || {}), pointerAngle: newAngleDeg };
-        onSaveAnnotations(updatedAnnotations, {
-          source: 'counter:orbit-live',
-          action: 'counter-rotate',
-          checkpointPolicy: 'skip',
+        ds.currentAnnotations = updatedAnnotations;
+        setVisualTransform({
+          id: ds.annotationIndex,
+          dx: 0,
+          dy: 0,
+          previewObjects: { [ds.annotationIndex]: targetObj },
         });
       }
       setInteractionState('rotating');
@@ -1229,7 +1282,7 @@ export function useSVGInteraction({
       if (!lastLog3 || nowMs3 - lastLog3 >= 120) {
         ds.lastGroupMoveLogAt = nowMs3;
         try {
-          console.log('[GroupTransformDiag] move ' + JSON.stringify({
+          diagLog('[GroupTransformDiag] move ' + JSON.stringify({
             ts: new Date().toISOString(),
             pointerSVG: { x: svgPoint.x, y: svgPoint.y },
             pageDelta: { x: dx, y: dy },
@@ -1261,7 +1314,7 @@ export function useSVGInteraction({
       const pivotX = ds.centerX;
       const pivotY = ds.centerY;
 
-      const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
+      const updatedAnnotations = cloneAnnotations(annotations);
       for (const idxStr of Object.keys(ds.groupMemberOriginals)) {
         const idx = Number(idxStr);
         const orig = ds.groupMemberOriginals[idxStr];
@@ -1340,11 +1393,7 @@ export function useSVGInteraction({
         }
       }
 
-      onSaveAnnotations(updatedAnnotations, {
-        source: 'object:modified',
-        action: 'group-rotate',
-        checkpointPolicy: 'skip',
-      });
+      ds.currentAnnotations = updatedAnnotations;
       ds.currentAngle = delta;
       // UX: 2026-04-20 v2 — broadcast group-rotate state so the multi-
       // select chrome can render its outer dashed bbox as a RIGID FRAME
@@ -1363,6 +1412,7 @@ export function useSVGInteraction({
           pivotY,
           snapshotBbox: ds.groupUnionOriginal,
         },
+        previewObjects: buildPreviewObjects(updatedAnnotations, ds.groupMemberOriginals),
       });
       setInteractionState('rotating');
 
@@ -1373,7 +1423,7 @@ export function useSVGInteraction({
       if (!lastLog || nowMs - lastLog >= 120) {
         ds.lastGroupRotLogAt = nowMs;
         try {
-          console.log('[GroupTransformDiag] rotate-move ' + JSON.stringify({
+          diagLog('[GroupTransformDiag] rotate-move ' + JSON.stringify({
             ts: new Date().toISOString(),
             pointerSVG: { x: svgPoint.x, y: svgPoint.y },
             currentAngleDeg: cur,
@@ -1512,7 +1562,7 @@ export function useSVGInteraction({
         return toWorld(scaledX, scaledY);
       };
 
-      const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
+      const updatedAnnotations = cloneAnnotations(annotations);
       for (const idxStr of Object.keys(ds.groupMemberOriginals)) {
         const idx = Number(idxStr);
         const orig = ds.groupMemberOriginals[idxStr];
@@ -1594,11 +1644,7 @@ export function useSVGInteraction({
         }
       }
 
-      onSaveAnnotations(updatedAnnotations, {
-        source: 'object:modified',
-        action: 'group-resize',
-        checkpointPolicy: 'skip',
-      });
+      ds.currentAnnotations = updatedAnnotations;
       ds.currentResize = { sx, sy, ax, ay };
 
       // UX: 2026-04-21 v7 — broadcast groupResize so the renderer can
@@ -1624,11 +1670,15 @@ export function useSVGInteraction({
             width: Math.abs(persist.snapW * sx),
             height: Math.abs(persist.snapH * sy),
           },
+          previewObjects: buildPreviewObjects(updatedAnnotations, ds.groupMemberOriginals),
         });
       } else {
-        // Un-rotated resize: the renderer falls back to live union AABB
-        // for the frame; clear any stale live transform.
-        setVisualTransform(null);
+        setVisualTransform({
+          id: 'group',
+          dx: 0,
+          dy: 0,
+          previewObjects: buildPreviewObjects(updatedAnnotations, ds.groupMemberOriginals),
+        });
       }
 
       setInteractionState('resizing');
@@ -1647,7 +1697,7 @@ export function useSVGInteraction({
             const ncLY = anchorLocal.y + (persist.pivotY - anchorLocal.y) * sy;
             return toWorld(ncLX, ncLY);
           })() : null;
-          console.log('[GroupTransformDiag] resize-move ' + JSON.stringify({
+          diagLog('[GroupTransformDiag] resize-move ' + JSON.stringify({
             ts: new Date().toISOString(),
             handleId: ds.handleId,
             hasPersistRot,
@@ -1740,15 +1790,17 @@ export function useSVGInteraction({
       const newLeft = left + rotatedDrcX - drcX;
       const newTop = top + rotatedDrcY - drcY;
 
-      const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
+      const updatedAnnotations = cloneAnnotations(annotations);
       const targetObj = updatedAnnotations.objects[ds.annotationIndex];
       targetObj.points = newPoints;
       targetObj.left = newLeft;
       targetObj.top = newTop;
-      onSaveAnnotations(updatedAnnotations, {
-        source: 'object:modified',
-        action: 'vertex-move',
-        checkpointPolicy: 'skip',
+      ds.currentAnnotations = updatedAnnotations;
+      setVisualTransform({
+        id: ds.annotationIndex,
+        dx: 0,
+        dy: 0,
+        previewObjects: { [ds.annotationIndex]: targetObj },
       });
       setInteractionState('dragging');
     } else if (ds.mode === 'endpoint') {
@@ -1879,7 +1931,7 @@ export function useSVGInteraction({
             finalLocalPoints: { p1: finalP1, p2: finalP2, mid: finalMid },
             previewEndpointData: endpointData,
           };
-          console.log('[BboxScaleDiag] endpoint-move ' + JSON.stringify(payload));
+          diagLog('[BboxScaleDiag] endpoint-move ' + JSON.stringify(payload));
         } catch (err) { console.warn('[BboxScaleDiag] endpoint-move log failed', err); }
       }
 
@@ -2167,7 +2219,7 @@ export function useSVGInteraction({
               x1: curObj.x1, y1: curObj.y1, x2: curObj.x2, y2: curObj.y2,
             } : null,
           };
-          console.log('[BboxScaleDiag] move ' + JSON.stringify(movePayload));
+          diagLog('[BboxScaleDiag] move ' + JSON.stringify(movePayload));
         } catch (err) { console.warn('[BboxScaleDiag] move log failed', err); }
       }
 
@@ -2216,17 +2268,13 @@ export function useSVGInteraction({
       const rotObj = annotations?.objects?.[ds.annotationIndex];
       if (rotObj?.data?.type === 'counter') {
         const counterPointerAngle = ((newAngle - 90) % 360 + 360) % 360;
-        const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
-        const targetObj = updatedAnnotations.objects?.[ds.annotationIndex];
-        if (targetObj) {
-          targetObj.data = { ...(targetObj.data || {}), pointerAngle: counterPointerAngle };
-          onSaveAnnotations(updatedAnnotations, {
-            source: 'counter:handle-rotate-live',
-            action: 'counter-rotate',
-            checkpointPolicy: 'skip',
-          });
-        }
         dragStateRef.current.currentAngle = counterPointerAngle;
+        setVisualTransform({
+          id: ds.annotationIndex,
+          dx: 0,
+          dy: 0,
+          counterPointerAngle,
+        });
         setInteractionState('rotating');
         return;
       }
@@ -2274,7 +2322,7 @@ export function useSVGInteraction({
               points: Array.isArray(curObj.points) ? curObj.points.length : undefined,
             } : null,
           };
-          console.log('[BboxScaleDiag] rotate-move ' + JSON.stringify(rotPayload));
+          diagLog('[BboxScaleDiag] rotate-move ' + JSON.stringify(rotPayload));
         } catch (err) { console.warn('[BboxScaleDiag] rotate-move log failed', err); }
       }
     } else if (ds.mode === 'callout-part') {
@@ -2368,16 +2416,16 @@ export function useSVGInteraction({
           const newBottom = Math.max(anchorY, mvY);
           const newWidth = Math.max(minW, newRight - newLeft);
           const newHeight = Math.max(minH, newBottom - newTop);
-          // Emit the resize patch directly — no distance-rule validation
-          // on resize (textbox can shrink/grow freely; rollback handles
-          // dropping the box onto the arrow/knee on release).
-          if (onUpdateCalloutLive && ds.calloutId) {
-            onUpdateCalloutLive(ds.calloutId, {
-              textBoxPosition: { x: newLeft, y: newTop },
-              textBoxWidth: newWidth,
-              textBoxHeight: newHeight,
-            });
-          }
+          const resizePatch = {
+            textBoxPosition: { x: newLeft, y: newTop },
+            textBoxWidth: newWidth,
+            textBoxHeight: newHeight,
+          };
+          ds.currentCalloutPatch = resizePatch;
+          setVisualTransform({
+            id: 'callout',
+            calloutPreviews: { [ds.calloutId]: resizePatch },
+          });
           setInteractionState('dragging');
           return;
         }
@@ -2495,12 +2543,12 @@ export function useSVGInteraction({
           return;
       }
 
-      // UX: live paint during drag — onUpdateCalloutLive updates React
-      // state without a checkpoint (checkpoint fires once on pointerup
-      // via onUpdateCallout). Mirrors the Phase 12 optimistic rotation
-      // paint pattern for smooth drag without bloating the undo stack.
-      if (patch && onUpdateCalloutLive && ds.calloutId) {
-        onUpdateCalloutLive(ds.calloutId, patch);
+      if (patch && ds.calloutId) {
+        ds.currentCalloutPatch = patch;
+        setVisualTransform({
+          id: 'callout',
+          calloutPreviews: { [ds.calloutId]: patch },
+        });
       }
       setInteractionState('dragging');
     }
@@ -2539,6 +2587,36 @@ export function useSVGInteraction({
         callouts,
         pageWidth,
         pageHeight,
+        selectableAnnotationIndices: typeof getSelectableAnnotationIndices === 'function'
+          ? getSelectableAnnotationIndices()
+          : undefined,
+        onCandidateDiagnostic: (entry) => {
+          if (typeof window === 'undefined') return;
+          if (!window.__marqueeHitDiagnostics) window.__marqueeHitDiagnostics = [];
+          const obj = entry?.obj || null;
+          window.__marqueeHitDiagnostics.push({
+            at: new Date().toISOString(),
+            pageNumber,
+            index: entry?.index,
+            included: entry?.included,
+            reason: entry?.reason,
+            bbox: entry?.bbox || null,
+            id: obj?.id || null,
+            fabricId: obj?.data?.fabricId || null,
+            highlightId: obj?.highlightId || obj?.data?.highlightId || null,
+            type: obj?.type || null,
+            tool: obj?.tool || null,
+            dataType: obj?.data?.type || null,
+            fill: obj?.fill ?? null,
+            stroke: obj?.stroke ?? null,
+            strokeWidth: obj?.strokeWidth ?? null,
+            opacity: obj?.opacity ?? null,
+            visible: obj?.visible ?? null,
+            moduleId: obj?.moduleId || null,
+            regionId: obj?.regionId || null,
+            spaceId: obj?.spaceId || null,
+          });
+        },
       });
       // Phase 35 Plan 03 — owner-aware marquee post-filter. CONTEXT.md AC #1:
       // a non-owner marquee across mixed-author content only catches the
@@ -2610,6 +2688,11 @@ export function useSVGInteraction({
 
     const ds = dragStateRef.current;
     if (!ds.active) return;
+    markAnnotationPointerRelease(ds.diagGestureId, {
+      action: ds.mode,
+      handleId: ds.handleId || null,
+      partType: ds.partType || null,
+    });
 
     if (ds.mode === 'move') {
       const pt = new DOMPoint(e.clientX, e.clientY);
@@ -2720,8 +2803,9 @@ export function useSVGInteraction({
       const moveDy = endPoint.y - ds.startSVGPoint.y;
       const movedFar = (moveDx * moveDx + moveDy * moveDy) > 9; // ~3px threshold
       if (movedFar) {
-        if (annotations?.objects?.[ds.annotationIndex]) {
-          onSaveAnnotations(annotations, {
+        const finalAnnotations = ds.currentAnnotations || annotations;
+        if (finalAnnotations?.objects?.[ds.annotationIndex]) {
+          onSaveAnnotations(finalAnnotations, {
             source: 'counter:orbit-commit',
             action: 'counter-rotate',
             checkpointPolicy: 'normal',
@@ -2749,13 +2833,9 @@ export function useSVGInteraction({
         });
       }
     } else if (ds.mode === 'vertex') {
-      // UX 2026-04-20: commit vertex drag. The pointermove branch has been
-      // live-saving each point update with checkpointPolicy:'skip', so the
-      // annotation JSON already carries the final points. Re-save once with
-      // checkpointPolicy:'normal' to land a single undo entry for the entire
-      // drag. No further mutation needed.
-      if (annotations?.objects?.[ds.annotationIndex]) {
-        onSaveAnnotations(annotations, {
+      const finalAnnotations = ds.currentAnnotations || annotations;
+      if (finalAnnotations?.objects?.[ds.annotationIndex]) {
+        onSaveAnnotations(finalAnnotations, {
           source: 'object:modified',
           action: 'vertex-move',
           checkpointPolicy: 'normal',
@@ -2805,13 +2885,8 @@ export function useSVGInteraction({
       });
     } else if ((ds.mode === 'group-rotate' || ds.mode === 'group-resize')
                && ds.groupMemberOriginals) {
-      // UX: 2026-04-20 — Group transform commit. The pointermove branch has
-      // already written each frame's geometry with checkpointPolicy: 'skip',
-      // so the source-of-truth annotations array IS the final geometry. We
-      // just need to fire one more save with checkpointPolicy: 'normal' to
-      // capture the entire drag as a single undo entry. Same pattern as the
-      // counter-orbit + rotation-handle commits.
-      onSaveAnnotations(annotations, {
+      const finalAnnotations = ds.currentAnnotations || annotations;
+      onSaveAnnotations(finalAnnotations, {
         source: 'object:modified',
         action: ds.mode,
         checkpointPolicy: 'normal',
@@ -2834,7 +2909,7 @@ export function useSVGInteraction({
         setVisualTransform(null);
       }
       try {
-        console.log('[GroupTransformDiag] commit ' + JSON.stringify({
+        diagLog('[GroupTransformDiag] commit ' + JSON.stringify({
           ts: new Date().toISOString(),
           mode: ds.mode,
           handleId: ds.handleId,
@@ -2842,7 +2917,7 @@ export function useSVGInteraction({
           finalScale: ds.currentResize,
           memberFinal: Object.keys(ds.groupMemberOriginals).reduce((acc, idxStr) => {
             const idx = Number(idxStr);
-            const t = annotations.objects?.[idx];
+            const t = finalAnnotations.objects?.[idx];
             if (!t) return acc;
             acc[idx] = {
               type: t.type, dataType: t.data?.type,
@@ -3139,15 +3214,14 @@ export function useSVGInteraction({
           committedBbox: committedObj ? getAnnotationBBox(committedObj) : null,
           originalPropsAtStart: ds.originalProps,
         };
-        console.log('[BboxScaleDiag] commit resize ' + JSON.stringify(commitPayload));
+        diagLog('[BboxScaleDiag] commit resize ' + JSON.stringify(commitPayload));
       } catch (err) { console.warn('[BboxScaleDiag] commit log failed', err); }
     } else if (ds.mode === 'rotate' && ds.currentAngle !== undefined) {
       const updatedAnnotations = JSON.parse(JSON.stringify(annotations));
       const rotObj = updatedAnnotations.objects[ds.annotationIndex];
       const rotObjType = String(rotObj?.type || '').toLowerCase();
-      // UX 2026-04-20: counter rotation wrote directly to data.pointerAngle
-      // each pointermove tick with 'skip' checkpoints. Re-save now with a
-      // normal checkpoint so the whole handle drag collapses to one undo.
+      // Counter handle rotation previews through visualTransform during
+      // pointermove; commit the final pointerAngle once on release.
       if (rotObj?.data?.type === 'counter') {
         rotObj.data = { ...(rotObj.data || {}), pointerAngle: ds.currentAngle };
         onSaveAnnotations(updatedAnnotations, {
@@ -3202,7 +3276,7 @@ export function useSVGInteraction({
           originalPropsAtStart: ds.originalProps,
           center: { x: ds.centerX, y: ds.centerY },
         };
-        console.log('[BboxScaleDiag] commit rotate ' + JSON.stringify(rotCommitPayload));
+        diagLog('[BboxScaleDiag] commit rotate ' + JSON.stringify(rotCommitPayload));
       } catch (err) { console.warn('[BboxScaleDiag] rotate commit log failed', err); }
     } else if (ds.mode === 'callout-part' && ds.calloutId) {
       // UX: Phase 14 CALL-10 — commit the callout drag. The live-paint
@@ -3220,16 +3294,20 @@ export function useSVGInteraction({
       // captured during the drag) so the callout visibly snaps back to
       // the last good spot. 'whole' drags are trivially safe and skip
       // the check.
-      if (onUpdateCalloutLive && ds.lastSafeCalloutPositions && ds.partType !== 'whole') {
+      const commitCalloutPatch = ds.currentCalloutPatch || null;
+      let finalCalloutPatch = commitCalloutPatch;
+      const currentCalloutFromPreview = (() => {
+        const calloutArr = Array.isArray(callouts) ? callouts : [];
+        const base = calloutArr.find((c) => c && c.id === ds.calloutId);
+        return base && commitCalloutPatch ? { ...base, ...commitCalloutPatch } : base;
+      })();
+
+      if (ds.lastSafeCalloutPositions && ds.partType !== 'whole') {
         const W = pageWidth || 1;
         const H = pageHeight || 1;
         const last = ds.lastSafeCalloutPositions;
         const original = ds.originalCalloutPositions;
-        // Look up the final committed-during-drag position from the
-        // callouts array — onUpdateCalloutLive has already landed the raw
-        // proposed patch there each frame.
-        const calloutArr = Array.isArray(callouts) ? callouts : [];
-        const current = calloutArr.find((c) => c && c.id === ds.calloutId);
+        const current = currentCalloutFromPreview;
         if (current && original) {
           const at = { x: (current.arrowTip?.x ?? 0) * W, y: (current.arrowTip?.y ?? 0) * H };
           const kn = { x: (current.knee?.x ?? 0) * W, y: (current.knee?.y ?? 0) * H };
@@ -3308,7 +3386,7 @@ export function useSVGInteraction({
             // clicked the handle), not an intermediate safe frame from
             // the drag. Matches user intent: invalid drop → return to
             // where we started this drag.
-            onUpdateCalloutLive(ds.calloutId, {
+            finalCalloutPatch = {
               arrowTip: original.arrowTip,
               knee: original.knee,
               textBoxPosition: original.textBoxPosition,
@@ -3317,34 +3395,40 @@ export function useSVGInteraction({
               // its pre-drag position.
               textBoxWidth: original.textBoxWidth,
               textBoxHeight: original.textBoxHeight,
-            });
-          } else if (
-            ds.partType === 'arrowTip'
-            || ds.partType === 'textBox'
-            || ds.partType === 'textBoxResize'
-          ) {
-            // UX: Phase 15 UAT-3 (2026-04-18) — when the final state is
-            // valid but required auto-routing (stored knee sits inside
-            // the new textbox, or the stored knee→arrow line crosses
-            // the new textbox), persist the routed midpoint as the new
-            // stored knee so a subsequent click on the visible knee
-            // grabs where the user sees it — not where it used to be.
-            const conn = calculateCalloutConnection(
-              bl, bt, bw, bh, kn, at, 0
-            );
-            const routedX = conn.effectiveKnee.x;
-            const routedY = conn.effectiveKnee.y;
-            const drift = Math.hypot(routedX - kn.x, routedY - kn.y);
-            if (drift > 0.5) {
-              onUpdateCalloutLive(ds.calloutId, {
-                knee: { x: routedX / W, y: routedY / H },
-              });
+            };
+          } else {
+            if (
+              ds.partType === 'arrowTip'
+              || ds.partType === 'textBox'
+              || ds.partType === 'textBoxResize'
+            ) {
+              // UX: Phase 15 UAT-3 (2026-04-18) — when the final state is
+              // valid but required auto-routing (stored knee sits inside
+              // the new textbox, or the stored knee→arrow line crosses
+              // the new textbox), persist the routed midpoint as the new
+              // stored knee so a subsequent click on the visible knee
+              // grabs where the user sees it — not where it used to be.
+              const conn = calculateCalloutConnection(
+                bl, bt, bw, bh, kn, at, 0
+              );
+              const routedX = conn.effectiveKnee.x;
+              const routedY = conn.effectiveKnee.y;
+              const drift = Math.hypot(routedX - kn.x, routedY - kn.y);
+              if (drift > 0.5) {
+                finalCalloutPatch = {
+                  ...(finalCalloutPatch || {}),
+                  knee: { x: routedX / W, y: routedY / H },
+                };
+              }
             }
           }
         }
       }
-      if (onUpdateCallout) {
-        onUpdateCallout(ds.calloutId, {});
+      const hasFinalCalloutPatch = finalCalloutPatch
+        && typeof finalCalloutPatch === 'object'
+        && Object.keys(finalCalloutPatch).length > 0;
+      if (onUpdateCallout && hasFinalCalloutPatch) {
+        onUpdateCallout(ds.calloutId, finalCalloutPatch || {});
       }
       try { e.target?.releasePointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
       setActiveCalloutDrag(null);
@@ -3367,7 +3451,7 @@ export function useSVGInteraction({
       // fields alongside the rest of the drag state so the next drag
       // starts with a clean slate. Miss one and the drag gets stuck.
       partType: null, calloutId: null, originalCalloutPositions: null,
-      lastSafeCalloutPositions: null, textBoxCorner: null,
+      lastSafeCalloutPositions: null, textBoxCorner: null, currentCalloutPatch: null,
       // Phase 15 LINE-01/02/03 — four-place invariant for the 'midpoint'
       // drag mode. originalMidpoint is SET at pointerdown (both 'midpoint'
       // AND 'endpoint' dispatch branches set it), READ at pointermove AND
@@ -3377,10 +3461,12 @@ export function useSVGInteraction({
       // UX 2026-04-20: vertex-drag fields (polygon/polyline per-point drag).
       // Reset alongside the rest so the next drag starts clean.
       originalPoints: null, vertexIndex: null,
+      currentAnnotations: null,
+      diagGestureId: null,
     };
     setVisualTransform(null);
     setInteractionState('idle');
-  }, [annotations, pageWidth, pageHeight, onSaveAnnotations, svgRef, onUpdateCallout, onUpdateCalloutLive, callouts, applyMarqueeState, deselectAll, onSelectedCalloutIdsChange]);
+  }, [annotations, pageWidth, pageHeight, onSaveAnnotations, svgRef, onUpdateCallout, onUpdateCalloutLive, callouts, applyMarqueeState, deselectAll, onSelectedCalloutIdsChange, activeTool, viewerId, documentOwnerId, pageNumber, getSelectableAnnotationIndices]);
 
   /**
    * Handle pointer down on a selection handle (resize/rotate).
@@ -3426,7 +3512,7 @@ export function useSVGInteraction({
       })();
       if (hasCallout) {
         try {
-          console.log('[GroupTransformDiag] blocked-by-callout ' + JSON.stringify({
+          diagLog('[GroupTransformDiag] blocked-by-callout ' + JSON.stringify({
             ts: new Date().toISOString(), handleId,
             selectedIds: Array.from(selectedIds || []),
             selectedCalloutIds: (selectedCalloutIds instanceof Set ? Array.from(selectedCalloutIds) : selectedCalloutIds || []),
@@ -3614,7 +3700,7 @@ export function useSVGInteraction({
       };
 
       try {
-        console.log('[GroupTransformDiag] start ' + JSON.stringify({
+        diagLog('[GroupTransformDiag] start ' + JSON.stringify({
           ts: new Date().toISOString(),
           mode: isRotate ? 'group-rotate' : 'group-resize',
           handleId,
@@ -3704,7 +3790,7 @@ export function useSVGInteraction({
         originalProps: { angle: obj.angle || 0 },
       };
       if (typeof window !== 'undefined' && window.__LINE_BBOX_DIAG) try {
-        console.log('[BboxScaleDiag] start ' + JSON.stringify({
+        diagLog('[BboxScaleDiag] start ' + JSON.stringify({
           ts: new Date().toISOString(), mode: 'midpoint', handleId, annotationIndex: selectedIndex,
           objType: obj.type, objTool: obj.tool, startPointerSVG: { x: svgPoint?.x, y: svgPoint?.y },
           originalEndpoints: ep, originalMidpoint,
@@ -3751,7 +3837,7 @@ export function useSVGInteraction({
     if (handleId === 'p1' || handleId === 'p2') {
       const ep = getLineEndpoints(obj);
       if (typeof window !== 'undefined' && window.__LINE_BBOX_DIAG) try {
-        console.log('[BboxScaleDiag] start ' + JSON.stringify({
+        diagLog('[BboxScaleDiag] start ' + JSON.stringify({
           ts: new Date().toISOString(), mode: 'endpoint', handleId, annotationIndex: selectedIndex,
           objType: obj.type, objTool: obj.tool, startPointerSVG: { x: svgPoint?.x, y: svgPoint?.y },
           originalEndpoints: ep,
@@ -3990,7 +4076,7 @@ export function useSVGInteraction({
           data: obj.data,
         },
       };
-      console.log('[BboxScaleDiag] start ' + JSON.stringify(startPayload));
+      diagLog('[BboxScaleDiag] start ' + JSON.stringify(startPayload));
     } catch (err) { console.warn('[BboxScaleDiag] start log failed', err); }
   }, [selectedIds, annotations, svgRef]);
 

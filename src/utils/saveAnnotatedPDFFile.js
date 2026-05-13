@@ -22,6 +22,7 @@ export async function saveAnnotatedPDFFile({
   annotationsByPage,
   pageSizes,
   defaultName,
+  documentId = null,
 }) {
   let bytes;
   try {
@@ -30,7 +31,7 @@ export async function saveAnnotatedPDFFile({
       annotationsByPage,
       pageSizes,
       null,
-      { returnBytes: true }
+      { returnBytes: true, actionType: 'pdf-export', documentId }
     );
   } catch (err) {
     return { canceled: false, error: err?.message || String(err) };
@@ -53,6 +54,15 @@ export async function saveAnnotatedPDFFile({
       });
       if (result?.canceled) return { canceled: true };
       if (result?.error) return { canceled: false, error: result.error };
+      console.log('[PDFSaveExport] explicit export file write complete ' + JSON.stringify({
+        actionType: 'pdf-export',
+        documentId,
+        pdfBytesGenerated: true,
+        localFilesystemWrite: true,
+        outputPath: result?.filePath || null,
+        byteLength: bytes?.length || bytes?.byteLength || 0,
+        embeddedPdfNativeAnnotationHandling: 'preserve-native-layer-and-skip-imported-app-copies'
+      }));
       return { canceled: false, filePath: result?.filePath };
     } catch (err) {
       return { canceled: false, error: err?.message || String(err) };
@@ -78,6 +88,15 @@ export async function saveAnnotatedPDFFile({
       const writable = await handle.createWritable();
       await writable.write(bytes);
       await writable.close();
+      console.log('[PDFSaveExport] explicit export file write complete ' + JSON.stringify({
+        actionType: 'pdf-export',
+        documentId,
+        pdfBytesGenerated: true,
+        localFilesystemWrite: true,
+        outputPath: handle.name || null,
+        byteLength: bytes?.length || bytes?.byteLength || 0,
+        embeddedPdfNativeAnnotationHandling: 'preserve-native-layer-and-skip-imported-app-copies'
+      }));
       return { canceled: false, fileName: handle.name };
     } catch (err) {
       // User cancelled the picker — surface as canceled, not an error
@@ -100,6 +119,15 @@ export async function saveAnnotatedPDFFile({
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    console.log('[PDFSaveExport] explicit export browser download triggered ' + JSON.stringify({
+      actionType: 'pdf-export',
+      documentId,
+      pdfBytesGenerated: true,
+      localFilesystemWrite: false,
+      outputPath: suggestedName,
+      byteLength: bytes?.length || bytes?.byteLength || 0,
+      embeddedPdfNativeAnnotationHandling: 'preserve-native-layer-and-skip-imported-app-copies'
+    }));
     return { canceled: false, fileName: suggestedName, autoDownloaded: true };
   } catch (err) {
     return { canceled: false, error: err?.message || String(err) };

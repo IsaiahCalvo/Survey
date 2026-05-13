@@ -1169,13 +1169,37 @@ function YDocProviderInner({ docId, children, closeDocument }) {
     //
     // Exposed here so consumers can pull the same factory regardless of
     // which transport is locked in 28-BENCHMARK.md.
-    getOriginContext: () => buildOrigin({
-      userId: supabase?.auth?.session?.()?.data?.session?.user?.id
-        ?? supabase?.auth?.user?.()?.id,
-      deviceId: getDeviceId(),
-      sessionId,
-      clientID: ydoc?.clientID,
-    }),
+    // 2026-05-07 — Origin context now returns the memoized per-user
+    // local-fabric origin so the undo manager's trackedOrigins Set has
+    // a reference-equal match when the bridge runs ydoc.transact. The
+    // previous buildOrigin call returned a fresh frozen object on every
+    // invocation with source='local' instead of 'local-fabric', so the
+    // undo manager never recorded any local edits and Cmd+Z had nothing
+    // to pop. Falls back to buildOrigin only when userId is missing
+    // (boot before auth resolved); that path is non-undoable but
+    // preserves the previous defensive shape.
+    getOriginContext: () => {
+      const userIdResolved = undoState?.undoCtx?.userId
+        ?? supabase?.auth?.session?.()?.data?.session?.user?.id
+        ?? supabase?.auth?.user?.()?.id
+        ?? null;
+      const deviceIdResolved = undoState?.undoCtx?.deviceId ?? getDeviceId();
+      const clientIDResolved = undoState?.undoCtx?.clientID ?? ydoc?.clientID;
+      if (userIdResolved) {
+        return getLocalFabricOrigin({
+          userId: userIdResolved,
+          deviceId: deviceIdResolved,
+          sessionId,
+          clientID: clientIDResolved,
+        });
+      }
+      return buildOrigin({
+        userId: userIdResolved,
+        deviceId: deviceIdResolved,
+        sessionId,
+        clientID: clientIDResolved,
+      });
+    },
     // Phase 29 additions — per-user Y.UndoManager + the ctx object the bridge
     // and the App.jsx Cmd+Z handler both need. undoCtx carries the same identity
     // payload (userId/deviceId/sessionId/clientID) that getOriginContext seeds,
