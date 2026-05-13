@@ -95,25 +95,25 @@ const PDFSidebar = React.forwardRef(({
   const [hoveredTabId, setHoveredTabId] = useState(null);
   const [searchFocusRequestToken, setSearchFocusRequestToken] = useState(0);
   const [searchSelectOnFocus, setSearchSelectOnFocus] = useState(true);
+  const onToggleCollapseRef = React.useRef(onToggleCollapse);
+
+  React.useEffect(() => {
+    onToggleCollapseRef.current = onToggleCollapse;
+  }, [onToggleCollapse]);
+
+  React.useEffect(() => {
+    if (typeof onToggleCollapseRef.current === 'function') {
+      onToggleCollapseRef.current(isCollapsed);
+    }
+  }, [isCollapsed]);
 
   const toggleCollapse = useCallback(() => {
-    setIsCollapsed(prev => {
-      const next = !prev;
-      if (typeof onToggleCollapse === 'function') {
-        onToggleCollapse(next);
-      }
-      return next;
-    });
-  }, [onToggleCollapse]);
+    setIsCollapsed(prev => !prev);
+  }, []);
 
   useImperativeHandle(ref, () => ({
     openSearchPanel: ({ focus = true, select = true } = {}) => {
-      setIsCollapsed((prev) => {
-        if (prev && typeof onToggleCollapse === 'function') {
-          onToggleCollapse(false);
-        }
-        return false;
-      });
+      setIsCollapsed(false);
       setActiveTab('search');
       if (focus) {
         setSearchSelectOnFocus(Boolean(select));
@@ -406,9 +406,6 @@ const PDFSidebar = React.forwardRef(({
                     return;
                   }
                   setIsCollapsed(false);
-                  if (typeof onToggleCollapse === 'function') {
-                    onToggleCollapse(false);
-                  }
                   setActiveTab(tab.id);
                 }}
                 style={{
