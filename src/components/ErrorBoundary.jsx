@@ -2,6 +2,24 @@ import React from 'react';
 import { COLORS, TYPOGRAPHY, BORDERS } from '../theme';
 import Icon from '../Icons';
 
+const serializeErrorForLog = (error) => {
+  if (!error || typeof error !== 'object') {
+    return { message: String(error) };
+  }
+  return {
+    name: error.name || null,
+    message: error.message || String(error),
+    stack: error.stack || null,
+    cause: error.cause
+      ? {
+          name: error.cause.name || null,
+          message: error.cause.message || String(error.cause),
+          stack: error.cause.stack || null,
+        }
+      : null,
+  };
+};
+
 /**
  * ErrorBoundary - Catches errors in child components and displays fallback UI
  */
@@ -20,7 +38,7 @@ class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
+    console.error('ErrorBoundary caught an error:', serializeErrorForLog(error), errorInfo);
     this.setState({
       error,
       errorInfo,

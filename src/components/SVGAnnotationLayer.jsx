@@ -52,6 +52,7 @@ import { renderPathToSvgAttrs, renderPathToSvgD } from '../utils/svgPathAttrs.js
 import {
   ANNOTATION_VISIBILITY_SCOPE,
   getAnnotationVisibilityScope,
+  getSpaceIdForRegionFromSpaces,
   isAnnotationVisibleInContext,
   isAnnotationVisibleByPageControl
 } from '../utils/annotationVisibilityRules';
@@ -1229,15 +1230,7 @@ const SVGAnnotationLayer = memo(({
   // ---------------------------------------------------------------------------
   const getSpaceIdForRegion = useMemo(() => {
     return (regionId) => {
-      if (!regionId || !spaces || spaces.length === 0) return null;
-      for (const space of spaces) {
-        for (const page of (space.assignedPages || [])) {
-          for (const region of (page.regions || [])) {
-            if (region.regionId === regionId) return space.id;
-          }
-        }
-      }
-      return null;
+      return getSpaceIdForRegionFromSpaces(regionId, spaces);
     };
   }, [spaces]);
 
@@ -1400,7 +1393,7 @@ const SVGAnnotationLayer = memo(({
     const hasActiveRegions =
       activeRegions !== null &&
       Array.isArray(activeRegions) &&
-      activeRegions.length > 0 &&
+      activeRegions.some((region) => region && typeof region === 'object') &&
       isOverlayEnabledForThisPage;
 
     const results = [];
@@ -1510,7 +1503,9 @@ const SVGAnnotationLayer = memo(({
       // 3. Scoped region visibility
       let scopedRegionAnnotationVisible = true;
       if (isScopedRegionAnnotation) {
-        if (activeSpaceId === null) {
+        if (derivedSpaceId === null) {
+          scopedRegionAnnotationVisible = false;
+        } else if (activeSpaceId === null) {
           scopedRegionAnnotationVisible = false;
         } else if (hasActiveRegions) {
           scopedRegionAnnotationVisible = true;
@@ -1708,7 +1703,7 @@ const SVGAnnotationLayer = memo(({
     const hasActiveRegions =
       activeRegions !== null &&
       Array.isArray(activeRegions) &&
-      activeRegions.length > 0 &&
+      activeRegions.some((region) => region && typeof region === 'object') &&
       isOverlayEnabledForThisPage;
 
     const elements = [];
@@ -3317,7 +3312,7 @@ const SVGAnnotationLayer = memo(({
               : Math.max(6, sw + 4);
             const hitStrokeWidth = isFilledPdfInkOutline
               ? Math.max(0.75 * inverseScale, 0.75)
-              : Math.max(6, pathAttrs.strokeWidth || sw || 1, 1.5 * inverseScale);
+              : Math.max(12, pathAttrs.strokeWidth || sw || 1, 3 * inverseScale);
             const pathPointerEvents = isSelectTool && isObjectInteractive
               ? 'all'
               : 'none';

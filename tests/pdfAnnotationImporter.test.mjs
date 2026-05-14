@@ -246,7 +246,7 @@ test('exported app-created PDF annotations reimport as editable supported annota
         1: {
           objects: [
             { id: 'export-path', type: 'path', left: 0, top: 0, path: [['M', 20, 20], ['L', 60, 30]], stroke: '#111111', strokeWidth: 2 },
-            { id: 'export-rect', type: 'rect', left: 20, top: 50, width: 30, height: 20, fill: 'transparent', stroke: '#111111', moduleId: 'module-a', regionId: 'region-a', spaceId: 'space-a' },
+            { id: 'export-rect', type: 'rect', left: 20, top: 50, width: 30, height: 20, fill: 'transparent', stroke: '#111111' },
             { id: 'export-circle', type: 'circle', left: 70, top: 50, radius: 10, fill: 'transparent', stroke: '#111111' },
             { id: 'export-line', type: 'line', x1: 20, y1: 100, x2: 80, y2: 110, stroke: '#111111', strokeWidth: 2 },
             { id: 'export-polygon', type: 'polygon', left: 105, top: 80, points: [{ x: 0, y: 0 }, { x: 25, y: 0 }, { x: 15, y: 20 }], fill: 'transparent', stroke: '#111111' },
@@ -262,7 +262,7 @@ test('exported app-created PDF annotations reimport as editable supported annota
         actionType: 'pdf-export',
         documentId: 'doc-test',
         highlightAnnotations: {
-          'export-highlight': { pageNumber: 1, bounds: { x: 100, y: 20, width: 40, height: 12 }, color: '#ffff00', moduleId: 'module-h', regionId: 'region-h', spaceId: 'space-h' },
+          'export-highlight': { pageNumber: 1, bounds: { x: 100, y: 20, width: 40, height: 12 }, color: 'rgba(203, 220, 255, 0.5)', moduleId: 'module-h', regionId: 'region-h', spaceId: 'space-h' },
         },
       },
     );
@@ -277,11 +277,10 @@ test('exported app-created PDF annotations reimport as editable supported annota
     const objects = imported.annotationsByPage[1].objects;
     const importedTypes = objects.map((obj) => obj.pdfAnnotationType).sort();
 
-    assert.deepEqual(importedTypes, ['Circle', 'FreeText', 'Highlight', 'Ink', 'Line', 'PolyLine', 'Polygon', 'Square']);
+    assert.deepEqual(importedTypes, ['Circle', 'FreeText', 'Ink', 'Line', 'PolyLine', 'Polygon', 'Square']);
     assert.ok(objects.every((obj) => obj.isPdfImported === true));
     assert.deepEqual(objects.map((obj) => obj.id).sort(), [
       'export-circle',
-      'export-highlight',
       'export-line',
       'export-path',
       'export-polygon',
@@ -293,17 +292,82 @@ test('exported app-created PDF annotations reimport as editable supported annota
     assert.equal(objects.find((obj) => obj.pdfAnnotationType === 'FreeText')?.appAnnotationType, 'textbox');
     const rect = objects.find((obj) => obj.id === 'export-rect');
     assert.equal(rect.appAnnotationType, 'rect');
-    assert.equal(rect.moduleId, 'module-a');
-    assert.equal(rect.regionId, 'region-a');
-    assert.equal(rect.spaceId, 'space-a');
-    const highlight = objects.find((obj) => obj.id === 'export-highlight');
-    assert.equal(highlight.type, 'rect');
-    assert.equal(highlight.appAnnotationType, 'highlight');
-    assert.equal(highlight.highlightId, 'export-highlight');
-    assert.equal(highlight.moduleId, 'module-h');
-    assert.equal(highlight.regionId, 'region-h');
-    assert.equal(highlight.spaceId, 'space-h');
+    assert.equal(rect.moduleId, undefined);
+    assert.equal(rect.regionId, undefined);
+    assert.equal(rect.spaceId, undefined);
+    assert.equal(objects.some((obj) => obj.id === 'export-highlight'), false);
     assert.equal(imported.unsupportedTypes.length, 0);
+    assert.equal(imported.nativeLayerPolicyByPage[1].hideNativeLayer, true);
+    assert.deepEqual(imported.nativeLayerPolicyByPage[1].nativeOnlyAnnotationIds, []);
+    assert.equal(imported.nativeLayerPolicyByPage[1].nativeRenderableAnnotationIds.length, 7);
+  } finally {
+    globalThis.window = originalWindow;
+  }
+});
+
+test('exported app-created pen stroke reimports with original app geometry', async () => {
+  const source = await PDFDocument.create();
+  source.addPage([200, 200]);
+  const sourceBytes = await source.save();
+  const pdfFile = {
+    name: 'app-pen-geometry-source.pdf',
+    async arrayBuffer() {
+      return sourceBytes.buffer.slice(sourceBytes.byteOffset, sourceBytes.byteOffset + sourceBytes.byteLength);
+    },
+  };
+  const originalWindow = globalThis.window;
+  globalThis.window = {};
+
+  try {
+    const originalPath = [['M', 0, 0], ['Q', 20, 10, 40, 30], ['L', 80, 90]];
+    const exportedBytes = await savePDFWithAnnotationsPdfLib(
+      pdfFile,
+      {
+        1: {
+          objects: [{
+            id: 'app-pen-original',
+            type: 'path',
+            left: 42,
+            top: 33,
+            width: 80,
+            height: 90,
+            path: originalPath,
+            stroke: '#ff0000',
+            strokeWidth: 3,
+            fill: null,
+            strokeLineCap: 'round',
+            strokeLineJoin: 'round',
+            tool: 'pen',
+          }],
+        },
+      },
+      { 1: { width: 200, height: 200 } },
+      null,
+      { returnBytes: true, actionType: 'pdf-export', documentId: 'doc-test' },
+    );
+
+    const loadingTask = pdfjsLib.getDocument({
+      data: exportedBytes,
+      disableWorker: true,
+      verbosity: pdfjsLib.VerbosityLevel.ERRORS,
+    });
+    const pdfDoc = await loadingTask.promise;
+    const imported = await importAnnotationsFromPdf(pdfDoc, { rawPdfBytes: exportedBytes });
+    const obj = imported.annotationsByPage[1].objects[0];
+
+    assert.equal(obj.id, 'app-pen-original');
+    assert.equal(obj.type, 'path');
+    assert.equal(obj.left, 42);
+    assert.equal(obj.top, 33);
+    assert.equal(obj.width, 80);
+    assert.equal(obj.height, 90);
+    assert.deepEqual(obj.path, originalPath);
+    assert.equal(obj.stroke, '#ff0000');
+    assert.equal(obj.strokeWidth, 3);
+    assert.equal(obj.selectable, true);
+    assert.equal(obj.evented, true);
+    assert.equal(imported.nativeLayerPolicyByPage[1].hideNativeLayer, true);
+    assert.deepEqual(imported.nativeLayerPolicyByPage[1].nativeOnlyAnnotationIds, []);
   } finally {
     globalThis.window = originalWindow;
   }
@@ -335,9 +399,6 @@ test('exported app-created callout reimports as one app callout without loose Li
         callouts: [{
           id: 'callout-roundtrip-1',
           pageNumber: 1,
-          moduleId: 'module-a',
-          regionId: 'region-a',
-          spaceId: 'space-a',
           arrowTip: { x: 0.12, y: 0.18 },
           knee: { x: 0.24, y: 0.28 },
           textBoxPosition: { x: 0.42, y: 0.32 },
@@ -373,9 +434,9 @@ test('exported app-created callout reimports as one app callout without loose Li
     assert.equal(callout.id, 'callout-roundtrip-1');
     assert.equal(callout.pageNumber, 1);
     assert.equal(callout.text, 'Roundtrip callout');
-    assert.equal(callout.moduleId, 'module-a');
-    assert.equal(callout.regionId, 'region-a');
-    assert.equal(callout.spaceId, 'space-a');
+    assert.equal(callout.moduleId, undefined);
+    assert.equal(callout.regionId, undefined);
+    assert.equal(callout.spaceId, undefined);
     assert.deepEqual(callout.arrowTip, { x: 0.12, y: 0.18 });
     assert.deepEqual(callout.knee, { x: 0.24, y: 0.28 });
     assert.deepEqual(callout.textBoxPosition, { x: 0.42, y: 0.32 });
@@ -388,6 +449,72 @@ test('exported app-created callout reimports as one app callout without loose Li
     assert.equal(callout.style.textAlign, 'center');
     assert.equal(callout.isPdfImported, true);
     assert.equal(callout.pdfAnnotationSubject, 'survey-callout');
+  } finally {
+    globalThis.window = originalWindow;
+  }
+});
+
+test('exported hidden app layer state reimports separately from regular PDF annotations', async () => {
+  const source = await PDFDocument.create();
+  source.addPage([200, 200]);
+  const sourceBytes = await source.save();
+  const pdfFile = {
+    name: 'hidden-layer-source.pdf',
+    async arrayBuffer() {
+      return sourceBytes.buffer.slice(sourceBytes.byteOffset, sourceBytes.byteOffset + sourceBytes.byteLength);
+    },
+  };
+  const originalWindow = globalThis.window;
+  globalThis.window = {};
+
+  try {
+    const exportedBytes = await savePDFWithAnnotationsPdfLib(
+      pdfFile,
+      {
+        1: {
+          objects: [
+            { id: 'regular-path', type: 'path', left: 0, top: 0, path: [['M', 20, 20], ['L', 60, 60]], stroke: '#ff0000', strokeWidth: 3 },
+            { id: 'survey-circle', type: 'circle', left: 40, top: 40, radius: 12, moduleId: 'module-a', stroke: '#111111' },
+          ],
+        },
+      },
+      { 1: { width: 200, height: 200 } },
+      null,
+      {
+        returnBytes: true,
+        actionType: 'pdf-export',
+        documentId: 'doc-hidden-layer',
+        spaces: [{ id: 'space-a', assignedPages: [{ pageId: 1, regions: [{ regionId: 'region-a' }] }] }],
+        highlightAnnotations: {
+          'survey-highlight': { pageNumber: 1, moduleId: 'module-a', bounds: { x: 10, y: 10, width: 20, height: 10 } },
+        },
+        callouts: [{
+          id: 'region-callout',
+          pageNumber: 1,
+          regionId: 'region-a',
+          arrowTip: { x: 0.1, y: 0.1 },
+          knee: { x: 0.2, y: 0.2 },
+          textBoxPosition: { x: 0.3, y: 0.2 },
+          text: 'Region callout',
+        }],
+      },
+    );
+
+    const loadingTask = pdfjsLib.getDocument({
+      data: exportedBytes,
+      disableWorker: true,
+      verbosity: pdfjsLib.VerbosityLevel.ERRORS,
+    });
+    const pdfDoc = await loadingTask.promise;
+    const imported = await importAnnotationsFromPdf(pdfDoc, { rawPdfBytes: exportedBytes });
+
+    assert.deepEqual(imported.annotationsByPage[1].objects.map((obj) => obj.id), ['regular-path']);
+    assert.equal(imported.calloutsByPage[1], undefined);
+    assert.equal(imported.appLayerState.documentId, 'doc-hidden-layer');
+    assert.equal(imported.appLayerState.layers.scopedAnnotationsByPage[1].objects[0].id, 'survey-circle');
+    assert.equal(imported.appLayerState.layers.highlightAnnotations['survey-highlight'].moduleId, 'module-a');
+    assert.equal(imported.appLayerState.layers.spaces[0].id, 'space-a');
+    assert.equal(imported.appLayerState.layers.callouts[0].id, 'region-callout');
   } finally {
     globalThis.window = originalWindow;
   }

@@ -42,6 +42,26 @@ export default function SaveLogBanner() {
   const dismissTimerRef = useRef(null);
   const textareaRef = useRef(null);
 
+  const savePushFailureSnapshot = useCallback(async (failure) => {
+    const api = typeof window !== 'undefined' ? window.electronAPI : null;
+    if (!api || typeof api.saveLogSnapshot !== 'function') return;
+    try {
+      const detail = JSON.stringify(failure || {}, null, 2);
+      await api.saveLogSnapshot({
+        consoleText: `${consoleTextRef.current || ''}\n\n===== SaveLog GitHub Push Failure =====\n${detail}\n`,
+        network: [],
+        summary: {
+          triggeredBy: 'save-log-github-push-failure',
+          failure,
+          userAgent: navigator?.userAgent || null,
+          screen: { w: window.innerWidth, h: window.innerHeight },
+        },
+      });
+    } catch (snapshotError) {
+      console.warn('[SaveLogBanner] failed to save GitHub push failure snapshot', snapshotError?.message || snapshotError);
+    }
+  }, []);
+
   const clearTimers = useCallback(() => {
     if (rafRef.current) {
       cancelAnimationFrame(rafRef.current);
@@ -106,6 +126,14 @@ export default function SaveLogBanner() {
             error: push?.error,
             full: push
           });
+          await savePushFailureSnapshot({
+            kind: 'non-ok-response',
+            ok: push?.ok ?? null,
+            status: push?.status ?? null,
+            error: push?.error || null,
+            message: push?.message || null,
+            filename: push?.filename || null,
+          });
           setResult({ message: `GitHub push failed — ${String(reason).slice(0, 100)}`, url: null });
           setState('error');
         }
@@ -114,6 +142,12 @@ export default function SaveLogBanner() {
           name: thrown?.name,
           message: thrown?.message,
           stack: thrown?.stack?.split('\n').slice(0, 5).join(' | ')
+        });
+        await savePushFailureSnapshot({
+          kind: 'thrown',
+          name: thrown?.name || null,
+          message: thrown?.message || String(thrown),
+          stack: thrown?.stack || null,
         });
         setResult({
           message: `GitHub push threw — ${thrown?.message?.slice(0, 100) || 'unknown error'}`,
@@ -246,7 +280,7 @@ export default function SaveLogBanner() {
 
     setResult({ message: 'Save Log unavailable in this build', url: null });
     setState('error');
-  }, [dismiss]);
+  }, [dismiss, savePushFailureSnapshot]);
 
   // UX: countdown driver — ramps the progress bar left-to-right over 5s and
   // fires the auto-push when it hits 100% (same as old zero-friction flow).

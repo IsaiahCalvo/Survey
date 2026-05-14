@@ -18,6 +18,9 @@ import {
 import {
   PDF_APP_ANNOTATION_METADATA_KEY,
   PDF_APP_ANNOTATION_SUBJECT,
+  PDF_APP_LAYER_STATE_KEY,
+  buildPdfAppLayerStateMetadata,
+  serializePdfAppLayerStateMetadata,
   serializePdfAppAnnotationMetadata,
 } from './pdfAppAnnotationMetadata.js';
 import {
@@ -43,6 +46,10 @@ const emptyExportCounts = () => ({
   objectsExported: 0,
   objectsSkipped: 0,
   pdfAnnotationsAdded: 0,
+  importedNativeCopiesSkipped: 0,
+  editedImportedCopiesExported: 0,
+  editedImportedNativeCopiesRemoved: 0,
+  editedImportedNativeCopiesRemoveMisses: 0,
   byScope: {},
   byType: {},
   bySource: {},
@@ -75,6 +82,16 @@ const getObjectId = (obj, fallback = null) => (
   obj?.highlightId ||
   obj?.pdfAnnotationId ||
   fallback
+);
+
+const isPdfImportedObject = (obj) => Boolean(obj?.isPdfImported || obj?.pdfAnnotationId);
+
+const isEditedPdfImportedObject = (obj) => (
+  isPdfImportedObject(obj)
+  && (
+    obj?.pdfImportedEditState === 'edited'
+    || obj?.data?.pdfImportedEditState === 'edited'
+  )
 );
 
 const getPrintableRegularScope = (obj) => {
@@ -185,6 +202,13 @@ const applyAppAnnotationMetadataToDict = (annotationDict, options = {}) => {
   annotationDict.NM = PDFString.of(options.appAnnotationMetadata?.id || options.name || `survey-app-annotation-${Date.now()}`);
   annotationDict.Subj = PDFString.of(PDF_APP_ANNOTATION_SUBJECT);
   annotationDict[PDF_APP_ANNOTATION_METADATA_KEY] = PDFString.of(options.appAnnotationMetadataJson);
+};
+
+const applyAppLayerStateMetadataToPdf = (pdfDoc, payload) => {
+  const json = serializePdfAppLayerStateMetadata(payload);
+  if (!pdfDoc || !json) return false;
+  pdfDoc.catalog.set(PDFName.of(PDF_APP_LAYER_STATE_KEY), PDFString.of(json));
+  return true;
 };
 
 const makeSkipDetail = ({ source, pageNumber, id, type, scope, reason }) => ({
@@ -299,9 +323,24 @@ export function buildPdfExportAnnotationPlan({
       return;
     }
 
-    if (obj?.isPdfImported || obj?.pdfAnnotationId) {
+    if (item.source === 'survey-highlight') {
+      recordSkip(diagnostics, item, 'survey-highlight-export-excluded');
+      return;
+    }
+
+    if (item.scope !== ANNOTATION_VISIBILITY_SCOPE.CANVAS) {
+      recordSkip(diagnostics, item, 'scoped-annotation-export-excluded');
+      return;
+    }
+
+    if (isPdfImportedObject(obj) && !isEditedPdfImportedObject(obj)) {
+      diagnostics.importedNativeCopiesSkipped += 1;
       recordSkip(diagnostics, item, 'imported-pdf-native-preserved');
       return;
+    }
+
+    if (isEditedPdfImportedObject(obj)) {
+      diagnostics.editedImportedCopiesExported += 1;
     }
 
     if (item.source === 'fabric' && obj?.highlightId) {
@@ -394,10 +433,15 @@ export function buildPdfExportAnnotationPlan({
   return {
     contract: {
       version: 1,
-      defaultScope: 'all-app-created-annotations-for-document',
-      includedScopes: Object.values(ANNOTATION_VISIBILITY_SCOPE),
-      importedPdfNativeHandling: 'preserve-existing-pdf-native-annots-and-skip-imported-app-copies',
-      visibilityHandling: 'export-all-app-created-annotations-independent-of-current-ui-visibility',
+      defaultScope: 'regular-viewer-annotations-only',
+      includedScopes: [ANNOTATION_VISIBILITY_SCOPE.CANVAS],
+      excludedScopes: [
+        ANNOTATION_VISIBILITY_SCOPE.SURVEY,
+        ANNOTATION_VISIBILITY_SCOPE.REGION,
+        ANNOTATION_VISIBILITY_SCOPE.SURVEY_REGION,
+      ],
+      importedPdfNativeHandling: 'preserve-unedited-native-annots-skip-unedited-imported-copies-export-edited-imported-copies',
+      visibilityHandling: 'export-regular-viewer-annotations-only-exclude-survey-spaces-regions',
     },
     items,
     diagnostics,
@@ -408,6 +452,16 @@ export function buildPdfExportAnnotationPlan({
  * Convert hex color to RGB object for pdf-lib
  */
 const hexToRGB = (hex) => {
+  if (typeof hex === 'string') {
+    const rgba = hex.match(/rgba?\(\s*([+-]?\d*\.?\d+)\s*,\s*([+-]?\d*\.?\d+)\s*,\s*([+-]?\d*\.?\d+)/i);
+    if (rgba) {
+      return rgb(
+        Math.max(0, Math.min(255, Number(rgba[1]))) / 255,
+        Math.max(0, Math.min(255, Number(rgba[2]))) / 255,
+        Math.max(0, Math.min(255, Number(rgba[3]))) / 255
+      );
+    }
+  }
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   if (result) {
     return rgb(
@@ -926,6 +980,48 @@ const createCalloutAnnotations = (pdfDoc, page, calloutObj, pageHeight) => {
   return refs;
 };
 
+const parsePdfAnnotationObjectNumber = (pdfAnnotationId) => {
+  const match = String(pdfAnnotationId || '').trim().match(/^(\d+)R$/i);
+  if (!match) return null;
+  const objectNumber = Number(match[1]);
+  return Number.isInteger(objectNumber) && objectNumber > 0 ? objectNumber : null;
+};
+
+const decodePdfDictText = (dict, key) => {
+  try {
+    return dict?.get?.(PDFName.of(key))?.decodeText?.() || null;
+  } catch {
+    return null;
+  }
+};
+
+const removeMatchingNativePdfAnnotation = (pdfDoc, annots, pdfAnnotationId) => {
+  if (!pdfDoc || !annots || !pdfAnnotationId || typeof annots.asArray !== 'function') {
+    return 0;
+  }
+
+  const objectNumber = parsePdfAnnotationObjectNumber(pdfAnnotationId);
+  const refs = annots.asArray();
+  let removed = 0;
+  for (let index = refs.length - 1; index >= 0; index -= 1) {
+    const ref = refs[index];
+    let dict = null;
+    try {
+      dict = pdfDoc.context.lookup(ref);
+    } catch {
+      dict = null;
+    }
+    const name = decodePdfDictText(dict, 'NM');
+    const matchesObjectNumber = objectNumber !== null && Number(ref?.objectNumber) === objectNumber;
+    const matchesName = name && name === pdfAnnotationId;
+    if (matchesObjectNumber || matchesName) {
+      annots.remove(index);
+      removed += 1;
+    }
+  }
+  return removed;
+};
+
 const parsePdfDrawColor = (value, fallback = '#000000') => {
   if (value === null || value === undefined || value === '' || value === 'transparent') return null;
   const text = String(value || fallback).trim();
@@ -1312,6 +1408,15 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
       spaces: options?.spaces || [],
     });
     const exportDiagnostics = exportPlan.diagnostics;
+    const appLayerState = buildPdfAppLayerStateMetadata({
+      documentId,
+      exportId: options?.exportId || `${documentId || 'local'}-${Date.now()}`,
+      annotationsByPage,
+      callouts: options?.callouts || [],
+      highlightAnnotations: options?.highlightAnnotations || {},
+      spaces: options?.spaces || [],
+    });
+    const appLayerStateEmbedded = applyAppLayerStateMetadataToPdf(pdfDoc, appLayerState);
 
     exportPlan.items.forEach((item) => {
       const pageNumStr = String(item.pageNumber);
@@ -1337,6 +1442,15 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
       if (!annots) {
         annots = pdfDoc.context.obj([]);
         page.node.set(PDFName.of('Annots'), annots);
+      }
+
+      if (isEditedPdfImportedObject(obj)) {
+        const removed = removeMatchingNativePdfAnnotation(pdfDoc, annots, obj?.pdfAnnotationId);
+        if (removed > 0) {
+          exportDiagnostics.editedImportedNativeCopiesRemoved += removed;
+        } else {
+          exportDiagnostics.editedImportedNativeCopiesRemoveMisses += 1;
+        }
       }
 
       let annotRef = null;
@@ -1415,6 +1529,15 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
 
     // Save the PDF
     const pdfBytes = await pdfDoc.save();
+    console.log('[PDFImportedEditExport] summary ' + JSON.stringify({
+      actionType,
+      documentId,
+      importedNativeCopiesSkipped: exportDiagnostics.importedNativeCopiesSkipped,
+      editedImportedCopiesExported: exportDiagnostics.editedImportedCopiesExported,
+      editedImportedNativeCopiesRemoved: exportDiagnostics.editedImportedNativeCopiesRemoved,
+      editedImportedNativeCopiesRemoveMisses: exportDiagnostics.editedImportedNativeCopiesRemoveMisses,
+      reason: 'unedited imported PDF-native app copies are skipped because the source PDF already contains the native annotation; edited imported copies are exported from app state and matching native annotations are removed when identifiable.'
+    }));
     console.log('[PDFSaveExport] pdf bytes generated ' + JSON.stringify({
       actionType,
       documentId,
@@ -1432,7 +1555,19 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
       annotationCountsBySource: exportDiagnostics.bySource,
       annotationSkippedByReason: exportDiagnostics.skippedByReason,
       embeddedPdfNativeAnnotationHandling: exportPlan.contract.importedPdfNativeHandling,
+      appLayerStateEmbedded,
+      appLayerStateSummary: appLayerState ? {
+        documentId: appLayerState.documentId,
+        exportId: appLayerState.exportId,
+        scopedAnnotationPages: Object.keys(appLayerState.layers?.scopedAnnotationsByPage || {}).length,
+        scopedCallouts: Array.isArray(appLayerState.layers?.callouts) ? appLayerState.layers.callouts.length : 0,
+        surveyHighlights: Object.keys(appLayerState.layers?.highlightAnnotations || {}).length,
+        spaces: Array.isArray(appLayerState.layers?.spaces) ? appLayerState.layers.spaces.length : 0,
+      } : null,
       importedAppAnnotationsSkipped: exportDiagnostics.skippedByReason['imported-pdf-native-preserved'] || 0,
+      editedImportedAppAnnotationsExported: exportDiagnostics.editedImportedCopiesExported,
+      editedImportedNativeAnnotationsRemoved: exportDiagnostics.editedImportedNativeCopiesRemoved,
+      editedImportedNativeAnnotationRemoveMisses: exportDiagnostics.editedImportedNativeCopiesRemoveMisses,
       countersExported,
       counterMetadataMarker: PDF_COUNTER_SUBJECT,
       counterMetadataKeys: [PDF_COUNTER_METADATA_KEY, 'Subj', 'NM', 'Contents'],

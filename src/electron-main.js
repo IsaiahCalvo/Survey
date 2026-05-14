@@ -1044,23 +1044,27 @@ ipcMain.handle('logs:pushToGithub', async (event, payload = {}) => {
       .replace(/\.local$/i, '')
       .replace(/[^a-zA-Z0-9_-]/g, '-')
       .toLowerCase();
-    const filename = `${platformTag}-${hostname}-${timestamp}.log`;
+    const baseFilename = `${platformTag}-${hostname}-${timestamp}.log`;
     const b64 = Buffer.from(String(content ?? ''), 'utf-8').toString('base64');
-    const commitMessage = `save-log from ${platformTag} (${hostname}) @ ${timestamp}`;
+    const makeFilename = (attempt) => {
+      if (attempt <= 0) return baseFilename;
+      const suffix = `${process.pid}-${Date.now().toString(36)}-${attempt}`;
+      return baseFilename.replace(/\.log$/i, `-${suffix}.log`);
+    };
 
-    console.log(`[logs:pushToGithub] uploading ${filename} (${b64.length} base64 chars)`);
+    console.log(`[logs:pushToGithub] uploading ${baseFilename} (${b64.length} base64 chars)`);
 
     // UX 2026-04-22: send the JSON body (incl. base64 log content) via stdin,
     // not as CLI args. Passing a ~100KB base64 blob as `-f content=...` blows
     // Windows' command-line length cap and surfaces to the user as ENAMETOOLONG.
     // Stdin has no such limit on any OS (mac/win/linux), so this is the portable fix.
-    const ghBody = JSON.stringify({
-      message: commitMessage,
-      content: b64,
-      branch: 'logs',
-    });
-
-    const ghResult = await new Promise((resolve) => {
+    const uploadViaGh = (filename, attempt) => new Promise((resolve) => {
+      const commitMessage = `save-log from ${platformTag} (${hostname}) @ ${timestamp}`;
+      const ghBody = JSON.stringify({
+        message: attempt > 0 ? `${commitMessage} retry ${attempt}` : commitMessage,
+        content: b64,
+        branch: 'logs',
+      });
       const child = spawn('gh', [
         'api',
         '--method', 'PUT',
@@ -1089,6 +1093,16 @@ ipcMain.handle('logs:pushToGithub', async (event, payload = {}) => {
       }
     });
 
+    let ghResult = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const filename = makeFilename(attempt);
+      ghResult = await uploadViaGh(filename, attempt);
+      if (ghResult.ok) break;
+      if (!/HTTP 409|Conflict|is at .* expected/i.test(String(ghResult.error || ''))) break;
+      console.warn(`[logs:pushToGithub] gh conflict retry ${attempt + 1}/2 — ${ghResult.error}`);
+      await new Promise((r) => setTimeout(r, 300 + attempt * 400));
+    }
+
     if (ghResult.ok) {
       console.log(`[logs:pushToGithub] pushed via gh — ${ghResult.url || ghResult.filename}`);
       return ghResult;
@@ -1103,47 +1117,58 @@ ipcMain.handle('logs:pushToGithub', async (event, payload = {}) => {
     if (!fallbackToken) {
       const reason = `gh failed and no fallback token was provided (${ghResult.error})`;
       console.warn(`[logs:pushToGithub] ${reason}`);
-      return { ok: false, error: reason, filename };
+      return { ok: false, error: reason, filename: ghResult.filename || baseFilename };
     }
 
     try {
-      const res = await fetch(
-        `https://api.github.com/repos/IsaiahCalvo/Survey/contents/${filename}`,
-        {
-          method: 'PUT',
-          headers: {
-            Authorization: `token ${fallbackToken}`,
-            Accept: 'application/vnd.github+json',
-            'Content-Type': 'application/json',
-            'User-Agent': 'survey-electron-savelog'
-          },
-          body: JSON.stringify({
-            message: commitMessage,
-            content: b64,
-            branch: 'logs'
-          })
+      let lastReason = 'not attempted';
+      let lastFilename = baseFilename;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const filename = makeFilename(attempt + 3);
+        lastFilename = filename;
+        const commitMessage = `save-log from ${platformTag} (${hostname}) @ ${timestamp}`;
+        const res = await fetch(
+          `https://api.github.com/repos/IsaiahCalvo/Survey/contents/${filename}`,
+          {
+            method: 'PUT',
+            headers: {
+              Authorization: `token ${fallbackToken}`,
+              Accept: 'application/vnd.github+json',
+              'Content-Type': 'application/json',
+              'User-Agent': 'survey-electron-savelog'
+            },
+            body: JSON.stringify({
+              message: attempt > 0 ? `${commitMessage} retry ${attempt}` : commitMessage,
+              content: b64,
+              branch: 'logs'
+            })
+          }
+        );
+        if (res.ok) {
+          let url = null;
+          try {
+            const data = await res.json();
+            url = data?.content?.html_url || null;
+          } catch {}
+          console.log(`[logs:pushToGithub] pushed via fetch fallback — ${url || filename}`);
+          return { ok: true, url, filename };
         }
-      );
-      if (res.ok) {
-        let url = null;
+        let reason = `HTTP ${res.status}`;
         try {
-          const data = await res.json();
-          url = data?.content?.html_url || null;
+          const errBody = await res.json();
+          if (errBody?.message) reason += `: ${errBody.message.slice(0, 120)}`;
         } catch {}
-        console.log(`[logs:pushToGithub] pushed via fetch fallback — ${url || filename}`);
-        return { ok: true, url, filename };
+        lastReason = reason;
+        if (res.status !== 409) break;
+        console.warn(`[logs:pushToGithub] fetch fallback conflict retry ${attempt + 1}/2 — ${reason}`);
+        await new Promise((r) => setTimeout(r, 300 + attempt * 400));
       }
-      let reason = `HTTP ${res.status}`;
-      try {
-        const errBody = await res.json();
-        if (errBody?.message) reason += `: ${errBody.message.slice(0, 120)}`;
-      } catch {}
-      console.warn(`[logs:pushToGithub] fetch fallback failed — ${reason}`);
-      return { ok: false, error: `gh failed (${ghResult.error}); fetch fallback ${reason}`, filename };
+      console.warn(`[logs:pushToGithub] fetch fallback failed — ${lastReason}`);
+      return { ok: false, error: `gh failed (${ghResult.error}); fetch fallback ${lastReason}`, filename: lastFilename };
     } catch (fetchErr) {
       const msg = fetchErr?.message || String(fetchErr);
       console.warn(`[logs:pushToGithub] fetch fallback threw — ${msg}`);
-      return { ok: false, error: `gh failed (${ghResult.error}); fetch fallback threw: ${msg}`, filename };
+      return { ok: false, error: `gh failed (${ghResult.error}); fetch fallback threw: ${msg}`, filename: ghResult.filename || baseFilename };
     }
   } catch (error) {
     console.error('[logs:pushToGithub] unexpected error:', error);

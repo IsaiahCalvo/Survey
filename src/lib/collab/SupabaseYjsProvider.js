@@ -54,6 +54,15 @@ const MESSAGE_AWARENESS = 1;
 // imported Drawboard PDFs, so the provider logs one quiet info line per mount.
 const SOFT_PAYLOAD_CAP_BYTES = 600 * 1024;
 
+const sendBroadcast = (channel, event, payload, opts = {}) => {
+  if (!channel) return Promise.resolve();
+  if (channel.state !== 'joined' && typeof channel.httpSend === 'function') {
+    return channel.httpSend(event, payload, opts);
+  }
+  const result = channel.send({ type: 'broadcast', event, payload }, opts);
+  return result && typeof result.then === 'function' ? result : Promise.resolve(result);
+};
+
 // Re-export REMOTE_REALTIME_ORIGIN so the scaffold's `await import(TARGET)` round-trip
 // works — the test reads the sentinel from this module to apply updates and assert
 // echo-loop short-circuit. Single source of truth still lives in originBuilder.js.
@@ -211,10 +220,9 @@ export function connect(documentId, ydoc, options = {}) {
     }
 
     if (!channel) return; // pre-subscribe local edit — Plan 28-04 will cover queueing
-    const sendResult = channel.send({
-      type: 'broadcast',
-      event: 'sync',
-      payload: { update: uint8ArrayToBase64(frameBytes), originClientId: ydoc.clientID },
+    const sendResult = sendBroadcast(channel, 'sync', {
+      update: uint8ArrayToBase64(frameBytes),
+      originClientId: ydoc.clientID,
     });
     if (sendResult && typeof sendResult.catch === 'function') {
       sendResult.catch((err) => {
@@ -252,10 +260,9 @@ export function connect(documentId, ydoc, options = {}) {
             const bytes = base64ToUint8Array(payload.update);
             const reply = decodeAndApply(ydoc, awareness, bytes, REMOTE_REALTIME_ORIGIN);
             if (reply && channel) {
-              channel.send({
-                type: 'broadcast',
-                event: 'sync',
-                payload: { update: uint8ArrayToBase64(reply), originClientId: ydoc.clientID },
+              sendBroadcast(channel, 'sync', {
+                update: uint8ArrayToBase64(reply),
+                originClientId: ydoc.clientID,
               });
             }
           } catch (err) {
@@ -283,10 +290,9 @@ export function connect(documentId, ydoc, options = {}) {
             syncProtocol.writeSyncStep2(reply, ydoc, remoteSV);
             const replyBytes = encoding.toUint8Array(reply);
             if (replyBytes.byteLength > 1 && channel) {
-              channel.send({
-                type: 'broadcast',
-                event: 'sync',
-                payload: { update: uint8ArrayToBase64(replyBytes), originClientId: ydoc.clientID },
+              sendBroadcast(channel, 'sync', {
+                update: uint8ArrayToBase64(replyBytes),
+                originClientId: ydoc.clientID,
               });
             }
           } catch (err) {
@@ -320,10 +326,9 @@ export function connect(documentId, ydoc, options = {}) {
             if (detached || !channel) return;
             try {
               const stateVector = Y.encodeStateVector(ydoc);
-              await channel.send({
-                type: 'broadcast',
-                event: 'sync_request',
-                payload: { stateVector: uint8ArrayToBase64(stateVector), fromClientId: ydoc.clientID },
+              await sendBroadcast(channel, 'sync_request', {
+                stateVector: uint8ArrayToBase64(stateVector),
+                fromClientId: ydoc.clientID,
               });
             } catch (err) {
               // eslint-disable-next-line no-console
@@ -349,8 +354,7 @@ export function connect(documentId, ydoc, options = {}) {
     },
     send(eventName, payload) {
       if (detached || !channel) return Promise.resolve();
-      const result = channel.send({ type: 'broadcast', event: eventName, payload });
-      return result && typeof result.then === 'function' ? result : Promise.resolve(result);
+      return sendBroadcast(channel, eventName, payload);
     },
     getChannel() {
       return channel;

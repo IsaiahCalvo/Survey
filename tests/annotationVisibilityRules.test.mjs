@@ -11,6 +11,7 @@ import {
   getSpaceIdForRegionFromSpaces,
   isAnnotationVisibleByPageControl,
   isAnnotationVisibleInContext,
+  normalizePageRegions,
   normalizeRegionVisibility,
 } from '../src/utils/annotationVisibilityRules.js';
 
@@ -84,6 +85,19 @@ describe('normalizeRegionVisibility', () => {
   });
 });
 
+describe('normalizePageRegions', () => {
+  it('drops null region entries restored from stale PDF app metadata', () => {
+    const regions = normalizePageRegions([
+      null,
+      { regionId: 'region-1', showBackgroundAnnotations: false },
+      undefined,
+    ]);
+
+    assert.deepEqual(regions.map((region) => region.regionId), ['region-1']);
+    assert.equal(regions[0].showCanvasAnnotations, false);
+  });
+});
+
 describe('getPageAnnotationVisibilityState', () => {
   it('reads separate canvas and survey visibility from the page', () => {
     const state = getPageAnnotationVisibilityState({
@@ -91,6 +105,23 @@ describe('getPageAnnotationVisibilityState', () => {
         showCanvasAnnotations: false,
         showSurveyAnnotations: true,
       }],
+    });
+
+    assert.deepStrictEqual(state, {
+      canvasVisible: false,
+      surveyVisible: true,
+    });
+  });
+
+  it('ignores null region entries before reading page visibility', () => {
+    const state = getPageAnnotationVisibilityState({
+      regions: [
+        null,
+        {
+          showCanvasAnnotations: false,
+          showSurveyAnnotations: true,
+        },
+      ],
     });
 
     assert.deepStrictEqual(state, {
@@ -289,6 +320,22 @@ describe('isAnnotationVisibleInContext', () => {
         spaces,
       }),
       false
+    );
+  });
+
+  it('ignores null active regions when deciding scoped visibility', () => {
+    assert.equal(
+      isAnnotationVisibleInContext({
+        annotation: { moduleId: null, regionId: 'region-1' },
+        pageNumber: 1,
+        selectedSpaceId: 'space-1',
+        activeSpaceId: 'space-1',
+        activeRegions: [null],
+        activeRegionId: 'region-1',
+        spaces,
+        isRegionOverlayEnabled: () => true,
+      }),
+      true
     );
   });
 

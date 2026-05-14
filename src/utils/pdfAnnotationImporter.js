@@ -11,7 +11,10 @@ import {
 } from './pdfCalloutMetadata.js';
 import {
   PDF_APP_ANNOTATION_METADATA_KEY,
+  PDF_APP_ANNOTATION_SUBJECT,
+  PDF_APP_LAYER_STATE_KEY,
   applyPdfAppAnnotationMetadata,
+  parsePdfAppLayerStateMetadata,
   parsePdfAppAnnotationMetadata,
 } from './pdfAppAnnotationMetadata.js';
 
@@ -144,7 +147,21 @@ function summarizeFabricImportForDiag(fabricObj, sourceAnnotation = null, status
 function isPotentiallyVisibleNativeAnnotation(annotation, rawMetadata = null) {
   const subtype = annotation?.subtype || rawMetadata?.subtype;
   if (!subtype || SILENT_IGNORE_SUBTYPES.includes(subtype)) return false;
-  return Boolean(annotation?.hasAppearance || rawMetadata?.appearance);
+  const isAppOwnedAnnotation = Boolean(
+    rawMetadata?.appAnnotationMetadata ||
+    rawMetadata?.counterMetadata ||
+    rawMetadata?.calloutMetadata ||
+    annotation?.appAnnotationMetadata ||
+    annotation?.counterMetadata ||
+    annotation?.calloutMetadata ||
+    annotation?.subject === PDF_APP_ANNOTATION_SUBJECT ||
+    annotation?.subject === PDF_COUNTER_SUBJECT ||
+    annotation?.subject === PDF_CALLOUT_SUBJECT ||
+    rawMetadata?.subject === PDF_APP_ANNOTATION_SUBJECT ||
+    rawMetadata?.subject === PDF_COUNTER_SUBJECT ||
+    rawMetadata?.subject === PDF_CALLOUT_SUBJECT
+  );
+  return Boolean(annotation?.hasAppearance || rawMetadata?.appearance || isAppOwnedAnnotation);
 }
 
 /**
@@ -1448,6 +1465,24 @@ async function buildRawAnnotationMetadataById(rawPdfBytes) {
     return metadataById;
   } catch (error) {
     console.warn('Failed to parse raw PDF annotation metadata:', error);
+    return null;
+  }
+}
+
+async function readAppLayerStateFromPdf(rawPdfBytes) {
+  if (!rawPdfBytes) return null;
+  try {
+    const pdfLib = await import('pdf-lib');
+    const { PDFDocument, PDFName } = pdfLib;
+    const rawPdfDoc = await PDFDocument.load(rawPdfBytes, {
+      updateMetadata: false,
+      ignoreEncryption: true,
+    });
+    const raw = rawPdfDoc.catalog.get(PDFName.of(PDF_APP_LAYER_STATE_KEY));
+    const text = readPdfLibText(raw);
+    return parsePdfAppLayerStateMetadata(text);
+  } catch (error) {
+    console.warn('[PDFImport] app layer state metadata read failed:', error?.message || error);
     return null;
   }
 }
@@ -3064,6 +3099,7 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
   const unsupportedTypes = new Set();
   const numPages = pdfDoc.numPages;
   const rawMetadataById = await buildRawAnnotationMetadataById(options.rawPdfBytes);
+  const appLayerState = await readAppLayerStateFromPdf(options.rawPdfBytes);
   const diagnosticsByPage = {};
   const nativeLayerPolicyByPage = {};
   let counterAnnotationsImported = 0;
@@ -3245,10 +3281,20 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
     appCalloutAnnotationsImported,
     appCalloutPiecesSkipped
   }));
+  console.log('[PDFAppLayerStateImport] summary ' + JSON.stringify({
+    found: Boolean(appLayerState),
+    documentId: appLayerState?.documentId || null,
+    exportId: appLayerState?.exportId || null,
+    scopedAnnotationPages: Object.keys(appLayerState?.layers?.scopedAnnotationsByPage || {}).length,
+    scopedCallouts: Array.isArray(appLayerState?.layers?.callouts) ? appLayerState.layers.callouts.length : 0,
+    surveyHighlights: Object.keys(appLayerState?.layers?.highlightAnnotations || {}).length,
+    spaces: Array.isArray(appLayerState?.layers?.spaces) ? appLayerState.layers.spaces.length : 0,
+  }));
 
   return {
     annotationsByPage,
     calloutsByPage,
+    appLayerState,
     unsupportedTypes: Array.from(unsupportedTypes),
     diagnosticsByPage,
     nativeLayerPolicyByPage

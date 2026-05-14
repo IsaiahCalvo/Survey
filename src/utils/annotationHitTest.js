@@ -144,20 +144,81 @@ export function resolveAnnotationAt(e) {
     }
   }
 
+  const isVisibleElement = (el) => {
+    if (!el || !el.getBoundingClientRect) return false;
+    const r = el.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return false;
+    if (typeof window === 'undefined' || typeof window.getComputedStyle !== 'function') return true;
+    const style = window.getComputedStyle(el);
+    return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+  };
+
+  const rectContainsPoint = (el) => {
+    if (!el || !el.getBoundingClientRect) return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0
+      && e.clientX >= r.left && e.clientX <= r.right
+      && e.clientY >= r.top && e.clientY <= r.bottom;
+  };
+
+  const svgGeometryContainsPoint = (el) => {
+    if (!el || !el.ownerSVGElement || typeof el.ownerSVGElement.createSVGPoint !== 'function') {
+      return false;
+    }
+    const ctm = typeof el.getScreenCTM === 'function' ? el.getScreenCTM() : null;
+    if (!ctm) return false;
+    try {
+      const pt = el.ownerSVGElement.createSVGPoint();
+      pt.x = e.clientX;
+      pt.y = e.clientY;
+      const local = pt.matrixTransform(ctm.inverse());
+      if (typeof el.isPointInStroke === 'function' && el.isPointInStroke(local)) return true;
+      if (typeof el.isPointInFill === 'function' && el.isPointInFill(local)) return true;
+    } catch {
+      return false;
+    }
+    return false;
+  };
+
+  const readHitCarrier = (el) => {
+    if (!el) return;
+    const carrier = el.closest?.('[data-annotation-index], [data-callout-id], [data-counter-overlay]') || el;
+    readFrom(carrier);
+  };
+
   // Pan-mode fallback: SVG layer is pointer-events:none, so walk the DOM
-  // children of the page's SVG wrapper and bounding-rect test each one.
+  // children of every visible page SVG wrapper. Path hit targets are tested
+  // by SVG stroke geometry first, which matches the same widened invisible
+  // target the select tool uses.
   if (pageNumber != null && annotationIndex == null && !calloutId && !isCounter) {
-    const wrapper = document.querySelector(`[data-diag-svg-wrapper="${pageNumber}"]`);
-    if (wrapper) {
+    const wrappers = Array.from(document.querySelectorAll(`[data-diag-svg-wrapper="${pageNumber}"]`))
+      .filter(isVisibleElement);
+    let inspected = 0;
+    for (const wrapper of wrappers) {
+      const pathTargets = wrapper.querySelectorAll('[data-path-hit-target="true"], [data-path-bbox-hit-target="true"]');
+      for (const el of pathTargets) {
+        inspected += 1;
+        const hit = svgGeometryContainsPoint(el) || rectContainsPoint(el);
+        if (!hit) continue;
+        readHitCarrier(el);
+        if (annotationIndex != null || calloutId || isCounter) break;
+      }
+      if (annotationIndex != null || calloutId || isCounter) break;
+
       const candidates = wrapper.querySelectorAll('[data-annotation-index], [data-callout-id], [data-counter-overlay]');
       for (const el of candidates) {
-        const r = el.getBoundingClientRect();
-        if (r.width > 0 && r.height > 0
-          && e.clientX >= r.left && e.clientX <= r.right
-          && e.clientY >= r.top && e.clientY <= r.bottom) {
-          readFrom(el);
-          if (annotationIndex != null || calloutId || isCounter) break;
-        }
+        inspected += 1;
+        if (!rectContainsPoint(el)) continue;
+        readFrom(el);
+        if (annotationIndex != null || calloutId || isCounter) break;
+      }
+      if (annotationIndex != null || calloutId || isCounter) break;
+    }
+    if (typeof window !== 'undefined' && window.__DIAG_HIT_TEST) {
+      try {
+        console.log(`[HitTest pan-svg-fallback] page=${pageNumber} wrappers=${wrappers.length} inspected=${inspected} result=${annotationIndex != null ? `annotation:${annotationIndex}` : calloutId ? `callout:${calloutId}` : isCounter ? 'counter' : 'none'} cursor=(${Math.round(e.clientX)},${Math.round(e.clientY)})`);
+      } catch {
+        /* ignore */
       }
     }
   }

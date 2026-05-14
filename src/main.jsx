@@ -14,6 +14,20 @@ import { sanitizeConsoleLogText, shouldCaptureConsoleLine } from './utils/consol
   const capture = (prefix, origFn, args) => {
     const rawLine = prefix + args.map((a) => {
       try {
+        if (a instanceof Error) {
+          return JSON.stringify({
+            name: a.name || null,
+            message: a.message || String(a),
+            stack: a.stack || null,
+            cause: a.cause instanceof Error
+              ? {
+                  name: a.cause.name || null,
+                  message: a.cause.message || String(a.cause),
+                  stack: a.cause.stack || null,
+                }
+              : a.cause || null,
+          });
+        }
         return typeof a === 'object' ? JSON.stringify(a) : String(a);
       } catch (_err) {
         return '[unserializable console argument]';

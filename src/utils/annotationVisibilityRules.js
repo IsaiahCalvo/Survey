@@ -82,11 +82,17 @@ export function normalizeRegionVisibility(region = {}) {
 }
 
 export function normalizePageRegions(regions = []) {
-  return Array.isArray(regions) ? regions.map((region) => normalizeRegionVisibility(region)) : [];
+  return Array.isArray(regions)
+    ? regions
+      .filter((region) => region && typeof region === 'object')
+      .map((region) => normalizeRegionVisibility(region))
+    : [];
 }
 
 export function getPageAnnotationVisibilityState(page) {
-  const primaryRegion = page?.regions?.[0];
+  const primaryRegion = Array.isArray(page?.regions)
+    ? page.regions.find((region) => region && typeof region === 'object')
+    : null;
   const normalizedRegion = primaryRegion ? normalizeRegionVisibility(primaryRegion) : null;
 
   return {
@@ -203,7 +209,7 @@ export function isAnnotationVisibleInContext({
   const hasActiveRegions =
     activeRegions !== null &&
     Array.isArray(activeRegions) &&
-    activeRegions.length > 0 &&
+    activeRegions.some((region) => region && typeof region === 'object') &&
     isOverlayEnabledForThisPage;
 
   const derivedSpaceId = isScopedRegionAnnotation

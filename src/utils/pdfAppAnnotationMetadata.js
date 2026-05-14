@@ -1,6 +1,8 @@
 export const PDF_APP_ANNOTATION_METADATA_KEY = 'SurveyAppAnnotation';
 export const PDF_APP_ANNOTATION_SUBJECT = 'survey-app-annotation';
 export const PDF_APP_ANNOTATION_METADATA_VERSION = 1;
+export const PDF_APP_LAYER_STATE_KEY = 'SurveyAppLayerState';
+export const PDF_APP_LAYER_STATE_VERSION = 1;
 
 const DATA_ALLOWLIST = [
   'id',
@@ -17,6 +19,9 @@ const DATA_ALLOWLIST = [
   'pdfCalloutPoints',
   'createdAt',
   'updatedAt',
+  'arrowheadStyle',
+  'lineEnding1',
+  'lineEnding2',
 ];
 
 const STYLE_KEYS = [
@@ -58,6 +63,9 @@ const GEOMETRY_KEYS = [
   'points',
   'path',
   'text',
+  'lineEnding1',
+  'lineEnding2',
+  'arrowheadStyle',
 ];
 
 const OWNER_KEYS = [
@@ -75,7 +83,7 @@ function jsonSafe(value, depth = 0) {
   if (value === null || value === undefined) return value;
   if (typeof value === 'string' || typeof value === 'boolean') return value;
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  if (depth > 4) return null;
+  if (depth > 8) return null;
 
   if (Array.isArray(value)) {
     return value.slice(0, 500).map((entry) => jsonSafe(entry, depth + 1));
@@ -157,6 +165,9 @@ export function buildPdfAppAnnotationMetadata(fabricObj, item = {}) {
       tool: fabricObj.tool || null,
       exportType: fabricObj.exportType || null,
       isSurveyHighlight: item.type === 'highlight' || fabricObj.exportType === 'highlight',
+      lineEnding1: fabricObj.lineEnding1 || fabricObj.data?.lineEnding1 || null,
+      lineEnding2: fabricObj.lineEnding2 || fabricObj.data?.lineEnding2 || null,
+      arrowheadStyle: fabricObj.arrowheadStyle || fabricObj.data?.arrowheadStyle || null,
     },
     ...(Object.keys(data).length > 0 ? { data } : {}),
     ...(Object.keys(style).length > 0 ? { style } : {}),
@@ -194,6 +205,8 @@ export function applyPdfAppAnnotationMetadata(fabricObj, metadata) {
   if (!fabricObj || !metadata || metadata.kind !== PDF_APP_ANNOTATION_SUBJECT) {
     return fabricObj;
   }
+  const style = metadata.style && typeof metadata.style === 'object' ? metadata.style : null;
+  const geometry = metadata.geometry && typeof metadata.geometry === 'object' ? metadata.geometry : null;
 
   const data = {
     ...(fabricObj.data || {}),
@@ -209,6 +222,7 @@ export function applyPdfAppAnnotationMetadata(fabricObj, metadata) {
     appAnnotationId: metadata.id,
     appAnnotationType: metadata.appType,
     pdfAnnotationSubject: PDF_APP_ANNOTATION_SUBJECT,
+    tool: metadata.flags?.tool || (metadata.appType === 'arrow' ? 'arrow' : fabricObj.tool),
     data,
     ...(metadata.moduleId ? { moduleId: metadata.moduleId } : {}),
     ...(metadata.regionId ? { regionId: metadata.regionId } : {}),
@@ -216,8 +230,34 @@ export function applyPdfAppAnnotationMetadata(fabricObj, metadata) {
     ...(metadata.layer ? { layer: metadata.layer } : {}),
   };
 
+  if (style) {
+    STYLE_KEYS.forEach((key) => {
+      if (style[key] !== undefined) out[key] = jsonSafe(style[key]);
+    });
+  }
+
+  if (geometry) {
+    GEOMETRY_KEYS.forEach((key) => {
+      if (geometry[key] !== undefined) out[key] = jsonSafe(geometry[key]);
+    });
+  }
+
+  if (metadata.flags?.lineEnding1 && out.lineEnding1 === undefined) {
+    out.lineEnding1 = metadata.flags.lineEnding1;
+  }
+  if (metadata.flags?.lineEnding2 && out.lineEnding2 === undefined) {
+    out.lineEnding2 = metadata.flags.lineEnding2;
+  }
+  if (metadata.flags?.arrowheadStyle && out.arrowheadStyle === undefined) {
+    out.arrowheadStyle = metadata.flags.arrowheadStyle;
+  }
+
   if (metadata.appType === 'highlight') {
     out.highlightId = metadata.id;
+    if (style?.fill !== undefined) out.fill = style.fill;
+    if (style?.opacity !== undefined) out.opacity = style.opacity;
+    if (style?.stroke !== undefined) out.stroke = style.stroke;
+    if (style?.strokeWidth !== undefined) out.strokeWidth = style.strokeWidth;
   }
 
   if (metadata.ownership && typeof metadata.ownership === 'object') {
@@ -228,4 +268,109 @@ export function applyPdfAppAnnotationMetadata(fabricObj, metadata) {
   }
 
   return out;
+}
+
+function cloneJson(value) {
+  return jsonSafe(value);
+}
+
+function sanitizeSpacesForMetadata(spaces = []) {
+  if (!Array.isArray(spaces)) return [];
+  return cloneJson(spaces
+    .filter((space) => space && typeof space === 'object')
+    .map((space) => ({
+      ...space,
+      assignedPages: Array.isArray(space.assignedPages)
+        ? space.assignedPages
+          .filter((page) => page && typeof page === 'object')
+          .map((page) => ({
+            ...page,
+            regions: Array.isArray(page.regions)
+              ? page.regions.filter((region) => region && typeof region === 'object')
+              : []
+          }))
+        : []
+    })));
+}
+
+function hasScopedLayer(value) {
+  return Boolean(
+    value?.moduleId !== null && value?.moduleId !== undefined
+    || value?.spaceId !== null && value?.spaceId !== undefined
+    || value?.regionId !== null && value?.regionId !== undefined
+  );
+}
+
+export function buildPdfAppLayerStateMetadata({
+  documentId = null,
+  exportId = null,
+  annotationsByPage = {},
+  callouts = [],
+  highlightAnnotations = {},
+  spaces = [],
+} = {}) {
+  const scopedAnnotationsByPage = {};
+  Object.entries(annotationsByPage || {}).forEach(([pageKey, pageData]) => {
+    const objects = Array.isArray(pageData?.objects) ? pageData.objects : [];
+    const scopedObjects = objects.filter((obj) => hasScopedLayer(obj) || obj?.highlightId);
+    if (scopedObjects.length > 0) {
+      scopedAnnotationsByPage[pageKey] = {
+        ...(pageData || {}),
+        objects: cloneJson(scopedObjects),
+      };
+    }
+  });
+
+  const scopedCallouts = (Array.isArray(callouts) ? callouts : []).filter((callout) => hasScopedLayer(callout));
+  const highlights = highlightAnnotations && typeof highlightAnnotations === 'object'
+    ? cloneJson(highlightAnnotations)
+    : {};
+  const normalizedSpaces = sanitizeSpacesForMetadata(spaces);
+
+  const hasPayload = (
+    Object.keys(scopedAnnotationsByPage).length > 0
+    || scopedCallouts.length > 0
+    || Object.keys(highlights || {}).length > 0
+    || normalizedSpaces.length > 0
+  );
+
+  if (!hasPayload && !documentId) return null;
+
+  return {
+    app: 'SurveyApp',
+    kind: PDF_APP_LAYER_STATE_KEY,
+    version: PDF_APP_LAYER_STATE_VERSION,
+    documentId: documentId || null,
+    exportId: exportId || null,
+    exportedAt: new Date().toISOString(),
+    layers: {
+      scopedAnnotationsByPage,
+      callouts: cloneJson(scopedCallouts),
+      highlightAnnotations: highlights || {},
+      spaces: normalizedSpaces || [],
+    },
+  };
+}
+
+export function serializePdfAppLayerStateMetadata(payload) {
+  return payload ? JSON.stringify(payload) : null;
+}
+
+export function parsePdfAppLayerStateMetadata(rawValue) {
+  if (!rawValue || typeof rawValue !== 'string') return null;
+  try {
+    const parsed = JSON.parse(rawValue);
+    if (
+      parsed?.app === 'SurveyApp' &&
+      parsed?.kind === PDF_APP_LAYER_STATE_KEY &&
+      parsed?.version === PDF_APP_LAYER_STATE_VERSION &&
+      parsed?.layers &&
+      typeof parsed.layers === 'object'
+    ) {
+      return parsed;
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }

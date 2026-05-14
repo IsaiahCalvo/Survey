@@ -1439,7 +1439,8 @@ const traceRegionPath = (ctx, region, scaleFactor = 1) => {
 };
 
 const applyRegionMaskToCanvasContext = (context, regions, scaleFactor = 1) => {
-  if (!context || !Array.isArray(regions) || regions.length === 0) {
+  const validRegions = normalizePageRegions(regions);
+  if (!context || validRegions.length === 0) {
     return;
   }
 
@@ -1448,7 +1449,7 @@ const applyRegionMaskToCanvasContext = (context, regions, scaleFactor = 1) => {
   context.fillStyle = 'rgba(40, 40, 40, 0.55)';
   context.fillRect(0, 0, context.canvas.width, context.canvas.height);
   context.globalCompositeOperation = 'destination-out';
-  regions.forEach(region => {
+  validRegions.forEach(region => {
     context.beginPath();
     if (traceRegionPath(context, region, scaleFactor)) {
       context.fill();
@@ -1481,7 +1482,7 @@ const applyRegionMaskToCanvasContext = (context, regions, scaleFactor = 1) => {
     context.fillRect(0, 0, context.canvas.width, context.canvas.height);
     context.globalAlpha = 1;
     context.globalCompositeOperation = 'destination-out';
-    regions.forEach(region => {
+    validRegions.forEach(region => {
       context.beginPath();
       if (traceRegionPath(context, region, scaleFactor)) {
         context.fill();
@@ -2180,6 +2181,101 @@ const summarizeAnnotationCountsForSaveExport = (annotationsByPage, callouts = []
     highlightCount,
     importedPdfObjects,
     byType
+  };
+};
+
+const PDF_IMPORTED_EDIT_MARKER_KEYS = new Set([
+  'pdfImportedEditState',
+  'pdfImportedEditedAt',
+  'pdfImportedEditedBy',
+  'pdfImportedEditSource',
+]);
+
+const isPdfImportedAnnotationObject = (obj) => Boolean(obj?.isPdfImported || obj?.pdfAnnotationId);
+
+const getPdfImportedAnnotationKey = (obj) => (
+  obj?.id
+  || obj?.data?.id
+  || obj?.highlightId
+  || (obj?.pdfAnnotationId ? `pdf:${obj.pdfAnnotationId}` : null)
+);
+
+const sanitizePdfImportedObjectForEditCompare = (value) => {
+  if (!value || typeof value !== 'object') return value;
+  if (Array.isArray(value)) {
+    return value.map((entry) => sanitizePdfImportedObjectForEditCompare(entry));
+  }
+  const out = {};
+  Object.entries(value).forEach(([key, entry]) => {
+    if (PDF_IMPORTED_EDIT_MARKER_KEYS.has(key)) return;
+    out[key] = sanitizePdfImportedObjectForEditCompare(entry);
+  });
+  return out;
+};
+
+const getPdfImportedEditComparable = (obj) => {
+  try {
+    return JSON.stringify(sanitizePdfImportedObjectForEditCompare(obj || null));
+  } catch (_) {
+    return null;
+  }
+};
+
+const shouldStampPdfImportedEditStateForSource = (source, previousObject, nextObject) => {
+  if (!isPdfImportedAnnotationObject(nextObject)) return false;
+  if (nextObject?.pdfImportedEditState === 'edited' || nextObject?.data?.pdfImportedEditState === 'edited') {
+    return false;
+  }
+  const normalizedSource = String(source || '').toLowerCase();
+  if (normalizedSource.includes('import') || normalizedSource.includes('hydrate') || normalizedSource.includes('sync')) {
+    return false;
+  }
+  if (!previousObject) {
+    return normalizedSource === 'object:modified' || normalizedSource.includes('paste');
+  }
+  return getPdfImportedEditComparable(previousObject) !== getPdfImportedEditComparable(nextObject);
+};
+
+const markEditedImportedPdfAnnotationsOnPage = (incomingPage, previousPage, { source, userId, pageNumber } = {}) => {
+  const objects = Array.isArray(incomingPage?.objects) ? incomingPage.objects : [];
+  if (objects.length === 0) return incomingPage;
+
+  const previousByKey = new Map();
+  (Array.isArray(previousPage?.objects) ? previousPage.objects : []).forEach((obj) => {
+    const key = getPdfImportedAnnotationKey(obj);
+    if (key) previousByKey.set(key, obj);
+  });
+
+  let editedCount = 0;
+  const markedObjects = objects.map((obj) => {
+    const key = getPdfImportedAnnotationKey(obj);
+    const previousObject = key ? previousByKey.get(key) : null;
+    if (!shouldStampPdfImportedEditStateForSource(source, previousObject, obj)) return obj;
+    editedCount += 1;
+    const stamp = {
+      ...obj,
+      pdfImportedEditState: 'edited',
+      pdfImportedEditedAt: new Date().toISOString(),
+      pdfImportedEditedBy: userId || null,
+      pdfImportedEditSource: source || null,
+      data: {
+        ...(obj.data || {}),
+        pdfImportedEditState: 'edited',
+      },
+    };
+    return stamp;
+  });
+
+  if (editedCount === 0) return incomingPage;
+  console.log('[PDFImportedEditExport] edit marker stamped ' + JSON.stringify({
+    pageNumber: pageNumber || incomingPage?.pageNumber || null,
+    source: source || null,
+    editedImportedCopies: editedCount,
+    reason: 'imported PDF annotation changed in app state; export must write the app-edited copy instead of skipping it as an unedited native duplicate.'
+  }));
+  return {
+    ...(incomingPage || {}),
+    objects: markedObjects,
   };
 };
 
@@ -12890,7 +12986,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         ...policy,
         appImportedIds,
         importedCopiesAvailable,
-        nativeLayerHidden: Boolean(policy?.hideNativeLayer && importedCopiesAvailable),
+        nativeLayerHidden: Boolean(policy?.hideNativeLayer),
       };
     });
     window.__nativePdfAnnotationLayerDiag = diag;
@@ -15453,6 +15549,22 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
   // NEW: Item and Annotation system state
   const [pdfId, setPdfId] = useState(null);
+  const previousPdfSelectionContextRef = useRef(null);
+  useLayoutEffect(() => {
+    const nextKey = `${tabId || 'tab'}:${pdfFile?.id || 'local'}:${pdfId || pdfFile?.name || 'pdf'}:${isActive ? 'active' : 'inactive'}`;
+    const previousKey = previousPdfSelectionContextRef.current;
+    previousPdfSelectionContextRef.current = nextKey;
+    if (previousKey && previousKey !== nextKey) {
+      clearAnnotationSelectionForContextChange(isActive ? 'pdf-file-change' : 'pdf-tab-inactive');
+    }
+  }, [
+    tabId,
+    pdfFile?.id,
+    pdfFile?.name,
+    pdfId,
+    isActive,
+    clearAnnotationSelectionForContextChange,
+  ]);
   const [items, setItems] = useState({}); // { [itemId]: Item }
   const [annotations, setAnnotations] = useState({}); // { [annotationId]: Annotation }
 
@@ -20581,45 +20693,156 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     }));
   }, []);
 
-  const handleSpaceRemovePage = useCallback((spaceId, pageId) => {
-    // Get regionId BEFORE deletion so we can cascade delete annotations
-    const space = spaces.find(s => s.id === spaceId);
-    const page = space?.assignedPages?.find(p => p.pageId === pageId);
-    const regionId = page?.regions?.[0]?.regionId;
-
-    // Delete region-scoped annotations from annotationsByPage
-    if (regionId) {
-      setAnnotationsByPage(prev => {
-        const updated = { ...prev };
-        if (updated[pageId] && updated[pageId].objects) {
-          updated[pageId] = {
-            ...updated[pageId],
-            objects: updated[pageId].objects.filter(obj => obj.regionId !== regionId)
-          };
-        }
-        return updated;
+  const cascadeDeleteScopedAppState = useCallback(({ spaceId, pageIds = null, regionIds = null, reason = 'space-scope-delete' }) => {
+    if (!spaceId) return;
+    const pageSet = Array.isArray(pageIds) && pageIds.length > 0
+      ? new Set(pageIds.map(Number).filter(Number.isFinite))
+      : null;
+    const sourceSpace = spacesRef.current.find((space) => space?.id === spaceId);
+    const hasExplicitRegionIds = Array.isArray(regionIds) && regionIds.length > 0;
+    const collectedRegionIds = new Set(
+      hasExplicitRegionIds
+        ? regionIds.filter(Boolean)
+        : []
+    );
+    if (!hasExplicitRegionIds) {
+      (sourceSpace?.assignedPages || []).forEach((page) => {
+        const pageNumber = Number(page?.pageId);
+        if (pageSet && !pageSet.has(pageNumber)) return;
+        (page?.regions || []).forEach((region) => {
+          if (region?.regionId) collectedRegionIds.add(region.regionId);
+        });
       });
     }
 
-    // Remove all highlight annotations associated with this space and page (or regionId)
-    // First, collect the highlight IDs to delete for syncing
-    const highlightIdsToDelete = Object.keys(highlightAnnotations).filter(highlightId => {
-      const highlight = highlightAnnotations[highlightId];
-      return (highlight.spaceId === spaceId && highlight.pageNumber === pageId) ||
-        (regionId && highlight.regionId === regionId);
+    const shouldDeleteScopedEntry = (entry) => {
+      if (!entry) return false;
+      const pageNumber = Number(entry.pageNumber ?? entry.page ?? entry.pageId);
+      if (pageSet && Number.isFinite(pageNumber) && !pageSet.has(pageNumber)) return false;
+      if (entry.regionId && collectedRegionIds.has(entry.regionId)) return true;
+      if (hasExplicitRegionIds) return false;
+      if (entry.spaceId === spaceId) return true;
+      if (entry.moduleId === spaceId) return true;
+      return false;
+    };
+
+    const cloudDeleteIds = new Set();
+    Object.entries(annotationsByPageRef.current || {}).forEach(([pageKey, pageData]) => {
+      const pageNumber = Number(pageKey);
+      if (pageSet && !pageSet.has(pageNumber)) return;
+      (Array.isArray(pageData?.objects) ? pageData.objects : []).forEach((obj) => {
+        if (!shouldDeleteScopedEntry({ ...obj, pageNumber })) return;
+        const id = getHistoryAnnotationId(obj);
+        if (id) cloudDeleteIds.add(id);
+      });
+    });
+    (calloutsRef.current || []).forEach((callout) => {
+      if (!shouldDeleteScopedEntry(callout)) return;
+      const id = callout?.id || callout?.highlightId || null;
+      if (id) cloudDeleteIds.add(id);
+    });
+    Object.entries(highlightAnnotationsRef.current || {}).forEach(([highlightId, highlight]) => {
+      if (shouldDeleteScopedEntry(highlight)) cloudDeleteIds.add(highlightId);
     });
 
-    setHighlightAnnotations(prev => {
-      const updated = { ...prev };
-      Object.keys(updated).forEach(highlightId => {
-        const highlight = updated[highlightId];
-        // Delete if matches spaceId+pageNumber OR regionId
-        if ((highlight.spaceId === spaceId && highlight.pageNumber === pageId) ||
-          (regionId && highlight.regionId === regionId)) {
-          delete updated[highlightId];
+    setAnnotationsByPage((prev) => {
+      let changed = false;
+      const next = {};
+      Object.entries(prev || {}).forEach(([pageKey, pageData]) => {
+        const pageNumber = Number(pageKey);
+        const objects = Array.isArray(pageData?.objects) ? pageData.objects : [];
+        if (pageSet && !pageSet.has(pageNumber)) {
+          next[pageKey] = pageData;
+          return;
         }
+        const kept = objects.filter((obj) => {
+          const shouldDelete = shouldDeleteScopedEntry({ ...obj, pageNumber });
+          if (shouldDelete) {
+            const id = getHistoryAnnotationId(obj);
+            if (id) cloudDeleteIds.add(id);
+            changed = true;
+            return false;
+          }
+          return true;
+        });
+        next[pageKey] = kept.length === objects.length
+          ? pageData
+          : { ...(pageData || {}), objects: kept };
       });
-      return updated;
+      return changed ? next : prev;
+    });
+
+    setCalloutsIfPersistedChanged((prev) => {
+      let changed = false;
+      const kept = (Array.isArray(prev) ? prev : []).filter((callout) => {
+        if (!shouldDeleteScopedEntry(callout)) return true;
+        const id = callout?.id || callout?.highlightId || null;
+        if (id) cloudDeleteIds.add(id);
+        changed = true;
+        return false;
+      });
+      return changed ? kept : prev;
+    });
+
+    setHighlightAnnotations((prev) => {
+      let changed = false;
+      const next = { ...(prev || {}) };
+      Object.entries(prev || {}).forEach(([highlightId, highlight]) => {
+        if (!shouldDeleteScopedEntry(highlight)) return;
+        delete next[highlightId];
+        cloudDeleteIds.add(highlightId);
+        changed = true;
+      });
+      return changed ? next : prev;
+    });
+
+    setAnnotations((prev) => {
+      let changed = false;
+      const next = { ...(prev || {}) };
+      Object.entries(prev || {}).forEach(([annotationId, annotation]) => {
+        if (!shouldDeleteScopedEntry(annotation)) return;
+        delete next[annotationId];
+        changed = true;
+      });
+      return changed ? next : prev;
+    });
+
+    setRegionOverlayDisabled((prev) => {
+      const next = new Map(prev);
+      let changed = false;
+      for (const key of Array.from(next.keys())) {
+        if (!String(key).startsWith(`${spaceId}-`)) continue;
+        if (pageSet) {
+          const pagePart = Number(String(key).slice(String(spaceId).length + 1));
+          if (!pageSet.has(pagePart)) continue;
+        }
+        next.delete(key);
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+
+    const ids = Array.from(cloudDeleteIds).filter(Boolean);
+    if (pdfFile?.id && ids.length > 0) {
+      deleteAnnotations(pdfFile.id, ids).catch((err) => {
+        console.error('[SpaceCascadeDelete] cloud delete failed:', err);
+      });
+    }
+    console.log('[SpaceCascadeDelete] deleted scoped app state ' + JSON.stringify({
+      reason,
+      documentId: pdfFile?.id || null,
+      spaceId,
+      pageIds: pageSet ? Array.from(pageSet) : null,
+      regionIds: Array.from(collectedRegionIds),
+      cloudDeleteIds: ids.length,
+    }));
+  }, [pdfFile?.id, setCalloutsIfPersistedChanged]);
+
+  const handleSpaceRemovePage = useCallback((spaceId, pageId) => {
+    cascadeDeleteScopedAppState({
+      spaceId,
+      pageIds: [pageId],
+      reason: 'space-page-delete',
     });
 
     // Then update the spaces to remove the page
@@ -20645,7 +20868,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
       return nextSpaces;
     });
-  }, [activeSpaceId, spaces, highlightAnnotations]);
+  }, [activeSpaceId, cascadeDeleteScopedAppState]);
 
   const handleSpaceRenamePage = useCallback((spaceId, pageId, newLabel) => {
     const trimmedLabel = typeof newLabel === 'string' ? newLabel.trim() : '';
@@ -20694,6 +20917,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   }, []);
 
   const handleSpaceClearRegions = useCallback((spaceId, pageId) => {
+    cascadeDeleteScopedAppState({
+      spaceId,
+      pageIds: [pageId],
+      reason: 'space-page-regions-clear',
+    });
 
     setSpaces(prev => {
       const beforeSpace = prev.find(s => s.id === spaceId);
@@ -20742,7 +20970,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
       return updated;
     });
-  }, []);
+  }, [cascadeDeleteScopedAppState]);
 
   const handleReorderSpaces = useCallback((fromIndex, toIndex) => {
     setSpaces(prev => {
@@ -24678,8 +24906,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     callouts,
     setAnnotationsByPage,
     setCallouts,
-    enabled: cloudSyncActive,
-    hydrateEnabled: cloudSyncEnabled && !!pdfFile?.id && !!user?.id
+    enabled: isActive && cloudSyncActive,
+    hydrateEnabled: isActive && cloudSyncEnabled && !!pdfFile?.id && !!user?.id
   });
   // Live presence list — feeds the stacked-avatars row in the toolbar.
   // Uses cloudSyncActive (operational flag) so presence stops fetching when
@@ -24796,7 +25024,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       }
 
       const mode = page.wholePageIncluded === false ? 'region' : 'full';
-      const regions = Array.isArray(page.regions) ? page.regions : [];
+      const regions = normalizePageRegions(page.regions || []);
       const pageAnnotations = annotationsByPage[pageNumber]?.objects || [];
 
       pageAnnotations.forEach(obj => {
@@ -24958,11 +25186,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     // Checkpoint history before deleting space
     addHistoryCheckpoint('space:delete', { spaceId: id });
 
+    cascadeDeleteScopedAppState({
+      spaceId: id,
+      reason: 'space-delete',
+    });
     setSpaces(prev => prev.filter(s => s.id !== id));
     if (activeSpaceId === id) {
       setActiveSpaceId(null);
     }
-  }, [addHistoryCheckpoint, activeSpaceId]);
+    if (selectedSpaceId === id) {
+      setSelectedSpaceId(null);
+    }
+  }, [addHistoryCheckpoint, activeSpaceId, selectedSpaceId, cascadeDeleteScopedAppState]);
 
   const handleSetActiveSpace = useCallback((spaceId) => {
     debugLog('[SPACE TOGGLE] Activating space - regions enabled, annotations with regionId should be shown:', { spaceId, previousActiveSpaceId: activeSpaceId });
@@ -25797,6 +26032,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       regionIds: validMigratedRegions.map(region => region.regionId)
     });
 
+    const previousPage = pageIndex >= 0 ? updatedPages[pageIndex] : null;
+    const nextRegionIds = new Set(validMigratedRegions.map((region) => region?.regionId).filter(Boolean));
+    const removedRegionIds = (previousPage?.regions || [])
+      .map((region) => region?.regionId)
+      .filter((regionId) => regionId && !nextRegionIds.has(regionId));
+    if (removedRegionIds.length > 0) {
+      cascadeDeleteScopedAppState({
+        spaceId: activeSpaceId,
+        pageIds: [regionSelectionPage],
+        regionIds: removedRegionIds,
+        reason: 'region-delete-or-replace',
+      });
+    }
+
     if (pageIndex >= 0) {
       updatedPages[pageIndex] = {
         ...updatedPages[pageIndex],
@@ -25825,7 +26074,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     setSelectedSpaceId(activeSpaceId);
     finishRegionEditSession();
     // Keep selectedSpaceId set - don't clear it when region selection completes
-  }, [activeSpaceId, regionSelectionPage, spaces, handleSpaceUpdate, finishRegionEditSession]);
+  }, [activeSpaceId, regionSelectionPage, spaces, handleSpaceUpdate, finishRegionEditSession, cascadeDeleteScopedAppState]);
 
   // Templates are loaded from Supabase via Dashboard component
   // No need to load from localStorage here
@@ -26258,20 +26507,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         outputPath: null,
         annotationCountsByType: annotationCounts.byType,
         annotationCountSummary: annotationCounts,
-        embeddedPdfNativeAnnotationHandling: 'preserve-native-layer-and-skip-imported-app-copies',
-        note: 'Explicit export generates a PDF copy. Imported PDF-native annotations remain in the source PDF and their app-imported copies are skipped during export to avoid duplication.'
+        embeddedPdfNativeAnnotationHandling: 'preserve-unedited-native-annots-skip-unedited-imported-copies-export-edited-imported-copies',
+        note: 'Explicit export generates a PDF copy from original PDF bytes. Unedited imported PDF-native app copies are skipped to avoid duplication; edited imported copies are exported from app state.'
       }));
-      let sourcePdfForExport = pdfFile;
-      const saveAsBlob = syncfusionViewerRef.current?.saveAsBlob;
-      if (typeof saveAsBlob === 'function') {
-        try {
-          const blob = await saveAsBlob();
-          if (blob && Number(blob.size) > 0) {
-            sourcePdfForExport = blob;
-          }
-        } catch (error) {
-          console.warn('[ExportAnnotatedPDF] Falling back to original PDF bytes after Syncfusion saveAsBlob failed:', error);
-        }
+      const sourcePdfForExport = pdfFile;
+      if (typeof syncfusionViewerRef.current?.saveAsBlob === 'function') {
+        console.log('[PDFSaveExport] source PDF selection ' + JSON.stringify({
+          actionType: 'pdf-export',
+          documentId: pdfFile?.id || null,
+          source: 'original-pdf-bytes',
+          skippedViewerSaveAsBlob: true,
+          reason: 'The viewer save blob can contain rendered annotation appearances; exporting from original bytes prevents baked page artifacts plus duplicate editable app annotations.'
+        }));
       }
       const buffer = await savePDFWithAnnotationsPdfLib(
         sourcePdfForExport,
@@ -26312,7 +26559,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         outputPath: result?.filePath || null,
         annotationCountsByType: annotationCounts.byType,
         annotationCountSummary: annotationCounts,
-        embeddedPdfNativeAnnotationHandling: 'preserve-native-layer-and-skip-imported-app-copies'
+        embeddedPdfNativeAnnotationHandling: 'preserve-unedited-native-annots-skip-unedited-imported-copies-export-edited-imported-copies'
       }));
       // Successful Export already completed through the explicit Save As flow.
       // Keep success feedback non-blocking; the output path is preserved in
@@ -26909,6 +27156,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
               diagnosticsOnly: true
             });
             if (isCancelled) return;
+            console.log('[PDFImport] native layer policy ' + JSON.stringify({
+              documentId: pdfFile.id,
+              cloudAuthoritative: true,
+              reason: 'cloud/Y.Doc annotations are authoritative; native PDF annotation layer is hidden when all renderable native annotations are accounted for by importer diagnostics.',
+              pages: Object.fromEntries(Object.entries(nativeLayerPolicyByPage || {}).map(([pageKey, policy]) => [pageKey, {
+                hideNativeLayer: Boolean(policy?.hideNativeLayer),
+                nativeRenderableAnnotationCount: Array.isArray(policy?.nativeRenderableAnnotationIds) ? policy.nativeRenderableAnnotationIds.length : 0,
+                nativeOnlyAnnotationCount: Array.isArray(policy?.nativeOnlyAnnotationIds) ? policy.nativeOnlyAnnotationIds.length : 0,
+                reason: policy?.reason || null,
+              }])),
+            }));
             setPdfNativeAnnotationLayerPolicyByPage(nativeLayerPolicyByPage || {});
           } catch (diagError) {
             console.warn('[PDFImport] embedded PDF annotation diagnostics failed:', diagError);
@@ -26919,6 +27177,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
           const {
             annotationsByPage: importedAnnotations,
             calloutsByPage: importedAppCalloutsByPage,
+            appLayerState,
             unsupportedTypes,
             nativeLayerPolicyByPage
           } = await importAnnotationsFromPdf(pdf, {
@@ -26926,6 +27185,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
           });
           if (isCancelled) return;
           setPdfNativeAnnotationLayerPolicyByPage(nativeLayerPolicyByPage || {});
+          console.log('[PDFImport] native layer policy ' + JSON.stringify({
+            documentId: pdfFile?.id || null,
+            pdfName: pdfFile?.name || null,
+            cloudAuthoritative: false,
+            reason: 'PDF-native annotations imported as editable app annotations hide Syncfusion native annotation and selection/adorner layers to avoid duplicate interaction chrome.',
+            pages: Object.fromEntries(Object.entries(nativeLayerPolicyByPage || {}).map(([pageKey, policy]) => [pageKey, {
+              hideNativeLayer: Boolean(policy?.hideNativeLayer),
+              nativeRenderableAnnotationCount: Array.isArray(policy?.nativeRenderableAnnotationIds) ? policy.nativeRenderableAnnotationIds.length : 0,
+              nativeOnlyAnnotationCount: Array.isArray(policy?.nativeOnlyAnnotationIds) ? policy.nativeOnlyAnnotationIds.length : 0,
+              importedCopyCount: Array.isArray(policy?.importedIds) ? policy.importedIds.length : 0,
+              reason: policy?.reason || null,
+            }])),
+          }));
 
           // UX: Phase 14 CALL-10 hotfix — FreeText annotations with
           // /IT=FreeTextCallout arrive from the importer as fabric textboxes
@@ -26944,6 +27216,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
                 ...entries,
               ];
             }
+          });
+          const hiddenLayerCallouts = Array.isArray(appLayerState?.layers?.callouts)
+            ? appLayerState.layers.callouts
+            : [];
+          hiddenLayerCallouts.forEach((callout) => {
+            const pageKey = String(callout?.pageNumber || 1);
+            importedCalloutsByPage[pageKey] = [
+              ...(importedCalloutsByPage[pageKey] || []),
+              callout,
+            ];
           });
           const filteredImportedAnnotations = {};
           Object.entries(importedAnnotations || {}).forEach(([pageKey, pageData]) => {
@@ -26965,9 +27247,56 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
               objects: remainingObjects,
             };
             if (calloutEntries.length > 0) {
-              importedCalloutsByPage[pageKey] = calloutEntries;
+              importedCalloutsByPage[pageKey] = [
+                ...(importedCalloutsByPage[pageKey] || []),
+                ...calloutEntries,
+              ];
             }
           });
+          Object.entries(appLayerState?.layers?.scopedAnnotationsByPage || {}).forEach(([pageKey, pageData]) => {
+            const current = filteredImportedAnnotations[pageKey] || { objects: [] };
+            filteredImportedAnnotations[pageKey] = {
+              ...(current || {}),
+              objects: [
+                ...(Array.isArray(current.objects) ? current.objects : []),
+                ...(Array.isArray(pageData?.objects) ? pageData.objects : []),
+              ],
+            };
+          });
+
+          const hiddenHighlights = appLayerState?.layers?.highlightAnnotations || {};
+          if (hiddenHighlights && Object.keys(hiddenHighlights).length > 0) {
+            setHighlightAnnotations((prev) => ({
+              ...(prev || {}),
+              ...hiddenHighlights,
+            }));
+          }
+          const hiddenSpaces = Array.isArray(appLayerState?.layers?.spaces)
+            ? appLayerState.layers.spaces
+              .filter((space) => space && typeof space === 'object')
+              .map((space) => ({
+                ...space,
+                assignedPages: Array.isArray(space.assignedPages)
+                  ? space.assignedPages
+                    .filter((page) => page && typeof page === 'object')
+                    .map((page) => ({
+                      ...page,
+                      regions: normalizePageRegions(page.regions || [])
+                    }))
+                  : []
+              }))
+            : [];
+          if (hiddenSpaces.length > 0) {
+            setSpaces(hiddenSpaces);
+          }
+          console.log('[PDFAppLayerStateImport] restored ' + JSON.stringify({
+            documentId: appLayerState?.documentId || null,
+            exportId: appLayerState?.exportId || null,
+            scopedAnnotationPages: Object.keys(appLayerState?.layers?.scopedAnnotationsByPage || {}).length,
+            scopedCallouts: hiddenLayerCallouts.length,
+            surveyHighlights: Object.keys(hiddenHighlights || {}).length,
+            spaces: hiddenSpaces.length,
+          }));
 
       setCalloutsIfPersistedChanged((prev) => {
         const preserved = Array.isArray(prev)
@@ -28753,11 +29082,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     }
     const currentPageAnnotations = annotationsByPageRef.current?.[pageNumber];
     const normalizedCurrentAnnotations = normalizeCanvasJsonForHistory(currentPageAnnotations);
-    const normalizedIncomingAnnotations = normalizeCanvasJsonForHistory(json);
     const normalizedSaveContext = saveContext && typeof saveContext === 'object'
       ? saveContext
       : null;
     const source = normalizeHistoryReason(normalizedSaveContext?.source || 'annotations:save');
+    const markedIncomingJson = markEditedImportedPdfAnnotationsOnPage(json, currentPageAnnotations, {
+      source,
+      userId: user?.id || null,
+      pageNumber,
+    });
+    const normalizedIncomingAnnotations = normalizeCanvasJsonForHistory(markedIncomingJson);
     const isEraserCommit = source === 'eraser:commit' || normalizedSaveContext?.tool === 'eraser';
     const eraserDeletedIds = Array.isArray(normalizedSaveContext?.finalDeletedAnnotationIds)
       ? normalizedSaveContext.finalDeletedAnnotationIds.filter(Boolean)
@@ -29170,6 +29504,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     pushHistoryDebugEvent,
     summarizeAnnotationPageTransitionForDebug,
     enqueueUndoToast,
+    user?.id,
     yjsDoc,
     yjsUndoManager
   ]);
@@ -31911,13 +32246,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       return null;
     }
 
-    if (!assignedPage.regions || assignedPage.regions.length === 0) {
+    const allRegions = normalizePageRegions(assignedPage.regions || []);
+    if (allRegions.length === 0) {
       return null;
     }
     // Requirement: "A region can contain multiple areas (polygons) within it"
     // Return all regions as they represent multiple areas within the same logical region
     // The overlay component will process all of them to show the combined visible areas
-    const allRegions = assignedPage.regions;
     return allRegions;
   }, [activeSpaceId, spaces, showRegionSelection, regionSelectionPage]);
 
@@ -31981,7 +32316,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         }
 
         // Ensure regions array exists and has at least one region
-        const regions = page.regions || [];
+        const regions = normalizePageRegions(page.regions || []);
         if (regions.length === 0) {
           // If no region exists yet, create a placeholder region record so this
           // page can still persist page-level visibility state.
@@ -33823,10 +34158,39 @@ ${pageBlocks}
                       const importedPdfCopiesAvailable = requiredImportedPdfAnnotationIds.length > 0 &&
                         requiredImportedPdfAnnotationIds.every((id) => appImportedPdfAnnotationIds.includes(id));
                       const shouldHideNativePdfAnnotationLayer = Boolean(
-                        nativePdfAnnotationPolicy?.hideNativeLayer &&
-                        importedPdfCopiesAvailable
+                        nativePdfAnnotationPolicy?.hideNativeLayer
                       );
                       const nativePdfAnnotationCanvasId = `${syncfusionViewerElementId}_annotationCanvas_${pageNumber - 1}`;
+                      const nativePdfPageDivId = `${syncfusionViewerElementId}_pageDiv_${pageNumber - 1}`;
+                      const nativePdfAnnotationLayerHideCss = `
+                        [id="${nativePdfAnnotationCanvasId}"],
+                        [id="${nativePdfAnnotationCanvasId}"] *,
+                        [id="${nativePdfPageDivId}"] .e-pv-annotation-canvas,
+                        [id="${nativePdfPageDivId}"] .e-pv-annotation-canvas *,
+                        [id="${nativePdfPageDivId}"] .e-pv-annotation-layer,
+                        [id="${nativePdfPageDivId}"] .e-pv-annotation-layer *,
+                        [id="${nativePdfPageDivId}"] .e-pv-annotation,
+                        [id="${nativePdfPageDivId}"] .e-pv-annotation *,
+                        [id="${nativePdfPageDivId}"] .e-pv-annotation-selection,
+                        [id="${nativePdfPageDivId}"] .e-pv-annotation-selection *,
+                        [id="${nativePdfPageDivId}"] .e-pv-resize-container,
+                        [id="${nativePdfPageDivId}"] .e-pv-resize-container *,
+                        [id="${nativePdfPageDivId}"] .e-pv-resize-div,
+                        [id="${nativePdfPageDivId}"] .e-pv-resize-div *,
+                        [id="${nativePdfPageDivId}"] [id$="_diagramAdornerLayer"],
+                        [id="${nativePdfPageDivId}"] [id$="_diagramAdornerLayer"] *,
+                        [id="${nativePdfPageDivId}"] [id$="_diagramAdorner_svg"],
+                        [id="${nativePdfPageDivId}"] [id$="_diagramAdorner_svg"] *,
+                        [id="${nativePdfPageDivId}"] [id$="_diagramAdorner"],
+                        [id="${nativePdfPageDivId}"] [id$="_SelectorElement"],
+                        [id="${nativePdfPageDivId}"] [id*="SelectorElement"],
+                        [id="${nativePdfPageDivId}"] .e-adorner-layer0,
+                        [id="${nativePdfPageDivId}"] .e-adorner-layer1,
+                        [id="${nativePdfPageDivId}"] .e-adorner-layer2 {
+                          visibility: hidden !important;
+                          pointer-events: none !important;
+                        }
+                      `;
 
                       return createPortal(
                         <div
@@ -33859,7 +34223,7 @@ ${pageBlocks}
                         >
                           {shouldHideNativePdfAnnotationLayer && (
                             <style>
-                              {`[id="${nativePdfAnnotationCanvasId}"]{visibility:hidden!important;pointer-events:none!important;}`}
+                              {nativePdfAnnotationLayerHideCss}
                             </style>
                           )}
                           <div

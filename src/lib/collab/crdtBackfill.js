@@ -334,7 +334,8 @@ export async function runBackfill(args) {
         // check was poisoned when an earlier dedupe ran on a wiped Y.Map
         // and recorded 3 as "last known good." This hard floor unblocks
         // recovery without trusting the corrupted anchor.
-        const hardFloorBreached = yMapSize < 50;
+        const hadLargeKnownData = legacyCount >= 50 || lastGoodSize >= 50;
+        const hardFloorBreached = hadLargeKnownData && yMapSize < 50;
         const sanityFloorBreached = hardFloorBreached || (probeOk
           && legacyCount > 1000
           && yMapSize < 100);
@@ -345,7 +346,7 @@ export async function runBackfill(args) {
               ? dedupeAnchorOk
               : (probeOk && (yMapSize >= (legacyCount || 0) - tolerance));
         console.log('[Phase31 UAT] backfill:degeneracy-probe ' + JSON.stringify({
-          documentId, userId, yMapSize, legacyCount, probeOk, tolerance, yMapLooksHealthy, dedupeRan, lastGoodSize,
+          documentId, userId, yMapSize, legacyCount, probeOk, tolerance, yMapLooksHealthy, dedupeRan, lastGoodSize, hardFloorBreached,
         }));
         if (yMapLooksHealthy) {
           return {

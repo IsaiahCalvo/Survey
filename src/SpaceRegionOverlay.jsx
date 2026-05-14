@@ -211,25 +211,15 @@ const SpaceRegionOverlay = ({
   const hatchId = useMemo(() => `space-hatch-${pageNumber}-${instanceId}`, [instanceId, pageNumber]);
   const maskId = useMemo(() => `space-mask-${pageNumber}-${instanceId}`, [instanceId, pageNumber]);
 
-  if (!regionCutoutPath) {
-    return null;
-  }
-
-  if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
-    return null;
-  }
-
-  if (!Number.isFinite(screenWidth) || screenWidth <= 0 || !Number.isFinite(screenHeight) || screenHeight <= 0) {
-    return null;
-  }
-
-  console.log(
-    `[SpaceRegionOverlay p${pageNumber}] render — ` +
-    `regions=${regions.length}, screen=${Math.round(screenWidth)}x${Math.round(screenHeight)}, ` +
-    `cutoutPathLength=${regionCutoutPath.length}, maskId=${maskId}`
-  );
+  const canRender =
+    !!regionCutoutPath &&
+    Number.isFinite(width) && width > 0 &&
+    Number.isFinite(height) && height > 0 &&
+    Number.isFinite(screenWidth) && screenWidth > 0 &&
+    Number.isFinite(screenHeight) && screenHeight > 0;
 
   useLayoutEffect(() => {
+    if (!canRender) return;
     const rootRect = rootRef.current?.getBoundingClientRect?.();
     const svgRect = svgRef.current?.getBoundingClientRect?.();
     console.log(
@@ -238,7 +228,17 @@ const SpaceRegionOverlay = ({
       `svg=${svgRect ? `${Math.round(svgRect.width)}x${Math.round(svgRect.height)}` : 'none'}, ` +
       `fillContainer=${fillContainer}, maskId=${maskId}`
     );
-  }, [fillContainer, maskId, pageNumber, regionCutoutPath]);
+  }, [canRender, fillContainer, maskId, pageNumber, regionCutoutPath]);
+
+  if (!canRender) {
+    return null;
+  }
+
+  console.log(
+    `[SpaceRegionOverlay p${pageNumber}] render — ` +
+    `regions=${regions.length}, screen=${Math.round(screenWidth)}x${Math.round(screenHeight)}, ` +
+    `cutoutPathLength=${regionCutoutPath.length}, maskId=${maskId}`
+  );
 
   return (
     <div

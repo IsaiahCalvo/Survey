@@ -864,7 +864,12 @@ export function useAnnotationCloudSync({
     };
     if (currentCount < prevCount) {
       const stack = (new Error()).stack?.split('\n').slice(2, 8).join(' | ') || 'no-stack';
-      console.warn('[CloudSync][hook][state-obs] SHRINK ' + JSON.stringify({ ...baseRecord, stack }));
+      const message = '[CloudSync][hook][state-obs] SHRINK ' + JSON.stringify({ ...baseRecord, stack });
+      if (typeof window !== 'undefined' && window.__CLOUD_SYNC_STATE_OBS_DIAG === true) {
+        console.warn(message);
+      } else {
+        console.log(message);
+      }
     } else if (typeof window !== 'undefined' && window.__CLOUD_SYNC_STATE_OBS_DIAG === true) {
       console.log('[CloudSync][hook][state-obs] change ' + JSON.stringify(baseRecord));
     }

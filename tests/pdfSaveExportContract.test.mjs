@@ -21,6 +21,9 @@ import {
 import {
   PDF_APP_ANNOTATION_METADATA_KEY,
   PDF_APP_ANNOTATION_SUBJECT,
+  PDF_APP_LAYER_STATE_KEY,
+  applyPdfAppAnnotationMetadata,
+  parsePdfAppLayerStateMetadata,
   parsePdfAppAnnotationMetadata,
 } from '../src/utils/pdfAppAnnotationMetadata.js';
 
@@ -333,6 +336,17 @@ test('PDF export success path does not show a blocking exported alert', () => {
   assert.match(APP_SOURCE, /outputPath:\s*result\?\.filePath \|\| null/);
 });
 
+test('PDF export uses original PDF bytes as the source to avoid baked viewer annotation artifacts', () => {
+  assert.match(APP_SOURCE, /const sourcePdfForExport = pdfFile/);
+  assert.equal(
+    /sourcePdfForExport\s*=\s*blob/.test(APP_SOURCE),
+    false,
+    'explicit PDF export must not replace the source PDF with Syncfusion saveAsBlob output',
+  );
+  assert.match(APP_SOURCE, /skippedViewerSaveAsBlob:\s*true/);
+  assert.match(APP_SOURCE, /prevents baked page artifacts plus duplicate editable app annotations/);
+});
+
 test('Space CSV region filtering uses stored page coordinates, not viewer scale', () => {
   assert.match(
     APP_SOURCE,
@@ -406,7 +420,7 @@ test('PDF export embeds explicit counter metadata on app-created counter pins', 
   }
 });
 
-test('PDF export contract includes regular, survey, region, and survey-region app annotations', () => {
+test('PDF export contract includes only regular viewer annotations and excludes survey, space, and region scope', () => {
   const plan = buildPdfExportAnnotationPlan({
     pageSizes: { 1: { width: 200, height: 200 } },
     spaces: [{
@@ -426,14 +440,18 @@ test('PDF export contract includes regular, survey, region, and survey-region ap
   });
 
   assert.equal(plan.diagnostics.totalObjectsConsidered, 4);
-  assert.equal(plan.diagnostics.objectsExported, 4);
-  assert.equal(plan.diagnostics.objectsSkipped, 0);
+  assert.equal(plan.diagnostics.objectsExported, 1);
+  assert.equal(plan.diagnostics.objectsSkipped, 3);
   assert.deepEqual(plan.diagnostics.byScope, {
     canvas: 1,
     survey: 1,
     region: 1,
     'survey-region': 1,
   });
+  assert.equal(plan.diagnostics.skippedByReason['scoped-annotation-export-excluded'], 3);
+  assert.deepEqual(plan.items.map((item) => item.id), ['regular']);
+  assert.deepEqual(plan.contract.includedScopes, ['canvas']);
+  assert.deepEqual(plan.contract.excludedScopes, ['survey', 'region', 'survey-region']);
 });
 
 test('PDF export skips imported PDF-native app copies to avoid duplicate annotations', () => {
@@ -455,7 +473,88 @@ test('PDF export skips imported PDF-native app copies to avoid duplicate annotat
   assert.equal(plan.diagnostics.skippedByReason['imported-pdf-native-preserved'], 1);
 });
 
-test('PDF export writes all supported app annotation scopes into the PDF', async () => {
+test('PDF export includes edited imported PDF-native app copies', () => {
+  const plan = buildPdfExportAnnotationPlan({
+    pageSizes: { 1: { width: 200, height: 200 } },
+    annotationsByPage: {
+      1: {
+        objects: [
+          {
+            id: 'edited-imported-circle',
+            type: 'circle',
+            left: 50,
+            top: 20,
+            radius: 8,
+            isPdfImported: true,
+            pdfAnnotationId: 'pdf-native-1',
+            pdfImportedEditState: 'edited',
+          },
+          { id: 'unedited-imported-circle', type: 'circle', left: 20, top: 20, radius: 8, isPdfImported: true, pdfAnnotationId: 'pdf-native-2' },
+        ],
+      },
+    },
+  });
+
+  assert.equal(plan.diagnostics.totalObjectsConsidered, 2);
+  assert.equal(plan.diagnostics.objectsExported, 1);
+  assert.equal(plan.diagnostics.objectsSkipped, 1);
+  assert.equal(plan.diagnostics.editedImportedCopiesExported, 1);
+  assert.equal(plan.diagnostics.importedNativeCopiesSkipped, 1);
+  assert.equal(plan.items[0].id, 'edited-imported-circle');
+});
+
+test('PDF export replaces identifiable native annotation when imported copy was edited', async () => {
+  const sourceDoc = await PDFDocument.create();
+  const page = sourceDoc.addPage([200, 200]);
+  const nativeAnnot = sourceDoc.context.register(sourceDoc.context.obj({
+    Type: 'Annot',
+    Subtype: 'Circle',
+    Rect: [20, 160, 40, 180],
+    Border: [0, 0, 1],
+    Contents: 'old native',
+    P: page.ref,
+  }));
+  page.node.set(PDFName.of('Annots'), sourceDoc.context.obj([nativeAnnot]));
+  const sourceBytes = await sourceDoc.save();
+  const pdfFile = {
+    name: 'native-source.pdf',
+    async arrayBuffer() {
+      return sourceBytes.buffer.slice(sourceBytes.byteOffset, sourceBytes.byteOffset + sourceBytes.byteLength);
+    },
+  };
+
+  const originalWindow = globalThis.window;
+  globalThis.window = {};
+  try {
+    const bytes = await savePDFWithAnnotationsPdfLib(
+      pdfFile,
+      {
+        1: {
+          objects: [{
+            id: 'edited-native-copy',
+            type: 'rect',
+            left: 60,
+            top: 60,
+            width: 20,
+            height: 20,
+            isPdfImported: true,
+            pdfAnnotationId: `${nativeAnnot.objectNumber}R`,
+            pdfImportedEditState: 'edited',
+          }],
+        },
+      },
+      { 1: { width: 200, height: 200 } },
+      null,
+      { returnBytes: true, actionType: 'pdf-export', documentId: 'doc-test' },
+    );
+
+    assert.deepEqual(await getPdfAnnotationSubtypes(bytes), ['Square']);
+  } finally {
+    globalThis.window = originalWindow;
+  }
+});
+
+test('PDF export writes only regular viewer annotations into the PDF', async () => {
   const originalWindow = globalThis.window;
   globalThis.window = {};
   try {
@@ -477,17 +576,17 @@ test('PDF export writes all supported app annotation scopes into the PDF', async
         returnBytes: true,
         actionType: 'pdf-export',
         documentId: 'doc-test',
-        spaces: [{ id: 'space-a', assignedPages: [{ pageId: 1, regions: [{ regionId: 'region-a' }] }] }],
+        spaces: [{ id: 'space-a', assignedPages: [{ pageId: 1, regions: [null, { regionId: 'region-a' }] }] }],
       },
     );
 
-    assert.deepEqual(await getPdfAnnotationSubtypes(bytes), ['Square', 'Circle', 'Line', 'FreeText']);
+    assert.deepEqual(await getPdfAnnotationSubtypes(bytes), ['Square']);
   } finally {
     globalThis.window = originalWindow;
   }
 });
 
-test('PDF export includes survey highlights, region highlights, survey-region highlights, and callouts', async () => {
+test('PDF export excludes survey highlights and scoped callouts', async () => {
   const originalWindow = globalThis.window;
   globalThis.window = {};
   try {
@@ -522,14 +621,60 @@ test('PDF export includes survey highlights, region highlights, survey-region hi
       },
     );
 
-    assert.deepEqual(await getPdfAnnotationSubtypes(bytes), [
-      'Highlight',
-      'Highlight',
-      'Highlight',
-      'Line',
-      'Line',
-      'FreeText',
-    ]);
+    assert.deepEqual(await getPdfAnnotationSubtypes(bytes), []);
+  } finally {
+    globalThis.window = originalWindow;
+  }
+});
+
+test('PDF export stores survey, space, and region layers as hidden app metadata', async () => {
+  const originalWindow = globalThis.window;
+  globalThis.window = {};
+  try {
+    const bytes = await savePDFWithAnnotationsPdfLib(
+      await makePdfFile(),
+      {
+        1: {
+          objects: [
+            { id: 'regular-path', type: 'path', left: 0, top: 0, path: [['M', 10, 10], ['L', 20, 20]], stroke: '#ff0000', strokeWidth: 2 },
+            { id: 'survey-circle', type: 'circle', left: 40, top: 10, radius: 8, moduleId: 'module-a', stroke: '#111111' },
+          ],
+        },
+      },
+      { 1: { width: 200, height: 200 } },
+      null,
+      {
+        returnBytes: true,
+        actionType: 'pdf-export',
+        documentId: 'doc-layer-state',
+        spaces: [{ id: 'space-a', assignedPages: [{ pageId: 1, regions: [{ regionId: 'region-a' }] }] }],
+        highlightAnnotations: {
+          'survey-highlight': { pageNumber: 1, bounds: { x: 10, y: 10, width: 20, height: 10 }, moduleId: 'module-a', color: '#ffff00' },
+        },
+        callouts: [{
+          id: 'region-callout',
+          pageNumber: 1,
+          regionId: 'region-a',
+          arrowTip: { x: 0.1, y: 0.1 },
+          knee: { x: 0.2, y: 0.2 },
+          textBoxPosition: { x: 0.3, y: 0.2 },
+          text: 'Region callout',
+        }],
+      },
+    );
+
+    assert.deepEqual(await getPdfAnnotationSubtypes(bytes), ['Ink']);
+
+    const doc = await PDFDocument.load(bytes);
+    const raw = doc.catalog.get(PDFName.of(PDF_APP_LAYER_STATE_KEY)).decodeText();
+    const metadata = parsePdfAppLayerStateMetadata(raw);
+    assert.equal(metadata.documentId, 'doc-layer-state');
+    assert.deepEqual(Object.keys(metadata.layers.scopedAnnotationsByPage), ['1']);
+    assert.equal(metadata.layers.scopedAnnotationsByPage[1].objects[0].id, 'survey-circle');
+    assert.equal(metadata.layers.highlightAnnotations['survey-highlight'].moduleId, 'module-a');
+    assert.equal(metadata.layers.spaces[0].id, 'space-a');
+    assert.deepEqual(metadata.layers.spaces[0].assignedPages[0].regions.map((region) => region.regionId), ['region-a']);
+    assert.equal(metadata.layers.callouts[0].id, 'region-callout');
   } finally {
     globalThis.window = originalWindow;
   }
@@ -551,9 +696,6 @@ test('PDF export embeds app callout metadata on every exported callout piece', a
         callouts: [{
           id: 'callout-metadata-1',
           pageNumber: 1,
-          moduleId: 'module-a',
-          regionId: 'region-a',
-          spaceId: 'space-a',
           arrowTip: { x: 0.1, y: 0.2 },
           knee: { x: 0.2, y: 0.3 },
           textBoxPosition: { x: 0.4, y: 0.35 },
@@ -575,9 +717,9 @@ test('PDF export embeds app callout metadata on every exported callout piece', a
       const metadata = parsePdfCalloutMetadata(raw);
       assert.equal(metadata.id, 'callout-metadata-1');
       assert.equal(metadata.text, 'Metadata callout');
-      assert.equal(metadata.moduleId, 'module-a');
-      assert.equal(metadata.regionId, 'region-a');
-      assert.equal(metadata.spaceId, 'space-a');
+      assert.equal(metadata.moduleId, null);
+      assert.equal(metadata.regionId, null);
+      assert.equal(metadata.spaceId, null);
       assert.equal(metadata.style.fontColor, '#dc2626');
       assert.deepEqual(metadata.arrowTip, { x: 0.1, y: 0.2 });
       assert.deepEqual(metadata.knee, { x: 0.2, y: 0.3 });
@@ -602,13 +744,15 @@ test('PDF export embeds app annotation metadata on ordinary app-created annotati
       {
         1: {
           objects: [
-            { id: 'meta-path', type: 'path', left: 0, top: 0, path: [['M', 10, 10], ['L', 20, 20]], stroke: '#111111', strokeWidth: 2, moduleId: 'module-a', regionId: 'region-a', spaceId: 'space-a', layer: 'survey' },
+            { id: 'meta-path', type: 'path', left: 0, top: 0, path: [['M', 10, 10], ['L', 20, 20]], stroke: '#111111', strokeWidth: 2 },
             { id: 'meta-rect', type: 'rect', left: 30, top: 10, width: 20, height: 12, stroke: '#111111' },
             { id: 'meta-circle', type: 'circle', left: 60, top: 10, radius: 8, stroke: '#111111' },
             { id: 'meta-line', type: 'line', x1: 10, y1: 50, x2: 40, y2: 55, stroke: '#111111' },
+            { id: 'meta-arrow', type: 'line', tool: 'arrow', x1: 70, y1: 50, x2: 110, y2: 55, stroke: '#111111', lineEnding2: 'ClosedArrow', data: { type: 'arrow', arrowheadStyle: 'solid-triangle' } },
             { id: 'meta-polygon', type: 'polygon', left: 80, top: 20, points: [{ x: 0, y: 0 }, { x: 20, y: 0 }, { x: 10, y: 20 }], stroke: '#111111' },
             { id: 'meta-polyline', type: 'polyline', left: 110, top: 20, points: [{ x: 0, y: 0 }, { x: 20, y: 10 }], stroke: '#111111' },
             { id: 'meta-text', type: 'textbox', left: 20, top: 90, width: 60, height: 18, text: 'Meta', fill: '#111111' },
+            { id: 'meta-highlight', type: 'rect', exportType: 'highlight', left: 90, top: 90, width: 50, height: 16, fill: '#facc15', opacity: 0.35 },
           ],
         },
       },
@@ -618,16 +762,7 @@ test('PDF export embeds app annotation metadata on ordinary app-created annotati
         returnBytes: true,
         actionType: 'pdf-export',
         documentId: 'doc-test',
-        highlightAnnotations: {
-          'meta-highlight': {
-            pageNumber: 1,
-            bounds: { x: 100, y: 90, width: 30, height: 12 },
-            moduleId: 'module-a',
-            regionId: 'region-a',
-            spaceId: 'space-a',
-            color: '#ffff00',
-          },
-        },
+        highlightAnnotations: {},
       },
     );
 
@@ -639,6 +774,7 @@ test('PDF export embeds app annotation metadata on ordinary app-created annotati
     });
 
     assert.deepEqual(metadata.map((entry) => entry.id).sort(), [
+      'meta-arrow',
       'meta-circle',
       'meta-highlight',
       'meta-line',
@@ -648,14 +784,19 @@ test('PDF export embeds app annotation metadata on ordinary app-created annotati
       'meta-rect',
       'meta-text',
     ]);
-    assert.equal(metadata.find((entry) => entry.id === 'meta-path').moduleId, 'module-a');
-    assert.equal(metadata.find((entry) => entry.id === 'meta-path').regionId, 'region-a');
-    assert.equal(metadata.find((entry) => entry.id === 'meta-path').spaceId, 'space-a');
-    assert.equal(metadata.find((entry) => entry.id === 'meta-highlight').appType, 'highlight');
-    assert.equal(metadata.find((entry) => entry.id === 'meta-highlight').moduleId, 'module-a');
-    assert.equal(metadata.find((entry) => entry.id === 'meta-highlight').regionId, 'region-a');
-    assert.equal(metadata.find((entry) => entry.id === 'meta-highlight').spaceId, 'space-a');
+    assert.equal(metadata.find((entry) => entry.id === 'meta-path').moduleId, null);
+    assert.equal(metadata.find((entry) => entry.id === 'meta-path').regionId, null);
+    assert.equal(metadata.find((entry) => entry.id === 'meta-path').spaceId, null);
     assert.equal(metadata.find((entry) => entry.id === 'meta-text').geometry.text, 'Meta');
+    const arrowMetadata = metadata.find((entry) => entry.id === 'meta-arrow');
+    assert.equal(arrowMetadata.appType, 'arrow');
+    assert.equal(arrowMetadata.flags.tool, 'arrow');
+    assert.equal(arrowMetadata.flags.lineEnding2, 'ClosedArrow');
+    assert.equal(arrowMetadata.geometry.lineEnding2, 'ClosedArrow');
+    const highlightMetadata = metadata.find((entry) => entry.id === 'meta-highlight');
+    assert.equal(highlightMetadata.appType, 'highlight');
+    assert.equal(highlightMetadata.style.fill, '#facc15');
+    assert.equal(highlightMetadata.style.opacity, 0.35);
   } finally {
     globalThis.window = originalWindow;
   }
@@ -696,4 +837,33 @@ test('PDF export preserves existing native annotations and does not duplicate im
   } finally {
     globalThis.window = originalWindow;
   }
+});
+
+test('app annotation metadata restore keeps arrow interaction fields', () => {
+  const restored = applyPdfAppAnnotationMetadata(
+    { type: 'line', x1: 1, y1: 2, x2: 3, y2: 4, data: {} },
+    {
+      kind: PDF_APP_ANNOTATION_SUBJECT,
+      id: 'arrow-restore',
+      appType: 'arrow',
+      flags: {
+        tool: 'arrow',
+        lineEnding2: 'ClosedArrow',
+        arrowheadStyle: 'solid-triangle',
+      },
+      geometry: {
+        x1: 10,
+        y1: 20,
+        x2: 30,
+        y2: 40,
+        lineEnding2: 'ClosedArrow',
+      },
+    },
+  );
+
+  assert.equal(restored.id, 'arrow-restore');
+  assert.equal(restored.tool, 'arrow');
+  assert.equal(restored.data.type, 'arrow');
+  assert.equal(restored.lineEnding2, 'ClosedArrow');
+  assert.equal(restored.arrowheadStyle, 'solid-triangle');
 });
