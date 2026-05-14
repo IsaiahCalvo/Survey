@@ -530,7 +530,16 @@ Plans:
   5. **Multi-tab Web Locks stress test passes** — 2-tab Playwright scenario: open same doc in two tabs, make edits in tab A, switch to tab B, edits visible without IndexedDB corruption. Lock election survives 100+ tab open/close cycles.
   6. **Compaction job runs** — After N updates (configurable, default 100), a snapshot is written to `doc_yjs_state` and old updates beyond `through_seq` are archived/pruned. Cold-load applies snapshot + recent updates instead of replaying full log.
 
-**Plans**: TBD (populated by `/gsd:plan-phase 32`)
+**Plans**: 7 plans across 5 waves
+
+Plans:
+- [ ] 32-01-PLAN.md — Wave 0 test scaffolds (5 unit + 6 fixme'd Playwright + compaction RPC test) — locks contracts for downstream plans via per-test existsSync skip guards
+- [ ] 32-02-PLAN.md — Wave 1 yDocCompaction.js (periodic snapshot job) + compact_yjs_doc atomic Postgres RPC migration
+- [ ] 32-03-PLAN.md — Wave 1 multiTabSync.js (BroadcastChannel awareness coordinator on dedicated y-doc-aware-${docId} channel) — parallel with 32-02
+- [ ] 32-04-PLAN.md — Wave 1 storageQuotaMonitor.js (StorageManager.estimate poll + Electron absolute thresholds) — parallel with 32-02/03
+- [ ] 32-05-PLAN.md — Wave 2 sync chip locked copy (Offline — N changes queued / Syncing N changes… / Up to date) + Tier-1 amber ring + StorageFailureBanner two new codes (sync_queue_stuck reworded + quota_tier2)
+- [ ] 32-06-PLAN.md — Wave 3 YDocProvider attaches all three helpers per docId + narrow App.jsx waiver for chip prop + dev/test window seams
+- [ ] 32-07-PLAN.md — Wave 4 un-fixme all 6 Playwright specs + write 32-VERIFICATION.md + UAT checkpoint (Electron quota thresholds + chip distinctness + two-window multi-tab)
 
 ### Phase 33: Activity Log + Awareness + Cross-Device Resume
 

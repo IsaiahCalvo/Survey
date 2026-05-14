@@ -191,6 +191,7 @@ None in this phase. The two new banner variants are recoverable (retry / free sp
 - No exclamation marks. No "Oops!" / "Uh-oh!" — calm, factual register.
 - No emoji in user-facing copy.
 - Em-dash and ellipsis use the real Unicode characters (`—`, `…`), not ASCII substitutes.
+- Apostrophes in contractions (`don't`, `haven't`, `you're`, `they'll`, `Couldn't`) use the **STRAIGHT ASCII apostrophe** `'` (U+0027), NOT the curly typographic apostrophe `’` (U+2019). This locks the phase to the codebase's existing convention — `grep -c "don't" src/components/collab/` returns 130 matches, curly `’` returns 0 (m3 fix 2026-05-14).
 
 ---
 

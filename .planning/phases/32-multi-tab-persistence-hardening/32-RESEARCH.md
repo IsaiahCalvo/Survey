@@ -654,7 +654,7 @@ The chip is rendered via `<SyncStatusChip status={cloudSyncStatus} queueSize={cl
 3. Wire the new compaction-status counter + the existing `useDualWriteQueue.stuckCount` to the chip's queueSize prop (App.jsx narrow waiver — state-wiring line only).
 4. Mount the Tier-2 banner adjacent to the existing `<StorageFailureBanner code='quota_exceeded' />` reuse pathway in `YDocProvider.jsx` (NO App.jsx change for the banner mount — `YDocProvider` already owns banner state).
 
-**Net App.jsx waiver budget for this phase: ~10 lines** — adding two state variables for `compactionInFlight` + `quotaTier` and threading them through the existing `<PDFSidebar cloudSyncStatus={...} cloudSyncQueueSize={...} />` props.
+**Net App.jsx waiver budget for this phase: <= 25 lines (LOCKED)** — covers (a) threading `quotaTier` from `useYDoc()` through the existing `<PDFSidebar cloudSyncStatus={...} cloudSyncQueueSize={...} cloudSyncQuotaTier={...} />` props chain and (b) installing dev/test window seams (`__phase32QueueSize`, `__phase32CountAnnotations`, `__phase32CreateAnnotation`) gated on `import.meta.env.MODE !== 'production'`. Leader-role seams (`__yDocLeaderRole`, `__phase32WaitForLeaderRole`) live in `YDocProvider.jsx`, NOT App.jsx (see Plan 32-06 Task 1).
 
 ## Open Questions
 
@@ -717,7 +717,7 @@ These signals let the planner write tasks whose "done" state is a `git grep` / l
 | Web Locks election picked exactly one leader | In `phase32-multi-tab-stress.spec.mjs` after every cycle: `await Promise.all([tabA, tabB].map(p => p.evaluate(() => window.__yDocLeaderRole())))` returns exactly `['leader', 'loser']` (or `['loser', 'leader']`) — never `['leader', 'leader']` | Web Locks invariant holds under 100+ cycles |
 | Sync chip state matches connection state | Playwright: after `ctx.setOffline(true)`, `await page.locator('.sync-chip').textContent()` matches `/^Offline — \d+ changes? queued$/`; after `setOffline(false) + drain`, matches `/^Up to date$/` | The three locked strings render in the correct order and exact format |
 | Per-property LWW preserved (no regression) | `git grep "fabricYMap.set" src/lib/collab/crdtAnnotationBridge.js` returns at least one match (the existing per-property write); two-device merge test passes | Phase 29's bridge contract is intact; Phase 32 didn't accidentally collapse properties |
-| App.jsx waiver is narrow | `git diff main -- src/App.jsx | grep -E '^\+' | wc -l` returns ≤ 15 added lines (post-revision) | The "narrow waiver" budget held |
+| App.jsx waiver is narrow | `git diff main -- src/App.jsx | grep -E '^\+' | wc -l` returns ≤ 25 added lines (LOCKED) | The "narrow waiver" budget held |
 | applyUpdate-only invariant still green | `node --test tests/phase27/applyUpdateOnlyInvariant.test.mjs` passes | No new `new Y.Doc(` slipped in (Phase 27 invariant carry-forward) |
 | Compaction did not call IDB persistence.clearData() | `git grep "\.clearData(" src/lib/collab/yDocCompaction.js` returns ZERO matches | Pitfall 7 defended — local IDB untouched |
 | Snapshot/prune is atomic | Migration file exists at `supabase/migrations/*phase32*.sql` AND contains `CREATE OR REPLACE FUNCTION compact_yjs_doc` AND contains both `INSERT INTO doc_yjs_state` AND `DELETE FROM doc_yjs_updates` inside the function body | Pitfall 1 defended — single transaction by construction |
