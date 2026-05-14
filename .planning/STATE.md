@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.4
-milestone_name: CRDT Foundation + Real-Time Sync
-status: phase-closed
-stopped_at: "Phase 31 CLOSED (5/5 plans + 31-VERIFICATION.md + 31-RECONCILIATION.md). Next session: toolbar / chrome instant-render polish — see .planning/HANDOFF-toolbar-polish.md"
-last_updated: "2026-05-13T19:35:00.000Z"
-last_activity: "2026-05-13 — Phase 31 closed out. 31-VERIFICATION.md (7/7 ACs PASS) + 31-RECONCILIATION.md (DONE) written. Test baseline 640p / 0f / 6s — all 8 pre-existing failures from the 2026-05-01 baseline cleaned up by the 2026-05-13 annotation-lifecycle stabilization commit. Undo end-to-end verified in live log."
+milestone: v2.3
+milestone_name: Tools Polish
+status: verifying
+stopped_at: "Phase 32 context gathered (32-CONTEXT.md committed). Next: /gsd:plan-phase 32."
+last_updated: "2026-05-14T04:48:26.460Z"
+last_activity: 2026-05-13 — Phase 31 closed out. 31-VERIFICATION.md (7/7 ACs PASS) + 31-RECONCILIATION.md (DONE) written. Test baseline 640p / 0f / 6s. Undo end-to-end verified in live log capture (Logs/2026-05-13_19-01-59).
 progress:
   total_phases: 15
-  completed_phases: 9
-  total_plans: 49
-  completed_plans: 48
+  completed_phases: 8
+  total_plans: 44
+  completed_plans: 43
   percent: 96
 ---
 
@@ -307,9 +307,9 @@ Progress: [██████████] 96% — Phase 27 functionally complet
 
 ## Session Continuity
 
-Last session: 2026-05-01T08:37:00.000Z
-Stopped at: Phase 31 lean cutover functionally complete + UAT-verified end-to-end on SE-011. Cutover seal landed at 2026-05-01T05:28:59.348Z. Followup fix in commit `81e23c3d` resolved the doneKey-set-but-cutover-unsealed bug. Phase 31 paperwork (VERIFICATION + RECONCILIATION) deferred to next session per user wrap-up directive.
-Resume file: `.planning/phases/31-migration-cutover-seal/.continue-here.md` (Written: 2026-05-01 08:37)
+Last session: 2026-05-14T04:48:26.454Z
+Stopped at: Phase 32 context gathered (32-CONTEXT.md committed). Next: /gsd:plan-phase 32.
+Resume file: .planning/phases/32-multi-tab-persistence-hardening/32-CONTEXT.md
 
 ### Resume instructions for the next session (read carefully)
 
