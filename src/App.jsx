@@ -31153,21 +31153,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   // Measure toolbar heights and middle area bounds for survey panel positioning
   useEffect(() => {
     const updateDimensions = () => {
-      // UX 2026-05-13: top toolbar now lives at the App shell — query it by id
-      // since this PDFViewer no longer renders its own top bar div. Status bar
-      // was removed in the same pass so its height is no longer added in.
+      // UX 2026-05-14: chrome-bottom-host was deleted when all tools moved
+      // up to the top bar. The effect now reads only chrome-top-host and
+      // treats bottom chrome height as 0. The Save Log banner anchors via
+      // --app-chrome-top which still tracks the top bar's bottom edge
+      // dynamically (even when the top bar wraps onto a second row).
       const topEl = typeof document !== 'undefined' ? document.getElementById('chrome-top-host') : null;
-      const bottomEl = typeof document !== 'undefined' ? document.getElementById('chrome-bottom-host') : null;
-      if (topEl && bottomEl) {
+      if (topEl) {
         const topRect = topEl.getBoundingClientRect();
         const topHeight = topRect.height;
-        const bottomToolbarHeight = bottomEl.getBoundingClientRect().height;
-        const combinedBottomHeight = bottomToolbarHeight;
-        setToolbarHeights({ top: topHeight, bottom: combinedBottomHeight });
-        // 2026-04-29 v2: anchor banner at the literal bottom edge of the top
-        // toolbar so it hugs the chrome without any gap, regardless of how
-        // tall the toolbar actually renders. topRect.bottom is in viewport
-        // coordinates, exactly the y where the banner should start.
+        setToolbarHeights({ top: topHeight, bottom: 0 });
         if (typeof document !== 'undefined' && document.documentElement) {
           document.documentElement.style.setProperty('--app-chrome-top', `${Math.round(topRect.bottom)}px`);
         }
@@ -33528,13 +33523,19 @@ ${pageBlocks}
             publishes its state through onTopToolbarApiChange in the useEffect
             above. Nothing renders here for the top bar. */}
 
-        {/* Floating Tooltip */}
+        {/* Floating Tooltip — supports two placements via tooltip.placement:
+            "above" anchors the tooltip's bottom-center at (x, y) (legacy
+            default, used by buttons that sit near the screen bottom);
+            "below" anchors the top-center at (x, y) so the tooltip falls
+            beneath the button (used by the top-bar tools after the
+            2026-05-14 consolidation). Both default safely when placement
+            is missing. */}
         {tooltip.visible && (
           <div style={{
             position: 'fixed',
             left: tooltip.x,
             top: tooltip.y,
-            transform: 'translate(-50%, -100%)',
+            transform: tooltip.placement === 'below' ? 'translate(-50%, 0)' : 'translate(-50%, -100%)',
             background: '#222',
             color: '#fff',
             padding: '4px 8px',
@@ -36505,10 +36506,17 @@ ${pageBlocks}
           </div>
         </div>
 
-        {/* Secondary Sub-Toolbar (Drawboard Style) */}
+        {/* Secondary Sub-Toolbar (Drawboard Style).
+            UX 2026-05-14: order: -1 makes this render BEFORE the middle area
+            in the parent flex column. Visually the sub-row now sits just
+            under the top bar (chrome-top-host) and pushes the canvas down
+            by 34 px while a category is active. JSX position stays at the
+            bottom of the fragment to minimize diff; only the flex-order
+            CSS controls visual placement. */}
         {activeCategoryDropdown && (
           <div
             style={{
+              order: -1,
               width: '100%',
               height: '34px',
               background: 'transparent',
@@ -44143,25 +44151,32 @@ export default function App() {
             onPageDrop={handlePageDrop}
           />
         )}
-        {/* UX 2026-05-13: App-level top toolbar (Undo / Redo / Survey). Lives at
-            the app shell so the strip stays mounted across PDF tab switches and
-            renders instantly on cold open — only its props change when the active
-            tab swaps, never its DOM. Hidden entirely on the home tab. The active
-            PDFViewer publishes its undo/redo/survey state into topToolbarApi via
-            onTopToolbarApiChange. */}
+        {/* UX 2026-05-14: App-level top toolbar consolidating Undo/Redo plus
+            every annotation tool that used to live in the bottom toolbar.
+            Survey toggle moved to the right rail; every other interactive
+            control (Pan, Select, Draw, Shapes, Text, Survey-category when
+            survey panel is open, Color swatch, Width input) now lives here.
+            Wraps onto a second row on narrow viewports. Z-index 5500 so the
+            color picker and category popups float above the PDF. Tool
+            handlers come from bottomToolbarApi which PDFViewer continues to
+            publish even though the bottom-host is now gone. */}
         <div
           id="chrome-top-host"
           style={{
             display: isViewerVisible ? 'flex' : 'none',
             flexShrink: 0,
-            padding: '4px 12px',
+            padding: '8px 12px',
             background: '#2d2d2d',
             borderBottom: '1px solid #3d3d3d',
             alignItems: 'center',
-            gap: '8px',
+            flexWrap: 'wrap',
+            rowGap: '6px',
+            columnGap: '8px',
             fontSize: '13px',
             fontFamily: FONT_FAMILY,
-            color: '#ddd'
+            color: '#ddd',
+            position: 'relative',
+            zIndex: 5500
           }}
         >
           <button
@@ -44197,6 +44212,244 @@ export default function App() {
           >
             <Icon name="redo" size={14} />
           </button>
+
+          {/* UX 2026-05-14: Tools section — Pan / Select / Draw / Shapes /
+              Text / Survey-category / Color / Width. Inlined from the old
+              bottom toolbar. Consumes bottomToolbarApi which is still
+              published from PDFViewer; if no PDF is open we skip the
+              section entirely. Tooltip placement is "below" so labels
+              fall under the buttons (above would clip the OS chrome). */}
+          {bottomToolbarApi && (
+            <>
+              <div style={{ width: '1px', height: '20px', background: '#555', margin: '0 4px' }} />
+
+              {/* Pan + Select (top-level tools) */}
+              {[
+                { id: 'pan', label: 'Pan', iconName: 'pan' },
+                { id: 'select', label: 'Select', iconName: 'cursor' }
+              ].map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => {
+                    bottomToolbarApi.setActiveTool(t.id);
+                    bottomToolbarApi.setActiveCategoryDropdown(null);
+                  }}
+                  onMouseEnter={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    bottomToolbarApi.setTooltip({
+                      visible: true,
+                      text: t.label,
+                      x: rect.left + rect.width / 2,
+                      y: rect.bottom + 10,
+                      placement: 'below'
+                    });
+                  }}
+                  onMouseLeave={() => bottomToolbarApi.setTooltip({ visible: false, text: '', x: 0, y: 0 })}
+                  className={`btn btn-icon ${bottomToolbarApi.activeTool === t.id ? 'btn-active' : ''}`}
+                >
+                  <Icon name={t.iconName} size={16} />
+                </button>
+              ))}
+
+              <div style={{ width: '1px', height: '20px', background: '#555', margin: '0 4px' }} />
+
+              {/* Draw category */}
+              <button
+                onClick={() => {
+                  const isActive = bottomToolbarApi.activeCategoryDropdown === 'draw';
+                  bottomToolbarApi.setActiveCategoryDropdown(isActive ? null : 'draw');
+                  if (!isActive) {
+                    if (!['pen', 'highlighter', 'text-highlight', 'eraser'].includes(bottomToolbarApi.activeTool)) {
+                      bottomToolbarApi.setActiveTool(bottomToolbarApi.lastDrawTool);
+                    }
+                  }
+                }}
+                onMouseEnter={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  bottomToolbarApi.setTooltip({
+                    visible: true,
+                    text: 'Draw',
+                    x: rect.left + rect.width / 2,
+                    y: rect.bottom + 10,
+                    placement: 'below'
+                  });
+                }}
+                onMouseLeave={() => bottomToolbarApi.setTooltip({ visible: false, text: '', x: 0, y: 0 })}
+                className={`btn btn-md ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'draw' || ['pen', 'highlighter', 'text-highlight', 'eraser'].includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px' }}
+                title="Draw"
+              >
+                <Icon name="pen" size={18} />
+              </button>
+
+              {/* Shapes category */}
+              <button
+                onClick={() => {
+                  const isActive = bottomToolbarApi.activeCategoryDropdown === 'shape';
+                  bottomToolbarApi.setActiveCategoryDropdown(isActive ? null : 'shape');
+                  if (!isActive) {
+                    if (!['rect', 'ellipse', 'line', 'arrow', 'counter'].includes(bottomToolbarApi.activeTool)) {
+                      bottomToolbarApi.setActiveTool(bottomToolbarApi.lastShapeTool);
+                    }
+                  }
+                }}
+                onMouseEnter={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  bottomToolbarApi.setTooltip({
+                    visible: true,
+                    text: 'Shapes',
+                    x: rect.left + rect.width / 2,
+                    y: rect.bottom + 10,
+                    placement: 'below'
+                  });
+                }}
+                onMouseLeave={() => bottomToolbarApi.setTooltip({ visible: false, text: '', x: 0, y: 0 })}
+                className={`btn btn-md ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'shape' || ['rect', 'ellipse', 'line', 'arrow', 'counter'].includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px' }}
+                title="Shapes"
+              >
+                <Icon name="rect" size={18} />
+              </button>
+
+              {/* Text category */}
+              <button
+                onClick={() => {
+                  const isActive = bottomToolbarApi.activeCategoryDropdown === 'review';
+                  bottomToolbarApi.setActiveCategoryDropdown(isActive ? null : 'review');
+                  if (!isActive) {
+                    if (!REVIEW_TOOL_IDS.includes(bottomToolbarApi.activeTool)) {
+                      bottomToolbarApi.setActiveTool(bottomToolbarApi.lastReviewTool);
+                    }
+                  }
+                }}
+                onMouseEnter={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  bottomToolbarApi.setTooltip({
+                    visible: true,
+                    text: 'Text',
+                    x: rect.left + rect.width / 2,
+                    y: rect.bottom + 10,
+                    placement: 'below'
+                  });
+                }}
+                onMouseLeave={() => bottomToolbarApi.setTooltip({ visible: false, text: '', x: 0, y: 0 })}
+                className={`btn btn-md ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'review' || REVIEW_TOOL_IDS.includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px' }}
+                title="Text"
+              >
+                <Icon name="text" size={18} />
+              </button>
+
+              {/* Survey-category button — visible only while the survey
+                  panel is open. Lives here in the Text-group area as the
+                  user requested (leave it where it was relative to the
+                  other category buttons). */}
+              {bottomToolbarApi.showSurveyPanel && (
+                <button
+                  onClick={() => {
+                    const isActive = bottomToolbarApi.activeCategoryDropdown === 'survey';
+                    bottomToolbarApi.setActiveCategoryDropdown(isActive ? null : 'survey');
+                    if (!isActive) {
+                      bottomToolbarApi.setActiveTool('highlight');
+                    }
+                  }}
+                  onMouseEnter={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    bottomToolbarApi.setTooltip({
+                      visible: true,
+                      text: 'Survey',
+                      x: rect.left + rect.width / 2,
+                      y: rect.bottom + 10,
+                      placement: 'below'
+                    });
+                  }}
+                  onMouseLeave={() => bottomToolbarApi.setTooltip({ visible: false, text: '', x: 0, y: 0 })}
+                  className={`btn btn-md ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'survey' || bottomToolbarApi.activeTool === 'highlight') ? 'btn-active' : 'btn-default'}`}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px' }}
+                  title="Survey"
+                >
+                  <Icon name="highlighter" size={16} />
+                </button>
+              )}
+
+              <div style={{ width: '1px', height: '20px', background: '#555', margin: '0 4px' }} />
+
+              {/* Color swatch + Width input. Color picker now flips DOWN
+                  (top: 100%) since the swatch lives at the top of the
+                  viewport instead of the bottom — popping up would shoot
+                  off-screen. */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }}>
+                <button
+                  onClick={() => bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker)}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  className="btn btn-default"
+                  style={{
+                    width: '28px',
+                    height: '20px',
+                    padding: 0,
+                    borderRadius: '4px',
+                    border: '1px solid transparent',
+                    background: bottomToolbarApi.strokeColor,
+                    opacity: bottomToolbarApi.strokeOpacity / 100,
+                    position: 'relative',
+                    overflow: 'visible',
+                    boxSizing: 'content-box'
+                  }}
+                  title="Color"
+                />
+
+                {bottomToolbarApi.showAnnotationColorPicker && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: '50%',
+                    marginTop: '10px',
+                    transform: 'translate(-50%, 0)',
+                    zIndex: 2000
+                  }}>
+                    <CompactColorPicker
+                      color={bottomToolbarApi.strokeColor}
+                      opacity={bottomToolbarApi.strokeOpacity / 100}
+                      onChange={(hex, alpha) => {
+                        bottomToolbarApi.handleStrokeColorChange(hex);
+                        bottomToolbarApi.handleStrokeOpacityChange(Math.round(alpha * 100));
+                      }}
+                      onClose={() => bottomToolbarApi.setShowAnnotationColorPicker(false)}
+                    />
+                  </div>
+                )}
+
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  className="no-spin-buttons"
+                  value={bottomToolbarApi.activeTool === 'eraser' ? bottomToolbarApi.eraserSizeInputValue : bottomToolbarApi.strokeWidthInputValue}
+                  onChange={bottomToolbarApi.activeTool === 'eraser' ? bottomToolbarApi.handleEraserSizeInputChange : bottomToolbarApi.handleStrokeWidthInputChange}
+                  onFocus={() => bottomToolbarApi.activeTool === 'eraser' ? bottomToolbarApi.setIsEraserSizeFocused(true) : bottomToolbarApi.setIsStrokeWidthFocused(true)}
+                  onBlur={bottomToolbarApi.activeTool === 'eraser' ? bottomToolbarApi.handleEraserSizeInputBlur : bottomToolbarApi.handleStrokeWidthInputBlur}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.target.blur();
+                    }
+                  }}
+                  style={{
+                    width: '36px',
+                    height: '20px',
+                    padding: '4px 4px',
+                    background: '#444',
+                    color: '#ddd',
+                    border: '1px solid transparent',
+                    borderRadius: '5px',
+                    fontSize: '12px',
+                    fontFamily: FONT_FAMILY,
+                    textAlign: 'center'
+                  }}
+                  title="Width"
+                />
+              </div>
+            </>
+          )}
           {/* UX 2026-05-14: Survey toggle button moved to the new chrome-right-host
               rail (top slot). Reuses the same topToolbarApi.onSurveyToggle
               handler, Pro gate, and active styling — JSX is rendered inside
@@ -44634,31 +44887,10 @@ export default function App() {
             )}
           </div>
         </div>
-        <div
-          id="chrome-bottom-host"
-          style={{
-            display: isViewerVisible ? 'flex' : 'none',
-            flexShrink: 0,
-            minHeight: '49px',
-            padding: 0,
-            background: '#2b2b2b',
-            borderTop: '1px solid #444',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '12px',
-            fontSize: '14px',
-            fontFamily: FONT_FAMILY,
-            color: '#ddd',
-            position: 'relative',
-            // UX 2026-05-13: chrome strip must stack above the PDF panel
-            // (which sits at z-index 5000 / 4000) so the color picker and
-            // zoom-menu pop-ups inside this strip can float above the PDF
-            // instead of being hidden behind it.
-            zIndex: 5500
-          }}
-        >
-          {bottomToolbarApi && <BottomToolbar {...bottomToolbarApi} />}
-        </div>
+        {/* UX 2026-05-14: chrome-bottom-host deleted. Every tool that lived
+            here moved up to chrome-top-host so the rails can extend to the
+            viewport bottom. PDFViewer still publishes bottomToolbarApi so
+            the top-bar tools consume the same state and handlers. */}
       </div>
 
       {/* Authentication Modal */}
