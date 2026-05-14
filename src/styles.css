@@ -13,23 +13,30 @@
   font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'SF Pro Display', 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
 }
 
-/* Scrollbar styling */
+/* UX 2026-05-14: Hide every scrollbar everywhere, every browser. Scroll
+   behavior itself stays — users can still wheel-scroll, trackpad-pan, and
+   keyboard-arrow through long lists. Only the painted track / thumb is
+   removed so the chrome reads as continuous canvas. The competing 0-width
+   webkit rule in App.css is now redundant; this rule takes precedence and
+   covers Firefox + Edge in addition to webkit. */
+*,
+*::before,
+*::after {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  display: none;
+  width: 0;
+  height: 0;
 }
 
-::-webkit-scrollbar-track {
-  background: #181818;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #3A3A3A;
-  border-radius: 5px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #555;
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-thumb,
+::-webkit-scrollbar-corner {
+  display: none;
+  background: transparent;
 }
 
 /* Slide-in animation for survey panel */

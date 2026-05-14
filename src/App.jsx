@@ -44344,21 +44344,39 @@ export default function App() {
             <div style={{ flex: 1 }} />
 
             {/* Bottom slot — page nav above zoom controls. All handlers come
-                from bottomToolbarApi which PDFViewer already publishes. */}
+                from bottomToolbarApi which PDFViewer already publishes.
+                UX 2026-05-14: Sizing matched to the Walkthrough reference
+                app — smaller buttons (24-28px), 10px tabular-nums fonts,
+                and a middle dot between current page and total instead of
+                a slash. Tighter overall to fit the 48px-wide rail more
+                neatly. */}
             {bottomToolbarApi && (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
                 {/* Page previous — chevron up because vertical layout */}
                 <button
                   onClick={bottomToolbarApi.goToPreviousPage}
                   disabled={bottomToolbarApi.pageNum <= 1}
-                  className="btn btn-default btn-icon-sm"
                   title="Previous page"
-                  style={{ opacity: bottomToolbarApi.pageNum <= 1 ? 0.4 : 1 }}
+                  style={{
+                    width: '24px',
+                    height: '24px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: 0,
+                    background: 'transparent',
+                    border: 'none',
+                    borderRadius: '4px',
+                    color: '#bbb',
+                    cursor: bottomToolbarApi.pageNum <= 1 ? 'not-allowed' : 'pointer',
+                    opacity: bottomToolbarApi.pageNum <= 1 ? 0.35 : 1
+                  }}
                 >
-                  <Icon name="chevronUp" size={16} />
+                  <Icon name="chevronUp" size={14} />
                 </button>
 
-                {/* Current page input */}
+                {/* Current page input — 3-char wide, 10px tabular-nums to
+                    keep "1" and "100" the same visual width. */}
                 <input
                   ref={bottomToolbarApi.pageInputRef}
                   type="text"
@@ -44371,50 +44389,94 @@ export default function App() {
                   pattern="[0-9]*"
                   aria-label="Current page"
                   style={{
-                    width: '36px',
-                    padding: '3px 4px',
-                    background: '#444',
-                    color: '#ddd',
-                    border: '1px solid #555',
-                    borderRadius: '5px',
-                    fontSize: '12px',
+                    width: '32px',
+                    padding: '2px 2px',
+                    background: '#3a3a3a',
+                    color: '#e0e0e0',
+                    border: '1px solid #4a4a4a',
+                    borderRadius: '3px',
+                    fontSize: '10px',
                     fontFamily: FONT_FAMILY,
                     fontWeight: '500',
-                    textAlign: 'center'
+                    fontVariantNumeric: 'tabular-nums',
+                    textAlign: 'center',
+                    height: '18px',
+                    boxSizing: 'border-box'
                   }}
                 />
 
-                {/* Total page count, plain English / N */}
-                <span style={{ color: '#999', fontSize: '11px', fontFamily: FONT_FAMILY, lineHeight: 1 }}>
-                  / {bottomToolbarApi.numPages}
+                {/* Middle dot + total page count (Walkthrough convention).
+                    Saves horizontal width vs the old "/ N" style. */}
+                <span style={{
+                  color: '#888',
+                  fontSize: '10px',
+                  fontFamily: FONT_FAMILY,
+                  fontVariantNumeric: 'tabular-nums',
+                  lineHeight: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '2px'
+                }}>
+                  <span aria-hidden="true" style={{ fontSize: '14px', lineHeight: 0.5 }}>·</span>
+                  {bottomToolbarApi.numPages}
                 </span>
 
                 {/* Page next — chevron down */}
                 <button
                   onClick={bottomToolbarApi.goToNextPage}
                   disabled={bottomToolbarApi.pageNum >= bottomToolbarApi.numPages}
-                  className="btn btn-default btn-icon-sm"
                   title="Next page"
-                  style={{ opacity: bottomToolbarApi.pageNum >= bottomToolbarApi.numPages ? 0.4 : 1 }}
+                  style={{
+                    width: '24px',
+                    height: '24px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: 0,
+                    background: 'transparent',
+                    border: 'none',
+                    borderRadius: '4px',
+                    color: '#bbb',
+                    cursor: bottomToolbarApi.pageNum >= bottomToolbarApi.numPages ? 'not-allowed' : 'pointer',
+                    opacity: bottomToolbarApi.pageNum >= bottomToolbarApi.numPages ? 0.35 : 1
+                  }}
                 >
-                  <Icon name="chevronDown" size={16} />
+                  <Icon name="chevronDown" size={14} />
                 </button>
 
-                {/* Divider between page nav and zoom */}
-                <div style={{ width: '28px', height: '1px', background: '#555', margin: '6px 0' }} />
+                {/* Divider between page nav and zoom — Walkthrough's
+                    rail-collapsed divider style (1px tall, 32px wide). */}
+                <div style={{ width: '32px', height: '1px', background: '#3a3a3a', margin: '4px 0' }} />
 
-                {/* Zoom in (plus) — kept above the % input for top-down "more zoom" reading order */}
+                {/* Zoom in (plus). 28×28 button, plain English '+' glyph so
+                    the rail reads cleanly without leaning on the icon set
+                    for character-based buttons. */}
                 <button
                   onClick={bottomToolbarApi.zoomIn}
-                  className="btn btn-default btn-icon"
                   title="Zoom in"
+                  style={{
+                    width: '28px',
+                    height: '28px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: 0,
+                    background: 'transparent',
+                    border: 'none',
+                    borderRadius: '4px',
+                    color: '#bbb',
+                    fontSize: '16px',
+                    lineHeight: 1,
+                    cursor: 'pointer'
+                  }}
                 >
-                  <Icon name="plus" size={16} />
+                  <Icon name="plus" size={14} />
                 </button>
 
-                {/* Zoom percentage input. Clicking the % suffix focuses the
+                {/* Zoom percentage display. Clicking the % cell focuses the
                     input so the user can type a value like "100" directly,
-                    replacing the old Reset button's role. */}
+                    replacing the old Reset button's role. % glyph is rendered
+                    next to the digits so the cell reads "100%" naturally. */}
                 <div
                   onClick={() => bottomToolbarApi.zoomInputRef.current?.focus()}
                   style={{
@@ -44423,13 +44485,13 @@ export default function App() {
                     alignItems: 'center',
                     justifyContent: 'center',
                     width: '40px',
-                    height: '22px',
-                    background: '#444',
-                    border: '1px solid #555',
-                    borderRadius: '5px',
-                    padding: '0 2px',
+                    height: '18px',
+                    background: 'transparent',
+                    border: 'none',
+                    padding: 0,
                     boxSizing: 'border-box',
-                    cursor: 'text'
+                    cursor: 'text',
+                    gap: '0'
                   }}
                 >
                   <input
@@ -44443,53 +44505,79 @@ export default function App() {
                     pattern="[0-9]*"
                     aria-label="Zoom percentage"
                     style={{
-                      width: '100%',
+                      width: '24px',
                       background: 'transparent',
-                      color: '#ddd',
+                      color: '#bbb',
                       border: 'none',
                       padding: 0,
                       margin: 0,
-                      fontSize: '11px',
+                      fontSize: '10px',
                       fontFamily: FONT_FAMILY,
                       fontWeight: '500',
-                      textAlign: 'center',
+                      fontVariantNumeric: 'tabular-nums',
+                      textAlign: 'right',
                       outline: 'none'
                     }}
                   />
+                  <span aria-hidden="true" style={{
+                    fontSize: '10px',
+                    color: '#888',
+                    fontFamily: FONT_FAMILY,
+                    fontVariantNumeric: 'tabular-nums',
+                    pointerEvents: 'none'
+                  }}>
+                    %
+                  </span>
                 </div>
 
                 {/* Zoom out (minus) */}
                 <button
                   onClick={bottomToolbarApi.zoomOut}
-                  className="btn btn-default btn-icon"
                   title="Zoom out"
+                  style={{
+                    width: '28px',
+                    height: '28px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: 0,
+                    background: 'transparent',
+                    border: 'none',
+                    borderRadius: '4px',
+                    color: '#bbb',
+                    fontSize: '16px',
+                    lineHeight: 1,
+                    cursor: 'pointer'
+                  }}
                 >
-                  <Icon name="minus" size={16} />
+                  <Icon name="minus" size={14} />
                 </button>
 
-                {/* Zoom mode dropdown. Compact button — shows just an icon to
-                    fit the slim rail; the active mode label appears in the
-                    popup, not on the button face. Popup opens above the
-                    button (bottom: 100%) and anchors to the rail's left edge
-                    (right: 100%) so it doesn't clip off-screen. */}
+                {/* Zoom mode dropdown. Compact 28×28 chevron-only button
+                    matching the other rail buttons. Popup opens above the
+                    button and anchors to the rail's left edge so it doesn't
+                    clip off-screen. */}
                 <div
                   ref={bottomToolbarApi.zoomMenuRef}
                   style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}
                 >
                   <button
                     onClick={bottomToolbarApi.toggleZoomMenu}
-                    className="btn btn-default btn-sm"
                     aria-haspopup="listbox"
                     aria-expanded={bottomToolbarApi.isZoomMenuOpen}
                     title={`Page fit: ${bottomToolbarApi.zoomDropdownLabel}`}
                     style={{
+                      width: '28px',
+                      height: '28px',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      width: '36px',
-                      height: '28px',
-                      padding: '4px',
-                      gap: '2px'
+                      padding: 0,
+                      background: 'transparent',
+                      border: 'none',
+                      borderRadius: '4px',
+                      color: '#bbb',
+                      cursor: 'pointer'
                     }}
                   >
                     <Icon name={bottomToolbarApi.isZoomMenuOpen ? 'chevronDown' : 'chevronUp'} size={12} />
