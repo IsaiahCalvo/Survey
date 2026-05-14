@@ -201,6 +201,7 @@ import {
   resolveFirstVisibleAnnotationPage,
   shouldGateFirstVisibleAnnotationPage,
 } from './utils/annotationHydrationGate';
+import KeyboardShortcutsOverlay from './components/KeyboardShortcutsOverlay';
 
 const NATIVE_TEXT_MARKUP_TOOLS = new Set(['text-highlight', 'underline', 'strikeout', 'squiggly']);
 const REVIEW_TOOL_IDS = ['text', 'callout'];
@@ -9674,7 +9675,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
  * - goToPreviousPage, goToNextPage
  * - handlePageInputChange, handlePageInputKeyDown, handlePageInputBlur
  */
-
 function BottomToolbar(props) {
   const {
     bottomToolbarRef,
@@ -9879,6 +9879,12 @@ function BottomToolbar(props) {
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }}>
           <button
             onClick={() => setShowAnnotationColorPicker(!showAnnotationColorPicker)}
+            // UX 2026-05-13: stop the swatch's mousedown from reaching the
+            // document so the picker's outside-click handler does NOT close
+            // the picker before our toggle runs. Without this, clicking the
+            // swatch when the picker is open closed-then-reopened it on the
+            // same gesture, making the second click feel like it did nothing.
+            onMouseDown={(e) => e.stopPropagation()}
             className="btn btn-default"
             style={{
               width: '30px',
@@ -10195,7 +10201,7 @@ function BottomToolbar(props) {
 }
 
 // PDF Viewer Component with improved typography
-function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onBottomToolbarApiChange, onLeftRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, ballInCourtEntities, setBallInCourtEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
+function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, ballInCourtEntities, setBallInCourtEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
   // phase35Diag logger can prefix every gate decision with the file under test.
   // Production-stripped via import.meta.env.MODE check; tree-shakes from prod.
@@ -13749,6 +13755,30 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onBottomTool
   const bottomToolbarRef = useRef(null);
   const statusBarRef = useRef(null);
   const middleAreaRef = useRef(null);
+  // UX 2026-05-13: Survey-button click handler, lifted from inline JSX so it can
+  // be published to the App-level top toolbar. Same behavior as before:
+  // gated by the Pro feature flag, opens template-selection modal when not
+  // active, otherwise tears down the survey panel and active selection.
+  const handleSurveyToggle = useCallback(() => {
+    if (!features?.advancedSurvey) {
+      alert('Survey Templates are a Pro feature. Please upgrade to use this tool.');
+      return;
+    }
+    if (!showSurveyPanel) {
+      setShowTemplateSelection(true);
+    } else {
+      setShowSurveyPanel(false);
+      setSelectedModuleId(null);
+      setSelectedSpaceId(null);
+      setSelectedCategoryId(null);
+      setActiveTool('select');
+    }
+  }, [features, showSurveyPanel]);
+
+  // UX 2026-05-13: top-toolbar publish effect was here but moved further down,
+  // past where handleUndo / handleRedo are declared — those are const arrow
+  // useCallbacks defined much later in the function body, so referencing them
+  // up here threw a temporal-dead-zone error when PDFViewer first rendered.
   const { updateTemplate: updateSupabaseTemplate, createTemplate: createSupabaseTemplate } = useTemplates();
   const hasSwitchedToHighlightRef = useRef(false);
   const [toolbarHeights, setToolbarHeights] = useState({ top: 56, bottom: 56 });
@@ -19655,6 +19685,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onBottomTool
   useEffect(() => { handleUndoRef.current = handleUndo; }, [handleUndo]);
   useEffect(() => { handleRedoRef.current = handleRedo; }, [handleRedo]);
 
+  // UX 2026-05-13: top-toolbar publish effect lives further down, past where
+  // canUndo / canRedo are declared. Those are plain const expressions evaluated
+  // mid-function-body, so referencing them up here threw a temporal-dead-zone
+  // error and the PDFViewer crashed on first mount.
+
   // Phase 29 — Cross-page-jump-on-undo (Plan 29-04 Warning 1 resolution).
   //
   // CONTEXT.md acceptance: "view jumps to the page where the change is" on Cmd+Z
@@ -19729,6 +19764,23 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onBottomTool
   // Check if redo is possible
   const canRedo = localAnnotationHistoryVersion >= 0
     && (localAnnotationRedoRef.current.length > 0 || redoHistory.length > 0 || (yjsUndoManager?.redoStack?.length || 0) > 0);
+
+  // UX 2026-05-13: Publish top toolbar state to the App shell when this tab is
+  // active. The App-level chrome strip renders the Undo / Redo / Survey buttons;
+  // this keeps them synced to the active PDFViewer. Placed past canUndo /
+  // canRedo declarations so the deps array doesn't hit a temporal-dead-zone.
+  useEffect(() => {
+    if (!isActive || typeof onTopToolbarApiChange !== 'function') return;
+    onTopToolbarApiChange({
+      canUndo,
+      canRedo,
+      onUndo: handleUndo,
+      onRedo: handleRedo,
+      onSurveyToggle: handleSurveyToggle,
+      surveyActive: showSurveyPanel,
+      surveyEnabled: !!features?.advancedSurvey
+    });
+  }, [isActive, canUndo, canRedo, handleUndo, handleRedo, handleSurveyToggle, showSurveyPanel, features, onTopToolbarApiChange]);
 
 
 
@@ -30996,13 +31048,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onBottomTool
   // Measure toolbar heights and middle area bounds for survey panel positioning
   useEffect(() => {
     const updateDimensions = () => {
+      // UX 2026-05-13: top toolbar now lives at the App shell — query it by id
+      // since this PDFViewer no longer renders its own top bar div. Status bar
+      // was removed in the same pass so its height is no longer added in.
+      const topEl = typeof document !== 'undefined' ? document.getElementById('chrome-top-host') : null;
       const bottomEl = typeof document !== 'undefined' ? document.getElementById('chrome-bottom-host') : null;
-      if (topToolbarRef.current && bottomEl && statusBarRef.current) {
-        const topRect = topToolbarRef.current.getBoundingClientRect();
+      if (topEl && bottomEl) {
+        const topRect = topEl.getBoundingClientRect();
         const topHeight = topRect.height;
         const bottomToolbarHeight = bottomEl.getBoundingClientRect().height;
-        const statusBarHeight = statusBarRef.current.getBoundingClientRect().height;
-        const combinedBottomHeight = bottomToolbarHeight + statusBarHeight;
+        const combinedBottomHeight = bottomToolbarHeight;
         setToolbarHeights({ top: topHeight, bottom: combinedBottomHeight });
         // 2026-04-29 v2: anchor banner at the literal bottom edge of the top
         // toolbar so it hugs the chrome without any gap, regardless of how
@@ -33353,114 +33408,20 @@ ${pageBlocks}
         />
       )}
       <div style={{
-        height: '100vh',
+        // UX 2026-05-13: Fill container, not viewport. Tab bar + App-level chrome
+        // host sit above this wrapper; 100vh used to overflow the absolute parent
+        // by their combined height and clipped the bottom of the status bar.
+        height: '100%',
         display: 'flex',
         flexDirection: 'column',
         background: '#2b2b2b',
         color: '#ddd',
         fontFamily: FONT_FAMILY
       }}>
-        {/* Toolbar with improved typography + Annotation tools */}
-        <div
-          ref={topToolbarRef}
-          style={{
-            padding: '4px 12px',
-            background: '#2d2d2d',
-            borderBottom: '1px solid #3d3d3d',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            fontSize: '13px',
-            fontFamily: FONT_FAMILY,
-            flexShrink: 0
-          }}
-        >
-
-          {/* Undo Button */}
-          <button
-            onClick={handleUndo}
-            disabled={!canUndo}
-            className="btn btn-default btn-sm"
-            style={{
-              padding: '4px 8px',
-              opacity: canUndo ? 1 : 0.4,
-              cursor: canUndo ? 'pointer' : 'not-allowed',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px'
-            }}
-            onMouseEnter={(e) => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              setTooltip({ visible: true, text: 'Undo', x: rect.left + rect.width / 2, y: rect.top - 10 });
-            }}
-            onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
-          >
-            <Icon name="undo" size={14} />
-          </button>
-
-          {/* Redo Button */}
-          <button
-            onClick={handleRedo}
-            disabled={!canRedo}
-            className="btn btn-default btn-sm"
-            style={{
-              padding: '4px 8px',
-              opacity: canRedo ? 1 : 0.4,
-              cursor: canRedo ? 'pointer' : 'not-allowed',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              transform: 'matrix(1, 0, 0, 1, 0, -0.591158) rotate(180deg) scaleX(-1)'
-            }}
-            onMouseEnter={(e) => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              setTooltip({ visible: true, text: 'Redo', x: rect.left + rect.width / 2, y: rect.top - 10 });
-            }}
-            onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
-          >
-            <Icon name="redo" size={14} />
-          </button>
-
-          {/* Survey Button - Gated for Pro/Enterprise */}
-          <button
-            onClick={() => {
-              if (!features?.advancedSurvey) {
-                alert('Survey Templates are a Pro feature. Please upgrade to use this tool.');
-                return;
-              }
-              if (!showSurveyPanel) {
-                // Show template selection modal
-                setShowTemplateSelection(true);
-              } else {
-                setShowSurveyPanel(false);
-                setSelectedModuleId(null);
-                setSelectedSpaceId(null);
-                setSelectedCategoryId(null);
-                setActiveTool('select');
-              }
-            }}
-            className={`btn btn-md ${showSurveyPanel ? 'btn-active' : 'btn-default'}`}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              fontSize: '14px',
-              fontWeight: '600',
-              padding: '4px 10px',
-              marginLeft: 'auto',
-              transition: 'all 0.2s ease',
-              background: showSurveyPanel ? 'rgba(74, 144, 226, 0.1)' : 'rgba(255, 255, 255, 0.05)',
-              border: showSurveyPanel ? '1px solid #4A90E2' : '1px solid #555',
-              color: showSurveyPanel ? '#4A90E2' : '#FFF',
-              opacity: features?.advancedSurvey ? 1 : 0.6
-            }}
-            title={!features?.advancedSurvey ? 'Pro feature - Upgrade to unlock' : ''}
-          >
-            <Icon name="survey" size={18} />
-            Survey
-            {!features?.advancedSurvey && <Icon name="lock" size={12} />}
-          </button>
-        </div>
+        {/* UX 2026-05-13: Top toolbar (Undo / Redo / Survey) now lives at the App
+            shell so it survives PDF tab switches without re-mounting. PDFViewer
+            publishes its state through onTopToolbarApiChange in the useEffect
+            above. Nothing renders here for the top bar. */}
 
         {/* Floating Tooltip */}
         {tooltip.visible && (
@@ -37308,39 +37269,9 @@ ${pageBlocks}
           </div>
         )}
 
-        {/* Status Bar with improved typography */}
-        <div
-          ref={statusBarRef}
-          style={{
-            padding: '8px 20px',
-            background: '#333',
-            borderTop: '1px solid #444',
-            fontSize: '12px',
-            color: '#999',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '20px',
-            fontFamily: FONT_FAMILY,
-            fontWeight: '400',
-            letterSpacing: '-0.1px',
-            flexShrink: 0
-          }}>
-          <span>
-            {scrollMode === 'continuous'
-              ? 'Scroll to navigate • Ctrl+Scroll to zoom • Drag to pan'
-              : 'Use arrow keys • Ctrl+Scroll to zoom • Drag to pan'}
-          </span>
-          {scrollMode === 'continuous' && (
-            <span style={{
-              marginLeft: 'auto',
-              color: '#aaa',
-              fontFamily: FONT_FAMILY,
-              fontWeight: '500'
-            }}>
-              {renderedPages.size} of {numPages} pages rendered
-            </span>
-          )}
-        </div>
+        {/* UX 2026-05-13: status bar (Scroll to navigate hint + N of M pages
+            rendered counter) removed per user request — the row added noise
+            without surfacing actionable info. */}
 
         {/* Space Selection Modal */}
         {showSpaceSelection && (
@@ -43621,6 +43552,22 @@ export default function App() {
   const [documents, setDocuments] = useState([]);
   const dashboardRef = useRef(null);
 
+  // UX 2026-05-13: App-level top toolbar state. The chrome strip (Undo / Redo /
+  // Survey) lives at the app shell so it stays mounted across PDF tab switches
+  // and renders instantly on cold open. The active PDFViewer publishes its
+  // undo/redo state, survey-panel state, and click handlers into this object
+  // via the onTopToolbarApiChange callback. When the user is on the home tab
+  // the chrome host is hidden, so a stale api object here is harmless.
+  const [topToolbarApi, setTopToolbarApi] = useState({
+    canUndo: false,
+    canRedo: false,
+    onUndo: null,
+    onRedo: null,
+    onSurveyToggle: null,
+    surveyActive: false,
+    surveyEnabled: false
+  });
+
   // UX 2026-05-13: App-level bottom toolbar state. The chrome-bottom host
   // mounts with final rail dimensions as soon as a PDF tab is active; the active
   // PDFViewer will publish the live toolbar API into this object in the next
@@ -44062,6 +44009,84 @@ export default function App() {
             onPageDrop={handlePageDrop}
           />
         )}
+        {/* UX 2026-05-13: App-level top toolbar (Undo / Redo / Survey). Lives at
+            the app shell so the strip stays mounted across PDF tab switches and
+            renders instantly on cold open — only its props change when the active
+            tab swaps, never its DOM. Hidden entirely on the home tab. The active
+            PDFViewer publishes its undo/redo/survey state into topToolbarApi via
+            onTopToolbarApiChange. */}
+        <div
+          id="chrome-top-host"
+          style={{
+            display: isViewerVisible ? 'flex' : 'none',
+            flexShrink: 0,
+            padding: '4px 12px',
+            background: '#2d2d2d',
+            borderBottom: '1px solid #3d3d3d',
+            alignItems: 'center',
+            gap: '8px',
+            fontSize: '13px',
+            fontFamily: FONT_FAMILY,
+            color: '#ddd'
+          }}
+        >
+          <button
+            onClick={topToolbarApi.onUndo || (() => {})}
+            disabled={!topToolbarApi.canUndo}
+            className="btn btn-default btn-sm"
+            title="Undo"
+            style={{
+              padding: '4px 8px',
+              opacity: topToolbarApi.canUndo ? 1 : 0.4,
+              cursor: topToolbarApi.canUndo ? 'pointer' : 'not-allowed',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+          >
+            <Icon name="undo" size={14} />
+          </button>
+          <button
+            onClick={topToolbarApi.onRedo || (() => {})}
+            disabled={!topToolbarApi.canRedo}
+            className="btn btn-default btn-sm"
+            title="Redo"
+            style={{
+              padding: '4px 8px',
+              opacity: topToolbarApi.canRedo ? 1 : 0.4,
+              cursor: topToolbarApi.canRedo ? 'pointer' : 'not-allowed',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              transform: 'matrix(1, 0, 0, 1, 0, -0.591158) rotate(180deg) scaleX(-1)'
+            }}
+          >
+            <Icon name="redo" size={14} />
+          </button>
+          <button
+            onClick={topToolbarApi.onSurveyToggle || (() => {})}
+            className={`btn btn-md ${topToolbarApi.surveyActive ? 'btn-active' : 'btn-default'}`}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontSize: '14px',
+              fontWeight: '600',
+              padding: '4px 10px',
+              marginLeft: 'auto',
+              transition: 'all 0.2s ease',
+              background: topToolbarApi.surveyActive ? 'rgba(74, 144, 226, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+              border: topToolbarApi.surveyActive ? '1px solid #4A90E2' : '1px solid #555',
+              color: topToolbarApi.surveyActive ? '#4A90E2' : '#FFF',
+              opacity: topToolbarApi.surveyEnabled ? 1 : 0.6
+            }}
+            title={!topToolbarApi.surveyEnabled ? 'Pro feature - Upgrade to unlock' : ''}
+          >
+            <Icon name="survey" size={18} />
+            Survey
+            {!topToolbarApi.surveyEnabled && <Icon name="lock" size={12} />}
+          </button>
+        </div>
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative', display: 'flex' }}>
           <div
             id="chrome-left-host"
@@ -44080,67 +44105,68 @@ export default function App() {
           </div>
           <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', position: 'relative' }}>
             <Dashboard
-            ref={dashboardRef}
-            onDocumentSelect={handleDocumentSelect}
-            onBack={handleBack}
-            documents={documents}
-            setDocuments={setDocuments}
-            templates={appTemplates}
-            onTemplatesChange={handleTemplatesChange}
-            onShowAuthModal={() => setShowAuthModal(true)}
-            ballInCourtEntities={ballInCourtEntities}
-            setBallInCourtEntities={setBallInCourtEntities}
-          />
-          {tabs.map(tab => {
-            if (tab.isHome) return null;
+              ref={dashboardRef}
+              onDocumentSelect={handleDocumentSelect}
+              onBack={handleBack}
+              documents={documents}
+              setDocuments={setDocuments}
+              templates={appTemplates}
+              onTemplatesChange={handleTemplatesChange}
+              onShowAuthModal={() => setShowAuthModal(true)}
+              ballInCourtEntities={ballInCourtEntities}
+              setBallInCourtEntities={setBallInCourtEntities}
+            />
+            {tabs.map(tab => {
+              if (tab.isHome) return null;
 
-            const isVisible = tab.id === activeTabId && currentView === 'viewer';
-            const tabViewState = tab.viewState;
+              const isVisible = tab.id === activeTabId && currentView === 'viewer';
+              const tabViewState = tab.viewState;
 
-            return (
-              <div
-                key={tab.id}
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  background: '#1f1f1f',
-                  zIndex: isVisible ? 5000 : 4000, // Keep lower z-index when hidden
-                  display: isVisible ? 'block' : 'none'
-                }}
-              >
-                <YDocProvider docId={tab.file?.id}>
-                  <PDFViewer
-                    pdfFile={tab.file}
-                    pdfFilePath={tab.filePath}
-                    onBack={handleBack}
-                    tabId={tab.id}
-                    isActive={isVisible}
-                    onBottomToolbarApiChange={setBottomToolbarApi}
-                    onLeftRailApiChange={setLeftRailApi}
-                    onPageDrop={handlePageDrop}
-                    onUpdatePDFFile={handleUpdatePDFFile}
-                    onUnsavedAnnotationsChange={handleUnsavedAnnotationsChange}
-                    onAnnotationsExistChange={handleAnnotationsExistChange}
-                    onRequestCreateTemplate={handleCreateTemplateRequest}
-                    initialViewState={tabViewState}
-                    onViewStateChange={handleViewStateChange}
-                    templates={appTemplates}
-                    onTemplatesChange={handleTemplatesChange}
-                    onRefetchTemplates={refetchTemplates}
-                    user={user}
-                    isMSAuthenticated={isMSAuthenticated}
-                    msLogin={msLogin}
-                    graphClient={graphClient}
-                    msAccount={msAccount}
-                    msNeedsReconnect={msNeedsReconnect}
-                    ensureFreshToken={ensureFreshToken}
-                    ballInCourtEntities={ballInCourtEntities}
-                    setBallInCourtEntities={setBallInCourtEntities}
-                  />
-                </YDocProvider>
-              </div>
-            );
-          })}
+              return (
+                <div
+                  key={tab.id}
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    background: '#1f1f1f',
+                    zIndex: isVisible ? 5000 : 4000, // Keep lower z-index when hidden
+                    display: isVisible ? 'block' : 'none'
+                  }}
+                >
+                  <YDocProvider docId={tab.file?.id}>
+                    <PDFViewer
+                      pdfFile={tab.file}
+                      pdfFilePath={tab.filePath}
+                      onBack={handleBack}
+                      tabId={tab.id}
+                      isActive={isVisible}
+                      onTopToolbarApiChange={setTopToolbarApi}
+                      onBottomToolbarApiChange={setBottomToolbarApi}
+                      onLeftRailApiChange={setLeftRailApi}
+                      onPageDrop={handlePageDrop}
+                      onUpdatePDFFile={handleUpdatePDFFile}
+                      onUnsavedAnnotationsChange={handleUnsavedAnnotationsChange}
+                      onAnnotationsExistChange={handleAnnotationsExistChange}
+                      onRequestCreateTemplate={handleCreateTemplateRequest}
+                      initialViewState={tabViewState}
+                      onViewStateChange={handleViewStateChange}
+                      templates={appTemplates}
+                      onTemplatesChange={handleTemplatesChange}
+                      onRefetchTemplates={refetchTemplates}
+                      user={user}
+                      isMSAuthenticated={isMSAuthenticated}
+                      msLogin={msLogin}
+                      graphClient={graphClient}
+                      msAccount={msAccount}
+                      msNeedsReconnect={msNeedsReconnect}
+                      ensureFreshToken={ensureFreshToken}
+                      ballInCourtEntities={ballInCourtEntities}
+                      setBallInCourtEntities={setBallInCourtEntities}
+                    />
+                  </YDocProvider>
+                </div>
+              );
+            })}
           </div>
         </div>
         <div
@@ -44158,7 +44184,12 @@ export default function App() {
             fontSize: '14px',
             fontFamily: FONT_FAMILY,
             color: '#ddd',
-            position: 'relative'
+            position: 'relative',
+            // UX 2026-05-13: chrome strip must stack above the PDF panel
+            // (which sits at z-index 5000 / 4000) so the color picker and
+            // zoom-menu pop-ups inside this strip can float above the PDF
+            // instead of being hidden behind it.
+            zIndex: 5500
           }}
         >
           {bottomToolbarApi && <BottomToolbar {...bottomToolbarApi} />}
@@ -44171,6 +44202,12 @@ export default function App() {
         onClose={() => setShowAuthModal(false)}
         onDismiss={!authPromptDismissed ? handleDismiss : null}
       />
+
+      {/* UX 2026-05-13: KeyboardShortcutsOverlay only renders on the home tab.
+          On the PDF viewer it was covering the zoom / page-fit controls in the
+          bottom-right after the status bar was removed. The '?' modal still
+          works on the home tab; on the viewer the screen stays clean. */}
+      {!isViewerVisible && <KeyboardShortcutsOverlay />}
     </>
   );
 }

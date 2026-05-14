@@ -144,7 +144,7 @@ import { createRoot } from 'react-dom/client';
 import { registerLicense } from '@syncfusion/ej2-base';
 import App from './App';
 import ErrorBoundary from './components/ErrorBoundary';
-import KeyboardShortcutsOverlay from './components/KeyboardShortcutsOverlay';
+// KeyboardShortcutsOverlay moved into App so it only renders on the home tab — UX 2026-05-13.
 import { AuthProvider } from './contexts/AuthContext';
 import { MSGraphProvider } from './contexts/MSGraphContext';
 // Fill-bleed diagnostic globals: __shapeSpyOn / __shapeSpyOff / __captureAllShapes
@@ -212,7 +212,11 @@ if (!devRouteActive) {
       <AuthProvider>
         <MSGraphProvider>
           <App />
-          <KeyboardShortcutsOverlay />
+          {/* UX 2026-05-13: KeyboardShortcutsOverlay was previously mounted here at
+              root so its "Press ? for keyboard shortcuts" hint floated on every
+              screen — including the PDF viewer, where it covered the zoom / page
+              fit controls in the bottom right after the status bar was removed.
+              Moved inside App so it only renders on the home tab. */}
         </MSGraphProvider>
       </AuthProvider>
     </ErrorBoundary>
