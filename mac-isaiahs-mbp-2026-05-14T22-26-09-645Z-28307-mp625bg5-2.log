@@ -1,0 +1,460 @@
+===== SurveyApp Save Log =====
+version:   0.1.45
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1203x826
+locale:    en-US
+timestamp: 2026-05-14T22:26:09.631Z (5/14/2026, 6:26:09 PM)
+==============================
+[CSeries wipe] doc=test.pdf-2462 totalCounters=0 legacyRemoved=0 — nothing to wipe.
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":null,"alreadyRanFor":null,"willRun":false}
+[CloudSync][hook][state-obs] annotationsByPage initial {"currentCount":0,"pages":0,"hydrated":false}
+[CloudSync][hook][state-obs] callouts initial {"currentCount":0,"hydrated":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"hydrateEnabled":false,"documentId":null,"userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":null}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"hydrateEnabled":false,"hasDocumentId":false,"hasUserId":true,"hasPdfId":false}
+[AnnotationHydrationGate][normal] {"documentId":null,"pdfId":null,"ready":true,"source":"disabled","normalReady":true,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true}
+[CSeries wipe] doc=1.pdf-8616 totalCounters=0 legacyRemoved=0 — nothing to wipe.
+[CloudSync][hook] hydrate effect fired {"enabled":false,"hydrateEnabled":false,"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"test.pdf-2462"}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"hydrateEnabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":true}
+[AnnotationHydrationGate][normal] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","ready":true,"source":"disabled","normalReady":true,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true}
+[AnnotationHydrationGate][first-page] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","pageNumber":1,"ready":false,"visualCoverActive":true,"normal":{"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":null,"ready":true,"source":"disabled","normalReady":true,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true},"survey":{"ready":false,"source":"supabase-highlight-starting","documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462"}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","pageNumber":1,"active":true,"reason":"annotation-hydration-gated"}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"hydrateEnabled":false,"documentId":null,"userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"1.pdf-8616"}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"hydrateEnabled":false,"hasDocumentId":false,"hasUserId":true,"hasPdfId":true}
+[AnnotationHydrationGate][normal] {"documentId":null,"pdfId":"1.pdf-8616","ready":true,"source":"disabled","normalReady":true,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true}
+[PreviewDiag] backup write {"kind":"callout-localStorage","count":1,"calloutCount":0,"bytes":2}
+[AnnotationHydrationGate][first-page] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","pageNumber":1,"ready":false,"visualCoverActive":true,"normal":{"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","ready":true,"source":"disabled","normalReady":true,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true},"survey":{"ready":false,"source":"supabase-highlight-starting","documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462"}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","pageNumber":1,"active":true,"reason":"annotation-hydration-gated"}
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","alreadyRanFor":null,"willRun":true}
+[Phase31 UAT] backfill:start {"hasYdoc":true,"hasSupabase":true,"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","markCutoverComplete":true}
+[PDFImport] skipped embedded PDF annotation import — cloud/Y.Doc is authoritative {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528"}
+[PDFCounterImport] summary {"marker":"survey-counter","metadataKey":"SurveyApp","counterAnnotationsImported":0,"plainCirclesImported":0,"counterMetadataParseFailures":0,"appCalloutMarker":"survey-callout","appCalloutMetadataKey":"SurveyAppCallout","appCalloutAnnotationsImported":0,"appCalloutPiecesSkipped":0}
+[PDFAppLayerStateImport] summary {"found":false,"documentId":null,"exportId":null,"scopedAnnotationPages":0,"scopedCallouts":0,"surveyHighlights":0,"spaces":0}
+[PDFImport] native layer policy {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","cloudAuthoritative":true,"reason":"cloud/Y.Doc annotations are authoritative; native PDF annotation layer is hidden when all renderable native annotations are accounted for by importer diagnostics.","pages":{"1":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"2":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"3":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"}}}
+[PrintPanel] RENDER — panel closed
+[PDFCounterImport] summary {"marker":"survey-counter","metadataKey":"SurveyApp","counterAnnotationsImported":0,"plainCirclesImported":0,"counterMetadataParseFailures":0,"appCalloutMarker":"survey-callout","appCalloutMetadataKey":"SurveyAppCallout","appCalloutAnnotationsImported":0,"appCalloutPiecesSkipped":0}
+[PDFAppLayerStateImport] summary {"found":true,"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","exportId":"484e4280-bca3-4ebe-bde7-d9371da0f528-1778796804043","scopedAnnotationPages":1,"scopedCallouts":0,"surveyHighlights":2,"spaces":1}
+[PDFImport] native layer policy {"documentId":null,"pdfName":"1.pdf","cloudAuthoritative":false,"reason":"PDF-native annotations imported as editable app annotations hide Syncfusion native annotation and selection/adorner layers to avoid duplicate interaction chrome.","pages":{"1":{"hideNativeLayer":true,"nativeRenderableAnnotationCount":1,"nativeOnlyAnnotationCount":0,"importedCopyCount":1,"reason":"all-renderable-native-annotations-imported-as-editable-app-annotations"},"2":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"importedCopyCount":0,"reason":"no-renderable-native-annotations"},"3":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"importedCopyCount":0,"reason":"no-renderable-native-annotations"}}}
+[PDFAppLayerStateImport] restored {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","exportId":"484e4280-bca3-4ebe-bde7-d9371da0f528-1778796804043","scopedAnnotationPages":1,"scopedCallouts":0,"surveyHighlights":2,"spaces":1}
+[PrintPanel] RENDER — panel closed
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +748535.5ms] pdf_loaded {"pageCount":3,"currentPage":1}
+console.error @ The above error occurred in the <SVGAnnotationLayer> component:
+
+    at http://localhost:5173/src/components/SVGAnnotationLayer.jsx?t=1778796338727:99:3
+    at div
+    at div
+    at div
+    at div
+    at div
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778796444634:11844:22)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1778796444634:41892:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:31:5)
+
+React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary.
+console.error @ ErrorBoundary caught an error: {"name":"TypeError","message":"Cannot read properties of null (reading 'regionId')","stack":"TypeError: Cannot read properties of null (reading 'regionId')\n    at http://localhost:5173/src/components/SVGAnnotationLayer.jsx?t=1778796338727:817:24\n    at http://localhost:5173/src/components/SVGAnnotationLayer.jsx?t=1778796338727:998:59\n    at mountMemo (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=4844aadd:19072:27)\n    at Object.useMemo (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=4844aadd:19396:24)\n    at useMemo (http://localhost:5173/node_modules/.vite/deps/chunk-YMK7XHJB.js?v=4844aadd:1379:29)\n    at http://localhost:5173/src/components/SVGAnnotationLayer.jsx?t=1778796338727:824:31\n    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=4844aadd:18426:26)\n    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=4844aadd:21460:28)\n    at updateSimpleMemoComponent (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=4844aadd:21341:18)\n    at updateMemoComponent (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=4844aadd:21244:22)","cause":null} {"componentStack":"\n    at http://localhost:5173/src/components/SVGAnnotationLayer.jsx?t=1778796338727:99:3\n    at div\n    at div\n    at div\n    at div\n    at div\n    at PDFViewer (http://localhost:5173/src/App.jsx?t=1778796444634:11844:22)\n    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)\n    at div\n    at div\n    at div\n    at div\n    at App (http://localhost:5173/src/App.jsx?t=1778796444634:41892:151)\n    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)\n    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)\n    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:31:5)"}
+[HyperlinkDiag] post-load scan {"hyperlinkCount":0,"samples":[]}
+[HIGHLIGHT-SYNC][load.legacy][pdf=1.pdf] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","totalRows":2,"fabricCarryingDropped":0,"keptCount":2,"keptIds":["highlight-1778796756873-8ikapl1ze","highlight-1778796761710-b8kwmevq2"]}
+[Phase31 UAT] backfill:degeneracy-probe {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapSize":3,"legacyCount":3,"probeOk":true,"tolerance":100,"yMapLooksHealthy":false,"dedupeRan":true,"lastGoodSize":133}
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":3,"legacyCount":3}
+[Phase31 UAT] backfill:select-loop start {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pageSize":1000}
+[Phase31 UAT] backfill:select-loop page ok {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","page":0,"range":[0,999],"pageRows":3,"totalSoFar":3,"pageElapsedMs":95}
+[Phase31 UAT] backfill:done {"ranAs":"leader","documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowsFetched":3,"imported":3,"skipped":0,"yMapSizeAfter":3,"cutoverRequested":true,"cutoverCompleted":true,"importedByType":{"ink":3},"skippedByType":{}}
+[SaveLog] bulletproof local snapshot saved at /Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/Logs/2026-05-14_22-13-43
+[SaveLog] bulletproof local snapshot saved at /Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/Logs/2026-05-14_22-13-46
+[SaveLog] bulletproof local snapshot saved at /Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/Logs/2026-05-14_22-13-47
+[dev-auto-login] boot {"hasDevEmail":true,"devEmailHint":"isai***","hasDevPassword":true,"hasCachedSession":true,"cachedSessionEmail":"isaiahcalvo123@gmail.com","cachedSessionExpiresAt":1778800685}
+[dev-auto-login] cached session matches dev email, keeping it
+[dev-auto-login] decision {"needsAutoLogin":false,"willAttemptSignIn":false}
+[DocumentDelete] selection:enter {"activeSection":"documents","visibleItems":4}
+[DocumentDelete] selection:toggle {"id":"12fc94da-b11f-4a20-97ba-401905b89a3e","wasSelected":false,"selectedIds":["12fc94da-b11f-4a20-97ba-401905b89a3e"]}
+[DocumentDelete] bulk:start {"ctx":"documents","selectedIds":["12fc94da-b11f-4a20-97ba-401905b89a3e"],"selectedCount":1,"visibleDocumentCount":4}
+[DocumentDelete] start {"docId":"12fc94da-b11f-4a20-97ba-401905b89a3e","filePath":"170d915c-5741-4e0b-b03f-deaeedae27bd/general/1778796812944.pdf","source":"bulk-documents"}
+[DocumentDelete] archive:result {"docId":"12fc94da-b11f-4a20-97ba-401905b89a3e","source":"bulk-documents","archivedCount":1,"archivedRows":[{"id":"12fc94da-b11f-4a20-97ba-401905b89a3e","name":"1.pdf","file_path":"170d915c-5741-4e0b-b03f-deaeedae27bd/general/1778796812944.pdf","user_id":"170d915c-5741-4e0b-b03f-deaeedae27bd"}]}
+[DocumentDelete] verify:archived {"docId":"12fc94da-b11f-4a20-97ba-401905b89a3e","source":"bulk-documents"}
+[CloudSync][hook] session id minted {"sessionId":"ff727056-3389-4014-996f-bc73487a2cc8"}
+[CloudSync][hook][state-obs] annotationsByPage initial {"currentCount":0,"pages":0,"hydrated":false}
+[CloudSync][hook][state-obs] callouts initial {"currentCount":0,"hydrated":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"hydrateEnabled":true,"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":null}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"hydrateEnabled":true,"hasDocumentId":true,"hasUserId":true,"hasPdfId":false}
+[AnnotationHydrationGate][normal] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":null,"ready":false,"source":"missing-prerequisite","normalReady":false,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true}
+[AnnotationHydrationGate][first-page] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":null,"pageNumber":1,"ready":false,"visualCoverActive":true,"normal":{"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":null,"ready":false,"source":"pending","firstPaintGate":true},"survey":{"ready":true,"source":"local"}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":null,"pageNumber":1,"active":true,"reason":"annotation-hydration-gated"}
+[Cloud render cache] doc=test.pdf-2462 painting verified cloud snapshot immediately — count=3.
+[CSeries wipe] doc=test.pdf-2462 totalCounters=0 legacyRemoved=0 — nothing to wipe.
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":null,"alreadyRanFor":null,"willRun":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"hydrateEnabled":true,"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"test.pdf-2462"}
+[AnnotationHydrationGate][normal] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","ready":false,"source":"starting","normalReady":false,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true}
+[CloudSync][hook] stage=hydrating
+[AnnotationHydrationGate][first-page] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","pageNumber":1,"ready":false,"visualCoverActive":true,"normal":{"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":null,"ready":false,"source":"missing-prerequisite","normalReady":false,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true},"survey":{"ready":false,"source":"supabase-highlight-starting","documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462"}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","pageNumber":1,"active":true,"reason":"annotation-hydration-gated"}
+[AnnotationHydrationGate][first-page] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","pageNumber":1,"ready":false,"visualCoverActive":true,"normal":{"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","ready":false,"source":"starting","normalReady":false,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true},"survey":{"ready":false,"source":"supabase-highlight-starting","documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462"}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","pageNumber":1,"active":true,"reason":"annotation-hydration-gated"}
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","alreadyRanFor":null,"willRun":true}
+[Phase31 UAT] backfill:start {"hasYdoc":true,"hasSupabase":true,"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","markCutoverComplete":true}
+[CloudSync][hook] cutover-complete hydrate — reading from Y.Doc {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","cutoverTs":"2026-05-14T22:13:34.561+00:00"}
+[Phase31 UAT] hydrate:cutover-sealed {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","cutoverTs":"2026-05-14T22:13:34.561+00:00","yMapSize":3,"yMapCalloutsSize":0,"materializedTotal":3,"materializedCallouts":0,"materializedDrawnByMe":3,"materializedDrawnByOthers":0,"materializedImported":0,"pages":1,"perPage":{"1":3},"currentStateCount":3,"ydocLooksDegenerate":false}
+[Phase31 UAT] hydrate:cutover-sealed:by-type {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfFile":"test.pdf-2462","viewerUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapTotal":3,"yMapCalloutsTotal":0,"yMapByType":{"path":3},"yMapByAuthor":{"byMe":3,"byOthers":0,"anonymous":0},"yMapByTypeByAuthor":{"path":{"byMe":3,"byOthers":0,"anonymous":0}},"yMapPerTypePerPage":{"path":{"1":2,"unknown":1}},"byPageTotal":3,"byPageByType":{"path":3},"byPagePerPagePerType":{"1":{"path":3}}}
+[CloudSync][hydrate] loadAllNonHighlightAnnotations start {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528"}
+[Phase31 UAT] backfill:degeneracy-probe {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapSize":3,"legacyCount":3,"probeOk":true,"tolerance":100,"yMapLooksHealthy":false,"dedupeRan":true,"lastGoodSize":133}
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":3,"legacyCount":3}
+[Phase31 UAT] backfill:select-loop start {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pageSize":1000}
+[PDFImport] skipped embedded PDF annotation import — cloud/Y.Doc is authoritative {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528"}
+[PDFCounterImport] summary {"marker":"survey-counter","metadataKey":"SurveyApp","counterAnnotationsImported":0,"plainCirclesImported":0,"counterMetadataParseFailures":0,"appCalloutMarker":"survey-callout","appCalloutMetadataKey":"SurveyAppCallout","appCalloutAnnotationsImported":0,"appCalloutPiecesSkipped":0}
+[PDFAppLayerStateImport] summary {"found":false,"documentId":null,"exportId":null,"scopedAnnotationPages":0,"scopedCallouts":0,"surveyHighlights":0,"spaces":0}
+[PDFImport] native layer policy {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","cloudAuthoritative":true,"reason":"cloud/Y.Doc annotations are authoritative; native PDF annotation layer is hidden when all renderable native annotations are accounted for by importer diagnostics.","pages":{"1":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"2":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"3":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"}}}
+[PrintPanel] RENDER — panel closed
+[HIGHLIGHT-SYNC][load.legacy][pdf=test.pdf] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","totalRows":2,"fabricCarryingDropped":0,"keptCount":2,"keptIds":["highlight-1778796756873-8ikapl1ze","highlight-1778796761710-b8kwmevq2"]}
+[AnnotationHydrationGate][survey] supabase highlights complete {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","count":2}
+[AnnotationHydrationGate][first-page] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","pageNumber":1,"ready":false,"visualCoverActive":true,"normal":{"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","ready":false,"source":"starting","normalReady":false,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true},"survey":{"ready":true,"source":"supabase-highlight","documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","count":2}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","pageNumber":1,"active":true,"reason":"annotation-hydration-gated"}
+[Phase31 UAT] backfill:select-loop page ok {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","page":0,"range":[0,999],"pageRows":3,"totalSoFar":3,"pageElapsedMs":101}
+console.warn @ Realtime send() is automatically falling back to REST API. This behavior will be deprecated in the future. Please use httpSend() explicitly for REST delivery.
+console.warn @ Realtime send() is automatically falling back to REST API. This behavior will be deprecated in the future. Please use httpSend() explicitly for REST delivery.
+[CloudSync][hydrate] loadAllNonHighlightAnnotations ok {"elapsedMs":243,"totalRowsScanned":3,"scanned":{"nonHighlight":3,"legacyFabricHighlights":0},"totalRows":3,"rowsByType":{"ink":3},"pagesWithObjects":1,"calloutCount":0}
+[CloudSync][verify] first read summary {"contextLabel":"cutover-source-of-truth","documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","elapsedMs":244,"firstFabricPages":1,"firstFabricObjects":3,"firstCallouts":0,"firstEmpty":false,"localFabricCount":3,"localCalloutCount":0,"localHasData":true,"willVerify":false}
+[CloudSync][source-of-truth] cutover initial hydrate selected Supabase durable snapshot {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","cutoverTs":"2026-05-14T22:13:34.561+00:00","ydocFabricCount":3,"ydocCalloutCount":0,"supabaseFabricCount":3,"supabaseCalloutCount":0,"rule":"Supabase durable snapshot wins initial load; Y.Doc is reshaped for live collaboration"}
+[Phase31 UAT] save:fan-out done {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","actionType":null,"dispatched":3,"yDocUpdateCount":3,"detected":3,"skippedHighlightOrCallout":0,"skippedOtherType":0,"rawTypeBreakdown":{"pen":3},"resolvedTypeBreakdown":{"ink":3},"skipReasons":{},"skipSamples":[],"yMapSizeAfter":3}
+[CloudSync][hook] callout Y.Doc fan-out done {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","actionType":"callout:delta","upserted":0,"deleted":0,"yDocUpdateCount":0,"yMapCalloutsSizeAfter":0}
+[AnnotationHydrationGate][normal] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","ready":true,"source":"supabase-durable-snapshot","normalReady":true,"cutoverTs":"2026-05-14T22:13:34.561+00:00","count":3,"calloutCount":0,"firstPaintGate":true}
+[AnnotationHydrationGate][first-page] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","pageNumber":1,"ready":true,"visualCoverActive":false,"normal":{"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","ready":true,"source":"supabase-durable-snapshot","normalReady":true,"cutoverTs":"2026-05-14T22:13:34.561+00:00","count":3,"calloutCount":0,"firstPaintGate":true},"survey":{"ready":true,"source":"supabase-highlight","documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","count":2}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","pageNumber":1,"active":false,"reason":"hydration-ready"}
+[Phase31 UAT] backfill:done {"ranAs":"leader","documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowsFetched":3,"imported":3,"skipped":0,"yMapSizeAfter":3,"cutoverRequested":true,"cutoverCompleted":true,"importedByType":{"ink":3},"skippedByType":{}}
+[crdtDedupePdfImports] removed 1 duplicate PDF-imported annotations across 3 unique signatures
+[CloudSync][hook] dedupe-resync — restoring state {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","removed":1,"resyncCount":2}
+console.warn @ [CloudSync][hook][state-obs] SHRINK {"prevCount":3,"currentCount":2,"delta":-1,"hydrated":true,"sameRefAsLastByPage":true,"stack":"    at commitHookEffectListMount (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=4844aadd:23793:34) |     at commitPassiveMountOnFiber (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=4844aadd:25034:19) |     at commitPassiveMountEffects_complete (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=4844aadd:25007:17) |     at commitPassiveMountEffects_begin (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=4844aadd:24997:15) |     at commitPassiveMountEffects (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=4844aadd:24987:11) |     at flushPassiveEffectsImpl (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=4844aadd:26368:11)"}
+[CloudSync][realtime] subscribing {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","currentUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","currentSessionId":"ff727056-3389-4014-996f-bc73487a2cc8","hasFabricInsert":true,"hasFabricUpdate":true,"hasFabricDelete":true,"hasCalloutInsert":true,"hasCalloutUpdate":true,"hasCalloutDelete":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +1414143.0ms] pdf_loaded {"pageCount":3,"currentPage":1}
+[CloudSync][realtime] subscribe status {"status":"SUBSCRIBED","error":null}
+[Phase31 UAT] post-subscribe catch-up skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","cutoverTs":"2026-05-14T22:13:34.561+00:00","ydocAuthoritative":true}
+[DebugBridge +1414275.3ms] zoom_start {"scale":1.33333,"targetScale":0.88,"source":"zoomChange"}
+[HyperlinkDiag] post-load scan {"hyperlinkCount":0,"samples":[]}
+[HyperlinkDiag] page 1 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","DIV","e-pv-annotation-canvas","e-pv-text-layer"]}
+[HyperlinkDiag] page 2 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","DIV","e-pv-annotation-canvas","e-pv-text-layer"]}
+[HyperlinkDiag] page 3 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","DIV","e-pv-annotation-canvas","e-pv-text-layer"]}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DrawCanvas p1] MOUNT — tool=highlight, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=highlight, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=highlight, isShape=true, isDrawingMode=false
+[DebugBridge +1415874.4ms] zoom_end {"source":"zoomChange_settle"}
+[UndoDiag] {"seq":2,"order":1,"at":"2026-05-14T22:24:46.246Z","event":"checkpoint_added","actionType":"delete","rawActionType":"highlight:delete","annotationType":"fabric","annotationId":"highlight-1778796756873-8ikapl1ze","pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":1,"redoDepth":0}
+[Phase31 UAT] focus rehydrate skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","cutoverTs":"2026-05-14T22:13:34.561+00:00","ydocAuthoritative":true}
+[CloudSync][realtime] applying DELETE {"payloadKeys":["id"]}
+[Phase31 UAT] delete-fallback refetch skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","cutoverTs":"2026-05-14T22:13:34.561+00:00","ydocAuthoritative":true}
+[DocumentSync] unmount flush — pushing pending highlight sync
+[HIGHLIGHT-SYNC][push.delete-diff][pdf=test.pdf] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","deletedIds":["highlight-1778796756873-8ikapl1ze"],"deletedCount":1,"priorCount":2,"currentCount":1,"cloudResult":"OK","cloudError":null}
+[UndoDiag] {"seq":3,"order":2,"at":"2026-05-14T22:24:49.205Z","event":"checkpoint_added","actionType":"delete","rawActionType":"highlight:delete","annotationType":"fabric","annotationId":"highlight-1778796761710-b8kwmevq2","pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":2,"redoDepth":0}
+[DocumentSync] unmount flush — pushing pending highlight sync
+[Phase31 UAT] focus rehydrate skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","cutoverTs":"2026-05-14T22:13:34.561+00:00","ydocAuthoritative":true}
+[HIGHLIGHT-SYNC][push.delete-diff][pdf=test.pdf] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","deletedIds":["highlight-1778796756873-8ikapl1ze"],"deletedCount":1,"priorCount":2,"currentCount":1,"cloudResult":"OK","cloudError":null}
+[CloudSync][realtime] applying DELETE {"payloadKeys":["id"]}
+[Phase31 UAT] delete-fallback refetch skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","cutoverTs":"2026-05-14T22:13:34.561+00:00","ydocAuthoritative":true}
+[DocumentSync] unmount flush — pushing pending highlight sync
+[HIGHLIGHT-SYNC][push.delete-diff][pdf=test.pdf] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","deletedIds":["highlight-1778796756873-8ikapl1ze","highlight-1778796761710-b8kwmevq2"],"deletedCount":2,"priorCount":2,"currentCount":0,"cloudResult":"OK","cloudError":null}
+[CloudSync][realtime] applying DELETE {"payloadKeys":["id"]}
+[Phase31 UAT] delete-fallback refetch skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","cutoverTs":"2026-05-14T22:13:34.561+00:00","ydocAuthoritative":true}
+[DocumentSync] unmount flush — pushing pending highlight sync
+[HIGHLIGHT-SYNC][push.delete-diff][pdf=test.pdf] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","deletedIds":["highlight-1778796756873-8ikapl1ze","highlight-1778796761710-b8kwmevq2"],"deletedCount":2,"priorCount":2,"currentCount":0,"cloudResult":"OK","cloudError":null}
+[UndoDiag] {"seq":4,"order":3,"at":"2026-05-14T22:24:53.021Z","event":"checkpoint_added","actionType":"delete","rawActionType":"space:delete","annotationType":null,"annotationId":null,"pageNumber":null,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":3,"redoDepth":0}
+[SpaceCascadeDelete] deleted scoped app state {"reason":"space-delete","documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","spaceId":"1778796768359-4fm0gg00v","pageIds":null,"regionIds":["1778796772487-xpb0jqx8v"],"cloudDeleteIds":0}
+[Phase31 UAT] focus rehydrate skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","cutoverTs":"2026-05-14T22:13:34.561+00:00","ydocAuthoritative":true}
+[HIGHLIGHT-SYNC][push.delete-diff][pdf=test.pdf] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","deletedIds":["highlight-1778796756873-8ikapl1ze","highlight-1778796761710-b8kwmevq2"],"deletedCount":2,"priorCount":2,"currentCount":0,"cloudResult":"OK","cloudError":null}
+[PreviewDiag] sync push {"kind":"survey-highlight","count":1,"highlightCount":0}
+[DrawCanvas p1] shape mousedown at (139.4, 206.3), tool=highlight
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"highlight","type":"survey-highlight","action":"survey-highlight-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-4","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"highlight","type":"survey-highlight","action":"survey-highlight-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-4","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"highlight","type":"survey-highlight","action":"survey-highlight-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] pointer release {"id":"gesture-4","frames":25,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"highlight","type":"survey-highlight","action":"survey-highlight-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] shape mouseup — tool=highlight, hasSize=true {"left":139.41025046382188,"top":206.3388798701299,"w":193.0241187384045,"h":82.88682745825602}
+[PreviewDiag] final commit {"id":"gesture-4","commits":1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"highlight","type":"survey-highlight","action":"survey-highlight-draw","pageNumber":1,"annotationId":null,"source":"survey-highlight:create"}
+[UndoDiag] {"seq":5,"order":4,"at":"2026-05-14T22:24:56.854Z","event":"checkpoint_added","actionType":"create","rawActionType":"highlight:create","annotationType":"fabric","annotationId":null,"pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":4,"redoDepth":0}
+[PreviewDiag] summary survey-highlight-draw started, 25 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-4","durationMs":1977.8,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"highlight","type":"survey-highlight","action":"survey-highlight-draw","pageNumber":1,"annotationId":null,"source":"survey-highlight:create","reason":"settled"}
+[DocumentSync] unmount flush — pushing pending highlight sync
+[PreviewDiag] sync push {"kind":"survey-highlight","count":1,"highlightCount":1}
+[DrawCanvas p1] shape mousedown at (340.4, 431.2), tool=highlight
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"highlight","type":"survey-highlight","action":"survey-highlight-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-5","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"highlight","type":"survey-highlight","action":"survey-highlight-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-5","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"highlight","type":"survey-highlight","action":"survey-highlight-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] pointer release {"id":"gesture-5","frames":25,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"highlight","type":"survey-highlight","action":"survey-highlight-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] shape mouseup — tool=highlight, hasSize=true {"left":340.3824211502783,"top":431.15520640074214,"w":195.2949907235622,"h":161.23191094619665}
+[PreviewDiag] final commit {"id":"gesture-5","commits":1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"highlight","type":"survey-highlight","action":"survey-highlight-draw","pageNumber":1,"annotationId":null,"source":"survey-highlight:create"}
+[UndoDiag] {"seq":6,"order":5,"at":"2026-05-14T22:25:01.682Z","event":"checkpoint_added","actionType":"create","rawActionType":"highlight:create","annotationType":"fabric","annotationId":null,"pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":5,"redoDepth":0}
+[PreviewDiag] summary survey-highlight-draw started, 25 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-5","durationMs":1855.5,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"highlight","type":"survey-highlight","action":"survey-highlight-draw","pageNumber":1,"annotationId":null,"source":"survey-highlight:create","reason":"settled"}
+[DocumentSync] unmount flush — pushing pending highlight sync
+[PreviewDiag] sync push {"kind":"survey-highlight","count":1,"highlightCount":2}
+[UndoDiag] {"seq":7,"order":6,"at":"2026-05-14T22:25:07.144Z","event":"checkpoint_added","actionType":"create","rawActionType":"space:create","annotationType":null,"annotationId":null,"pageNumber":null,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":6,"redoDepth":0}
+[App-RegionEdit p1] overlay portal mounted — currentPage=1, activeTool=region-edit, hasAnnotations=true, hasRegions=false, overlayDiv=true, portalTarget=true
+[RegionSelectionTool p1] target query hit — selector=[data-region-selection-target="1"], renderer=syncfusion-svg-stable
+[RegionSelectionTool p1] target missing — space=1778797507145-w9xjoo1bw, tool=region-edit, rect=none
+[App-RegionEdit p1] overlay portal mounted — currentPage=1, activeTool=region-edit, hasAnnotations=true, hasRegions=false, overlayDiv=true, portalTarget=true
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[App-RegionEdit p1] overlay portal mounted — currentPage=1, activeTool=region-edit, hasAnnotations=true, hasRegions=false, overlayDiv=true, portalTarget=true
+[RegionSelectionTool p1] target mounted — space=1778797507145-w9xjoo1bw, tool=region-edit, rect=439,84,539x697
+[RegionSelectionTool p1] canvasRect — left=439, top=84, width=539, height=697, scale=0.88072
+[App-RegionEdit p1] overlay portal mounted — currentPage=1, activeTool=region-edit, hasAnnotations=true, hasRegions=false, overlayDiv=true, portalTarget=true
+[App-RegionEdit p1] overlay portal mounted — currentPage=1, activeTool=region-edit, hasAnnotations=true, hasRegions=false, overlayDiv=true, portalTarget=true
+[RegionSelectionTool p1] mouseDown — tool=rectangular, activeTool=region-edit, within=true, client=482,417, rect=439,84,539x697
+[RegionSelectionTool p1] mouseUp commit rectangular — x=48.62, y=378.10, w=167.05, h=112.50, mode=add
+[RegionSelectionTool p1] confirm — input=1, consolidated=1, payload=1, valid=1
+[App-RegionEdit] handleRegionComplete — saving regions {"activeSpaceId":"1778797507145-w9xjoo1bw","regionSelectionPage":1,"incomingCount":1,"additiveCount":1,"migratedCount":1,"validCount":1,"regionIds":["1778797511642-0a0k5tewk"]}
+[UndoDiag] {"seq":8,"order":7,"at":"2026-05-14T22:25:12.744Z","event":"checkpoint_added","actionType":"move","rawActionType":"space:update","annotationType":null,"annotationId":null,"pageNumber":null,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":7,"redoDepth":0}
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[SpaceRegionOverlay p1] mounted — root=539x697, svg=539x697, fillContainer=true, maskId=space-mask-1--r2-
+[DrawCanvas p1] MOUNT — tool=highlight, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=highlight, isShape=true, isDrawingMode=false
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[Diag] tool-switch DETECTED → select (scheduling t+1000ms capture)
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[Diag select] screenshot saved (467 KB) → /Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/TestLogs/testlog-screenshot-select.png
+[Diag select] CAPTURED @ t+1002ms — annotations=2 callouts=0 svgWrappers=1 svgVis=[visible] svgElems=1 svgVisElems=1 eraserCanvases=0 svgMarkupBytes=6157
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[DrawCanvas p1] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p1] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[DrawCanvas p1] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-6","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-6","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] pointer release {"id":"gesture-6","frames":45,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"8102c794-08bc-4299-88a0-56a8c780a04a"}
+[PreviewDiag] final commit {"id":"gesture-6","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"8102c794-08bc-4299-88a0-56a8c780a04a","source":"path:created","objectDelta":1,"previousObjectCount":2,"nextObjectCount":3,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[CounterRenumber] skipped {"pageNumber":1,"source":"path:created","action":"path:created","reason":"non-numbering-save","preserveExistingCounters":true,"intentionalCounterChangeIds":[]}
+[UndoDiag] {"seq":9,"order":8,"at":"2026-05-14T22:25:24.115Z","event":"local_annotation_history_added","actionType":"create","rawActionType":"fabric:create","annotationType":"path","annotationId":"8102c794-08bc-4299-88a0-56a8c780a04a","pageNumber":1,"lane":"local annotation history","receivedStack":"localAnnotationUndo","chosenStack":null,"chosenLane":"local annotation history","decisionReason":null,"undoDepth":1,"redoDepth":0}
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[CloudSync][hook] fabric state changed — debounce push scheduled {"pageCount":1,"objectCount":3,"priorObjectCount":2,"isWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[CloudSync][status] transition {"from":"idle","to":"pending","kind":"fabric","phase":null,"count":null,"queued":false,"error":null}
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[PreviewDiag] preview {"id":"gesture-6","frames":50,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"8102c794-08bc-4299-88a0-56a8c780a04a","source":"path:created","objectDelta":1,"previousObjectCount":2,"nextObjectCount":3,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[CloudSync][hook] fabric push debounce elapsed — pushing now {"debounceMs":800,"debounceElapsedMs":802,"deferredQueuedMs":null,"actionType":"path:created"}
+[Phase31 UAT] save:start {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","legacyBulkUpsertEnabled":false,"crdtEnabled":true,"ydocMounted":true,"route":"supabase-durable-then-crdt","currentTotal":3,"currentDrawnByMe":0,"currentDrawnByOthers":3,"currentImported":0,"priorTotal":2,"priorDrawnByMe":0,"priorImported":0,"deltaTotal":1}
+[CloudSync][status] transition {"from":"pending","to":"syncing","kind":"fabric","phase":null,"count":null,"queued":false,"error":null}
+[CloudSync][delta] fabric prepared {"actionType":"path:created","changedIds":["8102c794-08bc-4299-88a0-56a8c780a04a"],"deletedIds":[],"changedObjectCount":1,"changedCount":1,"dispatchedCount":1,"supabaseUpsertCount":1,"yDocUpdateCount":1,"debounceMs":800,"debounceElapsedMs":802,"fullFanOutReason":null,"totalObjectCount":3,"priorObjectCount":2,"preciseSource":null,"preciseDeletedCount":null,"preciseChangedCount":null}
+[CloudSync][push] upsertAnnotationsByPage start {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","actionType":"path:created","changedIds":["8102c794-08bc-4299-88a0-56a8c780a04a"],"changedCount":1,"dispatchedCount":1,"supabaseUpsertCount":1,"debounceMs":800,"debounceElapsedMs":802,"fullFanOutReason":null,"totalRows":1,"userDrawnObjects":1,"importedObjects":0,"rowsByType":{"ink":1},"pages":1}
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[CloudSync][push] upsertAnnotationsByPage ok {"elapsedMs":222,"pdfId":"test.pdf-2462","actionType":"path:created","supabaseUpsertCount":1,"rowsReturned":1}
+[UndoDiag] {"seq":12,"order":null,"at":"2026-05-14T22:25:25.153Z","event":"yjs_history_added","actionType":"undo","rawActionType":"undo","annotationType":null,"annotationId":null,"pageNumber":null,"lane":"Yjs/CRDT history","receivedStack":"yjsUndoStack","chosenStack":null,"chosenLane":"Yjs/CRDT history","decisionReason":null,"undoDepth":1,"redoDepth":0}
+[Phase31 UAT] save:fan-out done {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","actionType":"path:created","dispatched":1,"yDocUpdateCount":1,"detected":1,"skippedHighlightOrCallout":0,"skippedOtherType":0,"rawTypeBreakdown":{"pen":1},"resolvedTypeBreakdown":{"ink":1},"skipReasons":{},"skipSamples":[],"yMapSizeAfter":3}
+[CloudSync][hook] fabric push synced {"count":1}
+[PreviewDiag] sync push {"gestureId":"gesture-6","totalAfterRelease":1,"kind":"fabric","count":1,"changedObjectCount":1,"deletedCount":0,"pageCount":1}
+[CloudSync][status] transition {"from":"syncing","to":"synced","kind":"fabric","phase":null,"count":1,"queued":false,"error":null}
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[CloudSync][realtime] echo-filtered INSERT {"highlightId":"8102c794-08bc-4299-88a0-56a8c780a04a","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"ff727056-3389-4014-996f-bc73487a2cc8","currentSessionId":"ff727056-3389-4014-996f-bc73487a2cc8","reason":"same-session"}
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[PreviewDiag] summary path:created started, 70 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 1 sync push after release, 0 backup writes after release {"id":"gesture-6","durationMs":2951.1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"8102c794-08bc-4299-88a0-56a8c780a04a","source":"path:created","objectDelta":1,"previousObjectCount":2,"nextObjectCount":3,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[PreviewDiag] preview {"id":"gesture-6","frames":75,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"8102c794-08bc-4299-88a0-56a8c780a04a","source":"path:created","objectDelta":1,"previousObjectCount":2,"nextObjectCount":3,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[DrawCanvas p1] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[DrawCanvas p1] shape effect — tool=highlight, isShape=true, isDrawingMode=false
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[Diag] tool-switch DETECTED → select (scheduling t+1000ms capture)
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r2-
+[Diag select] screenshot saved (474 KB) → /Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/TestLogs/testlog-screenshot-select.png
+[Diag select] CAPTURED @ t+1002ms — annotations=3 callouts=0 svgWrappers=1 svgVis=[visible] svgElems=2 svgVisElems=2 eraserCanvases=0 svgMarkupBytes=13403
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[PDFSaveExport] action start {"actionType":"pdf-export","documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","supabaseAnnotationSaveRan":false,"pdfBytesGenerated":false,"localFilesystemWrite":false,"outputPath":null,"annotationCountsByType":{"path":3,"highlight":2},"annotationCountSummary":{"totalObjects":3,"calloutCount":0,"highlightCount":2,"importedPdfObjects":0,"byType":{"path":3,"highlight":2}},"embeddedPdfNativeAnnotationHandling":"preserve-unedited-native-annots-skip-unedited-imported-copies-export-edited-imported-copies","note":"Explicit export generates a PDF copy from original PDF bytes. Unedited imported PDF-native app copies are skipped to avoid duplication; edited imported copies are exported from app state."}
+[PDFSaveExport] source PDF selection {"actionType":"pdf-export","documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","source":"original-pdf-bytes","skippedViewerSaveAsBlob":true,"reason":"The viewer save blob can contain rendered annotation appearances; exporting from original bytes prevents baked page artifacts plus duplicate editable app annotations."}
+[PDFImportedEditExport] summary {"actionType":"pdf-export","documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","importedNativeCopiesSkipped":0,"editedImportedCopiesExported":0,"editedImportedNativeCopiesRemoved":0,"editedImportedNativeCopiesRemoveMisses":0,"reason":"unedited imported PDF-native app copies are skipped because the source PDF already contains the native annotation; edited imported copies are exported from app state and matching native annotations are removed when identifiable."}
+[PDFSaveExport] pdf bytes generated {"actionType":"pdf-export","documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfBytesGenerated":true,"byteLength":8936,"exportContract":{"version":1,"defaultScope":"regular-viewer-annotations-only","includedScopes":["canvas"],"excludedScopes":["survey","region","survey-region"],"importedPdfNativeHandling":"preserve-unedited-native-annots-skip-unedited-imported-copies-export-edited-imported-copies","visibilityHandling":"export-regular-viewer-annotations-only-exclude-survey-spaces-regions"},"exportDiagnostics":{"totalObjectsConsidered":5,"objectsExported":1,"objectsSkipped":4,"pdfAnnotationsAdded":1,"importedNativeCopiesSkipped":0,"editedImportedCopiesExported":0,"editedImportedNativeCopiesRemoved":0,"editedImportedNativeCopiesRemoveMisses":0,"byScope":{"canvas":1,"region":2,"survey":2},"byType":{"path":3,"highlight":2},"bySource":{"fabric":3,"survey-highlight":2},"byRegion":{"1778794793231-hjd5trloi":1,"1778797511642-0a0k5tewk":1},"bySpace":{"1778797507145-w9xjoo1bw":1},"bySurvey":{"1778797507145-w9xjoo1bw":1,"module-1763727070665-0.5714253201980415":2},"skippedByReason":{"scoped-annotation-export-excluded":2,"survey-highlight-export-excluded":2},"skipped":[{"source":"fabric","pageNumber":1,"id":"89b2125b-8254-482b-8bbd-14600c2f533c","type":"path","scope":"region","reason":"scoped-annotation-export-excluded"},{"source":"fabric","pageNumber":1,"id":"8102c794-08bc-4299-88a0-56a8c780a04a","type":"path","scope":"region","reason":"scoped-annotation-export-excluded"},{"source":"survey-highlight","pageNumber":1,"id":"highlight-1778797496854-rlutw24e8","type":"highlight","scope":"survey","reason":"survey-highlight-export-excluded"},{"source":"survey-highlight","pageNumber":1,"id":"highlight-1778797501682-m1zlziliy","type":"highlight","scope":"survey","reason":"survey-highlight-export-excluded"}]},"appObjectsSeen":5,"pdfAnnotationsAdded":1,"annotationCountsByType":{"path":3,"highlight":2},"annotationCountsByScope":{"canvas":1,"region":2,"survey":2},"annotationCountsBySource":{"fabric":3,"survey-highlight":2},"annotationSkippedByReason":{"scoped-annotation-export-excluded":2,"survey-highlight-export-excluded":2},"embeddedPdfNativeAnnotationHandling":"preserve-unedited-native-annots-skip-unedited-imported-copies-export-edited-imported-copies","appLayerStateEmbedded":true,"appLayerStateSummary":{"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","exportId":"484e4280-bca3-4ebe-bde7-d9371da0f528-1778797538072","scopedAnnotationPages":1,"scopedCallouts":0,"surveyHighlights":2,"spaces":1},"importedAppAnnotationsSkipped":0,"editedImportedAppAnnotationsExported":0,"editedImportedNativeAnnotationsRemoved":0,"editedImportedNativeAnnotationRemoveMisses":0,"countersExported":0,"counterMetadataMarker":"survey-counter","counterMetadataKeys":["SurveyApp","Subj","NM","Contents"],"counterMetadataFailures":0,"localFilesystemWrite":false,"outputPath":null}
+[Phase31 UAT] focus rehydrate skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","cutoverTs":"2026-05-14T22:13:34.561+00:00","ydocAuthoritative":true}
+[PDFSaveExport] action complete {"actionType":"pdf-export","documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","supabaseAnnotationSaveRan":false,"pdfBytesGenerated":true,"localFilesystemWrite":true,"outputPath":"/Users/isaiahcalvo/Desktop/1.pdf","annotationCountsByType":{"path":3,"highlight":2},"annotationCountSummary":{"totalObjects":3,"calloutCount":0,"highlightCount":2,"importedPdfObjects":0,"byType":{"path":3,"highlight":2}},"embeddedPdfNativeAnnotationHandling":"preserve-unedited-native-annots-skip-unedited-imported-copies-export-edited-imported-copies"}
+[CloudSync][realtime] unsubscribing {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528"}
+[CloudSync][realtime] subscribe status {"status":"CLOSED","error":null}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"hydrateEnabled":false,"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"test.pdf-2462"}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"hydrateEnabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":true}
+[AnnotationHydrationGate][normal] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","ready":true,"source":"disabled","normalReady":true,"cutoverTs":"2026-05-14T22:13:34.561+00:00","count":null,"calloutCount":null,"firstPaintGate":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[AnnotationHydrationGate][first-page] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","pageNumber":1,"ready":true,"visualCoverActive":false,"normal":{"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","ready":true,"source":"disabled","normalReady":true,"cutoverTs":"2026-05-14T22:13:34.561+00:00","count":null,"calloutCount":null,"firstPaintGate":true},"survey":{"ready":true,"source":"supabase-highlight","documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","count":2}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","pageNumber":1,"active":false,"reason":"hydration-ready"}
+[CloudSync][hook] session id minted {"sessionId":"f2d35f1a-7c36-49de-a72c-1cab3f9e69ba"}
+[CloudSync][hook] session id minted {"sessionId":"180b0f9b-59c9-4e5b-a2e3-fd8b155d5de4"}
+[CloudSync][hook][state-obs] annotationsByPage initial {"currentCount":0,"pages":0,"hydrated":false}
+[CloudSync][hook][state-obs] callouts initial {"currentCount":0,"hydrated":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"hydrateEnabled":false,"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":null}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"hydrateEnabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":false}
+[AnnotationHydrationGate][normal] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":null,"ready":true,"source":"disabled","normalReady":true,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true}
+[AnnotationHydrationGate][first-page] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":null,"pageNumber":1,"ready":true,"visualCoverActive":false,"normal":{"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":null,"ready":true,"source":"disabled","firstPaintGate":true},"survey":{"ready":true,"source":"local"}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":null,"pageNumber":1,"active":false,"reason":"hydration-ready"}
+[Cloud render cache] doc=test.pdf-2462 painting verified cloud snapshot immediately — count=3.
+[CSeries wipe] doc=test.pdf-2462 totalCounters=0 legacyRemoved=0 — nothing to wipe.
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":null,"alreadyRanFor":null,"willRun":false}
+[CloudSync][hook][state-obs] annotationsByPage initial {"currentCount":0,"pages":0,"hydrated":false}
+[CloudSync][hook][state-obs] callouts initial {"currentCount":0,"hydrated":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"hydrateEnabled":false,"documentId":null,"userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":null}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"hydrateEnabled":false,"hasDocumentId":false,"hasUserId":true,"hasPdfId":false}
+[AnnotationHydrationGate][normal] {"documentId":null,"pdfId":null,"ready":true,"source":"disabled","normalReady":true,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true}
+[CSeries wipe] doc=1.pdf-8936 totalCounters=0 legacyRemoved=0 — nothing to wipe.
+[CloudSync][hook] hydrate effect fired {"enabled":false,"hydrateEnabled":false,"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"test.pdf-2462"}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"hydrateEnabled":false,"hasDocumentId":true,"hasUserId":true,"hasPdfId":true}
+[AnnotationHydrationGate][normal] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","ready":true,"source":"disabled","normalReady":true,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true}
+[AnnotationHydrationGate][first-page] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","pageNumber":1,"ready":false,"visualCoverActive":true,"normal":{"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":null,"ready":true,"source":"disabled","normalReady":true,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true},"survey":{"ready":false,"source":"supabase-highlight-starting","documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462"}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","pageNumber":1,"active":true,"reason":"annotation-hydration-gated"}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"hydrateEnabled":false,"documentId":null,"userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"1.pdf-8936"}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"hydrateEnabled":false,"hasDocumentId":false,"hasUserId":true,"hasPdfId":true}
+[AnnotationHydrationGate][normal] {"documentId":null,"pdfId":"1.pdf-8936","ready":true,"source":"disabled","normalReady":true,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true}
+[PreviewDiag] backup write {"kind":"callout-localStorage","count":1,"calloutCount":0,"bytes":2}
+[AnnotationHydrationGate][first-page] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","pageNumber":1,"ready":false,"visualCoverActive":true,"normal":{"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","ready":true,"source":"disabled","normalReady":true,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true},"survey":{"ready":false,"source":"supabase-highlight-starting","documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462"}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","pageNumber":1,"active":true,"reason":"annotation-hydration-gated"}
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","alreadyRanFor":null,"willRun":true}
+[Phase31 UAT] backfill:start {"hasYdoc":true,"hasSupabase":true,"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","markCutoverComplete":true}
+[HIGHLIGHT-SYNC][load.legacy][pdf=test.pdf] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","totalRows":2,"fabricCarryingDropped":0,"keptCount":2,"keptIds":["highlight-1778797496854-rlutw24e8","highlight-1778797501682-m1zlziliy"]}
+[AnnotationHydrationGate][survey] supabase highlights complete {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","count":2}
+[AnnotationHydrationGate][first-page] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","pageNumber":1,"ready":true,"visualCoverActive":false,"normal":{"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","ready":true,"source":"disabled","normalReady":true,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true},"survey":{"ready":true,"source":"supabase-highlight","documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","count":2}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","pdfId":"test.pdf-2462","pageNumber":1,"active":false,"reason":"hydration-ready"}
+[Phase31 UAT] backfill:degeneracy-probe {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapSize":3,"legacyCount":4,"probeOk":true,"tolerance":100,"yMapLooksHealthy":false,"dedupeRan":true,"lastGoodSize":133}
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":3,"legacyCount":4}
+[Phase31 UAT] backfill:select-loop start {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pageSize":1000}
+[PDFImport] skipped embedded PDF annotation import — cloud/Y.Doc is authoritative {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528"}
+[PDFCounterImport] summary {"marker":"survey-counter","metadataKey":"SurveyApp","counterAnnotationsImported":0,"plainCirclesImported":0,"counterMetadataParseFailures":0,"appCalloutMarker":"survey-callout","appCalloutMetadataKey":"SurveyAppCallout","appCalloutAnnotationsImported":0,"appCalloutPiecesSkipped":0}
+[PDFAppLayerStateImport] summary {"found":false,"documentId":null,"exportId":null,"scopedAnnotationPages":0,"scopedCallouts":0,"surveyHighlights":0,"spaces":0}
+[PDFImport] native layer policy {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","cloudAuthoritative":true,"reason":"cloud/Y.Doc annotations are authoritative; native PDF annotation layer is hidden when all renderable native annotations are accounted for by importer diagnostics.","pages":{"1":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"2":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"3":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"}}}
+[PrintPanel] RENDER — panel closed
+[Phase31 UAT] backfill:select-loop page ok {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","page":0,"range":[0,999],"pageRows":4,"totalSoFar":4,"pageElapsedMs":161}
+console.warn @ Realtime send() is automatically falling back to REST API. This behavior will be deprecated in the future. Please use httpSend() explicitly for REST delivery.
+console.warn @ Realtime send() is automatically falling back to REST API. This behavior will be deprecated in the future. Please use httpSend() explicitly for REST delivery.
+[PDFCounterImport] summary {"marker":"survey-counter","metadataKey":"SurveyApp","counterAnnotationsImported":0,"plainCirclesImported":0,"counterMetadataParseFailures":0,"appCalloutMarker":"survey-callout","appCalloutMetadataKey":"SurveyAppCallout","appCalloutAnnotationsImported":0,"appCalloutPiecesSkipped":0}
+[PDFAppLayerStateImport] summary {"found":true,"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","exportId":"484e4280-bca3-4ebe-bde7-d9371da0f528-1778797538072","scopedAnnotationPages":1,"scopedCallouts":0,"surveyHighlights":2,"spaces":1}
+[PDFImport] native layer policy {"documentId":null,"pdfName":"1.pdf","cloudAuthoritative":false,"reason":"PDF-native annotations imported as editable app annotations hide Syncfusion native annotation and selection/adorner layers to avoid duplicate interaction chrome.","pages":{"1":{"hideNativeLayer":true,"nativeRenderableAnnotationCount":1,"nativeOnlyAnnotationCount":0,"importedCopyCount":1,"reason":"all-renderable-native-annotations-imported-as-editable-app-annotations"},"2":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"importedCopyCount":0,"reason":"no-renderable-native-annotations"},"3":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"importedCopyCount":0,"reason":"no-renderable-native-annotations"}}}
+[PDFAppLayerStateImport] restored {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","exportId":"484e4280-bca3-4ebe-bde7-d9371da0f528-1778797538072","scopedAnnotationPages":1,"scopedCallouts":0,"surveyHighlights":2,"spaces":1}
+[PrintPanel] RENDER — panel closed
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[Phase31 UAT] backfill:done {"ranAs":"leader","documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowsFetched":4,"imported":4,"skipped":0,"yMapSizeAfter":4,"cutoverRequested":true,"cutoverCompleted":true,"importedByType":{"ink":4},"skippedByType":{}}
+[crdtDedupePdfImports] removed 1 duplicate PDF-imported annotations across 4 unique signatures
+[CloudSync][hook] dedupe-resync — restoring state {"documentId":"484e4280-bca3-4ebe-bde7-d9371da0f528","removed":1,"resyncCount":3}
+[DebugBridge +1481777.4ms] pdf_loaded {"pageCount":3,"currentPage":1}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DebugBridge +1481937.1ms] pdf_loaded {"pageCount":3,"currentPage":1}
+[DebugBridge +1482026.1ms] zoom_start {"scale":1.33333,"targetScale":0.88,"source":"zoomChange"}
+[HyperlinkDiag] post-load scan {"hyperlinkCount":0,"samples":[]}
+[HyperlinkDiag] page 1 layers {"hyperlinkChildren":0,"layerClasses":["e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-text-layer","DIV"]}
+[HyperlinkDiag] page 2 layers {"hyperlinkChildren":0,"layerClasses":["e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-text-layer","DIV"]}
+[HyperlinkDiag] page 3 layers {"hyperlinkChildren":0,"layerClasses":["e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-text-layer","DIV"]}
+[HyperlinkDiag] post-load scan {"hyperlinkCount":0,"samples":[]}
+[HyperlinkDiag] page 1 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","DIV","e-pv-annotation-canvas","e-pv-text-layer"]}
+[HyperlinkDiag] page 2 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","DIV","e-pv-annotation-canvas","e-pv-text-layer"]}
+[HyperlinkDiag] page 3 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","DIV","e-pv-annotation-canvas","e-pv-text-layer"]}
+[DebugBridge +1483647.2ms] zoom_end {"source":"zoomChange_settle"}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[DrawCanvas p1] MOUNT — tool=highlight, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=highlight, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=highlight, isShape=true, isDrawingMode=false
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r3-
+[SpaceRegionOverlay p1] mounted — root=539x697, svg=539x697, fillContainer=true, maskId=space-mask-1--r3-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r3-
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r3-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r3-
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r3-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r3-
+[Diag] tool-switch DETECTED → select (scheduling t+1000ms capture)
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r3-
+[SVGAnnotationLayer] setRotInputVisible(false) reason=selectedIds.size !== 1
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r3-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r3-
+[Diag select] screenshot saved (492 KB) → /Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/TestLogs/testlog-screenshot-select.png
+[Diag select] CAPTURED @ t+1002ms — annotations=3 callouts=0 svgWrappers=2 svgVis=[visible,visible] svgElems=3 svgVisElems=3 eraserCanvases=0 svgMarkupBytes=22342
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r3-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r3-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r3-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+[SpaceRegionOverlay p1] render — regions=1, screen=539x697, cutoutPathLength=198, maskId=space-mask-1--r3-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=539x697
+
+===== Undo/Redo Chronology =====
+events=1
+lanes=local annotation history | callout history | legacy history | Yjs/CRDT history
+{"seq":1,"order":null,"at":"2026-05-14T22:25:45.910Z","event":"history_reset_for_pdf_change","actionType":"pdf:change","rawActionType":"pdf:change","annotationType":null,"annotationId":null,"pageNumber":null,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+===== End Undo/Redo Chronology =====
