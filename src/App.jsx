@@ -10050,248 +10050,18 @@ function BottomToolbar(props) {
         </div>
       </div>
 
-      {/* Right Section: Zoom Controls */}
-      <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '8px' }}>
-        <button
-          onClick={zoomOut}
-          className="btn btn-default btn-icon"
-        >
-          <Icon name="minus" size={18} />
-        </button>
-
-        <div
-          onClick={() => zoomInputRef.current?.focus()}
-          style={{
-            position: 'relative',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: '48px',
-            height: '23px',
-            background: '#444',
-            border: '1px solid #555',
-            borderRadius: '5px',
-            padding: '0 4px',
-            boxSizing: 'border-box',
-            cursor: 'text'
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <div style={{ display: 'inline-grid', alignItems: 'center' }}>
-              <span style={{
-                gridArea: '1/1',
-                visibility: 'hidden',
-                fontSize: '13px',
-                fontFamily: FONT_FAMILY,
-                fontWeight: '500',
-                letterSpacing: '-0.2px',
-                whiteSpace: 'pre',
-                padding: '0 1px'
-              }}>
-                {zoomInputValue || ' '}
-              </span>
-              <input
-                ref={zoomInputRef}
-                type="text"
-                data-page-number-input
-                value={zoomInputValue}
-                onChange={handleZoomInputChange}
-                onKeyDown={handleZoomInputKeyDown}
-                onBlur={handleZoomInputBlur}
-                inputMode="numeric"
-                pattern="[0-9]*"
-                aria-label="Zoom percentage"
-                style={{
-                  gridArea: '1/1',
-                  width: '100%',
-                  background: 'transparent',
-                  color: '#ddd',
-                  border: 'none',
-                  padding: 0,
-                  margin: 0,
-                  fontSize: '13px',
-                  fontFamily: FONT_FAMILY,
-                  fontWeight: '500',
-                  letterSpacing: '-0.2px',
-                  textAlign: 'center',
-                  outline: 'none',
-                  minWidth: '1ch'
-                }}
-              />
-            </div>
-            <span style={{
-              color: '#999',
-              fontSize: '12px',
-              fontFamily: FONT_FAMILY,
-              fontWeight: '400',
-              marginLeft: '1px',
-              pointerEvents: 'none',
-              display: 'flex',
-              alignItems: 'center',
-              height: '100%'
-            }}>
-              %
-            </span>
-          </div>
-        </div>
-
-        <button
-          onClick={zoomIn}
-          className="btn btn-default btn-icon"
-        >
-          <Icon name="plus" size={18} />
-        </button>
-
-        <button
-          onClick={resetZoom}
-          className="btn btn-default btn-sm"
-          style={{ fontSize: '13px', padding: '6px 10px' }}
-        >
-          Reset
-        </button>
-
-        <div
-          ref={zoomMenuRef}
-          style={{ position: 'relative', display: 'flex', alignItems: 'center' }}
-        >
-          <button
-            onClick={toggleZoomMenu}
-            className="btn btn-default btn-sm"
-            aria-haspopup="listbox"
-            aria-expanded={isZoomMenuOpen}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              whiteSpace: 'nowrap',
-              fontSize: '13px',
-              padding: '6px 10px'
-            }}
-          >
-            <span>{zoomDropdownLabel}</span>
-            <Icon name={isZoomMenuOpen ? 'chevronUp' : 'chevronDown'} size={14} />
-          </button>
-
-          {isZoomMenuOpen && (
-            <div
-              style={{
-                position: 'absolute',
-                bottom: '100%',
-                right: 0,
-                marginBottom: '6px',
-                background: '#2b2b2b',
-                border: '1px solid transparent',
-                borderRadius: '10px',
-                boxShadow: '0 18px 36px rgba(0,0,0,0.45)',
-                minWidth: '220px',
-                zIndex: 2000,
-                padding: '6px 0'
-              }}
-            >
-              {ZOOM_MODE_OPTIONS.map((option) => {
-                const isActive = option.id === zoomMode;
-                return (
-                  <button
-                    key={option.id}
-                    onClick={() => handleZoomModeSelect(option.id)}
-                    className="btn btn-ghost"
-                    style={{
-                      width: '100%',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'flex-start',
-                      padding: '10px 14px',
-                      background: isActive ? '#3a3a3a' : 'transparent',
-                      border: 'none',
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                      gap: '2px'
-                    }}
-                  >
-                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#e0e0e0' }}>
-                      {option.label}
-                      {option.id === ZOOM_MODES.MANUAL && (
-                        <span style={{ marginLeft: '6px', fontWeight: 400, color: '#9a9a9a' }}>
-                          {Math.round((manualZoomScale || 1) * 100)}%
-                        </span>
-                      )}
-                    </span>
-                    <span style={{ fontSize: '12px', color: '#9a9a9a' }}>
-                      {option.description}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
+      {/* UX 2026-05-14: Zoom controls (minus / % input / plus / Reset / zoom-mode
+          dropdown) AND page navigation (prev / page-number input / next) both
+          lifted out of the bottom toolbar and into the new chrome-right-host
+          rail's bottom slot. The Reset button was deleted entirely — typing
+          100 into the % input replaces it. All handlers stay in PDFViewer
+          state and reach the rail through bottomToolbarApi. */}
 
         {/* UX 2026-04-22: Save Log + Auto Log toolbar buttons were removed
             in favor of a File menu item (Cmd/Ctrl+Shift+L). The handler
             is now reachable from anywhere in the app, not only when a
             PDF is open. Auto Log was dropped entirely — user request. */}
-
-        {/* Page Navigation */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          position: 'absolute',
-          left: '8px'
-        }}>
-          <button
-            onClick={goToPreviousPage}
-            disabled={pageNum <= 1}
-            className="btn btn-default btn-icon-sm"
-          >
-            <Icon name="chevronLeft" size={16} />
-          </button>
-
-          <input
-            ref={pageInputRef}
-            type="text"
-            data-page-number-input
-            value={pageInputValue}
-            onChange={handlePageInputChange}
-            onKeyDown={handlePageInputKeyDown}
-            onBlur={handlePageInputBlur}
-            inputMode="numeric"
-            pattern="[0-9]*"
-            aria-label="Current page"
-            style={{
-              width: '48px',
-              padding: '3px 8px',
-              background: '#444',
-              color: '#ddd',
-              border: '1px solid #555',
-              borderRadius: '5px',
-              fontSize: '13px',
-              fontFamily: FONT_FAMILY,
-              fontWeight: '500',
-              letterSpacing: '-0.2px',
-              textAlign: 'center'
-            }}
-          />
-
-          <span style={{
-            color: '#999',
-            fontSize: '13px',
-            fontFamily: FONT_FAMILY,
-            fontWeight: '400'
-          }}>
-            / {numPages}
-          </span>
-
-          <button
-            onClick={goToNextPage}
-            disabled={pageNum >= numPages}
-            className="btn btn-default btn-icon-sm"
-          >
-            <Icon name="chevronRight" size={16} />
-          </button>
-        </div>
       </div>
-    </div>
     </>
   );
 }
@@ -44427,29 +44197,10 @@ export default function App() {
           >
             <Icon name="redo" size={14} />
           </button>
-          <button
-            onClick={topToolbarApi.onSurveyToggle || (() => {})}
-            className={`btn btn-md ${topToolbarApi.surveyActive ? 'btn-active' : 'btn-default'}`}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              fontSize: '14px',
-              fontWeight: '600',
-              padding: '4px 10px',
-              marginLeft: 'auto',
-              transition: 'all 0.2s ease',
-              background: topToolbarApi.surveyActive ? 'rgba(74, 144, 226, 0.1)' : 'rgba(255, 255, 255, 0.05)',
-              border: topToolbarApi.surveyActive ? '1px solid #4A90E2' : '1px solid #555',
-              color: topToolbarApi.surveyActive ? '#4A90E2' : '#FFF',
-              opacity: topToolbarApi.surveyEnabled ? 1 : 0.6
-            }}
-            title={!topToolbarApi.surveyEnabled ? 'Pro feature - Upgrade to unlock' : ''}
-          >
-            <Icon name="survey" size={18} />
-            Survey
-            {!topToolbarApi.surveyEnabled && <Icon name="lock" size={12} />}
-          </button>
+          {/* UX 2026-05-14: Survey toggle button moved to the new chrome-right-host
+              rail (top slot). Reuses the same topToolbarApi.onSurveyToggle
+              handler, Pro gate, and active styling — JSX is rendered inside
+              the right rail block further down. */}
         </div>
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative', display: 'flex' }}>
           <div
@@ -44531,6 +44282,268 @@ export default function App() {
                 </div>
               );
             })}
+          </div>
+          {/* UX 2026-05-14: chrome-right-host — slim always-visible right rail.
+              Pinned to the viewport's right edge. Survey toggle sits at the
+              top, zoom + page nav at the bottom. The Survey panel still slides
+              out from inside the tab content area, so when it opens it
+              appears immediately to the LEFT of this rail (rail icons stay
+              tappable). Consumes the existing topToolbarApi (survey toggle)
+              and bottomToolbarApi (zoom + page nav) — no new publish
+              callback. */}
+          <div
+            id="chrome-right-host"
+            style={{
+              display: isViewerVisible ? 'flex' : 'none',
+              flexShrink: 0,
+              width: '48px',
+              alignSelf: 'stretch',
+              background: '#252525',
+              borderLeft: '1px solid #3a3a3a',
+              color: '#ddd',
+              fontFamily: FONT_FAMILY,
+              flexDirection: 'column',
+              alignItems: 'center',
+              padding: '8px 0',
+              gap: '8px',
+              position: 'relative',
+              zIndex: 5500
+            }}
+          >
+            {/* Top slot — Survey toggle. Reuses topToolbarApi.onSurveyToggle
+                so the existing Pro gate + active styling carry over without
+                duplicate state. */}
+            {topToolbarApi.onSurveyToggle && (
+              <button
+                onClick={topToolbarApi.onSurveyToggle}
+                title={!topToolbarApi.surveyEnabled ? 'Pro feature - Upgrade to unlock' : 'Survey'}
+                style={{
+                  width: '36px',
+                  height: '36px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 0,
+                  background: topToolbarApi.surveyActive ? 'rgba(74, 144, 226, 0.15)' : 'transparent',
+                  border: topToolbarApi.surveyActive ? '1px solid #4A90E2' : '1px solid transparent',
+                  borderRadius: '6px',
+                  color: topToolbarApi.surveyActive ? '#4A90E2' : '#FFF',
+                  opacity: topToolbarApi.surveyEnabled ? 1 : 0.6,
+                  cursor: 'pointer',
+                  position: 'relative'
+                }}
+              >
+                <Icon name="survey" size={20} />
+                {!topToolbarApi.surveyEnabled && (
+                  <Icon name="lock" size={10} style={{ position: 'absolute', bottom: 2, right: 2 }} />
+                )}
+              </button>
+            )}
+
+            {/* Spacer pushes the bottom slot to the bottom of the rail. */}
+            <div style={{ flex: 1 }} />
+
+            {/* Bottom slot — page nav above zoom controls. All handlers come
+                from bottomToolbarApi which PDFViewer already publishes. */}
+            {bottomToolbarApi && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                {/* Page previous — chevron up because vertical layout */}
+                <button
+                  onClick={bottomToolbarApi.goToPreviousPage}
+                  disabled={bottomToolbarApi.pageNum <= 1}
+                  className="btn btn-default btn-icon-sm"
+                  title="Previous page"
+                  style={{ opacity: bottomToolbarApi.pageNum <= 1 ? 0.4 : 1 }}
+                >
+                  <Icon name="chevronUp" size={16} />
+                </button>
+
+                {/* Current page input */}
+                <input
+                  ref={bottomToolbarApi.pageInputRef}
+                  type="text"
+                  data-page-number-input
+                  value={bottomToolbarApi.pageInputValue}
+                  onChange={bottomToolbarApi.handlePageInputChange}
+                  onKeyDown={bottomToolbarApi.handlePageInputKeyDown}
+                  onBlur={bottomToolbarApi.handlePageInputBlur}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  aria-label="Current page"
+                  style={{
+                    width: '36px',
+                    padding: '3px 4px',
+                    background: '#444',
+                    color: '#ddd',
+                    border: '1px solid #555',
+                    borderRadius: '5px',
+                    fontSize: '12px',
+                    fontFamily: FONT_FAMILY,
+                    fontWeight: '500',
+                    textAlign: 'center'
+                  }}
+                />
+
+                {/* Total page count, plain English / N */}
+                <span style={{ color: '#999', fontSize: '11px', fontFamily: FONT_FAMILY, lineHeight: 1 }}>
+                  / {bottomToolbarApi.numPages}
+                </span>
+
+                {/* Page next — chevron down */}
+                <button
+                  onClick={bottomToolbarApi.goToNextPage}
+                  disabled={bottomToolbarApi.pageNum >= bottomToolbarApi.numPages}
+                  className="btn btn-default btn-icon-sm"
+                  title="Next page"
+                  style={{ opacity: bottomToolbarApi.pageNum >= bottomToolbarApi.numPages ? 0.4 : 1 }}
+                >
+                  <Icon name="chevronDown" size={16} />
+                </button>
+
+                {/* Divider between page nav and zoom */}
+                <div style={{ width: '28px', height: '1px', background: '#555', margin: '6px 0' }} />
+
+                {/* Zoom in (plus) — kept above the % input for top-down "more zoom" reading order */}
+                <button
+                  onClick={bottomToolbarApi.zoomIn}
+                  className="btn btn-default btn-icon"
+                  title="Zoom in"
+                >
+                  <Icon name="plus" size={16} />
+                </button>
+
+                {/* Zoom percentage input. Clicking the % suffix focuses the
+                    input so the user can type a value like "100" directly,
+                    replacing the old Reset button's role. */}
+                <div
+                  onClick={() => bottomToolbarApi.zoomInputRef.current?.focus()}
+                  style={{
+                    position: 'relative',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '40px',
+                    height: '22px',
+                    background: '#444',
+                    border: '1px solid #555',
+                    borderRadius: '5px',
+                    padding: '0 2px',
+                    boxSizing: 'border-box',
+                    cursor: 'text'
+                  }}
+                >
+                  <input
+                    ref={bottomToolbarApi.zoomInputRef}
+                    type="text"
+                    value={bottomToolbarApi.zoomInputValue}
+                    onChange={bottomToolbarApi.handleZoomInputChange}
+                    onKeyDown={bottomToolbarApi.handleZoomInputKeyDown}
+                    onBlur={bottomToolbarApi.handleZoomInputBlur}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    aria-label="Zoom percentage"
+                    style={{
+                      width: '100%',
+                      background: 'transparent',
+                      color: '#ddd',
+                      border: 'none',
+                      padding: 0,
+                      margin: 0,
+                      fontSize: '11px',
+                      fontFamily: FONT_FAMILY,
+                      fontWeight: '500',
+                      textAlign: 'center',
+                      outline: 'none'
+                    }}
+                  />
+                </div>
+
+                {/* Zoom out (minus) */}
+                <button
+                  onClick={bottomToolbarApi.zoomOut}
+                  className="btn btn-default btn-icon"
+                  title="Zoom out"
+                >
+                  <Icon name="minus" size={16} />
+                </button>
+
+                {/* Zoom mode dropdown. Compact button — shows just an icon to
+                    fit the slim rail; the active mode label appears in the
+                    popup, not on the button face. Popup opens above the
+                    button (bottom: 100%) and anchors to the rail's left edge
+                    (right: 100%) so it doesn't clip off-screen. */}
+                <div
+                  ref={bottomToolbarApi.zoomMenuRef}
+                  style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}
+                >
+                  <button
+                    onClick={bottomToolbarApi.toggleZoomMenu}
+                    className="btn btn-default btn-sm"
+                    aria-haspopup="listbox"
+                    aria-expanded={bottomToolbarApi.isZoomMenuOpen}
+                    title={`Page fit: ${bottomToolbarApi.zoomDropdownLabel}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '36px',
+                      height: '28px',
+                      padding: '4px',
+                      gap: '2px'
+                    }}
+                  >
+                    <Icon name={bottomToolbarApi.isZoomMenuOpen ? 'chevronDown' : 'chevronUp'} size={12} />
+                  </button>
+
+                  {bottomToolbarApi.isZoomMenuOpen && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        bottom: '100%',
+                        right: '100%',
+                        marginBottom: '6px',
+                        marginRight: '6px',
+                        background: '#2b2b2b',
+                        border: '1px solid transparent',
+                        borderRadius: '10px',
+                        boxShadow: '0 18px 36px rgba(0,0,0,0.45)',
+                        minWidth: '200px',
+                        zIndex: 6000,
+                        padding: '6px 0'
+                      }}
+                    >
+                      {ZOOM_MODE_OPTIONS.map((option) => {
+                        const isActive = option.id === bottomToolbarApi.zoomMode;
+                        return (
+                          <button
+                            key={option.id}
+                            onClick={() => bottomToolbarApi.handleZoomModeSelect(option.id)}
+                            className="btn btn-ghost"
+                            style={{
+                              width: '100%',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'flex-start',
+                              padding: '10px 14px',
+                              background: isActive ? '#3a3a3a' : 'transparent',
+                              border: 'none',
+                              textAlign: 'left',
+                              cursor: 'pointer',
+                              gap: '2px'
+                            }}
+                          >
+                            <span style={{ fontSize: '13px', color: '#fff' }}>{option.label}</span>
+                            {option.description && (
+                              <span style={{ fontSize: '11px', color: '#999' }}>{option.description}</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
         <div
