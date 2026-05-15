@@ -110,6 +110,7 @@ import { useAuth } from './contexts/AuthContext';
 import { AuthModal } from './components/AuthModal';
 import { UserMenu } from './components/UserMenu';
 import { AccountSettings } from './components/AccountSettings';
+import SurveyHub from './home/SurveyHub';
 import { useOptionalAuth } from './components/OptionalAuthPrompt';
 import BallInCourtIndicator from './components/BallInCourtIndicator';
 import SearchHighlightLayer from './components/SearchHighlightLayer';
@@ -6332,7 +6333,94 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     }
   };
 
-  return (
+  /* --- Survey Hub (home redesign) wiring -------------------------------
+     The new SurveyHub replaces the legacy home grid/table UI below. The
+     legacy JSX is kept intact as `legacyHomeUI` (no longer rendered) so the
+     change stays trivially revertible. These adapter handlers operate
+     directly on the document objects SurveyHub passes in, reusing the same
+     Supabase primitives the legacy bulk handlers use (no refactor). */
+
+  // Open a document in the PDF viewer — reuse the existing open path.
+  const hubOpenDocument = (doc) => { if (doc) handleDocumentClick(doc); };
+
+  // Delete the given documents everywhere (archives row + storage file).
+  const hubDeleteDocuments = async (docs) => {
+    const list = Array.isArray(docs) ? docs.filter(Boolean) : [];
+    if (list.length === 0) return;
+    if (!user) { alert('Please sign in to delete documents'); return; }
+    if (!confirm(`Delete ${list.length === 1 ? 'this document' : `these ${list.length} documents`}? This action cannot be undone.`)) return;
+    const ids = list.map(d => d.id);
+    setDocuments(prev => prev.filter(d => !ids.includes(d.id)));
+    try {
+      for (const doc of list) {
+        if (typeof doc.id === 'string' && doc.id.startsWith('temp-')) continue;
+        const match = (supabaseDocuments || []).find(d => d.id === doc.id);
+        const filePath = match?.file_path || match?.filePath || doc.file_path || doc.filePath;
+        await deleteDocumentEverywhere({ docId: doc.id, filePath, source: 'survey-hub-bulk' });
+      }
+      await refetchDocuments();
+    } catch (err) {
+      console.error('[DocumentDelete] survey-hub:error', serializeError(err));
+      alert('Failed to delete documents: ' + (err.message || 'Unknown error'));
+      await refetchDocuments();
+    }
+  };
+
+  // Duplicate the given documents — optimistic local copies, same shape as
+  // the legacy handleBulkCopy documents branch.
+  const hubDuplicateDocuments = (docs) => {
+    const list = Array.isArray(docs) ? docs.filter(Boolean) : [];
+    if (list.length === 0) return;
+    const copies = list.map(d => ({ ...d, id: `${Date.now()}-${Math.random()}`, name: `${d.name} (Copy)` }));
+    setDocuments(prev => [...copies, ...prev]);
+  };
+
+  // Move or copy the given documents to an existing project. Move re-parents
+  // the real Supabase rows (project_id) — same call the legacy
+  // handleMoveToProject "move to existing project" branch makes. Copy has no
+  // clean single-call Supabase primitive, so it stays an optimistic local
+  // copy (consistent with the legacy handleBulkCopy documents branch).
+  const hubMoveCopyDocuments = async (docs, projectId, mode = 'move') => {
+    const list = Array.isArray(docs) ? docs.filter(Boolean) : [];
+    if (list.length === 0 || !projectId) return;
+    if (!user) { alert('Please sign in to move documents'); return; }
+    const targetProj = projects.find(p => p.id === projectId);
+    if (!targetProj) return;
+
+    if (mode === 'copy') {
+      // TODO: no server-side document-copy primitive exists; this is an
+      // optimistic local-only copy, matching the legacy handleBulkCopy
+      // behavior. Wire a real copy primitive if/when one is added.
+      const copies = list.map(d => ({
+        ...d,
+        id: `${Date.now()}-${Math.random()}`,
+        name: `${d.name} (Copy)`,
+        projectId,
+        project_id: projectId,
+      }));
+      setDocuments(prev => [...copies, ...prev]);
+      return;
+    }
+
+    try {
+      const ids = list.map(d => d.id);
+      setDocuments(prev => prev.filter(d => !ids.includes(d.id)));
+      for (const doc of list) {
+        const actualDoc = (supabaseDocuments || []).find(d => d.id === doc.id || d.name === doc.name);
+        if (actualDoc) {
+          await updateSupabaseDocument(actualDoc.id, { project_id: projectId });
+        }
+      }
+      await refetchProjects();
+      await refetchDocuments();
+    } catch (err) {
+      console.error('[DocumentMoveCopy] survey-hub:error', serializeError(err));
+      alert('Failed to move documents: ' + (err.message || 'Unknown error'));
+      await refetchDocuments();
+    }
+  };
+
+  const legacyHomeUI = (
     <div
       onClick={handleContainerClick}
       style={{
@@ -9741,6 +9829,32 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         onClose={() => setShowAccountSettings(false)}
       />
     </div >
+  );
+
+  // Suppress unused warning — legacyHomeUI is the pre-redesign home, kept
+  // intact for an easy revert but no longer rendered.
+  void legacyHomeUI;
+
+  /* Home redesign: render the new Survey Hub instead of the legacy grid/table.
+     Every prop maps to data/handlers that already exist in Dashboard/App. */
+  return (
+    <SurveyHub
+      documents={documents}
+      projects={projects}
+      templates={templates}
+      members={[]}
+      user={user ? { name: user.user_metadata?.full_name || user.name || user.email, email: user.email } : null}
+      isPro={!!features?.advancedSurvey}
+      onOpenDocument={hubOpenDocument}
+      onUpload={handleUploadClick}
+      onCreateProject={handleCreateProjectClick}
+      onCreateTemplate={openTemplateModal}
+      onDuplicateDocuments={hubDuplicateDocuments}
+      onDeleteDocuments={hubDeleteDocuments}
+      onMoveCopyDocuments={hubMoveCopyDocuments}
+      onSettings={() => setShowAccountSettings(true)}
+      onSignOut={signOut}
+    />
   );
 });
 
