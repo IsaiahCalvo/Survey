@@ -17,7 +17,7 @@
    follow-up and is not wired here yet.
 */
 import React, { useState, useMemo, useEffect } from 'react';
-import { Icon } from './HubShell';
+import { HubShell, Icon, Search } from './HubShell';
 
 /* Defensive readers — templates may store structure at the top level,
    under a legacy `spaces` key, or inside a `config` blob. */
@@ -26,7 +26,23 @@ const entitiesOf = (t) => t?.ballInCourtEntities || t?.config?.ballInCourtEntiti
 const categoriesOf = (m) => m?.categories || [];
 const checklistOf = (c) => c?.checklist || c?.items || [];
 
-export default function TemplatesEditor({ templates = [], search = '', onCreateTemplate }) {
+export default function TemplatesEditor({ templates = [], user = null, templatesLocked = false, onNav, onCreateTemplate }) {
+  const [search, setSearch] = useState('');
+
+  const shell = (body) => (
+    <HubShell
+      tab="templates"
+      onNav={onNav}
+      title="Templates"
+      subtitle={<span><b>{templates.length}</b> templates · reusable category + checklist sets</span>}
+      actions={<Search placeholder="Search Templates..." value={search} onChange={setSearch} />}
+      userName={user?.name || user?.email?.split('@')[0] || 'You'}
+      templatesLocked={templatesLocked}
+    >
+      {body}
+    </HubShell>
+  );
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return templates.filter((t) => !q || (t.name || '').toLowerCase().includes(q));
@@ -45,7 +61,7 @@ export default function TemplatesEditor({ templates = [], search = '', onCreateT
   }, [filtered, selId]);
 
   if (!templates.length) {
-    return (
+    return shell(
       <div style={{ flex: 1, display: 'grid', placeItems: 'center', color: 'var(--ink-200)', fontSize: 13 }}>
         No templates yet — create one to define modules, categories, and checklists.
       </div>
@@ -62,7 +78,7 @@ export default function TemplatesEditor({ templates = [], search = '', onCreateT
     <span key={key} style={{ width: 9, height: 16, background: color || 'var(--ink-400)', borderRadius: 2, flex: 'none', border: '1px solid rgba(0,0,0,0.35)' }} />
   );
 
-  return (
+  return shell(
     <div style={{ padding: '0 8px 8px 8px', flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '248px 1fr 248px', gap: 8 }}>
       {/* LEFT — template list */}
       <div className="card" style={{ padding: 8, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
