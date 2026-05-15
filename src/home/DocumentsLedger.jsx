@@ -10,6 +10,7 @@
 */
 import React, { useState, useMemo, useEffect } from 'react';
 import { HubShell, Icon, AvatarStack, PdfThumb, Search } from './HubShell';
+import { MoveCopyModal, ConfirmModal } from './BulkModals';
 
 const ledgerHeader = {
   background: 'var(--ink-700)',
@@ -39,6 +40,9 @@ export default function DocumentsLedger({
   onOpenDocument,
   onUpload,
   onShare,
+  onDuplicate,
+  onDelete,
+  onMoveCopy,
 }) {
   const [selId, setSelId] = useState(null);
   const [previewOpen, setPreviewOpen] = useState(true);
@@ -47,6 +51,8 @@ export default function DocumentsLedger({
   const [docSelectMode, setDocSelectMode] = useState(false);
   const [selDocs, setSelDocs] = useState(() => new Set());
   const [search, setSearch] = useState('');
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const projectName = (id) => projects.find((p) => p.id === id)?.name || null;
 
@@ -107,6 +113,9 @@ export default function DocumentsLedger({
     minWidth: 0,
   });
 
+  const selectedRaw = () => docs.filter((d) => selDocs.has(d.id)).map((d) => d.raw);
+  const clearSel = () => setSelDocs(new Set());
+
   const subtitle = (
     <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
       <span><b>{docs.length}</b> files</span>
@@ -123,10 +132,10 @@ export default function DocumentsLedger({
         return (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 4 }}>
             <button onClick={() => setSelDocs(allSel ? new Set() : new Set(docs.map((d) => d.id)))} style={{ ...baseBtn, color: 'var(--bone-100)' }}>{allSel ? 'None' : 'All'}</button>
-            <button disabled={!docSelCount} style={{ ...baseBtn, color: docSelCount ? 'var(--bone-100)' : 'var(--ink-300)', cursor: docSelCount ? 'pointer' : 'not-allowed' }}>Duplicate</button>
-            <button disabled={!docSelCount} style={{ ...baseBtn, color: docSelCount ? 'var(--bone-100)' : 'var(--ink-300)', cursor: docSelCount ? 'pointer' : 'not-allowed' }}>Move/Copy</button>
-            <button disabled={!docSelCount} title="Share" onClick={() => onShare && onShare(docs.filter((d) => selDocs.has(d.id)).map((d) => d.raw))} style={{ ...baseBtn, color: docSelCount ? 'var(--bone-100)' : 'var(--ink-300)', cursor: docSelCount ? 'pointer' : 'not-allowed' }}><Icon name="share" size={12} /></button>
-            <button disabled={!docSelCount} title="Delete" style={{ ...baseBtn, color: docSelCount ? '#cf6f6f' : 'var(--ink-300)', cursor: docSelCount ? 'pointer' : 'not-allowed' }}><Icon name="trash" size={12} /></button>
+            <button disabled={!docSelCount} onClick={() => { onDuplicate && onDuplicate(selectedRaw()); clearSel(); }} style={{ ...baseBtn, color: docSelCount ? 'var(--bone-100)' : 'var(--ink-300)', cursor: docSelCount ? 'pointer' : 'not-allowed' }}>Duplicate</button>
+            <button disabled={!docSelCount} onClick={() => setMoveOpen(true)} style={{ ...baseBtn, color: docSelCount ? 'var(--bone-100)' : 'var(--ink-300)', cursor: docSelCount ? 'pointer' : 'not-allowed' }}>Move/Copy</button>
+            <button disabled={!docSelCount} title="Share" onClick={() => onShare && onShare(selectedRaw())} style={{ ...baseBtn, color: docSelCount ? 'var(--bone-100)' : 'var(--ink-300)', cursor: docSelCount ? 'pointer' : 'not-allowed' }}><Icon name="share" size={12} /></button>
+            <button disabled={!docSelCount} title="Delete" onClick={() => setConfirmDelete(true)} style={{ ...baseBtn, color: docSelCount ? '#cf6f6f' : 'var(--ink-300)', cursor: docSelCount ? 'pointer' : 'not-allowed' }}><Icon name="trash" size={12} /></button>
           </span>
         );
       })()}
@@ -141,6 +150,7 @@ export default function DocumentsLedger({
   );
 
   return (
+    <>
     <HubShell
       tab="documents"
       onNav={onNav}
@@ -245,5 +255,22 @@ export default function DocumentsLedger({
         </div>
       </div>
     </HubShell>
+    <MoveCopyModal
+      open={moveOpen}
+      onClose={() => setMoveOpen(false)}
+      projects={projects}
+      count={selDocs.size}
+      onConfirm={(destId, mode) => { onMoveCopy && onMoveCopy(selectedRaw(), destId, mode); clearSel(); }}
+    />
+    <ConfirmModal
+      open={confirmDelete}
+      onClose={() => setConfirmDelete(false)}
+      title="Delete documents?"
+      message={`${selDocs.size} ${selDocs.size === 1 ? 'document' : 'documents'} will be removed.`}
+      confirmLabel="Delete"
+      danger
+      onConfirm={() => { onDelete && onDelete(selectedRaw()); clearSel(); }}
+    />
+    </>
   );
 }

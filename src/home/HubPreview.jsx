@@ -2,8 +2,9 @@
    Mounted by main.jsx when the URL has `?hubPreview=1`, so the new home can be
    built and reviewed in isolation without auth, Supabase, or the real App tree.
    Never imported in production paths. Mock data mirrors the real document /
-   project / template shapes. */
-import React from 'react';
+   project / template shapes, and the bulk-action handlers run on local state
+   so duplicate / move / copy / delete are demonstrable here. */
+import React, { useState } from 'react';
 import SurveyHub from './SurveyHub';
 
 const iso = (daysAgo, h = 10, m = 0) => {
@@ -19,7 +20,7 @@ const MOCK_PROJECTS = [
   { id: 'p3', name: 'MEP Phase 2', user_id: 'u1', created_at: iso(20) },
 ];
 
-const MOCK_DOCUMENTS = [
+const INITIAL_DOCUMENTS = [
   { id: 'd1', name: 'SE-011 Security Shop Drawings.pdf', file_size: 25_050_000, project_id: 'p1', created_at: iso(9), updated_at: iso(2, 9, 14), shared: false },
   { id: 'd2', name: 'Package 2 — Rev 4 — IC.pdf', file_size: 7_930_000, project_id: null, created_at: iso(8), updated_at: iso(1, 16, 48), shared: true },
   { id: 'd3', name: 'RFI-014 Lobby Camera Coverage.pdf', file_size: 1_820_000, project_id: 'p1', created_at: iso(1), updated_at: iso(0, 11, 2), shared: false },
@@ -69,11 +70,45 @@ const MOCK_TEMPLATES = [
   },
 ];
 
+/* Append "-copy" before the file extension. */
+const copyName = (name = '') => {
+  const dot = name.lastIndexOf('.');
+  return dot > 0 ? `${name.slice(0, dot)}-copy${name.slice(dot)}` : `${name}-copy`;
+};
+let copyCounter = 0;
+const newId = () => `d-copy-${Date.now()}-${copyCounter++}`;
+
 export default function HubPreview() {
+  const [documents, setDocuments] = useState(INITIAL_DOCUMENTS);
+
+  // Duplicate: a copy of each, named "<name>-copy", marked just-edited.
+  const handleDuplicate = (docs) => {
+    const copies = docs.map((d) => ({ ...d, id: newId(), name: copyName(d.name), updated_at: new Date().toISOString() }));
+    setDocuments((prev) => [...copies, ...prev]);
+  };
+
+  // Delete: drop the documents from the list.
+  const handleDelete = (docs) => {
+    const ids = new Set(docs.map((d) => d.id));
+    setDocuments((prev) => prev.filter((d) => !ids.has(d.id)));
+  };
+
+  // Move: reassign the documents to the destination project.
+  // Copy: add copies that live in the destination project, originals untouched.
+  const handleMoveCopy = (docs, projectId, mode) => {
+    const ids = new Set(docs.map((d) => d.id));
+    if (mode === 'move') {
+      setDocuments((prev) => prev.map((d) => (ids.has(d.id) ? { ...d, project_id: projectId } : d)));
+    } else {
+      const copies = docs.map((d) => ({ ...d, id: newId(), project_id: projectId, updated_at: new Date().toISOString() }));
+      setDocuments((prev) => [...copies, ...prev]);
+    }
+  };
+
   return (
     <div style={{ width: '100vw', height: '100vh' }}>
       <SurveyHub
-        documents={MOCK_DOCUMENTS}
+        documents={documents}
         projects={MOCK_PROJECTS}
         templates={MOCK_TEMPLATES}
         user={{ name: 'Isaiah Calvo', email: 'isaiahcalvo123@gmail.com' }}
@@ -82,6 +117,9 @@ export default function HubPreview() {
         onUpload={() => console.log('[hub preview] upload')}
         onCreateProject={() => console.log('[hub preview] new project')}
         onCreateTemplate={() => console.log('[hub preview] new template')}
+        onDuplicateDocuments={handleDuplicate}
+        onDeleteDocuments={handleDelete}
+        onMoveCopyDocuments={handleMoveCopy}
       />
     </div>
   );

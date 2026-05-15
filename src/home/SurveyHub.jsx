@@ -33,6 +33,9 @@ export default function SurveyHub({
   onUpload,
   onCreateProject,
   onCreateTemplate,
+  onDuplicateDocuments,
+  onDeleteDocuments,
+  onMoveCopyDocuments,
 }) {
   const [tab, setTab] = useState(() => {
     try { return localStorage.getItem(TAB_KEY) || 'documents'; } catch { return 'documents'; }
@@ -67,6 +70,9 @@ export default function SurveyHub({
           onOpenDocument={onOpenDocument}
           onUpload={onUpload}
           onShare={shareDocuments}
+          onDuplicate={onDuplicateDocuments}
+          onDelete={onDeleteDocuments}
+          onMoveCopy={onMoveCopyDocuments}
         />
       )}
       {tab === 'projects' && (
