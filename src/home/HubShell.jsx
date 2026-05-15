@@ -73,12 +73,17 @@ export const Search = ({ placeholder = 'Search…', width = 240, value, onChange
       placeholder={placeholder}
       style={{ background: 'transparent', border: 0, outline: 'none', color: 'var(--bone-100)', font: 'inherit', flex: 1, minWidth: 0 }}
     />
+    <span className="kbd">⌘K</span>
   </div>
 );
 
+/* Word-initials, e.g. "Isaiah Calvo" -> "IC". */
+const initialsOf = (name) => (name || 'You')
+  .trim().split(/\s+/).map((w) => w[0] || '').join('').slice(0, 2).toUpperCase() || 'YOU';
+
 /* Sidebar + header frame. The three tabs are always rendered so the chrome
    feels permanent; only the body content (children) changes per tab. */
-export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userName = 'You', userMeta = '', templatesLocked = false }) => {
+export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userName = 'You', userMeta = 'Synced · Pro', templatesLocked = false }) => {
   const navBtn = (key, icon, label, disabled = false) => (
     <button
       className={tab === key ? 'active' : ''}
@@ -102,10 +107,10 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
             {navBtn('templates', 'grid', 'Templates', templatesLocked)}
           </nav>
           <div className="who">
-            <Avatar initials={(userName || 'You').slice(0, 2).toUpperCase()} size={24} />
+            <Avatar initials={initialsOf(userName)} size={24} />
             <div>
               <div className="name">{userName}</div>
-              {userMeta ? <div className="who-meta">{userMeta}</div> : null}
+              <div className="who-meta">{userMeta}</div>
             </div>
           </div>
         </aside>

@@ -29,6 +29,7 @@ export default function SurveyHub({
   templates = [],
   user = null,
   isPro = true,
+  initialTab = null,
   onOpenDocument,
   onUpload,
   onCreateProject,
@@ -38,6 +39,7 @@ export default function SurveyHub({
   onMoveCopyDocuments,
 }) {
   const [tab, setTab] = useState(() => {
+    if (initialTab) return initialTab;
     try { return localStorage.getItem(TAB_KEY) || 'documents'; } catch { return 'documents'; }
   });
   const [share, setShare] = useState(null); // null | { kind, name }

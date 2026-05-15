@@ -105,6 +105,8 @@ export default function HubPreview() {
     }
   };
 
+  const initialTab = new URLSearchParams(window.location.search).get('tab');
+
   return (
     <div style={{ width: '100vw', height: '100vh' }}>
       <SurveyHub
@@ -113,6 +115,7 @@ export default function HubPreview() {
         templates={MOCK_TEMPLATES}
         user={{ name: 'Isaiah Calvo', email: 'isaiahcalvo123@gmail.com' }}
         isPro
+        initialTab={initialTab}
         onOpenDocument={(d) => console.log('[hub preview] open document:', d.name)}
         onUpload={() => console.log('[hub preview] upload')}
         onCreateProject={() => console.log('[hub preview] new project')}
