@@ -12983,6 +12983,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   const isNavigatingToMatchRef = useRef(false); // Flag to prevent recursive navigation
   const activeTextSearchQueryRef = useRef('');
   const textSearchRefreshTimerRef = useRef(null);
+  const previousSearchResultsCountRef = useRef(0);
 
   // Survey/Template state
   const [activeCategoryDropdown, setActiveCategoryDropdown] = useState(null); // 'draw' | 'shape' | 'review' | 'survey'
@@ -15346,6 +15347,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
   // NEW: Item and Annotation system state
   const [pdfId, setPdfId] = useState(null);
+  const pdfSearchDocumentKey = useMemo(
+    () => `${pdfFile?.id || 'local'}:${pdfId || pdfFile?.name || 'pdf'}:${numPages || 0}`,
+    [pdfFile?.id, pdfFile?.name, pdfId, numPages]
+  );
   const previousPdfSelectionContextRef = useRef(null);
   useLayoutEffect(() => {
     const nextKey = `${tabId || 'tab'}:${pdfFile?.id || 'local'}:${pdfId || pdfFile?.name || 'pdf'}:${isActive ? 'active' : 'inactive'}`;
@@ -27787,8 +27792,25 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     if (!match || !containerRef.current) return;
 
     // Prevent recursive navigation
-    if (isNavigatingToMatchRef.current) return;
+    if (isNavigatingToMatchRef.current) {
+      console.log('[TextSearchDiag] app_match_navigation_ignored_busy ' + JSON.stringify({
+        at: new Date().toISOString(),
+        index,
+        pageNumber: match?.pageNumber,
+        pdfDocumentKey: pdfSearchDocumentKey
+      }));
+      return;
+    }
     isNavigatingToMatchRef.current = true;
+    console.log('[TextSearchDiag] app_match_navigation_start ' + JSON.stringify({
+      at: new Date().toISOString(),
+      index,
+      pageNumber: match.pageNumber,
+      hasBounds: Boolean(match.bounds),
+      currentScale: scaleRef.current,
+      targetRenderer: useSyncfusionRenderer ? 'syncfusion' : 'pdfjs',
+      pdfDocumentKey: pdfSearchDocumentKey
+    }));
 
     setCurrentMatchIndex(index);
 
@@ -27966,6 +27988,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     centerPageBoundsInViewer,
     goToPage,
     pageSizes,
+    pdfSearchDocumentKey,
     scale,
     scheduleTextSearchHighlightRefresh,
     scrollMode,
@@ -27975,13 +27998,27 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
   // Handler for search results change from SearchTextPanel
   const handleSearchResultsChange = useCallback((results) => {
-    setSearchResults(results);
+    const safeResults = Array.isArray(results) ? results : [];
+    const previousCount = previousSearchResultsCountRef.current;
+    if (previousCount !== safeResults.length) {
+      console.log('[TextSearchDiag] app_results_change ' + JSON.stringify({
+        at: new Date().toISOString(),
+        previousCount,
+        nextCount: safeResults.length,
+        currentMatchIndex,
+        pageNum,
+        scale: scaleRef.current,
+        pdfDocumentKey: pdfSearchDocumentKey
+      }));
+    }
+    previousSearchResultsCountRef.current = safeResults.length;
+    setSearchResults(safeResults);
     // Reset zoom when search changes
-    if (searchZoomLevelRef.current !== null && results.length === 0) {
+    if (searchZoomLevelRef.current !== null && safeResults.length === 0) {
       setScaleWithViewportPreservation(searchZoomLevelRef.current);
       searchZoomLevelRef.current = null;
     }
-  }, [setScaleWithViewportPreservation]);
+  }, [currentMatchIndex, pageNum, pdfSearchDocumentKey, setScaleWithViewportPreservation]);
 
   // Handler for current match index change
   const handleCurrentMatchIndexChange = useCallback((index) => {
@@ -33010,6 +33047,7 @@ ${pageBlocks}
       ref: pdfSidebarRef,
       features,
       pdfDoc,
+      pdfDocumentKey: pdfSearchDocumentKey,
       numPages,
       pageNum,
       onNavigateToPage: goToPage,
@@ -33100,6 +33138,7 @@ ${pageBlocks}
     pdfSidebarRef,
     features,
     pdfDoc,
+    pdfSearchDocumentKey,
     numPages,
     pageNum,
     goToPage,

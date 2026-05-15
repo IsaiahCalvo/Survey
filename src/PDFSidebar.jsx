@@ -11,6 +11,7 @@ const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pr
 
 const PDFSidebar = React.forwardRef(({
   pdfDoc,
+  pdfDocumentKey,
   numPages,
   pageNum,
   onNavigateToPage,
@@ -302,6 +303,7 @@ const PDFSidebar = React.forwardRef(({
             <div style={{ display: activeTab === 'search' ? 'flex' : 'none', flex: 1, flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
               <SearchTextPanel
                 pdfDoc={pdfDoc}
+                pdfDocumentKey={pdfDocumentKey}
                 numPages={numPages}
                 onNavigateToPage={onNavigateToPage}
                 onNavigateToMatch={onNavigateToMatch}

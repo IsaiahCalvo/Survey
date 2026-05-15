@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import Icon from '../Icons';
 
@@ -14,6 +14,49 @@ const createResultId = (() => {
 })();
 
 const clampValue = (value, fallback = 0) => (Number.isFinite(value) ? value : fallback);
+
+const emitTextSearchDiag = (event, detail = {}) => {
+  const payload = {
+    at: new Date().toISOString(),
+    ...detail
+  };
+  try {
+    console.log(`[TextSearchDiag] ${event} ${JSON.stringify(payload)}`);
+  } catch {
+    console.log(`[TextSearchDiag] ${event}`);
+  }
+};
+
+const getPdfDocumentKey = (pdfDoc, numPages, explicitKey) => {
+  const stableExplicitKey = typeof explicitKey === 'string' ? explicitKey.trim() : '';
+  if (stableExplicitKey) {
+    return `explicit:${stableExplicitKey}`;
+  }
+
+  if (!pdfDoc) return null;
+
+  const pdfInfo = pdfDoc?._pdfInfo || {};
+  const fingerprints = pdfDoc.fingerprints || pdfInfo.fingerprints;
+  if (Array.isArray(fingerprints) && fingerprints.some(Boolean)) {
+    return `fingerprints:${fingerprints.filter(Boolean).join(':')}`;
+  }
+
+  const fingerprint = pdfDoc.fingerprint || pdfInfo.fingerprint;
+  if (fingerprint) {
+    return `fingerprint:${fingerprint}`;
+  }
+
+  const docId =
+    pdfDoc.loadingTask?.docId ||
+    pdfDoc._transport?.docId ||
+    pdfDoc._transport?.messageHandler?.sourceName;
+  if (docId) {
+    return `doc:${docId}`;
+  }
+
+  const pageCount = Number(numPages) || Number(pdfDoc.numPages) || 0;
+  return `pages:${pageCount}`;
+};
 
 // Create snippet with context around match
 const createSnippet = (text, start, end, radius = 60) => {
@@ -219,7 +262,8 @@ const SearchTextPanel = ({
   onCurrentMatchIndexChange,
   isActive = true,
   focusRequestToken = 0,
-  selectOnFocus = false
+  selectOnFocus = false,
+  pdfDocumentKey = null
 }) => {
   // Internal state for standalone use
   const [internalSearchQuery, setInternalSearchQuery] = useState('');
@@ -232,20 +276,67 @@ const SearchTextPanel = ({
   const pageDataCacheRef = useRef(new Map());
   const searchIdRef = useRef(0);
   const lastHandledFocusTokenRef = useRef(null);
+  const documentKeyRef = useRef(null);
+  const searchResultsRef = useRef([]);
+  const currentMatchIndexRef = useRef(-1);
+  const lastSearchQueryRef = useRef('');
+  const lastPerformedSearchKeyRef = useRef('');
 
   // Use external state if provided, otherwise use internal state
   const searchResults = externalSearchResults !== undefined ? externalSearchResults : internalSearchResults;
   const currentMatchIndex = externalCurrentMatchIndex !== undefined ? externalCurrentMatchIndex : internalCurrentMatchIndex;
+  const resolvedDocumentKey = useMemo(
+    () => getPdfDocumentKey(pdfDoc, numPages, pdfDocumentKey),
+    [pdfDoc, numPages, pdfDocumentKey]
+  );
 
-  const setSearchResults = useCallback((results) => {
+  useEffect(() => {
+    searchResultsRef.current = Array.isArray(searchResults) ? searchResults : [];
+  }, [searchResults]);
+
+  useEffect(() => {
+    currentMatchIndexRef.current = Number.isFinite(currentMatchIndex) ? currentMatchIndex : -1;
+  }, [currentMatchIndex]);
+
+  const setSearchResults = useCallback((results, reason = 'update') => {
+    const safeResults = Array.isArray(results) ? results : [];
+    const previousCount = searchResultsRef.current.length;
+    const shouldLog =
+      reason !== 'progressive' ||
+      previousCount === 0 ||
+      safeResults.length === 0 ||
+      safeResults.length < previousCount;
+
+    if (shouldLog && previousCount !== safeResults.length) {
+      emitTextSearchDiag('results_change', {
+        reason,
+        previousCount,
+        nextCount: safeResults.length,
+        query: lastSearchQueryRef.current,
+        documentKey: documentKeyRef.current
+      });
+    }
+
+    searchResultsRef.current = safeResults;
     if (onSearchResultsChange) {
-      onSearchResultsChange(results);
+      onSearchResultsChange(safeResults);
     } else {
-      setInternalSearchResults(results);
+      setInternalSearchResults(safeResults);
     }
   }, [onSearchResultsChange]);
 
-  const setCurrentMatchIndex = useCallback((index) => {
+  const setCurrentMatchIndex = useCallback((index, reason = 'update') => {
+    if (currentMatchIndexRef.current !== index) {
+      emitTextSearchDiag('current_match_change', {
+        reason,
+        previousIndex: currentMatchIndexRef.current,
+        nextIndex: index,
+        resultCount: searchResultsRef.current.length,
+        query: lastSearchQueryRef.current,
+        documentKey: documentKeyRef.current
+      });
+    }
+    currentMatchIndexRef.current = index;
     if (onCurrentMatchIndexChange) {
       onCurrentMatchIndexChange(index);
     } else {
@@ -253,14 +344,51 @@ const SearchTextPanel = ({
     }
   }, [onCurrentMatchIndexChange]);
 
-  // Reset cache when PDF changes
+  // Reset only when the actual document changes. The viewer may refresh the PDF
+  // object during zoom/navigation; that must not dismiss an active search.
   useEffect(() => {
+    const previousDocumentKey = documentKeyRef.current;
+
+    if (!resolvedDocumentKey) {
+      if (previousDocumentKey && (lastSearchQueryRef.current || searchResultsRef.current.length > 0)) {
+        emitTextSearchDiag('document_temporarily_missing_preserve_search', {
+          previousDocumentKey,
+          query: lastSearchQueryRef.current,
+          resultCount: searchResultsRef.current.length,
+          currentMatchIndex: currentMatchIndexRef.current
+        });
+      }
+      return;
+    }
+
+    if (!previousDocumentKey) {
+      documentKeyRef.current = resolvedDocumentKey;
+      emitTextSearchDiag('document_key_ready', {
+        documentKey: resolvedDocumentKey,
+        numPages
+      });
+      return;
+    }
+
+    if (previousDocumentKey === resolvedDocumentKey) {
+      return;
+    }
+
+    documentKeyRef.current = resolvedDocumentKey;
+    lastPerformedSearchKeyRef.current = '';
+    searchIdRef.current += 1;
     pageDataCacheRef.current.clear();
-    setSearchResults([]);
-    setCurrentMatchIndex(-1);
+    emitTextSearchDiag('document_key_changed_clear_search', {
+      previousDocumentKey,
+      nextDocumentKey: resolvedDocumentKey,
+      query: lastSearchQueryRef.current,
+      previousResultCount: searchResultsRef.current.length
+    });
+    setSearchResults([], 'document-key-change');
+    setCurrentMatchIndex(-1, 'document-key-change');
     setInternalSearchQuery('');
     onClearTextSearch?.();
-  }, [pdfDoc, setSearchResults, setCurrentMatchIndex, onClearTextSearch]);
+  }, [resolvedDocumentKey, numPages, setSearchResults, setCurrentMatchIndex, onClearTextSearch]);
 
   useEffect(() => {
     if (!isActive || !searchInputRef.current) {
@@ -384,17 +512,41 @@ const SearchTextPanel = ({
   // Optimized search function
   const performSearch = useCallback(async (query) => {
     const trimmedQuery = (query || '').trim();
+    lastSearchQueryRef.current = trimmedQuery;
 
-    if (!trimmedQuery || !pdfDoc) {
-      setSearchResults([]);
-      setCurrentMatchIndex(-1);
+    if (!trimmedQuery) {
+      emitTextSearchDiag('search_clear_empty_query', {
+        previousResultCount: searchResultsRef.current.length,
+        previousIndex: currentMatchIndexRef.current,
+        documentKey: documentKeyRef.current
+      });
+      setSearchResults([], 'empty-query');
+      setCurrentMatchIndex(-1, 'empty-query');
       setIsSearching(false);
       setSearchProgress({ current: 0, total: 0 });
       onClearTextSearch?.();
       return [];
     }
 
+    if (!pdfDoc) {
+      emitTextSearchDiag('search_preserved_missing_pdf_doc', {
+        query: trimmedQuery,
+        existingResultCount: searchResultsRef.current.length,
+        currentMatchIndex: currentMatchIndexRef.current,
+        documentKey: documentKeyRef.current
+      });
+      setIsSearching(false);
+      setSearchProgress({ current: 0, total: 0 });
+      return searchResultsRef.current;
+    }
+
     const searchId = ++searchIdRef.current;
+    emitTextSearchDiag('search_start', {
+      query: trimmedQuery,
+      searchId,
+      numPages,
+      documentKey: documentKeyRef.current
+    });
     setIsSearching(true);
     setSearchProgress({ current: 0, total: numPages });
 
@@ -458,15 +610,21 @@ const SearchTextPanel = ({
         // Progressive results update
         if (pageNumber % 3 === 0 || pageNumber === numPages) {
           if (searchIdRef.current === searchId) {
-            setSearchResults([...results]);
+            setSearchResults([...results], 'progressive');
           }
         }
       }
 
       if (searchIdRef.current === searchId) {
-        setSearchResults(results);
-        setCurrentMatchIndex(results.length > 0 ? 0 : -1);
+        setSearchResults(results, 'search-complete');
+        setCurrentMatchIndex(results.length > 0 ? 0 : -1, 'search-complete');
         setIsSearching(false);
+        emitTextSearchDiag('search_complete', {
+          query: trimmedQuery,
+          searchId,
+          resultCount: results.length,
+          documentKey: documentKeyRef.current
+        });
       }
 
       return results;
@@ -479,18 +637,32 @@ const SearchTextPanel = ({
 
   // Debounced search
   useEffect(() => {
+    const trimmedQuery = (internalSearchQuery || '').trim();
+    const nextSearchKey = `${resolvedDocumentKey || 'missing'}::${trimmedQuery}`;
+    if (nextSearchKey === lastPerformedSearchKeyRef.current) {
+      return undefined;
+    }
+
     const timer = setTimeout(() => {
+      lastPerformedSearchKeyRef.current = nextSearchKey;
       performSearch(internalSearchQuery);
     }, 200);
 
     return () => clearTimeout(timer);
-  }, [internalSearchQuery, performSearch]);
+  }, [internalSearchQuery, performSearch, resolvedDocumentKey]);
 
   // Navigate to match and trigger callback
   const navigateToMatch = useCallback((index) => {
     if (index < 0 || index >= searchResults.length) return;
 
-    setCurrentMatchIndex(index);
+    emitTextSearchDiag('match_navigate_request', {
+      index,
+      resultCount: searchResults.length,
+      pageNumber: searchResults[index]?.pageNumber,
+      query: lastSearchQueryRef.current,
+      documentKey: documentKeyRef.current
+    });
+    setCurrentMatchIndex(index, 'navigate');
     const result = searchResults[index];
 
     if (onNavigateToMatch) {
@@ -583,9 +755,17 @@ const SearchTextPanel = ({
   };
 
   const clearSearch = useCallback(() => {
+    emitTextSearchDiag('search_clear_button', {
+      previousResultCount: searchResultsRef.current.length,
+      previousIndex: currentMatchIndexRef.current,
+      query: lastSearchQueryRef.current,
+      documentKey: documentKeyRef.current
+    });
+    lastSearchQueryRef.current = '';
+    lastPerformedSearchKeyRef.current = '';
     setInternalSearchQuery('');
-    setSearchResults([]);
-    setCurrentMatchIndex(-1);
+    setSearchResults([], 'clear-button');
+    setCurrentMatchIndex(-1, 'clear-button');
     onClearTextSearch?.();
     searchInputRef.current?.focus();
   }, [onClearTextSearch, setSearchResults, setCurrentMatchIndex]);
