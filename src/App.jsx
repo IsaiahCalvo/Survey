@@ -28180,10 +28180,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     }
 
     const handleMouseMove = (e) => {
-      // Optimized visibility check using target presence instead of geometry calculation
-      // storage of querySelector result outside loop would be better, but closest() is cheap enough
-      // and accounts for dynamic DOM. pointer-events: none on overlay helps this work.
-      const isWithinViewport = !!e.target.closest('[data-testid="pdf-container"]');
+      // Optimized visibility check using target presence instead of geometry calculation.
+      // UX 2026-05-14: also hide the eraser ring when the cursor is over any
+      // chrome strip (top bar, sub-toolbar, rails) — the sub-toolbar floats
+      // over the canvas with position: absolute so it's NOT a descendant of
+      // pdf-container, but the user expects the ring to vanish there too so
+      // they can pick a new tool with the regular pointer.
+      const overChromeStrip = !!e.target.closest('[data-chrome-strip="true"]');
+      const isWithinViewport = !overChromeStrip && !!e.target.closest('[data-testid="pdf-container"]');
 
       // Update state only if visibility changes
       setEraserCursorPos(prev => {
@@ -28302,7 +28306,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
   const handleZoomInputChange = useCallback((e) => {
     const digitsOnly = e.target.value.replace(/\D/g, '');
-    setZoomInputValue(digitsOnly);
+    // UX 2026-05-14: clamp the max while typing so a stray "5000" snaps
+    // to "500" before the user even tabs out. Min is not clamped here;
+    // typing "5" should not jump to "10" mid-keystroke. Final min clamp
+    // happens on commit in commitZoomInput.
+    if (digitsOnly === '') {
+      setZoomInputValue('');
+      return;
+    }
+    const numeric = parseInt(digitsOnly, 10);
+    if (Number.isFinite(numeric) && numeric > 500) {
+      setZoomInputValue('500');
+    } else {
+      setZoomInputValue(digitsOnly);
+    }
   }, []);
 
   const commitZoomInput = useCallback(() => {
@@ -33516,7 +33533,8 @@ ${pageBlocks}
         flexDirection: 'column',
         background: '#2b2b2b',
         color: '#ddd',
-        fontFamily: FONT_FAMILY
+        fontFamily: FONT_FAMILY,
+        position: 'relative'
       }}>
         {/* UX 2026-05-13: Top toolbar (Undo / Redo / Survey) now lives at the App
             shell so it survives PDF tab switches without re-mounting. PDFViewer
@@ -36507,21 +36525,24 @@ ${pageBlocks}
         </div>
 
         {/* Secondary Sub-Toolbar (Drawboard Style).
-            UX 2026-05-14: order: -1 makes this render BEFORE the middle area
-            in the parent flex column. Visually the sub-row now sits just
-            under the top bar (chrome-top-host) and pushes the canvas down
-            by 34 px while a category is active. JSX position stays at the
-            bottom of the fragment to minimize diff; only the flex-order
-            CSS controls visual placement. */}
-        {activeCategoryDropdown && (
+            UX 2026-05-14: rendered via createPortal into the App-level
+            chrome-sub-toolbar-host so it lives at the same DOM level as
+            the rails and top bar — not inside the viewer area. This means
+            the cursor tracker can naturally tell the cursor has left the
+            viewport when it enters this strip, without any special tagging.
+            The host element sits between the rails and above the actual
+            viewer body so the strip aligns exactly between the two rails
+            with no extra positioning math. */}
+        {activeCategoryDropdown && typeof document !== 'undefined' && document.getElementById('chrome-sub-toolbar-host') && createPortal(
           <div
+            data-chrome-strip="true"
             style={{
-              order: -1,
               width: '100%',
               height: '34px',
-              background: 'transparent',
+              background: '#2b2b2b',
               borderBottom: '1px solid #3a3a3a',
-              borderTop: '1px solid #3a3a3a',
+              borderTop: 'none',
+              cursor: 'default',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -36613,7 +36634,7 @@ ${pageBlocks}
                             cursor: 'pointer'
                           }}
                         >
-                          <Icon name="chevronUp" size={12} color="#888888" />
+                          <Icon name="chevronDown" size={12} color="#888888" />
                         </div>
                       )}
                     </button>
@@ -36635,7 +36656,12 @@ ${pageBlocks}
                     const btnEl = document.querySelector(buttonSelector);
                     if (btnEl) {
                       const r = btnEl.getBoundingClientRect();
-                      popupFixedTop = r.top - 6;
+                      // UX 2026-05-14: popup now flips DOWN below the
+                      // button (sub-toolbar moved to the top of the screen,
+                      // so upward popups would shoot off-screen). Anchor at
+                      // 6px below the button bottom; transform shifts so
+                      // the popup's top-center sits at this point.
+                      popupFixedTop = r.bottom + 6;
                       popupFixedLeft = r.left + r.width / 2;
                     }
                   }
@@ -36670,7 +36696,7 @@ ${pageBlocks}
                             position: 'fixed',
                             top: `${popupFixedTop}px`,
                             left: `${popupFixedLeft}px`,
-                            transform: 'translate(-50%, -100%)',
+                            transform: 'translate(-50%, 0)',
                             backgroundColor: 'rgb(30, 30, 30)',
                             backgroundImage: 'none',
                             border: '1px solid #333',
@@ -36872,7 +36898,7 @@ ${pageBlocks}
                             cursor: 'pointer'
                           }}
                         >
-                          <Icon name="chevronUp" size={12} color="#888888" />
+                          <Icon name="chevronDown" size={12} color="#888888" />
                         </div>
                       )}
                     </button>
@@ -36901,10 +36927,11 @@ ${pageBlocks}
                     const btnEl = document.querySelector('[data-counter-caret-button="true"]');
                     if (btnEl) {
                       const r = btnEl.getBoundingClientRect();
-                      // Place popup ABOVE the counter button with a 6px gap.
-                      // We don't know the popup height yet, so we use
-                      // bottom-anchor via CSS transform: translateY(-100%).
-                      popupFixedTop = r.top - 6;
+                      // UX 2026-05-14: popup now flips DOWN below the
+                      // counter button (sub-toolbar moved to top of screen).
+                      // Anchor 6px below button bottom; transform's
+                      // translateY: 0 puts the popup's top-center here.
+                      popupFixedTop = r.bottom + 6;
                       popupFixedLeft = r.left + r.width / 2;
                     }
                   }
@@ -36963,7 +36990,7 @@ ${pageBlocks}
                             position: 'fixed',
                             top: `${popupFixedTop}px`,
                             left: `${popupFixedLeft}px`,
-                            transform: 'translate(-50%, -100%)',
+                            transform: 'translate(-50%, 0)',
                             backgroundColor: 'rgb(30, 30, 30)',
                             backgroundImage: 'none',
                             border: '1px solid #333',
@@ -37263,7 +37290,7 @@ ${pageBlocks}
                             cursor: 'pointer'
                           }}
                         >
-                          <Icon name="chevronUp" size={12} color="#888888" />
+                          <Icon name="chevronDown" size={12} color="#888888" />
                         </div>
                       )}
                     </button>
@@ -37277,7 +37304,10 @@ ${pageBlocks}
                     const btnEl = document.querySelector(`[${caretAttr}="true"]`);
                     if (btnEl) {
                       const r = btnEl.getBoundingClientRect();
-                      popupFixedTop = r.top - 6;
+                      // UX 2026-05-14: flip popup DOWN below the button
+                      // since the sub-toolbar moved to the top of the
+                      // screen.
+                      popupFixedTop = r.bottom + 6;
                       popupFixedLeft = r.left + r.width / 2;
                     }
                   }
@@ -37331,7 +37361,7 @@ ${pageBlocks}
                             position: 'fixed',
                             top: `${popupFixedTop}px`,
                             left: `${popupFixedLeft}px`,
-                            transform: 'translate(-50%, -100%)',
+                            transform: 'translate(-50%, 0)',
                             backgroundColor: 'rgb(30, 30, 30)',
                             backgroundImage: 'none',
                             border: '1px solid #333',
@@ -37408,7 +37438,8 @@ ${pageBlocks}
                 />
               </button>
             )}
-          </div>
+          </div>,
+          document.getElementById('chrome-sub-toolbar-host')
         )}
 
         {/* UX 2026-05-13: status bar (Scroll to navigate hint + N of M pages
@@ -43710,6 +43741,18 @@ export default function App() {
     surveyEnabled: false
   });
 
+  // UX 2026-05-14: right-rail page number editing state. By default the
+  // current page renders as a plain accent-colored number (Walkthrough
+  // style); double-clicking swaps it for an editable input so the user
+  // can jump to a page directly. On blur or Enter we flip back.
+  const [isEditingRailPage, setIsEditingRailPage] = useState(false);
+
+  // UX 2026-05-14: right-rail zoom percentage editing state. Same pattern
+  // as the page number — plain "100%" by default, click to swap to an
+  // input. Typing is clamped to 10–500 (the app's allowable zoom range).
+  const [isEditingRailZoom, setIsEditingRailZoom] = useState(false);
+
+
   // UX 2026-05-13: App-level bottom toolbar state. The chrome-bottom host
   // mounts with final rail dimensions as soon as a PDF tab is active; the active
   // PDFViewer will publish the live toolbar API into this object in the next
@@ -44167,8 +44210,8 @@ export default function App() {
             flexShrink: 0,
             padding: '8px 12px',
             background: '#2d2d2d',
-            borderBottom: '1px solid #3d3d3d',
             alignItems: 'center',
+            justifyContent: 'center',
             flexWrap: 'wrap',
             rowGap: '6px',
             columnGap: '8px',
@@ -44179,50 +44222,67 @@ export default function App() {
             zIndex: 5500
           }}
         >
-          <button
-            onClick={topToolbarApi.onUndo || (() => {})}
-            disabled={!topToolbarApi.canUndo}
-            className="btn btn-default btn-sm"
-            title="Undo"
-            style={{
-              padding: '4px 8px',
-              opacity: topToolbarApi.canUndo ? 1 : 0.4,
-              cursor: topToolbarApi.canUndo ? 'pointer' : 'not-allowed',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px'
-            }}
-          >
-            <Icon name="undo" size={14} />
-          </button>
-          <button
-            onClick={topToolbarApi.onRedo || (() => {})}
-            disabled={!topToolbarApi.canRedo}
-            className="btn btn-default btn-sm"
-            title="Redo"
-            style={{
-              padding: '4px 8px',
-              opacity: topToolbarApi.canRedo ? 1 : 0.4,
-              cursor: topToolbarApi.canRedo ? 'pointer' : 'not-allowed',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              transform: 'matrix(1, 0, 0, 1, 0, -0.591158) rotate(180deg) scaleX(-1)'
-            }}
-          >
-            <Icon name="redo" size={14} />
-          </button>
+          {/* UX 2026-05-14: Undo + Redo pinned to the LEFT via absolute
+              positioning so the rest of the toolbar can center cleanly
+              with justifyContent: 'center'. This mirrors the old bottom
+              toolbar where tools sat centered and adjacent helpers
+              flanked them. Padding inside the strip leaves 12 px for the
+              Undo/Redo cluster. */}
+          <div style={{
+            position: 'absolute',
+            left: '12px',
+            top: 0,
+            bottom: 0,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            <button
+              onClick={topToolbarApi.onUndo || (() => {})}
+              disabled={!topToolbarApi.canUndo}
+              className="btn btn-default btn-sm"
+              title="Undo"
+              style={{
+                padding: '4px 8px',
+                opacity: topToolbarApi.canUndo ? 1 : 0.4,
+                cursor: topToolbarApi.canUndo ? 'pointer' : 'not-allowed',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+            >
+              <Icon name="undo" size={14} />
+            </button>
+            <button
+              onClick={topToolbarApi.onRedo || (() => {})}
+              disabled={!topToolbarApi.canRedo}
+              className="btn btn-default btn-sm"
+              title="Redo"
+              style={{
+                padding: '4px 8px',
+                opacity: topToolbarApi.canRedo ? 1 : 0.4,
+                cursor: topToolbarApi.canRedo ? 'pointer' : 'not-allowed',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                transform: 'matrix(1, 0, 0, 1, 0, -0.591158) rotate(180deg) scaleX(-1)'
+              }}
+            >
+              <Icon name="redo" size={14} />
+            </button>
+          </div>
 
           {/* UX 2026-05-14: Tools section — Pan / Select / Draw / Shapes /
               Text / Survey-category / Color / Width. Inlined from the old
               bottom toolbar. Consumes bottomToolbarApi which is still
               published from PDFViewer; if no PDF is open we skip the
               section entirely. Tooltip placement is "below" so labels
-              fall under the buttons (above would clip the OS chrome). */}
+              fall under the buttons (above would clip the OS chrome).
+              These flow inside the centered flex container so the whole
+              tool cluster sits centered while Undo/Redo float on the
+              left edge. */}
           {bottomToolbarApi && (
             <>
-              <div style={{ width: '1px', height: '20px', background: '#555', margin: '0 4px' }} />
-
               {/* Pan + Select (top-level tools) */}
               {[
                 { id: 'pan', label: 'Pan', iconName: 'pan' },
@@ -44464,14 +44524,35 @@ export default function App() {
               minWidth: '48px',
               alignSelf: 'stretch',
               background: '#252525',
-              borderRight: '1px solid #3a3a3a',
               color: '#ddd',
               fontFamily: FONT_FAMILY
             }}
           >
             {leftRailApi && <PDFSidebar {...leftRailApi} />}
           </div>
-          <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', position: 'relative' }}>
+          <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column' }}>
+            {/* UX 2026-05-14: chrome-sub-toolbar-host — App-level mount point
+                for the category sub-row (Draw / Shapes / Text expansion).
+                Sits at the same DOM level as the rails and top bar. The
+                cursor tracker treats this as outside the viewport
+                naturally because it is NOT inside the pdf-container
+                subtree. Positioned absolute at top:0 so the sub-row
+                overlays the canvas without pushing it down — the viewer
+                underneath keeps its full height. */}
+            <div
+              id="chrome-sub-toolbar-host"
+              data-chrome-strip="true"
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                background: '#2b2b2b',
+                cursor: 'default',
+                zIndex: 5400
+              }}
+            />
+            <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', position: 'relative' }}>
             <Dashboard
               ref={dashboardRef}
               onDocumentSelect={handleDocumentSelect}
@@ -44536,6 +44617,7 @@ export default function App() {
               );
             })}
           </div>
+          </div>
           {/* UX 2026-05-14: chrome-right-host — slim always-visible right rail.
               Pinned to the viewport's right edge. Survey toggle sits at the
               top, zoom + page nav at the bottom. The Survey panel still slides
@@ -44552,7 +44634,6 @@ export default function App() {
               width: '48px',
               alignSelf: 'stretch',
               background: '#252525',
-              borderLeft: '1px solid #3a3a3a',
               color: '#ddd',
               fontFamily: FONT_FAMILY,
               flexDirection: 'column',
@@ -44565,7 +44646,10 @@ export default function App() {
           >
             {/* Top slot — Survey toggle. Reuses topToolbarApi.onSurveyToggle
                 so the existing Pro gate + active styling carry over without
-                duplicate state. */}
+                duplicate state. UX 2026-05-14: icon tint matches the
+                muted grey used by the left-rail tab icons (#bbb) so the
+                Survey icon doesn't read as a brighter spotlight. Active
+                state keeps the accent blue to signal the panel is open. */}
             {topToolbarApi.onSurveyToggle && (
               <button
                 onClick={topToolbarApi.onSurveyToggle}
@@ -44580,7 +44664,7 @@ export default function App() {
                   background: topToolbarApi.surveyActive ? 'rgba(74, 144, 226, 0.15)' : 'transparent',
                   border: topToolbarApi.surveyActive ? '1px solid #4A90E2' : '1px solid transparent',
                   borderRadius: '6px',
-                  color: topToolbarApi.surveyActive ? '#4A90E2' : '#FFF',
+                  color: topToolbarApi.surveyActive ? '#4A90E2' : '#bbb',
                   opacity: topToolbarApi.surveyEnabled ? 1 : 0.6,
                   cursor: 'pointer',
                   position: 'relative'
@@ -44628,49 +44712,89 @@ export default function App() {
                   <Icon name="chevronUp" size={14} />
                 </button>
 
-                {/* Current page input — 3-char wide, 10px tabular-nums to
-                    keep "1" and "100" the same visual width. */}
-                <input
-                  ref={bottomToolbarApi.pageInputRef}
-                  type="text"
-                  data-page-number-input
-                  value={bottomToolbarApi.pageInputValue}
-                  onChange={bottomToolbarApi.handlePageInputChange}
-                  onKeyDown={bottomToolbarApi.handlePageInputKeyDown}
-                  onBlur={bottomToolbarApi.handlePageInputBlur}
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  aria-label="Current page"
-                  style={{
-                    width: '32px',
-                    padding: '2px 2px',
-                    background: '#3a3a3a',
-                    color: '#e0e0e0',
-                    border: '1px solid #4a4a4a',
-                    borderRadius: '3px',
-                    fontSize: '10px',
-                    fontFamily: FONT_FAMILY,
-                    fontWeight: '500',
-                    fontVariantNumeric: 'tabular-nums',
-                    textAlign: 'center',
-                    height: '18px',
-                    boxSizing: 'border-box'
-                  }}
-                />
+                {/* Current page — Walkthrough-style: a plain accent-colored
+                    number by default, click or double-click to edit. The
+                    input only mounts while editing so the dot above and
+                    total below stay perfectly centered around a single
+                    number glyph. */}
+                {isEditingRailPage ? (
+                  <input
+                    ref={bottomToolbarApi.pageInputRef}
+                    type="text"
+                    data-page-number-input
+                    autoFocus
+                    value={bottomToolbarApi.pageInputValue}
+                    onChange={bottomToolbarApi.handlePageInputChange}
+                    onKeyDown={(e) => {
+                      bottomToolbarApi.handlePageInputKeyDown(e);
+                      if (e.key === 'Enter' || e.key === 'Escape') {
+                        setIsEditingRailPage(false);
+                      }
+                    }}
+                    onBlur={(e) => {
+                      bottomToolbarApi.handlePageInputBlur(e);
+                      setIsEditingRailPage(false);
+                    }}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    aria-label="Current page"
+                    style={{
+                      width: '28px',
+                      padding: 0,
+                      background: 'transparent',
+                      color: '#4A90E2',
+                      border: 'none',
+                      fontSize: '11px',
+                      fontFamily: FONT_FAMILY,
+                      fontWeight: '600',
+                      fontVariantNumeric: 'tabular-nums',
+                      textAlign: 'center',
+                      outline: 'none',
+                      lineHeight: 1
+                    }}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingRailPage(true)}
+                    onDoubleClick={() => setIsEditingRailPage(true)}
+                    aria-label="Edit page number"
+                    title="Click to jump to a page"
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#4A90E2',
+                      fontSize: '11px',
+                      fontFamily: FONT_FAMILY,
+                      fontWeight: '600',
+                      fontVariantNumeric: 'tabular-nums',
+                      padding: '1px 4px',
+                      borderRadius: '3px',
+                      cursor: 'pointer',
+                      lineHeight: 1
+                    }}
+                  >
+                    {bottomToolbarApi.pageNum}
+                  </button>
+                )}
 
-                {/* Middle dot + total page count (Walkthrough convention).
-                    Saves horizontal width vs the old "/ N" style. */}
+                {/* Middle dot — sits between current page input above and
+                    total page count below, matching the Walkthrough slim
+                    rail convention. Tabular-nums on the total keeps "9"
+                    and "99" centered identically. */}
+                <span aria-hidden="true" style={{
+                  color: '#888',
+                  fontSize: '14px',
+                  lineHeight: 0.5,
+                  fontFamily: FONT_FAMILY
+                }}>·</span>
                 <span style={{
                   color: '#888',
                   fontSize: '10px',
                   fontFamily: FONT_FAMILY,
                   fontVariantNumeric: 'tabular-nums',
-                  lineHeight: 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '2px'
+                  lineHeight: 1
                 }}>
-                  <span aria-hidden="true" style={{ fontSize: '14px', lineHeight: 0.5 }}>·</span>
                   {bottomToolbarApi.numPages}
                 </span>
 
@@ -44726,39 +44850,33 @@ export default function App() {
                   <Icon name="plus" size={14} />
                 </button>
 
-                {/* Zoom percentage display. Clicking the % cell focuses the
-                    input so the user can type a value like "100" directly,
-                    replacing the old Reset button's role. % glyph is rendered
-                    next to the digits so the cell reads "100%" naturally. */}
-                <div
-                  onClick={() => bottomToolbarApi.zoomInputRef.current?.focus()}
-                  style={{
-                    position: 'relative',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: '40px',
-                    height: '18px',
-                    background: 'transparent',
-                    border: 'none',
-                    padding: 0,
-                    boxSizing: 'border-box',
-                    cursor: 'text',
-                    gap: '0'
-                  }}
-                >
+                {/* Zoom percentage — Walkthrough-style: shows the value as
+                    "100%" with no input box by default, click swaps to an
+                    editable input. Centered in the rail. The handlers
+                    already clamp on commit (10%–500%) and during typing
+                    (max 500%), matching the app's actual zoom range. */}
+                {isEditingRailZoom ? (
                   <input
                     ref={bottomToolbarApi.zoomInputRef}
                     type="text"
+                    autoFocus
                     value={bottomToolbarApi.zoomInputValue}
                     onChange={bottomToolbarApi.handleZoomInputChange}
-                    onKeyDown={bottomToolbarApi.handleZoomInputKeyDown}
-                    onBlur={bottomToolbarApi.handleZoomInputBlur}
+                    onKeyDown={(e) => {
+                      bottomToolbarApi.handleZoomInputKeyDown(e);
+                      if (e.key === 'Enter' || e.key === 'Escape') {
+                        setIsEditingRailZoom(false);
+                      }
+                    }}
+                    onBlur={(e) => {
+                      bottomToolbarApi.handleZoomInputBlur(e);
+                      setIsEditingRailZoom(false);
+                    }}
                     inputMode="numeric"
                     pattern="[0-9]*"
                     aria-label="Zoom percentage"
                     style={{
-                      width: '24px',
+                      width: '36px',
                       background: 'transparent',
                       color: '#bbb',
                       border: 'none',
@@ -44768,20 +44886,36 @@ export default function App() {
                       fontFamily: FONT_FAMILY,
                       fontWeight: '500',
                       fontVariantNumeric: 'tabular-nums',
-                      textAlign: 'right',
-                      outline: 'none'
+                      textAlign: 'center',
+                      outline: 'none',
+                      lineHeight: 1
                     }}
                   />
-                  <span aria-hidden="true" style={{
-                    fontSize: '10px',
-                    color: '#888',
-                    fontFamily: FONT_FAMILY,
-                    fontVariantNumeric: 'tabular-nums',
-                    pointerEvents: 'none'
-                  }}>
-                    %
-                  </span>
-                </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingRailZoom(true)}
+                    onDoubleClick={() => setIsEditingRailZoom(true)}
+                    aria-label="Edit zoom percentage"
+                    title="Click to type a zoom percentage"
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#bbb',
+                      fontSize: '10px',
+                      fontFamily: FONT_FAMILY,
+                      fontWeight: '500',
+                      fontVariantNumeric: 'tabular-nums',
+                      padding: '1px 4px',
+                      borderRadius: '3px',
+                      cursor: 'pointer',
+                      lineHeight: 1,
+                      textAlign: 'center'
+                    }}
+                  >
+                    {bottomToolbarApi.zoomInputValue || Math.round((bottomToolbarApi.manualZoomScale || 1) * 100)}%
+                  </button>
+                )}
 
                 {/* Zoom out (minus) */}
                 <button
@@ -44806,83 +44940,157 @@ export default function App() {
                   <Icon name="minus" size={14} />
                 </button>
 
-                {/* Zoom mode dropdown. Compact 28×28 chevron-only button
-                    matching the other rail buttons. Popup opens above the
-                    button and anchors to the rail's left edge so it doesn't
-                    clip off-screen. */}
-                <div
-                  ref={bottomToolbarApi.zoomMenuRef}
-                  style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}
-                >
-                  <button
-                    onClick={bottomToolbarApi.toggleZoomMenu}
-                    aria-haspopup="listbox"
-                    aria-expanded={bottomToolbarApi.isZoomMenuOpen}
-                    title={`Page fit: ${bottomToolbarApi.zoomDropdownLabel}`}
-                    style={{
-                      width: '28px',
-                      height: '28px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      padding: 0,
-                      background: 'transparent',
-                      border: 'none',
-                      borderRadius: '4px',
-                      color: '#bbb',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <Icon name={bottomToolbarApi.isZoomMenuOpen ? 'chevronDown' : 'chevronUp'} size={12} />
-                  </button>
+                {/* Page-fit button — matches the Walkthrough slim-rail
+                    pattern exactly: a 36×28 cell with the current fit
+                    mode's icon centered (page / width / height SVG) and
+                    a small left-pointing chevron pinned to the left edge
+                    indicating the popup expands to the LEFT. Popup width
+                    144 px, anchored to the rail's left edge. */}
+                {(() => {
+                  const mode = bottomToolbarApi.zoomMode;
+                  // Fall back to fit-page icon when mode is MANUAL or unknown.
+                  const iconMode = (mode === ZOOM_MODES.FIT_WIDTH || mode === ZOOM_MODES.FIT_HEIGHT) ? mode : ZOOM_MODES.FIT_PAGE;
+                  const renderFitIcon = (m) => {
+                    const stroke = {
+                      fill: 'none',
+                      stroke: 'currentColor',
+                      strokeLinecap: 'round',
+                      strokeLinejoin: 'round',
+                      strokeWidth: 1.7
+                    };
+                    if (m === ZOOM_MODES.FIT_WIDTH) {
+                      return (
+                        <svg viewBox="0 0 24 24" aria-hidden="true" style={{ width: '16px', height: '16px' }}>
+                          <rect x="4" y="5" width="16" height="14" rx="1.5" {...stroke} />
+                          <path d="M7 12h10M7 12l3-3M7 12l3 3M17 12l-3-3M17 12l-3 3" {...stroke} />
+                        </svg>
+                      );
+                    }
+                    if (m === ZOOM_MODES.FIT_HEIGHT) {
+                      return (
+                        <svg viewBox="0 0 24 24" aria-hidden="true" style={{ width: '16px', height: '16px' }}>
+                          <rect x="5" y="4" width="14" height="16" rx="1.5" {...stroke} />
+                          <path d="M12 7v10M12 7l-3 3M12 7l3 3M12 17l-3-3M12 17l3-3" {...stroke} />
+                        </svg>
+                      );
+                    }
+                    // fit-page (default)
+                    return (
+                      <svg viewBox="0 0 24 24" aria-hidden="true" style={{ width: '16px', height: '16px' }}>
+                        <rect x="6" y="3" width="12" height="18" rx="1.5" {...stroke} />
+                        <path d="M9 7h6M9 11h6M9 15h4" {...stroke} />
+                      </svg>
+                    );
+                  };
+                  return (
+                    <div
+                      ref={bottomToolbarApi.zoomMenuRef}
+                      style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}
+                    >
+                      <button
+                        onClick={bottomToolbarApi.toggleZoomMenu}
+                        aria-haspopup="listbox"
+                        aria-expanded={bottomToolbarApi.isZoomMenuOpen}
+                        aria-label="Fit options"
+                        data-active={mode !== ZOOM_MODES.MANUAL}
+                        title={`Page fit: ${bottomToolbarApi.zoomDropdownLabel}`}
+                        style={{
+                          position: 'relative',
+                          width: '36px',
+                          height: '28px',
+                          padding: 0,
+                          background: 'transparent',
+                          border: 'none',
+                          borderRadius: '2px',
+                          color: mode !== ZOOM_MODES.MANUAL ? '#e0e0e0' : '#bbb',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {/* Left-edge chevron — points LEFT to signal the
+                            popup expands leftward when clicked. */}
+                        <svg
+                          viewBox="0 0 12 12"
+                          aria-hidden="true"
+                          style={{
+                            position: 'absolute',
+                            left: '2px',
+                            top: '50%',
+                            width: '12px',
+                            height: '12px',
+                            transform: 'translateY(-50%)',
+                            fill: 'none',
+                            stroke: 'currentColor',
+                            strokeLinecap: 'round',
+                            strokeLinejoin: 'round',
+                            strokeWidth: 1.8
+                          }}
+                        >
+                          <path d="M7.5 2.5 4 6l3.5 3.5" />
+                        </svg>
+                        {/* Fit icon centered. */}
+                        <span style={{
+                          position: 'absolute',
+                          left: '50%',
+                          top: '50%',
+                          transform: 'translate(-50%, -50%)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}>
+                          {renderFitIcon(iconMode)}
+                        </span>
+                      </button>
 
                   {bottomToolbarApi.isZoomMenuOpen && (
                     <div
                       style={{
                         position: 'absolute',
-                        bottom: '100%',
+                        bottom: 0,
                         right: '100%',
-                        marginBottom: '6px',
                         marginRight: '6px',
-                        background: '#2b2b2b',
-                        border: '1px solid transparent',
-                        borderRadius: '10px',
-                        boxShadow: '0 18px 36px rgba(0,0,0,0.45)',
-                        minWidth: '200px',
+                        background: 'rgb(30, 30, 30)',
+                        border: '1px solid #3a3a3a',
+                        borderRadius: '2px',
+                        boxShadow: '0 10px 24px rgba(0,0,0,0.45)',
+                        width: '144px',
                         zIndex: 6000,
-                        padding: '6px 0'
+                        padding: '2px'
                       }}
                     >
                       {ZOOM_MODE_OPTIONS.map((option) => {
+                        if (option.id === ZOOM_MODES.MANUAL) return null;
                         const isActive = option.id === bottomToolbarApi.zoomMode;
                         return (
                           <button
                             key={option.id}
                             onClick={() => bottomToolbarApi.handleZoomModeSelect(option.id)}
-                            className="btn btn-ghost"
+                            data-active={isActive}
                             style={{
                               width: '100%',
                               display: 'flex',
-                              flexDirection: 'column',
-                              alignItems: 'flex-start',
-                              padding: '10px 14px',
-                              background: isActive ? '#3a3a3a' : 'transparent',
+                              alignItems: 'center',
+                              gap: '6px',
+                              padding: '6px 8px',
+                              background: 'transparent',
                               border: 'none',
+                              borderRadius: '2px',
                               textAlign: 'left',
                               cursor: 'pointer',
-                              gap: '2px'
+                              color: isActive ? '#e0e0e0' : '#bbb',
+                              fontSize: '11px',
+                              fontFamily: FONT_FAMILY
                             }}
                           >
-                            <span style={{ fontSize: '13px', color: '#fff' }}>{option.label}</span>
-                            {option.description && (
-                              <span style={{ fontSize: '11px', color: '#999' }}>{option.description}</span>
-                            )}
+                            {renderFitIcon(option.id)}
+                            <span>{option.label}</span>
                           </button>
                         );
                       })}
                     </div>
                   )}
                 </div>
+                  );
+                })()}
               </div>
             )}
           </div>
