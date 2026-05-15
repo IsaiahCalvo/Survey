@@ -72,12 +72,17 @@ const SearchHighlightLayer = memo(({
         ? match.rectangles
         : match.rectangles.slice(0, Math.max(1, remainingRectangles));
 
-      const scaledRectangles = allowedRectangles.map((rect) => ({
-        x: rect.x * scale,
-        y: rect.y * scale,
-        width: rect.width * scale,
-        height: rect.height * scale
-      }));
+      const scaledRectangles = allowedRectangles.map((rect) => {
+        const baseHeight = rect.height * scale;
+        const topPad = activeGlowOnly ? Math.max(1, baseHeight * 0.06) : 0;
+        const bottomPad = activeGlowOnly ? Math.max(2, baseHeight * 0.24) : 0;
+        return {
+          x: rect.x * scale,
+          y: rect.y * scale - topPad,
+          width: rect.width * scale,
+          height: baseHeight + topPad + bottomPad
+        };
+      });
 
       if (scaledRectangles.length === 0) continue;
 
