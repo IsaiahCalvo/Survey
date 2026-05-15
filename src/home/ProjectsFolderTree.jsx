@@ -26,6 +26,7 @@ import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom';
 import { HubShell, Icon, Avatar, AvatarStack, Search } from './HubShell';
 import ManageTeamModal from './ManageTeamModal';
+import { MoveCopyModal } from './BulkModals';
 
 /* Literal palette — used by the portal popups, which render outside the
    `.survey-hub` root and therefore cannot inherit its CSS variables. */
@@ -157,6 +158,11 @@ export default function ProjectsFolderTree({
   // Pasteboard for the file-row Copy/Paste menu — Copy stows a document here,
   // Paste clones it into the open project.
   const [clipboard, setClipboard] = useState(null);
+
+  // Move/Copy picker — opened by the file select-mode "Move/Copy" button.
+  // Holds the indices (into openFiles) of the files to move or copy.
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [moveIndices, setMoveIndices] = useState([]);
 
   // Open-menu state: each holds { id, rect } so the portalled PopupMenu knows
   // what to anchor to. `null` when closed.
@@ -312,6 +318,32 @@ export default function ProjectsFolderTree({
       return [...rest, ...slice];
     });
   }, [open]);
+
+  // Move or copy the given file indices (into openFiles) to a destination
+  // project. 'move' re-parents the originals; 'copy' clones them into the
+  // destination and leaves the originals in place.
+  const moveCopyFiles = useCallback((indices, destId, mode) => {
+    if (!open || destId == null) return;
+    const ids = new Set(indices.map((i) => openFiles[i]?.id).filter((x) => x != null));
+    if (ids.size === 0) return;
+    setLocalDocs((prev) => {
+      if (mode === 'copy') {
+        const clones = prev
+          .filter((d) => ids.has(d.id))
+          .map((d) => ({
+            ...d, id: nextLocalId(), project_id: destId,
+            updated_at: new Date().toISOString(),
+          }));
+        return [...prev, ...clones];
+      }
+      return prev.map((d) => (
+        ids.has(d.id)
+          ? { ...d, project_id: destId, updated_at: new Date().toISOString() }
+          : d
+      ));
+    });
+    setSelFiles(new Set());
+  }, [open, openFiles]);
 
   const copyFile = useCallback((f) => { if (f) setClipboard(f); }, []);
   const pasteFile = useCallback(() => {
@@ -536,14 +568,15 @@ export default function ProjectsFolderTree({
                               onClick={() => { duplicateFiles([...selFiles]); setSelFiles(new Set()); }}
                               style={{ ...baseBtn, color: c ? 'var(--bone-100)' : 'var(--ink-300)', cursor: c ? 'pointer' : 'not-allowed' }}
                             >Duplicate</button>
-                            {/* Move/Copy — copies the first selected file to the
-                                clipboard so it can be pasted into any project. */}
+                            {/* Move/Copy — opens the Move/Copy picker so the
+                                user chooses a destination project and moves or
+                                copies the selected files there. */}
                             <button
                               disabled={!c}
                               onClick={() => {
-                                const first = [...selFiles].sort((a, b) => a - b)[0];
-                                if (first != null) copyFile(openFiles[first]);
-                                setSelFiles(new Set());
+                                if (!c) return;
+                                setMoveIndices([...selFiles]);
+                                setMoveOpen(true);
                               }}
                               style={{ ...baseBtn, color: c ? 'var(--bone-100)' : 'var(--ink-300)', cursor: c ? 'pointer' : 'not-allowed' }}
                             >Move/Copy</button>
@@ -735,6 +768,17 @@ export default function ProjectsFolderTree({
         onClose={() => setTeamModalProject(null)}
         project={teamModalProject}
         members={members}
+      />
+
+      {/* Move/Copy picker — opened by the file select-mode "Move/Copy" button.
+          On confirm it moves or copies the chosen files into the destination
+          project, mutating local document state. */}
+      <MoveCopyModal
+        open={moveOpen}
+        onClose={() => setMoveOpen(false)}
+        projects={localProjects}
+        count={moveIndices.length}
+        onConfirm={(destId, mode) => { moveCopyFiles(moveIndices, destId, mode); }}
       />
     </HubShell>
   );

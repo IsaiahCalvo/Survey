@@ -60,6 +60,9 @@ export default function SurveyHub({
   const shareProject = (project) => {
     if (project) setShare({ kind: 'project', name: project.name });
   };
+  const shareTemplate = (template) => {
+    if (template) setShare({ kind: 'template', name: template.name });
+  };
 
   const common = { onNav: setTab, user, templatesLocked: !isPro };
 
@@ -94,6 +97,7 @@ export default function SurveyHub({
           {...common}
           templates={templates}
           onCreateTemplate={onCreateTemplate}
+          onShare={shareTemplate}
         />
       )}
 
