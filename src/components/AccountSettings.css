@@ -1,10 +1,20 @@
+/* AccountSettings — restyled to the Survey Hub warm dark-and-gold palette.
+   Class names + selectors are unchanged from the original; only the visual
+   values were rewritten to match src/home/hub.css. Palette reference:
+     surfaces  #0d0f14 / #12151c / #181c24 / #1f2430
+     borders   #2a3140 / #3a4252
+     text      #f4f1ea (primary) / #8d96a6 (muted) / #5a6473 (quiet)
+     accent    gold #d8a84e, dark ink #15110a on gold
+     danger    #cf6f6f
+   Fonts: "Helvetica Neue", Helvetica, Arial; mono "JetBrains Mono". */
+
 .account-settings-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.75);
+  background: rgba(8, 9, 12, 0.78);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
@@ -12,10 +22,11 @@
   z-index: 10000;
   animation: fadeIn 0.2s ease-out;
   padding: 20px;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
 .account-settings-modal {
-  background: #1e1e1e;
+  background: #12151c;
   border-radius: 12px;
   width: 95%;
   max-width: 900px;
@@ -24,7 +35,8 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  border: 1px solid #2a3140;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
   animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -51,46 +63,46 @@
 }
 
 .account-settings-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 14px 18px;
+  border-bottom: 1px solid #2a3140;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.02), transparent);
+  background: #181c24;
   flex-shrink: 0;
 }
 
 .account-settings-header h2 {
   margin: 0;
   font-size: 18px;
-  font-weight: 600;
-  letter-spacing: -0.5px;
-  color: #fff;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: #f4f1ea;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
 .account-settings-close {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: #181c24;
+  border: 1px solid #2a3140;
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
-  color: #aaa;
+  color: #8d96a6;
   padding: 0;
   width: 32px;
   height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: 6px;
   transition: all 0.2s ease;
   font-family: inherit;
 }
 
 .account-settings-close:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.15);
-  color: #fff;
+  background: #1f2430;
+  border-color: #3a4252;
+  color: #f4f1ea;
   transform: scale(1.05);
 }
 
@@ -102,49 +114,69 @@
 
 .account-settings-sidebar {
   width: 200px;
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(0, 0, 0, 0.2);
+  border-right: 1px solid #2a3140;
+  background: #0d0f14;
   display: flex;
   flex-direction: column;
-  padding: 12px 0;
+  padding: 12px 8px;
+  gap: 2px;
 }
 
 .account-sidebar-btn {
-  padding: 10px 20px;
+  padding: 8px 10px;
   text-align: left;
   background: transparent;
   border: none;
-  border-left: 3px solid transparent;
-  color: #aaa;
+  border-radius: 6px;
+  color: #8d96a6;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 500;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   font-family: inherit;
   outline: none;
 }
 
 .account-sidebar-btn:hover {
-  background: rgba(255, 255, 255, 0.03);
-  color: #ddd;
+  background: #181c24;
+  color: #c9c3b4;
 }
 
 .account-sidebar-btn.active {
-  background: rgba(255, 255, 255, 0.05);
-  border-left-color: #4A90E2;
-  color: #fff;
+  background: #1f2430;
+  color: #f4f1ea;
+  box-shadow: inset 2px 0 #d8a84e;
 }
 
 .account-settings-content {
-  padding: 16px 24px;
+  padding: 18px 24px;
   overflow-y: auto;
   flex: 1;
+  background: #12151c;
+}
+
+.account-settings-content::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.account-settings-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.account-settings-content::-webkit-scrollbar-thumb {
+  background: #3a4252;
+  border-radius: 6px;
+}
+
+.account-settings-content::-webkit-scrollbar-thumb:hover {
+  background: #5a6473;
 }
 
 .account-section {
   margin-bottom: 16px;
   padding-bottom: 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid #2a3140;
   height: 60px;
 }
 
@@ -157,19 +189,39 @@
 .account-section h3 {
   margin: 0 0 16px 0;
   font-size: 15px;
-  font-weight: 600;
-  color: #fff;
-  letter-spacing: -0.2px;
+  font-weight: 700;
+  color: #f4f1ea;
+  letter-spacing: -0.02em;
 }
 
 .account-section-description {
-  font-size: 13px;
-  color: #888;
+  font-size: 12.5px;
+  color: #8d96a6;
   margin: -8px 0 16px 0;
   line-height: 1.5;
 }
 
+.account-error {
+  background: rgba(207, 111, 111, 0.1);
+  border: 1px solid rgba(207, 111, 111, 0.28);
+  color: #cf6f6f;
+  border-radius: 6px;
+  padding: 9px 12px;
+  font-size: 12.5px;
+  margin-bottom: 14px;
+  line-height: 1.45;
+}
 
+.account-message {
+  background: rgba(216, 168, 78, 0.1);
+  border: 1px solid rgba(216, 168, 78, 0.28);
+  color: #d8a84e;
+  border-radius: 6px;
+  padding: 9px 12px;
+  font-size: 12.5px;
+  margin-bottom: 14px;
+  line-height: 1.45;
+}
 
 .account-form-row {
   display: grid;
@@ -186,77 +238,82 @@
 }
 
 .account-form-group label {
-  font-size: 11px;
-  font-weight: 600;
-  color: #888;
-  letter-spacing: 0.3px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #8d96a6;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .account-form-group input {
   padding: 8px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid #2a3140;
   border-radius: 6px;
   font-size: 13px;
-  background: rgba(255, 255, 255, 0.03);
-  color: #fff;
+  background: #181c24;
+  color: #f4f1ea;
   transition: all 0.2s ease;
   font-family: inherit;
 }
 
+.account-form-group input::placeholder {
+  color: #5a6473;
+}
+
 .account-form-group input:hover:not(:disabled) {
-  border-color: rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.05);
+  border-color: #3a4252;
+  background: #1f2430;
 }
 
 .account-form-group input:focus {
   outline: none;
-  border-color: #4A90E2;
-  background: rgba(255, 255, 255, 0.05);
-  box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
+  border-color: #d8a84e;
+  background: #1f2430;
+  box-shadow: 0 0 0 2px rgba(216, 168, 78, 0.18);
 }
 
 .account-form-group input:disabled {
-  background: rgba(255, 255, 255, 0.02);
-  border-color: rgba(255, 255, 255, 0.05);
+  background: #12151c;
+  border-color: #2a3140;
+  color: #8d96a6;
   cursor: not-allowed;
-  opacity: 0.6;
+  opacity: 0.7;
 }
 
 .account-field-display {
   padding: 8px 10px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #181c24;
+  border: 1px solid #2a3140;
   border-radius: 6px;
   font-size: 13px;
-  color: #ddd;
+  color: #e8e2d4;
   min-height: 34px;
   display: flex;
   align-items: center;
 }
 
 .account-field-display-empty {
-  color: #666;
+  color: #5a6473;
   font-style: italic;
 }
 
 .account-field-hint {
   font-size: 11px;
-  color: #666;
+  color: #5a6473;
   margin-top: 4px;
 }
 
 .account-divider {
   border: none;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid #2a3140;
   margin: 20px 0;
 }
 
 .account-subsection {
-  background: rgba(255, 255, 255, 0.02);
-  border-radius: 8px;
+  background: #181c24;
+  border-radius: 10px;
   padding: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid #2a3140;
 }
 
 .account-subsection-header {
@@ -266,13 +323,13 @@
 .account-subsection-title {
   font-size: 13px;
   font-weight: 600;
-  color: #ddd;
+  color: #f4f1ea;
   margin: 0 0 2px 0;
 }
 
 .account-subsection-description {
   font-size: 11px;
-  color: #888;
+  color: #8d96a6;
   margin: 0;
 }
 
@@ -284,27 +341,32 @@
 
 .account-btn-primary {
   padding: 8px 16px;
-  background: #4A90E2;
-  color: white;
-  border: none;
+  background: #d8a84e;
+  color: #15110a;
+  border: 1px solid transparent;
   border-radius: 6px;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
   font-family: inherit;
 }
 
 .account-btn-primary:hover:not(:disabled) {
-  background: #357ABD;
+  background: #e3b863;
   transform: translateY(-1px);
+}
+
+.account-btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .account-btn-secondary {
   padding: 8px 16px;
-  background: rgba(255, 255, 255, 0.05);
-  color: white;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: #1f2430;
+  color: #f4f1ea;
+  border: 1px solid #2a3140;
   border-radius: 6px;
   font-size: 13px;
   font-weight: 500;
@@ -314,28 +376,42 @@
 }
 
 .account-btn-secondary:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.15);
+  background: #2a3140;
+  border-color: #3a4252;
   transform: translateY(-1px);
+}
+
+.account-btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.account-btn-secondary-full {
+  width: 100%;
 }
 
 .account-btn-danger {
   padding: 8px 16px;
-  background: rgba(244, 67, 54, 0.1);
-  color: #ff6b6b;
-  border: 1px solid rgba(244, 67, 54, 0.2);
+  background: rgba(207, 111, 111, 0.1);
+  color: #cf6f6f;
+  border: 1px solid rgba(207, 111, 111, 0.26);
   border-radius: 6px;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
   font-family: inherit;
 }
 
 .account-btn-danger:hover:not(:disabled) {
-  background: rgba(244, 67, 54, 0.2);
-  border-color: rgba(244, 67, 54, 0.3);
+  background: rgba(207, 111, 111, 0.18);
+  border-color: rgba(207, 111, 111, 0.4);
   transform: translateY(-1px);
+}
+
+.account-btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .account-danger-zone {
@@ -343,16 +419,16 @@
 }
 
 .account-danger-zone h3 {
-  color: #ff6b6b;
+  color: #cf6f6f;
   margin-bottom: 8px;
   font-size: 14px;
 }
 
 .account-danger-zone-description {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.4);
+  color: #8d96a6;
   margin-bottom: 0;
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
 .account-delete-confirm {
@@ -365,15 +441,15 @@
 .account-delete-confirm-title {
   font-size: 13px;
   font-weight: 600;
-  color: #fff;
+  color: #f4f1ea;
   margin: 0 0 6px 0;
 }
 
 .account-delete-confirm-description {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.6);
+  color: #8d96a6;
   margin: 0 0 12px 0;
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
 .account-delete-confirm-actions {
@@ -388,16 +464,16 @@
   align-items: center;
   justify-content: space-between;
   padding: 12px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
+  background: #181c24;
+  border: 1px solid #2a3140;
+  border-radius: 10px;
   transition: all 0.2s ease;
   margin-bottom: 12px;
 }
 
 .account-connected-account:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.12);
+  background: #1f2430;
+  border-color: #3a4252;
 }
 
 .account-connected-account-info {
@@ -412,24 +488,25 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.05);
+  background: #1f2430;
+  border: 1px solid #2a3140;
   border-radius: 6px;
 }
 
 .account-connected-account-name {
   font-size: 14px;
-  font-weight: 500;
-  color: #fff;
+  font-weight: 600;
+  color: #f4f1ea;
   margin-bottom: 2px;
 }
 
 .account-connected-account-status {
   font-size: 12px;
-  color: #888;
+  color: #8d96a6;
 }
 
 .account-connected-account-status-connected {
-  color: #4CAF50;
+  color: #a6e07a;
 }
 
 /* Subscription Grid */
@@ -441,9 +518,9 @@
 }
 
 .account-subscription-card {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
+  background: #181c24;
+  border: 1px solid #2a3140;
+  border-radius: 10px;
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -454,32 +531,46 @@
 .account-subscription-header {
   margin-bottom: 16px;
   padding-bottom: 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid #2a3140;
 }
 
 .account-plan-name {
   font-size: 14px;
-  font-weight: 600;
-  color: #fff;
+  font-weight: 700;
+  color: #f4f1ea;
   margin-bottom: 4px;
+}
+
+.account-plan-info-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.account-plan-badge-text {
+  font-size: 11px;
+  font-weight: 600;
+  color: #d8a84e;
 }
 
 .account-subscription-price {
   display: flex;
   align-items: baseline;
   gap: 4px;
+  flex-wrap: wrap;
 }
 
 .price-amount {
   font-size: 24px;
-  font-weight: 700;
-  color: #fff;
-  letter-spacing: -0.5px;
+  font-weight: 800;
+  color: #f4f1ea;
+  letter-spacing: -0.03em;
 }
 
 .price-period {
   font-size: 12px;
-  color: #888;
+  color: #8d96a6;
 }
 
 .account-subscription-features {
@@ -498,14 +589,14 @@
   align-items: flex-start;
   gap: 8px;
   font-size: 12px;
-  color: #ccc;
+  color: #c9c3b4;
   margin-bottom: 8px;
   line-height: 1.4;
 }
 
 .account-subscription-features li::before {
   content: "•";
-  color: #666;
+  color: #d8a84e;
 }
 
 .account-subscription-actions button {
@@ -513,29 +604,29 @@
 }
 
 .account-btn-purple {
-  background: #7B61FF;
-  color: white;
+  background: #d8a84e;
+  color: #15110a;
   border: none;
   padding: 8px;
   border-radius: 6px;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   transition: background 0.2s;
 }
 
 .account-btn-purple:hover {
-  background: #6a4df7;
+  background: #e3b863;
 }
 
 .account-btn-outline-green {
-  background: rgba(76, 175, 80, 0.1);
-  border: 1px solid rgba(76, 175, 80, 0.3);
-  color: #4CAF50;
+  background: rgba(166, 224, 122, 0.1);
+  border: 1px solid rgba(166, 224, 122, 0.3);
+  color: #a6e07a;
   padding: 8px;
   border-radius: 6px;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: default;
   text-align: center;
 }
@@ -544,7 +635,7 @@
 .account-subscription-tabs {
   display: flex;
   gap: 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid #2a3140;
   margin-top: 4px;
 }
 
@@ -553,7 +644,7 @@
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
-  color: #aaa;
+  color: #8d96a6;
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
@@ -564,13 +655,13 @@
 }
 
 .account-subscription-tab:hover {
-  color: #ddd;
-  background: rgba(255, 255, 255, 0.03);
+  color: #c9c3b4;
+  background: #181c24;
 }
 
 .account-subscription-tab.active {
-  color: #fff;
-  border-bottom-color: #4A90E2;
+  color: #f4f1ea;
+  border-bottom-color: #d8a84e;
 }
 
 /* Mobile */
@@ -591,22 +682,17 @@
     width: 100%;
     flex-direction: row;
     border-right: none;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid #2a3140;
     overflow-x: auto;
-    padding: 0;
+    padding: 6px 8px;
   }
 
   .account-sidebar-btn {
-    padding: 12px 16px;
-    border-left: none;
-    border-bottom: 2px solid transparent;
     white-space: nowrap;
   }
 
   .account-sidebar-btn.active {
-    border-left: none;
-    border-bottom-color: #4A90E2;
-    background: transparent;
+    box-shadow: inset 0 -2px #d8a84e;
   }
 
   .account-subscription-grid {

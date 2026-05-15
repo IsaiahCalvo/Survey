@@ -20,6 +20,7 @@ import ProjectsFolderTree from './ProjectsFolderTree';
 import TemplatesEditor from './TemplatesEditor';
 import ShareModal from './ShareModal';
 import { HubChromeContext } from './HubShell';
+import { AccountSettings } from '../components/AccountSettings';
 import './hub.css';
 
 const TAB_KEY = 'survey-hub-tab';
@@ -47,6 +48,7 @@ export default function SurveyHub({
     try { return localStorage.getItem(TAB_KEY) || 'documents'; } catch { return 'documents'; }
   });
   const [share, setShare] = useState(null); // null | { kind, name }
+  const [settingsOpen, setSettingsOpen] = useState(false); // settings page shown over the hub
 
   useEffect(() => {
     if (tab === 'templates' && !isPro) setTab('documents');
@@ -69,8 +71,16 @@ export default function SurveyHub({
 
   const common = { onNav: setTab, user, templatesLocked: !isPro };
 
+  /* Clicking "Settings" in the profile menu opens the settings page as a
+     full-screen view over the hub. We still forward to the parent's
+     onSettings (if supplied) so host apps can observe the intent. */
+  const openSettings = () => {
+    setSettingsOpen(true);
+    if (onSettings) onSettings();
+  };
+
   return (
-    <HubChromeContext.Provider value={{ user, onSettings, onSignOut }}>
+    <HubChromeContext.Provider value={{ user, onSettings: openSettings, onSignOut }}>
       {tab === 'documents' && (
         <DocumentsLedger
           {...common}
@@ -109,6 +119,14 @@ export default function SurveyHub({
         kind={share?.kind}
         name={share?.name}
         onClose={() => setShare(null)}
+      />
+
+      {/* Settings page — shown full-screen over the hub. AccountSettings
+          renders its own fixed overlay with a close (×) button in its
+          header, which is the way back to the hub. */}
+      <AccountSettings
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
       />
     </HubChromeContext.Provider>
   );

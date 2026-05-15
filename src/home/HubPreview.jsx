@@ -9,6 +9,53 @@
    run on local state so duplicate / move / copy / delete are demonstrable. */
 import React, { useState } from 'react';
 import SurveyHub from './SurveyHub';
+import { AuthContext } from '../contexts/AuthContext';
+import { MSGraphContext } from '../contexts/MSGraphContext';
+
+/* Mock context values so the Settings page (AccountSettings) can render in the
+   preview without a real backend. Same pattern as src/DevTestRoute.jsx. */
+const asyncNoop = async () => {};
+
+const mockAuthValue = {
+  user: null,
+  session: null,
+  loading: false,
+  signUp: asyncNoop,
+  signIn: asyncNoop,
+  signInWithGoogle: asyncNoop,
+  signInWithSSO: asyncNoop,
+  signOut: asyncNoop,
+  resetPassword: asyncNoop,
+  updatePassword: asyncNoop,
+  updateProfile: asyncNoop,
+  refreshSubscriptionTier: asyncNoop,
+  isAuthenticated: false,
+  isSupabaseAvailable: false,
+  plan: 'developer',
+  tier: 'developer',
+  features: {
+    cloudSync: true,
+    advancedSurvey: true,
+    excelExport: true,
+    sso: true,
+  },
+};
+
+const mockMSGraphValue = {
+  msalInstance: null,
+  account: null,
+  graphClient: null,
+  isAuthenticated: false,
+  isLoading: false,
+  error: null,
+  login: asyncNoop,
+  logout: asyncNoop,
+  updateLastUsed: asyncNoop,
+  connectionRestored: true,
+  needsReconnect: false,
+  handleOAuthCallback: asyncNoop,
+  ensureFreshToken: async () => true,
+};
 
 const iso = (daysAgo, h = 10, m = 0) => {
   const d = new Date();
@@ -115,25 +162,29 @@ export default function HubPreview() {
   };
 
   return (
-    <div style={{ width: '100vw', height: '100vh' }}>
-      <SurveyHub
-        documents={documents}
-        projects={MOCK_PROJECTS}
-        templates={MOCK_TEMPLATES}
-        members={MOCK_MEMBERS}
-        user={{ name: 'Isaiah Calvo', email: 'isaiahcalvo123@gmail.com' }}
-        isPro
-        initialTab={initialTab}
-        onOpenDocument={(d) => console.log('[hub preview] open document:', d.name)}
-        onUpload={() => console.log('[hub preview] upload')}
-        onCreateProject={() => console.log('[hub preview] new project')}
-        onCreateTemplate={() => console.log('[hub preview] new template')}
-        onDuplicateDocuments={handleDuplicate}
-        onDeleteDocuments={handleDelete}
-        onMoveCopyDocuments={handleMoveCopy}
-        onSettings={() => console.log('[hub preview] open settings page')}
-        onSignOut={() => console.log('[hub preview] sign out')}
-      />
-    </div>
+    <AuthContext.Provider value={mockAuthValue}>
+      <MSGraphContext.Provider value={mockMSGraphValue}>
+        <div style={{ width: '100vw', height: '100vh' }}>
+          <SurveyHub
+            documents={documents}
+            projects={MOCK_PROJECTS}
+            templates={MOCK_TEMPLATES}
+            members={MOCK_MEMBERS}
+            user={{ name: 'Isaiah Calvo', email: 'isaiahcalvo123@gmail.com' }}
+            isPro
+            initialTab={initialTab}
+            onOpenDocument={(d) => console.log('[hub preview] open document:', d.name)}
+            onUpload={() => console.log('[hub preview] upload')}
+            onCreateProject={() => console.log('[hub preview] new project')}
+            onCreateTemplate={() => console.log('[hub preview] new template')}
+            onDuplicateDocuments={handleDuplicate}
+            onDeleteDocuments={handleDelete}
+            onMoveCopyDocuments={handleMoveCopy}
+            onSettings={() => console.log('[hub preview] open settings page')}
+            onSignOut={() => console.log('[hub preview] sign out')}
+          />
+        </div>
+      </MSGraphContext.Provider>
+    </AuthContext.Provider>
   );
 }
