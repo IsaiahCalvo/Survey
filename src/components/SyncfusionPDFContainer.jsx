@@ -1701,7 +1701,7 @@ const SyncfusionPDFContainer = forwardRef(({
       textSearchModule.searchText(query, matchCase);
       return true;
     },
-    refreshTextSearchHighlights: (query, matchCase = false) => {
+    refreshTextSearchHighlights: (query, matchCase = false, options = null) => {
       const viewer = getViewerInstance();
       const textSearchModule = viewer?.textSearchModule;
       const normalizedQuery = typeof query === 'string' ? query.trim() : '';
@@ -1722,16 +1722,35 @@ const SyncfusionPDFContainer = forwardRef(({
         textSearchModule.isMatchCase = matchCase;
         textSearchModule.programaticalSearch = true;
         textSearchModule.isSingleSearch = true;
+        const activeMatchIndex = Number(
+          typeof options === 'object' && options
+            ? options.activeMatchIndex
+            : NaN
+        );
+        if (
+          Number.isInteger(activeMatchIndex) &&
+          activeMatchIndex >= 0 &&
+          Array.isArray(textSearchModule.searchMatches)
+        ) {
+          let remaining = activeMatchIndex;
+          for (let pageIndex = 0; pageIndex < textSearchModule.searchMatches.length; pageIndex += 1) {
+            const matches = textSearchModule.searchMatches[pageIndex];
+            const matchCount = Array.isArray(matches) ? matches.length : 0;
+            if (remaining < matchCount) {
+              textSearchModule.searchPageIndex = pageIndex;
+              textSearchModule.searchIndex = remaining;
+              break;
+            }
+            remaining -= matchCount;
+          }
+        }
+        const host = getViewerElement();
+        const highlightRoot = host || document;
+        highlightRoot
+          ?.querySelectorAll?.('.e-pv-search-text-highlight, .e-pv-search-text-highlightother')
+          ?.forEach((element) => element.remove());
         if (typeof textSearchModule.highlightOthers === 'function') {
           textSearchModule.highlightOthers(true);
-        }
-        const pageIndex = Number(viewer?.currentPageNumber ?? viewer?.pdfViewerBase?.currentPageNumber ?? 1) - 1;
-        if (
-          Number.isFinite(pageIndex) &&
-          pageIndex >= 0 &&
-          typeof textSearchModule.resizeSearchElements === 'function'
-        ) {
-          textSearchModule.resizeSearchElements(pageIndex);
         }
         return true;
       } catch (error) {

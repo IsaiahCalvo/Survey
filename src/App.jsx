@@ -12980,6 +12980,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   // Search state
   const [searchResults, setSearchResults] = useState([]); // Array of search match results
   const [currentMatchIndex, setCurrentMatchIndex] = useState(-1); // Current active match index
+  const currentMatchIndexRef = useRef(-1);
   const searchZoomLevelRef = useRef(null); // Store zoom level before search zoom
   const isNavigatingToMatchRef = useRef(false); // Flag to prevent recursive navigation
   const activeTextSearchQueryRef = useRef('');
@@ -14827,6 +14828,54 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     useSyncfusionRenderer
   ]);
 
+  const reconcileSyncfusionScaleFromRenderedPage = useCallback((source = 'syncfusion-scale-reconcile', pageOverride = null) => {
+    if (!useSyncfusionRenderer) return null;
+    if (zoomOverlayTransformActiveRef.current && source !== 'manual-zoom') return null;
+
+    const pageNumber = coercePageNumber(
+      pageOverride ?? pageNumRef.current ?? syncfusionViewerRef.current?.getCurrentPage?.() ?? 1,
+      Number.POSITIVE_INFINITY
+    ) || 1;
+    const measured = measureSyncfusionPageScale(
+      pageNumber,
+      pageSizesRef.current || {},
+      syncfusionPageContainersStateRef.current || pageContainersRef.current || {},
+      0
+    );
+    if (!Number.isFinite(measured) || measured <= 0.05) return null;
+
+    const rawViewerZoom = Number(
+      syncfusionViewerRef.current?.getZoomValue?.() ??
+      syncfusionViewerRef.current?.zoomValue ??
+      NaN
+    );
+    const viewerScale = Number.isFinite(rawViewerZoom) && rawViewerZoom > 0
+      ? clampScale(rawViewerZoom / 100)
+      : null;
+    let electronFactor = syncfusionElectronFactorRef.current;
+    let logicalScale = measured;
+    if (viewerScale) {
+      const inferredFactor = measured / viewerScale;
+      if (inferredFactor > 0.3 && inferredFactor < 5) {
+        electronFactor = inferredFactor;
+        syncfusionElectronFactorRef.current = inferredFactor;
+        logicalScale = clampScale(measured / electronFactor);
+      }
+    } else if (electronFactor && electronFactor > 0) {
+      logicalScale = clampScale(measured / electronFactor);
+    }
+
+    if (Math.abs(logicalScale - (scaleRef.current || 1)) <= 0.01) return logicalScale;
+
+    scaleRef.current = logicalScale;
+    setScale((prev) => (Math.abs(prev - logicalScale) <= 0.0005 ? prev : logicalScale));
+    setManualZoomScale((prev) => (Math.abs(prev - logicalScale) <= 0.0005 ? prev : logicalScale));
+    if (document.activeElement !== zoomInputRef.current) {
+      setZoomInputValue(String(Math.round(logicalScale * 100)));
+    }
+    return logicalScale;
+  }, [useSyncfusionRenderer]);
+
   const handleSyncfusionDocumentLoad = useCallback((payload) => {
     const viewer = syncfusionViewerRef.current;
     syncfusionPagePdfEverReadyRef.current = new Set();
@@ -14879,21 +14928,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     // scale from the DOM and reconcile React state. Do NOT call zoomTo — it
     // would trigger the zoom overlay transform flow with a bogus ratio.
     const reconcileScaleFromDOM = () => {
-      const measured = measureSyncfusionPageScale(
-        restoredPage,
-        pageSizesRef.current || {},
-        syncfusionPageContainersStateRef.current || pageContainersRef.current || {},
-        0
-      );
-      if (!Number.isFinite(measured) || measured <= 0.05) return false;
-      if (Math.abs(measured - scaleRef.current) <= 0.01) return true;
-      scaleRef.current = measured;
-      setScale(measured);
-      setManualZoomScale(measured);
-      if (document.activeElement !== zoomInputRef.current) {
-        setZoomInputValue(String(Math.round(measured * 100)));
-      }
-      return true;
+      return reconcileSyncfusionScaleFromRenderedPage('document-load', restoredPage) !== null;
     };
     // Trigger fit-page ONLY after reconcile has produced a trustworthy scaleRef —
     // otherwise the in-branch self-calibration computes the electron factor from a
@@ -14970,7 +15005,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
     bindSyncfusionViewerRefs();
     queueSyncfusionPageContainerRefresh();
-  }, [bindSyncfusionViewerRefs, queueSyncfusionPageContainerRefresh]);
+  }, [bindSyncfusionViewerRefs, queueSyncfusionPageContainerRefresh, reconcileSyncfusionScaleFromRenderedPage]);
 
   const handleSyncfusionDocumentLoadFailed = useCallback((args) => {
     // UX: Phase 15 UAT-3 (2026-04-18) — Syncfusion's event args serialise
@@ -15083,7 +15118,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     }
     textSearchRefreshTimerRef.current = setTimeout(() => {
       textSearchRefreshTimerRef.current = null;
-      syncfusionViewerRef.current?.refreshTextSearchHighlights?.(query, false, reason);
+      syncfusionViewerRef.current?.refreshTextSearchHighlights?.(query, false, {
+        reason,
+        activeMatchIndex: currentMatchIndexRef.current
+      });
     }, delay);
   }, [useSyncfusionRenderer]);
 
@@ -15254,8 +15292,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   ]);
 
   const handleSyncfusionPageRenderComplete = useCallback(() => {
+    reconcileSyncfusionScaleFromRenderedPage('page-render-complete');
     scheduleTextSearchHighlightRefresh('page-render-complete', 80);
-  }, [scheduleTextSearchHighlightRefresh]);
+  }, [reconcileSyncfusionScaleFromRenderedPage, scheduleTextSearchHighlightRefresh]);
 
   const handleSyncfusionWrapperWheel = useCallback((event) => {
     if (!useSyncfusionRenderer) return;
@@ -27815,6 +27854,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       pdfDocumentKey: pdfSearchDocumentKey
     });
 
+    currentMatchIndexRef.current = index;
     setCurrentMatchIndex(index);
 
     const pageNumber = match.pageNumber;
@@ -28024,6 +28064,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
   // Handler for current match index change
   const handleCurrentMatchIndexChange = useCallback((index) => {
+    currentMatchIndexRef.current = index;
     setCurrentMatchIndex(index);
   }, []);
 
@@ -28103,18 +28144,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   const zoomIn = useCallback(() => {
     const controller = zoomControllerRef.current;
     if (!controller) return;
-    const basisScale = scaleRef.current || manualZoomScaleRef.current || 1.0;
+    const measuredScale = reconcileSyncfusionScaleFromRenderedPage('manual-zoom');
+    const basisScale = measuredScale || scaleRef.current || manualZoomScaleRef.current || 1.0;
     const nextScale = clampScale(basisScale * TOOLBAR_ZOOM_STEP_FACTOR);
     controller.setScale(nextScale);
-  }, []);
+  }, [reconcileSyncfusionScaleFromRenderedPage]);
 
   const zoomOut = useCallback(() => {
     const controller = zoomControllerRef.current;
     if (!controller) return;
-    const basisScale = scaleRef.current || manualZoomScaleRef.current || 1.0;
+    const measuredScale = reconcileSyncfusionScaleFromRenderedPage('manual-zoom');
+    const basisScale = measuredScale || scaleRef.current || manualZoomScaleRef.current || 1.0;
     const nextScale = clampScale(basisScale / TOOLBAR_ZOOM_STEP_FACTOR);
     controller.setScale(nextScale);
-  }, []);
+  }, [reconcileSyncfusionScaleFromRenderedPage]);
 
   const resetZoom = useCallback(() => {
     const controller = zoomControllerRef.current;
