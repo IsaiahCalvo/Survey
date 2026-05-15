@@ -27669,7 +27669,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       retryDelay = useSyncfusionRenderer ? 80 : 40,
       rightInset = 0,
       leftInset = 0,
-      bypassActiveSpace = true
+      bypassActiveSpace = true,
+      navigateFirst = true,
+      settlePasses = 0,
+      settleDelay = useSyncfusionRenderer ? 120 : 60
     } = options;
 
     if (scrollMode === 'single') {
@@ -27677,7 +27680,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     }
 
     const run = (attempt = 0) => {
-      if (attempt === 0 && useSyncfusionRenderer) {
+      if (attempt === 0 && useSyncfusionRenderer && navigateFirst) {
         goToPage(targetPage, { bypassActiveSpace });
         if (typeof window !== 'undefined') {
           window.setTimeout(() => run(attempt + 1), retryDelay);
@@ -27728,8 +27731,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       container.scrollTo({
         left: Math.max(0, Math.min(targetScrollLeft, maxScrollLeft)),
         top: Math.max(0, Math.min(targetScrollTop, maxScrollTop)),
-        behavior
+        behavior: attempt > 0 ? 'auto' : behavior
       });
+
+      if (attempt < settlePasses && typeof window !== 'undefined') {
+        window.setTimeout(() => run(attempt + 1), settleDelay);
+      }
+
       return true;
     };
 
@@ -30697,18 +30705,22 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     const shouldZoom = targetScale > currentScale + 0.05;
     const rightInset = showSurveyPanel && !isSurveyPanelCollapsed ? 320 : 0;
 
-    const centerHighlight = () => {
+    const centerHighlight = ({ navigateFirst = true } = {}) => {
       centerPageBoundsInViewer(pageNumber, bounds, {
-        behavior: 'smooth',
-        maxRetries: useSyncfusionRenderer ? 14 : 6,
-        retryDelay: useSyncfusionRenderer ? 90 : 50,
-        rightInset
+        behavior: 'auto',
+        maxRetries: useSyncfusionRenderer ? 18 : 8,
+        retryDelay: useSyncfusionRenderer ? 80 : 40,
+        rightInset,
+        navigateFirst,
+        settlePasses: useSyncfusionRenderer ? 5 : 3,
+        settleDelay: useSyncfusionRenderer ? 140 : 70
       });
     };
 
     if (shouldZoom) {
       setScaleWithViewportPreservation(targetScale, { preserveCenter: false });
-      setTimeout(centerHighlight, useSyncfusionRenderer ? 160 : 60);
+      setTimeout(() => centerHighlight({ navigateFirst: true }), useSyncfusionRenderer ? 180 : 60);
+      setTimeout(() => centerHighlight({ navigateFirst: false }), useSyncfusionRenderer ? 520 : 180);
       return;
     }
 
