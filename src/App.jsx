@@ -27683,19 +27683,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     }
 
     const run = (attempt = 0) => {
-      if (attempt === 0 && useSyncfusionRenderer && navigateFirst) {
+      const container = containerRef.current;
+      const pageContainer =
+        pageContainersRef.current?.[targetPage] ||
+        syncfusionPageContainersStateRef.current?.[targetPage] ||
+        null;
+
+      if (attempt === 0 && useSyncfusionRenderer && navigateFirst && !pageContainer) {
         goToPage(targetPage, { bypassActiveSpace });
         if (typeof window !== 'undefined') {
           window.setTimeout(() => run(attempt + 1), retryDelay);
         }
         return false;
       }
-
-      const container = containerRef.current;
-      const pageContainer =
-        pageContainersRef.current?.[targetPage] ||
-        syncfusionPageContainersStateRef.current?.[targetPage] ||
-        null;
 
       if (!container || !pageContainer) {
         if (attempt === 0 && scrollMode === 'continuous') {
