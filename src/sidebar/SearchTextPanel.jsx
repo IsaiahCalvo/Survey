@@ -19,9 +19,13 @@ const TEXT_HIGHLIGHT_MIN_HEIGHT = 5;
 const TEXT_HIGHLIGHT_ASCENT_RATIO = 0.74;
 const TEXT_HIGHLIGHT_TOP_PAD_RATIO = 0.02;
 const TEXT_HIGHLIGHT_BOTTOM_PAD_RATIO = 0.10;
-const TEXT_HIGHLIGHT_LEFT_PAD_RATIO = 0.015;
-const TEXT_HIGHLIGHT_RIGHT_PAD_RATIO = 0.28;
-const TEXT_HIGHLIGHT_MAX_SIDE_PAD_RATIO = 0.32;
+const TEXT_HIGHLIGHT_BOUNDARY_LEFT_PAD_RATIO = 0.015;
+const TEXT_HIGHLIGHT_INTERNAL_LEFT_PAD_RATIO = 0.006;
+const TEXT_HIGHLIGHT_BOUNDARY_RIGHT_PAD_RATIO = 0.18;
+const TEXT_HIGHLIGHT_INTERNAL_RIGHT_PAD_RATIO = 0.035;
+const TEXT_HIGHLIGHT_MAX_SIDE_PAD_RATIO = 0.22;
+
+const SEARCH_TEXT_WORD_CHAR_REGEX = /[\p{L}\p{N}\p{M}]/u;
 
 let searchTextMeasureContext = null;
 
@@ -48,6 +52,28 @@ const measureSearchTextWidth = (ctx, font, text) => {
   } catch {
     return null;
   }
+};
+
+const isSearchTextWordChar = (char) => (
+  typeof char === 'string' && char.length > 0 && SEARCH_TEXT_WORD_CHAR_REGEX.test(char)
+);
+
+const resolveTextSegmentContext = (itemText, relativeStart, relativeLength) => {
+  const segmentEnd = relativeStart + relativeLength;
+  const previousChar = relativeStart > 0 ? itemText.slice(relativeStart - 1, relativeStart) : '';
+  const nextChar = segmentEnd < itemText.length ? itemText.slice(segmentEnd, segmentEnd + 1) : '';
+
+  return {
+    previousChar,
+    nextChar,
+    startsAtBoundary: !isSearchTextWordChar(previousChar),
+    endsAtBoundary: !isSearchTextWordChar(nextChar)
+  };
+};
+
+const resolveTextHighlightPad = (fontHeight, ratio, minimum) => {
+  const maxSidePad = Math.max(1, fontHeight * TEXT_HIGHLIGHT_MAX_SIDE_PAD_RATIO);
+  return Math.min(Math.max(minimum, fontHeight * ratio), maxSidePad);
 };
 
 const resolveTextSegmentAdvance = ({
@@ -85,9 +111,13 @@ const resolveTextSegmentAdvance = ({
   const prefixText = itemText.slice(0, relativeStart);
   const matchText = itemText.slice(relativeStart, relativeStart + relativeLength);
   const prefixWidth = prefixText ? measureSearchTextWidth(ctx, font, prefixText) : 0;
-  const matchWidth = measureSearchTextWidth(ctx, font, matchText);
+  const segmentEndText = itemText.slice(0, relativeStart + relativeLength);
+  const segmentEndWidth = measureSearchTextWidth(ctx, font, segmentEndText);
+  const matchWidth = Number.isFinite(segmentEndWidth)
+    ? segmentEndWidth - prefixWidth
+    : measureSearchTextWidth(ctx, font, matchText);
 
-  if (!Number.isFinite(prefixWidth) || !matchWidth) {
+  if (!Number.isFinite(prefixWidth) || !Number.isFinite(matchWidth) || matchWidth <= 0) {
     return fallback;
   }
 
@@ -102,6 +132,9 @@ const resolveTextSegmentAdvance = ({
     itemTextLength: itemText.length,
     measuredFullWidth: Math.round(fullWidth * 100) / 100,
     measuredMatchWidth: Math.round(matchWidth * 100) / 100,
+    measuredEndWidth: Number.isFinite(segmentEndWidth)
+      ? Math.round(segmentEndWidth * 100) / 100
+      : undefined,
     startRatio: Math.round(startRatio * 10000) / 10000,
     widthRatio: Math.round(widthRatio * 10000) / 10000
   };
@@ -187,9 +220,13 @@ const buildRectanglesForMatch = (pageData, matchStart, matchLength) => {
       : (vectorHeight || clampValue(textItem.fontSize, 12) || 12);
     const topPad = Math.max(0.35, fontHeight * TEXT_HIGHLIGHT_TOP_PAD_RATIO);
     const bottomPad = Math.max(1, fontHeight * TEXT_HIGHLIGHT_BOTTOM_PAD_RATIO);
-    const maxSidePad = Math.max(1, fontHeight * TEXT_HIGHLIGHT_MAX_SIDE_PAD_RATIO);
-    const leftPad = Math.min(Math.max(0.25, fontHeight * TEXT_HIGHLIGHT_LEFT_PAD_RATIO), maxSidePad);
-    const rightPad = Math.min(Math.max(0.75, fontHeight * TEXT_HIGHLIGHT_RIGHT_PAD_RATIO), maxSidePad);
+    const segmentContext = resolveTextSegmentContext(textItem.str, relativeStart, relativeLength);
+    const leftPad = segmentContext.startsAtBoundary
+      ? resolveTextHighlightPad(fontHeight, TEXT_HIGHLIGHT_BOUNDARY_LEFT_PAD_RATIO, 0.25)
+      : resolveTextHighlightPad(fontHeight, TEXT_HIGHLIGHT_INTERNAL_LEFT_PAD_RATIO, 0.08);
+    const rightPad = segmentContext.endsAtBoundary
+      ? resolveTextHighlightPad(fontHeight, TEXT_HIGHLIGHT_BOUNDARY_RIGHT_PAD_RATIO, 0.75)
+      : resolveTextHighlightPad(fontHeight, TEXT_HIGHLIGHT_INTERNAL_RIGHT_PAD_RATIO, 0.12);
 
     const baseLeft = transformed[4];
     const baseTop = transformed[5] - (fontHeight * TEXT_HIGHLIGHT_ASCENT_RATIO) - topPad;
@@ -218,10 +255,15 @@ const buildRectanglesForMatch = (pageData, matchStart, matchLength) => {
       itemTextLength: segmentAdvance.itemTextLength,
       measuredFullWidth: segmentAdvance.measuredFullWidth,
       measuredMatchWidth: segmentAdvance.measuredMatchWidth,
+      measuredEndWidth: segmentAdvance.measuredEndWidth,
       startRatio: segmentAdvance.startRatio,
       widthRatio: segmentAdvance.widthRatio,
       baseWidth: Math.round(rectWidth * 100) / 100,
-      rightPad: Math.round(rightPad * 100) / 100
+      leftPad: Math.round(leftPad * 100) / 100,
+      rightPad: Math.round(rightPad * 100) / 100,
+      startsAtBoundary: segmentContext.startsAtBoundary,
+      endsAtBoundary: segmentContext.endsAtBoundary,
+      nextChar: segmentContext.nextChar
     });
   }
 
