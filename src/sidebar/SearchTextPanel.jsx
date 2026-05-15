@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import Icon from '../Icons';
+import { emitTextSearchDiag } from '../utils/textSearchDiag';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -14,18 +15,10 @@ const createResultId = (() => {
 })();
 
 const clampValue = (value, fallback = 0) => (Number.isFinite(value) ? value : fallback);
-
-const emitTextSearchDiag = (event, detail = {}) => {
-  const payload = {
-    at: new Date().toISOString(),
-    ...detail
-  };
-  try {
-    console.log(`[TextSearchDiag] ${event} ${JSON.stringify(payload)}`);
-  } catch {
-    console.log(`[TextSearchDiag] ${event}`);
-  }
-};
+const TEXT_HIGHLIGHT_MIN_HEIGHT = 5;
+const TEXT_HIGHLIGHT_ASCENT_RATIO = 0.74;
+const TEXT_HIGHLIGHT_TOP_PAD_RATIO = 0.02;
+const TEXT_HIGHLIGHT_BOTTOM_PAD_RATIO = 0.10;
 
 const getPdfDocumentKey = (pdfDoc, numPages, explicitKey) => {
   const stableExplicitKey = typeof explicitKey === 'string' ? explicitKey.trim() : '';
@@ -97,16 +90,20 @@ const buildRectanglesForMatch = (pageData, matchStart, matchLength) => {
     const relativeLength = overlapEnd - overlapStart;
     if (relativeLength <= 0) continue;
 
-    const glyphCount = Math.max(textItem.str.length, 1);
-    const horizontalScale = clampValue(textItem.width, glyphCount * 2) / glyphCount;
-
     const transformed = pdfjsLib.Util.transform(viewportTransform, textItem.transform);
-    const fontHeight = Math.hypot(clampValue(transformed[2]), clampValue(transformed[3])) || clampValue(textItem.height, 12);
-    const topPad = Math.max(1, fontHeight * 0.08);
-    const bottomPad = Math.max(2, fontHeight * 0.24);
+    const glyphCount = Math.max(textItem.str.length, 1);
+    const itemWidth = clampValue(textItem.width, Math.hypot(clampValue(transformed[0]), clampValue(transformed[1])) || glyphCount * 2);
+    const horizontalScale = itemWidth / glyphCount;
+    const vectorHeight = Math.hypot(clampValue(transformed[2]), clampValue(transformed[3]));
+    const itemHeight = clampValue(textItem.height, 0);
+    const fontHeight = itemHeight > 0
+      ? itemHeight
+      : (vectorHeight || clampValue(textItem.fontSize, 12) || 12);
+    const topPad = Math.max(0.35, fontHeight * TEXT_HIGHLIGHT_TOP_PAD_RATIO);
+    const bottomPad = Math.max(1, fontHeight * TEXT_HIGHLIGHT_BOTTOM_PAD_RATIO);
 
     const baseLeft = transformed[4];
-    const baseTop = transformed[5] - fontHeight - topPad;
+    const baseTop = transformed[5] - (fontHeight * TEXT_HIGHLIGHT_ASCENT_RATIO) - topPad;
 
     const rectLeft = baseLeft + horizontalScale * relativeStart;
     const rectWidth = Math.max(horizontalScale * relativeLength, 2);
@@ -115,7 +112,7 @@ const buildRectanglesForMatch = (pageData, matchStart, matchLength) => {
       x: rectLeft,
       y: baseTop,
       width: rectWidth,
-      height: Math.max(fontHeight + topPad + bottomPad, 6)
+      height: Math.max(fontHeight + topPad + bottomPad, TEXT_HIGHLIGHT_MIN_HEIGHT)
     });
   }
 
@@ -590,6 +587,7 @@ const SearchTextPanel = ({
             ? nativeMatch.rectangles
             : buildRectanglesForMatch(pageData, searchIndex, normalizedQuery.length);
           const bounds = nativeMatch?.bounds || calculateMatchBounds(rectangles);
+          const geometrySource = nativeMatch?.rectangles?.length ? 'native' : 'pdfjs';
 
           results.push({
             id: createResultId(),
@@ -599,7 +597,8 @@ const SearchTextPanel = ({
             snippet,
             snippetMatchIndex: matchIndex,
             rectangles,
-            bounds
+            bounds,
+            geometrySource
           });
 
           searchIndex = normalizedText.indexOf(normalizedQuery, searchIndex + 1);
@@ -619,6 +618,29 @@ const SearchTextPanel = ({
         setSearchResults(results, 'search-complete');
         setCurrentMatchIndex(results.length > 0 ? 0 : -1, 'search-complete');
         setIsSearching(false);
+        const totalRectangles = results.reduce(
+          (sum, result) => sum + (Array.isArray(result.rectangles) ? result.rectangles.length : 0),
+          0
+        );
+        const geometrySources = results.reduce((acc, result) => {
+          const source = result.geometrySource || 'unknown';
+          acc[source] = (acc[source] || 0) + 1;
+          return acc;
+        }, {});
+        emitTextSearchDiag('search_geometry_complete', {
+          query: trimmedQuery,
+          searchId,
+          resultCount: results.length,
+          totalRectangles,
+          geometrySources,
+          firstResult: results[0] ? {
+            pageNumber: results[0].pageNumber,
+            bounds: results[0].bounds,
+            firstRectangle: Array.isArray(results[0].rectangles) ? results[0].rectangles[0] : null,
+            geometrySource: results[0].geometrySource || 'unknown'
+          } : null,
+          documentKey: documentKeyRef.current
+        });
         emitTextSearchDiag('search_complete', {
           query: trimmedQuery,
           searchId,

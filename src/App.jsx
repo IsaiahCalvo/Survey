@@ -60,6 +60,7 @@ import {
   shouldUndoLocalBeforeLegacy,
 } from './utils/historyStacks';
 import { sanitizeConsoleLogText } from './utils/consoleLogFilter';
+import { buildTextSearchDiagLogSection, emitTextSearchDiag } from './utils/textSearchDiag';
 import {
   recordAnnotationBackupWrite,
   recordAnnotationCommit,
@@ -18408,8 +18409,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 	    window.__pdfHistoryDebug = api;
 	    window.__buildSaveLogConsoleText = (consoleText = '') => {
 	      const base = sanitizeConsoleLogText(consoleText || '(no console output captured)', window);
-	      if (base.includes('===== Undo/Redo Chronology =====')) return base;
-	      return `${base}\n${api.buildSaveLogSection(HISTORY_SAVELOG_EVENT_LIMIT)}\n`;
+	      const searchDiagSection = buildTextSearchDiagLogSection();
+	      const withSearchDiag = searchDiagSection && !base.includes('===== Text Search Diagnostics =====')
+	        ? `${base}\n${searchDiagSection}`
+	        : base;
+	      if (withSearchDiag.includes('===== Undo/Redo Chronology =====')) return withSearchDiag;
+	      return `${withSearchDiag}\n${api.buildSaveLogSection(HISTORY_SAVELOG_EVENT_LIMIT)}\n`;
 	    };
 	    return () => {
 	      if (window.__pdfHistoryDebug === api) {
@@ -27793,24 +27798,22 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
     // Prevent recursive navigation
     if (isNavigatingToMatchRef.current) {
-      console.log('[TextSearchDiag] app_match_navigation_ignored_busy ' + JSON.stringify({
-        at: new Date().toISOString(),
+      emitTextSearchDiag('app_match_navigation_ignored_busy', {
         index,
         pageNumber: match?.pageNumber,
         pdfDocumentKey: pdfSearchDocumentKey
-      }));
+      });
       return;
     }
     isNavigatingToMatchRef.current = true;
-    console.log('[TextSearchDiag] app_match_navigation_start ' + JSON.stringify({
-      at: new Date().toISOString(),
+    emitTextSearchDiag('app_match_navigation_start', {
       index,
       pageNumber: match.pageNumber,
       hasBounds: Boolean(match.bounds),
       currentScale: scaleRef.current,
       targetRenderer: useSyncfusionRenderer ? 'syncfusion' : 'pdfjs',
       pdfDocumentKey: pdfSearchDocumentKey
-    }));
+    });
 
     setCurrentMatchIndex(index);
 
@@ -28001,15 +28004,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     const safeResults = Array.isArray(results) ? results : [];
     const previousCount = previousSearchResultsCountRef.current;
     if (previousCount !== safeResults.length) {
-      console.log('[TextSearchDiag] app_results_change ' + JSON.stringify({
-        at: new Date().toISOString(),
+      emitTextSearchDiag('app_results_change', {
         previousCount,
         nextCount: safeResults.length,
         currentMatchIndex,
         pageNum,
         scale: scaleRef.current,
         pdfDocumentKey: pdfSearchDocumentKey
-      }));
+      });
     }
     previousSearchResultsCountRef.current = safeResults.length;
     setSearchResults(safeResults);
@@ -34271,6 +34273,18 @@ ${pageBlocks}
                               {nativePdfAnnotationLayerHideCss}
                             </style>
                           )}
+                          {searchResultsByPage[pageNumber] && searchResultsByPage[pageNumber].length > 0 && (
+                            <SearchHighlightLayer
+                              pageNumber={pageNumber}
+                              width={resolvedPageSize.width}
+                              height={resolvedPageSize.height}
+                              scale={layerScale}
+                              highlights={searchResultsByPage[pageNumber]}
+                              activeMatchId={currentMatch?.id}
+                              isActiveMatchOnThisPage={currentMatch?.pageNumber === pageNumber}
+                              activeGlowOnly
+                            />
+                          )}
                           <div
                             ref={(node) => {
                               if (node) {
@@ -34301,29 +34315,6 @@ ${pageBlocks}
                                 backfaceVisibility: legacyCommitCompensationPending ? 'hidden' : undefined,
                               }}
                             >
-                            {useSyncfusionRenderer && searchResultsByPage[pageNumber] && searchResultsByPage[pageNumber].length > 0 && (
-                              <SearchHighlightLayer
-                                pageNumber={pageNumber}
-                                width={resolvedPageSize.width}
-                                height={resolvedPageSize.height}
-                                scale={layerScale}
-                                highlights={searchResultsByPage[pageNumber]}
-                                activeMatchId={currentMatch?.id}
-                                isActiveMatchOnThisPage={currentMatch?.pageNumber === pageNumber}
-                                activeGlowOnly
-                              />
-                            )}
-                            {!useSyncfusionRenderer && searchResultsByPage[pageNumber] && searchResultsByPage[pageNumber].length > 0 && (
-                              <SearchHighlightLayer
-                                pageNumber={pageNumber}
-                                width={resolvedPageSize.width}
-                                height={resolvedPageSize.height}
-                                scale={layerScale}
-                                highlights={searchResultsByPage[pageNumber]}
-                                activeMatchId={currentMatch?.id}
-                                isActiveMatchOnThisPage={currentMatch?.pageNumber === pageNumber}
-                              />
-                            )}
                             {requiresLegacyAnnotationLayer && (
                             <div style={(shouldHideFullLayer || annotationHydrationGated) ? { visibility: 'hidden' } : undefined}>
                               <PageAnnotationLayer

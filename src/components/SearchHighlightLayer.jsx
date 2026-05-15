@@ -1,4 +1,5 @@
-import React, { memo, useMemo } from 'react';
+import React, { memo, useEffect, useMemo, useRef } from 'react';
+import { emitTextSearchDiag } from '../utils/textSearchDiag';
 
 const MAX_RENDERED_MATCHES_PER_PAGE = 140;
 const MAX_RENDERED_RECTANGLES_PER_PAGE = 900;
@@ -26,8 +27,10 @@ const SearchHighlightLayer = memo(({
   activeOnly = false,
   activeGlowOnly = false
 }) => {
-  // Filter highlights for this page and calculate scaled positions
-  const scaledHighlights = useMemo(() => {
+  const layerRef = useRef(null);
+  const lastDiagKeyRef = useRef('');
+
+  const preparedHighlights = useMemo(() => {
     if (!highlights || highlights.length === 0) {
       return [];
     }
@@ -60,7 +63,7 @@ const SearchHighlightLayer = memo(({
       }
     }
 
-    const scaled = [];
+    const prepared = [];
     let remainingRectangles = MAX_RENDERED_RECTANGLES_PER_PAGE;
 
     for (const match of selectedMatches) {
@@ -72,103 +75,174 @@ const SearchHighlightLayer = memo(({
         ? match.rectangles
         : match.rectangles.slice(0, Math.max(1, remainingRectangles));
 
-      const scaledRectangles = allowedRectangles.map((rect) => {
-        const baseHeight = rect.height * scale;
-        const topPad = activeGlowOnly ? Math.max(1, baseHeight * 0.06) : 0;
-        const bottomPad = activeGlowOnly ? Math.max(2, baseHeight * 0.24) : 0;
-        return {
-          x: rect.x * scale,
-          y: rect.y * scale - topPad,
-          width: rect.width * scale,
-          height: baseHeight + topPad + bottomPad
-        };
-      });
+      const rectangles = allowedRectangles
+        .map((rect) => ({
+          x: Math.max(Number(rect.x) || 0, 0),
+          y: Math.max(Number(rect.y) || 0, 0),
+          width: Math.max(Number(rect.width) || 0, 1),
+          height: Math.max(Number(rect.height) || 0, 1)
+        }))
+        .filter((rect) => rect.width > 0 && rect.height > 0);
 
-      if (scaledRectangles.length === 0) continue;
+      if (rectangles.length === 0) continue;
 
-      scaled.push({
+      prepared.push({
         ...match,
-        scaledRectangles,
+        rectangles,
         isActive
       });
 
       if (!isActive) {
-        remainingRectangles -= scaledRectangles.length;
+        remainingRectangles -= rectangles.length;
       }
     }
 
-    return scaled;
-  }, [highlights, scale, activeMatchId, isActiveMatchOnThisPage, maxRenderedMatches, activeOnly]);
+    return prepared;
+  }, [highlights, activeMatchId, isActiveMatchOnThisPage, maxRenderedMatches, activeOnly]);
 
-  if (!width || !height || scaledHighlights.length === 0) {
+  const layerWidth = Math.max((Number(width) || 0) * (Number(scale) || 1), 1);
+  const layerHeight = Math.max((Number(height) || 0) * (Number(scale) || 1), 1);
+  const totalRectangles = preparedHighlights.reduce((sum, match) => sum + match.rectangles.length, 0);
+  const firstRect = preparedHighlights[0]?.rectangles?.[0] || null;
+
+  useEffect(() => {
+    if (!layerRef.current || preparedHighlights.length === 0) return;
+
+    const diagKey = [
+      pageNumber,
+      preparedHighlights.length,
+      totalRectangles,
+      activeMatchId || 'none',
+      Math.round(layerWidth),
+      Math.round(layerHeight),
+      firstRect
+        ? `${Math.round(firstRect.x * 100) / 100}:${Math.round(firstRect.y * 100) / 100}:${Math.round(firstRect.width * 100) / 100}:${Math.round(firstRect.height * 100) / 100}`
+        : 'none'
+    ].join('|');
+
+    if (diagKey === lastDiagKeyRef.current) return;
+    lastDiagKeyRef.current = diagKey;
+
+    const frame = window.requestAnimationFrame?.(() => {
+      const layerRect = layerRef.current?.getBoundingClientRect?.();
+      const pageHostRect = layerRef.current?.closest?.('.e-pv-page-div')?.getBoundingClientRect?.();
+      emitTextSearchDiag('svg_layer_render', {
+        pageNumber,
+        matchCount: preparedHighlights.length,
+        rectangleCount: totalRectangles,
+        activeMatchId,
+        scale: Number(scale) || 1,
+        width: Number(width) || 0,
+        height: Number(height) || 0,
+        cssWidth: Math.round(layerWidth),
+        cssHeight: Math.round(layerHeight),
+        firstRect,
+        layerRect: layerRect ? {
+          left: Math.round(layerRect.left),
+          top: Math.round(layerRect.top),
+          width: Math.round(layerRect.width),
+          height: Math.round(layerRect.height)
+        } : null,
+        pageHostRect: pageHostRect ? {
+          left: Math.round(pageHostRect.left),
+          top: Math.round(pageHostRect.top),
+          width: Math.round(pageHostRect.width),
+          height: Math.round(pageHostRect.height)
+        } : null
+      });
+    });
+
+    return () => {
+      if (frame && window.cancelAnimationFrame) {
+        window.cancelAnimationFrame(frame);
+      }
+    };
+  }, [
+    activeMatchId,
+    firstRect,
+    height,
+    layerHeight,
+    layerWidth,
+    pageNumber,
+    preparedHighlights.length,
+    scale,
+    totalRectangles,
+    width
+  ]);
+
+  if (!width || !height || preparedHighlights.length === 0) {
     return null;
   }
 
   return (
-    <div
+    <svg
+      ref={layerRef}
       data-search-highlight-layer={pageNumber}
+      data-search-highlight-renderer="svg"
+      data-search-highlight-count={preparedHighlights.length}
+      data-search-highlight-rect-count={totalRectangles}
+      data-search-highlight-active={activeMatchId || ''}
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="none"
       style={{
         position: 'absolute',
         top: 0,
         left: 0,
-        width: `${width * scale}px`,
-        height: `${height * scale}px`,
+        width: `${layerWidth}px`,
+        height: `${layerHeight}px`,
         pointerEvents: 'none',
         zIndex: 9,
         overflow: 'hidden',
-        contain: 'layout style paint'
+        contain: 'layout style paint',
+        display: 'block'
       }}
     >
-      {activeGlowOnly && (
+      <defs>
         <style>{`
-          @keyframes search-active-glow-pulse {
+          @keyframes search-active-highlight-pulse {
             from {
-              box-shadow: 0 0 3px 1px rgba(255, 213, 79, 0.45), 0 0 8px 2px rgba(255, 193, 7, 0.22);
+              opacity: 0.62;
+              stroke-opacity: 0.72;
             }
             to {
-              box-shadow: 0 0 5px 2px rgba(255, 245, 157, 0.9), 0 0 14px 4px rgba(255, 193, 7, 0.45);
+              opacity: 0.94;
+              stroke-opacity: 1;
             }
           }
+          .search-highlight-svg-rect {
+            shape-rendering: geometricPrecision;
+          }
+          .search-highlight-svg-active-pulse {
+            animation: search-active-highlight-pulse 1.05s ease-in-out infinite alternate;
+          }
         `}</style>
-      )}
-      {scaledHighlights.map((match) => (
+      </defs>
+      {preparedHighlights.map((match) => (
         <React.Fragment key={match.id}>
-          {match.scaledRectangles.map((rect, rectIndex) => {
+          {match.rectangles.map((rect, rectIndex) => {
             const isActive = match.isActive;
-            const glowOnly = activeGlowOnly && isActive;
+            const shouldPulse = activeGlowOnly && isActive;
 
             return (
-              <div
+              <rect
                 key={`${match.id}-${rectIndex}`}
-                className={isActive ? 'search-highlight-active' : 'search-highlight'}
-                style={{
-                  position: 'absolute',
-                  left: `${Math.max(rect.x, 0)}px`,
-                  top: `${Math.max(rect.y, 0)}px`,
-                  width: `${Math.max(rect.width, 2)}px`,
-                  height: `${Math.max(rect.height, 6)}px`,
-                  background: glowOnly
-                    ? 'rgba(255, 230, 0, 0.44)'
-                    : isActive
-                    ? 'rgba(255, 180, 0, 0.55)'
-                    : 'rgba(255, 230, 0, 0.42)',
-                  border: glowOnly
-                    ? '1px solid rgba(255, 245, 157, 0.95)'
-                    : isActive
-                    ? '2px solid rgba(255, 140, 0, 0.9)'
-                    : '1px solid rgba(255, 255, 0, 0.5)',
-                  borderRadius: '2px',
-                  boxShadow: isActive ? '0 0 6px 1px rgba(255, 180, 0, 0.55)' : 'none',
-                  boxSizing: 'border-box',
-                  animation: glowOnly ? 'search-active-glow-pulse 1.1s ease-in-out infinite alternate' : undefined,
-                  willChange: glowOnly ? 'box-shadow' : undefined
-                }}
+                className={`search-highlight-svg-rect${isActive ? ' search-highlight-svg-active' : ''}${shouldPulse ? ' search-highlight-svg-active-pulse' : ''}`}
+                x={rect.x}
+                y={rect.y}
+                width={rect.width}
+                height={rect.height}
+                rx={1.5}
+                ry={1.5}
+                fill={isActive ? 'rgba(255, 216, 0, 0.58)' : 'rgba(255, 230, 0, 0.34)'}
+                stroke={isActive ? 'rgba(255, 160, 0, 0.95)' : 'rgba(255, 224, 80, 0.38)'}
+                strokeWidth={isActive ? 1.15 : 0.65}
+                vectorEffect="non-scaling-stroke"
               />
             );
           })}
         </React.Fragment>
       ))}
-    </div>
+    </svg>
   );
 });
 
