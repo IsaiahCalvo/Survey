@@ -22,41 +22,13 @@ const BONE_100 = '#f4f1ea';
 const BONE_200 = '#e8e2d4';
 const GOLD = '#d8a84e';
 
-const DEFAULT_MEMBERS = [
-  { id: "IC", name: "Isaiah Calvo",   email: "isaiah@studio.co",  role: "Owner",  color: "#d8a84e", added: "Mar 4, 2024" },
-  { id: "JM", name: "Jordan Mei",     email: "jordan@studio.co",  role: "Editor", color: "#7ab7e6", added: "Mar 12, 2024" },
-  { id: "RD", name: "Ravi Doshi",     email: "ravi@studio.co",    role: "Editor", color: "#a6e07a", added: "Apr 2, 2024" },
-  { id: "AS", name: "Anna Sato",      email: "anna@studio.co",    role: "Viewer", color: "#c293e6", added: "Apr 18, 2024" },
-  { id: "KM", name: "Kira Mendez",    email: "kira@external.co",  role: "Viewer", color: "#e69a7a", added: "May 22, 2024" },
-  { id: "DT", name: "Diego Torres",   email: "diego@studio.co",   role: "Editor", color: "#6fb89a", added: "Jul 9, 2024" },
-  { id: "LM", name: "Leah Murakami",  email: "leah@studio.co",    role: "Editor", color: "#d97757", added: "Aug 14, 2024" },
-  { id: "PB", name: "Priya Bansal",   email: "priya@studio.co",   role: "Viewer", color: "#7ab7e6", added: "Sep 3, 2024" },
-  { id: "NW", name: "Noah Wei",       email: "noah@studio.co",    role: "Viewer", color: "#a6e07a", added: "Oct 17, 2024" },
-  { id: "EO", name: "Emi Okafor",     email: "emi@external.co",   role: "Editor", color: "#c293e6", added: "Nov 28, 2024" },
-  { id: "TF", name: "Theo Fairchild", email: "theo@external.co",  role: "Viewer", color: "#e69a7a", added: "Jan 6, 2025" },
-  { id: "MR", name: "Maya Rivera",    email: "maya@studio.co",    role: "Editor", color: "#d8a84e", added: "Feb 19, 2025" },
-];
 const ROLES = ["Owner", "Editor", "Viewer"];
 const ROLE_ORDER = { Owner: 0, Editor: 1, Viewer: 2 };
 
-const ACTIVITY = {
-  IC: [
-    { file: "SE-011 Security Shop Drawings.pdf", time: "9:14 AM",  date: "May 6, 2025" },
-    { file: "Package 2 — Rev 4 — IC.pdf",        time: "4:48 PM",  date: "May 7, 2025" },
-    { file: "Door Hardware Schedule — A.601.pdf", time: "5:25 PM", date: "Apr 30, 2025" },
-    { file: "Punchlist Walk — South Wing.pdf",   time: "8:37 AM",  date: "May 5, 2025" },
-  ],
-  JM: [
-    { file: "RFI-014 Lobby Camera Coverage.pdf", time: "11:02 AM", date: "May 8, 2025" },
-    { file: "SE-011 Security Shop Drawings.pdf", time: "9:14 AM",  date: "May 6, 2025" },
-  ],
-  RD: [
-    { file: "MEP Coordination — Level 3.pdf",    time: "10:06 AM", date: "May 7, 2025" },
-    { file: "As-built — Riser Diagram.pdf",      time: "3:19 PM",  date: "Apr 22, 2025" },
-  ],
-  AS: [ { file: "Door Hardware Schedule — A.601.pdf", time: "5:30 PM", date: "Apr 30, 2025" } ],
-  KM: [ { file: "test.pdf", time: "1:51 PM", date: "May 3, 2025" } ],
-};
+/* Two-letter initials from a display name — used for the avatar glyph so the
+   circle shows real initials, never a raw user id. */
+const initialsOf = (name) => (name || '')
+  .trim().split(/\s+/).map((w) => w[0] || '').join('').slice(0, 2).toUpperCase() || '—';
 
 const MONO_FONT = '"JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace';
 
@@ -78,7 +50,8 @@ const ActivityModal = ({ member, onClose }) => {
     if (sortKey === k) setSortDir(d => d === "asc" ? "desc" : "asc");
     else { setSortKey(k); setSortDir(k === "file" ? "asc" : "desc"); }
   };
-  const items = (ACTIVITY[member.id] || []).slice();
+  // Per-member activity history is not tracked yet — no invented events.
+  const items = [];
   const sign = sortDir === "asc" ? 1 : -1;
   if (sortKey === "file") items.sort((a, b) => sign * a.file.localeCompare(b.file));
   else items.sort((a, b) => sign * (editedMs(a) - editedMs(b)));
@@ -162,8 +135,9 @@ const InviteModal = ({ project, onClose }) => {
 
 /* ============ Manage Team modal ============ */
 export default function ManageTeamModal({ open, onClose, project, members }) {
-  const initialMembers = Array.isArray(members) && members.length > 0 ? members : DEFAULT_MEMBERS;
-  const [memberList, setMembers] = React.useState(initialMembers);
+  // The team list is the project's real team — no invented teammates. Today
+  // that is just the owner; a real teammates feature will add more later.
+  const [memberList, setMembers] = React.useState(() => (Array.isArray(members) ? members : []));
   const [editMode, setEditMode] = React.useState(false);
   const [selectedIds, setSelectedIds] = React.useState(() => new Set());
   const [openMenu, setOpenMenu] = React.useState(null);
@@ -179,6 +153,11 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
     document.addEventListener("click", onDoc);
     return () => document.removeEventListener("click", onDoc);
   }, []);
+
+  // Re-sync the list when the project (and so its real team) changes.
+  React.useEffect(() => {
+    setMembers(Array.isArray(members) ? members : []);
+  }, [members]);
 
   if (!open) return null;
 
@@ -299,7 +278,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
               return (
                 <div key={m.id} style={{ position: "relative" }}>
                   <div style={{ display: "grid", gridTemplateColumns: "30px 1fr 1fr 1fr 24px", gap: 14, alignItems: "center", padding: "8px 10px", borderRadius: 6, height: 50, boxSizing: "border-box" }}>
-                    <div style={{ width: 30, height: 30, borderRadius: "50%", background: m.color, color: "#15110a", display: "grid", placeItems: "center", fontSize: 11, fontWeight: 800, flex: "none" }}>{m.id}</div>
+                    <div style={{ width: 30, height: 30, borderRadius: "50%", background: m.color, color: "#15110a", display: "grid", placeItems: "center", fontSize: 11, fontWeight: 800, flex: "none" }}>{m.initials || initialsOf(m.name)}</div>
                     <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.name}</div>
                       <div className="mono" style={{ fontFamily: MONO_FONT, fontSize: 11, color: INK_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.email}</div>
@@ -351,7 +330,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
 
           {/* Footer */}
           <div style={{ padding: "12px 16px", borderTop: `1px solid ${INK_500}`, background: INK_800, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 10.5, color: INK_200, letterSpacing: 0.06, textTransform: "uppercase", fontWeight: 700 }}>{memberList.length} members</span>
+            <span style={{ fontSize: 10.5, color: INK_200, letterSpacing: 0.06, textTransform: "uppercase", fontWeight: 700 }}>{memberList.length} member{memberList.length === 1 ? "" : "s"}</span>
             <button onClick={onClose} style={{ background: GOLD, color: "#15110a", border: 0, borderRadius: 6, padding: "5px 14px", height: 28, fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Done</button>
           </div>
         </div>

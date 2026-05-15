@@ -102,6 +102,8 @@ export default function SurveyHub({
           members={members}
           onOpenDocument={onOpenDocument}
           onCreateProject={onCreateProject}
+          onUpload={onUpload}
+          onDeleteDocuments={onDeleteDocuments}
           onShare={shareProject}
         />
       )}

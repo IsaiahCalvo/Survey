@@ -37,7 +37,7 @@ export const Avatar = ({ initials, color = 'var(--gold)', size = 22 }) => (
   <div style={{ width: size, height: size, borderRadius: '50%', background: color, color: '#15110a', display: 'grid', placeItems: 'center', fontSize: size * 0.42, fontWeight: 800, flex: 'none' }}>{initials}</div>
 );
 
-/* Overlapping row of avatars — used to preview a roster compactly. */
+/* Overlapping row of avatars — used to preview a team compactly. */
 export const AvatarStack = ({ members, size = 22 }) => (
   <div style={{ display: 'flex' }}>
     {members.map((m, i) => (

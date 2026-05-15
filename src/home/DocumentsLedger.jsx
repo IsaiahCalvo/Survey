@@ -9,8 +9,10 @@
    without changing the layout.
 */
 import React, { useState, useMemo, useEffect } from 'react';
-import { HubShell, Icon, AvatarStack, PdfThumb, Search } from './HubShell';
+import { HubShell, Icon, Avatar, PdfThumb, Search } from './HubShell';
 import { MoveCopyModal, ConfirmModal } from './BulkModals';
+import PdfPageThumb from './PdfPageThumb';
+import { useStorage } from '../hooks/useDatabase';
 
 const ledgerHeader = {
   background: 'var(--ink-700)',
@@ -22,6 +24,17 @@ const ledgerHeader = {
 };
 
 const RIBBON = ['#d8a84e', '#7ab7e6', '#a6e07a', '#c293e6', '#e69a7a', '#9aa3b2'];
+
+/* Two-letter initials from a display name — for the Team avatar glyph. */
+const initialsOf = (name) => (name || '')
+  .trim().split(/\s+/).map((w) => w[0] || '').join('').slice(0, 2).toUpperCase() || '—';
+
+const longDate = (value) => {
+  const ms = Date.parse(value || 0) || 0;
+  return ms
+    ? new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+    : '—';
+};
 
 const formatSize = (bytes) => {
   const n = Number(bytes) || 0;
@@ -54,6 +67,10 @@ export default function DocumentsLedger({
   const [moveOpen, setMoveOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  /* Supabase storage helpers — let PdfPageThumb fetch a document's bytes to
+     render its real first page (download first, public URL as a fallback). */
+  const { downloadDocument, getDocumentUrl } = useStorage();
+
   const projectName = (id) => projects.find((p) => p.id === id)?.name || null;
 
   // Map each real document into the shape the ledger markup expects.
@@ -72,6 +89,8 @@ export default function DocumentsLedger({
       editedMs: ms,
       touchedTime: dt ? dt.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '—',
       touchedAbs: dt ? dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '',
+      lastEditedAbs: longDate(d.updated_at || d.created_at),
+      uploadedAbs: longDate(d.created_at),
       color: RIBBON[i % RIBBON.length],
       shared: !!d.shared,
     };
@@ -101,9 +120,13 @@ export default function DocumentsLedger({
   const sel = docs.find((d) => d.id === selId) || docs[0];
   const toggleDocSel = (id) => setSelDocs((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
+  // Columns: [select/shared icon] [thumbnail — no header] [File name]
+  // [Project] [Last edited] [Size]. The thumbnail has its own column so the
+  // "File" header sits over the name, and every thumbnail is centred in a
+  // fixed-width column, aligned under one another.
   const grid = previewOpen
-    ? '32px minmax(220px,1fr) 130px 130px 80px'
-    : '32px 2fr 1fr 1fr 1fr';
+    ? '32px 54px minmax(150px,1fr) 124px 124px 72px'
+    : '32px 54px 2fr 1fr 1fr 1fr';
   const isShared = (d) => !!(d && d.shared);
   const stickyCell = (selected) => ({
     position: 'sticky', left: 0, zIndex: 2,
@@ -166,7 +189,8 @@ export default function DocumentsLedger({
             <div>
               <div style={{ ...ledgerHeader, display: 'grid', gridTemplateColumns: grid, position: 'sticky', top: 0, zIndex: 3 }}>
                 <span></span>
-                <span onClick={() => onHeaderClick('name')} style={{ position: 'sticky', left: 0, background: 'var(--ink-700)', padding: '0 14px', display: 'flex', alignItems: 'center', cursor: 'pointer', userSelect: 'none', color: sortKey === 'name' ? 'var(--bone-100)' : 'inherit' }}>File{arrow('name')}</span>
+                <span></span>
+                <span onClick={() => onHeaderClick('name')} style={{ padding: '0 14px', display: 'flex', alignItems: 'center', cursor: 'pointer', userSelect: 'none', color: sortKey === 'name' ? 'var(--bone-100)' : 'inherit' }}>File{arrow('name')}</span>
                 <span onClick={() => onHeaderClick('project')} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'project' ? 'var(--bone-100)' : 'inherit' }}>Project{arrow('project')}</span>
                 <span onClick={() => onHeaderClick('edited')} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'edited' ? 'var(--bone-100)' : 'inherit' }}>Last edited{arrow('edited')}</span>
                 <span onClick={() => onHeaderClick('size')} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'size' ? 'var(--bone-100)' : 'inherit' }}>Size{arrow('size')}</span>
@@ -199,8 +223,23 @@ export default function DocumentsLedger({
                         isShared(d) && <Icon name="users" size={13} color="var(--ink-200)" />
                       )}
                     </div>
+                    {/* Thumbnail column — its own cell, centred so every
+                        thumbnail lines up under the next. A real first-page
+                        render, fixed in height with width set to the page's
+                        true aspect ratio. Shares the by-id render cache with
+                        the preview pane; falls back to the stylised
+                        placeholder on failure. */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <PdfPageThumb
+                        doc={d.raw}
+                        downloadDocument={downloadDocument}
+                        getDocumentUrl={getDocumentUrl}
+                        variant="row"
+                        height={30}
+                        fallback={<div style={{ width: 23, height: 30, flex: 'none' }}><PdfThumb height={30} stamp="" color={d.color} /></div>}
+                      />
+                    </div>
                     <div style={stickyCell(docSelectMode ? isChecked : isSel)}>
-                      <div style={{ width: 22, height: 28, flex: 'none' }}><PdfThumb height={28} stamp="" color={d.color} /></div>
                       <span style={{ fontWeight: 600, fontSize: 12.5, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{d.name}</span>
                     </div>
                     <span className="meta" style={{ fontSize: 11.5, padding: '12px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.project === 'Sandbox' ? <span className="mono" style={{ color: 'var(--ink-300)' }}>N/A</span> : d.project}</span>
@@ -215,40 +254,71 @@ export default function DocumentsLedger({
             </div>
           </div>
           {previewOpen && sel && (
-            <aside className="slim-scroll" style={{ padding: 18, overflow: 'auto', position: 'relative' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            /* Preview pane — a fixed-height flex column that NEVER scrolls.
+               The preview sits at a set size with a flexible gap below it;
+               the details, Collaborators (when shared), Recent activity and
+               the action buttons keep their natural size and sit at the
+               bottom. */
+            <aside style={{ padding: 18, position: 'relative', height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flex: 'none' }}>
                 <div className="section-label">Preview</div>
                 <button onClick={() => setPreviewOpen(false)} title="Close preview" style={{ background: 'transparent', border: '1px solid var(--ink-500)', color: 'var(--ink-200)', width: 22, height: 22, borderRadius: 6, cursor: 'pointer', fontSize: 14, lineHeight: 1, display: 'grid', placeItems: 'center', padding: 0 }}>×</button>
               </div>
-              <div style={{ marginTop: 10, fontSize: 15, fontWeight: 700 }}>{sel.name}</div>
-              <div className="meta" style={{ marginTop: 4, fontSize: 11.5 }}>
+              <div style={{ marginTop: 10, fontSize: 15, fontWeight: 700, flex: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sel.name}</div>
+              <div className="meta" style={{ marginTop: 4, fontSize: 11.5, flex: 'none' }}>
                 {[sel.project === 'Sandbox' ? null : sel.project, sel.size, sel.pages != null ? `${sel.pages} pages` : null, sel.rev || null].filter(Boolean).join(' · ')}
               </div>
-              <div style={{ marginTop: 14 }}>
-                <PdfThumb height={220} color={sel.color} stamp={(sel.rev || '').replace(' ', '')}
-                  marks={[
-                    { x: 12, y: 36, w: 36, h: 16, color: 'var(--gold)' },
-                    { x: 56, y: 50, w: 24, h: 22, color: 'var(--blue)' },
-                    { type: 'swatch', x: 18, y: 62, w: 50, h: 6, color: 'rgba(166,224,122,0.4)' },
-                    { x: 60, y: 78, w: 26, h: 10, color: 'var(--rose)' },
-                  ]}
+              {/* Preview viewport — a set custom size; the page is contained
+                  inside at its true aspect ratio, letterboxed against a dark
+                  backdrop. It can shrink (never scroll) on a short pane. */}
+              <div style={{ marginTop: 14, height: 360, flex: '0 1 auto', minHeight: 0 }}>
+                <PdfPageThumb
+                  key={sel.id}
+                  doc={sel.raw}
+                  downloadDocument={downloadDocument}
+                  getDocumentUrl={getDocumentUrl}
+                  variant="preview"
+                  fill
+                  fallback={
+                    <div style={{ width: '100%', height: '100%' }}>
+                      <PdfThumb height="100%" color={sel.color} stamp={(sel.rev || '').replace(' ', '')}
+                        marks={[
+                          { x: 12, y: 36, w: 36, h: 16, color: 'var(--gold)' },
+                          { x: 56, y: 50, w: 24, h: 22, color: 'var(--blue)' },
+                          { type: 'swatch', x: 18, y: 62, w: 50, h: 6, color: 'rgba(166,224,122,0.4)' },
+                          { x: 60, y: 78, w: 26, h: 10, color: 'var(--rose)' },
+                        ]}
+                      />
+                    </div>
+                  }
                 />
               </div>
-              {isShared(sel) && (
-                <div style={{ marginTop: 14 }}>
-                  <div className="section-label">Collaborators</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 6 }}>
-                    <AvatarStack members={['IC', 'JM', 'RD']} size={16} />
-                  </div>
+              {/* Team — always shown directly under the preview: at least the
+                  document's owner (the signed-in user). A real teammates
+                  feature will add more people here later. */}
+              <div style={{ marginTop: 14, flex: 'none' }}>
+                <div className="section-label">Team</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                  <Avatar initials={initialsOf(user?.name || user?.email || 'You')} size={22} color="#d8a84e" />
+                  <span style={{ fontSize: 12, fontWeight: 600 }}>{user?.name || user?.email?.split('@')[0] || 'You'}</span>
                 </div>
-              )}
-              <div className="section-label" style={{ marginTop: 16 }}>Recent activity</div>
-              <div style={{ marginTop: 8, fontSize: 11.5, color: 'var(--ink-200)', display: 'grid', gap: 6 }}>
-                <div>· IC added 4 callouts on p.12 — 2h ago</div>
-                <div>· RD sealed Sheet A.601 — 5h ago</div>
-                <div>· JM left a comment on p.4 — yesterday</div>
               </div>
-              <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+              {/* Last edited + Uploaded dates. */}
+              <div style={{ marginTop: 14, flex: 'none', display: 'grid', gap: 10 }}>
+                <div>
+                  <div className="section-label">Last edited</div>
+                  <div className="mono" style={{ fontSize: 12, marginTop: 3 }}>{sel.lastEditedAbs}</div>
+                </div>
+                <div>
+                  <div className="section-label">Uploaded</div>
+                  <div className="mono" style={{ fontSize: 12, marginTop: 3 }}>{sel.uploadedAbs}</div>
+                </div>
+              </div>
+              {/* Flexible spacer — soaks up spare height so the action buttons
+                  stay pinned at the bottom while the Team and dates sit high,
+                  just under the preview. */}
+              <div style={{ flex: 1, minHeight: 0 }} />
+              <div style={{ display: 'flex', gap: 8, marginTop: 14, flex: 'none' }}>
                 <button className="btn primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => onOpenDocument && onOpenDocument(sel.raw)}>Open file</button>
                 <button className="btn" title="Share" onClick={() => onShare && onShare([sel.raw])}><Icon name="more" size={12} /></button>
               </div>

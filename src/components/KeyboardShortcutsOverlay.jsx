@@ -21,43 +21,10 @@ const KeyboardShortcutsOverlay = () => {
     }
   });
 
+  // No floating hint pill — the overlay stays reachable via the '?' key, but
+  // the bottom-right "Press ? for keyboard shortcuts" prompt is not shown.
   if (!isOpen) {
-    return (
-      <div
-        style={{
-          position: 'fixed',
-          bottom: '16px',
-          right: '16px',
-          padding: '8px 12px',
-          background: COLORS.background.tertiary,
-          border: `1px solid ${COLORS.border.default}`,
-          borderRadius: BORDERS.radius.md,
-          fontSize: TYPOGRAPHY.fontSize.sm,
-          color: COLORS.text.muted,
-          fontFamily: TYPOGRAPHY.fontFamily.default,
-          cursor: 'pointer',
-          zIndex: 1000,
-          boxShadow: SHADOWS.md,
-          transition: 'all 0.15s ease',
-        }}
-        onClick={() => setIsOpen(true)}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = COLORS.background.elevated;
-          e.currentTarget.style.color = COLORS.text.tertiary;
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = COLORS.background.tertiary;
-          e.currentTarget.style.color = COLORS.text.muted;
-        }}
-      >
-        Press <kbd style={{
-          padding: '2px 6px',
-          background: COLORS.background.dark,
-          borderRadius: BORDERS.radius.sm,
-          fontWeight: TYPOGRAPHY.fontWeight.semibold
-        }}>?</kbd> for keyboard shortcuts
-      </div>
-    );
+    return null;
   }
 
   const isMac = typeof navigator !== 'undefined' && /(Mac|iPhone|iPod|iPad)/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);

@@ -2881,6 +2881,10 @@ function PDFThumbnail({ dataUrl, filePath, docId, getDocumentUrl, downloadDocume
 const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, documents, setDocuments, templates: externalTemplates = [], onTemplatesChange, onShowAuthModal, ballInCourtEntities, setBallInCourtEntities }, ref) {
   const fileInputRef = useRef();
   const projectFileInputRef = useRef();
+  // Destination project for the next browser-input upload. The browser file
+  // picker fires `handleFileUpload` separately, so the project id chosen in
+  // the Projects tab is stashed here for that handler to read.
+  const uploadTargetProjectRef = useRef(null);
   // Track documents being cleaned up to prevent duplicate cleanup attempts
   const cleaningUpDocumentsRef = useRef(new Set());
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
@@ -3155,8 +3159,15 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   // Sync Supabase documents with parent component state
   useEffect(() => {
     if (!Array.isArray(supabaseDocuments)) return;
-    // Convert Supabase documents to the format expected by the UI
+    // Convert Supabase documents to the format expected by the UI.
+    // Spread the real Supabase row FIRST so the true shape survives —
+    // project_id, file_size, created_at, updated_at, user_id, shared,
+    // page_count. The Survey Hub keys off project_id to group a project's
+    // files; the old mapping dropped it (kept only camelCase projectId),
+    // so files never showed inside their project. The camelCase keys below
+    // are legacy aliases the pre-redesign UI still reads.
     const formattedDocs = supabaseDocuments.map(doc => ({
+      ...doc,
       id: doc.id,
       name: doc.name,
       size: doc.file_size || 0,
@@ -3236,8 +3247,15 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Handle file upload via Electron dialog (preserves file path)
-  const handleUploadClick = async () => {
+  // Handle file upload via Electron dialog (preserves file path).
+  // `explicitProjectId` — when the Projects tab's "Add files" / "Upload files"
+  // triggers this, it passes the destination project id so the uploaded file
+  // is saved INTO that project (and persists). Other callers pass nothing.
+  // `options.open` — defaults true (open the PDF after upload, like the
+  // Documents-tab Upload). The Projects tab passes false: a file added to a
+  // project should just be saved into it, not opened.
+  const handleUploadClick = async (explicitProjectId, options = {}) => {
+    const openAfterUpload = options.open !== false;
     // In Electron, use dialog to get file path
     if (window.electronAPI && window.electronAPI.openFile) {
       try {
@@ -3276,17 +3294,22 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         // Start upload timing for this specific file
         perfUpload.start(file.name);
 
-        // Determine Project ID
-        let projectId = null;
-        if (selectedProjectId && activeSection === 'projects') {
+        // Determine Project ID. An explicit id from the Projects tab wins;
+        // a `local-` id is a not-yet-saved project, so it falls back to null.
+        let projectId = (typeof explicitProjectId === 'string' && !explicitProjectId.startsWith('local-'))
+          ? explicitProjectId
+          : null;
+        if (!projectId && selectedProjectId && activeSection === 'projects') {
           projectId = selectedProjectId;
         }
 
-        // OPTIMISTIC UPLOAD: Open immediately
+        // OPTIMISTIC UPLOAD: open immediately — unless this is a silent
+        // Projects-tab add, which only saves the file into the project.
         file.uploadStartTime = performance.now();
-        onDocumentSelect(file, filePath);
+        if (openAfterUpload) onDocumentSelect(file, filePath);
 
-        // OPTIMISTIC LIST UPDATE
+        // OPTIMISTIC LIST UPDATE — carry both key spellings so the file shows
+        // immediately in the project-grouped views (which read project_id).
         const tempDoc = {
           id: `temp-${Date.now()}`,
           name: file.name,
@@ -3295,6 +3318,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           type: 'application/pdf',
           filePath: filePath,
           projectId: projectId,
+          project_id: projectId,
           file: file
         };
         setDocuments(prev => [tempDoc, ...prev]);
@@ -3360,7 +3384,15 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         alert('Failed to open file: ' + error.message);
       }
     } else {
-      // Fallback to browser file input
+      // Fallback to browser file input. Stash the destination project id and
+      // the open-after flag so the separate `handleFileUpload` change-handler
+      // saves the file into the right project and honors the silent-add flag.
+      uploadTargetProjectRef.current = {
+        projectId: (typeof explicitProjectId === 'string' && !explicitProjectId.startsWith('local-'))
+          ? explicitProjectId
+          : null,
+        open: openAfterUpload,
+      };
       fileInputRef.current?.click();
     }
   };
@@ -3382,17 +3414,24 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       // delete right after browser-input upload silently failed.
       file.user_id = user.id;
 
-      // Determine Project ID
-      let projectId = null;
-      if (selectedProjectId && activeSection === 'projects') {
+      // Determine Project ID + open-after flag. A request stashed by the
+      // Projects-tab upload wins; consume-and-clear it so a later plain upload
+      // doesn't reuse it.
+      const pendingUpload = uploadTargetProjectRef.current || {};
+      uploadTargetProjectRef.current = null;
+      let projectId = pendingUpload.projectId || null;
+      const openAfterUpload = pendingUpload.open !== false;
+      if (!projectId && selectedProjectId && activeSection === 'projects') {
         projectId = selectedProjectId;
       }
 
-      // OPTIMISTIC UPLOAD: Open immediately
+      // OPTIMISTIC UPLOAD: open immediately — unless this is a silent
+      // Projects-tab add, which only saves the file into the project.
       file.uploadStartTime = performance.now();
-      onDocumentSelect(file);
+      if (openAfterUpload) onDocumentSelect(file);
 
-      // OPTIMISTIC LIST UPDATE
+      // OPTIMISTIC LIST UPDATE — carry both key spellings so the file shows
+      // immediately in the project-grouped views (which read project_id).
       const tempDoc = {
         id: `temp-${Date.now()}`,
         name: file.name,
@@ -3401,6 +3440,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         type: 'application/pdf',
         filePath: null,
         projectId: projectId,
+        project_id: projectId,
         file: file // Store local file for immediate access
       };
       setDocuments(prev => [tempDoc, ...prev]);
@@ -9843,7 +9883,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       projects={projects}
       templates={templates}
       members={[]}
-      user={user ? { name: user.user_metadata?.full_name || user.name || user.email, email: user.email } : null}
+      user={user ? { id: user.id, name: user.user_metadata?.full_name || user.name || user.email, email: user.email } : null}
       isPro={!!features?.advancedSurvey}
       onOpenDocument={hubOpenDocument}
       onUpload={handleUploadClick}

@@ -1,7 +1,7 @@
 /* Survey Hub — Projects tab.
    Faithful port of the Claude Design prototype (survey-hub/projects-new.jsx,
    Projects_FolderTree): a Finder-style tree — a left list of every project,
-   a right panel showing the open project's files plus a roster.
+   a right panel showing the open project's files plus a team.
 
    The markup, styling, spacing, columns, select-mode toolbars and per-row
    menus mirror the mockup element for element. Only the data is swapped.
@@ -9,7 +9,7 @@
    Teammate data: the hub feeds a `members` directory of
    { id, name, role, color, online }. Each project carries members:[memberId]
    and each document carries owner:memberId — so the left avatar stacks, the
-   roster panel and the "Last edited by" column render the true prototype
+   team panel and the "Last edited by" column render the true prototype
    behavior. All fall back gracefully when member data is absent.
 
    Interaction model: every button and menu is wired to LOCAL React state —
@@ -63,6 +63,11 @@ const shortWhen = (d) => {
   if (days < 30) return days + 'd ago';
   return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
+
+/* Two-letter initials from a display name — "Isaiah Calvo" -> "IC". Avatar
+   glyphs render this so the circle shows real initials, never a raw user id. */
+const initialsOf = (name) => (name || '')
+  .trim().split(/\s+/).map((w) => w[0] || '').join('').slice(0, 2).toUpperCase() || '—';
 
 let LOCAL_ID = 1;
 const nextLocalId = () => `local-${Date.now()}-${LOCAL_ID++}`;
@@ -148,6 +153,8 @@ export default function ProjectsFolderTree({
   onNav,
   onOpenDocument,
   onCreateProject,
+  onUpload,
+  onDeleteDocuments,
   onShare,
 }) {
   const [search, setSearch] = useState('');
@@ -246,13 +253,71 @@ export default function ProjectsFolderTree({
   );
 
   // Member directory lookup — resolves a memberId to its { name, role, color,
-  // online } record so avatars/roster render the prototype's true behavior.
+  // online } record so avatars/team render the true owner + collaborators.
+  //
+  // Every project has at least one real member: its owner, the signed-in user.
+  // There is no teammates table yet, so the directory is seeded from the
+  // current user (as Owner). Any real collaborator records passed by the host
+  // are merged on top. No mock people are ever invented here.
+  const ownerMember = useMemo(() => (
+    user?.id != null
+      ? {
+          id: user.id,
+          name: user.name || user.email?.split('@')[0] || 'You',
+          email: user.email || '',
+          role: 'Owner',
+          // Literal gold (not a CSS var): the Manage Team modal renders
+          // outside the `.survey-hub` root where CSS vars are not in scope.
+          color: '#d8a84e',
+          online: true,
+        }
+      : null
+  ), [user]);
+
   const memberById = useMemo(() => {
     const map = new Map();
+    if (ownerMember) map.set(ownerMember.id, ownerMember);
     members.forEach((m) => { if (m && m.id != null) map.set(m.id, m); });
     return map;
-  }, [members]);
+  }, [members, ownerMember]);
   const lookupMember = (id) => memberById.get(id) || null;
+
+  // Team member-ids for a project — owner first, then any real collaborator
+  // ids carried on the project row, deduped. A project's owner is the row's
+  // `user_id` (or `members[0]` for a freshly created local project); it falls
+  // back to the signed-in user so a project is never owner-less / empty.
+  const projectTeam = useCallback((proj) => {
+    if (!proj) return [];
+    const projMembers = Array.isArray(proj.members) ? proj.members : [];
+    const ownerId = proj.user_id ?? projMembers[0] ?? user?.id ?? null;
+    const ids = [];
+    if (ownerId != null) ids.push(ownerId);
+    projMembers.forEach((id) => { if (id != null && !ids.includes(id)) ids.push(id); });
+    return ids;
+  }, [user]);
+
+  // Real team-member records for the Manage Team modal — the project's team
+  // resolved against the directory. No invented people: today this is just the
+  // owner. Memoized so the modal keeps a stable list while it's open.
+  const teamModalMembers = useMemo(() => {
+    if (!teamModalProject) return [];
+    const added = teamModalProject.created_at
+      ? new Date(teamModalProject.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+      : '';
+    return projectTeam(teamModalProject).map((id) => {
+      const m = memberById.get(id) || null;
+      const name = m?.name || 'Teammate';
+      return {
+        id,
+        name,
+        initials: m ? initialsOf(m.name) : '—',
+        email: m?.email || '',
+        role: m?.role || 'Member',
+        color: m?.color || '#d8a84e',
+        added,
+      };
+    });
+  }, [teamModalProject, memberById, projectTeam]);
 
   /* ---- Project-list mutations (local state) ---------------------------- */
 
@@ -321,12 +386,18 @@ export default function ProjectsFolderTree({
   const addFiles = useCallback((forProject) => {
     const target = forProject || open;
     if (!target) return;
+    // Real upload path: hand the destination project id to the host so the
+    // file is uploaded and saved INTO that project, surviving tab switches
+    // and reloads. `open: false` — a file added to a project is just saved
+    // into it, not opened in the viewer. Falls back to the local OS picker
+    // only when no host handler is wired (e.g. the standalone dev preview).
+    if (onUpload) { onUpload(target.id, { open: false }); return; }
     pendingPickProject.current = target.id;
     if (fileInputRef.current) {
       fileInputRef.current.value = ''; // allow re-picking the same file
       fileInputRef.current.click();
     }
-  }, [open]);
+  }, [open, onUpload]);
 
   // Receives the real File objects chosen in the OS picker and maps each into
   // the document shape, attaching them to the pending project.
@@ -358,10 +429,21 @@ export default function ProjectsFolderTree({
   }, [open, openFiles]);
 
   const deleteFiles = useCallback((indices) => {
-    const ids = new Set(indices.map((i) => openFiles[i]?.id).filter((x) => x != null));
+    const targets = indices.map((i) => openFiles[i]).filter(Boolean);
+    if (targets.length === 0) return;
+    // Real delete: hand the documents to the host so they are removed from
+    // Supabase and STAY deleted across tab switches and reloads. The host
+    // refreshes the document list, which re-syncs this view. Falls back to a
+    // local-only removal when no host handler is wired (dev preview).
+    if (onDeleteDocuments) {
+      onDeleteDocuments(targets);
+      setSelFiles(new Set());
+      return;
+    }
+    const ids = new Set(targets.map((d) => d.id).filter((x) => x != null));
     setLocalDocs((prev) => prev.filter((d) => !ids.has(d.id)));
     setSelFiles(new Set());
-  }, [openFiles]);
+  }, [openFiles, onDeleteDocuments]);
 
   const reorderFiles = useCallback((from, to) => {
     if (from == null || to == null || from === to || !open) return;
@@ -416,7 +498,7 @@ export default function ProjectsFolderTree({
   /* ---- Render ---------------------------------------------------------- */
 
   const subtitle = (
-    <span><b>{filtered.length}</b> projects · expand any to see its files and roster</span>
+    <span><b>{filtered.length}</b> projects · expand any to see its files and team</span>
   );
   const actions = <Search placeholder="Search Projects..." value={search} onChange={setSearch} />;
 
@@ -493,7 +575,7 @@ export default function ProjectsFolderTree({
               const isOpen = open && p.id === open.id;
               const isSel = selProj.has(p.id);
               const isPinned = pinnedIds.has(p.id);
-              const projMembers = Array.isArray(p.members) ? p.members : [];
+              const projMembers = projectTeam(p);
               return (
                 <div
                   key={p.id}
@@ -536,10 +618,14 @@ export default function ProjectsFolderTree({
                     )}
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{p.name}</div>
-                      {/* Member-avatar stack (first 3) + member count — the
-                          prototype's true behavior; empty stack if no members. */}
+                      {/* Owner-avatar stack (first 3 team members) + member
+                          count. Every project shows at least the owner glyph —
+                          ids are resolved to real initials, never shown raw. */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
-                        <AvatarStack members={projMembers.slice(0, 3)} size={14} />
+                        <AvatarStack
+                          members={projMembers.slice(0, 3).map((id) => initialsOf(lookupMember(id)?.name))}
+                          size={14}
+                        />
                         <span className="mono meta" style={{ fontSize: 9.5 }}>{projMembers.length}</span>
                       </div>
                     </div>
@@ -681,9 +767,13 @@ export default function ProjectsFolderTree({
                     <div style={{ display: 'grid', gap: 1 }}>
                       {openFiles.map((f, i) => {
                         const isChecked = selFiles.has(i);
-                        const owner = lookupMember(f.owner);
-                        const ownerInitials = (owner?.id || f.owner || '—');
-                        const ownerFirst = owner?.name?.split(' ')[0] || (f.owner != null ? String(f.owner) : '—');
+                        // "Last edited by" owner — the document's own user id
+                        // when present, else the project owner. Resolved to a
+                        // real member so the avatar shows true initials.
+                        const ownerId = f.user_id ?? f.owner ?? projectTeam(open)[0] ?? null;
+                        const owner = lookupMember(ownerId);
+                        const ownerInitials = owner ? initialsOf(owner.name) : '—';
+                        const ownerFirst = owner?.name?.split(' ')[0] || '—';
                         return (
                           <div
                             key={f.id}
@@ -743,31 +833,35 @@ export default function ProjectsFolderTree({
                   )}
                 </div>
 
-                {/* Roster — project members resolved against the member
+                {/* Team — project members resolved against the member
                     directory: avatar + name + role + online status dot. */}
                 <div className="slim-scroll" style={{ borderLeft: '1px solid var(--ink-500)', padding: '12px 12px', background: 'var(--ink-800)', overflow: 'auto' }}>
-                  <div className="section-label" style={{ marginBottom: 10 }}>Roster</div>
+                  <div className="section-label" style={{ marginBottom: 10 }}>Team</div>
                   {(() => {
-                    const roster = Array.isArray(open.members) ? open.members : [];
-                    if (roster.length === 0) {
+                    // The team is always non-empty: a project owns at least
+                    // its owner (the signed-in user). Real collaborators, when
+                    // a teammates feature exists, append after the owner.
+                    const team = projectTeam(open);
+                    if (team.length === 0) {
                       return (
                         <div className="meta" style={{ fontSize: 10.5, lineHeight: 1.5 }}>
-                          No teammates yet. Use Manage Team to invite people.
+                          Sign in to see this project's owner.
                         </div>
                       );
                     }
                     return (
                       <div style={{ display: 'grid', gap: 8 }}>
-                        {roster.map((m) => {
+                        {team.map((m) => {
                           const mem = lookupMember(m);
+                          const memName = mem?.name || 'Teammate';
                           return (
                             <div key={m} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <Avatar initials={m} size={22} color={mem?.color} />
+                              <Avatar initials={mem ? initialsOf(mem.name) : '—'} size={22} color={mem?.color} />
                               <div style={{ minWidth: 0, flex: 1 }}>
-                                <div style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{mem?.name || m}</div>
+                                <div style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{memName}</div>
                                 <div className="meta" style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                   <span style={{ width: 5, height: 5, borderRadius: '50%', background: mem?.online ? 'var(--green)' : 'var(--ink-300)', flex: 'none' }}></span>
-                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{mem?.role || ''}</span>
+                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{mem?.role || 'Member'}</span>
                                 </div>
                               </div>
                             </div>
@@ -843,7 +937,7 @@ export default function ProjectsFolderTree({
         open={!!teamModalProject}
         onClose={() => setTeamModalProject(null)}
         project={teamModalProject}
-        members={members}
+        members={teamModalMembers}
       />
 
       {/* Hidden OS file picker — Add files / Upload files programmatically
