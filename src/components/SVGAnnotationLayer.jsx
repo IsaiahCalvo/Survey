@@ -136,6 +136,7 @@ const SVGAnnotationLayer = memo(({
   // same three-layer visibility filter as annotation objects.
   surveyHighlights,
   onUpdateSurveyHighlightBounds,
+  pendingSurveyHighlightSelection,
   // Filtering props
   selectedModuleId,
   showSurveyPanel,
@@ -1891,6 +1892,39 @@ const SVGAnnotationLayer = memo(({
     setSurveyHighlightPreviewBounds(null);
     surveyHighlightDragRef.current = null;
   }, [isSelectTool]);
+
+  useLayoutEffect(() => {
+    if (!pendingSurveyHighlightSelection) return;
+    if (pendingSurveyHighlightSelection.pageNumber !== pageNumber) {
+      setSelectedSurveyHighlightId(null);
+      setSurveyHighlightPreviewBounds(null);
+      return;
+    }
+
+    const highlightId = pendingSurveyHighlightSelection.highlightId;
+    if (!highlightId) {
+      setSelectedSurveyHighlightId(null);
+      setSurveyHighlightPreviewBounds(null);
+      return;
+    }
+
+    const isVisible = surveyHighlightElements.some((entry) =>
+      entry?.highlight?.highlightId === highlightId
+    );
+    if (!isVisible) return;
+
+    deselectAll();
+    onSelectedCalloutIdsChange?.(new Set());
+    setSelectedSurveyHighlightId(highlightId);
+    setHoveredSurveyHighlightId(null);
+    setSurveyHighlightPreviewBounds(null);
+  }, [
+    deselectAll,
+    onSelectedCalloutIdsChange,
+    pageNumber,
+    pendingSurveyHighlightSelection,
+    surveyHighlightElements,
+  ]);
 
   const normalizeSurveyHighlightBounds = useCallback((bounds) => {
     const x = Number(bounds?.x);

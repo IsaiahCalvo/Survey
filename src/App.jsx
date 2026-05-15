@@ -12415,6 +12415,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   // Null when no command is pending. Callouts are handled by a separate
   // session and are intentionally skipped here.
   const [pendingSvgSelection, setPendingSvgSelection] = useState(null);
+  const [pendingSurveyHighlightSelection, setPendingSurveyHighlightSelection] = useState(null);
   const [annotationSelectionClearToken, setAnnotationSelectionClearToken] = useState(0);
   // UX: pan-mode hover broadcast. Set by the document-level mousemove
   // listener (declared after the mousedown/mouseup pair below) to
@@ -30692,6 +30693,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   const handleLocateItemOnPDF = useCallback((highlight) => {
     if (!highlight) return;
     const { pageNumber, bounds } = highlight;
+    const highlightId = highlight.id || highlight.highlightId || null;
 
     if (!pageNumber || !bounds) {
       if (pageNumber) {
@@ -30703,6 +30705,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     const currentScale = Math.max(0.01, Number(scaleRef.current) || Number(scale) || 1);
     const targetScale = Math.max(currentScale, 1.5);
     const shouldZoom = targetScale > currentScale + 0.05;
+    if (highlightId) {
+      setActiveTool('select');
+      setPendingSurveyHighlightSelection({
+        pageNumber,
+        highlightId,
+        tick: Date.now(),
+      });
+    }
+
     const centerHighlight = ({ navigateFirst = true } = {}) => {
       centerPageBoundsInViewer(pageNumber, bounds, {
         behavior: 'auto',
@@ -30728,7 +30739,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     centerPageBoundsInViewer,
     goToPage,
     scale,
+    setActiveTool,
     setScaleWithViewportPreservation,
+    setPendingSurveyHighlightSelection,
     useSyncfusionRenderer
   ]);
 
@@ -34436,6 +34449,7 @@ ${pageBlocks}
                                   callouts={callouts}
                                   surveyHighlights={newHighlightsByPage[pageNumber]}
                                   onUpdateSurveyHighlightBounds={handleSurveyHighlightBoundsChange}
+                                  pendingSurveyHighlightSelection={pendingSurveyHighlightSelection}
                                   selectedModuleId={selectedModuleId}
                                   showSurveyPanel={showSurveyPanel}
                                   selectedSpaceId={annotationSpaceId}
@@ -35329,6 +35343,7 @@ ${pageBlocks}
                                       callouts={callouts}
                                       surveyHighlights={newHighlightsByPage[pageNumber]}
                                       onUpdateSurveyHighlightBounds={handleSurveyHighlightBoundsChange}
+                                      pendingSurveyHighlightSelection={pendingSurveyHighlightSelection}
                                       selectedModuleId={selectedModuleId}
                                       showSurveyPanel={showSurveyPanel}
                                       selectedSpaceId={annotationSpaceId}
@@ -35952,6 +35967,7 @@ ${pageBlocks}
                                       callouts={callouts}
                                       surveyHighlights={newHighlightsByPage[pageNum]}
                                       onUpdateSurveyHighlightBounds={handleSurveyHighlightBoundsChange}
+                                      pendingSurveyHighlightSelection={pendingSurveyHighlightSelection}
                                       selectedModuleId={selectedModuleId}
                                       showSurveyPanel={showSurveyPanel}
                                       selectedSpaceId={annotationSpaceId}
