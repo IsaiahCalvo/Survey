@@ -28,11 +28,13 @@ const TEXT_LAYER_GEOMETRY_MIN_RECT_SIZE = 0.01;
 const TEXT_LAYER_INK_SCAN_THRESHOLD = 42;
 const TEXT_LAYER_INK_SCAN_MIN_PIXELS = 4;
 const TEXT_LAYER_INK_SCAN_MAX_PIXELS = 180000;
-const TEXT_LAYER_INK_SCAN_VERTICAL_PAD = 0.55;
-const TEXT_LAYER_INK_SCAN_BOUNDARY_PAD = 0.35;
-const TEXT_LAYER_INK_SCAN_INTERNAL_PAD = 0.12;
+const TEXT_LAYER_INK_SCAN_MIN_PAD = 2.4;
+const TEXT_LAYER_INK_SCAN_MAX_PAD = 18;
+const TEXT_LAYER_INK_SCAN_PAD_RATIO = 0.48;
 const TEXT_LAYER_INK_SCAN_MIN_HEIGHT = 2;
 const TEXT_LAYER_INK_SCAN_BUCKET_SHIFT = 4;
+const TEXT_LAYER_INK_COMPONENT_SELECTION_PAD = 2;
+const TEXT_LAYER_MEASUREMENT_TIMEOUT_MS = 2500;
 
 const SEARCH_TEXT_WORD_CHAR_REGEX = /[\p{L}\p{N}\p{M}]/u;
 
@@ -145,6 +147,23 @@ const waitForSearchTextLayout = async () => {
   if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') return;
   await new Promise(resolve => window.requestAnimationFrame(resolve));
 };
+
+const withSearchTextMeasurementTimeout = (promise) => new Promise((resolve, reject) => {
+  const timer = setTimeout(() => {
+    reject(new Error('Timed out measuring PDF text layer'));
+  }, TEXT_LAYER_MEASUREMENT_TIMEOUT_MS);
+
+  promise.then(
+    (value) => {
+      clearTimeout(timer);
+      resolve(value);
+    },
+    (error) => {
+      clearTimeout(timer);
+      reject(error);
+    }
+  );
+});
 
 const normalizeSearchTextMeasurementDivStyles = (textDivs) => {
   textDivs.forEach((textDiv) => {
@@ -266,11 +285,121 @@ const isSearchTextInkPixel = (data, index, background) => {
   return Math.sqrt((dr * dr) + (dg * dg) + (db * db)) >= TEXT_LAYER_INK_SCAN_THRESHOLD;
 };
 
+const collectSearchTextInkComponents = (mask, width, height) => {
+  const components = [];
+  const stack = [];
+
+  for (let start = 0; start < mask.length; start += 1) {
+    if (mask[start] !== 1) continue;
+
+    mask[start] = 0;
+    stack.push(start);
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    let pixels = 0;
+
+    while (stack.length > 0) {
+      const index = stack.pop();
+      const x = index % width;
+      const y = Math.floor(index / width);
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+      pixels += 1;
+
+      for (let dy = -1; dy <= 1; dy += 1) {
+        const nextY = y + dy;
+        if (nextY < 0 || nextY >= height) continue;
+        for (let dx = -1; dx <= 1; dx += 1) {
+          if (dx === 0 && dy === 0) continue;
+          const nextX = x + dx;
+          if (nextX < 0 || nextX >= width) continue;
+          const nextIndex = nextY * width + nextX;
+          if (mask[nextIndex] !== 1) continue;
+          mask[nextIndex] = 0;
+          stack.push(nextIndex);
+        }
+      }
+    }
+
+    if (pixels >= TEXT_LAYER_INK_SCAN_MIN_PIXELS) {
+      components.push({
+        left: minX,
+        top: minY,
+        right: maxX + 1,
+        bottom: maxY + 1,
+        pixels
+      });
+    }
+  }
+
+  return components;
+};
+
+const resolveSearchTextInkSelectionRect = (rect) => {
+  const selectionRect = rect?.selectionRect;
+  if (
+    selectionRect &&
+    Number.isFinite(Number(selectionRect.x)) &&
+    Number.isFinite(Number(selectionRect.y)) &&
+    Number(selectionRect.width) > TEXT_LAYER_GEOMETRY_MIN_RECT_SIZE &&
+    Number(selectionRect.height) > TEXT_LAYER_GEOMETRY_MIN_RECT_SIZE
+  ) {
+    return {
+      x: Number(selectionRect.x),
+      y: Number(selectionRect.y),
+      width: Number(selectionRect.width),
+      height: Number(selectionRect.height)
+    };
+  }
+
+  return rect;
+};
+
+const mergeSearchTextRectBounds = (primaryRect, secondaryRect) => {
+  if (!secondaryRect || secondaryRect === primaryRect) return primaryRect;
+  const left = Math.min(primaryRect.x, secondaryRect.x);
+  const top = Math.min(primaryRect.y, secondaryRect.y);
+  const right = Math.max(primaryRect.x + primaryRect.width, secondaryRect.x + secondaryRect.width);
+  const bottom = Math.max(primaryRect.y + primaryRect.height, secondaryRect.y + secondaryRect.height);
+
+  return {
+    x: left,
+    y: top,
+    width: Math.max(right - left, TEXT_LAYER_GEOMETRY_MIN_RECT_SIZE),
+    height: Math.max(bottom - top, TEXT_LAYER_GEOMETRY_MIN_RECT_SIZE)
+  };
+};
+
+const isSearchTextInkComponentInsideRange = (component, expectedRect, selectionPadX, selectionPadY) => {
+  const centerX = (component.left + component.right) / 2;
+  const centerY = (component.top + component.bottom) / 2;
+  const componentWidth = Math.max(component.right - component.left, 1);
+  const componentHeight = Math.max(component.bottom - component.top, 1);
+  const overlapX = Math.max(
+    0,
+    Math.min(component.right, expectedRect.right) - Math.max(component.left, expectedRect.left)
+  );
+  const overlapY = Math.max(
+    0,
+    Math.min(component.bottom, expectedRect.bottom + selectionPadY) -
+      Math.max(component.top, expectedRect.top - selectionPadY)
+  );
+  const centerInsideX = centerX >= expectedRect.left - selectionPadX && centerX <= expectedRect.right + selectionPadX;
+  const centerInsideY = centerY >= expectedRect.top - selectionPadY && centerY <= expectedRect.bottom + selectionPadY;
+  const mostlyInsideX = overlapX / componentWidth >= 0.62;
+  const meaningfullyOnLine = overlapY / componentHeight >= 0.28;
+
+  return (centerInsideX && centerInsideY) || (mostlyInsideX && meaningfullyOnLine);
+};
+
 const refineTextRectWithRenderedInk = ({
   rect,
   pageData,
   pageNumber,
-  segmentContext,
   pageImageEntry
 }) => {
   if (!rect || !pageData?.viewport || !pageImageEntry?.ctx || !pageImageEntry?.canvas) {
@@ -287,16 +416,16 @@ const refineTextRectWithRenderedInk = ({
 
   const xScale = imageWidth / viewportWidth;
   const yScale = imageHeight / viewportHeight;
-  const leftPad = segmentContext?.startsAtBoundary
-    ? TEXT_LAYER_INK_SCAN_BOUNDARY_PAD
-    : TEXT_LAYER_INK_SCAN_INTERNAL_PAD;
-  const rightPad = segmentContext?.endsAtBoundary
-    ? TEXT_LAYER_INK_SCAN_BOUNDARY_PAD
-    : TEXT_LAYER_INK_SCAN_INTERNAL_PAD;
-  const scanLeft = Math.max(0, rect.x - leftPad);
-  const scanTop = Math.max(0, rect.y - TEXT_LAYER_INK_SCAN_VERTICAL_PAD);
-  const scanRight = Math.min(viewportWidth, rect.x + rect.width + rightPad);
-  const scanBottom = Math.min(viewportHeight, rect.y + rect.height + TEXT_LAYER_INK_SCAN_VERTICAL_PAD);
+  const selectionRect = resolveSearchTextInkSelectionRect(rect);
+  const scanRect = mergeSearchTextRectBounds(rect, selectionRect);
+  const scanPad = Math.min(
+    TEXT_LAYER_INK_SCAN_MAX_PAD,
+    Math.max(TEXT_LAYER_INK_SCAN_MIN_PAD, scanRect.height * TEXT_LAYER_INK_SCAN_PAD_RATIO)
+  );
+  const scanLeft = Math.max(0, scanRect.x - scanPad);
+  const scanTop = Math.max(0, scanRect.y - scanPad);
+  const scanRight = Math.min(viewportWidth, scanRect.x + scanRect.width + scanPad);
+  const scanBottom = Math.min(viewportHeight, scanRect.y + scanRect.height + scanPad);
 
   const cropX = Math.floor(scanLeft * xScale);
   const cropY = Math.floor(scanTop * yScale);
@@ -314,37 +443,53 @@ const refineTextRectWithRenderedInk = ({
     const background = readDominantSearchTextBackground(imageData.data, cropWidth, cropHeight);
     if (!background) return rect;
 
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    let inkPixels = 0;
+    const mask = new Uint8Array(cropWidth * cropHeight);
 
     for (let y = 0; y < cropHeight; y += 1) {
       for (let x = 0; x < cropWidth; x += 1) {
         const index = (y * cropWidth + x) * 4;
         if (!isSearchTextInkPixel(imageData.data, index, background)) continue;
-        minX = Math.min(minX, x);
-        minY = Math.min(minY, y);
-        maxX = Math.max(maxX, x);
-        maxY = Math.max(maxY, y);
-        inkPixels += 1;
+        mask[y * cropWidth + x] = 1;
       }
     }
 
-    if (inkPixels < TEXT_LAYER_INK_SCAN_MIN_PIXELS || !Number.isFinite(minX) || !Number.isFinite(minY)) {
+    const expectedRect = {
+      left: (selectionRect.x * xScale) - cropX,
+      top: (selectionRect.y * yScale) - cropY,
+      right: ((selectionRect.x + selectionRect.width) * xScale) - cropX,
+      bottom: ((selectionRect.y + selectionRect.height) * yScale) - cropY
+    };
+    const selectionPadX = TEXT_LAYER_INK_COMPONENT_SELECTION_PAD;
+    const selectionPadY = Math.max(
+      TEXT_LAYER_INK_COMPONENT_SELECTION_PAD,
+      rect.height * yScale * 0.22
+    );
+    const components = collectSearchTextInkComponents(mask, cropWidth, cropHeight);
+    const selectedComponents = components.filter((component) => (
+      isSearchTextInkComponentInsideRange(component, expectedRect, selectionPadX, selectionPadY)
+    ));
+
+    if (selectedComponents.length === 0) {
       return rect;
     }
 
+    const minX = Math.min(...selectedComponents.map((component) => component.left));
+    const minY = Math.min(...selectedComponents.map((component) => component.top));
+    const maxX = Math.max(...selectedComponents.map((component) => component.right));
+    const maxY = Math.max(...selectedComponents.map((component) => component.bottom));
+    const inkPixels = selectedComponents.reduce((sum, component) => sum + component.pixels, 0);
     const tightLeft = (cropX + minX) / xScale;
     const tightTop = (cropY + minY) / yScale;
-    const tightRight = (cropX + maxX + 1) / xScale;
-    const tightBottom = (cropY + maxY + 1) / yScale;
-    const visualPadX = Math.max(0.08, Math.min(0.35, rect.height * 0.018));
-    const visualPadY = Math.max(0.12, Math.min(0.55, rect.height * 0.025));
-    const refinedLeft = Math.max(0, tightLeft - visualPadX);
+    const tightRight = (cropX + maxX) / xScale;
+    const tightBottom = (cropY + maxY) / yScale;
+    const inkOverhangX = Math.max(0.45, Math.min(1.6, selectionRect.height * 0.07));
+    const guardedTightLeft = Math.max(tightLeft, selectionRect.x - inkOverhangX);
+    const guardedTightRight = Math.min(tightRight, selectionRect.x + selectionRect.width + inkOverhangX);
+    const visualPadX = Math.max(0.32, Math.min(1.1, rect.height * 0.045));
+    const visualPadY = Math.max(0.32, Math.min(1.1, rect.height * 0.045));
+    const refinedLeft = Math.max(0, guardedTightLeft - visualPadX);
     const refinedTop = Math.max(0, tightTop - visualPadY);
-    const refinedRight = Math.min(viewportWidth, tightRight + visualPadX);
+    const refinedRight = Math.min(viewportWidth, guardedTightRight + visualPadX);
     const refinedBottom = Math.min(viewportHeight, tightBottom + visualPadY);
     const refinedWidth = refinedRight - refinedLeft;
     const refinedHeight = refinedBottom - refinedTop;
@@ -353,8 +498,10 @@ const refineTextRectWithRenderedInk = ({
       return rect;
     }
 
+    const { selectionRect: _selectionRect, ...baseRect } = rect;
+
     return {
-      ...rect,
+      ...baseRect,
       x: refinedLeft,
       y: refinedTop,
       width: refinedWidth,
@@ -366,6 +513,8 @@ const refineTextRectWithRenderedInk = ({
         pageNumber,
         cropWidth,
         cropHeight,
+        componentCount: components.length,
+        selectedComponentCount: selectedComponents.length,
         background: {
           r: Math.round(background.r),
           g: Math.round(background.g),
@@ -409,7 +558,7 @@ const ensureTextLayerMeasurement = async (pageData) => {
     });
 
     try {
-      await task.promise;
+      await withSearchTextMeasurementTimeout(task.promise);
       normalizeSearchTextMeasurementDivStyles(textDivs);
       await waitForSearchTextFonts();
       await waitForSearchTextLayout();
@@ -422,8 +571,10 @@ const ensureTextLayerMeasurement = async (pageData) => {
       };
       return pageData.textLayerMeasurement;
     } catch (error) {
+      task.cancel?.();
       container.remove();
       pageData.textLayerMeasurement = null;
+      pageData.textLayerMeasurementPromise = null;
       throw error;
     }
   })();
@@ -432,7 +583,13 @@ const ensureTextLayerMeasurement = async (pageData) => {
 };
 
 const buildTextLayerRectanglesForMatch = async (pageData, matchStart, matchLength, pageNumber) => {
-  const measurement = await ensureTextLayerMeasurement(pageData);
+  let measurement = null;
+  try {
+    measurement = await ensureTextLayerMeasurement(pageData);
+  } catch (error) {
+    console.warn('[SearchTextPanel] Text-layer measurement unavailable; using metric bounds fallback:', error);
+    return [];
+  }
   if (!measurement?.container || !Array.isArray(measurement.textDivs)) {
     return [];
   }
@@ -441,6 +598,8 @@ const buildTextLayerRectanglesForMatch = async (pageData, matchStart, matchLengt
   const containerRect = measurement.container.getBoundingClientRect();
   const rectangles = [];
   const pageImageEntry = getRenderedPageImageCanvas(getPageImageHost(pageNumber));
+  const selectionRects = buildRectanglesForMatch(pageData, matchStart, matchLength);
+  let selectionRectIndex = 0;
 
   for (const rangeInfo of pageData.ranges || []) {
     if (rangeInfo.end <= matchStart) continue;
@@ -460,6 +619,8 @@ const buildTextLayerRectanglesForMatch = async (pageData, matchStart, matchLengt
       relativeStart,
       relativeEnd - relativeStart
     );
+    const selectionRect = selectionRects[selectionRectIndex] || null;
+    selectionRectIndex += 1;
 
     const domRange = document.createRange();
     try {
@@ -488,7 +649,8 @@ const buildTextLayerRectanglesForMatch = async (pageData, matchStart, matchLengt
           startsAtBoundary: segmentContext.startsAtBoundary,
           endsAtBoundary: segmentContext.endsAtBoundary,
           previousChar: segmentContext.previousChar,
-          nextChar: segmentContext.nextChar
+          nextChar: segmentContext.nextChar,
+          selectionRect
         };
 
         rectangles.push(refineTextRectWithRenderedInk({
