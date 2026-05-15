@@ -218,6 +218,16 @@ if (import.meta.env.DEV) {
       );
     });
   }
+
+  // DEV-ONLY: Survey Hub home-redesign preview — `?hubPreview=1` renders the
+  // new home in isolation with mock data, no auth or Supabase.
+  const hubPreview = params.get('hubPreview');
+  if (!devRouteActive && hubPreview) {
+    devRouteActive = true;
+    import('./home/HubPreview').then(({ default: HubPreview }) => {
+      createRoot(document.getElementById('root')).render(<HubPreview />);
+    });
+  }
 }
 
 if (!devRouteActive) {
