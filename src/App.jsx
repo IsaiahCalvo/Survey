@@ -27989,11 +27989,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   }, []);
 
   const handleFindTextMatches = useCallback(async (query) => {
-    const viewer = syncfusionViewerRef.current;
-    if (!query || typeof viewer?.findTextAsync !== 'function') return null;
-    activeTextSearchQueryRef.current = query.trim();
-    viewer.searchText?.(query, false);
-    return viewer.findTextAsync(query, false);
+    if (!query) return null;
+    syncfusionViewerRef.current?.cancelTextSearch?.();
+    return null;
   }, []);
 
   const handleClearTextSearch = useCallback(() => {
@@ -34042,9 +34040,7 @@ ${pageBlocks}
                       const hasAnnotations = annotationsByPage[pageNumber]?.objects?.length > 0;
                       const hasSurveyHighlights = (newHighlightsByPage[pageNumber]?.length ?? 0) > 0;
                       const hasRegions = getPageRegions(pageNumber)?.length > 0;
-                      const hasSearchHighlights = useSyncfusionRenderer
-                        ? currentMatch?.pageNumber === pageNumber
-                        : searchResultsByPage[pageNumber]?.length > 0;
+                      const hasSearchHighlights = searchResultsByPage[pageNumber]?.length > 0;
                       return hasAnnotations || hasSurveyHighlights || hasRegions || hasSearchHighlights;
                     })
                     .sort((a, b) => a - b)
@@ -34266,16 +34262,15 @@ ${pageBlocks}
                                 backfaceVisibility: legacyCommitCompensationPending ? 'hidden' : undefined,
                               }}
                             >
-                            {useSyncfusionRenderer && currentMatch?.pageNumber === pageNumber && (
+                            {useSyncfusionRenderer && searchResultsByPage[pageNumber] && searchResultsByPage[pageNumber].length > 0 && (
                               <SearchHighlightLayer
                                 pageNumber={pageNumber}
                                 width={resolvedPageSize.width}
                                 height={resolvedPageSize.height}
                                 scale={layerScale}
-                                highlights={[currentMatch]}
-                                activeMatchId={currentMatch.id}
-                                isActiveMatchOnThisPage
-                                activeOnly
+                                highlights={searchResultsByPage[pageNumber]}
+                                activeMatchId={currentMatch?.id}
+                                isActiveMatchOnThisPage={currentMatch?.pageNumber === pageNumber}
                                 activeGlowOnly
                               />
                             )}

@@ -59,9 +59,11 @@ const buildRectanglesForMatch = (pageData, matchStart, matchLength) => {
 
     const transformed = pdfjsLib.Util.transform(viewportTransform, textItem.transform);
     const fontHeight = Math.hypot(clampValue(transformed[2]), clampValue(transformed[3])) || clampValue(textItem.height, 12);
+    const topPad = Math.max(1, fontHeight * 0.08);
+    const bottomPad = Math.max(2, fontHeight * 0.24);
 
     const baseLeft = transformed[4];
-    const baseTop = transformed[5] - fontHeight;
+    const baseTop = transformed[5] - fontHeight - topPad;
 
     const rectLeft = baseLeft + horizontalScale * relativeStart;
     const rectWidth = Math.max(horizontalScale * relativeLength, 2);
@@ -70,7 +72,7 @@ const buildRectanglesForMatch = (pageData, matchStart, matchLength) => {
       x: rectLeft,
       y: baseTop,
       width: rectWidth,
-      height: Math.max(fontHeight, 6)
+      height: Math.max(fontHeight + topPad + bottomPad, 6)
     });
   }
 

@@ -148,10 +148,10 @@ const SearchHighlightLayer = memo(({
                   width: `${Math.max(rect.width, 2)}px`,
                   height: `${Math.max(rect.height, 6)}px`,
                   background: glowOnly
-                    ? 'rgba(255, 255, 255, 0.04)'
+                    ? 'rgba(255, 230, 0, 0.44)'
                     : isActive
                     ? 'rgba(255, 180, 0, 0.55)'
-                    : 'rgba(255, 255, 0, 0.35)',
+                    : 'rgba(255, 230, 0, 0.42)',
                   border: glowOnly
                     ? '1px solid rgba(255, 245, 157, 0.95)'
                     : isActive
