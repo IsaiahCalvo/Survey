@@ -24,6 +24,7 @@ const TEXT_HIGHLIGHT_INTERNAL_LEFT_PAD_RATIO = 0.006;
 const TEXT_HIGHLIGHT_BOUNDARY_RIGHT_PAD_RATIO = 0.18;
 const TEXT_HIGHLIGHT_INTERNAL_RIGHT_PAD_RATIO = 0.035;
 const TEXT_HIGHLIGHT_MAX_SIDE_PAD_RATIO = 0.22;
+const TEXT_LAYER_GEOMETRY_MIN_RECT_SIZE = 0.01;
 
 const SEARCH_TEXT_WORD_CHAR_REGEX = /[\p{L}\p{N}\p{M}]/u;
 
@@ -74,6 +75,197 @@ const resolveTextSegmentContext = (itemText, relativeStart, relativeLength) => {
 const resolveTextHighlightPad = (fontHeight, ratio, minimum) => {
   const maxSidePad = Math.max(1, fontHeight * TEXT_HIGHLIGHT_MAX_SIDE_PAD_RATIO);
   return Math.min(Math.max(minimum, fontHeight * ratio), maxSidePad);
+};
+
+const createSearchTextMeasureLayer = (viewport) => {
+  if (typeof document === 'undefined') return null;
+
+  const container = document.createElement('div');
+  container.className = 'textLayer search-text-measurement-layer';
+  container.setAttribute('aria-hidden', 'true');
+  Object.assign(container.style, {
+    position: 'fixed',
+    left: '-100000px',
+    top: '0',
+    width: `${viewport.width}px`,
+    height: `${viewport.height}px`,
+    opacity: '0',
+    pointerEvents: 'none',
+    zIndex: '-1',
+    contain: 'layout style paint',
+    overflow: 'hidden'
+  });
+  container.style.setProperty('--scale-factor', String(viewport.scale || 1));
+  document.body.appendChild(container);
+  return container;
+};
+
+const cleanupTextLayerMeasurement = (pageData) => {
+  const measurement = pageData?.textLayerMeasurement;
+  if (!measurement) return;
+  try {
+    measurement.task?.cancel?.();
+  } catch {
+    // The task may already be complete.
+  }
+  measurement.container?.remove?.();
+  pageData.textLayerMeasurement = null;
+  pageData.textLayerMeasurementPromise = null;
+};
+
+const cleanupTextLayerMeasurements = (cache) => {
+  if (!cache) return;
+  for (const pageData of cache.values()) {
+    cleanupTextLayerMeasurement(pageData);
+  }
+};
+
+const waitForSearchTextFonts = async () => {
+  if (typeof document === 'undefined' || !document.fonts?.ready) return;
+  try {
+    await Promise.race([
+      document.fonts.ready,
+      new Promise(resolve => setTimeout(resolve, 180))
+    ]);
+  } catch {
+    // Font readiness is best-effort; PDF.js still provides a fallback layout.
+  }
+};
+
+const waitForSearchTextLayout = async () => {
+  if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') return;
+  await new Promise(resolve => window.requestAnimationFrame(resolve));
+};
+
+const normalizeSearchTextMeasurementDivStyles = (textDivs) => {
+  textDivs.forEach((textDiv) => {
+    if (!textDiv?.style) return;
+    textDiv.style.position = 'absolute';
+    textDiv.style.whiteSpace = 'pre';
+    textDiv.style.transformOrigin = '0% 0%';
+    textDiv.style.color = 'transparent';
+  });
+};
+
+const getTextNodeForMeasurementDiv = (textDiv) => {
+  if (!textDiv) return null;
+  for (const node of textDiv.childNodes) {
+    if (node.nodeType === 3) {
+      return node;
+    }
+  }
+  return null;
+};
+
+const ensureTextLayerMeasurement = async (pageData) => {
+  if (!pageData?.textContent || !pageData?.viewport || typeof document === 'undefined') {
+    return null;
+  }
+  if (pageData.textLayerMeasurement) {
+    return pageData.textLayerMeasurement;
+  }
+  if (pageData.textLayerMeasurementPromise) {
+    return pageData.textLayerMeasurementPromise;
+  }
+  if (typeof pdfjsLib.renderTextLayer !== 'function') {
+    return null;
+  }
+
+  pageData.textLayerMeasurementPromise = (async () => {
+    const container = createSearchTextMeasureLayer(pageData.viewport);
+    if (!container) return null;
+
+    const textDivs = [];
+    const textDivProperties = new WeakMap();
+    const textContentItemsStr = [];
+    const task = pdfjsLib.renderTextLayer({
+      textContentSource: pageData.textContent,
+      container,
+      viewport: pageData.viewport,
+      textDivs,
+      textDivProperties,
+      textContentItemsStr
+    });
+
+    try {
+      await task.promise;
+      normalizeSearchTextMeasurementDivStyles(textDivs);
+      await waitForSearchTextFonts();
+      await waitForSearchTextLayout();
+      pageData.textLayerMeasurement = {
+        container,
+        task,
+        textDivs,
+        textDivProperties,
+        textContentItemsStr
+      };
+      return pageData.textLayerMeasurement;
+    } catch (error) {
+      container.remove();
+      pageData.textLayerMeasurement = null;
+      throw error;
+    }
+  })();
+
+  return pageData.textLayerMeasurementPromise;
+};
+
+const buildTextLayerRectanglesForMatch = async (pageData, matchStart, matchLength) => {
+  const measurement = await ensureTextLayerMeasurement(pageData);
+  if (!measurement?.container || !Array.isArray(measurement.textDivs)) {
+    return [];
+  }
+
+  const matchEnd = matchStart + matchLength;
+  const containerRect = measurement.container.getBoundingClientRect();
+  const rectangles = [];
+
+  for (const rangeInfo of pageData.ranges || []) {
+    if (rangeInfo.end <= matchStart) continue;
+    if (rangeInfo.start >= matchEnd) break;
+
+    const textDiv = measurement.textDivs[rangeInfo.textDivIndex];
+    const textNode = getTextNodeForMeasurementDiv(textDiv);
+    if (!textNode) continue;
+
+    const overlapStart = Math.max(rangeInfo.start, matchStart);
+    const overlapEnd = Math.min(rangeInfo.end, matchEnd);
+    const relativeStart = overlapStart - rangeInfo.start;
+    const relativeEnd = overlapEnd - rangeInfo.start;
+    if (relativeEnd <= relativeStart) continue;
+
+    const domRange = document.createRange();
+    try {
+      domRange.setStart(textNode, relativeStart);
+      domRange.setEnd(textNode, relativeEnd);
+      const clientRects = Array.from(domRange.getClientRects());
+
+      clientRects.forEach((rect) => {
+        const width = rect.width;
+        const height = rect.height;
+        if (width <= TEXT_LAYER_GEOMETRY_MIN_RECT_SIZE || height <= TEXT_LAYER_GEOMETRY_MIN_RECT_SIZE) {
+          return;
+        }
+
+        rectangles.push({
+          x: Math.max(0, rect.left - containerRect.left),
+          y: Math.max(0, rect.top - containerRect.top),
+          width,
+          height,
+          geometryMethod: 'text-layer-range',
+          matchText: textNode.textContent?.slice(relativeStart, relativeEnd) || '',
+          textDivIndex: rangeInfo.textDivIndex,
+          fontFamily: textDiv.style.fontFamily || undefined,
+          fontSize: textDiv.style.fontSize || undefined,
+          transform: textDiv.style.transform || undefined
+        });
+      });
+    } finally {
+      domRange.detach?.();
+    }
+  }
+
+  return rectangles;
 };
 
 const resolveTextSegmentAdvance = ({
@@ -525,6 +717,7 @@ const SearchTextPanel = ({
     documentKeyRef.current = resolvedDocumentKey;
     lastPerformedSearchKeyRef.current = '';
     searchIdRef.current += 1;
+    cleanupTextLayerMeasurements(pageDataCacheRef.current);
     pageDataCacheRef.current.clear();
     emitTextSearchDiag('document_key_changed_clear_search', {
       previousDocumentKey,
@@ -537,6 +730,12 @@ const SearchTextPanel = ({
     setInternalSearchQuery('');
     onClearTextSearch?.();
   }, [resolvedDocumentKey, numPages, setSearchResults, setCurrentMatchIndex, onClearTextSearch]);
+
+  useEffect(() => (
+    () => {
+      cleanupTextLayerMeasurements(pageDataCacheRef.current);
+    }
+  ), []);
 
   useEffect(() => {
     if (!isActive || !searchInputRef.current) {
@@ -603,20 +802,35 @@ const SearchTextPanel = ({
 
       let fullText = '';
       const ranges = [];
+      let textDivIndex = 0;
 
       (textContent.items || []).forEach((item, index) => {
-        const str = item?.str || '';
+        if (typeof item?.str !== 'string') return;
+        const str = item.str || '';
+        const currentTextDivIndex = textDivIndex;
+        textDivIndex += 1;
+        if (!str) return;
+
         const start = fullText.length;
         fullText += str;
-        ranges.push({ start, end: start + str.length, itemIndex: index });
+        ranges.push({
+          start,
+          end: start + str.length,
+          itemIndex: index,
+          textDivIndex: currentTextDivIndex
+        });
       });
 
       const data = {
         text: fullText,
+        textContent,
         items: textContent.items || [],
         styles: textContent.styles || {},
         ranges,
-        viewportTransform: viewport.transform
+        viewport,
+        viewportTransform: viewport.transform,
+        textLayerMeasurement: null,
+        textLayerMeasurementPromise: null
       };
 
       // Cache the result
@@ -735,11 +949,18 @@ const SearchTextPanel = ({
             searchIndex,
             searchIndex + normalizedQuery.length
           );
+          const textLayerRectangles = nativeMatch?.rectangles?.length
+            ? []
+            : await buildTextLayerRectanglesForMatch(pageData, searchIndex, normalizedQuery.length);
           const rectangles = nativeMatch?.rectangles?.length
             ? nativeMatch.rectangles
-            : buildRectanglesForMatch(pageData, searchIndex, normalizedQuery.length);
+            : (textLayerRectangles.length
+              ? textLayerRectangles
+              : buildRectanglesForMatch(pageData, searchIndex, normalizedQuery.length));
           const bounds = nativeMatch?.bounds || calculateMatchBounds(rectangles);
-          const geometrySource = nativeMatch?.rectangles?.length ? 'native' : 'pdfjs';
+          const geometrySource = nativeMatch?.rectangles?.length
+            ? 'native'
+            : (textLayerRectangles.length ? 'pdfjs-text-layer' : 'pdfjs-estimate');
 
           results.push({
             id: createResultId(),
