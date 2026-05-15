@@ -131,6 +131,8 @@ export default function HubPreview() {
         onDuplicateDocuments={handleDuplicate}
         onDeleteDocuments={handleDelete}
         onMoveCopyDocuments={handleMoveCopy}
+        onSettings={() => console.log('[hub preview] open settings page')}
+        onSignOut={() => console.log('[hub preview] sign out')}
       />
     </div>
   );

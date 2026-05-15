@@ -1,7 +1,11 @@
 /* Survey Hub — shared shell + small presentational components.
    Ported from the Claude Design prototype (survey-hub/shell.jsx). All markup is
    rendered inside a `.survey-hub` root so hub.css stays fully scoped. */
-import React from 'react';
+import React, { useState, useRef, useEffect, useContext, createContext } from 'react';
+
+/* Context for chrome-level data/callbacks (the profile menu) so the per-tab
+   shells don't have to prop-drill them. SurveyHub provides it. */
+export const HubChromeContext = createContext({});
 
 /* Inline SVG icon set used across the hub. */
 export const Icon = ({ name, size = 14, color = 'currentColor' }) => {
@@ -22,6 +26,8 @@ export const Icon = ({ name, size = 14, color = 'currentColor' }) => {
     case 'trash': return <svg viewBox="0 0 24 24" style={s}><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13M10 11v6M14 11v6"/></svg>;
     case 'share': return <svg viewBox="0 0 24 24" style={s}><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg>;
     case 'lock': return <svg viewBox="0 0 24 24" style={s}><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>;
+    case 'settings': return <svg viewBox="0 0 24 24" style={s}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V15z"/></svg>;
+    case 'signout': return <svg viewBox="0 0 24 24" style={s}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>;
     default: return null;
   }
 };
@@ -81,6 +87,61 @@ export const Search = ({ placeholder = 'Search…', width = 240, value, onChange
 const initialsOf = (name) => (name || 'You')
   .trim().split(/\s+/).map((w) => w[0] || '').join('').slice(0, 2).toUpperCase() || 'YOU';
 
+/* Bottom-left profile control — a button that opens a Settings / Sign Out
+   popup (matching the menu the app had before, restyled to the hub palette).
+   Reads the user and the two callbacks from HubChromeContext. */
+const ProfileMenu = ({ userName, userMeta }) => {
+  const { user, onSettings, onSignOut } = useContext(HubChromeContext);
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+  const name = user?.name || user?.email?.split('@')[0] || userName;
+  const email = user?.email || '';
+  const initials = initialsOf(name);
+  const itemStyle = { display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', background: 'transparent', border: 0, color: 'var(--bone-100)', padding: '8px 10px', fontSize: 12.5, borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit' };
+  return (
+    <div className="who" ref={ref} style={{ position: 'relative' }}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        title={email || name}
+        style={{ display: 'flex', alignItems: 'center', gap: 7, width: '100%', background: open ? 'var(--ink-600)' : 'transparent', border: 0, borderRadius: 6, padding: '4px 6px', cursor: 'pointer', fontFamily: 'inherit', color: 'inherit', textAlign: 'left' }}
+      >
+        <Avatar initials={initials} size={24} />
+        <div style={{ minWidth: 0 }}>
+          <div className="name">{name}</div>
+          <div className="who-meta">{userMeta}</div>
+        </div>
+      </button>
+      {open && (
+        <div style={{ position: 'absolute', bottom: 'calc(100% + 6px)', left: 0, width: 214, background: 'var(--ink-700)', border: '1px solid var(--ink-500)', borderRadius: 10, boxShadow: '0 16px 40px rgba(0,0,0,0.5)', overflow: 'hidden', zIndex: 50 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12 }}>
+            <Avatar initials={initials} size={34} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</div>
+              {email ? <div style={{ fontSize: 10.5, color: 'var(--ink-200)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{email}</div> : null}
+            </div>
+          </div>
+          <div style={{ height: 1, background: 'var(--ink-500)' }} />
+          <div style={{ padding: 4 }}>
+            <button style={itemStyle} onClick={() => { setOpen(false); onSettings && onSettings(); }}>
+              <Icon name="settings" size={15} color="var(--ink-200)" />Settings
+            </button>
+            <button style={itemStyle} onClick={() => { setOpen(false); onSignOut && onSignOut(); }}>
+              <Icon name="signout" size={15} color="var(--ink-200)" />Sign Out
+            </button>
+          </div>
+          <div style={{ borderTop: '1px solid var(--ink-500)', padding: '7px 12px', fontSize: 10, color: 'var(--ink-300)' }}>Survey App v1.0</div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 /* Sidebar + header frame. The three tabs are always rendered so the chrome
    feels permanent; only the body content (children) changes per tab. */
 export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userName = 'You', userMeta = 'Synced · Pro', templatesLocked = false }) => {
@@ -106,13 +167,7 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
             {navBtn('projects', 'folder', 'Projects')}
             {navBtn('templates', 'grid', 'Templates', templatesLocked)}
           </nav>
-          <div className="who">
-            <Avatar initials={initialsOf(userName)} size={24} />
-            <div>
-              <div className="name">{userName}</div>
-              <div className="who-meta">{userMeta}</div>
-            </div>
-          </div>
+          <ProfileMenu userName={userName} userMeta={userMeta} />
         </aside>
         <main className="main paper">
           <div className="header">

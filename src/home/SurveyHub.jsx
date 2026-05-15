@@ -19,6 +19,7 @@ import DocumentsLedger from './DocumentsLedger';
 import ProjectsFolderTree from './ProjectsFolderTree';
 import TemplatesEditor from './TemplatesEditor';
 import ShareModal from './ShareModal';
+import { HubChromeContext } from './HubShell';
 import './hub.css';
 
 const TAB_KEY = 'survey-hub-tab';
@@ -38,6 +39,8 @@ export default function SurveyHub({
   onDuplicateDocuments,
   onDeleteDocuments,
   onMoveCopyDocuments,
+  onSettings,
+  onSignOut,
 }) {
   const [tab, setTab] = useState(() => {
     if (initialTab) return initialTab;
@@ -67,7 +70,7 @@ export default function SurveyHub({
   const common = { onNav: setTab, user, templatesLocked: !isPro };
 
   return (
-    <>
+    <HubChromeContext.Provider value={{ user, onSettings, onSignOut }}>
       {tab === 'documents' && (
         <DocumentsLedger
           {...common}
@@ -107,6 +110,6 @@ export default function SurveyHub({
         name={share?.name}
         onClose={() => setShare(null)}
       />
-    </>
+    </HubChromeContext.Provider>
   );
 }
