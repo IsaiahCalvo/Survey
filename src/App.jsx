@@ -27615,6 +27615,127 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     });
   }, [beginSyncfusionScaleConfirmPending, markSyncfusionInteractionActive, setScale, setAnchor, useSyncfusionRenderer]);
 
+  const resolvePageContentElement = useCallback((pageContainerNode) => {
+    if (!pageContainerNode || typeof pageContainerNode.querySelector !== 'function') {
+      return pageContainerNode;
+    }
+
+    const syncfusionPageCanvas = pageContainerNode.querySelector('.e-pv-page-canvas');
+    if (syncfusionPageCanvas) return syncfusionPageCanvas;
+
+    const canvasNodes = Array.from(pageContainerNode.querySelectorAll('canvas'));
+    if (canvasNodes.length === 0) return pageContainerNode;
+
+    return canvasNodes.reduce((bestCanvas, canvasNode) => {
+      const canvasArea = (Number(canvasNode.clientWidth) || Number(canvasNode.width) || 0) *
+        (Number(canvasNode.clientHeight) || Number(canvasNode.height) || 0);
+      const bestArea = bestCanvas
+        ? (Number(bestCanvas.clientWidth) || Number(bestCanvas.width) || 0) *
+          (Number(bestCanvas.clientHeight) || Number(bestCanvas.height) || 0)
+        : -1;
+      return canvasArea > bestArea ? canvasNode : bestCanvas;
+    }, null) || pageContainerNode;
+  }, []);
+
+  const getBoundsCenter = useCallback((bounds) => {
+    if (!bounds || typeof bounds !== 'object') return null;
+    const x = Number(bounds.x ?? bounds.left);
+    const y = Number(bounds.y ?? bounds.top);
+    const width = Number(bounds.width ?? (
+      bounds.right !== undefined && Number.isFinite(x) ? Number(bounds.right) - x : 0
+    ));
+    const height = Number(bounds.height ?? (
+      bounds.bottom !== undefined && Number.isFinite(y) ? Number(bounds.bottom) - y : 0
+    ));
+    const centerX = Number.isFinite(Number(bounds.centerX)) ? Number(bounds.centerX) : x + width / 2;
+    const centerY = Number.isFinite(Number(bounds.centerY)) ? Number(bounds.centerY) : y + height / 2;
+    if (!Number.isFinite(centerX) || !Number.isFinite(centerY)) return null;
+    return {
+      centerX,
+      centerY,
+      width: Number.isFinite(width) ? Math.max(width, 1) : 1,
+      height: Number.isFinite(height) ? Math.max(height, 1) : 1
+    };
+  }, []);
+
+  const centerPageBoundsInViewer = useCallback((pageNumber, bounds, options = {}) => {
+    const targetPage = Number(pageNumber);
+    const targetBounds = getBoundsCenter(bounds);
+    if (!Number.isFinite(targetPage) || targetPage < 1 || !targetBounds) return false;
+
+    const {
+      behavior = 'auto',
+      maxRetries = useSyncfusionRenderer ? 12 : 4,
+      retryDelay = useSyncfusionRenderer ? 80 : 40,
+      rightInset = 0,
+      leftInset = 0,
+      bypassActiveSpace = true
+    } = options;
+
+    if (scrollMode === 'single') {
+      setPageNum(targetPage);
+    }
+
+    const run = (attempt = 0) => {
+      if (attempt === 0 && useSyncfusionRenderer) {
+        goToPage(targetPage, { bypassActiveSpace });
+        if (typeof window !== 'undefined') {
+          window.setTimeout(() => run(attempt + 1), retryDelay);
+        }
+        return false;
+      }
+
+      const container = containerRef.current;
+      const pageContainer =
+        pageContainersRef.current?.[targetPage] ||
+        syncfusionPageContainersStateRef.current?.[targetPage] ||
+        null;
+
+      if (!container || !pageContainer) {
+        if (attempt === 0 && scrollMode === 'continuous') {
+          goToPage(targetPage, { bypassActiveSpace });
+        }
+        if (attempt < maxRetries && typeof window !== 'undefined') {
+          window.setTimeout(() => run(attempt + 1), retryDelay);
+        }
+        return false;
+      }
+
+      const pageContentElement = resolvePageContentElement(pageContainer);
+      const pageRect = (pageContentElement || pageContainer).getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      const pageSize = pageSizesRef.current?.[targetPage] || pageSizes[targetPage] || {};
+      const fallbackScale = Math.max(0.01, Number(scaleRef.current) || 1);
+      const pageScaleX = Number(pageSize.width) > 0 && pageRect.width > 0
+        ? pageRect.width / Number(pageSize.width)
+        : fallbackScale;
+      const pageScaleY = Number(pageSize.height) > 0 && pageRect.height > 0
+        ? pageRect.height / Number(pageSize.height)
+        : pageScaleX;
+
+      const containerWidth = Number(container.clientWidth) || containerRect.width;
+      const containerHeight = Number(container.clientHeight) || containerRect.height;
+      const visibleWidth = Math.max(80, containerWidth - Math.max(0, leftInset) - Math.max(0, rightInset));
+      const visibleHeight = Math.max(80, containerHeight);
+
+      const pageOffsetX = pageRect.left - containerRect.left + container.scrollLeft;
+      const pageOffsetY = pageRect.top - containerRect.top + container.scrollTop;
+      const targetScrollLeft = pageOffsetX + targetBounds.centerX * pageScaleX - Math.max(0, leftInset) - visibleWidth / 2;
+      const targetScrollTop = pageOffsetY + targetBounds.centerY * pageScaleY - visibleHeight / 2;
+
+      const maxScrollLeft = Math.max(0, container.scrollWidth - container.clientWidth);
+      const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+      container.scrollTo({
+        left: Math.max(0, Math.min(targetScrollLeft, maxScrollLeft)),
+        top: Math.max(0, Math.min(targetScrollTop, maxScrollTop)),
+        behavior
+      });
+      return true;
+    };
+
+    return run(0);
+  }, [getBoundsCenter, goToPage, pageSizes, resolvePageContentElement, scrollMode, useSyncfusionRenderer]);
+
   // Navigate to a search match with zoom and centering
   const navigateToMatch = useCallback((match, index) => {
     if (!match || !containerRef.current) return;
@@ -27628,6 +27749,26 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     const pageNumber = match.pageNumber;
     const bounds = match.bounds;
 
+    if (
+      useSyncfusionRenderer &&
+      match.query &&
+      typeof syncfusionViewerRef.current?.searchToMatch === 'function'
+    ) {
+      syncfusionViewerRef.current.searchToMatch(match.query, index, false)
+        .finally(() => {
+          setTimeout(() => {
+            centerPageBoundsInViewer(pageNumber, bounds, {
+              behavior: 'auto',
+              bypassActiveSpace: true
+            });
+            setTimeout(() => {
+              isNavigatingToMatchRef.current = false;
+            }, 220);
+          }, 120);
+        });
+      return;
+    }
+
     // First, navigate to the page
     if (scrollMode === 'single') {
       setPageNum(pageNumber);
@@ -27638,8 +27779,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       const container = containerRef.current;
       const pageContainer = pageContainersRef.current[pageNumber];
 
-      if (!container || !pageContainer) {
+      if (!container) {
         isNavigatingToMatchRef.current = false;
+        return;
+      }
+
+      if (!pageContainer) {
+        centerPageBoundsInViewer(pageNumber, bounds, {
+          behavior: 'auto',
+          bypassActiveSpace: true
+        });
+        setTimeout(() => {
+          isNavigatingToMatchRef.current = false;
+        }, useSyncfusionRenderer ? 260 : 140);
         return;
       }
 
@@ -27648,7 +27800,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       if (!pageSize || !bounds) {
         // Just navigate to page if no bounds available
         if (scrollMode === 'continuous') {
-          goToPage(pageNumber);
+          goToPage(pageNumber, { bypassActiveSpace: true });
         }
         isNavigatingToMatchRef.current = false;
         return;
@@ -27687,78 +27839,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         setScaleWithViewportPreservation(targetZoom, { preserveCenter: false });
       }
 
-      const resolvePageContentElement = (pageContainerNode) => {
-        if (!pageContainerNode || typeof pageContainerNode.querySelector !== 'function') {
-          return pageContainerNode;
-        }
-
-        const syncfusionPageCanvas = pageContainerNode.querySelector('.e-pv-page-canvas');
-        if (syncfusionPageCanvas) {
-          return syncfusionPageCanvas;
-        }
-
-        const canvasNodes = Array.from(pageContainerNode.querySelectorAll('canvas'));
-        if (canvasNodes.length === 0) {
-          return pageContainerNode;
-        }
-
-        let bestCanvas = null;
-        let bestArea = -1;
-        canvasNodes.forEach((canvasNode) => {
-          const width = Number(canvasNode.clientWidth) || Number(canvasNode.width) || 0;
-          const height = Number(canvasNode.clientHeight) || Number(canvasNode.height) || 0;
-          const area = width > 0 && height > 0 ? width * height : 0;
-          if (area > bestArea) {
-            bestArea = area;
-            bestCanvas = canvasNode;
-          }
-        });
-
-        return bestCanvas || pageContainerNode;
-      };
-
       // Calculate scroll position to center the match
       const scrollToMatch = () => {
-        const scaleBasis = shouldZoom ? targetZoom : currentScale;
-        const effectiveScale = useSyncfusionRenderer
-          ? getSyncfusionPageScale(pageNumber, scaleBasis)
-          : scaleBasis;
-        const pageContainerCurrent = pageContainersRef.current[pageNumber];
-
-        if (!pageContainerCurrent) {
-          isNavigatingToMatchRef.current = false;
-          return;
-        }
-
-        const pageContentElement = resolvePageContentElement(pageContainerCurrent);
-
-        // Get the current positions
-        const containerRectCurrent = container.getBoundingClientRect();
-        const pageRect = (pageContentElement || pageContainerCurrent).getBoundingClientRect();
-        const containerStyles = window.getComputedStyle(container);
-        const paddingTop = parseFloat(containerStyles.paddingTop || '0');
-        const paddingLeft = parseFloat(containerStyles.paddingLeft || '0');
-
-        // Calculate the match center position in page content coordinates
-        const matchCenterX = bounds.centerX * effectiveScale;
-        const matchCenterY = bounds.centerY * effectiveScale;
-
-        // Convert page content position into container scroll space
-        const pageOffsetX = pageRect.left - containerRectCurrent.left + container.scrollLeft - paddingLeft;
-        const pageOffsetY = pageRect.top - containerRectCurrent.top + container.scrollTop - paddingTop;
-
-        // Calculate target scroll position to center the match
-        const targetScrollX = pageOffsetX + matchCenterX - containerRectCurrent.width / 2;
-        const targetScrollY = pageOffsetY + matchCenterY - containerRectCurrent.height / 2;
-
-        const maxScrollLeft = Math.max(0, container.scrollWidth - container.clientWidth);
-        const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
-
-        container.scrollTo({
-          left: Math.max(0, Math.min(targetScrollX, maxScrollLeft)),
-          top: Math.max(0, Math.min(targetScrollY, maxScrollTop)),
-          behavior: 'auto'
-        });
+        centerPageBoundsInViewer(pageNumber, bounds, { behavior: 'auto' });
 
         // Clear navigation flag after centering completes.
         setTimeout(() => {
@@ -27795,7 +27878,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     } else {
       setTimeout(performZoomAndCenter, useSyncfusionRenderer ? 40 : 10);
     }
-  }, [scrollMode, pageSizes, goToPage, setScaleWithViewportPreservation, useSyncfusionRenderer, getSyncfusionPageScale]);
+  }, [scrollMode, pageSizes, goToPage, setScaleWithViewportPreservation, useSyncfusionRenderer, centerPageBoundsInViewer]);
 
   // Handler for search results change from SearchTextPanel
   const handleSearchResultsChange = useCallback((results) => {
@@ -27810,6 +27893,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   // Handler for current match index change
   const handleCurrentMatchIndexChange = useCallback((index) => {
     setCurrentMatchIndex(index);
+  }, []);
+
+  const handleFindTextMatches = useCallback(async (query) => {
+    const viewer = syncfusionViewerRef.current;
+    if (!query || typeof viewer?.findTextAsync !== 'function') return null;
+    viewer.searchText?.(query, false);
+    return viewer.findTextAsync(query, false);
+  }, []);
+
+  const handleClearTextSearch = useCallback(() => {
+    syncfusionViewerRef.current?.cancelTextSearch?.();
   }, []);
 
   if (!zoomControllerRef.current) {
@@ -30591,128 +30685,43 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     if (!highlight) return;
     const { pageNumber, bounds } = highlight;
 
-    // Zoom in a little (e.g., 1.5x or +20% depending on current scale, but user asked for "zooming in on it a little")
-    // Let's set a target scale. If current scale is small, zoom in.
-    // If we have a zoomController, use it.
-    if (zoomControllerRef.current) {
-      // Zoom to 1.5x or current scale if higher
-      const targetScale = Math.max(scale, 1.5);
-      if (targetScale !== scale) {
-        setScale(targetScale);
+    if (!pageNumber || !bounds) {
+      if (pageNumber) {
+        goToPage(pageNumber);
       }
+      return;
     }
 
-    if (scrollMode === 'single') {
-      setPageNum(pageNumber);
-    } else {
-      // Continuous mode
-      // We need to wait for zoom to apply if we changed it, but React state updates might be async.
-      // However, scrolling happens on container which might need layout update.
-      // Let's use setTimeout to allow render cycle if scale changed.
+    const currentScale = Math.max(0.01, Number(scaleRef.current) || Number(scale) || 1);
+    const targetScale = Math.max(currentScale, 1.5);
+    const shouldZoom = targetScale > currentScale + 0.05;
+    const rightInset = showSurveyPanel && !isSurveyPanelCollapsed ? 320 : 0;
 
-      // Use double requestAnimationFrame to ensure DOM has updated after scale change
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          const targetContainer = pageContainersRef.current[pageNumber];
-          const container = containerRef.current;
-
-          if (targetContainer && container) {
-            // First, ensure the page is in view using scrollIntoView (won't scroll if already visible)
-            targetContainer.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'nearest' });
-
-            // Wait for scrollIntoView to complete, then calculate positions
-            // Use double RAF to ensure layout has settled
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => {
-                // Now get accurate measurements after scrollIntoView
-                const containerRect = container.getBoundingClientRect();
-                const targetRect = targetContainer.getBoundingClientRect();
-                const computedStyles = window.getComputedStyle(container);
-                const paddingTop = parseFloat(computedStyles.paddingTop || '0');
-                const paddingLeft = parseFloat(computedStyles.paddingLeft || '0');
-                const containerWidth = container.clientWidth;
-                const containerHeight = container.clientHeight;
-
-                // Calculate page container's position in scroll coordinates
-                // Now that element is in view, getBoundingClientRect() will work correctly
-                const pageContainerScrollTop = container.scrollTop + (targetRect.top - containerRect.top);
-                const pageContainerScrollLeft = container.scrollLeft + (targetRect.left - containerRect.left);
-
-                let scrollTop = pageContainerScrollTop - paddingTop;
-                let scrollLeft = pageContainerScrollLeft - paddingLeft;
-
-                // Add bounds offset if available
-                if (bounds) {
-                  const currentScale = zoomControllerRef.current ? zoomControllerRef.current.getScale() : scale;
-                  const boundsY = bounds.y || bounds.top;
-                  const boundsX = bounds.x || bounds.left;
-                  const boundsHeight = bounds.height || (bounds.bottom ? bounds.bottom - bounds.top : 0);
-                  const boundsWidth = bounds.width || (bounds.right ? bounds.right - bounds.left : 0);
-                  const scaledTop = boundsY * currentScale;
-                  const scaledLeft = boundsX * currentScale;
-                  const scaledHeight = boundsHeight * currentScale;
-                  const scaledWidth = boundsWidth * currentScale;
-
-                  // Vertical positioning: add bounds offset and center
-                  scrollTop += scaledTop;
-                  const centerOffsetY = (containerHeight / 2) - (scaledHeight / 2);
-                  scrollTop -= centerOffsetY;
-
-                  // Horizontal positioning: Calculate using scroll coordinates
-                  // Get page container dimensions
-                  const pageContainerWidth = targetContainer.offsetWidth;
-
-                  // Find the PDF canvas to get its actual width
-                  const pdfCanvas = targetContainer.querySelector('canvas');
-                  let pdfPageWidth = pageContainerWidth;
-
-                  if (pdfCanvas) {
-                    const canvasRect = pdfCanvas.getBoundingClientRect();
-                    pdfPageWidth = canvasRect.width;
-                  } else {
-                    // Fallback: estimate PDF page width from pageHeights if available
-                    if (pageHeights[pageNumber]) {
-                      pdfPageWidth = pageHeights[pageNumber] * 0.7 * currentScale;
-                    }
-                  }
-
-                  // Calculate where the PDF page starts within the page container
-                  // Since pages are centered (justifyContent: 'center'), PDF starts at: (containerWidth - pdfPageWidth) / 2 from container left
-                  const pdfPageLeftOffsetInContainer = (pageContainerWidth - pdfPageWidth) / 2;
-
-                  // PDF page's left edge in scroll coordinates
-                  const pdfPageLeftInScroll = pageContainerScrollLeft + pdfPageLeftOffsetInContainer;
-
-                  // Calculate highlight center position
-                  const highlightCenterX = boundsX + (boundsWidth / 2);
-                  const scaledHighlightCenterX = highlightCenterX * currentScale;
-
-                  // Highlight center in scroll coordinates
-                  const highlightCenterInScroll = pdfPageLeftInScroll + scaledHighlightCenterX;
-
-                  // To center the highlight, we want: highlightCenterInScroll = scrollLeft + (containerWidth / 2)
-                  // Therefore: scrollLeft = highlightCenterInScroll - (containerWidth / 2)
-                  scrollLeft = highlightCenterInScroll - (containerWidth / 2);
-                } else {
-                }
-
-                const finalScrollTop = Math.max(0, Math.min(scrollTop, container.scrollHeight - container.clientHeight));
-                const finalScrollLeft = Math.max(0, Math.min(scrollLeft, container.scrollWidth - container.clientWidth));
-                container.scrollTo({
-                  top: finalScrollTop,
-                  left: finalScrollLeft,
-                  behavior: 'smooth'
-                });
-              });
-            });
-          } else {
-            // If page not mounted, fallback to standard page navigation
-            goToPage(pageNumber);
-          }
-        });
+    const centerHighlight = () => {
+      centerPageBoundsInViewer(pageNumber, bounds, {
+        behavior: 'smooth',
+        maxRetries: useSyncfusionRenderer ? 14 : 6,
+        retryDelay: useSyncfusionRenderer ? 90 : 50,
+        rightInset
       });
+    };
+
+    if (shouldZoom) {
+      setScaleWithViewportPreservation(targetScale, { preserveCenter: false });
+      setTimeout(centerHighlight, useSyncfusionRenderer ? 160 : 60);
+      return;
     }
-  }, [scale, scrollMode, goToPage]);
+
+    centerHighlight();
+  }, [
+    centerPageBoundsInViewer,
+    goToPage,
+    isSurveyPanelCollapsed,
+    scale,
+    setScaleWithViewportPreservation,
+    showSurveyPanel,
+    useSyncfusionRenderer
+  ]);
 
   // Handle highlight deletion from PDF (via eraser tool)
   const handleHighlightDeleted = useCallback((pageNumber, bounds, highlightId = null) => {
@@ -32802,6 +32811,8 @@ ${pageBlocks}
       pageNum,
       onNavigateToPage: goToPage,
       onNavigateToMatch: navigateToMatch,
+      onFindTextMatches: handleFindTextMatches,
+      onClearTextSearch: handleClearTextSearch,
       searchResults,
       currentMatchIndex,
       onSearchResultsChange: handleSearchResultsChange,
@@ -32894,6 +32905,8 @@ ${pageBlocks}
     currentMatchIndex,
     handleSearchResultsChange,
     handleCurrentMatchIndexChange,
+    handleFindTextMatches,
+    handleClearTextSearch,
     handleDuplicatePage,
     handleDeletePage,
     handleCutPage,
@@ -38266,7 +38279,7 @@ ${pageBlocks}
               style={{
                 position: 'fixed',
                 top: `${middleAreaBounds.top}px`,
-                right: 0,
+                right: '48px',
                 height: `${middleAreaBounds.height}px`,
                 width: isSurveyPanelCollapsed ? '48px' : '320px',
                 background: '#2b2b2b',
@@ -38276,7 +38289,7 @@ ${pageBlocks}
                 flexDirection: 'column',
                 boxShadow: '-4px 0 20px rgba(0, 0, 0, 0.5)',
                 animation: 'slideInRight 0.3s ease-out',
-                transition: 'width 0.2s ease, top 0.2s ease, height 0.2s ease'
+                transition: 'width 0.2s ease, right 0.2s ease, top 0.2s ease, height 0.2s ease'
               }}
             >
               {/* Collapse/Expand Button */}

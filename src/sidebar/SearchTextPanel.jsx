@@ -102,11 +102,115 @@ const calculateMatchBounds = (rectangles) => {
   };
 };
 
+const toFiniteNumber = (value) => {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+};
+
+const normalizeNativeRect = (value) => {
+  if (!value || typeof value !== 'object') return null;
+
+  const x = toFiniteNumber(value.x ?? value.left ?? value.Left ?? value.X);
+  const y = toFiniteNumber(value.y ?? value.top ?? value.Top ?? value.Y);
+  const width = toFiniteNumber(value.width ?? value.Width ?? (
+    value.right !== undefined && x !== null ? Number(value.right) - x : undefined
+  ));
+  const height = toFiniteNumber(value.height ?? value.Height ?? (
+    value.bottom !== undefined && y !== null ? Number(value.bottom) - y : undefined
+  ));
+
+  if (x === null || y === null || width === null || height === null || width <= 0 || height <= 0) {
+    return null;
+  }
+
+  return { x, y, width, height };
+};
+
+const normalizeNativePageNumber = (value, fallback = null) => {
+  const pageNumber = toFiniteNumber(
+    value?.pageNumber ??
+    value?.PageNumber ??
+    value?.page ??
+    value?.Page ??
+    fallback
+  );
+  if (pageNumber !== null && pageNumber > 0) {
+    return Math.floor(pageNumber);
+  }
+
+  const pageIndex = toFiniteNumber(value?.pageIndex ?? value?.PageIndex);
+  if (pageIndex !== null && pageIndex >= 0) {
+    return Math.floor(pageIndex) + 1;
+  }
+
+  return fallback && fallback > 0 ? Math.floor(fallback) : null;
+};
+
+const collectNativeTextMatches = (rawResults) => {
+  const byPage = new Map();
+
+  const addMatch = (pageNumber, rectangles) => {
+    if (!pageNumber || !Array.isArray(rectangles) || rectangles.length === 0) return;
+    const normalizedRects = rectangles.map(normalizeNativeRect).filter(Boolean);
+    if (normalizedRects.length === 0) return;
+    const matches = byPage.get(pageNumber) || [];
+    matches.push({
+      rectangles: normalizedRects,
+      bounds: calculateMatchBounds(normalizedRects)
+    });
+    byPage.set(pageNumber, matches);
+  };
+
+  const visit = (value, contextPage = null) => {
+    if (!value) return;
+
+    if (Array.isArray(value)) {
+      value.forEach((entry) => visit(entry, contextPage));
+      return;
+    }
+
+    if (typeof value !== 'object') return;
+
+    const pageNumber = normalizeNativePageNumber(value, contextPage);
+    const directBounds =
+      value.bounds ??
+      value.Bounds ??
+      value.textBounds ??
+      value.TextBounds ??
+      value.rectangle ??
+      value.Rectangle ??
+      value.rect ??
+      value.Rect ??
+      null;
+
+    if (directBounds) {
+      addMatch(pageNumber, Array.isArray(directBounds) ? directBounds : [directBounds]);
+      return;
+    }
+
+    const directRect = normalizeNativeRect(value);
+    if (directRect) {
+      addMatch(pageNumber, [directRect]);
+      return;
+    }
+
+    Object.entries(value).forEach(([key, child]) => {
+      const keyPageNumber = /^\d+$/.test(key) ? Number(key) : pageNumber;
+      visit(child, keyPageNumber || contextPage);
+    });
+  };
+
+  visit(rawResults);
+  return byPage;
+};
+
 const SearchTextPanel = ({
   pdfDoc,
   numPages,
   onNavigateToPage,
   onNavigateToMatch,
+  onFindTextMatches,
+  onClearTextSearch,
   searchResults: externalSearchResults,
   currentMatchIndex: externalCurrentMatchIndex,
   onSearchResultsChange,
@@ -153,7 +257,8 @@ const SearchTextPanel = ({
     setSearchResults([]);
     setCurrentMatchIndex(-1);
     setInternalSearchQuery('');
-  }, [pdfDoc, setSearchResults, setCurrentMatchIndex]);
+    onClearTextSearch?.();
+  }, [pdfDoc, setSearchResults, setCurrentMatchIndex, onClearTextSearch]);
 
   useEffect(() => {
     if (!isActive || !searchInputRef.current) {
@@ -283,6 +388,7 @@ const SearchTextPanel = ({
       setCurrentMatchIndex(-1);
       setIsSearching(false);
       setSearchProgress({ current: 0, total: 0 });
+      onClearTextSearch?.();
       return [];
     }
 
@@ -292,6 +398,18 @@ const SearchTextPanel = ({
 
     const normalizedQuery = trimmedQuery.toLowerCase();
     const results = [];
+    const nativeMatchOffsetsByPage = new Map();
+    let nativeMatchesByPage = null;
+
+    if (typeof onFindTextMatches === 'function') {
+      try {
+        const nativeResults = await onFindTextMatches(trimmedQuery);
+        if (searchIdRef.current !== searchId) return [];
+        nativeMatchesByPage = collectNativeTextMatches(nativeResults);
+      } catch (error) {
+        console.warn('[SearchTextPanel] Native text search bounds unavailable:', error);
+      }
+    }
 
     try {
       for (let pageNumber = 1; pageNumber <= numPages; pageNumber++) {
@@ -304,13 +422,20 @@ const SearchTextPanel = ({
         let searchIndex = normalizedText.indexOf(normalizedQuery);
 
         while (searchIndex !== -1) {
+          const nativePageMatches = nativeMatchesByPage?.get(pageNumber) || [];
+          const nativeMatchIndex = nativeMatchOffsetsByPage.get(pageNumber) || 0;
+          const nativeMatch = nativePageMatches[nativeMatchIndex] || null;
+          nativeMatchOffsetsByPage.set(pageNumber, nativeMatchIndex + 1);
+
           const { snippet, matchIndex } = createSnippet(
             pageData.text,
             searchIndex,
             searchIndex + normalizedQuery.length
           );
-          const rectangles = buildRectanglesForMatch(pageData, searchIndex, normalizedQuery.length);
-          const bounds = calculateMatchBounds(rectangles);
+          const rectangles = nativeMatch?.rectangles?.length
+            ? nativeMatch.rectangles
+            : buildRectanglesForMatch(pageData, searchIndex, normalizedQuery.length);
+          const bounds = nativeMatch?.bounds || calculateMatchBounds(rectangles);
 
           results.push({
             id: createResultId(),
@@ -348,7 +473,7 @@ const SearchTextPanel = ({
       setIsSearching(false);
       return results;
     }
-  }, [pdfDoc, numPages, loadPageData, setSearchResults, setCurrentMatchIndex]);
+  }, [pdfDoc, numPages, loadPageData, onFindTextMatches, onClearTextSearch, setSearchResults, setCurrentMatchIndex]);
 
   // Debounced search
   useEffect(() => {
@@ -459,8 +584,9 @@ const SearchTextPanel = ({
     setInternalSearchQuery('');
     setSearchResults([]);
     setCurrentMatchIndex(-1);
+    onClearTextSearch?.();
     searchInputRef.current?.focus();
-  }, [setSearchResults, setCurrentMatchIndex]);
+  }, [onClearTextSearch, setSearchResults, setCurrentMatchIndex]);
 
   return (
     <div style={{

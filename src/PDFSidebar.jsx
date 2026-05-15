@@ -15,6 +15,8 @@ const PDFSidebar = React.forwardRef(({
   pageNum,
   onNavigateToPage,
   onNavigateToMatch,
+  onFindTextMatches,
+  onClearTextSearch,
   searchResults,
   currentMatchIndex,
   onSearchResultsChange,
@@ -303,6 +305,8 @@ const PDFSidebar = React.forwardRef(({
                 numPages={numPages}
                 onNavigateToPage={onNavigateToPage}
                 onNavigateToMatch={onNavigateToMatch}
+                onFindTextMatches={onFindTextMatches}
+                onClearTextSearch={onClearTextSearch}
                 searchResults={searchResults}
                 currentMatchIndex={currentMatchIndex}
                 onSearchResultsChange={onSearchResultsChange}

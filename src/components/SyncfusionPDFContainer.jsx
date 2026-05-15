@@ -1685,6 +1685,42 @@ const SyncfusionPDFContainer = forwardRef(({
       if (typeof viewer?.saveAsBlob !== 'function') return null;
       return viewer.saveAsBlob();
     },
+    findTextAsync: async (query, matchCase = false) => {
+      const viewer = getViewerInstance();
+      const textSearchModule = viewer?.textSearchModule;
+      if (!query || typeof textSearchModule?.findTextAsync !== 'function') return null;
+      return textSearchModule.findTextAsync(query, matchCase);
+    },
+    searchText: (query, matchCase = false) => {
+      const viewer = getViewerInstance();
+      const textSearchModule = viewer?.textSearchModule;
+      if (!query || typeof textSearchModule?.searchText !== 'function') return false;
+      textSearchModule.cancelTextSearch?.();
+      textSearchModule.searchText(query, matchCase);
+      return true;
+    },
+    searchToMatch: async (query, matchIndex = 0, matchCase = false) => {
+      const viewer = getViewerInstance();
+      const textSearchModule = viewer?.textSearchModule;
+      if (!query || typeof textSearchModule?.searchText !== 'function') return false;
+
+      textSearchModule.cancelTextSearch?.();
+      textSearchModule.searchText(query, matchCase);
+
+      const targetIndex = Math.max(0, Math.trunc(Number(matchIndex) || 0));
+      if (targetIndex === 0 || typeof textSearchModule?.searchNext !== 'function') return true;
+
+      for (let step = 0; step < targetIndex; step += 1) {
+        await new Promise(resolve => setTimeout(resolve, step === 0 ? 70 : 24));
+        textSearchModule.searchNext();
+      }
+
+      return true;
+    },
+    cancelTextSearch: () => {
+      const viewer = getViewerInstance();
+      viewer?.textSearchModule?.cancelTextSearch?.();
+    },
     selectTextMarkupAtPoint: (pageNumber, point, radius = 4, event = null) => {
       const viewer = getViewerInstance();
       return selectTextMarkupAtPagePoint(viewer, pageNumber, point, radius, event);
@@ -2408,7 +2444,7 @@ const SyncfusionPDFContainer = forwardRef(({
         const el = args?.element;
         if (el && el.style) el.style.cursor = 'pointer';
       }}
-      enableTextSearch={false}
+      enableTextSearch={true}
       enableThumbnail={false}
       enableBookmark={true}
       enableTextSelection={true}
