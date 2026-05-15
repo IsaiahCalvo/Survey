@@ -27673,7 +27673,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       bypassActiveSpace = true,
       navigateFirst = true,
       settlePasses = 0,
-      settleDelay = useSyncfusionRenderer ? 120 : 60
+      settleDelay = useSyncfusionRenderer ? 120 : 60,
+      retryBehavior = 'auto',
+      skipIfClosePx = 0
     } = options;
 
     if (scrollMode === 'single') {
@@ -27729,10 +27731,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
       const maxScrollLeft = Math.max(0, container.scrollWidth - container.clientWidth);
       const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+      const nextLeft = Math.max(0, Math.min(targetScrollLeft, maxScrollLeft));
+      const nextTop = Math.max(0, Math.min(targetScrollTop, maxScrollTop));
+      const isCloseEnough =
+        skipIfClosePx > 0 &&
+        Math.abs(container.scrollLeft - nextLeft) <= skipIfClosePx &&
+        Math.abs(container.scrollTop - nextTop) <= skipIfClosePx;
+      if (isCloseEnough) {
+        return true;
+      }
       container.scrollTo({
-        left: Math.max(0, Math.min(targetScrollLeft, maxScrollLeft)),
-        top: Math.max(0, Math.min(targetScrollTop, maxScrollTop)),
-        behavior: attempt > 0 ? 'auto' : behavior
+        left: nextLeft,
+        top: nextTop,
+        behavior: attempt > 0 ? retryBehavior : behavior
       });
 
       if (attempt < settlePasses && typeof window !== 'undefined') {
@@ -30714,27 +30725,47 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       });
     }
 
-    const centerHighlight = ({ navigateFirst = true } = {}) => {
+    const centerHighlight = ({
+      navigateFirst = true,
+      behavior = 'smooth',
+      retryBehavior = 'smooth',
+      skipIfClosePx = 0
+    } = {}) => {
       centerPageBoundsInViewer(pageNumber, bounds, {
-        behavior: 'auto',
+        behavior,
         maxRetries: useSyncfusionRenderer ? 18 : 8,
         retryDelay: useSyncfusionRenderer ? 80 : 40,
         // The PDF area is already narrowed when the Survey panel is open.
         rightInset: 0,
         navigateFirst,
-        settlePasses: useSyncfusionRenderer ? 5 : 3,
-        settleDelay: useSyncfusionRenderer ? 140 : 70
+        settlePasses: 0,
+        settleDelay: useSyncfusionRenderer ? 140 : 70,
+        retryBehavior,
+        skipIfClosePx
       });
     };
 
     if (shouldZoom) {
       setScaleWithViewportPreservation(targetScale, { preserveCenter: false });
-      setTimeout(() => centerHighlight({ navigateFirst: true }), useSyncfusionRenderer ? 180 : 60);
-      setTimeout(() => centerHighlight({ navigateFirst: false }), useSyncfusionRenderer ? 520 : 180);
+      setTimeout(() => centerHighlight({
+        navigateFirst: true,
+        behavior: 'smooth',
+        retryBehavior: 'smooth'
+      }), useSyncfusionRenderer ? 180 : 60);
+      setTimeout(() => centerHighlight({
+        navigateFirst: false,
+        behavior: 'auto',
+        retryBehavior: 'auto',
+        skipIfClosePx: 24
+      }), useSyncfusionRenderer ? 620 : 240);
       return;
     }
 
-    centerHighlight();
+    centerHighlight({
+      navigateFirst: true,
+      behavior: 'smooth',
+      retryBehavior: 'smooth'
+    });
   }, [
     centerPageBoundsInViewer,
     goToPage,
