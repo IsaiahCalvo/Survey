@@ -30745,6 +30745,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     useSyncfusionRenderer
   ]);
 
+  const handlePendingSurveyHighlightSelectionConsumed = useCallback(() => {
+    setPendingSurveyHighlightSelection(null);
+  }, []);
+
   const handleSurveyHighlightBoundsChange = useCallback((pageNumber, highlightId, bounds, meta = {}) => {
     if (!highlightId || !bounds) return;
     const rawAngle = Number(bounds.angle);
@@ -34470,6 +34474,7 @@ ${pageBlocks}
                                   surveyHighlights={newHighlightsByPage[pageNumber]}
                                   onUpdateSurveyHighlightBounds={handleSurveyHighlightBoundsChange}
                                   pendingSurveyHighlightSelection={pendingSurveyHighlightSelection}
+                                  onPendingSurveyHighlightSelectionConsumed={handlePendingSurveyHighlightSelectionConsumed}
                                   selectedModuleId={selectedModuleId}
                                   showSurveyPanel={showSurveyPanel}
                                   selectedSpaceId={annotationSpaceId}
@@ -35364,6 +35369,7 @@ ${pageBlocks}
                                       surveyHighlights={newHighlightsByPage[pageNumber]}
                                       onUpdateSurveyHighlightBounds={handleSurveyHighlightBoundsChange}
                                       pendingSurveyHighlightSelection={pendingSurveyHighlightSelection}
+                                      onPendingSurveyHighlightSelectionConsumed={handlePendingSurveyHighlightSelectionConsumed}
                                       selectedModuleId={selectedModuleId}
                                       showSurveyPanel={showSurveyPanel}
                                       selectedSpaceId={annotationSpaceId}
@@ -35988,6 +35994,7 @@ ${pageBlocks}
                                       surveyHighlights={newHighlightsByPage[pageNum]}
                                       onUpdateSurveyHighlightBounds={handleSurveyHighlightBoundsChange}
                                       pendingSurveyHighlightSelection={pendingSurveyHighlightSelection}
+                                      onPendingSurveyHighlightSelectionConsumed={handlePendingSurveyHighlightSelectionConsumed}
                                       selectedModuleId={selectedModuleId}
                                       showSurveyPanel={showSurveyPanel}
                                       selectedSpaceId={annotationSpaceId}

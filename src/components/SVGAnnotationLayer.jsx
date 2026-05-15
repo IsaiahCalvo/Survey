@@ -159,6 +159,7 @@ const SVGAnnotationLayer = memo(({
   surveyHighlights,
   onUpdateSurveyHighlightBounds,
   pendingSurveyHighlightSelection,
+  onPendingSurveyHighlightSelectionConsumed,
   // Filtering props
   selectedModuleId,
   showSurveyPanel,
@@ -1995,9 +1996,11 @@ const SVGAnnotationLayer = memo(({
     setSelectedSurveyHighlightId(highlightId);
     setHoveredSurveyHighlightId(null);
     setSurveyHighlightPreviewBounds(null);
+    onPendingSurveyHighlightSelectionConsumed?.(pendingSurveyHighlightSelection);
   }, [
     deselectAll,
     onSelectedCalloutIdsChange,
+    onPendingSurveyHighlightSelectionConsumed,
     pageNumber,
     pendingSurveyHighlightSelection,
     surveyHighlightElements,
@@ -2007,31 +2010,76 @@ const SVGAnnotationLayer = memo(({
     return normalizeSurveyHighlightBoundsValue(bounds);
   }, []);
 
-  const resizeSurveyHighlightBounds = useCallback((bounds, handleId, dx, dy) => {
-    let left = bounds.x;
-    let top = bounds.y;
-    let right = bounds.x + bounds.width;
-    let bottom = bounds.y + bounds.height;
+  const resizeSurveyHighlightBoundsRotated = useCallback((bounds, handleId, point) => {
+    const affectsX = !['mt', 'mb'].includes(handleId);
+    const affectsY = !['ml', 'mr'].includes(handleId);
+    const isLeftHandle = ['tl', 'ml', 'bl'].includes(handleId);
+    const isTopHandle = ['tl', 'mt', 'tr'].includes(handleId);
 
-    if (handleId.includes('l')) left += dx;
-    if (handleId.includes('r')) right += dx;
-    if (handleId.includes('t')) top += dy;
-    if (handleId.includes('b')) bottom += dy;
+    const centerX = bounds.x + bounds.width / 2;
+    const centerY = bounds.y + bounds.height / 2;
+    const anchorMap = {
+      tl: { x: bounds.x + bounds.width, y: bounds.y + bounds.height },
+      tr: { x: bounds.x, y: bounds.y + bounds.height },
+      bl: { x: bounds.x + bounds.width, y: bounds.y },
+      br: { x: bounds.x, y: bounds.y },
+      mt: { x: centerX, y: bounds.y + bounds.height },
+      mb: { x: centerX, y: bounds.y },
+      ml: { x: bounds.x + bounds.width, y: centerY },
+      mr: { x: bounds.x, y: centerY },
+    };
+    const anchor = anchorMap[handleId] || { x: centerX, y: centerY };
 
-    if (right - left < 1) {
-      if (handleId.includes('l')) left = right - 1;
-      else right = left + 1;
+    const angleRad = (bounds.angle * Math.PI) / 180;
+    const cosA = Math.cos(angleRad);
+    const sinA = Math.sin(angleRad);
+    const anchorLocalDx = anchor.x - centerX;
+    const anchorLocalDy = anchor.y - centerY;
+    const worldAnchorX = centerX + anchorLocalDx * cosA - anchorLocalDy * sinA;
+    const worldAnchorY = centerY + anchorLocalDx * sinA + anchorLocalDy * cosA;
+
+    const ptrDxWorld = point.x - worldAnchorX;
+    const ptrDyWorld = point.y - worldAnchorY;
+    const ptrDxLocal = ptrDxWorld * cosA + ptrDyWorld * sinA;
+    const ptrDyLocal = -ptrDxWorld * sinA + ptrDyWorld * cosA;
+
+    let scaleX = 1;
+    let scaleY = 1;
+    if (affectsX && bounds.width !== 0) {
+      const signedLocalDx = isLeftHandle ? -ptrDxLocal : ptrDxLocal;
+      scaleX = signedLocalDx / bounds.width;
     }
-    if (bottom - top < 1) {
-      if (handleId.includes('t')) top = bottom - 1;
-      else bottom = top + 1;
+    if (affectsY && bounds.height !== 0) {
+      const signedLocalDy = isTopHandle ? -ptrDyLocal : ptrDyLocal;
+      scaleY = signedLocalDy / bounds.height;
     }
+    if (Math.abs(scaleX) < 0.01) scaleX = (scaleX < 0 ? -1 : 1) * 0.01;
+    if (Math.abs(scaleY) < 0.01) scaleY = (scaleY < 0 ? -1 : 1) * 0.01;
+
+    const nextWidth = affectsX ? Math.max(1, bounds.width * Math.abs(scaleX)) : bounds.width;
+    const nextHeight = affectsY ? Math.max(1, bounds.height * Math.abs(scaleY)) : bounds.height;
+
+    let offsetFromAnchorX = 0;
+    let offsetFromAnchorY = 0;
+    if (affectsX) {
+      offsetFromAnchorX = isLeftHandle ? -nextWidth / 2 : nextWidth / 2;
+      if (scaleX < 0) offsetFromAnchorX = -offsetFromAnchorX;
+    }
+    if (affectsY) {
+      offsetFromAnchorY = isTopHandle ? -nextHeight / 2 : nextHeight / 2;
+      if (scaleY < 0) offsetFromAnchorY = -offsetFromAnchorY;
+    }
+
+    const worldOffsetX = offsetFromAnchorX * cosA - offsetFromAnchorY * sinA;
+    const worldOffsetY = offsetFromAnchorX * sinA + offsetFromAnchorY * cosA;
+    const nextCenterX = worldAnchorX + worldOffsetX;
+    const nextCenterY = worldAnchorY + worldOffsetY;
 
     return {
-      x: left,
-      y: top,
-      width: right - left,
-      height: bottom - top,
+      x: nextCenterX - nextWidth / 2,
+      y: nextCenterY - nextHeight / 2,
+      width: nextWidth,
+      height: nextHeight,
       angle: bounds.angle,
     };
   }, []);
@@ -2109,7 +2157,7 @@ const SVGAnnotationLayer = memo(({
         angle: normalizeDegreesValue(drag.originalBounds.angle + pointerAngle - drag.startPointerAngle),
       };
     } else if (drag.mode === 'resize') {
-      nextBounds = resizeSurveyHighlightBounds(drag.originalBounds, drag.handleId, dx, dy);
+      nextBounds = resizeSurveyHighlightBoundsRotated(drag.originalBounds, drag.handleId, point);
     } else {
       nextBounds = {
         ...drag.originalBounds,
@@ -2136,7 +2184,7 @@ const SVGAnnotationLayer = memo(({
       setSurveyHighlightPreviewBounds({ highlightId: drag.highlightId, bounds: nextBounds });
     }
     return true;
-  }, [onUpdateSurveyHighlightBounds, pageNumber, resizeSurveyHighlightBounds]);
+  }, [onUpdateSurveyHighlightBounds, pageNumber, resizeSurveyHighlightBoundsRotated]);
 
   const renderSurveyHighlightEntry = useCallback((entry) => {
     if (!entry?.highlight?.highlightId) return null;
