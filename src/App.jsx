@@ -34283,6 +34283,7 @@ ${pageBlocks}
                               activeMatchId={currentMatch?.id}
                               isActiveMatchOnThisPage={currentMatch?.pageNumber === pageNumber}
                               activeGlowOnly
+                              fillContainer
                             />
                           )}
                           <div
@@ -34292,6 +34293,14 @@ ${pageBlocks}
                               } else {
                                 delete syncfusionOverlayContentRefs.current[pageNumber];
                               }
+                            }}
+                            data-syncfusion-overlay-content={pageNumber}
+                            style={{
+                              position: 'absolute',
+                              top: 0,
+                              left: 0,
+                              width: '100%',
+                              height: '100%',
                             }}
                           >
                             <div

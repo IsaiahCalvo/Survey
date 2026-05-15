@@ -25,7 +25,8 @@ const SearchHighlightLayer = memo(({
   activeMatchId = null,
   isActiveMatchOnThisPage = false,
   activeOnly = false,
-  activeGlowOnly = false
+  activeGlowOnly = false,
+  fillContainer = false
 }) => {
   const layerRef = useRef(null);
   const lastDiagKeyRef = useRef('');
@@ -105,6 +106,43 @@ const SearchHighlightLayer = memo(({
   const totalRectangles = preparedHighlights.reduce((sum, match) => sum + match.rectangles.length, 0);
   const firstRect = preparedHighlights[0]?.rectangles?.[0] || null;
 
+  const readLayerGeometry = () => {
+    const layerNode = layerRef.current;
+    const layerRect = layerNode?.getBoundingClientRect?.() || null;
+    const pageHostNode = layerNode?.closest?.('.e-pv-page-div') || null;
+    const pageHostRect = pageHostNode?.getBoundingClientRect?.() || null;
+    const contentNode = layerNode?.closest?.('[data-syncfusion-overlay-content]') || null;
+    const contentRect = contentNode?.getBoundingClientRect?.() || null;
+
+    return {
+      layerRect: layerRect ? {
+        left: Math.round(layerRect.left),
+        top: Math.round(layerRect.top),
+        width: Math.round(layerRect.width),
+        height: Math.round(layerRect.height)
+      } : null,
+      pageHostRect: pageHostRect ? {
+        left: Math.round(pageHostRect.left),
+        top: Math.round(pageHostRect.top),
+        width: Math.round(pageHostRect.width),
+        height: Math.round(pageHostRect.height)
+      } : null,
+      contentRect: contentRect ? {
+        left: Math.round(contentRect.left),
+        top: Math.round(contentRect.top),
+        width: Math.round(contentRect.width),
+        height: Math.round(contentRect.height)
+      } : null,
+      contentTransform: contentNode?.style?.transform || null,
+      hostWidthDelta: layerRect && pageHostRect
+        ? Math.round((layerRect.width - pageHostRect.width) * 100) / 100
+        : null,
+      hostHeightDelta: layerRect && pageHostRect
+        ? Math.round((layerRect.height - pageHostRect.height) * 100) / 100
+        : null
+    };
+  };
+
   useEffect(() => {
     if (!layerRef.current || preparedHighlights.length === 0) return;
 
@@ -113,6 +151,7 @@ const SearchHighlightLayer = memo(({
       preparedHighlights.length,
       totalRectangles,
       activeMatchId || 'none',
+      fillContainer ? 'fill' : 'scaled',
       Math.round(layerWidth),
       Math.round(layerHeight),
       firstRect
@@ -124,31 +163,19 @@ const SearchHighlightLayer = memo(({
     lastDiagKeyRef.current = diagKey;
 
     const frame = window.requestAnimationFrame?.(() => {
-      const layerRect = layerRef.current?.getBoundingClientRect?.();
-      const pageHostRect = layerRef.current?.closest?.('.e-pv-page-div')?.getBoundingClientRect?.();
       emitTextSearchDiag('svg_layer_render', {
         pageNumber,
         matchCount: preparedHighlights.length,
         rectangleCount: totalRectangles,
         activeMatchId,
+        fillContainer,
         scale: Number(scale) || 1,
         width: Number(width) || 0,
         height: Number(height) || 0,
-        cssWidth: Math.round(layerWidth),
-        cssHeight: Math.round(layerHeight),
+        cssWidth: fillContainer ? '100%' : Math.round(layerWidth),
+        cssHeight: fillContainer ? '100%' : Math.round(layerHeight),
         firstRect,
-        layerRect: layerRect ? {
-          left: Math.round(layerRect.left),
-          top: Math.round(layerRect.top),
-          width: Math.round(layerRect.width),
-          height: Math.round(layerRect.height)
-        } : null,
-        pageHostRect: pageHostRect ? {
-          left: Math.round(pageHostRect.left),
-          top: Math.round(pageHostRect.top),
-          width: Math.round(pageHostRect.width),
-          height: Math.round(pageHostRect.height)
-        } : null
+        ...readLayerGeometry()
       });
     });
 
@@ -159,6 +186,7 @@ const SearchHighlightLayer = memo(({
     };
   }, [
     activeMatchId,
+    fillContainer,
     firstRect,
     height,
     layerHeight,
@@ -168,6 +196,57 @@ const SearchHighlightLayer = memo(({
     scale,
     totalRectangles,
     width
+  ]);
+
+  useEffect(() => {
+    if (!layerRef.current || preparedHighlights.length === 0 || !isActiveMatchOnThisPage) return undefined;
+    if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') return undefined;
+
+    let cancelled = false;
+    let frame = null;
+    let sampleCount = 0;
+    const startedAt = typeof performance !== 'undefined' && typeof performance.now === 'function'
+      ? performance.now()
+      : Date.now();
+
+    const sample = () => {
+      if (cancelled) return;
+      const now = typeof performance !== 'undefined' && typeof performance.now === 'function'
+        ? performance.now()
+        : Date.now();
+      emitTextSearchDiag('svg_layer_live_sample', {
+        pageNumber,
+        activeMatchId,
+        fillContainer,
+        sample: sampleCount,
+        elapsedMs: Math.round(now - startedAt),
+        scale: Number(scale) || 1,
+        cssWidth: fillContainer ? '100%' : Math.round(layerWidth),
+        cssHeight: fillContainer ? '100%' : Math.round(layerHeight),
+        ...readLayerGeometry()
+      });
+      sampleCount += 1;
+      if (sampleCount < 10) {
+        frame = window.requestAnimationFrame(sample);
+      }
+    };
+
+    frame = window.requestAnimationFrame(sample);
+    return () => {
+      cancelled = true;
+      if (frame !== null && window.cancelAnimationFrame) {
+        window.cancelAnimationFrame(frame);
+      }
+    };
+  }, [
+    activeMatchId,
+    fillContainer,
+    isActiveMatchOnThisPage,
+    layerHeight,
+    layerWidth,
+    pageNumber,
+    preparedHighlights.length,
+    scale
   ]);
 
   if (!width || !height || preparedHighlights.length === 0) {
@@ -188,8 +267,8 @@ const SearchHighlightLayer = memo(({
         position: 'absolute',
         top: 0,
         left: 0,
-        width: `${layerWidth}px`,
-        height: `${layerHeight}px`,
+        width: fillContainer ? '100%' : `${layerWidth}px`,
+        height: fillContainer ? '100%' : `${layerHeight}px`,
         pointerEvents: 'none',
         zIndex: 9,
         overflow: 'hidden',

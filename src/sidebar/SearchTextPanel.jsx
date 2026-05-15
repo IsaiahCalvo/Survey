@@ -19,6 +19,8 @@ const TEXT_HIGHLIGHT_MIN_HEIGHT = 5;
 const TEXT_HIGHLIGHT_ASCENT_RATIO = 0.74;
 const TEXT_HIGHLIGHT_TOP_PAD_RATIO = 0.02;
 const TEXT_HIGHLIGHT_BOTTOM_PAD_RATIO = 0.10;
+const TEXT_HIGHLIGHT_LEFT_PAD_RATIO = 0.015;
+const TEXT_HIGHLIGHT_RIGHT_PAD_RATIO = 0.10;
 
 const getPdfDocumentKey = (pdfDoc, numPages, explicitKey) => {
   const stableExplicitKey = typeof explicitKey === 'string' ? explicitKey.trim() : '';
@@ -101,17 +103,21 @@ const buildRectanglesForMatch = (pageData, matchStart, matchLength) => {
       : (vectorHeight || clampValue(textItem.fontSize, 12) || 12);
     const topPad = Math.max(0.35, fontHeight * TEXT_HIGHLIGHT_TOP_PAD_RATIO);
     const bottomPad = Math.max(1, fontHeight * TEXT_HIGHLIGHT_BOTTOM_PAD_RATIO);
+    const leftPad = Math.max(0.25, fontHeight * TEXT_HIGHLIGHT_LEFT_PAD_RATIO);
+    const rightPad = Math.max(0.75, fontHeight * TEXT_HIGHLIGHT_RIGHT_PAD_RATIO);
 
     const baseLeft = transformed[4];
     const baseTop = transformed[5] - (fontHeight * TEXT_HIGHLIGHT_ASCENT_RATIO) - topPad;
 
     const rectLeft = baseLeft + horizontalScale * relativeStart;
     const rectWidth = Math.max(horizontalScale * relativeLength, 2);
+    const paddedLeft = Math.max(0, rectLeft - leftPad);
+    const appliedLeftPad = rectLeft - paddedLeft;
 
     rects.push({
-      x: rectLeft,
+      x: paddedLeft,
       y: baseTop,
-      width: rectWidth,
+      width: rectWidth + appliedLeftPad + rightPad,
       height: Math.max(fontHeight + topPad + bottomPad, TEXT_HIGHLIGHT_MIN_HEIGHT)
     });
   }
