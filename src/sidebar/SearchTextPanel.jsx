@@ -20,7 +20,92 @@ const TEXT_HIGHLIGHT_ASCENT_RATIO = 0.74;
 const TEXT_HIGHLIGHT_TOP_PAD_RATIO = 0.02;
 const TEXT_HIGHLIGHT_BOTTOM_PAD_RATIO = 0.10;
 const TEXT_HIGHLIGHT_LEFT_PAD_RATIO = 0.015;
-const TEXT_HIGHLIGHT_RIGHT_PAD_RATIO = 0.10;
+const TEXT_HIGHLIGHT_RIGHT_PAD_RATIO = 0.28;
+const TEXT_HIGHLIGHT_MAX_SIDE_PAD_RATIO = 0.32;
+
+let searchTextMeasureContext = null;
+
+const getSearchTextMeasureContext = () => {
+  if (typeof document === 'undefined') return null;
+  if (!searchTextMeasureContext) {
+    const canvas = document.createElement('canvas');
+    searchTextMeasureContext = canvas.getContext('2d');
+  }
+  return searchTextMeasureContext;
+};
+
+const getSearchTextFontFamily = (style = {}, textItem = {}) => {
+  const family = style?.fontFamily || textItem?.fontFamily || '';
+  return typeof family === 'string' && family.trim() ? family : FONT_FAMILY;
+};
+
+const measureSearchTextWidth = (ctx, font, text) => {
+  if (!ctx || !font || typeof text !== 'string') return null;
+  try {
+    ctx.font = font;
+    const width = ctx.measureText(text).width;
+    return Number.isFinite(width) && width > 0 ? width : null;
+  } catch {
+    return null;
+  }
+};
+
+const resolveTextSegmentAdvance = ({
+  textItem,
+  styles,
+  itemWidth,
+  fontHeight,
+  glyphCount,
+  relativeStart,
+  relativeLength
+}) => {
+  const fallbackScale = itemWidth / glyphCount;
+  const fallback = {
+    start: fallbackScale * relativeStart,
+    width: Math.max(fallbackScale * relativeLength, 2),
+    method: 'average'
+  };
+
+  const itemText = textItem?.str || '';
+  if (!itemText || relativeStart < 0 || relativeLength <= 0) {
+    return fallback;
+  }
+
+  const ctx = getSearchTextMeasureContext();
+  const style = styles?.[textItem.fontName] || {};
+  const fontFamily = getSearchTextFontFamily(style, textItem);
+  const fontSize = Math.max(1, Number(fontHeight) || 12);
+  const font = `${fontSize}px ${fontFamily}`;
+  const fullWidth = measureSearchTextWidth(ctx, font, itemText);
+
+  if (!fullWidth) {
+    return fallback;
+  }
+
+  const prefixText = itemText.slice(0, relativeStart);
+  const matchText = itemText.slice(relativeStart, relativeStart + relativeLength);
+  const prefixWidth = prefixText ? measureSearchTextWidth(ctx, font, prefixText) : 0;
+  const matchWidth = measureSearchTextWidth(ctx, font, matchText);
+
+  if (!Number.isFinite(prefixWidth) || !matchWidth) {
+    return fallback;
+  }
+
+  const startRatio = Math.max(0, Math.min(prefixWidth / fullWidth, 1));
+  const widthRatio = Math.max(0, Math.min(matchWidth / fullWidth, 1 - startRatio));
+
+  return {
+    start: itemWidth * startRatio,
+    width: Math.max(itemWidth * widthRatio, 2),
+    method: 'canvas-ratio',
+    matchText,
+    itemTextLength: itemText.length,
+    measuredFullWidth: Math.round(fullWidth * 100) / 100,
+    measuredMatchWidth: Math.round(matchWidth * 100) / 100,
+    startRatio: Math.round(startRatio * 10000) / 10000,
+    widthRatio: Math.round(widthRatio * 10000) / 10000
+  };
+};
 
 const getPdfDocumentKey = (pdfDoc, numPages, explicitKey) => {
   const stableExplicitKey = typeof explicitKey === 'string' ? explicitKey.trim() : '';
@@ -70,7 +155,7 @@ const createSnippet = (text, start, end, radius = 60) => {
 
 // Build rectangles for a text match - converts character positions to visual coordinates
 const buildRectanglesForMatch = (pageData, matchStart, matchLength) => {
-  const { items, ranges, viewportTransform } = pageData;
+  const { items, ranges, viewportTransform, styles } = pageData;
   if (!items || !ranges || !viewportTransform) {
     return [];
   }
@@ -95,7 +180,6 @@ const buildRectanglesForMatch = (pageData, matchStart, matchLength) => {
     const transformed = pdfjsLib.Util.transform(viewportTransform, textItem.transform);
     const glyphCount = Math.max(textItem.str.length, 1);
     const itemWidth = clampValue(textItem.width, Math.hypot(clampValue(transformed[0]), clampValue(transformed[1])) || glyphCount * 2);
-    const horizontalScale = itemWidth / glyphCount;
     const vectorHeight = Math.hypot(clampValue(transformed[2]), clampValue(transformed[3]));
     const itemHeight = clampValue(textItem.height, 0);
     const fontHeight = itemHeight > 0
@@ -103,14 +187,24 @@ const buildRectanglesForMatch = (pageData, matchStart, matchLength) => {
       : (vectorHeight || clampValue(textItem.fontSize, 12) || 12);
     const topPad = Math.max(0.35, fontHeight * TEXT_HIGHLIGHT_TOP_PAD_RATIO);
     const bottomPad = Math.max(1, fontHeight * TEXT_HIGHLIGHT_BOTTOM_PAD_RATIO);
-    const leftPad = Math.max(0.25, fontHeight * TEXT_HIGHLIGHT_LEFT_PAD_RATIO);
-    const rightPad = Math.max(0.75, fontHeight * TEXT_HIGHLIGHT_RIGHT_PAD_RATIO);
+    const maxSidePad = Math.max(1, fontHeight * TEXT_HIGHLIGHT_MAX_SIDE_PAD_RATIO);
+    const leftPad = Math.min(Math.max(0.25, fontHeight * TEXT_HIGHLIGHT_LEFT_PAD_RATIO), maxSidePad);
+    const rightPad = Math.min(Math.max(0.75, fontHeight * TEXT_HIGHLIGHT_RIGHT_PAD_RATIO), maxSidePad);
 
     const baseLeft = transformed[4];
     const baseTop = transformed[5] - (fontHeight * TEXT_HIGHLIGHT_ASCENT_RATIO) - topPad;
+    const segmentAdvance = resolveTextSegmentAdvance({
+      textItem,
+      styles,
+      itemWidth,
+      fontHeight,
+      glyphCount,
+      relativeStart,
+      relativeLength
+    });
 
-    const rectLeft = baseLeft + horizontalScale * relativeStart;
-    const rectWidth = Math.max(horizontalScale * relativeLength, 2);
+    const rectLeft = baseLeft + segmentAdvance.start;
+    const rectWidth = Math.max(segmentAdvance.width, 2);
     const paddedLeft = Math.max(0, rectLeft - leftPad);
     const appliedLeftPad = rectLeft - paddedLeft;
 
@@ -118,7 +212,16 @@ const buildRectanglesForMatch = (pageData, matchStart, matchLength) => {
       x: paddedLeft,
       y: baseTop,
       width: rectWidth + appliedLeftPad + rightPad,
-      height: Math.max(fontHeight + topPad + bottomPad, TEXT_HIGHLIGHT_MIN_HEIGHT)
+      height: Math.max(fontHeight + topPad + bottomPad, TEXT_HIGHLIGHT_MIN_HEIGHT),
+      geometryMethod: segmentAdvance.method,
+      matchText: segmentAdvance.matchText,
+      itemTextLength: segmentAdvance.itemTextLength,
+      measuredFullWidth: segmentAdvance.measuredFullWidth,
+      measuredMatchWidth: segmentAdvance.measuredMatchWidth,
+      startRatio: segmentAdvance.startRatio,
+      widthRatio: segmentAdvance.widthRatio,
+      baseWidth: Math.round(rectWidth * 100) / 100,
+      rightPad: Math.round(rightPad * 100) / 100
     });
   }
 
@@ -469,6 +572,7 @@ const SearchTextPanel = ({
       const data = {
         text: fullText,
         items: textContent.items || [],
+        styles: textContent.styles || {},
         ranges,
         viewportTransform: viewport.transform
       };
