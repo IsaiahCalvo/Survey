@@ -17,16 +17,11 @@ import React, { useState, useEffect } from 'react';
 import { HubShell, Search, Icon } from './HubShell';
 import DocumentsLedger from './DocumentsLedger';
 import ProjectsFolderTree from './ProjectsFolderTree';
+import TemplatesEditor from './TemplatesEditor';
 import ShareModal from './ShareModal';
 import './hub.css';
 
 const TAB_KEY = 'survey-hub-tab';
-
-const Placeholder = ({ label }) => (
-  <div style={{ flex: 1, display: 'grid', placeItems: 'center', color: 'var(--ink-200)', fontSize: 13 }}>
-    {label} — coming together next.
-  </div>
-);
 
 export default function SurveyHub({
   documents = [],
@@ -37,6 +32,7 @@ export default function SurveyHub({
   onOpenDocument,
   onUpload,
   onCreateProject,
+  onCreateTemplate,
 }) {
   const [tab, setTab] = useState(() => {
     try { return localStorage.getItem(TAB_KEY) || 'documents'; } catch { return 'documents'; }
@@ -93,6 +89,11 @@ export default function SurveyHub({
           <Icon name="plus" size={12} />New Project
         </button>
       )}
+      {tab === 'templates' && (
+        <button className="btn primary" onClick={() => onCreateTemplate && onCreateTemplate()}>
+          <Icon name="plus" size={12} />New Template
+        </button>
+      )}
     </>
   );
 
@@ -126,7 +127,13 @@ export default function SurveyHub({
             onShare={shareProject}
           />
         )}
-        {tab === 'templates' && <Placeholder label="Templates" />}
+        {tab === 'templates' && (
+          <TemplatesEditor
+            templates={templates}
+            search={search}
+            onCreateTemplate={onCreateTemplate}
+          />
+        )}
       </HubShell>
 
       <ShareModal

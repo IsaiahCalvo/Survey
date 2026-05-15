@@ -29,8 +29,44 @@ const MOCK_DOCUMENTS = [
 ];
 
 const MOCK_TEMPLATES = [
-  { id: 't1', name: 'Security Walk-Through', created_at: iso(28) },
-  { id: 't2', name: 'MEP As-Built Markup', created_at: iso(22) },
+  {
+    id: 't1', name: 'Security Walk-Through', created_at: iso(28),
+    ballInCourtEntities: [
+      { id: 'e1', name: 'GC', color: 'rgba(216,168,78,0.5)' },
+      { id: 'e2', name: 'Subcontractor', color: 'rgba(122,183,230,0.5)' },
+      { id: 'e3', name: '100% Complete', color: 'rgba(166,224,122,0.5)' },
+    ],
+    modules: [
+      {
+        id: 'm1', name: 'Installation Phase',
+        categories: [
+          { id: 'c1', name: 'Cameras', checklist: [
+            { id: 'i1', text: 'Is the camera cable pulled?' },
+            { id: 'i2', text: 'Is the camera installed?' },
+          ] },
+          { id: 'c2', name: 'Doors', checklist: [
+            { id: 'i3', text: 'Is the door roughed in?' },
+            { id: 'i4', text: 'Are the door devices installed?' },
+          ] },
+        ],
+      },
+      { id: 'm2', name: 'Commissioning Phase', categories: [
+        { id: 'c3', name: 'Cameras', checklist: [{ id: 'i5', text: 'Camera tested and online?' }] },
+      ] },
+    ],
+  },
+  {
+    id: 't2', name: 'MEP As-Built Markup', created_at: iso(22),
+    ballInCourtEntities: [
+      { id: 'e4', name: 'MEP', color: 'rgba(122,183,230,0.5)' },
+      { id: 'e5', name: 'Architect', color: 'rgba(194,147,230,0.5)' },
+    ],
+    modules: [
+      { id: 'm3', name: 'Equipment', categories: [
+        { id: 'c4', name: 'AHU Equipment', checklist: [{ id: 'i6', text: 'Tags updated?' }] },
+      ] },
+    ],
+  },
 ];
 
 export default function HubPreview() {
@@ -44,7 +80,8 @@ export default function HubPreview() {
         isPro
         onOpenDocument={(d) => console.log('[hub preview] open document:', d.name)}
         onUpload={() => console.log('[hub preview] upload')}
-        onShare={(items) => console.log('[hub preview] share:', items.map((i) => i.name))}
+        onCreateProject={() => console.log('[hub preview] new project')}
+        onCreateTemplate={() => console.log('[hub preview] new template')}
       />
     </div>
   );
