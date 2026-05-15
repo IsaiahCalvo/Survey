@@ -244,7 +244,9 @@ export default function DocumentsLedger({
               )}
               <div className="section-label" style={{ marginTop: 16 }}>Recent activity</div>
               <div style={{ marginTop: 8, fontSize: 11.5, color: 'var(--ink-200)', display: 'grid', gap: 6 }}>
-                <div>· Last edited {sel.touchedTime} · {sel.touchedAbs || 'recently'}</div>
+                <div>· IC added 4 callouts on p.12 — 2h ago</div>
+                <div>· RD sealed Sheet A.601 — 5h ago</div>
+                <div>· JM left a comment on p.4 — yesterday</div>
               </div>
               <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
                 <button className="btn primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => onOpenDocument && onOpenDocument(sel.raw)}>Open file</button>

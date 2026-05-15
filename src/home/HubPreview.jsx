@@ -1,9 +1,12 @@
 /* DEV-ONLY preview harness for the Survey Hub redesign.
    Mounted by main.jsx when the URL has `?hubPreview=1`, so the new home can be
    built and reviewed in isolation without auth, Supabase, or the real App tree.
-   Never imported in production paths. Mock data mirrors the real document /
-   project / template shapes, and the bulk-action handlers run on local state
-   so duplicate / move / copy / delete are demonstrable here. */
+   Never imported in production paths.
+
+   Mock data mirrors the real document / project / template shapes and includes
+   SAMPLE teammates (members directory, project rosters, file owners) so the
+   preview reads one-to-one with the design mockup. The bulk-action handlers
+   run on local state so duplicate / move / copy / delete are demonstrable. */
 import React, { useState } from 'react';
 import SurveyHub from './SurveyHub';
 
@@ -14,19 +17,28 @@ const iso = (daysAgo, h = 10, m = 0) => {
   return d.toISOString();
 };
 
+/* Sample teammate directory. */
+const MOCK_MEMBERS = [
+  { id: 'IC', name: 'Isaiah Calvo', role: 'Project Engineer', color: '#d8a84e', online: true },
+  { id: 'AS', name: 'Anna Sato', role: 'Architect', color: '#c293e6', online: true },
+  { id: 'RD', name: 'Ravi Doshi', role: 'MEP Lead', color: '#a6e07a', online: false },
+  { id: 'JM', name: 'Jordan Mei', role: 'Security Eng', color: '#7ab7e6', online: true },
+  { id: 'KM', name: 'Kira Moss', role: 'Spec Writer', color: '#e69a7a', online: false },
+];
+
 const MOCK_PROJECTS = [
-  { id: 'p1', name: 'Tower 5 — Security', user_id: 'u1', created_at: iso(40) },
-  { id: 'p2', name: 'Lab Reno — MEP', user_id: 'u1', created_at: iso(30) },
-  { id: 'p3', name: 'MEP Phase 2', user_id: 'u1', created_at: iso(20) },
+  { id: 'p1', name: 'Tower 5 — Security', user_id: 'u1', created_at: iso(40), members: ['IC', 'JM', 'RD'] },
+  { id: 'p2', name: 'Lab Reno — MEP', user_id: 'u1', created_at: iso(30), members: ['IC', 'AS', 'RD', 'KM'] },
+  { id: 'p3', name: 'MEP Phase 2', user_id: 'u1', created_at: iso(20), members: ['RD', 'IC'] },
 ];
 
 const INITIAL_DOCUMENTS = [
-  { id: 'd1', name: 'SE-011 Security Shop Drawings.pdf', file_size: 25_050_000, project_id: 'p1', created_at: iso(9), updated_at: iso(2, 9, 14), shared: false },
-  { id: 'd2', name: 'Package 2 — Rev 4 — IC.pdf', file_size: 7_930_000, project_id: null, created_at: iso(8), updated_at: iso(1, 16, 48), shared: true },
-  { id: 'd3', name: 'RFI-014 Lobby Camera Coverage.pdf', file_size: 1_820_000, project_id: 'p1', created_at: iso(1), updated_at: iso(0, 11, 2), shared: false },
-  { id: 'd4', name: 'Door Hardware Schedule — A.601.pdf', file_size: 3_400_000, project_id: 'p2', created_at: iso(15), updated_at: iso(15, 17, 25), shared: false },
-  { id: 'd5', name: 'MEP Coordination — Level 3.pdf', file_size: 12_400_000, project_id: 'p3', created_at: iso(5), updated_at: iso(1, 10, 6), shared: true },
-  { id: 'd6', name: 'test.pdf', file_size: 2_400, project_id: null, created_at: iso(12), updated_at: iso(5, 13, 51), shared: false },
+  { id: 'd1', name: 'SE-011 Security Shop Drawings.pdf', file_size: 25_050_000, project_id: 'p1', owner: 'IC', pages: 48, created_at: iso(9), updated_at: iso(2, 9, 14), shared: false },
+  { id: 'd2', name: 'Package 2 — Rev 4 — IC.pdf', file_size: 7_930_000, project_id: null, owner: 'IC', pages: 22, created_at: iso(8), updated_at: iso(1, 16, 48), shared: true },
+  { id: 'd3', name: 'RFI-014 Lobby Camera Coverage.pdf', file_size: 1_820_000, project_id: 'p1', owner: 'JM', pages: 9, created_at: iso(1), updated_at: iso(0, 11, 2), shared: false },
+  { id: 'd4', name: 'Door Hardware Schedule — A.601.pdf', file_size: 3_400_000, project_id: 'p2', owner: 'AS', pages: 14, created_at: iso(15), updated_at: iso(15, 17, 25), shared: false },
+  { id: 'd5', name: 'MEP Coordination — Level 3.pdf', file_size: 12_400_000, project_id: 'p3', owner: 'RD', pages: 31, created_at: iso(5), updated_at: iso(1, 10, 6), shared: true },
+  { id: 'd6', name: 'test.pdf', file_size: 2_400, project_id: null, owner: 'IC', pages: 1, created_at: iso(12), updated_at: iso(5, 13, 51), shared: false },
 ];
 
 const MOCK_TEMPLATES = [
@@ -80,21 +92,18 @@ const newId = () => `d-copy-${Date.now()}-${copyCounter++}`;
 
 export default function HubPreview() {
   const [documents, setDocuments] = useState(INITIAL_DOCUMENTS);
+  const initialTab = new URLSearchParams(window.location.search).get('tab');
 
-  // Duplicate: a copy of each, named "<name>-copy", marked just-edited.
   const handleDuplicate = (docs) => {
     const copies = docs.map((d) => ({ ...d, id: newId(), name: copyName(d.name), updated_at: new Date().toISOString() }));
     setDocuments((prev) => [...copies, ...prev]);
   };
 
-  // Delete: drop the documents from the list.
   const handleDelete = (docs) => {
     const ids = new Set(docs.map((d) => d.id));
     setDocuments((prev) => prev.filter((d) => !ids.has(d.id)));
   };
 
-  // Move: reassign the documents to the destination project.
-  // Copy: add copies that live in the destination project, originals untouched.
   const handleMoveCopy = (docs, projectId, mode) => {
     const ids = new Set(docs.map((d) => d.id));
     if (mode === 'move') {
@@ -105,14 +114,13 @@ export default function HubPreview() {
     }
   };
 
-  const initialTab = new URLSearchParams(window.location.search).get('tab');
-
   return (
     <div style={{ width: '100vw', height: '100vh' }}>
       <SurveyHub
         documents={documents}
         projects={MOCK_PROJECTS}
         templates={MOCK_TEMPLATES}
+        members={MOCK_MEMBERS}
         user={{ name: 'Isaiah Calvo', email: 'isaiahcalvo123@gmail.com' }}
         isPro
         initialTab={initialTab}

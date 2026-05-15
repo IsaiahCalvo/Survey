@@ -6,11 +6,11 @@
    The markup, styling, spacing, columns, select-mode toolbars and per-row
    menus mirror the mockup element for element. Only the data is swapped.
 
-   DATA GAP: the real app stores no project members. The prototype's left
-   list shows member-avatar stacks + a member count; here that same visual
-   slot shows the project's file count. The roster panel keeps its layout
-   but is populated with the project owner (the `user` prop) plus an
-   empty-state hint. "Manage Team" and the share action call `onShare`.
+   Teammate data: the hub feeds a `members` directory of
+   { id, name, role, color, online }. Each project carries members:[memberId]
+   and each document carries owner:memberId — so the left avatar stacks, the
+   roster panel and the "Last edited by" column render the true prototype
+   behavior. All fall back gracefully when member data is absent.
 */
 import React, { useState, useMemo, useEffect } from 'react';
 import { HubShell, Icon, Avatar, AvatarStack, Search } from './HubShell';
@@ -29,6 +29,7 @@ const shortWhen = (d) => {
 export default function ProjectsFolderTree({
   projects = [],
   documents = [],
+  members = [],
   user = null,
   templatesLocked = false,
   onNav,
@@ -70,9 +71,14 @@ export default function ProjectsFolderTree({
   const filesFor = (projId) => documents.filter((d) => d.project_id === projId);
   const openFiles = open ? filesFor(open.id) : [];
 
-  const ownerInitials = (user?.name || user?.email || 'You').slice(0, 2).toUpperCase();
-  const ownerName = user?.name || user?.email?.split('@')[0] || 'You';
-  const ownerEmail = user?.email || '';
+  // Member directory lookup — resolves a memberId to its { name, role, color,
+  // online } record so avatars/roster render the prototype's true behavior.
+  const memberById = useMemo(() => {
+    const map = new Map();
+    members.forEach((m) => { if (m && m.id != null) map.set(m.id, m); });
+    return map;
+  }, [members]);
+  const lookupMember = (id) => memberById.get(id) || null;
 
   const subtitle = (
     <span><b>{filtered.length}</b> projects · expand any to see its files and roster</span>
@@ -86,7 +92,7 @@ export default function ProjectsFolderTree({
       title="Projects"
       subtitle={subtitle}
       actions={actions}
-      userName={ownerName}
+      userName={user?.name || user?.email?.split('@')[0] || 'You'}
       templatesLocked={templatesLocked}
     >
       <div style={{ padding: '0 8px 8px 8px', display: 'grid', gridTemplateColumns: '260px 1fr', gap: 8, flex: 1, minHeight: 0 }}>
@@ -139,7 +145,7 @@ export default function ProjectsFolderTree({
             {filtered.map((p) => {
               const isOpen = open && p.id === open.id;
               const isSel = selProj.has(p.id);
-              const count = filesFor(p.id).length;
+              const projMembers = Array.isArray(p.members) ? p.members : [];
               return (
                 <div key={p.id} style={{ position: 'relative' }} draggable={jobsEdit}>
                   <div
@@ -164,12 +170,11 @@ export default function ProjectsFolderTree({
                     )}
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{p.name}</div>
-                      {/* DATA GAP: prototype shows a member-avatar stack + count
-                          here. The real app has no project members, so the same
-                          visual slot shows the project's file count instead. */}
+                      {/* Member-avatar stack (first 3) + member count — the
+                          prototype's true behavior; empty stack if no members. */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
-                        <Icon name="doc" size={11} color="var(--ink-200)" />
-                        <span className="mono meta" style={{ fontSize: 9.5 }}>{count} {count === 1 ? 'file' : 'files'}</span>
+                        <AvatarStack members={projMembers.slice(0, 3)} size={14} />
+                        <span className="mono meta" style={{ fontSize: 9.5 }}>{projMembers.length}</span>
                       </div>
                     </div>
                     {jobsEdit ? (
@@ -302,6 +307,9 @@ export default function ProjectsFolderTree({
                     <div style={{ display: 'grid', gap: 1 }}>
                       {openFiles.map((f, i) => {
                         const isChecked = selFiles.has(i);
+                        const owner = lookupMember(f.owner);
+                        const ownerInitials = (owner?.id || f.owner || '—');
+                        const ownerFirst = owner?.name?.split(' ')[0] || (f.owner != null ? String(f.owner) : '—');
                         return (
                           <div
                             key={f.id}
@@ -318,12 +326,11 @@ export default function ProjectsFolderTree({
                           >
                             <span title="Drag to reorder" style={{ color: 'var(--ink-200)', fontSize: 11, cursor: 'grab', userSelect: 'none', lineHeight: 1, textAlign: 'center' }}>⋮⋮</span>
                             <div style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
-                            {/* DATA GAP: prototype shows the file's owner member;
-                                the real app has no per-file author, so this
-                                shows the project owner. */}
+                            {/* "Last edited by" — file's owner resolved against
+                                the member directory: avatar + first name. */}
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                              <Avatar initials={ownerInitials} size={18} />
-                              <span className="meta" style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ownerName.split(' ')[0]}</span>
+                              <Avatar initials={ownerInitials} size={18} color={owner?.color} />
+                              <span className="meta" style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ownerFirst}</span>
                             </div>
                             <span className="mono meta" style={{ fontSize: 11 }}>{shortWhen(f)}</span>
                             {fileSelect ? (
@@ -373,34 +380,39 @@ export default function ProjectsFolderTree({
                   )}
                 </div>
 
-                {/* Roster */}
+                {/* Roster — project members resolved against the member
+                    directory: avatar + name + role + online status dot. */}
                 <div className="slim-scroll" style={{ borderLeft: '1px solid var(--ink-500)', padding: '12px 12px', background: 'var(--ink-800)', overflow: 'auto' }}>
                   <div className="section-label" style={{ marginBottom: 10 }}>Roster</div>
-                  {/* DATA GAP: the real app stores no project members. The roster
-                      panel keeps its layout but is populated with the project
-                      owner plus an empty-state hint. */}
-                  <div style={{ display: 'grid', gap: 8 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <Avatar initials={ownerInitials} size={22} />
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ownerName}</div>
-                        <div className="meta" style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--green)', flex: 'none' }}></span>
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{ownerEmail || 'Owner'}</span>
+                  {(() => {
+                    const roster = Array.isArray(open.members) ? open.members : [];
+                    if (roster.length === 0) {
+                      return (
+                        <div className="meta" style={{ fontSize: 10.5, lineHeight: 1.5 }}>
+                          No teammates yet. Use Manage Team to invite people.
                         </div>
+                      );
+                    }
+                    return (
+                      <div style={{ display: 'grid', gap: 8 }}>
+                        {roster.map((m) => {
+                          const mem = lookupMember(m);
+                          return (
+                            <div key={m} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <Avatar initials={m} size={22} color={mem?.color} />
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <div style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{mem?.name || m}</div>
+                                <div className="meta" style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: mem?.online ? 'var(--green)' : 'var(--ink-300)', flex: 'none' }}></span>
+                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{mem?.role || ''}</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                    </div>
-                  </div>
-                  <div className="meta" style={{ fontSize: 10.5, marginTop: 12, lineHeight: 1.5 }}>
-                    No teammates yet. Use Manage Team to invite people.
-                  </div>
-                  <button
-                    className="btn"
-                    style={{ marginTop: 10, width: '100%', justifyContent: 'center', fontSize: 11 }}
-                    onClick={() => onShare && onShare(open)}
-                  >
-                    <Icon name="users" size={11} />Manage Team
-                  </button>
+                    );
+                  })()}
                 </div>
               </div>
             </>

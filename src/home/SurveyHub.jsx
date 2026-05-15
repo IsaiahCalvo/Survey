@@ -27,6 +27,7 @@ export default function SurveyHub({
   documents = [],
   projects = [],
   templates = [],
+  members = [],
   user = null,
   isPro = true,
   initialTab = null,
@@ -82,6 +83,7 @@ export default function SurveyHub({
           {...common}
           projects={projects}
           documents={documents}
+          members={members}
           onOpenDocument={onOpenDocument}
           onCreateProject={onCreateProject}
           onShare={shareProject}
