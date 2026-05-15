@@ -22,6 +22,7 @@ import {
 } from '@syncfusion/ej2-react-pdfviewer';
 
 const MAX_BOOKMARK_RETRIES = 20;
+const TEXT_SEARCH_NATIVE_HIGHLIGHT_COLOR = 'rgba(255, 230, 0, 0.52)';
 
 // UX 2026-04-22 (Windows load failure) — Syncfusion's PDF form-field parser
 // (`FormFieldsBase.GetFormFields`, called unconditionally from
@@ -2445,6 +2446,10 @@ const SyncfusionPDFContainer = forwardRef(({
         if (el && el.style) el.style.cursor = 'pointer';
       }}
       enableTextSearch={true}
+      textSearchColorSettings={{
+        searchHighlightColor: TEXT_SEARCH_NATIVE_HIGHLIGHT_COLOR,
+        searchColor: TEXT_SEARCH_NATIVE_HIGHLIGHT_COLOR
+      }}
       enableThumbnail={false}
       enableBookmark={true}
       enableTextSelection={true}

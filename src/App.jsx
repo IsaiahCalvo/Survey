@@ -33953,7 +33953,9 @@ ${pageBlocks}
                       const hasAnnotations = annotationsByPage[pageNumber]?.objects?.length > 0;
                       const hasSurveyHighlights = (newHighlightsByPage[pageNumber]?.length ?? 0) > 0;
                       const hasRegions = getPageRegions(pageNumber)?.length > 0;
-                      const hasSearchHighlights = !useSyncfusionRenderer && searchResultsByPage[pageNumber]?.length > 0;
+                      const hasSearchHighlights = useSyncfusionRenderer
+                        ? currentMatch?.pageNumber === pageNumber
+                        : searchResultsByPage[pageNumber]?.length > 0;
                       return hasAnnotations || hasSurveyHighlights || hasRegions || hasSearchHighlights;
                     })
                     .sort((a, b) => a - b)
@@ -34175,6 +34177,19 @@ ${pageBlocks}
                                 backfaceVisibility: legacyCommitCompensationPending ? 'hidden' : undefined,
                               }}
                             >
+                            {useSyncfusionRenderer && currentMatch?.pageNumber === pageNumber && (
+                              <SearchHighlightLayer
+                                pageNumber={pageNumber}
+                                width={resolvedPageSize.width}
+                                height={resolvedPageSize.height}
+                                scale={layerScale}
+                                highlights={[currentMatch]}
+                                activeMatchId={currentMatch.id}
+                                isActiveMatchOnThisPage
+                                activeOnly
+                                activeGlowOnly
+                              />
+                            )}
                             {!useSyncfusionRenderer && searchResultsByPage[pageNumber] && searchResultsByPage[pageNumber].length > 0 && (
                               <SearchHighlightLayer
                                 pageNumber={pageNumber}

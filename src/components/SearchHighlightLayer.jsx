@@ -22,7 +22,9 @@ const SearchHighlightLayer = memo(({
   highlights = [],
   maxRenderedMatches = MAX_RENDERED_MATCHES_PER_PAGE,
   activeMatchId = null,
-  isActiveMatchOnThisPage = false
+  isActiveMatchOnThisPage = false,
+  activeOnly = false,
+  activeGlowOnly = false
 }) => {
   // Filter highlights for this page and calculate scaled positions
   const scaledHighlights = useMemo(() => {
@@ -49,11 +51,13 @@ const SearchHighlightLayer = memo(({
       selectedMatches.push(activeMatch);
     }
 
-    for (const match of highlights) {
-      if (!match) continue;
-      if (activeMatch && match.id === activeMatch.id) continue;
-      if (selectedMatches.length >= effectiveMatchBudget) break;
-      selectedMatches.push(match);
+    if (!activeOnly) {
+      for (const match of highlights) {
+        if (!match) continue;
+        if (activeMatch && match.id === activeMatch.id) continue;
+        if (selectedMatches.length >= effectiveMatchBudget) break;
+        selectedMatches.push(match);
+      }
     }
 
     const scaled = [];
@@ -89,7 +93,7 @@ const SearchHighlightLayer = memo(({
     }
 
     return scaled;
-  }, [highlights, scale, activeMatchId, isActiveMatchOnThisPage, maxRenderedMatches]);
+  }, [highlights, scale, activeMatchId, isActiveMatchOnThisPage, maxRenderedMatches, activeOnly]);
 
   if (!width || !height || scaledHighlights.length === 0) {
     return null;
@@ -110,10 +114,23 @@ const SearchHighlightLayer = memo(({
         contain: 'layout style paint'
       }}
     >
+      {activeGlowOnly && (
+        <style>{`
+          @keyframes search-active-glow-pulse {
+            from {
+              box-shadow: 0 0 3px 1px rgba(255, 213, 79, 0.45), 0 0 8px 2px rgba(255, 193, 7, 0.22);
+            }
+            to {
+              box-shadow: 0 0 5px 2px rgba(255, 245, 157, 0.9), 0 0 14px 4px rgba(255, 193, 7, 0.45);
+            }
+          }
+        `}</style>
+      )}
       {scaledHighlights.map((match) => (
         <React.Fragment key={match.id}>
           {match.scaledRectangles.map((rect, rectIndex) => {
             const isActive = match.isActive;
+            const glowOnly = activeGlowOnly && isActive;
 
             return (
               <div
@@ -125,15 +142,21 @@ const SearchHighlightLayer = memo(({
                   top: `${Math.max(rect.y, 0)}px`,
                   width: `${Math.max(rect.width, 2)}px`,
                   height: `${Math.max(rect.height, 6)}px`,
-                  background: isActive
+                  background: glowOnly
+                    ? 'rgba(255, 255, 255, 0.04)'
+                    : isActive
                     ? 'rgba(255, 180, 0, 0.55)'
                     : 'rgba(255, 255, 0, 0.35)',
-                  border: isActive
+                  border: glowOnly
+                    ? '1px solid rgba(255, 245, 157, 0.95)'
+                    : isActive
                     ? '2px solid rgba(255, 140, 0, 0.9)'
                     : '1px solid rgba(255, 255, 0, 0.5)',
                   borderRadius: '2px',
                   boxShadow: isActive ? '0 0 6px 1px rgba(255, 180, 0, 0.55)' : 'none',
-                  boxSizing: 'border-box'
+                  boxSizing: 'border-box',
+                  animation: glowOnly ? 'search-active-glow-pulse 1.1s ease-in-out infinite alternate' : undefined,
+                  willChange: glowOnly ? 'box-shadow' : undefined
                 }}
               />
             );
