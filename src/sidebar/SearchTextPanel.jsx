@@ -19,8 +19,719 @@ const TEXT_HIGHLIGHT_MIN_HEIGHT = 5;
 const TEXT_HIGHLIGHT_ASCENT_RATIO = 0.74;
 const TEXT_HIGHLIGHT_TOP_PAD_RATIO = 0.02;
 const TEXT_HIGHLIGHT_BOTTOM_PAD_RATIO = 0.10;
-const TEXT_HIGHLIGHT_LEFT_PAD_RATIO = 0.015;
-const TEXT_HIGHLIGHT_RIGHT_PAD_RATIO = 0.10;
+const TEXT_HIGHLIGHT_BOUNDARY_LEFT_PAD_RATIO = 0.015;
+const TEXT_HIGHLIGHT_INTERNAL_LEFT_PAD_RATIO = 0.006;
+const TEXT_HIGHLIGHT_BOUNDARY_RIGHT_PAD_RATIO = 0.18;
+const TEXT_HIGHLIGHT_INTERNAL_RIGHT_PAD_RATIO = 0.035;
+const TEXT_HIGHLIGHT_MAX_SIDE_PAD_RATIO = 0.22;
+const TEXT_LAYER_GEOMETRY_MIN_RECT_SIZE = 0.01;
+const TEXT_LAYER_INK_SCAN_THRESHOLD = 42;
+const TEXT_LAYER_INK_SCAN_MIN_PIXELS = 4;
+const TEXT_LAYER_INK_SCAN_MAX_PIXELS = 180000;
+const TEXT_LAYER_INK_SCAN_MIN_PAD = 2.4;
+const TEXT_LAYER_INK_SCAN_MAX_PAD = 18;
+const TEXT_LAYER_INK_SCAN_PAD_RATIO = 0.48;
+const TEXT_LAYER_INK_SCAN_MIN_HEIGHT = 2;
+const TEXT_LAYER_INK_SCAN_BUCKET_SHIFT = 4;
+const TEXT_LAYER_INK_COMPONENT_SELECTION_PAD = 2;
+const TEXT_LAYER_MEASUREMENT_TIMEOUT_MS = 2500;
+
+const SEARCH_TEXT_WORD_CHAR_REGEX = /[\p{L}\p{N}\p{M}]/u;
+
+let searchTextMeasureContext = null;
+const renderedPageImageCanvasCache = new WeakMap();
+
+const getSearchTextMeasureContext = () => {
+  if (typeof document === 'undefined') return null;
+  if (!searchTextMeasureContext) {
+    const canvas = document.createElement('canvas');
+    searchTextMeasureContext = canvas.getContext('2d');
+  }
+  return searchTextMeasureContext;
+};
+
+const getSearchTextFontFamily = (style = {}, textItem = {}) => {
+  const family = style?.fontFamily || textItem?.fontFamily || '';
+  return typeof family === 'string' && family.trim() ? family : FONT_FAMILY;
+};
+
+const measureSearchTextWidth = (ctx, font, text) => {
+  if (!ctx || !font || typeof text !== 'string') return null;
+  try {
+    ctx.font = font;
+    const width = ctx.measureText(text).width;
+    return Number.isFinite(width) && width > 0 ? width : null;
+  } catch {
+    return null;
+  }
+};
+
+const isSearchTextWordChar = (char) => (
+  typeof char === 'string' && char.length > 0 && SEARCH_TEXT_WORD_CHAR_REGEX.test(char)
+);
+
+const resolveTextSegmentContext = (itemText, relativeStart, relativeLength) => {
+  const segmentEnd = relativeStart + relativeLength;
+  const previousChar = relativeStart > 0 ? itemText.slice(relativeStart - 1, relativeStart) : '';
+  const nextChar = segmentEnd < itemText.length ? itemText.slice(segmentEnd, segmentEnd + 1) : '';
+
+  return {
+    previousChar,
+    nextChar,
+    startsAtBoundary: !isSearchTextWordChar(previousChar),
+    endsAtBoundary: !isSearchTextWordChar(nextChar)
+  };
+};
+
+const resolveTextHighlightPad = (fontHeight, ratio, minimum) => {
+  const maxSidePad = Math.max(1, fontHeight * TEXT_HIGHLIGHT_MAX_SIDE_PAD_RATIO);
+  return Math.min(Math.max(minimum, fontHeight * ratio), maxSidePad);
+};
+
+const createSearchTextMeasureLayer = (viewport) => {
+  if (typeof document === 'undefined') return null;
+
+  const container = document.createElement('div');
+  container.className = 'textLayer search-text-measurement-layer';
+  container.setAttribute('aria-hidden', 'true');
+  Object.assign(container.style, {
+    position: 'fixed',
+    left: '-100000px',
+    top: '0',
+    width: `${viewport.width}px`,
+    height: `${viewport.height}px`,
+    opacity: '0',
+    pointerEvents: 'none',
+    zIndex: '-1',
+    contain: 'layout style paint',
+    overflow: 'hidden'
+  });
+  container.style.setProperty('--scale-factor', String(viewport.scale || 1));
+  document.body.appendChild(container);
+  return container;
+};
+
+const cleanupTextLayerMeasurement = (pageData) => {
+  const measurement = pageData?.textLayerMeasurement;
+  if (!measurement) return;
+  try {
+    measurement.task?.cancel?.();
+  } catch {
+    // The task may already be complete.
+  }
+  measurement.container?.remove?.();
+  pageData.textLayerMeasurement = null;
+  pageData.textLayerMeasurementPromise = null;
+};
+
+const cleanupTextLayerMeasurements = (cache) => {
+  if (!cache) return;
+  for (const pageData of cache.values()) {
+    cleanupTextLayerMeasurement(pageData);
+  }
+};
+
+const waitForSearchTextFonts = async () => {
+  if (typeof document === 'undefined' || !document.fonts?.ready) return;
+  try {
+    await Promise.race([
+      document.fonts.ready,
+      new Promise(resolve => setTimeout(resolve, 180))
+    ]);
+  } catch {
+    // Font readiness is best-effort; PDF.js still provides a fallback layout.
+  }
+};
+
+const waitForSearchTextLayout = async () => {
+  if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') return;
+  await new Promise(resolve => window.requestAnimationFrame(resolve));
+};
+
+const withSearchTextMeasurementTimeout = (promise) => new Promise((resolve, reject) => {
+  const timer = setTimeout(() => {
+    reject(new Error('Timed out measuring PDF text layer'));
+  }, TEXT_LAYER_MEASUREMENT_TIMEOUT_MS);
+
+  promise.then(
+    (value) => {
+      clearTimeout(timer);
+      resolve(value);
+    },
+    (error) => {
+      clearTimeout(timer);
+      reject(error);
+    }
+  );
+});
+
+const normalizeSearchTextMeasurementDivStyles = (textDivs) => {
+  textDivs.forEach((textDiv) => {
+    if (!textDiv?.style) return;
+    textDiv.style.position = 'absolute';
+    textDiv.style.whiteSpace = 'pre';
+    textDiv.style.transformOrigin = '0% 0%';
+    textDiv.style.color = 'transparent';
+  });
+};
+
+const getTextNodeForMeasurementDiv = (textDiv) => {
+  if (!textDiv) return null;
+  for (const node of textDiv.childNodes) {
+    if (node.nodeType === 3) {
+      return node;
+    }
+  }
+  return null;
+};
+
+const getPageImageHost = (pageNumber) => {
+  if (typeof document === 'undefined') return null;
+  const pageIndex = Number(pageNumber) - 1;
+  if (!Number.isFinite(pageIndex) || pageIndex < 0) return null;
+
+  const pageHost =
+    document.querySelector(`.e-pv-page-div[id$="_pageDiv_${pageIndex}"]`) ||
+    Array.from(document.querySelectorAll('.e-pv-page-div')).find((node) => {
+      const pageAttr = node.getAttribute('data-page-number') || node.getAttribute('aria-label') || '';
+      return pageAttr === String(pageNumber);
+    }) ||
+    Array.from(document.querySelectorAll('.e-pv-page-div'))[pageIndex] ||
+    null;
+
+  if (!pageHost) return null;
+  const pageImage = Array.from(pageHost.querySelectorAll('img')).find((img) => (
+    img?.complete &&
+    img.naturalWidth > 0 &&
+    img.naturalHeight > 0 &&
+    (img.alt === `Page ${pageNumber}` || img.getBoundingClientRect().width > 100)
+  ));
+
+  return pageImage || null;
+};
+
+const getRenderedPageImageCanvas = (image) => {
+  if (!image || !image.complete || !image.naturalWidth || !image.naturalHeight) {
+    return null;
+  }
+
+  const cached = renderedPageImageCanvasCache.get(image);
+  const cacheKey = `${image.currentSrc || image.src || ''}:${image.naturalWidth}x${image.naturalHeight}`;
+  if (cached?.cacheKey === cacheKey && cached.ctx) {
+    return cached;
+  }
+
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return null;
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const entry = { canvas, ctx, cacheKey };
+    renderedPageImageCanvasCache.set(image, entry);
+    return entry;
+  } catch {
+    return null;
+  }
+};
+
+const readDominantSearchTextBackground = (data, width, height) => {
+  const buckets = new Map();
+  const step = Math.max(4, Math.floor(Math.sqrt((width * height) / 2400)));
+
+  for (let y = 0; y < height; y += step) {
+    for (let x = 0; x < width; x += step) {
+      const index = (y * width + x) * 4;
+      const alpha = data[index + 3];
+      if (alpha < 12) continue;
+      const r = data[index];
+      const g = data[index + 1];
+      const b = data[index + 2];
+      const key = `${r >> TEXT_LAYER_INK_SCAN_BUCKET_SHIFT}:${g >> TEXT_LAYER_INK_SCAN_BUCKET_SHIFT}:${b >> TEXT_LAYER_INK_SCAN_BUCKET_SHIFT}`;
+      const bucket = buckets.get(key) || { count: 0, r: 0, g: 0, b: 0 };
+      bucket.count += 1;
+      bucket.r += r;
+      bucket.g += g;
+      bucket.b += b;
+      buckets.set(key, bucket);
+    }
+  }
+
+  let dominant = null;
+  for (const bucket of buckets.values()) {
+    if (!dominant || bucket.count > dominant.count) {
+      dominant = bucket;
+    }
+  }
+
+  if (!dominant?.count) {
+    return null;
+  }
+
+  return {
+    r: dominant.r / dominant.count,
+    g: dominant.g / dominant.count,
+    b: dominant.b / dominant.count
+  };
+};
+
+const isSearchTextInkPixel = (data, index, background) => {
+  const alpha = data[index + 3];
+  if (alpha < 18 || !background) return false;
+  const dr = data[index] - background.r;
+  const dg = data[index + 1] - background.g;
+  const db = data[index + 2] - background.b;
+  return Math.sqrt((dr * dr) + (dg * dg) + (db * db)) >= TEXT_LAYER_INK_SCAN_THRESHOLD;
+};
+
+const collectSearchTextInkComponents = (mask, width, height) => {
+  const components = [];
+  const stack = [];
+
+  for (let start = 0; start < mask.length; start += 1) {
+    if (mask[start] !== 1) continue;
+
+    mask[start] = 0;
+    stack.push(start);
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    let pixels = 0;
+
+    while (stack.length > 0) {
+      const index = stack.pop();
+      const x = index % width;
+      const y = Math.floor(index / width);
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+      pixels += 1;
+
+      for (let dy = -1; dy <= 1; dy += 1) {
+        const nextY = y + dy;
+        if (nextY < 0 || nextY >= height) continue;
+        for (let dx = -1; dx <= 1; dx += 1) {
+          if (dx === 0 && dy === 0) continue;
+          const nextX = x + dx;
+          if (nextX < 0 || nextX >= width) continue;
+          const nextIndex = nextY * width + nextX;
+          if (mask[nextIndex] !== 1) continue;
+          mask[nextIndex] = 0;
+          stack.push(nextIndex);
+        }
+      }
+    }
+
+    if (pixels >= TEXT_LAYER_INK_SCAN_MIN_PIXELS) {
+      components.push({
+        left: minX,
+        top: minY,
+        right: maxX + 1,
+        bottom: maxY + 1,
+        pixels
+      });
+    }
+  }
+
+  return components;
+};
+
+const resolveSearchTextInkSelectionRect = (rect) => {
+  const selectionRect = rect?.selectionRect;
+  if (
+    selectionRect &&
+    Number.isFinite(Number(selectionRect.x)) &&
+    Number.isFinite(Number(selectionRect.y)) &&
+    Number(selectionRect.width) > TEXT_LAYER_GEOMETRY_MIN_RECT_SIZE &&
+    Number(selectionRect.height) > TEXT_LAYER_GEOMETRY_MIN_RECT_SIZE
+  ) {
+    return {
+      x: Number(selectionRect.x),
+      y: Number(selectionRect.y),
+      width: Number(selectionRect.width),
+      height: Number(selectionRect.height)
+    };
+  }
+
+  return rect;
+};
+
+const mergeSearchTextRectBounds = (primaryRect, secondaryRect) => {
+  if (!secondaryRect || secondaryRect === primaryRect) return primaryRect;
+  const left = Math.min(primaryRect.x, secondaryRect.x);
+  const top = Math.min(primaryRect.y, secondaryRect.y);
+  const right = Math.max(primaryRect.x + primaryRect.width, secondaryRect.x + secondaryRect.width);
+  const bottom = Math.max(primaryRect.y + primaryRect.height, secondaryRect.y + secondaryRect.height);
+
+  return {
+    x: left,
+    y: top,
+    width: Math.max(right - left, TEXT_LAYER_GEOMETRY_MIN_RECT_SIZE),
+    height: Math.max(bottom - top, TEXT_LAYER_GEOMETRY_MIN_RECT_SIZE)
+  };
+};
+
+const isSearchTextInkComponentInsideRange = (component, expectedRect, selectionPadX, selectionPadY) => {
+  const centerX = (component.left + component.right) / 2;
+  const centerY = (component.top + component.bottom) / 2;
+  const componentWidth = Math.max(component.right - component.left, 1);
+  const componentHeight = Math.max(component.bottom - component.top, 1);
+  const overlapX = Math.max(
+    0,
+    Math.min(component.right, expectedRect.right) - Math.max(component.left, expectedRect.left)
+  );
+  const overlapY = Math.max(
+    0,
+    Math.min(component.bottom, expectedRect.bottom + selectionPadY) -
+      Math.max(component.top, expectedRect.top - selectionPadY)
+  );
+  const centerInsideX = centerX >= expectedRect.left - selectionPadX && centerX <= expectedRect.right + selectionPadX;
+  const centerInsideY = centerY >= expectedRect.top - selectionPadY && centerY <= expectedRect.bottom + selectionPadY;
+  const mostlyInsideX = overlapX / componentWidth >= 0.62;
+  const meaningfullyOnLine = overlapY / componentHeight >= 0.28;
+
+  return (centerInsideX && centerInsideY) || (mostlyInsideX && meaningfullyOnLine);
+};
+
+const refineTextRectWithRenderedInk = ({
+  rect,
+  pageData,
+  pageNumber,
+  pageImageEntry
+}) => {
+  if (!rect || !pageData?.viewport || !pageImageEntry?.ctx || !pageImageEntry?.canvas) {
+    return rect;
+  }
+
+  const viewportWidth = Number(pageData.viewport.width) || 0;
+  const viewportHeight = Number(pageData.viewport.height) || 0;
+  const imageWidth = pageImageEntry.canvas.width;
+  const imageHeight = pageImageEntry.canvas.height;
+  if (viewportWidth <= 0 || viewportHeight <= 0 || imageWidth <= 0 || imageHeight <= 0) {
+    return rect;
+  }
+
+  const xScale = imageWidth / viewportWidth;
+  const yScale = imageHeight / viewportHeight;
+  const selectionRect = resolveSearchTextInkSelectionRect(rect);
+  const scanRect = mergeSearchTextRectBounds(rect, selectionRect);
+  const scanPad = Math.min(
+    TEXT_LAYER_INK_SCAN_MAX_PAD,
+    Math.max(TEXT_LAYER_INK_SCAN_MIN_PAD, scanRect.height * TEXT_LAYER_INK_SCAN_PAD_RATIO)
+  );
+  const scanLeft = Math.max(0, scanRect.x - scanPad);
+  const scanTop = Math.max(0, scanRect.y - scanPad);
+  const scanRight = Math.min(viewportWidth, scanRect.x + scanRect.width + scanPad);
+  const scanBottom = Math.min(viewportHeight, scanRect.y + scanRect.height + scanPad);
+
+  const cropX = Math.floor(scanLeft * xScale);
+  const cropY = Math.floor(scanTop * yScale);
+  const cropRight = Math.ceil(scanRight * xScale);
+  const cropBottom = Math.ceil(scanBottom * yScale);
+  const cropWidth = Math.max(1, Math.min(imageWidth - cropX, cropRight - cropX));
+  const cropHeight = Math.max(1, Math.min(imageHeight - cropY, cropBottom - cropY));
+
+  if (cropWidth <= 1 || cropHeight <= 1 || cropWidth * cropHeight > TEXT_LAYER_INK_SCAN_MAX_PIXELS) {
+    return rect;
+  }
+
+  try {
+    const imageData = pageImageEntry.ctx.getImageData(cropX, cropY, cropWidth, cropHeight);
+    const background = readDominantSearchTextBackground(imageData.data, cropWidth, cropHeight);
+    if (!background) return rect;
+
+    const mask = new Uint8Array(cropWidth * cropHeight);
+
+    for (let y = 0; y < cropHeight; y += 1) {
+      for (let x = 0; x < cropWidth; x += 1) {
+        const index = (y * cropWidth + x) * 4;
+        if (!isSearchTextInkPixel(imageData.data, index, background)) continue;
+        mask[y * cropWidth + x] = 1;
+      }
+    }
+
+    const expectedRect = {
+      left: (selectionRect.x * xScale) - cropX,
+      top: (selectionRect.y * yScale) - cropY,
+      right: ((selectionRect.x + selectionRect.width) * xScale) - cropX,
+      bottom: ((selectionRect.y + selectionRect.height) * yScale) - cropY
+    };
+    const selectionPadX = TEXT_LAYER_INK_COMPONENT_SELECTION_PAD;
+    const selectionPadY = Math.max(
+      TEXT_LAYER_INK_COMPONENT_SELECTION_PAD,
+      rect.height * yScale * 0.22
+    );
+    const components = collectSearchTextInkComponents(mask, cropWidth, cropHeight);
+    const selectedComponents = components.filter((component) => (
+      isSearchTextInkComponentInsideRange(component, expectedRect, selectionPadX, selectionPadY)
+    ));
+
+    if (selectedComponents.length === 0) {
+      return rect;
+    }
+
+    const minX = Math.min(...selectedComponents.map((component) => component.left));
+    const minY = Math.min(...selectedComponents.map((component) => component.top));
+    const maxX = Math.max(...selectedComponents.map((component) => component.right));
+    const maxY = Math.max(...selectedComponents.map((component) => component.bottom));
+    const inkPixels = selectedComponents.reduce((sum, component) => sum + component.pixels, 0);
+    const tightLeft = (cropX + minX) / xScale;
+    const tightTop = (cropY + minY) / yScale;
+    const tightRight = (cropX + maxX) / xScale;
+    const tightBottom = (cropY + maxY) / yScale;
+    const inkOverhangX = Math.max(0.45, Math.min(1.6, selectionRect.height * 0.07));
+    const guardedTightLeft = Math.max(tightLeft, selectionRect.x - inkOverhangX);
+    const guardedTightRight = Math.min(tightRight, selectionRect.x + selectionRect.width + inkOverhangX);
+    const visualPadX = Math.max(0.32, Math.min(1.1, rect.height * 0.045));
+    const visualPadY = Math.max(0.32, Math.min(1.1, rect.height * 0.045));
+    const refinedLeft = Math.max(0, guardedTightLeft - visualPadX);
+    const refinedTop = Math.max(0, tightTop - visualPadY);
+    const refinedRight = Math.min(viewportWidth, guardedTightRight + visualPadX);
+    const refinedBottom = Math.min(viewportHeight, tightBottom + visualPadY);
+    const refinedWidth = refinedRight - refinedLeft;
+    const refinedHeight = refinedBottom - refinedTop;
+
+    if (refinedWidth <= TEXT_LAYER_GEOMETRY_MIN_RECT_SIZE || refinedHeight < TEXT_LAYER_INK_SCAN_MIN_HEIGHT) {
+      return rect;
+    }
+
+    const { selectionRect: _selectionRect, ...baseRect } = rect;
+
+    return {
+      ...baseRect,
+      x: refinedLeft,
+      y: refinedTop,
+      width: refinedWidth,
+      height: refinedHeight,
+      geometryMethod: 'text-layer-image-ink',
+      baseGeometryMethod: rect.geometryMethod,
+      inkPixels,
+      inkScan: {
+        pageNumber,
+        cropWidth,
+        cropHeight,
+        componentCount: components.length,
+        selectedComponentCount: selectedComponents.length,
+        background: {
+          r: Math.round(background.r),
+          g: Math.round(background.g),
+          b: Math.round(background.b)
+        }
+      }
+    };
+  } catch {
+    return rect;
+  }
+};
+
+const ensureTextLayerMeasurement = async (pageData) => {
+  if (!pageData?.textContent || !pageData?.viewport || typeof document === 'undefined') {
+    return null;
+  }
+  if (pageData.textLayerMeasurement) {
+    return pageData.textLayerMeasurement;
+  }
+  if (pageData.textLayerMeasurementPromise) {
+    return pageData.textLayerMeasurementPromise;
+  }
+  if (typeof pdfjsLib.renderTextLayer !== 'function') {
+    return null;
+  }
+
+  pageData.textLayerMeasurementPromise = (async () => {
+    const container = createSearchTextMeasureLayer(pageData.viewport);
+    if (!container) return null;
+
+    const textDivs = [];
+    const textDivProperties = new WeakMap();
+    const textContentItemsStr = [];
+    const task = pdfjsLib.renderTextLayer({
+      textContentSource: pageData.textContent,
+      container,
+      viewport: pageData.viewport,
+      textDivs,
+      textDivProperties,
+      textContentItemsStr
+    });
+
+    try {
+      await withSearchTextMeasurementTimeout(task.promise);
+      normalizeSearchTextMeasurementDivStyles(textDivs);
+      await waitForSearchTextFonts();
+      await waitForSearchTextLayout();
+      pageData.textLayerMeasurement = {
+        container,
+        task,
+        textDivs,
+        textDivProperties,
+        textContentItemsStr
+      };
+      return pageData.textLayerMeasurement;
+    } catch (error) {
+      task.cancel?.();
+      container.remove();
+      pageData.textLayerMeasurement = null;
+      pageData.textLayerMeasurementPromise = null;
+      throw error;
+    }
+  })();
+
+  return pageData.textLayerMeasurementPromise;
+};
+
+const buildTextLayerRectanglesForMatch = async (pageData, matchStart, matchLength, pageNumber) => {
+  let measurement = null;
+  try {
+    measurement = await ensureTextLayerMeasurement(pageData);
+  } catch (error) {
+    console.warn('[SearchTextPanel] Text-layer measurement unavailable; using metric bounds fallback:', error);
+    return [];
+  }
+  if (!measurement?.container || !Array.isArray(measurement.textDivs)) {
+    return [];
+  }
+
+  const matchEnd = matchStart + matchLength;
+  const containerRect = measurement.container.getBoundingClientRect();
+  const rectangles = [];
+  const pageImageEntry = getRenderedPageImageCanvas(getPageImageHost(pageNumber));
+  const selectionRects = buildRectanglesForMatch(pageData, matchStart, matchLength);
+  let selectionRectIndex = 0;
+
+  for (const rangeInfo of pageData.ranges || []) {
+    if (rangeInfo.end <= matchStart) continue;
+    if (rangeInfo.start >= matchEnd) break;
+
+    const textDiv = measurement.textDivs[rangeInfo.textDivIndex];
+    const textNode = getTextNodeForMeasurementDiv(textDiv);
+    if (!textNode) continue;
+
+    const overlapStart = Math.max(rangeInfo.start, matchStart);
+    const overlapEnd = Math.min(rangeInfo.end, matchEnd);
+    const relativeStart = overlapStart - rangeInfo.start;
+    const relativeEnd = overlapEnd - rangeInfo.start;
+    if (relativeEnd <= relativeStart) continue;
+    const segmentContext = resolveTextSegmentContext(
+      textNode.textContent || '',
+      relativeStart,
+      relativeEnd - relativeStart
+    );
+    const selectionRect = selectionRects[selectionRectIndex] || null;
+    selectionRectIndex += 1;
+
+    const domRange = document.createRange();
+    try {
+      domRange.setStart(textNode, relativeStart);
+      domRange.setEnd(textNode, relativeEnd);
+      const clientRects = Array.from(domRange.getClientRects());
+
+      clientRects.forEach((rect) => {
+        const width = rect.width;
+        const height = rect.height;
+        if (width <= TEXT_LAYER_GEOMETRY_MIN_RECT_SIZE || height <= TEXT_LAYER_GEOMETRY_MIN_RECT_SIZE) {
+          return;
+        }
+
+        const baseRect = {
+          x: Math.max(0, rect.left - containerRect.left),
+          y: Math.max(0, rect.top - containerRect.top),
+          width,
+          height,
+          geometryMethod: 'text-layer-range',
+          matchText: textNode.textContent?.slice(relativeStart, relativeEnd) || '',
+          textDivIndex: rangeInfo.textDivIndex,
+          fontFamily: textDiv.style.fontFamily || undefined,
+          fontSize: textDiv.style.fontSize || undefined,
+          transform: textDiv.style.transform || undefined,
+          startsAtBoundary: segmentContext.startsAtBoundary,
+          endsAtBoundary: segmentContext.endsAtBoundary,
+          previousChar: segmentContext.previousChar,
+          nextChar: segmentContext.nextChar,
+          selectionRect
+        };
+
+        rectangles.push(refineTextRectWithRenderedInk({
+          rect: baseRect,
+          pageData,
+          pageNumber,
+          segmentContext,
+          pageImageEntry
+        }));
+      });
+    } finally {
+      domRange.detach?.();
+    }
+  }
+
+  return rectangles;
+};
+
+const resolveTextSegmentAdvance = ({
+  textItem,
+  styles,
+  itemWidth,
+  fontHeight,
+  glyphCount,
+  relativeStart,
+  relativeLength
+}) => {
+  const fallbackScale = itemWidth / glyphCount;
+  const fallback = {
+    start: fallbackScale * relativeStart,
+    width: Math.max(fallbackScale * relativeLength, 2),
+    method: 'average'
+  };
+
+  const itemText = textItem?.str || '';
+  if (!itemText || relativeStart < 0 || relativeLength <= 0) {
+    return fallback;
+  }
+
+  const ctx = getSearchTextMeasureContext();
+  const style = styles?.[textItem.fontName] || {};
+  const fontFamily = getSearchTextFontFamily(style, textItem);
+  const fontSize = Math.max(1, Number(fontHeight) || 12);
+  const font = `${fontSize}px ${fontFamily}`;
+  const fullWidth = measureSearchTextWidth(ctx, font, itemText);
+
+  if (!fullWidth) {
+    return fallback;
+  }
+
+  const prefixText = itemText.slice(0, relativeStart);
+  const matchText = itemText.slice(relativeStart, relativeStart + relativeLength);
+  const prefixWidth = prefixText ? measureSearchTextWidth(ctx, font, prefixText) : 0;
+  const segmentEndText = itemText.slice(0, relativeStart + relativeLength);
+  const segmentEndWidth = measureSearchTextWidth(ctx, font, segmentEndText);
+  const matchWidth = Number.isFinite(segmentEndWidth)
+    ? segmentEndWidth - prefixWidth
+    : measureSearchTextWidth(ctx, font, matchText);
+
+  if (!Number.isFinite(prefixWidth) || !Number.isFinite(matchWidth) || matchWidth <= 0) {
+    return fallback;
+  }
+
+  const startRatio = Math.max(0, Math.min(prefixWidth / fullWidth, 1));
+  const widthRatio = Math.max(0, Math.min(matchWidth / fullWidth, 1 - startRatio));
+
+  return {
+    start: itemWidth * startRatio,
+    width: Math.max(itemWidth * widthRatio, 2),
+    method: 'canvas-ratio',
+    matchText,
+    itemTextLength: itemText.length,
+    measuredFullWidth: Math.round(fullWidth * 100) / 100,
+    measuredMatchWidth: Math.round(matchWidth * 100) / 100,
+    measuredEndWidth: Number.isFinite(segmentEndWidth)
+      ? Math.round(segmentEndWidth * 100) / 100
+      : undefined,
+    startRatio: Math.round(startRatio * 10000) / 10000,
+    widthRatio: Math.round(widthRatio * 10000) / 10000
+  };
+};
 
 const getPdfDocumentKey = (pdfDoc, numPages, explicitKey) => {
   const stableExplicitKey = typeof explicitKey === 'string' ? explicitKey.trim() : '';
@@ -70,7 +781,7 @@ const createSnippet = (text, start, end, radius = 60) => {
 
 // Build rectangles for a text match - converts character positions to visual coordinates
 const buildRectanglesForMatch = (pageData, matchStart, matchLength) => {
-  const { items, ranges, viewportTransform } = pageData;
+  const { items, ranges, viewportTransform, styles } = pageData;
   if (!items || !ranges || !viewportTransform) {
     return [];
   }
@@ -95,7 +806,6 @@ const buildRectanglesForMatch = (pageData, matchStart, matchLength) => {
     const transformed = pdfjsLib.Util.transform(viewportTransform, textItem.transform);
     const glyphCount = Math.max(textItem.str.length, 1);
     const itemWidth = clampValue(textItem.width, Math.hypot(clampValue(transformed[0]), clampValue(transformed[1])) || glyphCount * 2);
-    const horizontalScale = itemWidth / glyphCount;
     const vectorHeight = Math.hypot(clampValue(transformed[2]), clampValue(transformed[3]));
     const itemHeight = clampValue(textItem.height, 0);
     const fontHeight = itemHeight > 0
@@ -103,14 +813,28 @@ const buildRectanglesForMatch = (pageData, matchStart, matchLength) => {
       : (vectorHeight || clampValue(textItem.fontSize, 12) || 12);
     const topPad = Math.max(0.35, fontHeight * TEXT_HIGHLIGHT_TOP_PAD_RATIO);
     const bottomPad = Math.max(1, fontHeight * TEXT_HIGHLIGHT_BOTTOM_PAD_RATIO);
-    const leftPad = Math.max(0.25, fontHeight * TEXT_HIGHLIGHT_LEFT_PAD_RATIO);
-    const rightPad = Math.max(0.75, fontHeight * TEXT_HIGHLIGHT_RIGHT_PAD_RATIO);
+    const segmentContext = resolveTextSegmentContext(textItem.str, relativeStart, relativeLength);
+    const leftPad = segmentContext.startsAtBoundary
+      ? resolveTextHighlightPad(fontHeight, TEXT_HIGHLIGHT_BOUNDARY_LEFT_PAD_RATIO, 0.25)
+      : resolveTextHighlightPad(fontHeight, TEXT_HIGHLIGHT_INTERNAL_LEFT_PAD_RATIO, 0.08);
+    const rightPad = segmentContext.endsAtBoundary
+      ? resolveTextHighlightPad(fontHeight, TEXT_HIGHLIGHT_BOUNDARY_RIGHT_PAD_RATIO, 0.75)
+      : resolveTextHighlightPad(fontHeight, TEXT_HIGHLIGHT_INTERNAL_RIGHT_PAD_RATIO, 0.12);
 
     const baseLeft = transformed[4];
     const baseTop = transformed[5] - (fontHeight * TEXT_HIGHLIGHT_ASCENT_RATIO) - topPad;
+    const segmentAdvance = resolveTextSegmentAdvance({
+      textItem,
+      styles,
+      itemWidth,
+      fontHeight,
+      glyphCount,
+      relativeStart,
+      relativeLength
+    });
 
-    const rectLeft = baseLeft + horizontalScale * relativeStart;
-    const rectWidth = Math.max(horizontalScale * relativeLength, 2);
+    const rectLeft = baseLeft + segmentAdvance.start;
+    const rectWidth = Math.max(segmentAdvance.width, 2);
     const paddedLeft = Math.max(0, rectLeft - leftPad);
     const appliedLeftPad = rectLeft - paddedLeft;
 
@@ -118,7 +842,21 @@ const buildRectanglesForMatch = (pageData, matchStart, matchLength) => {
       x: paddedLeft,
       y: baseTop,
       width: rectWidth + appliedLeftPad + rightPad,
-      height: Math.max(fontHeight + topPad + bottomPad, TEXT_HIGHLIGHT_MIN_HEIGHT)
+      height: Math.max(fontHeight + topPad + bottomPad, TEXT_HIGHLIGHT_MIN_HEIGHT),
+      geometryMethod: segmentAdvance.method,
+      matchText: segmentAdvance.matchText,
+      itemTextLength: segmentAdvance.itemTextLength,
+      measuredFullWidth: segmentAdvance.measuredFullWidth,
+      measuredMatchWidth: segmentAdvance.measuredMatchWidth,
+      measuredEndWidth: segmentAdvance.measuredEndWidth,
+      startRatio: segmentAdvance.startRatio,
+      widthRatio: segmentAdvance.widthRatio,
+      baseWidth: Math.round(rectWidth * 100) / 100,
+      leftPad: Math.round(leftPad * 100) / 100,
+      rightPad: Math.round(rightPad * 100) / 100,
+      startsAtBoundary: segmentContext.startsAtBoundary,
+      endsAtBoundary: segmentContext.endsAtBoundary,
+      nextChar: segmentContext.nextChar
     });
   }
 
@@ -380,6 +1118,7 @@ const SearchTextPanel = ({
     documentKeyRef.current = resolvedDocumentKey;
     lastPerformedSearchKeyRef.current = '';
     searchIdRef.current += 1;
+    cleanupTextLayerMeasurements(pageDataCacheRef.current);
     pageDataCacheRef.current.clear();
     emitTextSearchDiag('document_key_changed_clear_search', {
       previousDocumentKey,
@@ -392,6 +1131,12 @@ const SearchTextPanel = ({
     setInternalSearchQuery('');
     onClearTextSearch?.();
   }, [resolvedDocumentKey, numPages, setSearchResults, setCurrentMatchIndex, onClearTextSearch]);
+
+  useEffect(() => (
+    () => {
+      cleanupTextLayerMeasurements(pageDataCacheRef.current);
+    }
+  ), []);
 
   useEffect(() => {
     if (!isActive || !searchInputRef.current) {
@@ -458,19 +1203,35 @@ const SearchTextPanel = ({
 
       let fullText = '';
       const ranges = [];
+      let textDivIndex = 0;
 
       (textContent.items || []).forEach((item, index) => {
-        const str = item?.str || '';
+        if (typeof item?.str !== 'string') return;
+        const str = item.str || '';
+        const currentTextDivIndex = textDivIndex;
+        textDivIndex += 1;
+        if (!str) return;
+
         const start = fullText.length;
         fullText += str;
-        ranges.push({ start, end: start + str.length, itemIndex: index });
+        ranges.push({
+          start,
+          end: start + str.length,
+          itemIndex: index,
+          textDivIndex: currentTextDivIndex
+        });
       });
 
       const data = {
         text: fullText,
+        textContent,
         items: textContent.items || [],
+        styles: textContent.styles || {},
         ranges,
-        viewportTransform: viewport.transform
+        viewport,
+        viewportTransform: viewport.transform,
+        textLayerMeasurement: null,
+        textLayerMeasurementPromise: null
       };
 
       // Cache the result
@@ -589,11 +1350,20 @@ const SearchTextPanel = ({
             searchIndex,
             searchIndex + normalizedQuery.length
           );
+          const textLayerRectangles = nativeMatch?.rectangles?.length
+            ? []
+            : await buildTextLayerRectanglesForMatch(pageData, searchIndex, normalizedQuery.length, pageNumber);
           const rectangles = nativeMatch?.rectangles?.length
             ? nativeMatch.rectangles
-            : buildRectanglesForMatch(pageData, searchIndex, normalizedQuery.length);
+            : (textLayerRectangles.length
+              ? textLayerRectangles
+              : buildRectanglesForMatch(pageData, searchIndex, normalizedQuery.length));
           const bounds = nativeMatch?.bounds || calculateMatchBounds(rectangles);
-          const geometrySource = nativeMatch?.rectangles?.length ? 'native' : 'pdfjs';
+          const geometrySource = nativeMatch?.rectangles?.length
+            ? 'native'
+            : (textLayerRectangles.some((rect) => rect.geometryMethod === 'text-layer-image-ink')
+              ? 'pdfjs-text-layer-ink'
+              : (textLayerRectangles.length ? 'pdfjs-text-layer' : 'pdfjs-estimate'));
 
           results.push({
             id: createResultId(),
