@@ -12981,6 +12981,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   const [currentMatchIndex, setCurrentMatchIndex] = useState(-1); // Current active match index
   const searchZoomLevelRef = useRef(null); // Store zoom level before search zoom
   const isNavigatingToMatchRef = useRef(false); // Flag to prevent recursive navigation
+  const activeTextSearchQueryRef = useRef('');
+  const textSearchRefreshTimerRef = useRef(null);
 
   // Survey/Template state
   const [activeCategoryDropdown, setActiveCategoryDropdown] = useState(null); // 'draw' | 'shape' | 'review' | 'survey'
@@ -15070,6 +15072,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     syncfusionPageVisitPerfRef.current.pending.timerId = requestAnimationFrame(checkReady);
   }, [readSyncfusionPageVisitState]);
 
+  const scheduleTextSearchHighlightRefresh = useCallback((reason = 'refresh', delay = 120) => {
+    if (!useSyncfusionRenderer) return;
+    const query = activeTextSearchQueryRef.current;
+    if (!query) return;
+    if (textSearchRefreshTimerRef.current) {
+      clearTimeout(textSearchRefreshTimerRef.current);
+    }
+    textSearchRefreshTimerRef.current = setTimeout(() => {
+      textSearchRefreshTimerRef.current = null;
+      syncfusionViewerRef.current?.refreshTextSearchHighlights?.(query, false, reason);
+    }, delay);
+  }, [useSyncfusionRenderer]);
+
   const handleSyncfusionPageChange = useCallback((payload) => {
     const viewer = syncfusionViewerRef.current;
     const reportedPageCount = coercePageNumber(
@@ -15101,10 +15116,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     bumpOverlayLagEventTotal('syncfusionPageChange');
     markInteractionPerfActive('syncfusion-page-change', INTERACTION_PERF_SCROLL_HOLD_MS);
     markSyncfusionInteractionActive('syncfusion-page-change');
+    scheduleTextSearchHighlightRefresh('page-change', 120);
     // Release navigation guards after Syncfusion applies the page change.
     isNavigatingRef.current = false;
     targetPageRef.current = null;
-  }, [bumpOverlayLagEventTotal, markInteractionPerfActive, markSyncfusionInteractionActive, numPages, startSyncfusionPageVisitPerf]);
+  }, [bumpOverlayLagEventTotal, markInteractionPerfActive, markSyncfusionInteractionActive, numPages, scheduleTextSearchHighlightRefresh, startSyncfusionPageVisitPerf]);
 
   const handleSyncfusionZoomChange = useCallback((payload) => {
     const rawZoomValue = Number(
@@ -15220,6 +15236,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       }
       // Signal zoom-start to Canvas components (increments zoomGeneration).
       beginSyncfusionScaleConfirmPending('zoomChange_settle');
+      scheduleTextSearchHighlightRefresh('zoom-settle', 90);
     }, SYNCFUSION_ZOOM_OVERLAY_SETTLE_MS);
   }, [
     beginSyncfusionScaleConfirmPending,
@@ -15227,11 +15244,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     markInteractionPerfActive,
     markSyncfusionInteractionActive,
     queueSyncfusionOverlayTransformSync,
+    scheduleTextSearchHighlightRefresh,
     syncScaleConfirmHiddenPages,
     syncfusionDualLayerEnabled,
     syncfusionLiveStableOverlayEnabled,
     useSyncfusionRenderer
   ]);
+
+  const handleSyncfusionPageRenderComplete = useCallback(() => {
+    scheduleTextSearchHighlightRefresh('page-render-complete', 80);
+  }, [scheduleTextSearchHighlightRefresh]);
 
   const handleSyncfusionWrapperWheel = useCallback((event) => {
     if (!useSyncfusionRenderer) return;
@@ -15296,6 +15318,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         clearTimeout(syncfusionRefreshFrameRef.current);
       }
       syncfusionRefreshFrameRef.current = null;
+      if (textSearchRefreshTimerRef.current) {
+        clearTimeout(textSearchRefreshTimerRef.current);
+        textSearchRefreshTimerRef.current = null;
+      }
     };
   }, []);
 
@@ -27770,13 +27796,60 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     const bounds = match.bounds;
 
     if (useSyncfusionRenderer) {
-      centerPageBoundsInViewer(pageNumber, bounds, {
-        behavior: 'auto',
-        bypassActiveSpace: true
+      const currentScale = Math.max(0.01, Number(scaleRef.current) || Number(scale) || 1);
+      const targetScale = Math.max(currentScale, 1.5);
+      const shouldZoom = targetScale > currentScale + 0.05;
+      const centerMatch = ({
+        navigateFirst = true,
+        behavior = 'smooth',
+        retryBehavior = 'smooth',
+        skipIfClosePx = 0
+      } = {}) => {
+        centerPageBoundsInViewer(pageNumber, bounds, {
+          behavior,
+          maxRetries: 18,
+          retryDelay: 80,
+          rightInset: 0,
+          navigateFirst,
+          settlePasses: 0,
+          settleDelay: 140,
+          retryBehavior,
+          skipIfClosePx
+        });
+      };
+      const finishNavigation = (delay = 260) => {
+        scheduleTextSearchHighlightRefresh('match-navigation', Math.max(80, Math.floor(delay / 2)));
+        setTimeout(() => {
+          isNavigatingToMatchRef.current = false;
+        }, delay);
+      };
+
+      if (shouldZoom) {
+        if (searchZoomLevelRef.current === null) {
+          searchZoomLevelRef.current = currentScale;
+        }
+        setScaleWithViewportPreservation(targetScale, { preserveCenter: false });
+        setTimeout(() => centerMatch({
+          navigateFirst: true,
+          behavior: 'smooth',
+          retryBehavior: 'smooth'
+        }), 180);
+        setTimeout(() => centerMatch({
+          navigateFirst: false,
+          behavior: 'auto',
+          retryBehavior: 'auto',
+          skipIfClosePx: 24
+        }), 620);
+        finishNavigation(760);
+        return;
+      }
+
+      centerMatch({
+        navigateFirst: true,
+        behavior: 'smooth',
+        retryBehavior: 'smooth'
       });
-      setTimeout(() => {
-        isNavigatingToMatchRef.current = false;
-      }, 220);
+      finishNavigation(320);
       return;
     }
 
@@ -27889,7 +27962,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     } else {
       setTimeout(performZoomAndCenter, useSyncfusionRenderer ? 40 : 10);
     }
-  }, [scrollMode, pageSizes, goToPage, setScaleWithViewportPreservation, useSyncfusionRenderer, centerPageBoundsInViewer]);
+  }, [
+    centerPageBoundsInViewer,
+    goToPage,
+    pageSizes,
+    scale,
+    scheduleTextSearchHighlightRefresh,
+    scrollMode,
+    setScaleWithViewportPreservation,
+    useSyncfusionRenderer
+  ]);
 
   // Handler for search results change from SearchTextPanel
   const handleSearchResultsChange = useCallback((results) => {
@@ -27909,11 +27991,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   const handleFindTextMatches = useCallback(async (query) => {
     const viewer = syncfusionViewerRef.current;
     if (!query || typeof viewer?.findTextAsync !== 'function') return null;
+    activeTextSearchQueryRef.current = query.trim();
     viewer.searchText?.(query, false);
     return viewer.findTextAsync(query, false);
   }, []);
 
   const handleClearTextSearch = useCallback(() => {
+    activeTextSearchQueryRef.current = '';
+    if (textSearchRefreshTimerRef.current) {
+      clearTimeout(textSearchRefreshTimerRef.current);
+      textSearchRefreshTimerRef.current = null;
+    }
     syncfusionViewerRef.current?.cancelTextSearch?.();
   }, []);
 
@@ -33910,6 +33998,7 @@ ${pageBlocks}
                     onDocumentLoadFailed={handleSyncfusionDocumentLoadFailed}
                     onPageChanged={handleSyncfusionPageChange}
                     onZoomChanged={handleSyncfusionZoomChange}
+                    onPageRendered={handleSyncfusionPageRenderComplete}
                     onTextSelectionEnd={handleSyncfusionTextSelectionEnd}
                     onPDFBookmarksAvailable={handlePDFBookmarksAvailable}
                     onPageContainersChange={handleSyncfusionPageContainersChange}

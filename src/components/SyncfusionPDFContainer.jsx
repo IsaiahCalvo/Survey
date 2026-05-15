@@ -629,6 +629,7 @@ const SyncfusionPDFContainer = forwardRef(({
   onDocumentLoadFailed,
   onPageChanged,
   onZoomChanged,
+  onPageRendered,
   onTextSelectionEnd,
   onPDFBookmarksAvailable,
   onPageContainersChange,
@@ -1700,6 +1701,44 @@ const SyncfusionPDFContainer = forwardRef(({
       textSearchModule.searchText(query, matchCase);
       return true;
     },
+    refreshTextSearchHighlights: (query, matchCase = false) => {
+      const viewer = getViewerInstance();
+      const textSearchModule = viewer?.textSearchModule;
+      const normalizedQuery = typeof query === 'string' ? query.trim() : '';
+      if (!normalizedQuery || !textSearchModule) return false;
+      try {
+        const hasSearchMatches = Array.isArray(textSearchModule.searchMatches) &&
+          textSearchModule.searchMatches.some((matches) => Array.isArray(matches) && matches.length > 0);
+        if (
+          textSearchModule.searchString !== normalizedQuery ||
+          !hasSearchMatches
+        ) {
+          if (typeof textSearchModule.searchText !== 'function') return false;
+          textSearchModule.searchText(normalizedQuery, matchCase);
+          return true;
+        }
+
+        textSearchModule.searchString = normalizedQuery;
+        textSearchModule.isMatchCase = matchCase;
+        textSearchModule.programaticalSearch = true;
+        textSearchModule.isSingleSearch = true;
+        if (typeof textSearchModule.highlightOthers === 'function') {
+          textSearchModule.highlightOthers(true);
+        }
+        const pageIndex = Number(viewer?.currentPageNumber ?? viewer?.pdfViewerBase?.currentPageNumber ?? 1) - 1;
+        if (
+          Number.isFinite(pageIndex) &&
+          pageIndex >= 0 &&
+          typeof textSearchModule.resizeSearchElements === 'function'
+        ) {
+          textSearchModule.resizeSearchElements(pageIndex);
+        }
+        return true;
+      } catch (error) {
+        console.warn('[SyncfusionPDFContainer] Failed to refresh text search highlights:', error);
+        return false;
+      }
+    },
     searchToMatch: async (query, matchIndex = 0, matchCase = false) => {
       const viewer = getViewerInstance();
       const textSearchModule = viewer?.textSearchModule;
@@ -2127,10 +2166,11 @@ const SyncfusionPDFContainer = forwardRef(({
     });
   }, [emitDebugEvent, getViewerInstance, onZoomChanged, zoomValue]);
 
-  const handlePageRenderComplete = useCallback(() => {
+  const handlePageRenderComplete = useCallback((args) => {
     emitDebugEvent('page_render_complete');
     requestPageContainerRefresh('page_render_complete');
-  }, [emitDebugEvent, requestPageContainerRefresh]);
+    onPageRendered?.(args);
+  }, [emitDebugEvent, onPageRendered, requestPageContainerRefresh]);
 
   const handleTextSelectionEnd = useCallback((args) => {
     onTextSelectionEnd?.(args);
