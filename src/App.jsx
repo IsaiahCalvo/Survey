@@ -27769,23 +27769,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     const pageNumber = match.pageNumber;
     const bounds = match.bounds;
 
-    if (
-      useSyncfusionRenderer &&
-      match.query &&
-      typeof syncfusionViewerRef.current?.searchToMatch === 'function'
-    ) {
-      syncfusionViewerRef.current.searchToMatch(match.query, index, false)
-        .finally(() => {
-          setTimeout(() => {
-            centerPageBoundsInViewer(pageNumber, bounds, {
-              behavior: 'auto',
-              bypassActiveSpace: true
-            });
-            setTimeout(() => {
-              isNavigatingToMatchRef.current = false;
-            }, 220);
-          }, 120);
-        });
+    if (useSyncfusionRenderer) {
+      centerPageBoundsInViewer(pageNumber, bounds, {
+        behavior: 'auto',
+        bypassActiveSpace: true
+      });
+      setTimeout(() => {
+        isNavigatingToMatchRef.current = false;
+      }, 220);
       return;
     }
 
@@ -33962,7 +33953,7 @@ ${pageBlocks}
                       const hasAnnotations = annotationsByPage[pageNumber]?.objects?.length > 0;
                       const hasSurveyHighlights = (newHighlightsByPage[pageNumber]?.length ?? 0) > 0;
                       const hasRegions = getPageRegions(pageNumber)?.length > 0;
-                      const hasSearchHighlights = searchResultsByPage[pageNumber]?.length > 0;
+                      const hasSearchHighlights = !useSyncfusionRenderer && searchResultsByPage[pageNumber]?.length > 0;
                       return hasAnnotations || hasSurveyHighlights || hasRegions || hasSearchHighlights;
                     })
                     .sort((a, b) => a - b)
@@ -34184,7 +34175,7 @@ ${pageBlocks}
                                 backfaceVisibility: legacyCommitCompensationPending ? 'hidden' : undefined,
                               }}
                             >
-                            {searchResultsByPage[pageNumber] && searchResultsByPage[pageNumber].length > 0 && (
+                            {!useSyncfusionRenderer && searchResultsByPage[pageNumber] && searchResultsByPage[pageNumber].length > 0 && (
                               <SearchHighlightLayer
                                 pageNumber={pageNumber}
                                 width={resolvedPageSize.width}
@@ -35293,7 +35284,7 @@ ${pageBlocks}
                                   />
                                 )}
                                 {/* Search Highlight Layer */}
-                                {pageSizes[pageNumber] && searchResultsByPage[pageNumber] && searchResultsByPage[pageNumber].length > 0 && (
+                                {!useSyncfusionRenderer && pageSizes[pageNumber] && searchResultsByPage[pageNumber] && searchResultsByPage[pageNumber].length > 0 && (
                                   <SearchHighlightLayer
                                     pageNumber={pageNumber}
                                     width={pageSizes[pageNumber].width}
@@ -35918,7 +35909,7 @@ ${pageBlocks}
                               />
                             )}
                             {/* Search Highlight Layer */}
-                            {pageSizes[pageNum] && searchResultsByPage[pageNum] && searchResultsByPage[pageNum].length > 0 && (
+                            {!useSyncfusionRenderer && pageSizes[pageNum] && searchResultsByPage[pageNum] && searchResultsByPage[pageNum].length > 0 && (
                               <SearchHighlightLayer
                                 pageNumber={pageNum}
                                 width={pageSizes[pageNum].width}
