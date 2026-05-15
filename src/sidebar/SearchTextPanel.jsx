@@ -25,10 +25,19 @@ const TEXT_HIGHLIGHT_BOUNDARY_RIGHT_PAD_RATIO = 0.18;
 const TEXT_HIGHLIGHT_INTERNAL_RIGHT_PAD_RATIO = 0.035;
 const TEXT_HIGHLIGHT_MAX_SIDE_PAD_RATIO = 0.22;
 const TEXT_LAYER_GEOMETRY_MIN_RECT_SIZE = 0.01;
+const TEXT_LAYER_INK_SCAN_THRESHOLD = 42;
+const TEXT_LAYER_INK_SCAN_MIN_PIXELS = 4;
+const TEXT_LAYER_INK_SCAN_MAX_PIXELS = 180000;
+const TEXT_LAYER_INK_SCAN_VERTICAL_PAD = 0.55;
+const TEXT_LAYER_INK_SCAN_BOUNDARY_PAD = 0.35;
+const TEXT_LAYER_INK_SCAN_INTERNAL_PAD = 0.12;
+const TEXT_LAYER_INK_SCAN_MIN_HEIGHT = 2;
+const TEXT_LAYER_INK_SCAN_BUCKET_SHIFT = 4;
 
 const SEARCH_TEXT_WORD_CHAR_REGEX = /[\p{L}\p{N}\p{M}]/u;
 
 let searchTextMeasureContext = null;
+const renderedPageImageCanvasCache = new WeakMap();
 
 const getSearchTextMeasureContext = () => {
   if (typeof document === 'undefined') return null;
@@ -157,6 +166,218 @@ const getTextNodeForMeasurementDiv = (textDiv) => {
   return null;
 };
 
+const getPageImageHost = (pageNumber) => {
+  if (typeof document === 'undefined') return null;
+  const pageIndex = Number(pageNumber) - 1;
+  if (!Number.isFinite(pageIndex) || pageIndex < 0) return null;
+
+  const pageHost =
+    document.querySelector(`.e-pv-page-div[id$="_pageDiv_${pageIndex}"]`) ||
+    Array.from(document.querySelectorAll('.e-pv-page-div')).find((node) => {
+      const pageAttr = node.getAttribute('data-page-number') || node.getAttribute('aria-label') || '';
+      return pageAttr === String(pageNumber);
+    }) ||
+    Array.from(document.querySelectorAll('.e-pv-page-div'))[pageIndex] ||
+    null;
+
+  if (!pageHost) return null;
+  const pageImage = Array.from(pageHost.querySelectorAll('img')).find((img) => (
+    img?.complete &&
+    img.naturalWidth > 0 &&
+    img.naturalHeight > 0 &&
+    (img.alt === `Page ${pageNumber}` || img.getBoundingClientRect().width > 100)
+  ));
+
+  return pageImage || null;
+};
+
+const getRenderedPageImageCanvas = (image) => {
+  if (!image || !image.complete || !image.naturalWidth || !image.naturalHeight) {
+    return null;
+  }
+
+  const cached = renderedPageImageCanvasCache.get(image);
+  const cacheKey = `${image.currentSrc || image.src || ''}:${image.naturalWidth}x${image.naturalHeight}`;
+  if (cached?.cacheKey === cacheKey && cached.ctx) {
+    return cached;
+  }
+
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return null;
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const entry = { canvas, ctx, cacheKey };
+    renderedPageImageCanvasCache.set(image, entry);
+    return entry;
+  } catch {
+    return null;
+  }
+};
+
+const readDominantSearchTextBackground = (data, width, height) => {
+  const buckets = new Map();
+  const step = Math.max(4, Math.floor(Math.sqrt((width * height) / 2400)));
+
+  for (let y = 0; y < height; y += step) {
+    for (let x = 0; x < width; x += step) {
+      const index = (y * width + x) * 4;
+      const alpha = data[index + 3];
+      if (alpha < 12) continue;
+      const r = data[index];
+      const g = data[index + 1];
+      const b = data[index + 2];
+      const key = `${r >> TEXT_LAYER_INK_SCAN_BUCKET_SHIFT}:${g >> TEXT_LAYER_INK_SCAN_BUCKET_SHIFT}:${b >> TEXT_LAYER_INK_SCAN_BUCKET_SHIFT}`;
+      const bucket = buckets.get(key) || { count: 0, r: 0, g: 0, b: 0 };
+      bucket.count += 1;
+      bucket.r += r;
+      bucket.g += g;
+      bucket.b += b;
+      buckets.set(key, bucket);
+    }
+  }
+
+  let dominant = null;
+  for (const bucket of buckets.values()) {
+    if (!dominant || bucket.count > dominant.count) {
+      dominant = bucket;
+    }
+  }
+
+  if (!dominant?.count) {
+    return null;
+  }
+
+  return {
+    r: dominant.r / dominant.count,
+    g: dominant.g / dominant.count,
+    b: dominant.b / dominant.count
+  };
+};
+
+const isSearchTextInkPixel = (data, index, background) => {
+  const alpha = data[index + 3];
+  if (alpha < 18 || !background) return false;
+  const dr = data[index] - background.r;
+  const dg = data[index + 1] - background.g;
+  const db = data[index + 2] - background.b;
+  return Math.sqrt((dr * dr) + (dg * dg) + (db * db)) >= TEXT_LAYER_INK_SCAN_THRESHOLD;
+};
+
+const refineTextRectWithRenderedInk = ({
+  rect,
+  pageData,
+  pageNumber,
+  segmentContext,
+  pageImageEntry
+}) => {
+  if (!rect || !pageData?.viewport || !pageImageEntry?.ctx || !pageImageEntry?.canvas) {
+    return rect;
+  }
+
+  const viewportWidth = Number(pageData.viewport.width) || 0;
+  const viewportHeight = Number(pageData.viewport.height) || 0;
+  const imageWidth = pageImageEntry.canvas.width;
+  const imageHeight = pageImageEntry.canvas.height;
+  if (viewportWidth <= 0 || viewportHeight <= 0 || imageWidth <= 0 || imageHeight <= 0) {
+    return rect;
+  }
+
+  const xScale = imageWidth / viewportWidth;
+  const yScale = imageHeight / viewportHeight;
+  const leftPad = segmentContext?.startsAtBoundary
+    ? TEXT_LAYER_INK_SCAN_BOUNDARY_PAD
+    : TEXT_LAYER_INK_SCAN_INTERNAL_PAD;
+  const rightPad = segmentContext?.endsAtBoundary
+    ? TEXT_LAYER_INK_SCAN_BOUNDARY_PAD
+    : TEXT_LAYER_INK_SCAN_INTERNAL_PAD;
+  const scanLeft = Math.max(0, rect.x - leftPad);
+  const scanTop = Math.max(0, rect.y - TEXT_LAYER_INK_SCAN_VERTICAL_PAD);
+  const scanRight = Math.min(viewportWidth, rect.x + rect.width + rightPad);
+  const scanBottom = Math.min(viewportHeight, rect.y + rect.height + TEXT_LAYER_INK_SCAN_VERTICAL_PAD);
+
+  const cropX = Math.floor(scanLeft * xScale);
+  const cropY = Math.floor(scanTop * yScale);
+  const cropRight = Math.ceil(scanRight * xScale);
+  const cropBottom = Math.ceil(scanBottom * yScale);
+  const cropWidth = Math.max(1, Math.min(imageWidth - cropX, cropRight - cropX));
+  const cropHeight = Math.max(1, Math.min(imageHeight - cropY, cropBottom - cropY));
+
+  if (cropWidth <= 1 || cropHeight <= 1 || cropWidth * cropHeight > TEXT_LAYER_INK_SCAN_MAX_PIXELS) {
+    return rect;
+  }
+
+  try {
+    const imageData = pageImageEntry.ctx.getImageData(cropX, cropY, cropWidth, cropHeight);
+    const background = readDominantSearchTextBackground(imageData.data, cropWidth, cropHeight);
+    if (!background) return rect;
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    let inkPixels = 0;
+
+    for (let y = 0; y < cropHeight; y += 1) {
+      for (let x = 0; x < cropWidth; x += 1) {
+        const index = (y * cropWidth + x) * 4;
+        if (!isSearchTextInkPixel(imageData.data, index, background)) continue;
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+        inkPixels += 1;
+      }
+    }
+
+    if (inkPixels < TEXT_LAYER_INK_SCAN_MIN_PIXELS || !Number.isFinite(minX) || !Number.isFinite(minY)) {
+      return rect;
+    }
+
+    const tightLeft = (cropX + minX) / xScale;
+    const tightTop = (cropY + minY) / yScale;
+    const tightRight = (cropX + maxX + 1) / xScale;
+    const tightBottom = (cropY + maxY + 1) / yScale;
+    const visualPadX = Math.max(0.08, Math.min(0.35, rect.height * 0.018));
+    const visualPadY = Math.max(0.12, Math.min(0.55, rect.height * 0.025));
+    const refinedLeft = Math.max(0, tightLeft - visualPadX);
+    const refinedTop = Math.max(0, tightTop - visualPadY);
+    const refinedRight = Math.min(viewportWidth, tightRight + visualPadX);
+    const refinedBottom = Math.min(viewportHeight, tightBottom + visualPadY);
+    const refinedWidth = refinedRight - refinedLeft;
+    const refinedHeight = refinedBottom - refinedTop;
+
+    if (refinedWidth <= TEXT_LAYER_GEOMETRY_MIN_RECT_SIZE || refinedHeight < TEXT_LAYER_INK_SCAN_MIN_HEIGHT) {
+      return rect;
+    }
+
+    return {
+      ...rect,
+      x: refinedLeft,
+      y: refinedTop,
+      width: refinedWidth,
+      height: refinedHeight,
+      geometryMethod: 'text-layer-image-ink',
+      baseGeometryMethod: rect.geometryMethod,
+      inkPixels,
+      inkScan: {
+        pageNumber,
+        cropWidth,
+        cropHeight,
+        background: {
+          r: Math.round(background.r),
+          g: Math.round(background.g),
+          b: Math.round(background.b)
+        }
+      }
+    };
+  } catch {
+    return rect;
+  }
+};
+
 const ensureTextLayerMeasurement = async (pageData) => {
   if (!pageData?.textContent || !pageData?.viewport || typeof document === 'undefined') {
     return null;
@@ -210,7 +431,7 @@ const ensureTextLayerMeasurement = async (pageData) => {
   return pageData.textLayerMeasurementPromise;
 };
 
-const buildTextLayerRectanglesForMatch = async (pageData, matchStart, matchLength) => {
+const buildTextLayerRectanglesForMatch = async (pageData, matchStart, matchLength, pageNumber) => {
   const measurement = await ensureTextLayerMeasurement(pageData);
   if (!measurement?.container || !Array.isArray(measurement.textDivs)) {
     return [];
@@ -219,6 +440,7 @@ const buildTextLayerRectanglesForMatch = async (pageData, matchStart, matchLengt
   const matchEnd = matchStart + matchLength;
   const containerRect = measurement.container.getBoundingClientRect();
   const rectangles = [];
+  const pageImageEntry = getRenderedPageImageCanvas(getPageImageHost(pageNumber));
 
   for (const rangeInfo of pageData.ranges || []) {
     if (rangeInfo.end <= matchStart) continue;
@@ -233,6 +455,11 @@ const buildTextLayerRectanglesForMatch = async (pageData, matchStart, matchLengt
     const relativeStart = overlapStart - rangeInfo.start;
     const relativeEnd = overlapEnd - rangeInfo.start;
     if (relativeEnd <= relativeStart) continue;
+    const segmentContext = resolveTextSegmentContext(
+      textNode.textContent || '',
+      relativeStart,
+      relativeEnd - relativeStart
+    );
 
     const domRange = document.createRange();
     try {
@@ -247,7 +474,7 @@ const buildTextLayerRectanglesForMatch = async (pageData, matchStart, matchLengt
           return;
         }
 
-        rectangles.push({
+        const baseRect = {
           x: Math.max(0, rect.left - containerRect.left),
           y: Math.max(0, rect.top - containerRect.top),
           width,
@@ -257,8 +484,20 @@ const buildTextLayerRectanglesForMatch = async (pageData, matchStart, matchLengt
           textDivIndex: rangeInfo.textDivIndex,
           fontFamily: textDiv.style.fontFamily || undefined,
           fontSize: textDiv.style.fontSize || undefined,
-          transform: textDiv.style.transform || undefined
-        });
+          transform: textDiv.style.transform || undefined,
+          startsAtBoundary: segmentContext.startsAtBoundary,
+          endsAtBoundary: segmentContext.endsAtBoundary,
+          previousChar: segmentContext.previousChar,
+          nextChar: segmentContext.nextChar
+        };
+
+        rectangles.push(refineTextRectWithRenderedInk({
+          rect: baseRect,
+          pageData,
+          pageNumber,
+          segmentContext,
+          pageImageEntry
+        }));
       });
     } finally {
       domRange.detach?.();
@@ -951,7 +1190,7 @@ const SearchTextPanel = ({
           );
           const textLayerRectangles = nativeMatch?.rectangles?.length
             ? []
-            : await buildTextLayerRectanglesForMatch(pageData, searchIndex, normalizedQuery.length);
+            : await buildTextLayerRectanglesForMatch(pageData, searchIndex, normalizedQuery.length, pageNumber);
           const rectangles = nativeMatch?.rectangles?.length
             ? nativeMatch.rectangles
             : (textLayerRectangles.length
@@ -960,7 +1199,9 @@ const SearchTextPanel = ({
           const bounds = nativeMatch?.bounds || calculateMatchBounds(rectangles);
           const geometrySource = nativeMatch?.rectangles?.length
             ? 'native'
-            : (textLayerRectangles.length ? 'pdfjs-text-layer' : 'pdfjs-estimate');
+            : (textLayerRectangles.some((rect) => rect.geometryMethod === 'text-layer-image-ink')
+              ? 'pdfjs-text-layer-ink'
+              : (textLayerRectangles.length ? 'pdfjs-text-layer' : 'pdfjs-estimate'));
 
           results.push({
             id: createResultId(),
