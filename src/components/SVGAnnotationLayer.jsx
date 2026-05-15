@@ -133,9 +133,9 @@ const SVGAnnotationLayer = memo(({
   // Survey highlights for this page. Array of:
   //   { highlightId, x, y, width, height, color, moduleId, regionId, needsBIC }
   // Rendered as SVG rects with mix-blend-mode: multiply, passed through the
-  // same three-layer visibility filter as annotation objects. Display-only in
-  // Stage 1 (pointer-events: none) — edit UX lands in a later stage.
+  // same three-layer visibility filter as annotation objects.
   surveyHighlights,
+  onUpdateSurveyHighlightBounds,
   // Filtering props
   selectedModuleId,
   showSurveyPanel,
@@ -296,6 +296,10 @@ const SVGAnnotationLayer = memo(({
   const counterHandlePreviewRef = useRef(null);
   const annotationsRef = useRef(annotations);
   const renderedAnnotationEntriesRef = useRef([]);
+  const surveyHighlightDragRef = useRef(null);
+  const [selectedSurveyHighlightId, setSelectedSurveyHighlightId] = useState(null);
+  const [hoveredSurveyHighlightId, setHoveredSurveyHighlightId] = useState(null);
+  const [surveyHighlightPreviewBounds, setSurveyHighlightPreviewBounds] = useState(null);
   useEffect(() => {
     annotationsRef.current = annotations;
   }, [annotations]);
@@ -1683,9 +1687,8 @@ const SVGAnnotationLayer = memo(({
   // ---------------------------------------------------------------------------
   // Survey highlight rects — synthesized from the surveyHighlights prop and
   // filtered through the same three-layer visibility rules as annotation
-  // objects. Rendered as SVG rects via renderRect so they scale via viewBox
-  // (no Fabric, no zoom flicker). Stage 1 renders display-only; interaction
-  // wiring follows in later stages.
+  // objects. They are also selectable/editable through a lightweight SVG path
+  // because they live in highlightAnnotations, not annotations.objects.
   // ---------------------------------------------------------------------------
   const surveyHighlightElements = useMemo(() => {
     if (!Array.isArray(surveyHighlights) || surveyHighlights.length === 0) return [];
@@ -1818,7 +1821,11 @@ const SVGAnnotationLayer = memo(({
         scaleY: 1,
         angle: 0,
       };
-      elements.push(renderRect(pseudoRect, `survey-hl-${h.highlightId || i}`));
+      elements.push({
+        highlight: h,
+        bbox: pseudoRect,
+        key: `survey-hl-${h.highlightId || i}`,
+      });
     }
     if (typeof window !== 'undefined') {
       if (!window.__diagSurveyHighlightVisibilityStats) window.__diagSurveyHighlightVisibilityStats = {};
@@ -1864,6 +1871,236 @@ const SVGAnnotationLayer = memo(({
     getSurveyAnnotationVisibilityState,
     isRegionOverlayEnabled,
     getSpaceIdForRegion,
+  ]);
+
+  useEffect(() => {
+    if (!selectedSurveyHighlightId) return;
+    const stillVisible = surveyHighlightElements.some((entry) =>
+      entry?.highlight?.highlightId === selectedSurveyHighlightId
+    );
+    if (!stillVisible) {
+      setSelectedSurveyHighlightId(null);
+      setSurveyHighlightPreviewBounds(null);
+    }
+  }, [selectedSurveyHighlightId, surveyHighlightElements]);
+
+  useEffect(() => {
+    if (isSelectTool) return;
+    setSelectedSurveyHighlightId(null);
+    setHoveredSurveyHighlightId(null);
+    setSurveyHighlightPreviewBounds(null);
+    surveyHighlightDragRef.current = null;
+  }, [isSelectTool]);
+
+  const normalizeSurveyHighlightBounds = useCallback((bounds) => {
+    const x = Number(bounds?.x);
+    const y = Number(bounds?.y);
+    const widthValue = Number(bounds?.width);
+    const heightValue = Number(bounds?.height);
+    const widthSafe = Number.isFinite(widthValue) ? widthValue : 1;
+    const heightSafe = Number.isFinite(heightValue) ? heightValue : 1;
+    return {
+      x: Number.isFinite(x) ? x : 0,
+      y: Number.isFinite(y) ? y : 0,
+      width: Math.max(1, widthSafe),
+      height: Math.max(1, heightSafe),
+    };
+  }, []);
+
+  const resizeSurveyHighlightBounds = useCallback((bounds, handleId, dx, dy) => {
+    let left = bounds.x;
+    let top = bounds.y;
+    let right = bounds.x + bounds.width;
+    let bottom = bounds.y + bounds.height;
+
+    if (handleId.includes('l')) left += dx;
+    if (handleId.includes('r')) right += dx;
+    if (handleId.includes('t')) top += dy;
+    if (handleId.includes('b')) bottom += dy;
+
+    if (right - left < 1) {
+      if (handleId.includes('l')) left = right - 1;
+      else right = left + 1;
+    }
+    if (bottom - top < 1) {
+      if (handleId.includes('t')) top = bottom - 1;
+      else bottom = top + 1;
+    }
+
+    return {
+      x: left,
+      y: top,
+      width: right - left,
+      height: bottom - top,
+    };
+  }, []);
+
+  const handleSurveyHighlightPointerDown = useCallback((e, entry) => {
+    if (!isSelectTool || !entry?.highlight?.highlightId) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const startPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
+    const originalBounds = normalizeSurveyHighlightBounds({
+      x: entry.bbox.left,
+      y: entry.bbox.top,
+      width: entry.bbox.width,
+      height: entry.bbox.height,
+    });
+    deselectAll();
+    onSelectedCalloutIdsChange?.(new Set());
+    setSelectedSurveyHighlightId(entry.highlight.highlightId);
+    surveyHighlightDragRef.current = {
+      mode: 'move',
+      highlightId: entry.highlight.highlightId,
+      startPoint,
+      originalBounds,
+    };
+    setSurveyHighlightPreviewBounds(null);
+    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch (_) {}
+  }, [deselectAll, isSelectTool, normalizeSurveyHighlightBounds, onSelectedCalloutIdsChange]);
+
+  const handleSurveyHighlightHandlePointerDown = useCallback((e, entry, handleId) => {
+    if (!isSelectTool || !entry?.highlight?.highlightId || handleId === 'mtr') return;
+    e.stopPropagation();
+    e.preventDefault();
+    const startPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
+    const originalBounds = normalizeSurveyHighlightBounds({
+      x: entry.bbox.left,
+      y: entry.bbox.top,
+      width: entry.bbox.width,
+      height: entry.bbox.height,
+    });
+    setSelectedSurveyHighlightId(entry.highlight.highlightId);
+    surveyHighlightDragRef.current = {
+      mode: 'resize',
+      handleId,
+      highlightId: entry.highlight.highlightId,
+      startPoint,
+      originalBounds,
+    };
+    setSurveyHighlightPreviewBounds({ highlightId: entry.highlight.highlightId, bounds: originalBounds });
+    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch (_) {}
+  }, [isSelectTool, normalizeSurveyHighlightBounds]);
+
+  const updateSurveyHighlightDrag = useCallback((e, commit = false) => {
+    const drag = surveyHighlightDragRef.current;
+    if (!drag) return false;
+
+    e.stopPropagation();
+    e.preventDefault();
+    const point = screenToSVG(svgRef.current, e.clientX, e.clientY);
+    const dx = point.x - drag.startPoint.x;
+    const dy = point.y - drag.startPoint.y;
+    const nextBounds = drag.mode === 'resize'
+      ? resizeSurveyHighlightBounds(drag.originalBounds, drag.handleId, dx, dy)
+      : {
+          ...drag.originalBounds,
+          x: drag.originalBounds.x + dx,
+          y: drag.originalBounds.y + dy,
+        };
+
+    if (commit) {
+      surveyHighlightDragRef.current = null;
+      setSurveyHighlightPreviewBounds(null);
+      const changed =
+        Math.abs(nextBounds.x - drag.originalBounds.x) > 0.1 ||
+        Math.abs(nextBounds.y - drag.originalBounds.y) > 0.1 ||
+        Math.abs(nextBounds.width - drag.originalBounds.width) > 0.1 ||
+        Math.abs(nextBounds.height - drag.originalBounds.height) > 0.1;
+      if (changed) {
+        onUpdateSurveyHighlightBounds?.(pageNumber, drag.highlightId, nextBounds, {
+          action: drag.mode,
+        });
+      }
+    } else {
+      setSurveyHighlightPreviewBounds({ highlightId: drag.highlightId, bounds: nextBounds });
+    }
+    return true;
+  }, [onUpdateSurveyHighlightBounds, pageNumber, resizeSurveyHighlightBounds]);
+
+  const renderSurveyHighlightEntry = useCallback((entry) => {
+    if (!entry?.highlight?.highlightId) return null;
+    const highlightId = entry.highlight.highlightId;
+    const preview = surveyHighlightPreviewBounds?.highlightId === highlightId
+      ? surveyHighlightPreviewBounds.bounds
+      : null;
+    const bbox = preview
+      ? { ...entry.bbox, left: preview.x, top: preview.y, width: preview.width, height: preview.height }
+      : entry.bbox;
+    const isSelectedHighlight = selectedSurveyHighlightId === highlightId;
+    const isHoveredHighlight = hoveredSurveyHighlightId === highlightId;
+
+    return (
+      <g key={entry.key} data-survey-highlight-id={highlightId}>
+        <rect
+          x={bbox.left}
+          y={bbox.top}
+          width={bbox.width}
+          height={bbox.height}
+          fill={bbox.fill}
+          stroke={bbox.stroke}
+          strokeWidth={bbox.strokeWidth}
+          strokeDasharray={Array.isArray(bbox.strokeDashArray) ? bbox.strokeDashArray.join(',') : undefined}
+          opacity={bbox.opacity}
+          vectorEffect="non-scaling-stroke"
+          style={{
+            pointerEvents: 'none',
+            mixBlendMode: bbox.globalCompositeOperation === 'multiply' ? 'multiply' : undefined,
+          }}
+        />
+        {isHoveredHighlight && !isSelectedHighlight && (
+          <rect
+            x={bbox.left}
+            y={bbox.top}
+            width={bbox.width}
+            height={bbox.height}
+            fill="none"
+            stroke="#4a90e2"
+            strokeOpacity={0.4}
+            strokeWidth={2 * inverseScale}
+            style={{ pointerEvents: 'none' }}
+          />
+        )}
+        <rect
+          x={bbox.left}
+          y={bbox.top}
+          width={Math.max(bbox.width, 10)}
+          height={Math.max(bbox.height, 10)}
+          fill="rgba(0,0,0,0.001)"
+          stroke="none"
+          pointerEvents={isSelectTool ? 'all' : 'none'}
+          style={{ cursor: isSelectTool ? 'move' : undefined }}
+          onPointerDown={(e) => handleSurveyHighlightPointerDown(e, entry)}
+          onPointerEnter={() => setHoveredSurveyHighlightId(highlightId)}
+          onPointerLeave={() => setHoveredSurveyHighlightId((prev) => (prev === highlightId ? null : prev))}
+        />
+        {isSelectedHighlight && (
+          <SVGSelectionOverlay
+            bbox={{
+              left: bbox.left,
+              top: bbox.top,
+              width: bbox.width,
+              height: bbox.height,
+              angle: 0,
+            }}
+            inverseScale={inverseScale}
+            onHandleDrag={(e, handleId) => handleSurveyHighlightHandlePointerDown(e, entry, handleId)}
+            isGroupSelection={false}
+            hideBoundingBox={false}
+            padding={0}
+            hideRotationHandle
+          />
+        )}
+      </g>
+    );
+  }, [
+    handleSurveyHighlightHandlePointerDown,
+    handleSurveyHighlightPointerDown,
+    hoveredSurveyHighlightId,
+    inverseScale,
+    isSelectTool,
+    selectedSurveyHighlightId,
+    surveyHighlightPreviewBounds,
   ]);
 
   // ---------------------------------------------------------------------------
@@ -3475,15 +3712,31 @@ const SVGAnnotationLayer = memo(({
           if (annotationWrapper && svgRef.current?.contains?.(annotationWrapper)) {
             const annotationIndex = Number(annotationWrapper.getAttribute('data-annotation-index'));
             if (Number.isInteger(annotationIndex)) {
+              setSelectedSurveyHighlightId(null);
+              setSurveyHighlightPreviewBounds(null);
               handleAnnotationPointerDown(e, annotationIndex);
               return;
             }
           }
+          setSelectedSurveyHighlightId(null);
+          setSurveyHighlightPreviewBounds(null);
           handleSvgPointerDown(e);
         }
       }}
-      onPointerMove={isInteractive ? handlePointerMove : undefined}
-      onPointerUp={isInteractive ? handlePointerUp : undefined}
+      onPointerMove={isInteractive ? (e) => {
+        if (surveyHighlightDragRef.current && updateSurveyHighlightDrag(e, false)) return;
+        handlePointerMove(e);
+      } : undefined}
+      onPointerUp={isInteractive ? (e) => {
+        if (surveyHighlightDragRef.current && updateSurveyHighlightDrag(e, true)) return;
+        handlePointerUp(e);
+      } : undefined}
+      onPointerCancel={isInteractive ? () => {
+        if (surveyHighlightDragRef.current) {
+          surveyHighlightDragRef.current = null;
+          setSurveyHighlightPreviewBounds(null);
+        }
+      } : undefined}
       // UX: Phase 15 UAT #1 — double-click anywhere inside a callout (text
       // foreignObject, connector segments, arrowTip, knee) must enter edit
       // mode so the user can type/edit text. The existing
@@ -3498,12 +3751,11 @@ const SVGAnnotationLayer = memo(({
       onDoubleClick={isSelectTool ? handleAnnotationDoubleClick : undefined}
     >
       {wrappedAnnotations}
-      {/* Survey highlights: display-only SVG rects, scaled via viewBox.
-          Stage 1 is pointer-events: none so clicks fall through to any
-          annotation underneath. Interaction wiring lands in a later stage. */}
+      {/* Survey highlights are stored outside annotations.objects, so this
+          path owns their click, move, and resize behavior. */}
       {surveyHighlightElements.length > 0 && (
-        <g className="survey-highlights" style={{ pointerEvents: 'none' }}>
-          {surveyHighlightElements}
+        <g className="survey-highlights" style={{ pointerEvents: isSelectTool ? 'auto' : 'none' }}>
+          {surveyHighlightElements.map(renderSurveyHighlightEntry)}
         </g>
       )}
       {filteredCallouts}

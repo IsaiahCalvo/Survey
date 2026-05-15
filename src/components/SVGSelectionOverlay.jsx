@@ -47,6 +47,7 @@ const SVGSelectionOverlay = memo(({
   // the rotation handle visible. Reserved for future per-shape policies;
   // currently unused. moveOnly takes precedence (hides everything).
   hideResizeHandles = false,
+  hideRotationHandle = false,
 }) => {
   if (!bbox) return null;
 
@@ -209,6 +210,7 @@ const SVGSelectionOverlay = memo(({
           })}
 
           {/* Rotation handle (mtr) */}
+          {!hideRotationHandle && (
           <g className="rotation-handle" data-rotation-handle="mtr">
             {/* Connector line from top-center of bbox to rotation handle */}
             <line
@@ -248,6 +250,7 @@ const SVGSelectionOverlay = memo(({
               style={{ pointerEvents: 'none' }}
             />
           </g>
+          )}
         </>
       )}
     </g>

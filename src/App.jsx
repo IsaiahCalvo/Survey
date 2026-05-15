@@ -30732,6 +30732,55 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     useSyncfusionRenderer
   ]);
 
+  const handleSurveyHighlightBoundsChange = useCallback((pageNumber, highlightId, bounds, meta = {}) => {
+    if (!highlightId || !bounds) return;
+    const normalizedBounds = {
+      x: Number(bounds.x) || 0,
+      y: Number(bounds.y) || 0,
+      width: Math.max(1, Number(bounds.width) || 1),
+      height: Math.max(1, Number(bounds.height) || 1),
+    };
+
+    addHistoryCheckpoint(`survey-highlight:${meta.action || 'bounds'}`, {
+      pageNumber,
+      highlightId,
+    });
+
+    setHighlightAnnotations(prev => {
+      const existing = prev?.[highlightId];
+      if (!existing) return prev;
+      return {
+        ...prev,
+        [highlightId]: {
+          ...existing,
+          pageNumber,
+          bounds: normalizedBounds,
+        },
+      };
+    });
+
+    setNewHighlightsByPage(prev => {
+      const pageHighlights = Array.isArray(prev?.[pageNumber]) ? prev[pageNumber] : [];
+      if (!pageHighlights.some((highlight) => highlight?.highlightId === highlightId)) {
+        return prev;
+      }
+      return {
+        ...prev,
+        [pageNumber]: pageHighlights.map((highlight) => (
+          highlight?.highlightId === highlightId
+            ? {
+                ...highlight,
+                x: normalizedBounds.x,
+                y: normalizedBounds.y,
+                width: normalizedBounds.width,
+                height: normalizedBounds.height,
+              }
+            : highlight
+        )),
+      };
+    });
+  }, [addHistoryCheckpoint]);
+
   // Handle highlight deletion from PDF (via eraser tool)
   const handleHighlightDeleted = useCallback((pageNumber, bounds, highlightId = null) => {
     // Checkpoint history before deletion
@@ -34386,6 +34435,7 @@ ${pageBlocks}
                                   annotations={pageAnnotations}
                                   callouts={callouts}
                                   surveyHighlights={newHighlightsByPage[pageNumber]}
+                                  onUpdateSurveyHighlightBounds={handleSurveyHighlightBoundsChange}
                                   selectedModuleId={selectedModuleId}
                                   showSurveyPanel={showSurveyPanel}
                                   selectedSpaceId={annotationSpaceId}
@@ -35278,6 +35328,7 @@ ${pageBlocks}
                                       annotations={pageAnnotationsCS}
                                       callouts={callouts}
                                       surveyHighlights={newHighlightsByPage[pageNumber]}
+                                      onUpdateSurveyHighlightBounds={handleSurveyHighlightBoundsChange}
                                       selectedModuleId={selectedModuleId}
                                       showSurveyPanel={showSurveyPanel}
                                       selectedSpaceId={annotationSpaceId}
@@ -35900,6 +35951,7 @@ ${pageBlocks}
                                       annotations={pageAnnotations}
                                       callouts={callouts}
                                       surveyHighlights={newHighlightsByPage[pageNum]}
+                                      onUpdateSurveyHighlightBounds={handleSurveyHighlightBoundsChange}
                                       selectedModuleId={selectedModuleId}
                                       showSurveyPanel={showSurveyPanel}
                                       selectedSpaceId={annotationSpaceId}
