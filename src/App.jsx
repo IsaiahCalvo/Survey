@@ -28028,10 +28028,22 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   }, []);
 
   const handleFindTextMatches = useCallback(async (query) => {
-    if (!query) return null;
-    syncfusionViewerRef.current?.cancelTextSearch?.();
-    return null;
-  }, []);
+    const normalizedQuery = typeof query === 'string' ? query.trim() : '';
+    if (!normalizedQuery) return null;
+    const viewer = syncfusionViewerRef.current;
+    activeTextSearchQueryRef.current = normalizedQuery;
+    viewer?.searchText?.(normalizedQuery, false);
+    scheduleTextSearchHighlightRefresh('search-start', 180);
+    if (typeof viewer?.findTextAsync !== 'function') return null;
+    try {
+      return await Promise.race([
+        viewer.findTextAsync(normalizedQuery, false),
+        new Promise(resolve => setTimeout(() => resolve(null), 1200))
+      ]);
+    } catch {
+      return null;
+    }
+  }, [scheduleTextSearchHighlightRefresh]);
 
   const handleClearTextSearch = useCallback(() => {
     activeTextSearchQueryRef.current = '';
@@ -34273,7 +34285,7 @@ ${pageBlocks}
                               {nativePdfAnnotationLayerHideCss}
                             </style>
                           )}
-                          {searchResultsByPage[pageNumber] && searchResultsByPage[pageNumber].length > 0 && (
+                          {!useSyncfusionRenderer && searchResultsByPage[pageNumber] && searchResultsByPage[pageNumber].length > 0 && (
                             <SearchHighlightLayer
                               pageNumber={pageNumber}
                               width={resolvedPageSize.width}
