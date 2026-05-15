@@ -16,6 +16,7 @@
 import React, { useState, useEffect } from 'react';
 import { HubShell, Search, Icon } from './HubShell';
 import DocumentsLedger from './DocumentsLedger';
+import ProjectsFolderTree from './ProjectsFolderTree';
 import './hub.css';
 
 const TAB_KEY = 'survey-hub-tab';
@@ -34,6 +35,7 @@ export default function SurveyHub({
   isPro = true,
   onOpenDocument,
   onUpload,
+  onCreateProject,
   onShare,
 }) {
   const [tab, setTab] = useState(() => {
@@ -76,6 +78,11 @@ export default function SurveyHub({
           <Icon name="upload" size={12} />Upload
         </button>
       )}
+      {tab === 'projects' && (
+        <button className="btn primary" onClick={() => onCreateProject && onCreateProject()}>
+          <Icon name="plus" size={12} />New Project
+        </button>
+      )}
     </>
   );
 
@@ -98,7 +105,16 @@ export default function SurveyHub({
           onShare={onShare}
         />
       )}
-      {tab === 'projects' && <Placeholder label="Projects" />}
+      {tab === 'projects' && (
+        <ProjectsFolderTree
+          projects={projects}
+          documents={documents}
+          search={search}
+          user={user}
+          onOpenDocument={onOpenDocument}
+          onShare={onShare}
+        />
+      )}
       {tab === 'templates' && <Placeholder label="Templates" />}
     </HubShell>
   );
