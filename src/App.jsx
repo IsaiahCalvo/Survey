@@ -30703,14 +30703,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     const currentScale = Math.max(0.01, Number(scaleRef.current) || Number(scale) || 1);
     const targetScale = Math.max(currentScale, 1.5);
     const shouldZoom = targetScale > currentScale + 0.05;
-    const rightInset = showSurveyPanel && !isSurveyPanelCollapsed ? 320 : 0;
-
     const centerHighlight = ({ navigateFirst = true } = {}) => {
       centerPageBoundsInViewer(pageNumber, bounds, {
         behavior: 'auto',
         maxRetries: useSyncfusionRenderer ? 18 : 8,
         retryDelay: useSyncfusionRenderer ? 80 : 40,
-        rightInset,
+        // The PDF area is already narrowed when the Survey panel is open.
+        rightInset: 0,
         navigateFirst,
         settlePasses: useSyncfusionRenderer ? 5 : 3,
         settleDelay: useSyncfusionRenderer ? 140 : 70
@@ -30728,10 +30727,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   }, [
     centerPageBoundsInViewer,
     goToPage,
-    isSurveyPanelCollapsed,
     scale,
     setScaleWithViewportPreservation,
-    showSurveyPanel,
     useSyncfusionRenderer
   ]);
 
