@@ -30747,6 +30747,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
   const handleSurveyHighlightBoundsChange = useCallback((pageNumber, highlightId, bounds, meta = {}) => {
     if (!highlightId || !bounds) return;
+    const rawAngle = Number(bounds.angle);
+    const hasExplicitAngle = Number.isFinite(rawAngle);
+    const normalizedAngle = hasExplicitAngle
+      ? ((rawAngle % 360) + 360) % 360
+      : 0;
     const normalizedBounds = {
       x: Number(bounds.x) || 0,
       y: Number(bounds.y) || 0,
@@ -30762,12 +30767,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     setHighlightAnnotations(prev => {
       const existing = prev?.[highlightId];
       if (!existing) return prev;
+      const existingAngle = Number(existing?.bounds?.angle);
+      const nextAngle = hasExplicitAngle
+        ? normalizedAngle
+        : (Number.isFinite(existingAngle) ? ((existingAngle % 360) + 360) % 360 : 0);
       return {
         ...prev,
         [highlightId]: {
           ...existing,
           pageNumber,
-          bounds: normalizedBounds,
+          bounds: {
+            ...normalizedBounds,
+            angle: nextAngle,
+          },
         },
       };
     });
@@ -30787,6 +30799,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
                 y: normalizedBounds.y,
                 width: normalizedBounds.width,
                 height: normalizedBounds.height,
+                angle: hasExplicitAngle
+                  ? normalizedAngle
+                  : (Number.isFinite(Number(highlight.angle))
+                      ? ((Number(highlight.angle) % 360) + 360) % 360
+                      : 0),
               }
             : highlight
         )),
@@ -31614,6 +31631,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
             y: highlight.bounds.y,
             width: highlight.bounds.width,
             height: highlight.bounds.height,
+            angle: Number.isFinite(Number(highlight.bounds.angle))
+              ? ((Number(highlight.bounds.angle) % 360) + 360) % 360
+              : 0,
             highlightId: highlightId,
             moduleId: highlightModuleId,
             regionId: highlight.regionId ?? null,

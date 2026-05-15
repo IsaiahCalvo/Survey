@@ -40,7 +40,7 @@ import { useSVGInteraction } from '../hooks/useSVGInteraction';
 // PRESERVED Plan 14-01 shim (ARROWHEAD_STYLES + defaultCalloutStyle +
 // createCallout) — do NOT replace with the null stub.
 import { createCallout } from './Callout/types';
-import { screenToSVG } from '../utils/svgTransformMath';
+import { screenToSVG, normalizeAngle } from '../utils/svgTransformMath';
 import SVGSelectionOverlay from './SVGSelectionOverlay';
 import RotationInputField from './RotationInputField';
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, isImportedPath, isAbsoluteCoordPath, getLineEndpoints, computeLineBboxCenter } from '../utils/svgBoundingBox';
@@ -118,6 +118,28 @@ const shouldPrioritizeLiveReveal = (obj) => {
   } catch {
     return false;
   }
+};
+
+const normalizeDegreesValue = (value) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  return ((numeric % 360) + 360) % 360;
+};
+
+const normalizeSurveyHighlightBoundsValue = (bounds) => {
+  const x = Number(bounds?.x);
+  const y = Number(bounds?.y);
+  const widthValue = Number(bounds?.width);
+  const heightValue = Number(bounds?.height);
+  const widthSafe = Number.isFinite(widthValue) ? widthValue : 1;
+  const heightSafe = Number.isFinite(heightValue) ? heightValue : 1;
+  return {
+    x: Number.isFinite(x) ? x : 0,
+    y: Number.isFinite(y) ? y : 0,
+    width: Math.max(1, widthSafe),
+    height: Math.max(1, heightSafe),
+    angle: normalizeDegreesValue(bounds?.angle),
+  };
 };
 
 // ---------------------------------------------------------------------------
@@ -389,6 +411,9 @@ const SVGAnnotationLayer = memo(({
     if (!pendingSelection) return;
     if (pendingSelection.clearAll === true) {
       deselectAll();
+      setSelectedSurveyHighlightId(null);
+      setSurveyHighlightPreviewBounds(null);
+      surveyHighlightDragRef.current = null;
       return;
     }
     if (pendingSelection.pageNumber !== pageNumber) return;
@@ -399,20 +424,32 @@ const SVGAnnotationLayer = memo(({
     // default for the older single-shape consumers (right-click delete /
     // pan-mode click).
     if (Array.isArray(pendingSelection.annotationIndices)) {
+      setSelectedSurveyHighlightId(null);
+      setSurveyHighlightPreviewBounds(null);
+      surveyHighlightDragRef.current = null;
       selectAnnotations(pendingSelection.annotationIndices);
       return;
     }
     if (pendingSelection.annotationIndex === null) {
       deselectAll();
+      setSelectedSurveyHighlightId(null);
+      setSurveyHighlightPreviewBounds(null);
+      surveyHighlightDragRef.current = null;
       return;
     }
     if (typeof pendingSelection.annotationIndex !== 'number') return;
+    setSelectedSurveyHighlightId(null);
+    setSurveyHighlightPreviewBounds(null);
+    surveyHighlightDragRef.current = null;
     selectAnnotation(pendingSelection.annotationIndex, false);
   }, [pendingSelection, pageNumber, selectAnnotation, selectAnnotations, deselectAll]);
 
   useLayoutEffect(() => {
     if (!selectionClearToken) return;
     deselectAll();
+    setSelectedSurveyHighlightId(null);
+    setSurveyHighlightPreviewBounds(null);
+    surveyHighlightDragRef.current = null;
   }, [selectionClearToken, deselectAll]);
 
   // UX: apply a pan-mode hover target from App.jsx. If pendingHover is null
@@ -903,8 +940,10 @@ const SVGAnnotationLayer = memo(({
 
     // UX: only show input when exactly one shape is selected. Multi-select and
     // empty selection clear timers and hide the pill (visibility gate).
-    if (!selectedIds || selectedIds.size !== 1) {
-      setRotInputVisibleDbg(false, 'selectedIds.size !== 1');
+    const hasSingleRegularSelection = selectedIds?.size === 1;
+    const hasSurveyHighlightSelection = !!selectedSurveyHighlightId && (!selectedIds || selectedIds.size === 0);
+    if (!hasSingleRegularSelection && !hasSurveyHighlightSelection) {
+      setRotInputVisibleDbg(false, 'no single rotation target selected');
       if (rotInputHoverTimerRef.current) {
         clearTimeout(rotInputHoverTimerRef.current);
         rotInputHoverTimerRef.current = null;
@@ -996,7 +1035,7 @@ const SVGAnnotationLayer = memo(({
     // pointer events. The eslint-disable below is LOAD-BEARING. Do NOT add
     // annotations, visualTransform, or rotInputVisible to the dep array.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedIds, setRotInputVisibleDbg, editingAnnotationIndex]);
+  }, [selectedIds, selectedSurveyHighlightId, setRotInputVisibleDbg, editingAnnotationIndex]);
 
   // ---------------------------------------------------------------------------
   // EDIT-12: Derived state for RotationInputField props
@@ -1005,7 +1044,11 @@ const SVGAnnotationLayer = memo(({
   // state — the input live-updates with the integer-rounded angle as the
   // shape rotates. This is the "drag wins" rule from CONTEXT.md.
   const isRotating = !!(visualTransform?.rotate);
-  const showRotationInput = isRotating || rotInputVisible;
+  const isSurveyHighlightRotating = !!(
+    surveyHighlightPreviewBounds &&
+    surveyHighlightDragRef.current?.mode === 'rotate'
+  );
+  const showRotationInput = isRotating || isSurveyHighlightRotating || rotInputVisible;
 
   const selectedAnnotationIndex = (selectedIds && selectedIds.size === 1)
     ? Array.from(selectedIds)[0]
@@ -1065,6 +1108,26 @@ const SVGAnnotationLayer = memo(({
   const handleRotationInputCommit = useCallback((annotationIndex, newAngle) => {
     if (annotationIndex === null || annotationIndex === undefined) return;
 
+    if (typeof annotationIndex === 'string' && annotationIndex.startsWith('survey:')) {
+      const highlightId = annotationIndex.slice('survey:'.length);
+      const highlight = Array.isArray(surveyHighlights)
+        ? surveyHighlights.find((entry) => entry?.highlightId === highlightId)
+        : null;
+      if (!highlight) return;
+      const nextBounds = normalizeSurveyHighlightBoundsValue({
+        x: highlight.x,
+        y: highlight.y,
+        width: highlight.width,
+        height: highlight.height,
+        angle: newAngle,
+      });
+      onUpdateSurveyHighlightBounds?.(pageNumber, highlightId, nextBounds, {
+        action: 'rotate',
+      });
+      setSurveyHighlightPreviewBounds(null);
+      return;
+    }
+
     // EDIT-12 Gap 1 fix: optimistic visual paint FIRST — cheap SVG transform
     // that makes the shape appear at the new angle on the next frame. This
     // matches the drag-rotate pattern (useSVGInteraction.js handlePointerMove
@@ -1109,7 +1172,15 @@ const SVGAnnotationLayer = memo(({
       action: 'rotate',
       checkpointPolicy: 'normal',
     });
-  }, [annotations, onSaveAnnotations, applyOptimisticRotation, clearOptimisticRotation]);
+  }, [
+    annotations,
+    onSaveAnnotations,
+    applyOptimisticRotation,
+    clearOptimisticRotation,
+    onUpdateSurveyHighlightBounds,
+    pageNumber,
+    surveyHighlights,
+  ]);
 
   // EDIT-12 Gap 1 fix (Plan 12-03): clear the optimistic visualTransform
   // once the persisted annotation angle catches up to the pending commit.
@@ -1150,6 +1221,7 @@ const SVGAnnotationLayer = memo(({
       pendingOptimisticRotationRef.current = null;
       clearOptimisticRotation();
     }
+    setSurveyHighlightPreviewBounds(null);
     // No-op otherwise — input handles its own state revert. Parent doesn't
     // track typed value. Escape simply blurs the input and the displayed
     // angle snaps back to props.angle (the persisted value).
@@ -1191,7 +1263,9 @@ const SVGAnnotationLayer = memo(({
   // and isRotating via refs so this callback is STABLE across visibility
   // and rotation changes.
   const isRotatingRef = useRef(false);
-  useEffect(() => { isRotatingRef.current = isRotating; }, [isRotating]);
+  useEffect(() => {
+    isRotatingRef.current = isRotating || isSurveyHighlightRotating;
+  }, [isRotating, isSurveyHighlightRotating]);
 
   const handleRotationInputHoverChange = useCallback((hovered) => {
     console.log(`[SVGAnnotationLayer] pill onHoverChange(${hovered}) visibleRef=${rotInputVisibleRef.current} rotatingRef=${isRotatingRef.current}`);
@@ -1820,7 +1894,7 @@ const SVGAnnotationLayer = memo(({
         opacity: 1,
         scaleX: 1,
         scaleY: 1,
-        angle: 0,
+        angle: normalizeDegreesValue(h.angle),
       };
       elements.push({
         highlight: h,
@@ -1882,6 +1956,7 @@ const SVGAnnotationLayer = memo(({
     if (!stillVisible) {
       setSelectedSurveyHighlightId(null);
       setSurveyHighlightPreviewBounds(null);
+      surveyHighlightDragRef.current = null;
     }
   }, [selectedSurveyHighlightId, surveyHighlightElements]);
 
@@ -1898,6 +1973,7 @@ const SVGAnnotationLayer = memo(({
     if (pendingSurveyHighlightSelection.pageNumber !== pageNumber) {
       setSelectedSurveyHighlightId(null);
       setSurveyHighlightPreviewBounds(null);
+      surveyHighlightDragRef.current = null;
       return;
     }
 
@@ -1905,6 +1981,7 @@ const SVGAnnotationLayer = memo(({
     if (!highlightId) {
       setSelectedSurveyHighlightId(null);
       setSurveyHighlightPreviewBounds(null);
+      surveyHighlightDragRef.current = null;
       return;
     }
 
@@ -1927,18 +2004,7 @@ const SVGAnnotationLayer = memo(({
   ]);
 
   const normalizeSurveyHighlightBounds = useCallback((bounds) => {
-    const x = Number(bounds?.x);
-    const y = Number(bounds?.y);
-    const widthValue = Number(bounds?.width);
-    const heightValue = Number(bounds?.height);
-    const widthSafe = Number.isFinite(widthValue) ? widthValue : 1;
-    const heightSafe = Number.isFinite(heightValue) ? heightValue : 1;
-    return {
-      x: Number.isFinite(x) ? x : 0,
-      y: Number.isFinite(y) ? y : 0,
-      width: Math.max(1, widthSafe),
-      height: Math.max(1, heightSafe),
-    };
+    return normalizeSurveyHighlightBoundsValue(bounds);
   }, []);
 
   const resizeSurveyHighlightBounds = useCallback((bounds, handleId, dx, dy) => {
@@ -1966,6 +2032,7 @@ const SVGAnnotationLayer = memo(({
       y: top,
       width: right - left,
       height: bottom - top,
+      angle: bounds.angle,
     };
   }, []);
 
@@ -1979,6 +2046,7 @@ const SVGAnnotationLayer = memo(({
       y: entry.bbox.top,
       width: entry.bbox.width,
       height: entry.bbox.height,
+      angle: entry.bbox.angle,
     });
     deselectAll();
     onSelectedCalloutIdsChange?.(new Set());
@@ -1994,7 +2062,7 @@ const SVGAnnotationLayer = memo(({
   }, [deselectAll, isSelectTool, normalizeSurveyHighlightBounds, onSelectedCalloutIdsChange]);
 
   const handleSurveyHighlightHandlePointerDown = useCallback((e, entry, handleId) => {
-    if (!isSelectTool || !entry?.highlight?.highlightId || handleId === 'mtr') return;
+    if (!isSelectTool || !entry?.highlight?.highlightId) return;
     e.stopPropagation();
     e.preventDefault();
     const startPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
@@ -2003,14 +2071,22 @@ const SVGAnnotationLayer = memo(({
       y: entry.bbox.top,
       width: entry.bbox.width,
       height: entry.bbox.height,
+      angle: entry.bbox.angle,
     });
+    const centerX = originalBounds.x + originalBounds.width / 2;
+    const centerY = originalBounds.y + originalBounds.height / 2;
     setSelectedSurveyHighlightId(entry.highlight.highlightId);
     surveyHighlightDragRef.current = {
-      mode: 'resize',
+      mode: handleId === 'mtr' ? 'rotate' : 'resize',
       handleId,
       highlightId: entry.highlight.highlightId,
       startPoint,
       originalBounds,
+      centerX,
+      centerY,
+      startPointerAngle: handleId === 'mtr'
+        ? normalizeAngle(Math.atan2(startPoint.y - centerY, startPoint.x - centerX))
+        : 0,
     };
     setSurveyHighlightPreviewBounds({ highlightId: entry.highlight.highlightId, bounds: originalBounds });
     try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch (_) {}
@@ -2025,13 +2101,22 @@ const SVGAnnotationLayer = memo(({
     const point = screenToSVG(svgRef.current, e.clientX, e.clientY);
     const dx = point.x - drag.startPoint.x;
     const dy = point.y - drag.startPoint.y;
-    const nextBounds = drag.mode === 'resize'
-      ? resizeSurveyHighlightBounds(drag.originalBounds, drag.handleId, dx, dy)
-      : {
-          ...drag.originalBounds,
-          x: drag.originalBounds.x + dx,
-          y: drag.originalBounds.y + dy,
-        };
+    let nextBounds;
+    if (drag.mode === 'rotate') {
+      const pointerAngle = normalizeAngle(Math.atan2(point.y - drag.centerY, point.x - drag.centerX));
+      nextBounds = {
+        ...drag.originalBounds,
+        angle: normalizeDegreesValue(drag.originalBounds.angle + pointerAngle - drag.startPointerAngle),
+      };
+    } else if (drag.mode === 'resize') {
+      nextBounds = resizeSurveyHighlightBounds(drag.originalBounds, drag.handleId, dx, dy);
+    } else {
+      nextBounds = {
+        ...drag.originalBounds,
+        x: drag.originalBounds.x + dx,
+        y: drag.originalBounds.y + dy,
+      };
+    }
 
     if (commit) {
       surveyHighlightDragRef.current = null;
@@ -2040,7 +2125,8 @@ const SVGAnnotationLayer = memo(({
         Math.abs(nextBounds.x - drag.originalBounds.x) > 0.1 ||
         Math.abs(nextBounds.y - drag.originalBounds.y) > 0.1 ||
         Math.abs(nextBounds.width - drag.originalBounds.width) > 0.1 ||
-        Math.abs(nextBounds.height - drag.originalBounds.height) > 0.1;
+        Math.abs(nextBounds.height - drag.originalBounds.height) > 0.1 ||
+        Math.abs(nextBounds.angle - drag.originalBounds.angle) > 0.1;
       if (changed) {
         onUpdateSurveyHighlightBounds?.(pageNumber, drag.highlightId, nextBounds, {
           action: drag.mode,
@@ -2059,10 +2145,22 @@ const SVGAnnotationLayer = memo(({
       ? surveyHighlightPreviewBounds.bounds
       : null;
     const bbox = preview
-      ? { ...entry.bbox, left: preview.x, top: preview.y, width: preview.width, height: preview.height }
+      ? {
+          ...entry.bbox,
+          left: preview.x,
+          top: preview.y,
+          width: preview.width,
+          height: preview.height,
+          angle: normalizeDegreesValue(preview.angle),
+        }
       : entry.bbox;
     const isSelectedHighlight = selectedSurveyHighlightId === highlightId;
     const isHoveredHighlight = hoveredSurveyHighlightId === highlightId;
+    const centerX = bbox.left + bbox.width / 2;
+    const centerY = bbox.top + bbox.height / 2;
+    const rotationTransform = bbox.angle
+      ? `rotate(${bbox.angle}, ${centerX}, ${centerY})`
+      : undefined;
 
     return (
       <g key={entry.key} data-survey-highlight-id={highlightId}>
@@ -2076,6 +2174,7 @@ const SVGAnnotationLayer = memo(({
           strokeWidth={bbox.strokeWidth}
           strokeDasharray={Array.isArray(bbox.strokeDashArray) ? bbox.strokeDashArray.join(',') : undefined}
           opacity={bbox.opacity}
+          transform={rotationTransform}
           vectorEffect="non-scaling-stroke"
           style={{
             pointerEvents: 'none',
@@ -2092,6 +2191,7 @@ const SVGAnnotationLayer = memo(({
             stroke="#4a90e2"
             strokeOpacity={0.4}
             strokeWidth={2 * inverseScale}
+            transform={rotationTransform}
             style={{ pointerEvents: 'none' }}
           />
         )}
@@ -2102,6 +2202,7 @@ const SVGAnnotationLayer = memo(({
           height={Math.max(bbox.height, 10)}
           fill="rgba(0,0,0,0.001)"
           stroke="none"
+          transform={rotationTransform}
           pointerEvents={isSelectTool ? 'all' : 'none'}
           style={{ cursor: isSelectTool ? 'move' : undefined }}
           onPointerDown={(e) => handleSurveyHighlightPointerDown(e, entry)}
@@ -2115,14 +2216,13 @@ const SVGAnnotationLayer = memo(({
               top: bbox.top,
               width: bbox.width,
               height: bbox.height,
-              angle: 0,
+              angle: bbox.angle,
             }}
             inverseScale={inverseScale}
             onHandleDrag={(e, handleId) => handleSurveyHighlightHandlePointerDown(e, entry, handleId)}
             isGroupSelection={false}
             hideBoundingBox={false}
             padding={0}
-            hideRotationHandle
           />
         )}
       </g>
@@ -2136,6 +2236,41 @@ const SVGAnnotationLayer = memo(({
     selectedSurveyHighlightId,
     surveyHighlightPreviewBounds,
   ]);
+
+  const selectedSurveyHighlightEntry = useMemo(() => {
+    if (!selectedSurveyHighlightId || selectedAnnotationIndex !== null) return null;
+    return surveyHighlightElements.find((entry) =>
+      entry?.highlight?.highlightId === selectedSurveyHighlightId
+    ) || null;
+  }, [selectedAnnotationIndex, selectedSurveyHighlightId, surveyHighlightElements]);
+
+  const selectedSurveyHighlightRotationBounds = useMemo(() => {
+    if (!selectedSurveyHighlightEntry) return null;
+    const highlightId = selectedSurveyHighlightEntry.highlight.highlightId;
+    const preview = surveyHighlightPreviewBounds?.highlightId === highlightId
+      ? surveyHighlightPreviewBounds.bounds
+      : null;
+    return normalizeSurveyHighlightBoundsValue({
+      x: preview?.x ?? selectedSurveyHighlightEntry.bbox.left,
+      y: preview?.y ?? selectedSurveyHighlightEntry.bbox.top,
+      width: preview?.width ?? selectedSurveyHighlightEntry.bbox.width,
+      height: preview?.height ?? selectedSurveyHighlightEntry.bbox.height,
+      angle: preview?.angle ?? selectedSurveyHighlightEntry.bbox.angle,
+    });
+  }, [selectedSurveyHighlightEntry, surveyHighlightPreviewBounds]);
+
+  const rotationInputAnnotationIndex = selectedSurveyHighlightRotationBounds
+    ? `survey:${selectedSurveyHighlightId}`
+    : selectedAnnotationIndex;
+  const rotationInputAngle = selectedSurveyHighlightRotationBounds
+    ? selectedSurveyHighlightRotationBounds.angle
+    : liveRotationAngle;
+  const rotationInputCenterViewBox = selectedSurveyHighlightRotationBounds
+    ? {
+        x: selectedSurveyHighlightRotationBounds.x + selectedSurveyHighlightRotationBounds.width / 2,
+        y: selectedSurveyHighlightRotationBounds.y + selectedSurveyHighlightRotationBounds.height / 2,
+      }
+    : shapeCenterViewBox;
 
   // ---------------------------------------------------------------------------
   // Phase 14 CALL-10 — invisible hit-target overlays for callout parts
@@ -3748,12 +3883,14 @@ const SVGAnnotationLayer = memo(({
             if (Number.isInteger(annotationIndex)) {
               setSelectedSurveyHighlightId(null);
               setSurveyHighlightPreviewBounds(null);
+              surveyHighlightDragRef.current = null;
               handleAnnotationPointerDown(e, annotationIndex);
               return;
             }
           }
           setSelectedSurveyHighlightId(null);
           setSurveyHighlightPreviewBounds(null);
+          surveyHighlightDragRef.current = null;
           handleSvgPointerDown(e);
         }
       }}
@@ -4755,11 +4892,11 @@ const SVGAnnotationLayer = memo(({
     <RotationInputField
       svgRef={svgRef}
       hostEl={svgRef.current?.parentElement || null}
-      angle={liveRotationAngle}
-      annotationIndex={selectedAnnotationIndex}
-      isRotating={isRotating}
-      isVisible={showRotationInput && selectedAnnotationIndex !== null}
-      shapeCenterViewBox={shapeCenterViewBox}
+      angle={rotationInputAngle}
+      annotationIndex={rotationInputAnnotationIndex}
+      isRotating={isRotating || isSurveyHighlightRotating}
+      isVisible={showRotationInput && rotationInputAnnotationIndex !== null}
+      shapeCenterViewBox={rotationInputCenterViewBox}
       onCommit={handleRotationInputCommit}
       onCancel={handleRotationInputCancel}
       onHoverChange={handleRotationInputHoverChange}
