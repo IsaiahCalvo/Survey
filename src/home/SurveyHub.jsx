@@ -1,7 +1,7 @@
 /* Survey Hub — top-level home redesign component.
-   Owns the active tab and renders the shared shell. Each tab body is its own
-   component; tabs not yet built show a lightweight placeholder so the
-   surrounding chrome can be developed and reviewed independently.
+   Owns the active tab, the per-tab search, and the share popup; renders the
+   shared shell. Each tab body is its own component; tabs not yet built show a
+   lightweight placeholder.
 
    Props (all optional so the hub renders standalone for development):
      documents  — array of the user's documents
@@ -11,12 +11,13 @@
      isPro      — gates the Templates tab (matches current app behavior)
      onOpenDocument(doc)   — open a document in the PDF viewer
      onUpload()            — start the upload flow
-     onShare(items)        — open the share popup for the given items
+     onCreateProject()     — start the new-project flow
 */
 import React, { useState, useEffect } from 'react';
 import { HubShell, Search, Icon } from './HubShell';
 import DocumentsLedger from './DocumentsLedger';
 import ProjectsFolderTree from './ProjectsFolderTree';
+import ShareModal from './ShareModal';
 import './hub.css';
 
 const TAB_KEY = 'survey-hub-tab';
@@ -36,12 +37,12 @@ export default function SurveyHub({
   onOpenDocument,
   onUpload,
   onCreateProject,
-  onShare,
 }) {
   const [tab, setTab] = useState(() => {
     try { return localStorage.getItem(TAB_KEY) || 'documents'; } catch { return 'documents'; }
   });
   const [search, setSearch] = useState('');
+  const [share, setShare] = useState(null); // null | { kind, name }
 
   // If Templates is gated and somehow active, fall back to Documents.
   useEffect(() => {
@@ -55,6 +56,16 @@ export default function SurveyHub({
   // Search is per-tab context; clear it when switching tabs.
   const navTo = (next) => { setSearch(''); setTab(next); };
 
+  // Documents share: one or many docs selected.
+  const shareDocuments = (docs) => {
+    if (!docs || !docs.length) return;
+    setShare({ kind: 'document', name: docs.length === 1 ? docs[0].name : `${docs.length} documents` });
+  };
+  const shareProject = (project) => {
+    if (!project) return;
+    setShare({ kind: 'project', name: project.name });
+  };
+
   const userName = user?.name || user?.email?.split('@')[0] || 'You';
 
   const titles = { documents: 'Documents', projects: 'Projects', templates: 'Templates' };
@@ -63,7 +74,6 @@ export default function SurveyHub({
     projects: <span><b>{projects.length}</b> {projects.length === 1 ? 'project' : 'projects'}</span>,
     templates: <span><b>{templates.length}</b> {templates.length === 1 ? 'template' : 'templates'}</span>,
   };
-
   const placeholders = {
     documents: 'Search Documents...',
     projects: 'Search Projects...',
@@ -87,35 +97,44 @@ export default function SurveyHub({
   );
 
   return (
-    <HubShell
-      tab={tab}
-      onNav={navTo}
-      title={titles[tab]}
-      subtitle={subtitles[tab]}
-      actions={actions}
-      userName={userName}
-      templatesLocked={!isPro}
-    >
-      {tab === 'documents' && (
-        <DocumentsLedger
-          documents={documents}
-          projects={projects}
-          search={search}
-          onOpenDocument={onOpenDocument}
-          onShare={onShare}
-        />
-      )}
-      {tab === 'projects' && (
-        <ProjectsFolderTree
-          projects={projects}
-          documents={documents}
-          search={search}
-          user={user}
-          onOpenDocument={onOpenDocument}
-          onShare={onShare}
-        />
-      )}
-      {tab === 'templates' && <Placeholder label="Templates" />}
-    </HubShell>
+    <>
+      <HubShell
+        tab={tab}
+        onNav={navTo}
+        title={titles[tab]}
+        subtitle={subtitles[tab]}
+        actions={actions}
+        userName={userName}
+        templatesLocked={!isPro}
+      >
+        {tab === 'documents' && (
+          <DocumentsLedger
+            documents={documents}
+            projects={projects}
+            search={search}
+            onOpenDocument={onOpenDocument}
+            onShare={shareDocuments}
+          />
+        )}
+        {tab === 'projects' && (
+          <ProjectsFolderTree
+            projects={projects}
+            documents={documents}
+            search={search}
+            user={user}
+            onOpenDocument={onOpenDocument}
+            onShare={shareProject}
+          />
+        )}
+        {tab === 'templates' && <Placeholder label="Templates" />}
+      </HubShell>
+
+      <ShareModal
+        open={!!share}
+        kind={share?.kind}
+        name={share?.name}
+        onClose={() => setShare(null)}
+      />
+    </>
   );
 }
