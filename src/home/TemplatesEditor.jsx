@@ -21,12 +21,26 @@
      template -> modules -> categories -> checklist items
      template.ballInCourtEntities  (the right-panel "Entities")
 
-   Interaction behaviours (select templates/modules, expand categories, the
-   edit/select modes, colour pickers, drag-reorder) run on local component
-   state exactly as the prototype does — they are not persisted to a backend
-   in this pass. "New Template" calls the onCreateTemplate prop.
+   Interaction model
+   -----------------
+   The prototype's `RICH` was a frozen module-level constant — most of its
+   buttons were visual only. This port keeps a *mutable* local copy of the
+   normalised data (`rich` state) seeded from the `templates` prop, so every
+   interactive control actually mutates state: New Module / New Category /
+   New Entity, the Select/edit bulk actions (Duplicate / Delete), inline
+   rename of templates, modules, categories, entities and checklist items,
+   drag-reorder of module tabs, the per-entity colour picker, and the per-row
+   "more" menus. None of this is persisted to a backend in this pass — exactly
+   as the prototype intended. "New Template" still calls the onCreateTemplate
+   prop (template creation is owned by the host).
+
+   The two per-row "more" menus (template rows, entity rows) are rendered into
+   a document.body portal at fixed coordinates measured from the trigger, so
+   the parent panels' `overflow: hidden` can never clip them or spawn
+   scrollbars.
 */
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { HubShell, Icon, Search } from './HubShell';
 
 /* ============================================================
@@ -128,6 +142,24 @@ const _edScopeCSS = `
   background: #f6f4ef; border: 1px solid rgba(0,0,0,0.65);
   box-shadow: 0 1px 3px rgba(0,0,0,0.55); cursor: pointer;
 }
+
+/* "More" popup — rendered into a document.body portal at fixed coords so
+   the panels' overflow:hidden can never clip it. Literal hex colours
+   because the portal renders outside the .ed-scope CSS-variable root. */
+.ed-tpl-menu {
+  position: fixed; z-index: 4000;
+  background: #181c24; border: 1px solid #3a4252; border-radius: 8px;
+  padding: 4px; box-shadow: 0 12px 30px rgba(0,0,0,0.55);
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+.ed-tpl-menu button {
+  display: block; width: 100%; text-align: left;
+  background: transparent; border: 0; color: #f4f1ea;
+  padding: 7px 10px; font-size: 12px; border-radius: 4px;
+  cursor: pointer; font-family: inherit;
+}
+.ed-tpl-menu button:hover { background: #232834; }
+.ed-tpl-menu button.danger { color: #cf6f6f; }
 `;
 if (typeof document !== 'undefined' && !document.getElementById('ed-style')) {
   const s = document.createElement('style');
@@ -149,6 +181,12 @@ const itemText = (it) => (typeof it === 'string' ? it : (it?.text ?? it?.name ??
 /* Accent ribbon — templates may not store an accent colour. */
 const ACCENTS = ['#e07a5e', '#7ab7e6', '#c293e6', '#a6e07a', '#d8a84e', '#9aa3b2'];
 
+/* Entity colours cycled through when a brand-new entity is created. */
+const ENTITY_COLORS = [
+  '#e07a5e', '#7ab7e6', '#c293e6', '#a6e07a', '#d8a84e', '#ec8a9a',
+  '#5fc7b0', '#9aa3b2',
+];
+
 /* Normalise a colour value (entities may store an rgba string or a hex). */
 const toHex6 = (color) => {
   if (!color) return '#8c8c8a';
@@ -165,6 +203,102 @@ const toHex6 = (color) => {
   return '#8c8c8a';
 };
 
+/* Monotonic id generator — every new module/category/item/entity gets a
+   stable unique React key so renames and reorders don't churn the tree. */
+let _uid = 0;
+const newId = (prefix) => `${prefix}_${Date.now().toString(36)}_${(_uid++).toString(36)}`;
+
+/* Normalise the `templates` prop into the editor's mutable working shape. */
+const buildRich = (templates) => templates.map((t, i) => {
+  const mods = modulesOf(t).map((m, mi) => ({
+    id: m?.id ?? newId('m'),
+    name: m?.name || `Module ${mi + 1}`,
+    categories: categoriesOf(m).map((c, ci) => ({
+      id: c?.id ?? newId('c'),
+      name: c?.name || `Category ${ci + 1}`,
+      items: checklistOf(c).map((it) => ({ id: newId('i'), text: itemText(it) })),
+    })),
+  }));
+  const roster = entitiesOf(t).map((e, ei) => ({
+    id: e?.id ?? newId('e'),
+    role: e?.name || e?.role || `Entity ${ei + 1}`,
+    color: toHex6(e?.color),
+  }));
+  return {
+    id: t?.id ?? `t${i}`,
+    name: t?.name || 'Untitled Template',
+    accent: t?.accent || ACCENTS[i % ACCENTS.length],
+    modules: mods,
+    roster,
+  };
+});
+
+/* ============================================================
+   Fixed-position "more" menu, portalled to document.body.
+   `anchorRect` is the trigger's getBoundingClientRect(); the menu
+   pins its top-right corner just under the trigger, then flips
+   above / leftwards if it would overflow the viewport.
+   ============================================================ */
+function MoreMenu({ anchorRect, items, onClose }) {
+  const ref = useRef(null);
+  const [pos, setPos] = useState(null);
+
+  /* Close on outside click / Escape / scroll — same dismiss feel as the
+     prototype's onMouseLeave, but robust now that it floats over the page. */
+  useEffect(() => {
+    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('mousedown', onDown, true);
+    window.addEventListener('keydown', onKey, true);
+    window.addEventListener('scroll', onClose, true);
+    return () => {
+      window.removeEventListener('mousedown', onDown, true);
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('scroll', onClose, true);
+    };
+  }, [onClose]);
+
+  /* Measure the menu once mounted, then place it inside the viewport. */
+  useEffect(() => {
+    if (!ref.current || !anchorRect) return;
+    const mw = ref.current.offsetWidth || 170;
+    const mh = ref.current.offsetHeight || 40;
+    let left = anchorRect.right - mw;
+    let top = anchorRect.bottom + 4;
+    if (left < 8) left = 8;
+    if (left + mw > window.innerWidth - 8) left = window.innerWidth - 8 - mw;
+    if (top + mh > window.innerHeight - 8) top = anchorRect.top - mh - 4;
+    if (top < 8) top = 8;
+    setPos({ left, top });
+  }, [anchorRect]);
+
+  if (!anchorRect) return null;
+
+  return createPortal(
+    <div
+      ref={ref}
+      className="ed-tpl-menu"
+      style={{
+        minWidth: 150,
+        left: pos ? pos.left : -9999,
+        top: pos ? pos.top : -9999,
+        visibility: pos ? 'visible' : 'hidden',
+      }}
+    >
+      {items.map(({ label, danger, onClick }) => (
+        <button
+          key={label}
+          className={danger ? 'danger' : undefined}
+          onClick={() => { onClick(); onClose(); }}
+        >
+          {label}
+        </button>
+      ))}
+    </div>,
+    document.body,
+  );
+}
+
 export default function TemplatesEditor({
   templates = [],
   user = null,
@@ -172,34 +306,12 @@ export default function TemplatesEditor({
   onNav,
   onCreateTemplate,
 }) {
-  /* Map every real template into the rich shape the editor markup expects. */
-  const RICH = useMemo(() => templates.map((t, i) => {
-    const mods = modulesOf(t).map((m, mi) => ({
-      raw: m,
-      id: m?.id ?? `m${mi}`,
-      name: m?.name || `Module ${mi + 1}`,
-      categories: categoriesOf(m).map((c, ci) => ({
-        raw: c,
-        id: c?.id ?? `c${ci}`,
-        name: c?.name || `Category ${ci + 1}`,
-        items: checklistOf(c).map((it) => itemText(it)),
-      })),
-    }));
-    const roster = entitiesOf(t).map((e, ei) => ({
-      raw: e,
-      id: e?.id ?? `e${ei}`,
-      role: e?.name || e?.role || `Entity ${ei + 1}`,
-      color: toHex6(e?.color),
-    }));
-    return {
-      raw: t,
-      id: t?.id ?? `t${i}`,
-      name: t?.name || 'Untitled Template',
-      accent: t?.accent || ACCENTS[i % ACCENTS.length],
-      modules: mods,
-      roster,
-    };
-  }), [templates]);
+  /* ---- mutable working data ----
+     Seeded from the `templates` prop, then owned locally so every editor
+     action below actually mutates it. Re-seeded whenever the prop identity
+     changes (e.g. the host adds a template via onCreateTemplate). */
+  const [rich, setRich] = useState(() => buildRich(templates));
+  useEffect(() => { setRich(buildRich(templates)); }, [templates]);
 
   /* ---- selection / edit state ---- */
   const [selectedId, setSelected] = useState(null);
@@ -208,29 +320,27 @@ export default function TemplatesEditor({
   const [selTpls, setSelTpls] = useState(() => new Set());
   const toggleTplSel = (id) => setSelTpls((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const tplSelCount = selTpls.size;
-  const [tplMenu, setTplMenu] = useState(null);
-  const [entityMenu, setEntityMenu] = useState(null);
-  const [moduleOrders, setModuleOrders] = useState({});
+  const [tplMenu, setTplMenu] = useState(null);       // { id, rect }
+  const [entityMenu, setEntityMenu] = useState(null); // { id, rect }
   const [dragMod, setDragMod] = useState(null);
-  const [extraMods, setExtraMods] = useState({}); // { tplId: [{ name, categories }] }
   const [entityEdit, setEntityEdit] = useState(false);
   const [selEntities, setSelEntities] = useState(() => new Set());
-  const toggleEntitySel = (role) => setSelEntities((prev) => { const n = new Set(prev); n.has(role) ? n.delete(role) : n.add(role); return n; });
-  const [openColor, setOpenColor] = useState(null);
-  const [roleColors, setRoleColors] = useState({});
+  const toggleEntitySel = (id) => setSelEntities((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const [openColor, setOpenColor] = useState(null);   // entity id whose picker is open
+  const [roleColors, setRoleColors] = useState({});   // { entityId: { color, opacity } } picker fill state
   const [openMod, setOpenMod] = useState(0);
   const [modEdit, setModEdit] = useState(false);
-  const [modRename, setModRename] = useState(null);
+  const [modRename, setModRename] = useState(null);   // module index in rename mode
   const [selMods, setSelMods] = useState(() => new Set());
   const toggleModSel = (mi) => setSelMods((prev) => { const n = new Set(prev); n.has(mi) ? n.delete(mi) : n.add(mi); return n; });
   const [catEdit, setCatEdit] = useState(false);
   const [selCats, setSelCats] = useState(() => new Set());
-  const toggleCatSel = (i) => setSelCats((prev) => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; });
+  const toggleCatSel = (id) => setSelCats((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const [moveModal, setMoveModal] = useState(null);
   const [colorTab, setColorTab] = useState({});
-  const [layerTab, setLayerTab] = useState({}); // { role: 'fill' | 'border' }
+  const [layerTab, setLayerTab] = useState({});       // { entityId: 'fill' | 'border' }
   const [borderColors, setBorderColors] = useState({});
-  const [matchFill, setMatchFill] = useState({}); // { role: bool }
+  const [matchFill, setMatchFill] = useState({});     // { entityId: bool }
 
   /* ---- colour math (carried verbatim from the prototype) ---- */
   const hexToHsl = (hex) => {
@@ -265,61 +375,248 @@ export default function TemplatesEditor({
     '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#ec4899', '#f43f5e', '#64748b',
   ];
 
-  /* Default the open template to the first one once data arrives. */
+  /* Default the open template to the first one once data arrives, and keep
+     `selectedId` valid if the open template gets deleted. */
   useEffect(() => {
-    if (selectedId == null && RICH.length) setSelected(RICH[0].id);
-  }, [RICH, selectedId]);
+    if (!rich.length) { if (selectedId != null) setSelected(null); return; }
+    if (selectedId == null || !rich.some((t) => t.id === selectedId)) {
+      setSelected(rich[0].id);
+      setOpenMod(0);
+      setOpenCat(-1);
+    }
+  }, [rich, selectedId]);
 
-  const tpl = RICH.find((t) => t.id === selectedId) || RICH[0] || null;
+  const tpl = rich.find((t) => t.id === selectedId) || rich[0] || null;
+  const orderedMods = tpl ? tpl.modules : [];
 
-  /* Modules for the open template: real modules + any added in this session. */
-  const baseMods = tpl ? tpl.modules : [];
-  const allMods = useMemo(
-    () => (tpl ? [...baseMods, ...(extraMods[tpl.id] || [])] : []),
-    [baseMods, extraMods, tpl],
-  );
-  const orderedMods = useMemo(() => {
-    if (!tpl) return [];
-    const order = moduleOrders[tpl.id];
-    if (!order) return allMods;
-    const byName = Object.fromEntries(allMods.map((m) => [m.name, m]));
-    return order.map((n) => byName[n]).filter(Boolean).concat(allMods.filter((m) => !order.includes(m.name)));
-  }, [moduleOrders, tpl, allMods]);
+  /* ============================================================
+     Mutators — every one returns a fresh `rich` array. They are the
+     single source of truth for "make every button function".
+     ============================================================ */
 
+  /* Map over one template by id and replace it with `fn`'s result. */
+  const mutateTpl = useCallback((tid, fn) => {
+    setRich((prev) => prev.map((t) => (t.id === tid ? fn(t) : t)));
+  }, []);
+
+  /* --- template-level --- */
+  const renameTemplate = (tid, name) => {
+    const v = name.trim();
+    if (!v) return;
+    mutateTpl(tid, (t) => (t.name === v ? t : { ...t, name: v }));
+  };
+  const duplicateTemplates = (ids) => {
+    setRich((prev) => {
+      const out = [];
+      prev.forEach((t) => {
+        out.push(t);
+        if (ids.has(t.id)) {
+          out.push({
+            ...t,
+            id: newId('t'),
+            name: `${t.name} copy`,
+            modules: t.modules.map((m) => ({
+              ...m, id: newId('m'),
+              categories: m.categories.map((c) => ({
+                ...c, id: newId('c'),
+                items: c.items.map((it) => ({ ...it, id: newId('i') })),
+              })),
+            })),
+            roster: t.roster.map((r) => ({ ...r, id: newId('e') })),
+          });
+        }
+      });
+      return out;
+    });
+  };
+  const deleteTemplates = (ids) => {
+    setRich((prev) => prev.filter((t) => !ids.has(t.id)));
+  };
+
+  /* --- module-level --- */
   const addModule = () => {
     if (!tpl) return;
     const existing = orderedMods.map((m) => m.name);
-    let n = 1;
-    let name;
+    let n = 1, name;
     do { name = `Module ${n++}`; } while (existing.includes(name));
-    setExtraMods((prev) => ({ ...prev, [tpl.id]: [...(prev[tpl.id] || []), { name, categories: [] }] }));
-    // Focus the new tab
-    setTimeout(() => {
-      setOpenMod(orderedMods.length);
-      setModRename(orderedMods.length);
-    }, 0);
+    mutateTpl(tpl.id, (t) => ({ ...t, modules: [...t.modules, { id: newId('m'), name, categories: [] }] }));
+    /* Focus + open the brand-new tab and drop it straight into rename mode. */
+    const newIndex = orderedMods.length;
+    setTimeout(() => { setOpenMod(newIndex); setOpenCat(-1); setModRename(newIndex); }, 0);
+  };
+  const renameModule = (mi, name) => {
+    const v = name.trim();
+    if (!v || !tpl) { setModRename(null); return; }
+    mutateTpl(tpl.id, (t) => {
+      const modules = t.modules.slice();
+      if (modules[mi] && modules[mi].name !== v) modules[mi] = { ...modules[mi], name: v };
+      return { ...t, modules };
+    });
+    setModRename(null);
   };
   const reorderMods = (from, to) => {
     if (from === to || from == null || to == null || !tpl) return;
-    setModuleOrders((prev) => {
-      const order = (prev[tpl.id] || orderedMods.map((m) => m.name)).slice();
-      const [moved] = order.splice(from, 1);
-      order.splice(to, 0, moved);
-      return { ...prev, [tpl.id]: order };
+    mutateTpl(tpl.id, (t) => {
+      const modules = t.modules.slice();
+      const [moved] = modules.splice(from, 1);
+      modules.splice(to, 0, moved);
+      return { ...t, modules };
     });
     if (openMod === from) setOpenMod(to);
     else if (from < openMod && to >= openMod) setOpenMod(openMod - 1);
     else if (from > openMod && to <= openMod) setOpenMod(openMod + 1);
   };
+  const deleteModules = (indices) => {
+    if (!tpl || !indices.size) return;
+    mutateTpl(tpl.id, (t) => ({ ...t, modules: t.modules.filter((_, i) => !indices.has(i)) }));
+    setSelMods(new Set());
+    setOpenMod(0);
+    setOpenCat(-1);
+  };
+  const duplicateModules = (indices) => {
+    if (!tpl || !indices.size) return;
+    mutateTpl(tpl.id, (t) => {
+      const out = [];
+      t.modules.forEach((m, i) => {
+        out.push(m);
+        if (indices.has(i)) {
+          out.push({
+            ...m, id: newId('m'), name: `${m.name} copy`,
+            categories: m.categories.map((c) => ({
+              ...c, id: newId('c'),
+              items: c.items.map((it) => ({ ...it, id: newId('i') })),
+            })),
+          });
+        }
+      });
+      return { ...t, modules: out };
+    });
+    setSelMods(new Set());
+  };
+
+  /* --- category-level (always scoped to the open module) --- */
+  const mutateOpenModule = (fn) => {
+    if (!tpl) return;
+    mutateTpl(tpl.id, (t) => {
+      const modules = t.modules.slice();
+      if (!modules[openMod]) return t;
+      modules[openMod] = fn(modules[openMod]);
+      return { ...t, modules };
+    });
+  };
+  const addCategory = () => {
+    if (!tpl || !orderedMods[openMod]) return;
+    const existing = (orderedMods[openMod].categories || []).map((c) => c.name);
+    let n = 1, name;
+    do { name = `Category ${n++}`; } while (existing.includes(name));
+    mutateOpenModule((m) => ({
+      ...m,
+      categories: [...m.categories, { id: newId('c'), name, items: [] }],
+    }));
+    /* Open the new category so its (empty) checklist is immediately visible. */
+    setTimeout(() => setOpenCat((orderedMods[openMod].categories || []).length), 0);
+  };
+  const renameCategory = (ci, name) => {
+    const v = name.trim();
+    if (!v) return;
+    mutateOpenModule((m) => {
+      const categories = m.categories.slice();
+      if (categories[ci] && categories[ci].name !== v) categories[ci] = { ...categories[ci], name: v };
+      return { ...m, categories };
+    });
+  };
+  const deleteCategories = (ids) => {
+    if (!ids.size) return;
+    mutateOpenModule((m) => ({ ...m, categories: m.categories.filter((c) => !ids.has(c.id)) }));
+    setSelCats(new Set());
+    setOpenCat(-1);
+  };
+  const duplicateCategories = (ids) => {
+    if (!ids.size) return;
+    mutateOpenModule((m) => {
+      const out = [];
+      m.categories.forEach((c) => {
+        out.push(c);
+        if (ids.has(c.id)) {
+          out.push({
+            ...c, id: newId('c'), name: `${c.name} copy`,
+            items: c.items.map((it) => ({ ...it, id: newId('i') })),
+          });
+        }
+      });
+      return { ...m, categories: out };
+    });
+    setSelCats(new Set());
+  };
+
+  /* --- checklist-item-level (scoped to a category in the open module) --- */
+  const mutateCategory = (ci, fn) => {
+    mutateOpenModule((m) => {
+      const categories = m.categories.slice();
+      if (!categories[ci]) return m;
+      categories[ci] = fn(categories[ci]);
+      return { ...m, categories };
+    });
+  };
+  const addItem = (ci) => mutateCategory(ci, (c) => ({ ...c, items: [...c.items, { id: newId('i'), text: '' }] }));
+  const renameItem = (ci, itemId, text) => mutateCategory(ci, (c) => ({
+    ...c, items: c.items.map((it) => (it.id === itemId ? { ...it, text } : it)),
+  }));
+  const deleteItem = (ci, itemId) => mutateCategory(ci, (c) => ({
+    ...c, items: c.items.filter((it) => it.id !== itemId),
+  }));
+
+  /* --- entity-level --- */
+  const addEntity = () => {
+    if (!tpl) return;
+    const existing = tpl.roster.map((r) => r.role);
+    let n = 1, role;
+    do { role = `Entity ${n++}`; } while (existing.includes(role));
+    const color = ENTITY_COLORS[tpl.roster.length % ENTITY_COLORS.length];
+    const id = newId('e');
+    mutateTpl(tpl.id, (t) => ({ ...t, roster: [...t.roster, { id, role, color }] }));
+    /* Open the new entity's colour picker so it reads as "freshly added". */
+    setTimeout(() => setOpenColor(id), 0);
+  };
+  const renameEntity = (eid, role) => {
+    const v = role.trim();
+    if (!v || !tpl) return;
+    mutateTpl(tpl.id, (t) => ({
+      ...t, roster: t.roster.map((r) => (r.id === eid ? (r.role === v ? r : { ...r, role: v }) : r)),
+    }));
+  };
+  const setEntityColor = (eid, color) => {
+    if (!tpl) return;
+    mutateTpl(tpl.id, (t) => ({
+      ...t, roster: t.roster.map((r) => (r.id === eid ? { ...r, color } : r)),
+    }));
+  };
+  const deleteEntities = (ids) => {
+    if (!tpl || !ids.size) return;
+    mutateTpl(tpl.id, (t) => ({ ...t, roster: t.roster.filter((r) => !ids.has(r.id)) }));
+    setSelEntities(new Set());
+  };
+  const duplicateEntities = (ids) => {
+    if (!tpl || !ids.size) return;
+    mutateTpl(tpl.id, (t) => {
+      const out = [];
+      t.roster.forEach((r) => {
+        out.push(r);
+        if (ids.has(r.id)) out.push({ ...r, id: newId('e'), role: `${r.role} copy` });
+      });
+      return { ...t, roster: out };
+    });
+    setSelEntities(new Set());
+  };
 
   const subtitle = (
-    <span><b>{RICH.length}</b> templates · reusable category + checklist sets</span>
+    <span><b>{rich.length}</b> templates · reusable category + checklist sets</span>
   );
   const actions = <><Search placeholder="Search Templates..." /></>;
 
   /* Categories shown for the open module. */
   const activeMod = orderedMods[openMod] || orderedMods[0] || { categories: [] };
-  const visibleCats = categoriesOf(activeMod);
+  const visibleCats = activeMod.categories || [];
 
   return (
     <>
@@ -360,26 +657,26 @@ export default function TemplatesEditor({
                 {tplEdit && (
                   <>
                     {(() => {
-                      const allSel = tplSelCount === RICH.length && RICH.length > 0;
+                      const allSel = tplSelCount === rich.length && rich.length > 0;
                       return (
                         <button
-                          onClick={() => setSelTpls(allSel ? new Set() : new Set(RICH.map((t) => t.id)))}
+                          onClick={() => setSelTpls(allSel ? new Set() : new Set(rich.map((t) => t.id)))}
                           style={{ background: 'transparent', border: '1px solid var(--rule-strong)', color: 'var(--ink-soft)', borderRadius: 2, padding: '2px 5px', fontSize: 10, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
                         >{allSel ? 'None' : 'All'}</button>
                       );
                     })()}
-                    <button disabled={!tplSelCount} style={{ background: 'transparent', border: '1px solid var(--rule-strong)', color: tplSelCount ? 'var(--ink-soft)' : 'var(--ink-quiet)', borderRadius: 2, padding: '2px 5px', fontSize: 10, cursor: tplSelCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Duplicate</button>
+                    <button onClick={() => { if (tplSelCount) { duplicateTemplates(selTpls); setSelTpls(new Set()); } }} disabled={!tplSelCount} style={{ background: 'transparent', border: '1px solid var(--rule-strong)', color: tplSelCount ? 'var(--ink-soft)' : 'var(--ink-quiet)', borderRadius: 2, padding: '2px 5px', fontSize: 10, cursor: tplSelCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Duplicate</button>
                     <button disabled={!tplSelCount} style={{ background: 'transparent', border: '1px solid var(--rule-strong)', color: tplSelCount ? 'var(--ink-soft)' : 'var(--ink-quiet)', borderRadius: 2, padding: '2px 5px', fontSize: 10, cursor: tplSelCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }} title="Share"><Icon name="share" size={11} /></button>
-                    <button disabled={!tplSelCount} style={{ background: 'transparent', border: '1px solid var(--rule-strong)', color: tplSelCount ? '#cf6f6f' : 'var(--ink-quiet)', borderRadius: 2, padding: '2px 5px', fontSize: 10, cursor: tplSelCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }} title="Delete"><Icon name="trash" size={11} /></button>
+                    <button onClick={() => { if (tplSelCount) { deleteTemplates(selTpls); setSelTpls(new Set()); } }} disabled={!tplSelCount} style={{ background: 'transparent', border: '1px solid var(--rule-strong)', color: tplSelCount ? '#cf6f6f' : 'var(--ink-quiet)', borderRadius: 2, padding: '2px 5px', fontSize: 10, cursor: tplSelCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }} title="Delete"><Icon name="trash" size={11} /></button>
                   </>
                 )}
               </div>
             </div>
             <div className="slim-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 2, minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
-              {RICH.length === 0 && (
+              {rich.length === 0 && (
                 <div className="meta" style={{ padding: '20px 8px', fontSize: 11.5 }}>No templates yet — create one to get started.</div>
               )}
-              {RICH.map((t) => {
+              {rich.map((t) => {
                 const active = t.id === selectedId;
                 const isSel = selTpls.has(t.id);
                 return (
@@ -421,27 +718,16 @@ export default function TemplatesEditor({
                         </span>
                       ) : (
                         <button
-                          onClick={(e) => { e.stopPropagation(); setTplMenu(tplMenu === t.id ? null : t.id); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setTplMenu((m) => (m && m.id === t.id ? null : { id: t.id, rect }));
+                          }}
                           style={{ background: 'transparent', border: 0, color: 'var(--ink-200)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '2px 4px', borderRadius: 4 }}
                           title="More"
                         >⋯</button>
                       )}
                     </div>
-                    {tplMenu === t.id && (
-                      <div onMouseLeave={() => setTplMenu(null)} style={{
-                        position: 'absolute', right: 4, top: 32, zIndex: 20,
-                        background: '#181c24', border: '1px solid #2a3140', borderRadius: 8,
-                        padding: 4, minWidth: 170, boxShadow: '0 12px 30px rgba(0,0,0,0.45)',
-                      }}>
-                        {['Copy', 'Rename', 'Share', 'Delete'].map((label) => (
-                          <button key={label} onClick={() => setTplMenu(null)} style={{
-                            display: 'block', width: '100%', textAlign: 'left',
-                            background: 'transparent', border: 0, color: label === 'Delete' ? '#cf6f6f' : 'var(--bone-100)',
-                            padding: '7px 10px', fontSize: 12, borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit',
-                          }}>{label}</button>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 );
               })}
@@ -466,6 +752,8 @@ export default function TemplatesEditor({
                   defaultValue={tpl.name}
                   title="Click to rename"
                   onDoubleClick={(e) => e.currentTarget.select()}
+                  onBlur={(e) => renameTemplate(tpl.id, e.currentTarget.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = tpl.name; e.currentTarget.blur(); } }}
                   style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.015em', lineHeight: 1.2, width: '100%' }}
                 />
               </div>
@@ -490,10 +778,10 @@ export default function TemplatesEditor({
                 <div style={{ display: 'flex', alignItems: 'stretch', gap: 0, borderBottom: '1px solid var(--rule)', minHeight: 26 }}>
                   {orderedMods.map((mod, mi) => {
                     const isOn = openMod === mi;
-                    const catCount = categoriesOf(mod).length;
+                    const catCount = (mod.categories || []).length;
                     return (
                       <div
-                        key={mod.name + '-' + mi}
+                        key={mod.id}
                         draggable
                         onDragStart={() => setDragMod(mi)}
                         onDragOver={(e) => { e.preventDefault(); }}
@@ -514,28 +802,7 @@ export default function TemplatesEditor({
                             defaultValue={mod.name}
                             autoFocus
                             onFocus={(e) => e.currentTarget.select()}
-                            onBlur={(e) => {
-                              const v = e.currentTarget.value.trim();
-                              if (v && v !== mod.name) {
-                                // Rename in extraMods if applicable, otherwise track via moduleOrders
-                                setExtraMods((prev) => {
-                                  const list = prev[tpl.id] || [];
-                                  const idx = list.findIndex((m) => m.name === mod.name);
-                                  if (idx >= 0) {
-                                    const next = list.slice();
-                                    next[idx] = { ...next[idx], name: v };
-                                    return { ...prev, [tpl.id]: next };
-                                  }
-                                  return prev;
-                                });
-                                setModuleOrders((prev) => {
-                                  const order = prev[tpl.id];
-                                  if (!order) return prev;
-                                  return { ...prev, [tpl.id]: order.map((n) => (n === mod.name ? v : n)) };
-                                });
-                              }
-                              setModRename(null);
-                            }}
+                            onBlur={(e) => renameModule(mi, e.currentTarget.value)}
                             onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') setModRename(null); }}
                             style={{ background: 'transparent', border: 0, padding: '3px 6px', fontSize: 12, fontWeight: isOn ? 500 : 400, color: isOn ? 'var(--ink)' : 'var(--ink-muted)', width: '100%', borderBottom: '1px solid var(--accent)', outline: 'none' }}
                           />
@@ -591,17 +858,17 @@ export default function TemplatesEditor({
                       const baseBtn = { background: 'transparent', border: '1px solid var(--rule-strong)', borderRadius: 2, padding: '1px 7px', fontSize: 10.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', height: 18, lineHeight: 1, boxSizing: 'border-box', flex: 'none' };
                       return (
                         <>
-                          <button onClick={() => setSelCats(allSel ? new Set() : new Set(visibleCats.map((_, i) => i)))} style={{ ...baseBtn, color: 'var(--ink-soft)' }}>{allSel ? 'None' : 'All'}</button>
-                          <button disabled={!c} style={{ ...baseBtn, color: c ? 'var(--ink-soft)' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed' }}>Duplicate</button>
+                          <button onClick={() => setSelCats(allSel ? new Set() : new Set(visibleCats.map((cat) => cat.id)))} style={{ ...baseBtn, color: 'var(--ink-soft)' }}>{allSel ? 'None' : 'All'}</button>
+                          <button disabled={!c} onClick={() => duplicateCategories(selCats)} style={{ ...baseBtn, color: c ? 'var(--ink-soft)' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed' }}>Duplicate</button>
                           <button disabled={!c} onClick={() => setMoveModal({ count: c })} style={{ ...baseBtn, color: c ? 'var(--ink-soft)' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed' }}>Move/Copy</button>
                           <button disabled={!c} style={{ ...baseBtn, color: c ? 'var(--ink-soft)' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center' }} title="Share"><Icon name="share" size={11} /></button>
-                          <button disabled={!c} style={{ ...baseBtn, color: c ? '#cf6f6f' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center' }} title="Delete"><Icon name="trash" size={11} /></button>
+                          <button disabled={!c} onClick={() => deleteCategories(selCats)} style={{ ...baseBtn, color: c ? '#cf6f6f' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center' }} title="Delete"><Icon name="trash" size={11} /></button>
                         </>
                       );
                     })()}
                   </div>
                 </div>
-                <button className="btn-ink" style={{ padding: '4px 8px', fontSize: 11, gap: 4, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap', flex: 'none' }}>
+                <button onClick={addCategory} className="btn-ink" style={{ padding: '4px 8px', fontSize: 11, gap: 4, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap', flex: 'none' }}>
                   <Icon name="plus" size={11} />New Category
                 </button>
               </div>
@@ -612,18 +879,19 @@ export default function TemplatesEditor({
                   <div className="meta" style={{ padding: '16px 4px', fontSize: 11.5 }}>This module has no categories yet.</div>
                 )}
                 {visibleCats.map((c, i) => {
-                  const items = checklistOf(c).map((it) => itemText(it));
+                  const items = c.items || [];
                   const open = openCat === i;
+                  const isSel = selCats.has(c.id);
                   return (
-                    <div key={(c.id ?? c.name ?? '') + '-' + i} className="card-line" style={{ overflow: 'hidden', flexShrink: 0 }}>
+                    <div key={c.id} className="card-line" style={{ overflow: 'hidden', flexShrink: 0 }}>
                       {/* Row header */}
                       <div
-                        onClick={() => { if (catEdit) toggleCatSel(i); }}
+                        onClick={() => { if (catEdit) toggleCatSel(c.id); }}
                         style={{
                           width: '100%', display: 'grid', gridTemplateColumns: catEdit ? '14px 20px 1fr auto 16px' : '14px 20px 1fr auto', gap: 8,
                           alignItems: 'center', padding: '3px 10px',
                           cursor: catEdit ? 'pointer' : 'default',
-                          background: catEdit && selCats.has(i) ? 'rgba(216,168,78,0.08)' : 'transparent',
+                          background: catEdit && isSel ? 'rgba(216,168,78,0.08)' : 'transparent',
                         }}
                       >
                         <span title="Drag to reorder" style={{ color: 'var(--ink-muted)', fontSize: 11, cursor: 'grab', userSelect: 'none', lineHeight: 1, textAlign: 'center' }}>⋮⋮</span>
@@ -640,18 +908,21 @@ export default function TemplatesEditor({
                         <input
                           className="inline-edit cat-title"
                           defaultValue={c.name}
+                          key={c.id + ':' + c.name}
                           title="Click to rename"
                           onClick={(e) => e.stopPropagation()}
                           onDoubleClick={(e) => e.currentTarget.select()}
+                          onBlur={(e) => renameCategory(i, e.currentTarget.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = c.name; e.currentTarget.blur(); } }}
                           style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.2, width: 'max-content', maxWidth: '100%', minWidth: 40 }}
                         />
                         <span className="mono" style={{ fontSize: 9.5, color: 'var(--ink-quiet)', lineHeight: 1.2, whiteSpace: 'nowrap' }}>{items.length} items</span>
                         {catEdit && (
                           <span
-                            onClick={(e) => { e.stopPropagation(); toggleCatSel(i); }}
-                            style={{ width: 14, height: 14, border: `1.4px solid ${selCats.has(i) ? 'var(--accent)' : 'var(--rule-strong)'}`, background: selCats.has(i) ? 'var(--accent)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            onClick={(e) => { e.stopPropagation(); toggleCatSel(c.id); }}
+                            style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--accent)' : 'var(--rule-strong)'}`, background: isSel ? 'var(--accent)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                           >
-                            {selCats.has(i) && <span style={{ color: 'var(--paper)', fontSize: 10, lineHeight: 1 }}>✓</span>}
+                            {isSel && <span style={{ color: 'var(--paper)', fontSize: 10, lineHeight: 1 }}>✓</span>}
                           </span>
                         )}
                       </div>
@@ -665,7 +936,7 @@ export default function TemplatesEditor({
                             )}
                             {items.map((it, j) => (
                               <div
-                                key={j}
+                                key={it.id}
                                 style={{
                                   display: 'grid', gridTemplateColumns: '14px 1fr 16px',
                                   alignItems: 'center', gap: 6, padding: '3px 0',
@@ -673,23 +944,32 @@ export default function TemplatesEditor({
                                 }}
                               >
                                 <span style={{ color: 'var(--ink-muted)', fontSize: 11, cursor: 'grab' }}>⋮⋮</span>
-                                <input className="inline-edit" defaultValue={it} />
+                                <input
+                                  className="inline-edit"
+                                  defaultValue={it.text}
+                                  placeholder="Checklist item"
+                                  onBlur={(e) => renameItem(i, it.id, e.currentTarget.value)}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = it.text; e.currentTarget.blur(); } }}
+                                />
                                 <button
                                   title="Delete item"
-                                  onClick={(e) => e.stopPropagation()}
+                                  onClick={(e) => { e.stopPropagation(); deleteItem(i, it.id); }}
                                   onMouseEnter={(e) => { e.currentTarget.style.color = '#cf6f6f'; }}
                                   onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--ink-quiet)'; }}
                                   style={{ background: 'transparent', border: 0, color: 'var(--ink-quiet)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0, width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit' }}
                                 >×</button>
                               </div>
                             ))}
-                            <button style={{
-                              width: '100%', padding: '6px 10px', marginTop: 6,
-                              border: '1px dashed var(--rule-strong)', background: 'transparent',
-                              color: 'var(--ink-muted)', borderRadius: 2, fontSize: 11.5,
-                              cursor: 'pointer', fontFamily: 'inherit',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                            }}>
+                            <button
+                              onClick={() => addItem(i)}
+                              style={{
+                                width: '100%', padding: '6px 10px', marginTop: 6,
+                                border: '1px dashed var(--rule-strong)', background: 'transparent',
+                                color: 'var(--ink-muted)', borderRadius: 2, fontSize: 11.5,
+                                cursor: 'pointer', fontFamily: 'inherit',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                              }}
+                            >
                               <span style={{ fontSize: 13 }}>+</span> Add Checklist Item
                             </button>
                           </div>
@@ -711,7 +991,7 @@ export default function TemplatesEditor({
                 <div style={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
                   <p className="micro" style={{ margin: 0 }}>Entities <span className="mono" style={{ fontSize: 10, color: 'var(--ink-quiet)', letterSpacing: 0, fontWeight: 500, marginLeft: 4 }}>{tpl ? tpl.roster.length : 0}</span></p>
                 </div>
-                <button className="btn-ink" style={{ padding: '4px 8px', fontSize: 11, gap: 4, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap', flex: 'none' }}>
+                <button onClick={addEntity} disabled={!tpl} className="btn-ink" style={{ padding: '4px 8px', fontSize: 11, gap: 4, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap', flex: 'none', opacity: tpl ? 1 : 0.5, cursor: tpl ? 'pointer' : 'not-allowed' }}>
                   <Icon name="plus" size={11} />New Entity
                 </button>
               </div>
@@ -728,11 +1008,11 @@ export default function TemplatesEditor({
                   const baseBtn = { background: 'transparent', border: '1px solid var(--rule-strong)', borderRadius: 2, padding: '1px 5px', fontSize: 10, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', height: 18, lineHeight: 1, boxSizing: 'border-box', flex: 'none' };
                   return (
                     <>
-                      <button onClick={() => setSelEntities(allSel ? new Set() : new Set(tpl.roster.map((r) => r.role)))} style={{ ...baseBtn, color: 'var(--ink-soft)' }}>{allSel ? 'None' : 'All'}</button>
-                      <button disabled={!c} style={{ ...baseBtn, color: c ? 'var(--ink-soft)' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed' }}>Duplicate</button>
-                      <button disabled={!c} style={{ ...baseBtn, color: c ? 'var(--ink-soft)' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed' }}>Move/Copy</button>
+                      <button onClick={() => setSelEntities(allSel ? new Set() : new Set(tpl.roster.map((r) => r.id)))} style={{ ...baseBtn, color: 'var(--ink-soft)' }}>{allSel ? 'None' : 'All'}</button>
+                      <button disabled={!c} onClick={() => duplicateEntities(selEntities)} style={{ ...baseBtn, color: c ? 'var(--ink-soft)' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed' }}>Duplicate</button>
+                      <button disabled={!c} onClick={() => setMoveModal({ count: c })} style={{ ...baseBtn, color: c ? 'var(--ink-soft)' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed' }}>Move/Copy</button>
                       <button disabled={!c} style={{ ...baseBtn, color: c ? 'var(--ink-soft)' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center' }} title="Share"><Icon name="share" size={10} /></button>
-                      <button disabled={!c} style={{ ...baseBtn, color: c ? '#cf6f6f' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center' }} title="Delete"><Icon name="trash" size={10} /></button>
+                      <button disabled={!c} onClick={() => deleteEntities(selEntities)} style={{ ...baseBtn, color: c ? '#cf6f6f' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center' }} title="Delete"><Icon name="trash" size={10} /></button>
                     </>
                   );
                 })()}
@@ -743,10 +1023,11 @@ export default function TemplatesEditor({
                   <div className="meta" style={{ fontSize: 11.5, padding: '12px 2px' }}>No entities on this template yet.</div>
                 )}
                 {tpl && tpl.roster.map((r) => {
-                  const c = roleColors[r.role]?.color || r.color || '#8c8c8a';
-                  const op = roleColors[r.role]?.opacity ?? 0.35;
+                  const c = roleColors[r.id]?.color || r.color || '#8c8c8a';
+                  const op = roleColors[r.id]?.opacity ?? 0.35;
                   const alpha = Math.round(op * 255).toString(16).padStart(2, '0');
-                  const isOpen = openColor === r.role;
+                  const isOpen = openColor === r.id;
+                  const isSel = selEntities.has(r.id);
                   return (
                     <div key={r.id}>
                       <div className="card-line" style={{
@@ -756,7 +1037,7 @@ export default function TemplatesEditor({
                       }}>
                         <span style={{ color: 'var(--ink-muted)', fontSize: 12, cursor: 'grab', userSelect: 'none', lineHeight: 1 }}>⋮⋮</span>
                         <button
-                          onClick={() => setOpenColor(isOpen ? null : r.role)}
+                          onClick={() => setOpenColor(isOpen ? null : r.id)}
                           title="Edit color"
                           style={{
                             width: 18, height: 18, borderRadius: '50%',
@@ -767,62 +1048,59 @@ export default function TemplatesEditor({
                         <input
                           className="inline-edit cat-title"
                           defaultValue={r.role}
+                          key={r.id + ':' + r.role}
                           onDoubleClick={(e) => e.currentTarget.select()}
+                          onBlur={(e) => renameEntity(r.id, e.currentTarget.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = r.role; e.currentTarget.blur(); } }}
                           style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.2 }}
                         />
                         {!isOpen && (
                           entityEdit ? (
                             <span
-                              onClick={(e) => { e.stopPropagation(); toggleEntitySel(r.role); }}
-                              style={{ width: 14, height: 14, border: `1.4px solid ${selEntities.has(r.role) ? 'var(--accent)' : 'var(--rule-strong)'}`, background: selEntities.has(r.role) ? 'var(--accent)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', justifySelf: 'center' }}
+                              onClick={(e) => { e.stopPropagation(); toggleEntitySel(r.id); }}
+                              style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--accent)' : 'var(--rule-strong)'}`, background: isSel ? 'var(--accent)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', justifySelf: 'center' }}
                             >
-                              {selEntities.has(r.role) && <span style={{ color: 'var(--paper)', fontSize: 10, lineHeight: 1 }}>✓</span>}
+                              {isSel && <span style={{ color: 'var(--paper)', fontSize: 10, lineHeight: 1 }}>✓</span>}
                             </span>
                           ) : (
-                            <div style={{ position: 'relative' }}>
-                              <button
-                                title="More"
-                                onClick={(e) => { e.stopPropagation(); setEntityMenu(entityMenu === r.role ? null : r.role); }}
-                                style={{ background: 'transparent', border: 0, color: 'var(--ink-muted)', cursor: 'pointer', fontSize: 14, padding: '2px 4px', lineHeight: 1, fontFamily: 'inherit', borderRadius: 4 }}
-                              >⋯</button>
-                              {entityMenu === r.role && (
-                                <div onMouseLeave={() => setEntityMenu(null)} style={{
-                                  position: 'absolute', right: 0, top: 22, zIndex: 20,
-                                  background: 'var(--paper-card)', border: '1px solid var(--rule-strong)', borderRadius: 8,
-                                  padding: 4, minWidth: 140, boxShadow: '0 12px 30px rgba(0,0,0,0.45)',
-                                }}>
-                                  {['Duplicate', 'Move/Copy', 'Share', 'Rename', 'Delete'].map((label) => (
-                                    <button key={label} onClick={(e) => { e.stopPropagation(); setEntityMenu(null); }} style={{
-                                      display: 'block', width: '100%', textAlign: 'left',
-                                      background: 'transparent', border: 0, color: label === 'Delete' ? '#cf6f6f' : 'var(--ink-soft)',
-                                      padding: '7px 10px', fontSize: 12, borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit',
-                                    }}>{label}</button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
+                            <button
+                              title="More"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                setEntityMenu((m) => (m && m.id === r.id ? null : { id: r.id, rect }));
+                              }}
+                              style={{ background: 'transparent', border: 0, color: 'var(--ink-muted)', cursor: 'pointer', fontSize: 14, padding: '2px 4px', lineHeight: 1, fontFamily: 'inherit', borderRadius: 4 }}
+                            >⋯</button>
                           )
                         )}
                       </div>
                       {isOpen && (() => {
-                        const tab = colorTab[r.role] || 'presets';
-                        const layer = layerTab[r.role] || 'fill';
-                        const match = !!matchFill[r.role];
+                        const tab = colorTab[r.id] || 'presets';
+                        const layer = layerTab[r.id] || 'fill';
+                        const match = !!matchFill[r.id];
                         const fillData = { color: c, opacity: op };
-                        const borderData = borderColors[r.role] || { color: c, opacity: op };
+                        const borderData = borderColors[r.id] || { color: c, opacity: op };
                         const isBorderMatched = layer === 'border' && match;
                         const activeData = isBorderMatched ? fillData : (layer === 'border' ? borderData : fillData);
                         const activeColor = activeData.color;
                         const activeOp = activeData.opacity;
+                        /* Picker writes both into the editor's local picker state
+                           AND, for fill, straight into the entity's working data
+                           so the left-rail swatch updates live. */
                         const setColor = (color) => {
                           if (isBorderMatched) return;
-                          if (layer === 'border') setBorderColors({ ...borderColors, [r.role]: { color, opacity: borderData.opacity } });
-                          else setRoleColors({ ...roleColors, [r.role]: { color, opacity: op } });
+                          if (layer === 'border') {
+                            setBorderColors({ ...borderColors, [r.id]: { color, opacity: borderData.opacity } });
+                          } else {
+                            setRoleColors({ ...roleColors, [r.id]: { color, opacity: op } });
+                            setEntityColor(r.id, color);
+                          }
                         };
                         const setOpacity = (opacity) => {
                           if (isBorderMatched) return;
-                          if (layer === 'border') setBorderColors({ ...borderColors, [r.role]: { color: borderData.color, opacity } });
-                          else setRoleColors({ ...roleColors, [r.role]: { color: c, opacity } });
+                          if (layer === 'border') setBorderColors({ ...borderColors, [r.id]: { color: borderData.color, opacity } });
+                          else setRoleColors({ ...roleColors, [r.id]: { color: c, opacity } });
                         };
                         return (
                           <div style={{
@@ -836,7 +1114,7 @@ export default function TemplatesEditor({
                               {[['fill', 'Fill'], ['border', 'Border']].map(([k, label], i) => (
                                 <button
                                   key={k}
-                                  onClick={() => setLayerTab({ ...layerTab, [r.role]: k })}
+                                  onClick={() => setLayerTab({ ...layerTab, [r.id]: k })}
                                   style={{
                                     position: 'relative', padding: '7px 0', fontSize: 11,
                                     background: layer === k ? 'rgba(20,30,43,0.65)' : 'rgba(12,18,27,0.35)',
@@ -856,7 +1134,7 @@ export default function TemplatesEditor({
                                 <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink)', textTransform: 'capitalize' }}>{tab}</span>
                                 <div style={{ display: 'flex', gap: 4 }}>
                                   <button
-                                    onClick={() => setColorTab({ ...colorTab, [r.role]: 'presets' })}
+                                    onClick={() => setColorTab({ ...colorTab, [r.id]: 'presets' })}
                                     title="Presets"
                                     style={{
                                       width: 22, height: 22, borderRadius: 4, padding: 0,
@@ -869,7 +1147,7 @@ export default function TemplatesEditor({
                                     <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
                                   </button>
                                   <button
-                                    onClick={() => setColorTab({ ...colorTab, [r.role]: 'custom' })}
+                                    onClick={() => setColorTab({ ...colorTab, [r.id]: 'custom' })}
                                     title="Custom"
                                     style={{
                                       width: 22, height: 22, borderRadius: 4, padding: 0,
@@ -888,7 +1166,7 @@ export default function TemplatesEditor({
                                   <input
                                     type="checkbox"
                                     checked={match}
-                                    onChange={(e) => setMatchFill({ ...matchFill, [r.role]: e.target.checked })}
+                                    onChange={(e) => setMatchFill({ ...matchFill, [r.id]: e.target.checked })}
                                     style={{ width: 13, height: 13, margin: 0, accentColor: 'var(--accent)' }}
                                   />
                                   <span style={{ fontSize: 11, fontWeight: 600, color: match ? 'var(--ink)' : 'var(--ink-soft)' }}>Match Fill</span>
@@ -1024,6 +1302,41 @@ export default function TemplatesEditor({
       </div>
     </HubShell>
 
+    {/* ---------- Per-row "more" menus — portalled, fixed-position ---------- */}
+    {tplMenu && (() => {
+      const t = rich.find((x) => x.id === tplMenu.id);
+      if (!t) return null;
+      return (
+        <MoreMenu
+          anchorRect={tplMenu.rect}
+          onClose={() => setTplMenu(null)}
+          items={[
+            { label: 'Copy', onClick: () => duplicateTemplates(new Set([t.id])) },
+            { label: 'Rename', onClick: () => { setSelected(t.id); setTplEdit(false); } },
+            { label: 'Share', onClick: () => {} },
+            { label: 'Delete', danger: true, onClick: () => deleteTemplates(new Set([t.id])) },
+          ]}
+        />
+      );
+    })()}
+    {entityMenu && tpl && (() => {
+      const ent = tpl.roster.find((x) => x.id === entityMenu.id);
+      if (!ent) return null;
+      return (
+        <MoreMenu
+          anchorRect={entityMenu.rect}
+          onClose={() => setEntityMenu(null)}
+          items={[
+            { label: 'Duplicate', onClick: () => duplicateEntities(new Set([ent.id])) },
+            { label: 'Move/Copy', onClick: () => setMoveModal({ count: 1 }) },
+            { label: 'Share', onClick: () => {} },
+            { label: 'Rename', onClick: () => setOpenColor(null) },
+            { label: 'Delete', danger: true, onClick: () => deleteEntities(new Set([ent.id])) },
+          ]}
+        />
+      );
+    })()}
+
     {/* Edit modules modal */}
     {modEdit && tpl && (() => {
       const mods = orderedMods;
@@ -1051,7 +1364,7 @@ export default function TemplatesEditor({
               {mods.map((mod, mi) => {
                 const isSel = selMods.has(mi);
                 return (
-                  <div key={mod.name + '-' + mi} draggable style={{
+                  <div key={mod.id} draggable style={{
                     display: 'grid', gridTemplateColumns: '14px 14px 1fr auto', gap: 10,
                     alignItems: 'center', padding: '7px 8px', borderRadius: 6,
                     background: isSel ? '#181c24' : '#12151c',
@@ -1063,24 +1376,27 @@ export default function TemplatesEditor({
                     </span>
                     <input
                       defaultValue={mod.name}
+                      key={mod.id + ':' + mod.name}
+                      onBlur={(e) => renameModule(mi, e.currentTarget.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = mod.name; e.currentTarget.blur(); } }}
                       style={{ background: 'transparent', border: 0, borderBottom: '1px solid transparent', color: '#f4f1ea', font: 'inherit', fontSize: 12.5, fontWeight: 500, padding: '4px 0', width: '100%', outline: 'none' }}
                     />
-                    <span style={{ fontSize: 10, color: '#5a6473', fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}>{categoriesOf(mod).length}</span>
+                    <span style={{ fontSize: 10, color: '#5a6473', fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}>{(mod.categories || []).length}</span>
                   </div>
                 );
               })}
             </div>
             <div style={{ padding: '0 10px 8px', flex: 'none' }}>
-              <button style={{ width: '100%', padding: '6px 10px', border: '1px dashed #3a4252', background: 'transparent', color: '#8d96a6', borderRadius: 2, fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+              <button onClick={addModule} style={{ width: '100%', padding: '6px 10px', border: '1px dashed #3a4252', background: 'transparent', color: '#8d96a6', borderRadius: 2, fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                 <span style={{ fontSize: 13 }}>+</span> New Module
               </button>
             </div>
             <div style={{ padding: '10px 12px', borderTop: '1px solid #2a3140', background: '#12151c', display: 'flex', gap: 6, alignItems: 'center', flex: 'none' }}>
               <button onClick={() => { const allSel = selMods.size === mods.length; setSelMods(allSel ? new Set() : new Set(mods.map((_, i) => i))); }} style={{ background: 'transparent', border: '1px solid #3a4252', color: '#e8e2d4', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>{selMods.size === mods.length && mods.length > 0 ? 'None' : 'All'}</button>
-              <button disabled={!selCount} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#e8e2d4' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Duplicate</button>
-              <button disabled={!selCount} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#e8e2d4' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Move/Copy</button>
+              <button onClick={() => duplicateModules(selMods)} disabled={!selCount} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#e8e2d4' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Duplicate</button>
+              <button onClick={() => { if (selCount) setMoveModal({ count: selCount }); }} disabled={!selCount} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#e8e2d4' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Move/Copy</button>
               <button disabled={!selCount} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#e8e2d4' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }} title="Share"><Icon name="share" size={12} /></button>
-              <button disabled={!selCount} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#cf6f6f' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }} title="Delete"><Icon name="trash" size={12} /></button>
+              <button onClick={() => deleteModules(selMods)} disabled={!selCount} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#cf6f6f' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }} title="Delete"><Icon name="trash" size={12} /></button>
               <span style={{ flex: 1 }} />
               <button onClick={() => setModEdit(false)} style={{ background: '#d8a84e', border: '1px solid #d8a84e', color: '#15110a', borderRadius: 4, padding: '5px 16px', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Done</button>
             </div>
@@ -1109,11 +1425,11 @@ export default function TemplatesEditor({
           <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
             <label style={{ fontSize: 12, color: '#8d96a6' }}>Destination template</label>
             <select style={{ background: 'transparent', border: 0, borderBottom: '1px solid #3a4252', color: '#f4f1ea', font: 'inherit', fontSize: 13, padding: '6px 0', outline: 'none' }}>
-              {RICH.map((t) => <option key={t.id} value={t.id} style={{ background: '#181c24' }}>{t.name}</option>)}
+              {rich.map((t) => <option key={t.id} value={t.id} style={{ background: '#181c24' }}>{t.name}</option>)}
             </select>
             <label style={{ fontSize: 12, color: '#8d96a6', marginTop: 6 }}>Destination category</label>
             <select style={{ background: 'transparent', border: 0, borderBottom: '1px solid #3a4252', color: '#f4f1ea', font: 'inherit', fontSize: 13, padding: '6px 0', outline: 'none' }}>
-              {visibleCats.map((c, i) => <option key={(c.id ?? c.name) + '-' + i} style={{ background: '#181c24' }}>{c.name}</option>)}
+              {visibleCats.map((c) => <option key={c.id} style={{ background: '#181c24' }}>{c.name}</option>)}
             </select>
           </div>
           <div style={{ padding: '12px 14px', borderTop: '1px solid #2a3140', background: '#12151c', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>

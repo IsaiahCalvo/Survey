@@ -11,9 +11,33 @@
    and each document carries owner:memberId — so the left avatar stacks, the
    roster panel and the "Last edited by" column render the true prototype
    behavior. All fall back gracefully when member data is absent.
+
+   Interaction model: every button and menu is wired to LOCAL React state —
+   there is no backend. New Project / Duplicate / Delete mutate a local copy
+   of the project list; file menu actions (Copy/Paste/Share/Details), Add
+   files, select-mode toolbars and drag-reorder all visibly change state.
+   The per-project "more" menu and the file-row "more" menu are rendered as
+   fixed-position popups via createPortal to document.body, anchored to the
+   trigger button's bounding rect — so no parent's overflow:hidden/auto can
+   clip them or force a scrollbar. Because the portal renders OUTSIDE the
+   `.survey-hub` root, those popups use literal hex colors, not CSS vars.
 */
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { HubShell, Icon, Avatar, AvatarStack, Search } from './HubShell';
+import ManageTeamModal from './ManageTeamModal';
+
+/* Literal palette — used by the portal popups, which render outside the
+   `.survey-hub` root and therefore cannot inherit its CSS variables. */
+const HEX = {
+  card: '#181c24',   // --ink-700  popup surface
+  deep: '#12151c',   // --ink-800
+  rule: '#2a3140',   // --ink-500  borders
+  ink: '#f4f1ea',    // --bone-100 primary text
+  muted: '#8d96a6',  // --ink-200  secondary text
+  gold: '#d8a84e',   // --gold     accent
+  danger: '#cf6f6f', // destructive action
+};
 
 const editedMs = (d) => Date.parse(d?.updated_at || d?.created_at || 0) || 0;
 const shortWhen = (d) => {
@@ -25,6 +49,79 @@ const shortWhen = (d) => {
   if (days < 30) return days + 'd ago';
   return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
+
+let LOCAL_ID = 1;
+const nextLocalId = () => `local-${Date.now()}-${LOCAL_ID++}`;
+
+/* Fixed-position popup menu, portalled to <body>.
+   Anchored to `anchorRect` (a getBoundingClientRect() snapshot of the trigger
+   button) so it floats cleanly over the page — immune to any ancestor's
+   overflow clipping. `align` decides which corner of the anchor it hangs from. */
+function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160 }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const onDocDown = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    // Defer attach so the click that opened the menu doesn't immediately close it.
+    const t = setTimeout(() => {
+      document.addEventListener('mousedown', onDocDown, true);
+      document.addEventListener('keydown', onKey, true);
+    }, 0);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener('mousedown', onDocDown, true);
+      document.removeEventListener('keydown', onKey, true);
+    };
+  }, [onClose]);
+
+  if (!anchorRect) return null;
+
+  // Hang below the trigger; flip up if it would run off the bottom.
+  const estHeight = items.length * 34 + 8;
+  let top = anchorRect.bottom + 4;
+  if (top + estHeight > window.innerHeight - 8) {
+    top = Math.max(8, anchorRect.top - estHeight - 4);
+  }
+  let left = align === 'right'
+    ? anchorRect.right - minWidth
+    : anchorRect.left;
+  left = Math.max(8, Math.min(left, window.innerWidth - minWidth - 8));
+
+  return createPortal(
+    <div
+      ref={ref}
+      role="menu"
+      style={{
+        position: 'fixed', top, left, zIndex: 4000,
+        background: HEX.card, border: `1px solid ${HEX.rule}`, borderRadius: 8,
+        padding: 4, minWidth, boxShadow: '0 12px 30px rgba(0,0,0,0.45)',
+      }}
+    >
+      {items.map((it) => (
+        <button
+          key={it.label}
+          role="menuitem"
+          disabled={it.disabled}
+          onClick={() => { if (it.disabled) return; onClose(); it.onClick && it.onClick(); }}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left',
+            background: 'transparent', border: 0,
+            color: it.disabled ? HEX.muted : (it.danger ? HEX.danger : HEX.ink),
+            padding: '7px 10px', fontSize: 12, borderRadius: 4,
+            cursor: it.disabled ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+          }}
+          onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = HEX.rule; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+        >
+          {it.icon && <Icon name={it.icon} size={12} color={it.danger ? HEX.danger : HEX.muted} />}
+          {it.label}
+        </button>
+      ))}
+    </div>,
+    document.body,
+  );
+}
 
 export default function ProjectsFolderTree({
   projects = [],
@@ -38,13 +135,41 @@ export default function ProjectsFolderTree({
   onShare,
 }) {
   const [search, setSearch] = useState('');
+
+  // Local, mutable copy of the project list. Seeded from the `projects` prop
+  // and re-synced when the prop changes; New Project / Duplicate / Delete /
+  // rename / reorder all mutate THIS list so the UI visibly responds with no
+  // backend. `localProjects` is the single source of truth for rendering.
+  const [localProjects, setLocalProjects] = useState(projects);
+  useEffect(() => { setLocalProjects(projects); }, [projects]);
+
+  // Local, mutable copy of documents — Add files / file duplicate / file
+  // delete / file reorder mutate this so file rows visibly change.
+  const [localDocs, setLocalDocs] = useState(documents);
+  useEffect(() => { setLocalDocs(documents); }, [documents]);
+
   const [openId, setOpenId] = useState(projects[0]?.id ?? null);
-  const [menuFor, setMenuFor] = useState(null);
-  const [teamMenu, setTeamMenu] = useState(null);
   const [jobsEdit, setJobsEdit] = useState(false);
   const [selProj, setSelProj] = useState(() => new Set());
   const [fileSelect, setFileSelect] = useState(false);
   const [selFiles, setSelFiles] = useState(() => new Set());
+
+  // Pasteboard for the file-row Copy/Paste menu — Copy stows a document here,
+  // Paste clones it into the open project.
+  const [clipboard, setClipboard] = useState(null);
+
+  // Open-menu state: each holds { id, rect } so the portalled PopupMenu knows
+  // what to anchor to. `null` when closed.
+  const [teamMenu, setTeamMenu] = useState(null); // { id, rect }
+  const [fileMenu, setFileMenu] = useState(null); // { idx, rect }
+
+  // Manage Team modal — controlled entirely by local state. Opened by the
+  // header "Manage Team" button and the team-menu's member/team items.
+  const [teamModalProject, setTeamModalProject] = useState(null);
+
+  // Drag-reorder bookkeeping (index of the row currently being dragged).
+  const dragProjIdx = useRef(null);
+  const dragFileIdx = useRef(null);
 
   const toggleFileSel = (i) => setSelFiles((prev) => {
     const n = new Set(prev);
@@ -60,16 +185,18 @@ export default function ProjectsFolderTree({
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return projects.filter((p) => !q || (p.name || '').toLowerCase().includes(q));
-  }, [projects, search]);
+    return localProjects.filter((p) => !q || (p.name || '').toLowerCase().includes(q));
+  }, [localProjects, search]);
 
   useEffect(() => {
     if (filtered.length && !filtered.some((p) => p.id === openId)) setOpenId(filtered[0].id);
   }, [filtered, openId]);
 
   const open = filtered.find((p) => p.id === openId) || filtered[0] || null;
-  const filesFor = (projId) => documents.filter((d) => d.project_id === projId);
-  const openFiles = open ? filesFor(open.id) : [];
+  const openFiles = useMemo(
+    () => (open ? localDocs.filter((d) => d.project_id === open.id) : []),
+    [localDocs, open],
+  );
 
   // Member directory lookup — resolves a memberId to its { name, role, color,
   // online } record so avatars/roster render the prototype's true behavior.
@@ -79,6 +206,123 @@ export default function ProjectsFolderTree({
     return map;
   }, [members]);
   const lookupMember = (id) => memberById.get(id) || null;
+
+  /* ---- Project-list mutations (local state) ---------------------------- */
+
+  const handleNewProject = useCallback(() => {
+    // Defer to the host flow if provided, otherwise create a local project so
+    // the button is never a dead no-op.
+    if (onCreateProject) { onCreateProject(); return; }
+    const id = nextLocalId();
+    const proj = {
+      id, name: `Untitled Project ${localProjects.length + 1}`,
+      members: user?.id != null ? [user.id] : [],
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    setLocalProjects((prev) => [proj, ...prev]);
+    setOpenId(id);
+  }, [onCreateProject, localProjects.length, user]);
+
+  const duplicateProjects = useCallback((ids) => {
+    setLocalProjects((prev) => {
+      const out = [...prev];
+      ids.forEach((id) => {
+        const src = prev.find((p) => p.id === id);
+        if (!src) return;
+        out.push({ ...src, id: nextLocalId(), name: `${src.name} (copy)`, updated_at: new Date().toISOString() });
+      });
+      return out;
+    });
+  }, []);
+
+  const deleteProjects = useCallback((ids) => {
+    const set = new Set(ids);
+    setLocalProjects((prev) => prev.filter((p) => !set.has(p.id)));
+    setLocalDocs((prev) => prev.filter((d) => !set.has(d.project_id)));
+    setSelProj(new Set());
+  }, []);
+
+  const renameProject = useCallback((id, name) => {
+    setLocalProjects((prev) => prev.map((p) => (
+      p.id === id ? { ...p, name, updated_at: new Date().toISOString() } : p
+    )));
+  }, []);
+
+  const reorderProjects = useCallback((from, to) => {
+    if (from == null || to == null || from === to) return;
+    setLocalProjects((prev) => {
+      // `filtered` may be a search subset — reorder by the actual project ids.
+      const fromId = filtered[from]?.id;
+      const toId = filtered[to]?.id;
+      if (fromId == null || toId == null) return prev;
+      const out = [...prev];
+      const fi = out.findIndex((p) => p.id === fromId);
+      const ti = out.findIndex((p) => p.id === toId);
+      if (fi < 0 || ti < 0) return prev;
+      const [moved] = out.splice(fi, 1);
+      out.splice(ti, 0, moved);
+      return out;
+    });
+  }, [filtered]);
+
+  /* ---- Document mutations (local state) -------------------------------- */
+
+  const addFiles = useCallback(() => {
+    if (!open) return;
+    const id = nextLocalId();
+    setLocalDocs((prev) => [
+      ...prev,
+      {
+        id, project_id: open.id,
+        name: `New Document ${openFiles.length + 1}.pdf`,
+        owner: user?.id ?? (open.members?.[0] ?? null),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    ]);
+  }, [open, openFiles.length, user]);
+
+  const duplicateFiles = useCallback((indices) => {
+    if (!open) return;
+    const clones = indices
+      .map((i) => openFiles[i])
+      .filter(Boolean)
+      .map((f) => ({ ...f, id: nextLocalId(), name: `${f.name} (copy)`, updated_at: new Date().toISOString() }));
+    if (clones.length) setLocalDocs((prev) => [...prev, ...clones]);
+  }, [open, openFiles]);
+
+  const deleteFiles = useCallback((indices) => {
+    const ids = new Set(indices.map((i) => openFiles[i]?.id).filter((x) => x != null));
+    setLocalDocs((prev) => prev.filter((d) => !ids.has(d.id)));
+    setSelFiles(new Set());
+  }, [openFiles]);
+
+  const reorderFiles = useCallback((from, to) => {
+    if (from == null || to == null || from === to || !open) return;
+    setLocalDocs((prev) => {
+      // Split docs into this project's slice (in display order) and the rest,
+      // reorder the slice, then stitch back together.
+      const slice = [];
+      const rest = [];
+      prev.forEach((d) => { (d.project_id === open.id ? slice : rest).push(d); });
+      if (from >= slice.length || to >= slice.length) return prev;
+      const [moved] = slice.splice(from, 1);
+      slice.splice(to, 0, moved);
+      return [...rest, ...slice];
+    });
+  }, [open]);
+
+  const copyFile = useCallback((f) => { if (f) setClipboard(f); }, []);
+  const pasteFile = useCallback(() => {
+    if (!clipboard || !open) return;
+    setLocalDocs((prev) => [
+      ...prev,
+      { ...clipboard, id: nextLocalId(), project_id: open.id, name: `${clipboard.name} (copy)`, updated_at: new Date().toISOString() },
+    ]);
+  }, [clipboard, open]);
+
+  /* ---- Render ---------------------------------------------------------- */
 
   const subtitle = (
     <span><b>{filtered.length}</b> projects · expand any to see its files and roster</span>
@@ -102,7 +346,7 @@ export default function ProjectsFolderTree({
             <button
               className="btn primary"
               style={{ padding: '4px 8px', fontSize: 11, gap: 4, whiteSpace: 'nowrap', alignSelf: 'flex-start' }}
-              onClick={() => onCreateProject && onCreateProject()}
+              onClick={handleNewProject}
             >
               <Icon name="plus" size={11} />New Project
             </button>
@@ -124,14 +368,26 @@ export default function ProjectsFolderTree({
                       >{allSel ? 'None' : 'All'}</button>
                     );
                   })()}
-                  <button disabled={!selCount} style={{ background: 'transparent', border: '1px solid var(--ink-500)', color: selCount ? 'var(--bone-100)' : 'var(--ink-300)', borderRadius: 2, padding: '2px 5px', fontSize: 10, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Duplicate</button>
+                  {/* Duplicate — clones each selected project into the local list. */}
+                  <button
+                    disabled={!selCount}
+                    onClick={() => { duplicateProjects([...selProj]); setSelProj(new Set()); }}
+                    style={{ background: 'transparent', border: '1px solid var(--ink-500)', color: selCount ? 'var(--bone-100)' : 'var(--ink-300)', borderRadius: 2, padding: '2px 5px', fontSize: 10, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                  >Duplicate</button>
+                  {/* Share — opens the share flow for the first selected project. */}
                   <button
                     disabled={!selCount}
                     onClick={() => { const first = filtered.find((p) => selProj.has(p.id)); if (first) onShare && onShare(first); }}
                     style={{ background: 'transparent', border: '1px solid var(--ink-500)', color: selCount ? 'var(--bone-100)' : 'var(--ink-300)', borderRadius: 2, padding: '2px 5px', fontSize: 10, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }}
                     title="Share"
                   ><Icon name="share" size={11} /></button>
-                  <button disabled={!selCount} style={{ background: 'transparent', border: '1px solid var(--ink-500)', color: selCount ? '#cf6f6f' : 'var(--ink-300)', borderRadius: 2, padding: '2px 5px', fontSize: 10, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }} title="Delete"><Icon name="trash" size={11} /></button>
+                  {/* Delete — removes each selected project (and its files) locally. */}
+                  <button
+                    disabled={!selCount}
+                    onClick={() => deleteProjects([...selProj])}
+                    style={{ background: 'transparent', border: '1px solid var(--ink-500)', color: selCount ? '#cf6f6f' : 'var(--ink-300)', borderRadius: 2, padding: '2px 5px', fontSize: 10, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }}
+                    title="Delete"
+                  ><Icon name="trash" size={11} /></button>
                 </>
               )}
             </div>
@@ -139,15 +395,27 @@ export default function ProjectsFolderTree({
           <div className="slim-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 2, overflow: 'auto', paddingRight: 4 }}>
             {filtered.length === 0 && (
               <div className="meta" style={{ fontSize: 11.5, padding: '14px 8px' }}>
-                {projects.length === 0 ? 'No projects yet — create one to group your documents.' : 'No projects match your search.'}
+                {localProjects.length === 0 ? 'No projects yet — create one to group your documents.' : 'No projects match your search.'}
               </div>
             )}
-            {filtered.map((p) => {
+            {filtered.map((p, idx) => {
               const isOpen = open && p.id === open.id;
               const isSel = selProj.has(p.id);
               const projMembers = Array.isArray(p.members) ? p.members : [];
               return (
-                <div key={p.id} style={{ position: 'relative' }} draggable={jobsEdit}>
+                <div
+                  key={p.id}
+                  style={{ position: 'relative' }}
+                  draggable={jobsEdit}
+                  onDragStart={() => { if (jobsEdit) dragProjIdx.current = idx; }}
+                  onDragOver={(e) => { if (jobsEdit) e.preventDefault(); }}
+                  onDrop={(e) => {
+                    if (!jobsEdit) return;
+                    e.preventDefault();
+                    reorderProjects(dragProjIdx.current, idx);
+                    dragProjIdx.current = null;
+                  }}
+                >
                   <div
                     onClick={() => { if (jobsEdit) toggleProjSel(p.id); else setOpenId(p.id); }}
                     style={{
@@ -161,8 +429,8 @@ export default function ProjectsFolderTree({
                       height: 50, boxSizing: 'border-box',
                     }}
                   >
-                    {/* Drag handle — drag-to-reorder is a visual affordance only;
-                        the prototype shows it in both modes. */}
+                    {/* Drag handle — in Select mode this row is draggable to
+                        reorder; outside Select mode it's a static affordance. */}
                     {jobsEdit ? (
                       <span title="Drag to reorder" style={{ color: 'var(--ink-200)', fontSize: 11, cursor: 'grab', userSelect: 'none', lineHeight: 1, textAlign: 'center' }}>⋮⋮</span>
                     ) : (
@@ -186,49 +454,19 @@ export default function ProjectsFolderTree({
                       </span>
                     ) : (
                       <button
-                        onClick={(e) => { e.stopPropagation(); setTeamMenu(teamMenu === p.id ? null : p.id); }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          // Toggle the portalled popup; snapshot the trigger's
+                          // rect so the menu anchors to it.
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          setFileMenu(null);
+                          setTeamMenu((cur) => (cur && cur.id === p.id ? null : { id: p.id, rect }));
+                        }}
                         style={{ background: 'transparent', border: 0, color: 'var(--ink-200)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '2px 4px', borderRadius: 4 }}
                         title="More"
                       >⋯</button>
                     )}
                   </div>
-                  {teamMenu === p.id && (
-                    <div
-                      onMouseLeave={() => setTeamMenu(null)}
-                      style={{
-                        position: 'absolute', right: 4, top: 32, zIndex: 20,
-                        background: 'var(--ink-700)', border: '1px solid var(--ink-500)', borderRadius: 8,
-                        padding: 4, minWidth: 170, boxShadow: '0 12px 30px rgba(0,0,0,0.45)',
-                      }}
-                    >
-                      {[
-                        ['users', 'Add member'],
-                        ['arrow-r', 'Get link to team'],
-                        ['upload', 'Upload files'],
-                        ['pin', 'Pin team'],
-                        ['more', 'Manage team'],
-                      ].map(([ic, label]) => (
-                        <button
-                          key={label}
-                          onClick={() => {
-                            setTeamMenu(null);
-                            // Member/team actions route to the share flow — the
-                            // only project-team surface the app exposes today.
-                            if (label === 'Add member' || label === 'Manage team' || label === 'Get link to team') {
-                              onShare && onShare(p);
-                            }
-                          }}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left',
-                            background: 'transparent', border: 0, color: 'var(--bone-100)',
-                            padding: '7px 10px', fontSize: 12, borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit',
-                          }}
-                        >
-                          <Icon name={ic} size={12} color="var(--ink-200)" />{label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
                 </div>
               );
             })}
@@ -242,8 +480,8 @@ export default function ProjectsFolderTree({
               <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--ink-500)', display: 'flex', alignItems: 'center', gap: 14 }}>
                 <span style={{ width: 4, height: 36, background: 'var(--gold)', borderRadius: 2, flex: 'none' }}></span>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  {/* Inline rename field — renaming is not wired to a backend
-                      action yet, so this is a visual affordance only. */}
+                  {/* Inline rename field — commits the new name to local state
+                      on blur / Enter so the tree and header stay in sync. */}
                   <input
                     key={open.id}
                     defaultValue={open.name}
@@ -258,12 +496,21 @@ export default function ProjectsFolderTree({
                     onMouseEnter={(e) => { e.currentTarget.style.borderBottomColor = 'var(--ink-500)'; }}
                     onMouseLeave={(e) => { if (document.activeElement !== e.currentTarget) e.currentTarget.style.borderBottomColor = 'transparent'; }}
                     onFocus={(e) => { e.currentTarget.style.borderBottom = '1px solid var(--gold)'; }}
-                    onBlur={(e) => { e.currentTarget.style.borderBottom = '1px dashed transparent'; }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderBottom = '1px dashed transparent';
+                      const name = e.currentTarget.value.trim();
+                      if (name && name !== open.name) renameProject(open.id, name);
+                      else e.currentTarget.value = open.name;
+                    }}
                   />
                 </div>
                 <div style={{ display: 'flex', gap: 8, flex: 'none' }}>
-                  <button className="btn"><Icon name="upload" size={12} />Add files</button>
-                  <button className="btn" onClick={() => onShare && onShare(open)}><Icon name="users" size={12} />Manage Team</button>
+                  {/* Add files — appends a new local document to this project. */}
+                  <button className="btn" onClick={addFiles}><Icon name="upload" size={12} />Add files</button>
+                  {/* Manage Team — opens the Manage Team modal (NOT the share
+                      link modal) for the currently open project. */}
+                  <button className="btn" onClick={() => setTeamModalProject(open)}><Icon name="users" size={12} />Manage Team</button>
                 </div>
               </div>
 
@@ -283,10 +530,37 @@ export default function ProjectsFolderTree({
                               onClick={() => setSelFiles(allSel ? new Set() : new Set(openFiles.map((_, i) => i)))}
                               style={{ ...baseBtn, color: 'var(--bone-100)' }}
                             >{allSel ? 'None' : 'All'}</button>
-                            <button disabled={!c} style={{ ...baseBtn, color: c ? 'var(--bone-100)' : 'var(--ink-300)', cursor: c ? 'pointer' : 'not-allowed' }}>Duplicate</button>
-                            <button disabled={!c} style={{ ...baseBtn, color: c ? 'var(--bone-100)' : 'var(--ink-300)', cursor: c ? 'pointer' : 'not-allowed' }}>Move/Copy</button>
-                            <button disabled={!c} style={{ ...baseBtn, color: c ? 'var(--bone-100)' : 'var(--ink-300)', cursor: c ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center' }} title="Share"><Icon name="share" size={11} /></button>
-                            <button disabled={!c} style={{ ...baseBtn, color: c ? '#cf6f6f' : 'var(--ink-300)', cursor: c ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center' }} title="Delete"><Icon name="trash" size={11} /></button>
+                            {/* Duplicate — clones each selected file in place. */}
+                            <button
+                              disabled={!c}
+                              onClick={() => { duplicateFiles([...selFiles]); setSelFiles(new Set()); }}
+                              style={{ ...baseBtn, color: c ? 'var(--bone-100)' : 'var(--ink-300)', cursor: c ? 'pointer' : 'not-allowed' }}
+                            >Duplicate</button>
+                            {/* Move/Copy — copies the first selected file to the
+                                clipboard so it can be pasted into any project. */}
+                            <button
+                              disabled={!c}
+                              onClick={() => {
+                                const first = [...selFiles].sort((a, b) => a - b)[0];
+                                if (first != null) copyFile(openFiles[first]);
+                                setSelFiles(new Set());
+                              }}
+                              style={{ ...baseBtn, color: c ? 'var(--bone-100)' : 'var(--ink-300)', cursor: c ? 'pointer' : 'not-allowed' }}
+                            >Move/Copy</button>
+                            {/* Share — opens the share flow for this project. */}
+                            <button
+                              disabled={!c}
+                              onClick={() => onShare && onShare(open)}
+                              style={{ ...baseBtn, color: c ? 'var(--bone-100)' : 'var(--ink-300)', cursor: c ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center' }}
+                              title="Share"
+                            ><Icon name="share" size={11} /></button>
+                            {/* Delete — removes each selected file locally. */}
+                            <button
+                              disabled={!c}
+                              onClick={() => deleteFiles([...selFiles])}
+                              style={{ ...baseBtn, color: c ? '#cf6f6f' : 'var(--ink-300)', cursor: c ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center' }}
+                              title="Delete"
+                            ><Icon name="trash" size={11} /></button>
                           </>
                         );
                       })()}
@@ -314,6 +588,14 @@ export default function ProjectsFolderTree({
                           <div
                             key={f.id}
                             draggable={fileSelect}
+                            onDragStart={() => { if (fileSelect) dragFileIdx.current = i; }}
+                            onDragOver={(e) => { if (fileSelect) e.preventDefault(); }}
+                            onDrop={(e) => {
+                              if (!fileSelect) return;
+                              e.preventDefault();
+                              reorderFiles(dragFileIdx.current, i);
+                              dragFileIdx.current = null;
+                            }}
                             onClick={() => { if (fileSelect) { toggleFileSel(i); return; } onOpenDocument && onOpenDocument(f); }}
                             style={{
                               background: fileSelect && isChecked ? 'rgba(216,168,78,0.10)' : (i % 2 ? 'transparent' : 'rgba(255,255,255,0.02)'),
@@ -342,36 +624,17 @@ export default function ProjectsFolderTree({
                               </span>
                             ) : (
                               <button
-                                onClick={(e) => { e.stopPropagation(); setMenuFor(menuFor === i ? null : i); }}
-                                style={{ background: 'transparent', border: 0, color: 'var(--ink-200)', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '2px 6px', borderRadius: 4, position: 'relative' }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  // Toggle the portalled file menu, anchored to
+                                  // this trigger button's rect.
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setTeamMenu(null);
+                                  setFileMenu((cur) => (cur && cur.idx === i ? null : { idx: i, rect }));
+                                }}
+                                style={{ background: 'transparent', border: 0, color: 'var(--ink-200)', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '2px 6px', borderRadius: 4 }}
                                 title="More"
                               >⋯</button>
-                            )}
-                            {!fileSelect && menuFor === i && (
-                              <div
-                                onMouseLeave={() => setMenuFor(null)}
-                                style={{
-                                  position: 'absolute', right: 18, marginTop: 28,
-                                  background: 'var(--ink-700)', border: '1px solid var(--ink-500)', borderRadius: 8,
-                                  padding: 4, minWidth: 150, boxShadow: '0 12px 30px rgba(0,0,0,0.45)', zIndex: 10,
-                                }}
-                              >
-                                {['Copy', 'Paste', 'Share', 'Details'].map((it) => (
-                                  <button
-                                    key={it}
-                                    onClick={() => {
-                                      setMenuFor(null);
-                                      if (it === 'Share') onShare && onShare(open);
-                                      else if (it === 'Details') onOpenDocument && onOpenDocument(f);
-                                    }}
-                                    style={{
-                                      display: 'block', width: '100%', textAlign: 'left',
-                                      background: 'transparent', border: 0, color: 'var(--bone-100)',
-                                      padding: '7px 10px', fontSize: 12, borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit',
-                                    }}
-                                  >{it}</button>
-                                ))}
-                              </div>
                             )}
                           </div>
                         );
@@ -424,6 +687,55 @@ export default function ProjectsFolderTree({
           )}
         </div>
       </div>
+
+      {/* Per-project "more" menu — portalled to <body>, fixed-positioned from
+          the trigger rect, so no ancestor overflow can clip it. */}
+      {teamMenu && (() => {
+        const proj = filtered.find((p) => p.id === teamMenu.id);
+        if (!proj) return null;
+        return (
+          <PopupMenu
+            anchorRect={teamMenu.rect}
+            onClose={() => setTeamMenu(null)}
+            minWidth={172}
+            items={[
+              { icon: 'users', label: 'Add member', onClick: () => setTeamModalProject(proj) },
+              { icon: 'arrow-r', label: 'Get link to team', onClick: () => onShare && onShare(proj) },
+              { icon: 'upload', label: 'Upload files', onClick: () => { setOpenId(proj.id); addFiles(); } },
+              { icon: 'pin', label: 'Pin team', onClick: () => { setOpenId(proj.id); } },
+              { icon: 'more', label: 'Manage team', onClick: () => setTeamModalProject(proj) },
+            ]}
+          />
+        );
+      })()}
+
+      {/* File-row "more" menu — also portalled + fixed-positioned. */}
+      {fileMenu && (() => {
+        const f = openFiles[fileMenu.idx];
+        if (!f) return null;
+        return (
+          <PopupMenu
+            anchorRect={fileMenu.rect}
+            onClose={() => setFileMenu(null)}
+            minWidth={150}
+            items={[
+              { label: 'Copy', onClick: () => copyFile(f) },
+              { label: 'Paste', disabled: !clipboard, onClick: () => pasteFile() },
+              { label: 'Share', onClick: () => onShare && onShare(open) },
+              { label: 'Details', onClick: () => onOpenDocument && onOpenDocument(f) },
+            ]}
+          />
+        );
+      })()}
+
+      {/* Manage Team modal — open state driven entirely by local React state.
+          This is the team-management surface, distinct from the share modal. */}
+      <ManageTeamModal
+        open={!!teamModalProject}
+        onClose={() => setTeamModalProject(null)}
+        project={teamModalProject}
+        members={members}
+      />
     </HubShell>
   );
 }
