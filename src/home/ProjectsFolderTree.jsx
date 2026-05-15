@@ -40,6 +40,19 @@ const HEX = {
   danger: '#cf6f6f', // destructive action
 };
 
+/* Inline pin icon — HubShell's Icon set has no `pin` glyph, so a small
+   self-contained SVG is used for the "Pin project" menu item and the
+   pinned-row grabber replacement. Stroke inherits the caller's color. */
+const PinIcon = ({ size = 12, color = 'currentColor' }) => (
+  <svg
+    viewBox="0 0 24 24" width={size} height={size}
+    style={{ fill: 'none', stroke: color, strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' }}
+  >
+    <path d="M12 17v5" />
+    <path d="M9 10.76V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v5.76l2 3.24H7z" />
+  </svg>
+);
+
 const editedMs = (d) => Date.parse(d?.updated_at || d?.created_at || 0) || 0;
 const shortWhen = (d) => {
   const ms = editedMs(d);
@@ -115,7 +128,9 @@ function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160
           onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = HEX.rule; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
         >
-          {it.icon && <Icon name={it.icon} size={12} color={it.danger ? HEX.danger : HEX.muted} />}
+          {it.iconNode
+            ? it.iconNode
+            : (it.icon && <Icon name={it.icon} size={12} color={it.danger ? HEX.danger : HEX.muted} />)}
           {it.label}
         </button>
       ))}
@@ -169,9 +184,25 @@ export default function ProjectsFolderTree({
   const [teamMenu, setTeamMenu] = useState(null); // { id, rect }
   const [fileMenu, setFileMenu] = useState(null); // { idx, rect }
 
-  // Manage Team modal — controlled entirely by local state. Opened by the
-  // header "Manage Team" button and the team-menu's member/team items.
+  // Manage Project modal — controlled entirely by local state. Opened by the
+  // header "Manage Team" button and the per-project menu's "Manage project".
   const [teamModalProject, setTeamModalProject] = useState(null);
+
+  // Pinned-project ids. A pinned project sorts to the TOP of the left list
+  // and shows a pin icon in place of its drag grabber. Local-only state.
+  const [pinnedIds, setPinnedIds] = useState(() => new Set());
+  const togglePin = useCallback((id) => setPinnedIds((prev) => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  }), []);
+
+  // Hidden <input type="file"> for the real OS file picker. Add files /
+  // Upload files programmatically .click() this; the picked File objects are
+  // mapped into the open project's document list. `pendingPickProject` holds
+  // which project the picked files should land in.
+  const fileInputRef = useRef(null);
+  const pendingPickProject = useRef(null);
 
   // Drag-reorder bookkeeping (index of the row currently being dragged).
   const dragProjIdx = useRef(null);
@@ -191,8 +222,18 @@ export default function ProjectsFolderTree({
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return localProjects.filter((p) => !q || (p.name || '').toLowerCase().includes(q));
-  }, [localProjects, search]);
+    const list = localProjects.filter((p) => !q || (p.name || '').toLowerCase().includes(q));
+    // Pinned projects float to the TOP; relative order within each group
+    // (pinned / unpinned) is preserved via a stable sort.
+    return list
+      .map((p, i) => ({ p, i }))
+      .sort((a, b) => {
+        const ap = pinnedIds.has(a.p.id) ? 0 : 1;
+        const bp = pinnedIds.has(b.p.id) ? 0 : 1;
+        return ap - bp || a.i - b.i;
+      })
+      .map((x) => x.p);
+  }, [localProjects, search, pinnedIds]);
 
   useEffect(() => {
     if (filtered.length && !filtered.some((p) => p.id === openId)) setOpenId(filtered[0].id);
@@ -274,20 +315,38 @@ export default function ProjectsFolderTree({
 
   /* ---- Document mutations (local state) -------------------------------- */
 
-  const addFiles = useCallback(() => {
-    if (!open) return;
-    const id = nextLocalId();
-    setLocalDocs((prev) => [
-      ...prev,
-      {
-        id, project_id: open.id,
-        name: `New Document ${openFiles.length + 1}.pdf`,
-        owner: user?.id ?? (open.members?.[0] ?? null),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-    ]);
-  }, [open, openFiles.length, user]);
+  // Add files — opens a real OS file picker (a hidden <input type="file">).
+  // `forProject` is the project the picked files should land in; it's stashed
+  // on a ref so the input's onChange knows the destination.
+  const addFiles = useCallback((forProject) => {
+    const target = forProject || open;
+    if (!target) return;
+    pendingPickProject.current = target.id;
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''; // allow re-picking the same file
+      fileInputRef.current.click();
+    }
+  }, [open]);
+
+  // Receives the real File objects chosen in the OS picker and maps each into
+  // the document shape, attaching them to the pending project.
+  const handleFilesPicked = useCallback((fileList) => {
+    const projId = pendingPickProject.current;
+    const files = Array.from(fileList || []);
+    if (projId == null || files.length === 0) return;
+    const proj = localProjects.find((p) => p.id === projId);
+    const now = new Date().toISOString();
+    const docs = files.map((file) => ({
+      id: nextLocalId(),
+      name: file.name,
+      file_size: file.size,
+      project_id: projId,
+      owner: user?.id ?? (proj?.members?.[0] ?? null),
+      created_at: now,
+      updated_at: now,
+    }));
+    setLocalDocs((prev) => [...prev, ...docs]);
+  }, [localProjects, user]);
 
   const duplicateFiles = useCallback((indices) => {
     if (!open) return;
@@ -433,6 +492,7 @@ export default function ProjectsFolderTree({
             {filtered.map((p, idx) => {
               const isOpen = open && p.id === open.id;
               const isSel = selProj.has(p.id);
+              const isPinned = pinnedIds.has(p.id);
               const projMembers = Array.isArray(p.members) ? p.members : [];
               return (
                 <div
@@ -461,9 +521,15 @@ export default function ProjectsFolderTree({
                       height: 50, boxSizing: 'border-box',
                     }}
                   >
-                    {/* Drag handle — in Select mode this row is draggable to
-                        reorder; outside Select mode it's a static affordance. */}
-                    {jobsEdit ? (
+                    {/* Drag handle / pin marker — in Select mode this row is
+                        draggable to reorder. When the project is pinned the
+                        "⋮⋮" grabber is replaced by a gold pin icon to mark
+                        its pinned-to-top status. */}
+                    {isPinned ? (
+                      <span title="Pinned" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
+                        <PinIcon size={12} color="var(--gold)" />
+                      </span>
+                    ) : jobsEdit ? (
                       <span title="Drag to reorder" style={{ color: 'var(--ink-200)', fontSize: 11, cursor: 'grab', userSelect: 'none', lineHeight: 1, textAlign: 'center' }}>⋮⋮</span>
                     ) : (
                       <span style={{ color: 'var(--ink-200)', fontSize: 11, userSelect: 'none', lineHeight: 1, textAlign: 'center' }}>⋮⋮</span>
@@ -538,8 +604,9 @@ export default function ProjectsFolderTree({
                   />
                 </div>
                 <div style={{ display: 'flex', gap: 8, flex: 'none' }}>
-                  {/* Add files — appends a new local document to this project. */}
-                  <button className="btn" onClick={addFiles}><Icon name="upload" size={12} />Add files</button>
+                  {/* Add files — opens the OS file picker; picked PDFs are
+                      added to this project's document list. */}
+                  <button className="btn" onClick={() => addFiles(open)}><Icon name="upload" size={12} />Add files</button>
                   {/* Manage Team — opens the Manage Team modal (NOT the share
                       link modal) for the currently open project. */}
                   <button className="btn" onClick={() => setTeamModalProject(open)}><Icon name="users" size={12} />Manage Team</button>
@@ -726,17 +793,26 @@ export default function ProjectsFolderTree({
       {teamMenu && (() => {
         const proj = filtered.find((p) => p.id === teamMenu.id);
         if (!proj) return null;
+        const projPinned = pinnedIds.has(proj.id);
         return (
           <PopupMenu
             anchorRect={teamMenu.rect}
             onClose={() => setTeamMenu(null)}
-            minWidth={172}
+            minWidth={184}
             items={[
-              { icon: 'users', label: 'Add member', onClick: () => setTeamModalProject(proj) },
-              { icon: 'arrow-r', label: 'Get link to team', onClick: () => onShare && onShare(proj) },
-              { icon: 'upload', label: 'Upload files', onClick: () => { setOpenId(proj.id); addFiles(); } },
-              { icon: 'pin', label: 'Pin team', onClick: () => { setOpenId(proj.id); } },
-              { icon: 'more', label: 'Manage team', onClick: () => setTeamModalProject(proj) },
+              // "Add member" opens the invite/share popup — same flow as
+              // "Get link to project". Only "Manage project" opens the modal.
+              { icon: 'users', label: 'Add member', onClick: () => onShare && onShare(proj) },
+              { icon: 'arrow-r', label: 'Get link to project', onClick: () => onShare && onShare(proj) },
+              { icon: 'upload', label: 'Upload files', onClick: () => { setOpenId(proj.id); addFiles(proj); } },
+              {
+                // Pin / unpin — toggles local pinned state; the row floats to
+                // the top of the list and shows a pin icon when pinned.
+                iconNode: <PinIcon size={12} color={projPinned ? HEX.gold : HEX.muted} />,
+                label: projPinned ? 'Unpin project' : 'Pin project',
+                onClick: () => togglePin(proj.id),
+              },
+              { icon: 'more', label: 'Manage project', onClick: () => setTeamModalProject(proj) },
             ]}
           />
         );
@@ -768,6 +844,17 @@ export default function ProjectsFolderTree({
         onClose={() => setTeamModalProject(null)}
         project={teamModalProject}
         members={members}
+      />
+
+      {/* Hidden OS file picker — Add files / Upload files programmatically
+          .click() this. Picked File objects are mapped into local docs. */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept="application/pdf"
+        style={{ display: 'none' }}
+        onChange={(e) => { handleFilesPicked(e.target.files); e.target.value = ''; }}
       />
 
       {/* Move/Copy picker — opened by the file select-mode "Move/Copy" button.

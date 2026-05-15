@@ -299,6 +299,124 @@ function MoreMenu({ anchorRect, items, onClose }) {
   );
 }
 
+/* ============================================================
+   CustomSelect — a styled dropdown that replaces native <select>.
+   Native selects render an OS-themed popup that clashes with the
+   editor's warm-dark "paper-and-ink" palette. This is a styled
+   trigger button that opens a dark popup list. The popup is
+   portalled to document.body and fixed-positioned (measured from
+   the trigger) so the modal's overflow can never clip it.
+
+   Palette / font are hard hex/literal because the popup renders
+   outside the .ed-scope CSS-variable root:
+     card #181c24 · deep #12151c · rule #2a3140 · ink #f4f1ea
+     muted #8d96a6 · gold #d8a84e · font Helvetica Neue stack
+   ============================================================ */
+function CustomSelect({ value, options, onChange, placeholder = 'Select…', disabled = false }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState(null);
+  const triggerRef = useRef(null);
+  const popRef = useRef(null);
+  const selected = options.find((o) => o.value === value) || null;
+
+  /* Dismiss on outside click / Escape / scroll — same feel as MoreMenu. */
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => {
+      if (triggerRef.current && triggerRef.current.contains(e.target)) return;
+      if (popRef.current && popRef.current.contains(e.target)) return;
+      setOpen(false);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    const onScroll = () => setOpen(false);
+    window.addEventListener('mousedown', onDown, true);
+    window.addEventListener('keydown', onKey, true);
+    window.addEventListener('scroll', onScroll, true);
+    return () => {
+      window.removeEventListener('mousedown', onDown, true);
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('scroll', onScroll, true);
+    };
+  }, [open]);
+
+  /* Place the popup directly under the trigger, flipping up if it
+     would overflow the viewport. */
+  useEffect(() => {
+    if (!open || !triggerRef.current) { setPos(null); return; }
+    const r = triggerRef.current.getBoundingClientRect();
+    const ph = Math.min(240, Math.max(40, options.length * 30 + 8));
+    let top = r.bottom + 4;
+    if (top + ph > window.innerHeight - 8) top = Math.max(8, r.top - ph - 4);
+    setPos({ left: r.left, top, width: r.width });
+  }, [open, options.length]);
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        disabled={disabled}
+        onClick={() => { if (!disabled) setOpen((v) => !v); }}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+          width: '100%', background: '#12151c', border: '1px solid #2a3140',
+          borderRadius: 6, padding: '6px 10px', height: 32, boxSizing: 'border-box',
+          color: selected ? '#f4f1ea' : '#8d96a6',
+          font: 'inherit', fontSize: 13, cursor: disabled ? 'not-allowed' : 'pointer',
+          opacity: disabled ? 0.5 : 1,
+          fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif', textAlign: 'left',
+          outline: 'none',
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {selected ? selected.label : placeholder}
+        </span>
+        <span style={{ color: '#8d96a6', fontSize: 10, lineHeight: 1, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .12s', flex: 'none' }}>▾</span>
+      </button>
+      {open && pos && createPortal(
+        <div
+          ref={popRef}
+          style={{
+            position: 'fixed', zIndex: 4100,
+            left: pos.left, top: pos.top, width: pos.width,
+            background: '#181c24', border: '1px solid #3a4252', borderRadius: 8,
+            padding: 4, boxShadow: '0 12px 30px rgba(0,0,0,0.55)',
+            maxHeight: 240, overflowY: 'auto',
+            fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+          }}
+        >
+          {options.length === 0 && (
+            <div style={{ padding: '7px 10px', fontSize: 12, color: '#8d96a6' }}>No options</div>
+          )}
+          {options.map((o) => {
+            const isSel = o.value === value;
+            return (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => { onChange(o.value); setOpen(false); }}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                  width: '100%', textAlign: 'left', background: isSel ? '#232834' : 'transparent',
+                  border: 0, color: isSel ? '#d8a84e' : '#f4f1ea',
+                  padding: '7px 10px', fontSize: 12, borderRadius: 4, cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+                onMouseEnter={(e) => { if (!isSel) e.currentTarget.style.background = '#232834'; }}
+                onMouseLeave={(e) => { if (!isSel) e.currentTarget.style.background = 'transparent'; }}
+              >
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.label}</span>
+                {isSel && <span style={{ color: '#d8a84e', fontSize: 11, flex: 'none' }}>✓</span>}
+              </button>
+            );
+          })}
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}
+
 export default function TemplatesEditor({
   templates = [],
   user = null,
@@ -337,7 +455,11 @@ export default function TemplatesEditor({
   const [catEdit, setCatEdit] = useState(false);
   const [selCats, setSelCats] = useState(() => new Set());
   const toggleCatSel = (id) => setSelCats((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const [moveModal, setMoveModal] = useState(null);
+  const [moveModal, setMoveModal] = useState(null);  // { count, kind: 'category'|'module'|'entity' }
+  /* Move/Copy modal destination picks — destTpl is always meaningful;
+     destMod only applies when a Category is being moved. */
+  const [moveDestTpl, setMoveDestTpl] = useState(null);
+  const [moveDestMod, setMoveDestMod] = useState(null);
   const [colorTab, setColorTab] = useState({});
   const [layerTab, setLayerTab] = useState({});       // { entityId: 'fill' | 'border' }
   const [borderColors, setBorderColors] = useState({});
@@ -389,6 +511,35 @@ export default function TemplatesEditor({
 
   const tpl = rich.find((t) => t.id === selectedId) || rich[0] || null;
   const orderedMods = tpl ? tpl.modules : [];
+
+  /* When the Move/Copy modal opens, seed its destination picks: default
+     the destination template to the current one, and (for a Category
+     move) the destination module to the current module. Cleared on close. */
+  useEffect(() => {
+    if (!moveModal) { setMoveDestTpl(null); setMoveDestMod(null); return; }
+    const tid = tpl ? tpl.id : (rich[0] ? rich[0].id : null);
+    setMoveDestTpl(tid);
+    if (moveModal.kind === 'category') {
+      const seedTpl = rich.find((t) => t.id === tid);
+      const mods = seedTpl ? seedTpl.modules : [];
+      setMoveDestMod(mods[0] ? mods[0].id : null);
+    } else {
+      setMoveDestMod(null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moveModal]);
+
+  /* Keep the destination module valid whenever the destination template
+     changes during a Category move — modules belong to a template. */
+  useEffect(() => {
+    if (!moveModal || moveModal.kind !== 'category') return;
+    const destT = rich.find((t) => t.id === moveDestTpl);
+    const mods = destT ? destT.modules : [];
+    if (!mods.some((m) => m.id === moveDestMod)) {
+      setMoveDestMod(mods[0] ? mods[0].id : null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moveDestTpl, moveModal]);
 
   /* ============================================================
      Mutators — every one returns a fresh `rich` array. They are the
@@ -861,7 +1012,7 @@ export default function TemplatesEditor({
                         <>
                           <button onClick={() => setSelCats(allSel ? new Set() : new Set(visibleCats.map((cat) => cat.id)))} style={{ ...baseBtn, color: 'var(--ink-soft)' }}>{allSel ? 'None' : 'All'}</button>
                           <button disabled={!c} onClick={() => duplicateCategories(selCats)} style={{ ...baseBtn, color: c ? 'var(--ink-soft)' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed' }}>Duplicate</button>
-                          <button disabled={!c} onClick={() => setMoveModal({ count: c })} style={{ ...baseBtn, color: c ? 'var(--ink-soft)' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed' }}>Move/Copy</button>
+                          <button disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'category' })} style={{ ...baseBtn, color: c ? 'var(--ink-soft)' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed' }}>Move/Copy</button>
                           <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} style={{ ...baseBtn, color: c ? 'var(--ink-soft)' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center' }} title="Share"><Icon name="share" size={11} /></button>
                           <button disabled={!c} onClick={() => deleteCategories(selCats)} style={{ ...baseBtn, color: c ? '#cf6f6f' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center' }} title="Delete"><Icon name="trash" size={11} /></button>
                         </>
@@ -1011,7 +1162,7 @@ export default function TemplatesEditor({
                     <>
                       <button onClick={() => setSelEntities(allSel ? new Set() : new Set(tpl.roster.map((r) => r.id)))} style={{ ...baseBtn, color: 'var(--ink-soft)' }}>{allSel ? 'None' : 'All'}</button>
                       <button disabled={!c} onClick={() => duplicateEntities(selEntities)} style={{ ...baseBtn, color: c ? 'var(--ink-soft)' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed' }}>Duplicate</button>
-                      <button disabled={!c} onClick={() => setMoveModal({ count: c })} style={{ ...baseBtn, color: c ? 'var(--ink-soft)' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed' }}>Move/Copy</button>
+                      <button disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'entity' })} style={{ ...baseBtn, color: c ? 'var(--ink-soft)' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed' }}>Move/Copy</button>
                       <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} style={{ ...baseBtn, color: c ? 'var(--ink-soft)' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center' }} title="Share"><Icon name="share" size={10} /></button>
                       <button disabled={!c} onClick={() => deleteEntities(selEntities)} style={{ ...baseBtn, color: c ? '#cf6f6f' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center' }} title="Delete"><Icon name="trash" size={10} /></button>
                     </>
@@ -1329,7 +1480,7 @@ export default function TemplatesEditor({
           onClose={() => setEntityMenu(null)}
           items={[
             { label: 'Duplicate', onClick: () => duplicateEntities(new Set([ent.id])) },
-            { label: 'Move/Copy', onClick: () => setMoveModal({ count: 1 }) },
+            { label: 'Move/Copy', onClick: () => setMoveModal({ count: 1, kind: 'entity' }) },
             { label: 'Share', onClick: () => { if (tpl) onShare && onShare(tpl); } },
             { label: 'Rename', onClick: () => setOpenColor(null) },
             { label: 'Delete', danger: true, onClick: () => deleteEntities(new Set([ent.id])) },
@@ -1395,7 +1546,7 @@ export default function TemplatesEditor({
             <div style={{ padding: '10px 12px', borderTop: '1px solid #2a3140', background: '#12151c', display: 'flex', gap: 6, alignItems: 'center', flex: 'none' }}>
               <button onClick={() => { const allSel = selMods.size === mods.length; setSelMods(allSel ? new Set() : new Set(mods.map((_, i) => i))); }} style={{ background: 'transparent', border: '1px solid #3a4252', color: '#e8e2d4', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>{selMods.size === mods.length && mods.length > 0 ? 'None' : 'All'}</button>
               <button onClick={() => duplicateModules(selMods)} disabled={!selCount} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#e8e2d4' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Duplicate</button>
-              <button onClick={() => { if (selCount) setMoveModal({ count: selCount }); }} disabled={!selCount} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#e8e2d4' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Move/Copy</button>
+              <button onClick={() => { if (selCount) setMoveModal({ count: selCount, kind: 'module' }); }} disabled={!selCount} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#e8e2d4' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Move/Copy</button>
               <button disabled={!selCount} onClick={() => { if (selCount && tpl) onShare && onShare(tpl); }} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#e8e2d4' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }} title="Share"><Icon name="share" size={12} /></button>
               <button onClick={() => deleteModules(selMods)} disabled={!selCount} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#cf6f6f' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }} title="Delete"><Icon name="trash" size={12} /></button>
               <span style={{ flex: 1 }} />
@@ -1423,15 +1574,39 @@ export default function TemplatesEditor({
             </div>
             <button onClick={() => setMoveModal(null)} style={{ background: 'transparent', border: 0, color: '#8d96a6', fontSize: 18, cursor: 'pointer' }}>×</button>
           </div>
-          <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {/* Destination fields depend on WHAT is being moved/copied:
+              - Category → pick a Destination Template, then a Destination
+                Module within it (a category lives inside a module).
+              - Module  → pick a Destination Template only (a module lives
+                inside a template).
+              - Entity  → pick a Destination Template only (an entity
+                belongs to a template).
+              There is never a "Destination Category" — nothing lives
+              inside a checklist category. */}
+          <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <label style={{ fontSize: 12, color: '#8d96a6' }}>Destination template</label>
-            <select style={{ background: 'transparent', border: 0, borderBottom: '1px solid #3a4252', color: '#f4f1ea', font: 'inherit', fontSize: 13, padding: '6px 0', outline: 'none' }}>
-              {rich.map((t) => <option key={t.id} value={t.id} style={{ background: '#181c24' }}>{t.name}</option>)}
-            </select>
-            <label style={{ fontSize: 12, color: '#8d96a6', marginTop: 6 }}>Destination category</label>
-            <select style={{ background: 'transparent', border: 0, borderBottom: '1px solid #3a4252', color: '#f4f1ea', font: 'inherit', fontSize: 13, padding: '6px 0', outline: 'none' }}>
-              {visibleCats.map((c) => <option key={c.id} style={{ background: '#181c24' }}>{c.name}</option>)}
-            </select>
+            <CustomSelect
+              value={moveDestTpl}
+              onChange={setMoveDestTpl}
+              placeholder="Choose a template…"
+              options={rich.map((t) => ({ value: t.id, label: t.name }))}
+            />
+            {moveModal.kind === 'category' && (() => {
+              const destT = rich.find((t) => t.id === moveDestTpl);
+              const mods = destT ? destT.modules : [];
+              return (
+                <>
+                  <label style={{ fontSize: 12, color: '#8d96a6', marginTop: 8 }}>Destination module</label>
+                  <CustomSelect
+                    value={moveDestMod}
+                    onChange={setMoveDestMod}
+                    placeholder={mods.length ? 'Choose a module…' : 'This template has no modules'}
+                    disabled={mods.length === 0}
+                    options={mods.map((m) => ({ value: m.id, label: m.name }))}
+                  />
+                </>
+              );
+            })()}
           </div>
           <div style={{ padding: '12px 14px', borderTop: '1px solid #2a3140', background: '#12151c', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button onClick={() => setMoveModal(null)} style={{ background: 'transparent', color: '#8d96a6', border: 0, padding: '4px 8px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
