@@ -551,9 +551,11 @@ const FabricDrawingCanvas = memo(({
       } else if (tool === 'highlight') {
         state.shape = new fabric.Rect({
           left: pointer.x, top: pointer.y, width: 0, height: 0,
-          fill: highlightColor,
-          stroke: 'transparent', strokeWidth: 0,
-          globalCompositeOperation: 'multiply',
+          fill: 'transparent',
+          stroke: '#4A90E2',
+          strokeWidth: 2,
+          strokeDashArray: [5, 5],
+          globalCompositeOperation: 'source-over',
           opacity: 1,
           strokeUniform: true,
         });

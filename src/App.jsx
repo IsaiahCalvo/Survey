@@ -31078,6 +31078,43 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
   }, [highlightAnnotations, handleHighlightDeleted]);
 
+  const handleDeleteSurveyHighlight = useCallback((highlightId) => {
+    if (!highlightId) return;
+
+    const savedHighlight = highlightAnnotations[highlightId];
+    if (savedHighlight) {
+      handleHighlightDeleted(savedHighlight.pageNumber, savedHighlight.bounds, highlightId);
+      return;
+    }
+
+    addHistoryCheckpoint('highlight:delete-pending', {
+      highlightId
+    });
+
+    setNewHighlightsByPage(prev => {
+      let changed = false;
+      const next = {};
+      Object.entries(prev || {}).forEach(([pageNumberKey, pageHighlights]) => {
+        const filtered = (pageHighlights || []).filter((highlight) => highlight?.highlightId !== highlightId);
+        if (filtered.length !== (pageHighlights || []).length) {
+          changed = true;
+        }
+        if (filtered.length > 0) {
+          next[pageNumberKey] = filtered;
+        }
+      });
+      return changed ? next : prev;
+    });
+
+    setPendingHighlight(prev => (prev?.id === highlightId ? null : prev));
+    setPendingBallInCourtSelection(prev => (
+      prev?.highlight?.id === highlightId ? null : prev
+    ));
+    setPendingHighlightName(prev => (
+      prev?.highlight?.id === highlightId ? null : prev
+    ));
+  }, [addHistoryCheckpoint, handleHighlightDeleted, highlightAnnotations]);
+
   const getPageSurveyRegionId = useCallback((pageId) => {
     return getActivePageRegionId({
       activeSpaceId,
@@ -34676,6 +34713,7 @@ ${pageBlocks}
                                   callouts={callouts}
                                   surveyHighlights={newHighlightsByPage[pageNumber]}
                                   onUpdateSurveyHighlightBounds={handleSurveyHighlightBoundsChange}
+                                  onDeleteSurveyHighlight={handleDeleteSurveyHighlight}
                                   pendingSurveyHighlightSelection={pendingSurveyHighlightSelection}
                                   onPendingSurveyHighlightSelectionConsumed={handlePendingSurveyHighlightSelectionConsumed}
                                   selectedModuleId={selectedModuleId}
@@ -35571,6 +35609,7 @@ ${pageBlocks}
                                       callouts={callouts}
                                       surveyHighlights={newHighlightsByPage[pageNumber]}
                                       onUpdateSurveyHighlightBounds={handleSurveyHighlightBoundsChange}
+                                      onDeleteSurveyHighlight={handleDeleteSurveyHighlight}
                                       pendingSurveyHighlightSelection={pendingSurveyHighlightSelection}
                                       onPendingSurveyHighlightSelectionConsumed={handlePendingSurveyHighlightSelectionConsumed}
                                       selectedModuleId={selectedModuleId}
@@ -36196,6 +36235,7 @@ ${pageBlocks}
                                       callouts={callouts}
                                       surveyHighlights={newHighlightsByPage[pageNum]}
                                       onUpdateSurveyHighlightBounds={handleSurveyHighlightBoundsChange}
+                                      onDeleteSurveyHighlight={handleDeleteSurveyHighlight}
                                       pendingSurveyHighlightSelection={pendingSurveyHighlightSelection}
                                       onPendingSurveyHighlightSelectionConsumed={handlePendingSurveyHighlightSelectionConsumed}
                                       selectedModuleId={selectedModuleId}
@@ -38680,12 +38720,20 @@ ${pageBlocks}
         {showSurveyPanel && selectedTemplate && (
           <>
             {/* Panel */}
+            {/* UX 2026-05-17: when a top-toolbar category dropdown is open it
+                renders a 34px sub-toolbar (+1px bottom border = 35px) into the
+                chrome-sub-toolbar-host strip at the top of the viewer area.
+                That strip overlaps the top of the survey panel, so when any
+                sub-toolbar is showing we slide the panel's top down by 35px
+                and trim its height to match — keeping the panel fully visible
+                below the sub-toolbar. The panel's existing top/height
+                transitions animate this slide smoothly. */}
             <div
               style={{
                 position: 'fixed',
-                top: `${middleAreaBounds.top}px`,
+                top: `${middleAreaBounds.top + (activeCategoryDropdown ? 35 : 0)}px`,
                 right: '48px',
-                height: `${middleAreaBounds.height}px`,
+                height: `${middleAreaBounds.height - (activeCategoryDropdown ? 35 : 0)}px`,
                 width: isSurveyPanelCollapsed ? '48px' : '320px',
                 background: '#2b2b2b',
                 borderLeft: '1px solid #444',
@@ -38698,16 +38746,16 @@ ${pageBlocks}
               }}
             >
               {/* Collapse/Expand Button */}
-              <div
-                style={{
-                  padding: '8px',
-                  borderBottom: '1px solid #3a3a3a',
-                  display: 'flex',
-                  justifyContent: 'flex-start',
-                  background: '#252525'
-                }}
-              >
-                {isSurveyPanelCollapsed && (
+              {isSurveyPanelCollapsed && (
+                <div
+                  style={{
+                    padding: '8px',
+                    borderBottom: '1px solid #3a3a3a',
+                    display: 'flex',
+                    justifyContent: 'flex-start',
+                    background: '#252525'
+                  }}
+                >
                   <button
                     onClick={() => {
                       setIsSurveyPanelCollapsed(prev => !prev);
@@ -38732,8 +38780,8 @@ ${pageBlocks}
                   >
                     <Icon name="chevronLeft" size={16} color="#999" />
                   </button>
-                )}
-              </div>
+                </div>
+              )}
 
               {!isSurveyPanelCollapsed && (
                 <>

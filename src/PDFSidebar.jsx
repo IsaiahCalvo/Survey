@@ -148,9 +148,11 @@ const PDFSidebar = React.forwardRef(({
     }}>
       {/* Collapse/Expand Button */}
       <div style={{
-        padding: '8px',
+        height: '35px',
+        padding: '0 8px',
         borderBottom: '1px solid #3a3a3a',
         display: 'flex',
+        alignItems: 'center',
         justifyContent: 'flex-end',
         background: '#252525'
       }}>

@@ -166,6 +166,7 @@ const SVGAnnotationLayer = memo(({
   // same three-layer visibility filter as annotation objects.
   surveyHighlights,
   onUpdateSurveyHighlightBounds,
+  onDeleteSurveyHighlight,
   pendingSurveyHighlightSelection,
   onPendingSurveyHighlightSelectionConsumed,
   // Filtering props
@@ -1976,6 +1977,33 @@ const SVGAnnotationLayer = memo(({
     setSurveyHighlightPreviewBounds(null);
     surveyHighlightDragRef.current = null;
   }, [isSelectTool]);
+
+  useEffect(() => {
+    if (!isSelectTool || !selectedSurveyHighlightId) return;
+
+    const handleKeyDown = (e) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+
+      const el = document.activeElement;
+      if (el) {
+        if (el.tagName === 'INPUT') return;
+        if (el.tagName === 'TEXTAREA') return;
+        if (el.isContentEditable === true) return;
+        if (el.contentEditable === 'true') return;
+      }
+
+      e.preventDefault();
+      e.stopPropagation();
+      onDeleteSurveyHighlight?.(selectedSurveyHighlightId);
+      setSelectedSurveyHighlightId(null);
+      setHoveredSurveyHighlightId(null);
+      setSurveyHighlightPreviewBounds(null);
+      surveyHighlightDragRef.current = null;
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [isSelectTool, onDeleteSurveyHighlight, selectedSurveyHighlightId]);
 
   useLayoutEffect(() => {
     if (!pendingSurveyHighlightSelection) return;

@@ -1767,7 +1767,7 @@ const RegionSelectionTool = ({
         data-region-selection-ui="true"
         style={{
           position: 'fixed',
-          top: '20px',
+          bottom: '20px',
           left: '50%',
           transform: 'translateX(-50%)',
           background: '#2b2b2b',
@@ -1777,6 +1777,9 @@ const RegionSelectionTool = ({
           display: 'flex',
           gap: '6px',
           alignItems: 'center',
+          justifyContent: 'center',
+          flexWrap: 'wrap',
+          maxWidth: 'calc(100vw - 32px)',
           zIndex: 100001,
           boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
           fontFamily: FONT_FAMILY
@@ -1898,9 +1901,9 @@ const RegionSelectionTool = ({
               <div
                 style={{
                   position: 'absolute',
-                  top: '100%',
+                  bottom: '100%',
                   left: 0,
-                  marginTop: '4px',
+                  marginBottom: '4px',
                   background: '#3a3a3a',
                   border: '1px solid #555',
                   borderRadius: '4px',
