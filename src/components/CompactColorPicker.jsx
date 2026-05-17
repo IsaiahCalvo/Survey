@@ -8,7 +8,41 @@ const PRESET_COLORS = [
     '#FFFFFF', '#C0C0C0', '#808080', '#000000', // Greys
 ];
 
-const CompactColorPicker = ({ color, opacity = 1, onChange, onClose }) => {
+// Convert a #rrggbb hex into HSV so the spectrum view opens already pointed at
+// the current colour. Returns null for non-hex input (named colours, rgba()).
+const hexToHsv = (hex) => {
+    const m = /^#?([0-9a-fA-F]{6})$/.exec((hex || '').trim());
+    if (!m) return null;
+    const n = parseInt(m[1], 16);
+    const r = ((n >> 16) & 255) / 255;
+    const g = ((n >> 8) & 255) / 255;
+    const b = (n & 255) / 255;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const d = max - min;
+    let h = 0;
+    if (d) {
+        if (max === r) h = ((g - b) / d) % 6;
+        else if (max === g) h = (b - r) / d + 2;
+        else h = (r - g) / d + 4;
+        h *= 60;
+        if (h < 0) h += 360;
+    }
+    return { h, s: max === 0 ? 0 : (d / max) * 100, v: max * 100 };
+};
+
+/**
+ * CompactColorPicker — the app's one shared colour picker.
+ *
+ * Props:
+ *  - color        current hex colour
+ *  - opacity      current opacity 0..1 (default 1)
+ *  - onChange(hex, alpha)
+ *  - onClose
+ *  - showOpacity  when false, hides the opacity slider + % field — for pickers
+ *                 of things that have no transparency (e.g. counter pins)
+ */
+const CompactColorPicker = ({ color, opacity = 1, onChange, onClose, showOpacity = true, marginRight = 0 }) => {
     const [mode, setMode] = useState('grid'); // 'grid' or 'spectrum'
     const [localHex, setLocalHex] = useState(color || '#000000');
     const [localOpacity, setLocalOpacity] = useState(opacity * 100);
@@ -38,12 +72,16 @@ const CompactColorPicker = ({ color, opacity = 1, onChange, onClose }) => {
         };
     }, [onClose]);
 
-    // Initialize HSV from Hex on mount or color change
+    // Keep the local hex AND the spectrum's HSV in sync with the colour prop,
+    // so opening the spectrum view starts on the real current colour.
     useEffect(() => {
-        // Simple hex to HSV conversion (simplified for brevity)
-        // In a real app we'd use a small util, here we approximate if color matches a preset
-        // or just rely on manual updates. For now, let's just sync hex.
-        setLocalHex(color);
+        setLocalHex(color || '#000000');
+        const hsv = hexToHsv(color);
+        if (hsv) {
+            setHue(hsv.h);
+            setSaturation(hsv.s);
+            setValue(hsv.v);
+        }
     }, [color]);
 
     // Handle Hue Change
@@ -83,6 +121,19 @@ const CompactColorPicker = ({ color, opacity = 1, onChange, onClose }) => {
         onChange(hex, localOpacity / 100);
     };
 
+    // Apply a hex value coming from a preset swatch or the hex field — keeps the
+    // spectrum's HSV indicators in step so switching views stays consistent.
+    const applyHex = (hex) => {
+        setLocalHex(hex);
+        const hsv = hexToHsv(hex);
+        if (hsv) {
+            setHue(hsv.h);
+            setSaturation(hsv.s);
+            setValue(hsv.v);
+        }
+        onChange(hex, localOpacity / 100);
+    };
+
     // Simple drag handlers
     const handleMouseDownSV = (e) => {
         isDraggingSV.current = true;
@@ -119,7 +170,7 @@ const CompactColorPicker = ({ color, opacity = 1, onChange, onClose }) => {
     };
 
     return (
-        <div 
+        <div
             ref={containerRef}
             style={{
             width: '260px',
@@ -132,7 +183,7 @@ const CompactColorPicker = ({ color, opacity = 1, onChange, onClose }) => {
             flexDirection: 'column',
             gap: '12px',
             userSelect: 'none',
-            marginRight: '53px'
+            marginRight
         }}
             onClick={(e) => e.stopPropagation()}
         >
@@ -185,10 +236,7 @@ const CompactColorPicker = ({ color, opacity = 1, onChange, onClose }) => {
                     {PRESET_COLORS.map(c => (
                         <button
                             key={c}
-                            onClick={() => {
-                                setLocalHex(c);
-                                onChange(c, localOpacity / 100);
-                            }}
+                            onClick={() => applyHex(c)}
                             style={{
                                 width: '100%',
                                 aspectRatio: '1',
@@ -212,7 +260,7 @@ const CompactColorPicker = ({ color, opacity = 1, onChange, onClose }) => {
                             position: 'relative',
                             borderRadius: '4px',
                             background: `
-                linear-gradient(to top, #000, transparent), 
+                linear-gradient(to top, #000, transparent),
                 linear-gradient(to right, #FFF, transparent),
                 hsl(${hue}, 100%, 50%)
               `,
@@ -266,29 +314,31 @@ const CompactColorPicker = ({ color, opacity = 1, onChange, onClose }) => {
             )}
 
             {/* Opacity Slider */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ color: '#888', fontSize: '10px', width: '40px' }}>OPACITY</span>
-                <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={localOpacity}
-                    onChange={(e) => {
-                        setLocalOpacity(Number(e.target.value));
-                        onChange(localHex, Number(e.target.value) / 100);
-                    }}
-                    style={{
-                        flex: 1,
-                        height: '4px',
-                        accentColor: '#4a90e2',
-                        background: '#333',
-                        borderRadius: '2px',
-                        appearance: 'auto', // Reset to default for cross-browser, customize if needed
-                        cursor: 'pointer'
-                    }}
-                />
-                <span style={{ color: '#ccc', fontSize: '11px', width: '24px', textAlign: 'right' }}>{localOpacity}%</span>
-            </div>
+            {showOpacity && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ color: '#888', fontSize: '10px', width: '40px' }}>OPACITY</span>
+                    <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={localOpacity}
+                        onChange={(e) => {
+                            setLocalOpacity(Number(e.target.value));
+                            onChange(localHex, Number(e.target.value) / 100);
+                        }}
+                        style={{
+                            flex: 1,
+                            height: '4px',
+                            accentColor: '#4a90e2',
+                            background: '#333',
+                            borderRadius: '2px',
+                            appearance: 'auto', // Reset to default for cross-browser, customize if needed
+                            cursor: 'pointer'
+                        }}
+                    />
+                    <span style={{ color: '#ccc', fontSize: '11px', width: '24px', textAlign: 'right' }}>{localOpacity}%</span>
+                </div>
+            )}
 
             {/* Footer: Hex Input */}
             <div style={{ display: 'flex', gap: '8px', paddingTop: '8px', borderTop: '1px solid #333' }}>
@@ -298,7 +348,7 @@ const CompactColorPicker = ({ color, opacity = 1, onChange, onClose }) => {
                     height: '32px',
                     borderRadius: '4px',
                     border: '1px solid #444',
-                    opacity: localOpacity / 100
+                    opacity: showOpacity ? localOpacity / 100 : 1
                 }} />
                 <div style={{ flex: 1, background: '#111', borderRadius: '4px', display: 'flex', alignItems: 'center', padding: '0 8px', border: '1px solid #333' }}>
                     <span style={{ color: '#666', fontSize: '12px', marginRight: '4px' }}>#</span>
@@ -309,8 +359,7 @@ const CompactColorPicker = ({ color, opacity = 1, onChange, onClose }) => {
                             const val = e.target.value;
                             setLocalHex(`#${val}`);
                             if (val.length === 6) {
-                                onChange(`#${val}`, localOpacity / 100);
-                                // Also update HSV if possible, skipping for brevity in this manual component
+                                applyHex(`#${val}`);
                             }
                         }}
                         style={{
@@ -324,29 +373,31 @@ const CompactColorPicker = ({ color, opacity = 1, onChange, onClose }) => {
                         }}
                     />
                 </div>
-                <div style={{ background: '#111', borderRadius: '4px', display: 'flex', alignItems: 'center', padding: '0 8px', border: '1px solid #333', width: '50px' }}>
-                    <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={Math.round(localOpacity)}
-                        onChange={(e) => {
-                            const val = Math.min(100, Math.max(0, Number(e.target.value)));
-                            setLocalOpacity(val);
-                            onChange(localHex, val / 100);
-                        }}
-                        style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: '#ddd',
-                            width: '100%',
-                            fontSize: '12px',
-                            outline: 'none',
-                            textAlign: 'center'
-                        }}
-                    />
-                    <span style={{ color: '#666', fontSize: '10px' }}>%</span>
-                </div>
+                {showOpacity && (
+                    <div style={{ background: '#111', borderRadius: '4px', display: 'flex', alignItems: 'center', padding: '0 8px', border: '1px solid #333', width: '50px' }}>
+                        <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            value={Math.round(localOpacity)}
+                            onChange={(e) => {
+                                const val = Math.min(100, Math.max(0, Number(e.target.value)));
+                                setLocalOpacity(val);
+                                onChange(localHex, val / 100);
+                            }}
+                            style={{
+                                background: 'transparent',
+                                border: 'none',
+                                color: '#ddd',
+                                width: '100%',
+                                fontSize: '12px',
+                                outline: 'none',
+                                textAlign: 'center'
+                            }}
+                        />
+                        <span style={{ color: '#666', fontSize: '10px' }}>%</span>
+                    </div>
+                )}
             </div>
         </div>
     );

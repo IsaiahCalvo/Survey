@@ -3,6 +3,7 @@ import { debugMark } from './utils/debugBridge';
 import * as contextMenuBridge from './utils/contextMenuBridge';
 import { createPortal } from 'react-dom';
 import CalloutOverlay from './components/Callout';
+import CompactColorPicker from './components/CompactColorPicker';
 import Icon from './Icons';
 
 // Patch getContext BEFORE importing Fabric.js so only Fabric canvases opt into willReadFrequently.
@@ -3491,6 +3492,9 @@ const PageAnnotationLayer = memo(({
   const clipboardRef = useRef(null);
   // Edit Modal State
   const [editModal, setEditModal] = useState(null); // { x, y, object }
+  // Which colour field in the edit modal has its shared picker open: null |
+  // 'stroke' | 'fill' (text colour) | 'fillColor' (background).
+  const [editColorField, setEditColorField] = useState(null);
   // Callout selection rect for drag selection
   const [calloutSelectionRect, setCalloutSelectionRect] = useState(null);
   const [editValues, setEditValues] = useState({ stroke: '#000000', strokeWidth: 1, opacity: 1, arrowheadStyle: ARROWHEAD_STYLES.SOLID_TRIANGLE });
@@ -3517,6 +3521,12 @@ const PageAnnotationLayer = memo(({
   useEffect(() => {
     editModalVisibleRef.current = Boolean(editModal?.visible) && editModal?.isClosing !== true;
   }, [editModal?.visible, editModal?.isClosing]);
+
+  // Close any open colour picker when the edit modal itself closes, so it
+  // doesn't reappear already-open the next time the modal is shown.
+  useEffect(() => {
+    if (!editModal?.visible) setEditColorField(null);
+  }, [editModal?.visible]);
 
   useEffect(() => () => {
     if (contextMenuDismissTimeoutRef.current) {
@@ -9770,29 +9780,24 @@ const PageAnnotationLayer = memo(({
 
             <div style={{ marginBottom: '8px' }}>
               <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>Color</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <input
-                  type="color"
-                  value={editValues.stroke}
-                  onChange={(e) => setEditValues(prev => ({ ...prev, stroke: e.target.value }))}
-                  style={{ width: '30px', height: '30px', borderRadius: '4px', border: '1px solid #555', padding: 0, cursor: 'pointer' }}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }}>
+                <button
+                  onClick={() => setEditColorField(editColorField === 'stroke' ? null : 'stroke')}
+                  style={{ width: '30px', height: '30px', borderRadius: '4px', border: '1px solid #555', padding: 0, cursor: 'pointer', background: editValues.stroke }}
                 />
-                <input
-                  type="text"
-                  value={editValues.stroke}
-                  onChange={(e) => setEditValues(prev => ({ ...prev, stroke: e.target.value }))}
-                  style={{
-                    width: '80px',
-                    height: '30px',
-                    borderRadius: '4px',
-                    border: '1px solid #555',
-                    padding: '0 8px',
-                    fontSize: '12px',
-                    fontFamily: 'monospace',
-                    background: '#333',
-                    color: '#ddd'
-                  }}
-                />
+                <span style={{ fontSize: '12px', fontFamily: 'monospace', color: '#ddd' }}>
+                  {(editValues.stroke || '').toUpperCase()}
+                </span>
+                {editColorField === 'stroke' && (
+                  <div style={{ position: 'absolute', top: '36px', left: 0, zIndex: 10001 }}>
+                    <CompactColorPicker
+                      color={editValues.stroke}
+                      showOpacity={false}
+                      onChange={(hex) => setEditValues(prev => ({ ...prev, stroke: hex }))}
+                      onClose={() => setEditColorField(null)}
+                    />
+                  </div>
+                )}
               </div>
             </div>
 
@@ -9862,14 +9867,22 @@ const PageAnnotationLayer = memo(({
                   <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>Text Style</label>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
                     {/* Text Color */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <input
-                        type="color"
-                        value={editValues.fill || '#000000'}
-                        onChange={(e) => setEditValues(prev => ({ ...prev, fill: e.target.value }))}
-                        style={{ width: '24px', height: '24px', borderRadius: '4px', border: '1px solid #555', padding: 0, cursor: 'pointer' }}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', position: 'relative' }}>
+                      <button
+                        onClick={() => setEditColorField(editColorField === 'fill' ? null : 'fill')}
                         title="Text Color"
+                        style={{ width: '24px', height: '24px', borderRadius: '4px', border: '1px solid #555', padding: 0, cursor: 'pointer', background: editValues.fill || '#000000' }}
                       />
+                      {editColorField === 'fill' && (
+                        <div style={{ position: 'absolute', top: '30px', left: 0, zIndex: 10001 }}>
+                          <CompactColorPicker
+                            color={editValues.fill || '#000000'}
+                            showOpacity={false}
+                            onChange={(hex) => setEditValues(prev => ({ ...prev, fill: hex }))}
+                            onClose={() => setEditColorField(null)}
+                          />
+                        </div>
+                      )}
                     </div>
 
                     {/* Font Family */}
@@ -9943,36 +9956,21 @@ const PageAnnotationLayer = memo(({
                 {/* Fill Color (Background) */}
                 <div style={{ marginBottom: '12px' }}>
                   <label style={{ display: 'block', fontSize: '10px', fontWeight: '500', color: '#999', textTransform: 'uppercase', marginBottom: '6px' }}>Fill Color</label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
-                      type="color"
-                      value={editValues.fillColor === 'transparent' || !editValues.fillColor ? '#ffffff' : editValues.fillColor}
-                      onChange={(e) => setEditValues(prev => ({ ...prev, fillColor: e.target.value }))}
-                      style={{ width: '30px', height: '30px', borderRadius: '4px', border: '1px solid #555', padding: 0, cursor: 'pointer' }}
-                      disabled={editValues.fillColor === 'transparent'}
-                    />
-                    <input
-                      type="text"
-                      value={editValues.fillColor === 'transparent' ? 'No Fill' : (editValues.fillColor || '#ffffff')}
-                      onChange={(e) => {
-                        if (e.target.value.toLowerCase() === 'no fill') {
-                          setEditValues(prev => ({ ...prev, fillColor: 'transparent' }));
-                        } else {
-                          setEditValues(prev => ({ ...prev, fillColor: e.target.value }));
-                        }
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }}>
+                    <button
+                      onClick={() => {
+                        if (editValues.fillColor === 'transparent') return;
+                        setEditColorField(editColorField === 'fillColor' ? null : 'fillColor');
                       }}
                       style={{
-                        width: '80px',
-                        height: '30px',
-                        borderRadius: '4px',
-                        border: '1px solid #555',
-                        padding: '0 8px',
-                        fontSize: '12px',
-                        fontFamily: 'monospace',
-                        background: '#333',
-                        color: '#ddd'
+                        width: '30px', height: '30px', borderRadius: '4px', border: '1px solid #555', padding: 0,
+                        cursor: editValues.fillColor === 'transparent' ? 'default' : 'pointer',
+                        background: editValues.fillColor === 'transparent' || !editValues.fillColor ? '#ffffff' : editValues.fillColor,
                       }}
                     />
+                    <span style={{ fontSize: '12px', fontFamily: 'monospace', color: '#ddd' }}>
+                      {editValues.fillColor === 'transparent' ? 'No Fill' : (editValues.fillColor || '#ffffff').toUpperCase()}
+                    </span>
                     <button
                       onClick={() => setEditValues(prev => ({ ...prev, fillColor: 'transparent' }))}
                       style={{
@@ -9982,6 +9980,16 @@ const PageAnnotationLayer = memo(({
                         cursor: 'pointer', fontSize: '11px'
                       }}
                     >No Fill</button>
+                    {editColorField === 'fillColor' && (
+                      <div style={{ position: 'absolute', top: '36px', left: 0, zIndex: 10001 }}>
+                        <CompactColorPicker
+                          color={editValues.fillColor === 'transparent' || !editValues.fillColor ? '#ffffff' : editValues.fillColor}
+                          showOpacity={false}
+                          onChange={(hex) => setEditValues(prev => ({ ...prev, fillColor: hex }))}
+                          onClose={() => setEditColorField(null)}
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
               </>

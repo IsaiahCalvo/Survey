@@ -1078,6 +1078,22 @@ const normalizeHighlightColor = (color, fallbackOpacity = DEFAULT_SURVEY_HIGHLIG
   return trimmed;
 };
 
+const getCategoryGlyphLabel = (name) => {
+  const words = String(name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (words.length === 0) return '?';
+
+  const initials = words
+    .map((word) => word.match(/[A-Za-z0-9]/)?.[0] || '')
+    .join('')
+    .toUpperCase();
+
+  return initials.slice(0, 3) || '?';
+};
+
 // Convert hex to RGB
 const hexToRgb = (hex) => {
   hex = hex.replace('#', '');
@@ -6501,6 +6517,25 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   // Open a document in the PDF viewer — reuse the existing open path.
   const hubOpenDocument = (doc) => { if (doc) handleDocumentClick(doc); };
 
+  // Persist edits made in the Survey Hub's Templates editor. Mirrors the
+  // logged-in / guest split used by saveTemplate so hub edits land in
+  // Supabase (config JSONB) for signed-in users, or localStorage otherwise.
+  const hubSaveTemplates = async (nextTemplates) => {
+    if (!Array.isArray(nextTemplates)) return;
+    try {
+      if (user) {
+        updateTemplates(nextTemplates);
+        await persistTemplates(nextTemplates);
+      } else {
+        localStorage.setItem('templates', JSON.stringify(nextTemplates));
+        updateTemplates(nextTemplates);
+      }
+    } catch (e) {
+      console.error('Failed to save templates', e);
+      alert('Failed to save templates.');
+    }
+  };
+
   // Delete the given documents everywhere (archives row + storage file).
   const hubDeleteDocuments = async (docs) => {
     const list = Array.isArray(docs) ? docs.filter(Boolean) : [];
@@ -8203,536 +8238,23 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                           border: '1px solid #444',
                           borderRadius: '8px',
                           padding: '20px',
-                          width: colorPickerMode === 'grid' ? '520px' : '420px',
+                          width: 'auto',
                           maxWidth: '90vw',
                           boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)'
                         }}
                       >
                         {/* Header */}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                          <div style={{ fontSize: '16px', fontWeight: '600', color: '#fff', fontFamily: FONT_FAMILY }}>
-                            Choose Color
-                          </div>
-                          <div style={{ display: 'flex', gap: '8px' }}>
-                            <button
-                              onClick={() => {
-                                setColorPickerMode('grid');
-                                setOpacityInputValue(null);
-                                setOpacityInputFocused(false);
-                              }}
-                              style={{
-                                width: '32px',
-                                height: '32px',
-                                background: colorPickerMode === 'grid' ? '#555' : '#333',
-                                border: '1px solid #444',
-                                borderRadius: '4px',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                padding: 0
-                              }}
-                              title="Grid View"
-                            >
-                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                                <rect x="2" y="2" width="5" height="5" fill="#fff" />
-                                <rect x="9" y="2" width="5" height="5" fill="#fff" />
-                                <rect x="2" y="9" width="5" height="5" fill="#fff" />
-                                <rect x="9" y="9" width="5" height="5" fill="#fff" />
-                              </svg>
-                            </button>
-                            <button
-                              onClick={() => {
-                                setColorPickerMode('advanced');
-                                setOpacityInputValue(null);
-                                setOpacityInputFocused(false);
-                              }}
-                              style={{
-                                width: '32px',
-                                height: '32px',
-                                background: colorPickerMode === 'advanced' ? '#555' : '#333',
-                                border: '1px solid #444',
-                                borderRadius: '4px',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                padding: 0
-                              }}
-                              title="Advanced Picker"
-                            >
-                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                                <path d="M8 2L10 6L14 8L10 10L8 14L6 10L2 8L6 6L8 2Z" fill="#fff" />
-                              </svg>
-                            </button>
-                          </div>
+                        <div style={{ fontSize: '16px', fontWeight: '600', color: '#fff', fontFamily: FONT_FAMILY, marginBottom: '16px' }}>
+                          Choose Color
                         </div>
 
-                        {/* Grid Mode */}
-                        {colorPickerMode === 'grid' && (
-                          <div>
-                            <div style={{
-                              display: 'grid',
-                              gridTemplateColumns: 'repeat(8, 1fr)',
-                              gap: '4px',
-                              marginBottom: '20px'
-                            }}>
-                              {swatches.map((swatch, idx) => {
-                                const isSelected = currentHex.toLowerCase() === swatch.toLowerCase();
-                                return (
-                                  <div
-                                    key={idx}
-                                    onClick={() => {
-                                      // Use current opacity from slider
-                                      const finalOpacity = tempColor ? tempColor.opacity : currentOpacity;
-                                      const newRgba = hexToRgba(swatch, finalOpacity / 100);
-                                      updateBallInCourtEntity(entity.id, { color: newRgba });
-                                      setSelectedColorPickerId(null);
-                                      setTempColor(null);
-                                    }}
-                                    style={{
-                                      width: '100%',
-                                      aspectRatio: '1',
-                                      background: swatch,
-                                      borderRadius: '4px',
-                                      cursor: 'pointer',
-                                      border: isSelected ? '2px solid #4A90E2' : '1px solid #444',
-                                      boxSizing: 'border-box',
-                                      transition: 'border 0.2s'
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      if (!isSelected) {
-                                        e.currentTarget.style.border = '2px solid #666';
-                                      }
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      if (!isSelected) {
-                                        e.currentTarget.style.border = '1px solid #444';
-                                      }
-                                    }}
-                                  />
-                                );
-                              })}
-                            </div>
-
-                            {/* Opacity Slider */}
-                            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                              <label style={{ fontSize: '13px', color: '#999', minWidth: '60px' }}>
-                                Opacity:
-                              </label>
-                              <input
-                                type="range"
-                                min="0"
-                                max="100"
-                                step="1"
-                                value={currentOpacity}
-                                onChange={(e) => {
-                                  const newOpacity = parseFloat(e.target.value);
-                                  setTempColor({ hex: currentHex, opacity: newOpacity });
-                                }}
-                                onClick={(e) => e.stopPropagation()}
-                                onMouseDown={(e) => e.stopPropagation()}
-                                style={{
-                                  flex: 1,
-                                  height: '4px',
-                                  background: `linear-gradient(to right, transparent, ${currentHex})`,
-                                  borderRadius: '2px',
-                                  outline: 'none',
-                                  cursor: 'pointer'
-                                }}
-                              />
-                              <input
-                                type="text"
-                                inputMode="numeric"
-                                pattern="[0-9]*"
-                                value={opacityInputFocused ? (opacityInputValue !== null ? opacityInputValue.toString() : '') : Math.round(currentOpacity).toString()}
-                                onChange={(e) => {
-                                  const value = e.target.value;
-                                  // Allow empty string for clearing
-                                  if (value === '') {
-                                    setOpacityInputValue('');
-                                    return;
-                                  }
-                                  // Only allow digits
-                                  if (/^\d+$/.test(value)) {
-                                    const numValue = parseInt(value, 10);
-                                    if (!isNaN(numValue)) {
-                                      const newOpacity = Math.max(0, Math.min(100, numValue));
-                                      setOpacityInputValue(value); // Keep the typed value as string
-                                      setTempColor({ hex: currentHex, opacity: newOpacity });
-                                    }
-                                  }
-                                }}
-                                onBlur={(e) => {
-                                  setOpacityInputFocused(false);
-                                  const value = e.target.value.trim();
-                                  if (value === '' || isNaN(parseInt(value, 10))) {
-                                    // Reset to current opacity on blur if empty/invalid
-                                    setOpacityInputValue(null);
-                                    const final = tempColor ? tempColor.opacity : currentOpacity;
-                                    setTempColor({ hex: currentHex, opacity: final });
-                                  } else {
-                                    const numValue = parseInt(value, 10);
-                                    const newOpacity = Math.max(0, Math.min(100, numValue));
-                                    setOpacityInputValue(null);
-                                    setTempColor({ hex: currentHex, opacity: newOpacity });
-                                  }
-                                }}
-                                onFocus={(e) => {
-                                  e.stopPropagation();
-                                  setOpacityInputFocused(true);
-                                  e.target.select();
-                                  // Set to current opacity value when focused
-                                  const current = tempColor ? tempColor.opacity : currentOpacity;
-                                  setOpacityInputValue(Math.round(current).toString());
-                                }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  e.target.select();
-                                }}
-                                onKeyDown={(e) => {
-                                  e.stopPropagation();
-                                  // Allow delete, backspace, arrow keys, etc.
-                                  if (e.key === 'Delete' || e.key === 'Backspace' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-                                    return;
-                                  }
-                                  // Allow digits
-                                  if (/^\d$/.test(e.key)) {
-                                    return;
-                                  }
-                                  // Allow Ctrl/Cmd combinations
-                                  if (e.ctrlKey || e.metaKey) {
-                                    return;
-                                  }
-                                  // Prevent other keys
-                                  e.preventDefault();
-                                }}
-                                style={{
-                                  width: '60px',
-                                  padding: '6px 8px',
-                                  background: '#141414',
-                                  color: '#ddd',
-                                  border: '1px solid #2f2f2f',
-                                  borderRadius: '6px',
-                                  outline: 'none',
-                                  fontSize: '13px',
-                                  fontFamily: 'monospace',
-                                  textAlign: 'center'
-                                }}
-                              />
-                              <span style={{ color: '#ddd', fontWeight: '500', fontSize: '13px' }}>
-                                %
-                              </span>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Advanced Mode */}
-                        {colorPickerMode === 'advanced' && (
-                          <div>
-                            {/* Saturation/Lightness Square */}
-                            <div style={{ position: 'relative', marginBottom: '16px' }}>
-                              <div
-                                style={{
-                                  width: '100%',
-                                  aspectRatio: '1',
-                                  borderRadius: '6px',
-                                  position: 'relative',
-                                  cursor: 'crosshair',
-                                  border: '1px solid #444',
-                                  overflow: 'hidden'
-                                }}
-                                onMouseDown={(e) => {
-                                  const rect = e.currentTarget.getBoundingClientRect();
-                                  const x = (e.clientX - rect.left) / rect.width;
-                                  const y = (e.clientY - rect.top) / rect.height;
-                                  const s = Math.max(0, Math.min(100, x * 100));
-                                  const l = Math.max(0, Math.min(100, (1 - y) * 100));
-                                  updateColorFromHsl(hsl.h, s, l, currentOpacity);
-                                }}
-                                onMouseMove={(e) => {
-                                  if (e.buttons === 1) {
-                                    const rect = e.currentTarget.getBoundingClientRect();
-                                    const x = (e.clientX - rect.left) / rect.width;
-                                    const y = (e.clientY - rect.top) / rect.height;
-                                    const s = Math.max(0, Math.min(100, x * 100));
-                                    const l = Math.max(0, Math.min(100, (1 - y) * 100));
-                                    updateColorFromHsl(hsl.h, s, l, currentOpacity);
-                                  }
-                                }}
-                              >
-                                {/* Base hue color */}
-                                <div style={{
-                                  position: 'absolute',
-                                  top: 0,
-                                  left: 0,
-                                  right: 0,
-                                  bottom: 0,
-                                  background: `hsl(${hsl.h}, 100%, 50%)`
-                                }} />
-                                {/* White to transparent (saturation) */}
-                                <div style={{
-                                  position: 'absolute',
-                                  top: 0,
-                                  left: 0,
-                                  right: 0,
-                                  bottom: 0,
-                                  background: `linear-gradient(to right, white, transparent)`,
-                                  mixBlendMode: 'multiply'
-                                }} />
-                                {/* Transparent to black (lightness) */}
-                                <div style={{
-                                  position: 'absolute',
-                                  top: 0,
-                                  left: 0,
-                                  right: 0,
-                                  bottom: 0,
-                                  background: `linear-gradient(to bottom, transparent, black)`
-                                }} />
-                                {/* Selection indicator */}
-                                <div
-                                  style={{
-                                    position: 'absolute',
-                                    left: `${hsl.s}%`,
-                                    top: `${100 - hsl.l}%`,
-                                    width: '12px',
-                                    height: '12px',
-                                    borderRadius: '50%',
-                                    border: '2px solid white',
-                                    background: currentHex,
-                                    transform: 'translate(-50%, -50%)',
-                                    pointerEvents: 'none',
-                                    boxShadow: '0 0 0 1px rgba(0,0,0,0.3)'
-                                  }}
-                                />
-                              </div>
-                            </div>
-
-                            {/* Hue Slider */}
-                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '16px' }}>
-                              <div style={{ width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                                  <path d="M8 2L10 6L14 8L10 10L8 14L6 10L2 8L6 6L8 2Z" fill={currentHex} stroke="#fff" strokeWidth="1" />
-                                </svg>
-                              </div>
-                              <div style={{ flex: 1, position: 'relative', height: '24px', background: 'linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)', borderRadius: '4px', border: '1px solid #444' }}>
-                                <input
-                                  type="range"
-                                  min="0"
-                                  max="360"
-                                  step="1"
-                                  value={hsl.h}
-                                  onChange={(e) => {
-                                    const newH = parseFloat(e.target.value);
-                                    updateColorFromHsl(newH, hsl.s, hsl.l, currentOpacity);
-                                  }}
-                                  style={{
-                                    width: '100%',
-                                    height: '100%',
-                                    background: 'transparent',
-                                    outline: 'none',
-                                    cursor: 'pointer',
-                                    WebkitAppearance: 'none',
-                                    appearance: 'none',
-                                    margin: 0,
-                                    padding: 0
-                                  }}
-                                />
-                                <div
-                                  style={{
-                                    position: 'absolute',
-                                    left: `${(hsl.h / 360) * 100}%`,
-                                    top: '50%',
-                                    transform: 'translate(-50%, -50%)',
-                                    width: '4px',
-                                    height: '24px',
-                                    background: 'white',
-                                    borderRadius: '2px',
-                                    pointerEvents: 'none',
-                                    boxShadow: '0 0 2px rgba(0,0,0,0.5)'
-                                  }}
-                                />
-                              </div>
-                            </div>
-
-                            {/* Hex Input */}
-                            <div style={{ marginBottom: '16px' }}>
-                              <input
-                                type="text"
-                                value={currentHex.toUpperCase()}
-                                onChange={(e) => {
-                                  let hexValue = e.target.value.trim().toUpperCase();
-                                  // Allow typing partial hex values
-                                  if (!hexValue.startsWith('#')) {
-                                    hexValue = '#' + hexValue;
-                                  }
-                                  // Allow any valid hex characters while typing
-                                  if (/^#[0-9A-F]{0,6}$/.test(hexValue)) {
-                                    // If it's a complete 6-digit hex, update the color
-                                    if (hexValue.length === 7) {
-                                      try {
-                                        const newRgb = hexToRgb(hexValue);
-                                        const newHsl = rgbToHsl(newRgb.r, newRgb.g, newRgb.b);
-                                        setTempColor({ hex: hexValue, opacity: currentOpacity });
-                                      } catch (e) {
-                                        // Invalid hex, keep current
-                                      }
-                                    } else {
-                                      // Store partial hex for display
-                                      setTempColor(prev => ({ ...prev, hex: hexValue, opacity: currentOpacity }));
-                                    }
-                                  }
-                                }}
-                                onBlur={(e) => {
-                                  // On blur, ensure we have a valid hex
-                                  let hexValue = e.target.value.trim().toUpperCase();
-                                  if (!hexValue.startsWith('#')) {
-                                    hexValue = '#' + hexValue;
-                                  }
-                                  if (/^#[0-9A-F]{6}$/.test(hexValue)) {
-                                    try {
-                                      const newRgb = hexToRgb(hexValue);
-                                      const newHsl = rgbToHsl(newRgb.r, newRgb.g, newRgb.b);
-                                      setTempColor({ hex: hexValue, opacity: currentOpacity });
-                                    } catch (e) {
-                                      // Invalid, reset to current
-                                      setTempColor({ hex: currentHex, opacity: currentOpacity });
-                                    }
-                                  } else {
-                                    // Invalid, reset to current
-                                    setTempColor({ hex: currentHex, opacity: currentOpacity });
-                                  }
-                                }}
-                                onClick={(e) => e.stopPropagation()}
-                                onFocus={(e) => e.stopPropagation()}
-                                style={{
-                                  width: '100%',
-                                  padding: '8px 12px',
-                                  background: '#141414',
-                                  color: '#ddd',
-                                  border: '1px solid #2f2f2f',
-                                  borderRadius: '6px',
-                                  outline: 'none',
-                                  fontFamily: 'monospace',
-                                  fontSize: '14px'
-                                }}
-                                placeholder="#00FF00"
-                              />
-                            </div>
-
-                            {/* Opacity Slider */}
-                            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                              <label style={{ fontSize: '13px', color: '#999', minWidth: '60px' }}>
-                                Opacity:
-                              </label>
-                              <input
-                                type="range"
-                                min="0"
-                                max="100"
-                                step="1"
-                                value={currentOpacity}
-                                onChange={(e) => {
-                                  const newOpacity = parseFloat(e.target.value);
-                                  setTempColor({ hex: currentHex, opacity: newOpacity });
-                                }}
-                                onClick={(e) => e.stopPropagation()}
-                                onMouseDown={(e) => e.stopPropagation()}
-                                style={{
-                                  flex: 1,
-                                  height: '4px',
-                                  background: `linear-gradient(to right, rgba(128,128,128,0.3), ${currentHex})`,
-                                  borderRadius: '2px',
-                                  outline: 'none',
-                                  cursor: 'pointer',
-                                  WebkitAppearance: 'none',
-                                  appearance: 'none'
-                                }}
-                              />
-                              <input
-                                type="text"
-                                inputMode="numeric"
-                                pattern="[0-9]*"
-                                value={opacityInputFocused ? (opacityInputValue !== null ? opacityInputValue.toString() : '') : Math.round(currentOpacity).toString()}
-                                onChange={(e) => {
-                                  const value = e.target.value;
-                                  // Allow empty string for clearing
-                                  if (value === '') {
-                                    setOpacityInputValue('');
-                                    return;
-                                  }
-                                  // Only allow digits
-                                  if (/^\d+$/.test(value)) {
-                                    const numValue = parseInt(value, 10);
-                                    if (!isNaN(numValue)) {
-                                      const newOpacity = Math.max(0, Math.min(100, numValue));
-                                      setOpacityInputValue(value); // Keep the typed value as string
-                                      setTempColor({ hex: currentHex, opacity: newOpacity });
-                                    }
-                                  }
-                                }}
-                                onBlur={(e) => {
-                                  setOpacityInputFocused(false);
-                                  const value = e.target.value.trim();
-                                  if (value === '' || isNaN(parseInt(value, 10))) {
-                                    // Reset to current opacity on blur if empty/invalid
-                                    setOpacityInputValue(null);
-                                    const final = tempColor ? tempColor.opacity : currentOpacity;
-                                    setTempColor({ hex: currentHex, opacity: final });
-                                  } else {
-                                    const numValue = parseInt(value, 10);
-                                    const newOpacity = Math.max(0, Math.min(100, numValue));
-                                    setOpacityInputValue(null);
-                                    setTempColor({ hex: currentHex, opacity: newOpacity });
-                                  }
-                                }}
-                                onFocus={(e) => {
-                                  e.stopPropagation();
-                                  setOpacityInputFocused(true);
-                                  e.target.select();
-                                  // Set to current opacity value when focused
-                                  const current = tempColor ? tempColor.opacity : currentOpacity;
-                                  setOpacityInputValue(Math.round(current).toString());
-                                }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  e.target.select();
-                                }}
-                                onKeyDown={(e) => {
-                                  e.stopPropagation();
-                                  // Allow delete, backspace, arrow keys, etc.
-                                  if (e.key === 'Delete' || e.key === 'Backspace' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-                                    return;
-                                  }
-                                  // Allow digits
-                                  if (/^\d$/.test(e.key)) {
-                                    return;
-                                  }
-                                  // Allow Ctrl/Cmd combinations
-                                  if (e.ctrlKey || e.metaKey) {
-                                    return;
-                                  }
-                                  // Prevent other keys
-                                  e.preventDefault();
-                                }}
-                                style={{
-                                  width: '60px',
-                                  padding: '6px 8px',
-                                  background: '#141414',
-                                  color: '#ddd',
-                                  border: '1px solid #2f2f2f',
-                                  borderRadius: '6px',
-                                  outline: 'none',
-                                  fontSize: '13px',
-                                  fontFamily: 'monospace',
-                                  textAlign: 'center'
-                                }}
-                              />
-                              <span style={{ color: '#ddd', fontWeight: '500', fontSize: '13px' }}>
-                                %
-                              </span>
-                            </div>
-                          </div>
-                        )}
+                        {/* Shared colour picker — the app's one picker (CompactColorPicker) */}
+                        <CompactColorPicker
+                          color={currentHex}
+                          opacity={currentOpacity / 100}
+                          onChange={(hex, alpha) => setTempColor({ hex, opacity: Math.round(alpha * 100) })}
+                          onClose={() => {}}
+                        />
 
                         {/* Action Buttons */}
                         <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '20px' }}>
@@ -10007,6 +9529,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       onUpload={handleUploadClick}
       onCreateProject={handleCreateProjectClick}
       onCreateTemplate={openTemplateModal}
+      onSaveTemplates={hubSaveTemplates}
       onDuplicateDocuments={hubDuplicateDocuments}
       onDeleteDocuments={hubDeleteDocuments}
       onMoveCopyDocuments={hubMoveCopyDocuments}
@@ -10282,6 +9805,7 @@ function BottomToolbar(props) {
               <CompactColorPicker
                 color={strokeColor}
                 opacity={strokeOpacity / 100}
+                marginRight="53px"
                 onChange={(hex, alpha) => {
                   handleStrokeColorChange(hex);
                   handleStrokeOpacityChange(Math.round(alpha * 100));
@@ -13951,6 +13475,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       setSelectedModuleId(null);
       setSelectedSpaceId(null);
       setSelectedCategoryId(null);
+      setActiveCategoryDropdown(null);
       setActiveTool('select');
     }
   }, [features, showSurveyPanel]);
@@ -15688,6 +15213,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
 
   const [selectedCategoryId, setSelectedCategoryId] = useState(null); // Category selected for highlighting
+  const [surveyKeepCategoryActive, setSurveyKeepCategoryActive] = useState(false);
   const [selectedSpaceId, setSelectedSpaceId] = useState(null); // Currently selected space for survey interactions
   const [pendingHighlightName, setPendingHighlightName] = useState(null); // { highlight, categoryId } when prompting for name
   const [highlightNameInput, setHighlightNameInput] = useState(''); // Temporary name input value
@@ -31748,8 +31274,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         setHighlightNameInput(''); // Reset input
       }
 
-      // Reset selected category
-      setSelectedCategoryId(null);
+      if (!surveyKeepCategoryActive) {
+        setSelectedCategoryId(null);
+      }
       setShowSurveyPanel(true);
     } else {
       // No category selected, show category selection modal (only if survey panel is visible)
@@ -31763,7 +31290,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         });
       }
     }
-  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, selectedCategoryId, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId, getPageSurveyRegionId, buildSurveyHighlightPreview]);
+  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, selectedCategoryId, surveyKeepCategoryActive, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId, getPageSurveyRegionId, buildSurveyHighlightPreview]);
 
   // Auto-switch to highlight tool when template is selected in survey mode (only on initial entry)
   useEffect(() => {
@@ -37326,7 +36853,7 @@ ${pageBlocks}
             The host element sits between the rails and above the actual
             viewer body so the strip aligns exactly between the two rails
             with no extra positioning math. */}
-        {activeCategoryDropdown && typeof document !== 'undefined' && document.getElementById('chrome-sub-toolbar-host') && createPortal(
+        {isActive && pdfFile && activeCategoryDropdown && typeof document !== 'undefined' && document.getElementById('chrome-sub-toolbar-host') && createPortal(
           <div
             data-chrome-strip="true"
             style={{
@@ -38205,32 +37732,127 @@ ${pageBlocks}
               </>
             )}
 
-            {activeCategoryDropdown === 'survey' && (
-              <button
-                onClick={() => setActiveTool('highlight')}
-                onMouseEnter={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  setTooltip({ visible: true, text: 'Highlight Area', x: rect.left + rect.width / 2, y: rect.top - 10 });
-                }}
-                onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
-                className={`btn ${activeTool === 'highlight' ? 'btn-active' : 'btn-ghost'}`}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '6px',
-                  gap: '4px',
-                  minWidth: '40px'
-                }}
-                title="Highlight Area"
-              >
-                <Icon
-                  name="highlighter"
-                  size={20}
-                  color={activeTool === 'highlight' ? 'currentColor' : 'rgba(255, 255, 255, 1)'}
-                />
-              </button>
-            )}
+            {activeCategoryDropdown === 'survey' && (() => {
+              const modules = selectedTemplate?.modules || selectedTemplate?.spaces || [];
+              const selectedModule = modules.find((module) => module.id === selectedModuleId) || modules[0] || null;
+              const categories = selectedModule?.categories || [];
+
+              return (
+                <>
+                  <select
+                    value={selectedModule?.id || ''}
+                    onChange={(e) => {
+                      setSelectedModuleId(e.target.value || null);
+                      setSelectedCategoryId(null);
+                      setActiveTool('highlight');
+                    }}
+                    disabled={modules.length === 0}
+                    title="Survey module"
+                    style={{
+                      height: '26px',
+                      minWidth: '180px',
+                      maxWidth: '280px',
+                      padding: '2px 28px 2px 10px',
+                      background: '#3A3A3A',
+                      color: '#DDD',
+                      border: '1px solid #444',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      fontFamily: FONT_FAMILY,
+                      outline: 'none',
+                      cursor: modules.length > 0 ? 'pointer' : 'not-allowed'
+                    }}
+                  >
+                    {modules.length === 0 ? (
+                      <option value="">No modules</option>
+                    ) : modules.map((module) => (
+                      <option key={module.id} value={module.id}>
+                        {module.name || 'Untitled Module'}
+                      </option>
+                    ))}
+                  </select>
+
+                  <div style={{ width: '1px', height: '20px', background: '#444', margin: '0 2px' }} />
+
+                  {categories.length > 0 ? categories.map((category) => {
+                    const isActive = selectedCategoryId === category.id && activeTool === 'highlight';
+                    const glyph = getCategoryGlyphLabel(category.name);
+
+                    return (
+                      <button
+                        key={category.id}
+                        onClick={() => {
+                          setSelectedCategoryId(category.id);
+                          setActiveTool('highlight');
+                        }}
+                        onMouseEnter={(e) => {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          setTooltip({
+                            visible: true,
+                            text: category.name || 'Untitled Category',
+                            x: rect.left + rect.width / 2,
+                            y: rect.top - 10
+                          });
+                        }}
+                        onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
+                        className={`btn ${isActive ? 'btn-active' : 'btn-ghost'}`}
+                        title={category.name || 'Untitled Category'}
+                        style={{
+                          width: '30px',
+                          height: '30px',
+                          minWidth: '30px',
+                          borderRadius: '50%',
+                          padding: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: glyph.length > 2 ? '9px' : '11px',
+                          fontWeight: 700,
+                          letterSpacing: 0,
+                          lineHeight: 1,
+                          fontFamily: FONT_FAMILY,
+                          border: isActive ? '1px solid #4A90E2' : '1px solid #555',
+                          background: isActive ? '#4A90E2' : '#3A3A3A',
+                          color: '#fff',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {glyph}
+                      </button>
+                    );
+                  }) : (
+                    <span style={{ color: '#888', fontSize: '12px', padding: '0 6px' }}>
+                      No categories
+                    </span>
+                  )}
+
+                  <div style={{ width: '1px', height: '20px', background: '#444', margin: '0 2px' }} />
+
+                  <label
+                    title="Keep selected category active after placing a region"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      color: '#DDD',
+                      fontSize: '12px',
+                      fontFamily: FONT_FAMILY,
+                      cursor: 'pointer',
+                      userSelect: 'none',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={surveyKeepCategoryActive}
+                      onChange={(e) => setSurveyKeepCategoryActive(e.target.checked)}
+                      style={{ margin: 0, accentColor: '#4A90E2', cursor: 'pointer' }}
+                    />
+                    Keep active
+                  </label>
+                </>
+              );
+            })()}
           </div>,
           document.getElementById('chrome-sub-toolbar-host')
         )}
@@ -38993,6 +38615,9 @@ ${pageBlocks}
                             const firstModuleId = (template.modules || template.spaces || [])?.[0]?.id || null;
                             setSelectedTemplate(template);
                             setSelectedModuleId(firstModuleId);
+                            setSelectedCategoryId(null);
+                            setActiveCategoryDropdown('survey');
+                            setActiveTool('highlight');
                             setShowTemplateSelection(false);
                             setShowSurveyPanel(true);
                           }}
@@ -39235,6 +38860,8 @@ ${pageBlocks}
                           onClick={() => {
                             setSelectedModuleId(module.id);
                             setSelectedCategoryId(null); // Reset category when switching modules
+                            setActiveCategoryDropdown('survey');
+                            setActiveTool('highlight');
                             // Exit select mode when switching modules
                             setCopyModeActive(false);
                             setCopiedItemSelection({});
@@ -45193,18 +44820,17 @@ export default function App() {
                 <Icon name="text" size={18} />
               </button>
 
-              {/* Survey-category button — visible only while the survey
-                  panel is open. Lives here in the Text-group area as the
-                  user requested (leave it where it was relative to the
-                  other category buttons). */}
-              {bottomToolbarApi.showSurveyPanel && (
+              {/* Survey toggle lives in the former survey-tool slot so users
+                  enter/exit survey mode from the same top toolbar cluster as
+                  the annotation tools. The subtoolbar still opens
+                  automatically after template selection. */}
+              {topToolbarApi.onSurveyToggle && (
                 <button
                   onClick={() => {
-                    const isActive = bottomToolbarApi.activeCategoryDropdown === 'survey';
-                    bottomToolbarApi.setActiveCategoryDropdown(isActive ? null : 'survey');
-                    if (!isActive) {
-                      bottomToolbarApi.setActiveTool('highlight');
+                    if (topToolbarApi.surveyActive) {
+                      bottomToolbarApi.setActiveCategoryDropdown(null);
                     }
+                    topToolbarApi.onSurveyToggle();
                   }}
                   onMouseEnter={(e) => {
                     const rect = e.currentTarget.getBoundingClientRect();
@@ -45217,11 +44843,22 @@ export default function App() {
                     });
                   }}
                   onMouseLeave={() => bottomToolbarApi.setTooltip({ visible: false, text: '', x: 0, y: 0 })}
-                  className={`btn btn-md ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'survey' || bottomToolbarApi.activeTool === 'highlight') ? 'btn-active' : 'btn-default'}`}
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px' }}
-                  title="Survey"
+                  className={`btn btn-md ${topToolbarApi.surveyActive ? 'btn-active' : 'btn-default'}`}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '4px 10px',
+                    opacity: topToolbarApi.surveyEnabled ? 1 : 0.6,
+                    cursor: topToolbarApi.surveyEnabled ? 'pointer' : 'not-allowed',
+                    position: 'relative'
+                  }}
+                  title={!topToolbarApi.surveyEnabled ? 'Pro feature - Upgrade to unlock' : 'Survey'}
                 >
-                  <Icon name="highlighter" size={16} />
+                  <Icon name="survey" size={16} />
+                  {!topToolbarApi.surveyEnabled && (
+                    <Icon name="lock" size={9} style={{ marginLeft: '-3px' }} />
+                  )}
                 </button>
               )}
 
@@ -45263,6 +44900,7 @@ export default function App() {
                     <CompactColorPicker
                       color={bottomToolbarApi.strokeColor}
                       opacity={bottomToolbarApi.strokeOpacity / 100}
+                      marginRight="53px"
                       onChange={(hex, alpha) => {
                         bottomToolbarApi.handleStrokeColorChange(hex);
                         bottomToolbarApi.handleStrokeOpacityChange(Math.round(alpha * 100));
@@ -45336,6 +44974,7 @@ export default function App() {
               id="chrome-sub-toolbar-host"
               data-chrome-strip="true"
               style={{
+                display: isViewerVisible ? 'block' : 'none',
                 position: 'absolute',
                 top: 0,
                 left: 0,
@@ -45412,13 +45051,9 @@ export default function App() {
           </div>
           </div>
           {/* UX 2026-05-14: chrome-right-host — slim always-visible right rail.
-              Pinned to the viewport's right edge. Survey toggle sits at the
-              top, zoom + page nav at the bottom. The Survey panel still slides
-              out from inside the tab content area, so when it opens it
-              appears immediately to the LEFT of this rail (rail icons stay
-              tappable). Consumes the existing topToolbarApi (survey toggle)
-              and bottomToolbarApi (zoom + page nav) — no new publish
-              callback. */}
+              Pinned to the viewport's right edge. Zoom + page nav live at the
+              bottom; the Survey toggle now lives in the top toolbar with the
+              annotation tools. */}
           <div
             id="chrome-right-host"
             style={{
@@ -45437,39 +45072,6 @@ export default function App() {
               zIndex: 5500
             }}
           >
-            {/* Top slot — Survey toggle. Reuses topToolbarApi.onSurveyToggle
-                so the existing Pro gate + active styling carry over without
-                duplicate state. UX 2026-05-14: icon tint matches the
-                muted grey used by the left-rail tab icons (#bbb) so the
-                Survey icon doesn't read as a brighter spotlight. Active
-                state keeps the accent blue to signal the panel is open. */}
-            {topToolbarApi.onSurveyToggle && (
-              <button
-                onClick={topToolbarApi.onSurveyToggle}
-                title={!topToolbarApi.surveyEnabled ? 'Pro feature - Upgrade to unlock' : 'Survey'}
-                style={{
-                  width: '36px',
-                  height: '36px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: 0,
-                  background: topToolbarApi.surveyActive ? 'rgba(74, 144, 226, 0.15)' : 'transparent',
-                  border: topToolbarApi.surveyActive ? '1px solid #4A90E2' : '1px solid transparent',
-                  borderRadius: '6px',
-                  color: topToolbarApi.surveyActive ? '#4A90E2' : '#bbb',
-                  opacity: topToolbarApi.surveyEnabled ? 1 : 0.6,
-                  cursor: 'pointer',
-                  position: 'relative'
-                }}
-              >
-                <Icon name="survey" size={20} />
-                {!topToolbarApi.surveyEnabled && (
-                  <Icon name="lock" size={10} style={{ position: 'absolute', bottom: 2, right: 2 }} />
-                )}
-              </button>
-            )}
-
             {/* Spacer pushes the bottom slot to the bottom of the rail. */}
             <div style={{ flex: 1 }} />
 

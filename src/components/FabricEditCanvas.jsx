@@ -66,6 +66,7 @@ import {
 import { getLocalFabricOrigin } from '../lib/collab/crdtUndoManager.js';
 import { isCRDTEnabled as readCRDTEnabledFlag } from '../lib/collab/crdtFeatureFlag.js';
 import { useYDoc } from '../hooks/useYDoc.js';
+import CompactColorPicker from './CompactColorPicker';
 
 // Fix Fabric.js 5.x cursor overlap bug: cursor was centered on character boundary
 // with `- cursorWidth / 2`, causing leftward drift at fractional zoom.
@@ -515,12 +516,9 @@ const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onProperty
     positionStyle.top = toolbarPos.top + toolbarPos.height + 8;
   }
 
-  const PRESET_COLORS = [
-    '#FF0000', '#FF8000', '#FFFF00', '#00FF00',
-    '#00FFFF', '#0000FF', '#8000FF', '#FF00FF',
-    '#FFFFFF', '#C0C0C0', '#808080', '#000000',
-  ];
-
+  // Counter-pin / shape colour popup — uses the app's one shared colour picker
+  // (CompactColorPicker). Opacity is hidden: these colours have no per-colour
+  // transparency here (counter pins carry a group-wide opacity elsewhere).
   const renderColorGrid = (currentColor, onSelect, onClose) => (
     <div
       style={{
@@ -528,32 +526,17 @@ const MiniToolbar = memo(({ fabricRef, containerRef, editCanvasStyle, onProperty
         top: '100%',
         left: 0,
         marginTop: 4,
-        background: '#2D2D2D',
-        border: '1px solid #3A3A3A',
-        borderRadius: 6,
-        padding: 8,
-        display: 'grid',
-        gridTemplateColumns: 'repeat(4, 1fr)',
-        gap: 4,
         zIndex: 103,
         pointerEvents: 'auto',
       }}
       onMouseDown={(e) => e.stopPropagation()}
     >
-      {PRESET_COLORS.map((c) => (
-        <div
-          key={c}
-          onClick={() => { onSelect(c); onClose(); }}
-          style={{
-            width: 20,
-            height: 20,
-            backgroundColor: c,
-            borderRadius: 2,
-            border: c === currentColor ? '2px solid #4A90E2' : '1px solid #555',
-            cursor: 'pointer',
-          }}
-        />
-      ))}
+      <CompactColorPicker
+        color={currentColor}
+        showOpacity={false}
+        onChange={(hex) => onSelect(hex)}
+        onClose={onClose}
+      />
     </div>
   );
 

@@ -42,6 +42,7 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { HubShell, Icon, Search } from './HubShell';
+import CompactColorPicker from '../components/CompactColorPicker';
 
 /* ============================================================
    Inline scoped stylesheet — the prototype's `.ed-scope` editorial
@@ -223,6 +224,12 @@ const buildRich = (templates) => templates.map((t, i) => {
     id: e?.id ?? newId('e'),
     role: e?.name || e?.role || `Entity ${ei + 1}`,
     color: toHex6(e?.color),
+    /* Optional colour refinements persisted alongside the entity. Older
+       templates won't have them — fall back to sensible defaults. */
+    opacity: typeof e?.opacity === 'number' ? e.opacity : 0.35,
+    borderColor: typeof e?.borderColor === 'string' ? e.borderColor : null,
+    borderOpacity: typeof e?.borderOpacity === 'number' ? e.borderOpacity : null,
+    matchFill: !!e?.matchFill,
   }));
   return {
     id: t?.id ?? `t${i}`,
@@ -423,6 +430,7 @@ export default function TemplatesEditor({
   templatesLocked = false,
   onNav,
   onCreateTemplate,
+  onSaveTemplates,
   onShare,
 }) {
   /* ---- mutable working data ----
@@ -430,7 +438,9 @@ export default function TemplatesEditor({
      action below actually mutates it. Re-seeded whenever the prop identity
      changes (e.g. the host adds a template via onCreateTemplate). */
   const [rich, setRich] = useState(() => buildRich(templates));
-  useEffect(() => { setRich(buildRich(templates)); }, [templates]);
+  /* True once the user edits anything; drives the Save / Cancel bar. Reset
+     whenever the editor reloads from props, or on Save / Cancel. */
+  const [dirty, setDirty] = useState(false);
 
   /* ---- selection / edit state ---- */
   const [selectedId, setSelected] = useState(null);
@@ -464,6 +474,27 @@ export default function TemplatesEditor({
   const [layerTab, setLayerTab] = useState({});       // { entityId: 'fill' | 'border' }
   const [borderColors, setBorderColors] = useState({});
   const [matchFill, setMatchFill] = useState({});     // { entityId: bool }
+
+  /* Rebuild the working copy + colour-picker maps from the templates prop.
+     Seeds the maps from each entity's persisted refinements so saved colours
+     round-trip, and clears the dirty flag since the copy now matches the host. */
+  const reloadFromProps = useCallback(() => {
+    const next = buildRich(templates);
+    const rc = {}, bc = {}, mf = {};
+    next.forEach((t) => t.roster.forEach((r) => {
+      rc[r.id] = { color: r.color, opacity: r.opacity ?? 0.35 };
+      if (r.borderColor) bc[r.id] = { color: r.borderColor, opacity: r.borderOpacity ?? (r.opacity ?? 0.35) };
+      if (r.matchFill) mf[r.id] = true;
+    }));
+    setRich(next);
+    setRoleColors(rc);
+    setBorderColors(bc);
+    setMatchFill(mf);
+    setDirty(false);
+  }, [templates]);
+  /* Reload whenever the host swaps the templates prop (added a template, or a
+     Save refetched fresh rows). */
+  useEffect(() => { reloadFromProps(); }, [reloadFromProps]);
 
   /* ---- colour math (carried verbatim from the prototype) ---- */
   const hexToHsl = (hex) => {
@@ -549,6 +580,7 @@ export default function TemplatesEditor({
   /* Map over one template by id and replace it with `fn`'s result. */
   const mutateTpl = useCallback((tid, fn) => {
     setRich((prev) => prev.map((t) => (t.id === tid ? fn(t) : t)));
+    setDirty(true);
   }, []);
 
   /* --- template-level --- */
@@ -580,9 +612,11 @@ export default function TemplatesEditor({
       });
       return out;
     });
+    setDirty(true);
   };
   const deleteTemplates = (ids) => {
     setRich((prev) => prev.filter((t) => !ids.has(t.id)));
+    setDirty(true);
   };
 
   /* --- module-level --- */
@@ -761,6 +795,69 @@ export default function TemplatesEditor({
     setSelEntities(new Set());
   };
 
+  /* Resolve an entity's fill + border for its identifier swatch (left template
+     list AND right entities panel). The swatch shows the colour at FULL
+     strength — a Drawboard-style solid chip — so entities stay easy to tell
+     apart; the picked opacity still drives the actual PDF annotation, it just
+     isn't baked into the tiny dot (35% on white reads as a washed-out pastel).
+     Border honours "Match Fill" — when on, it equals the fill colour. */
+  const entitySwatch = (r) => {
+    const color = roleColors[r.id]?.color || r.color || '#8c8c8a';
+    const border = matchFill[r.id]
+      ? color
+      : ((borderColors[r.id] || {}).color || color);
+    return { fill: color, border };
+  };
+
+  /* Map the editor's working copy back to the persisted template shape.
+     Entity colours pull from the live picker maps so opacity + border
+     refinements round-trip; structural ids/names come straight from `rich`.
+     The original row is spread first to preserve fields the editor doesn't
+     touch (visibility, createdAt, supabaseId, etc.). */
+  const richToTemplate = (r) => {
+    const original = (templates || []).find((t) => t.id === r.id) || {};
+    const mods = r.modules.map((m) => ({
+      id: m.id,
+      name: m.name,
+      categories: m.categories.map((c) => ({
+        id: c.id,
+        name: c.name,
+        checklist: c.items.map((it) => ({ id: it.id, text: it.text })),
+      })),
+    }));
+    return {
+      ...original,
+      id: r.id,
+      name: r.name,
+      modules: mods,
+      spaces: mods,
+      ballInCourtEntities: r.roster.map((e) => {
+        const fillColor = roleColors[e.id]?.color || e.color || '#8c8c8a';
+        const fillOpacity = roleColors[e.id]?.opacity ?? 0.35;
+        const mf = !!matchFill[e.id];
+        const bd = mf
+          ? { color: fillColor, opacity: fillOpacity }
+          : (borderColors[e.id] || { color: fillColor, opacity: fillOpacity });
+        return {
+          id: e.id,
+          name: e.role,
+          color: fillColor,
+          opacity: fillOpacity,
+          borderColor: bd.color,
+          borderOpacity: bd.opacity,
+          matchFill: mf,
+        };
+      }),
+      updatedAt: new Date().toISOString(),
+    };
+  };
+
+  const handleSaveTemplates = () => {
+    if (onSaveTemplates) onSaveTemplates(rich.map(richToTemplate));
+    setDirty(false);
+  };
+  const handleCancelEdits = () => { reloadFromProps(); };
+
   const subtitle = (
     <span><b>{rich.length}</b> templates · reusable category + checklist sets</span>
   );
@@ -854,9 +951,17 @@ export default function TemplatesEditor({
                         <div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{t.name}</div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                            {t.roster.slice(0, 3).map((r) => (
-                              <span key={r.id} style={{ width: 14, height: 14, borderRadius: '50%', background: r.color + '59', border: `1.5px solid ${r.color}` }}></span>
-                            ))}
+                            {/* Up to 10 entity swatches fit before the row gets crowded;
+                               any beyond that collapse into a "+N" overflow pill. */}
+                            {t.roster.slice(0, 10).map((r) => {
+                              const sw = entitySwatch(r);
+                              return (
+                                <span key={r.id} style={{ width: 14, height: 14, borderRadius: '50%', background: sw.fill, border: `1.5px solid ${sw.border}` }}></span>
+                              );
+                            })}
+                            {t.roster.length > 10 && (
+                              <span className="mono meta" style={{ fontSize: 9.5 }}>+{t.roster.length - 10}</span>
+                            )}
                           </div>
                           <span className="mono meta" style={{ fontSize: 9.5 }}>{t.roster.length}</span>
                         </div>
@@ -1168,6 +1273,22 @@ export default function TemplatesEditor({
                     </>
                   );
                 })()}
+                {/* Save / Cancel surface as soon as anything in the template
+                    is edited. Cancel discards every working change; Save writes
+                    the whole template set (modules, categories, checklist and
+                    entities + their colours) back to the host for persistence. */}
+                {dirty && (
+                  <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, flex: 'none' }}>
+                    <button
+                      onClick={handleCancelEdits}
+                      style={{ background: 'transparent', border: '1px solid var(--rule-strong)', borderRadius: 2, padding: '1px 7px', fontSize: 10, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--ink-soft)', height: 18, lineHeight: 1, boxSizing: 'border-box', flex: 'none' }}
+                    >Cancel</button>
+                    <button
+                      onClick={handleSaveTemplates}
+                      style={{ background: 'var(--accent)', border: '1px solid var(--accent)', borderRadius: 2, padding: '1px 8px', fontSize: 10, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--paper)', height: 18, lineHeight: 1, boxSizing: 'border-box', flex: 'none' }}
+                    >Save</button>
+                  </div>
+                )}
               </div>
 
               <div className="slim-scroll" style={{ padding: '8px 8px 12px', display: 'flex', flexDirection: 'column', gap: 8, overflow: 'auto', flex: 1, minHeight: 0 }}>
@@ -1177,7 +1298,12 @@ export default function TemplatesEditor({
                 {tpl && tpl.roster.map((r) => {
                   const c = roleColors[r.id]?.color || r.color || '#8c8c8a';
                   const op = roleColors[r.id]?.opacity ?? 0.35;
-                  const alpha = Math.round(op * 255).toString(16).padStart(2, '0');
+                  /* Glyph border colour: when "Match Fill" is on the border equals the
+                     fill; otherwise it shows the entity's own border choice (defaulting
+                     to the fill so an untouched border looks unified). */
+                  const rowBorderColor = !!matchFill[r.id]
+                    ? c
+                    : ((borderColors[r.id] || {}).color || c);
                   const isOpen = openColor === r.id;
                   const isSel = selEntities.has(r.id);
                   return (
@@ -1193,7 +1319,11 @@ export default function TemplatesEditor({
                           title="Edit color"
                           style={{
                             width: 18, height: 18, borderRadius: '50%',
-                            background: c + alpha, border: `1.5px solid ${c}`,
+                            /* Solid full-strength chip (Drawboard-style) so entity
+                               colours stay vibrant and easy to tell apart — the picked
+                               opacity drives the PDF annotation, not this identifier. */
+                            background: c,
+                            border: `1.5px solid ${rowBorderColor}`,
                             cursor: 'pointer', padding: 0,
                           }}
                         ></button>
@@ -1237,22 +1367,19 @@ export default function TemplatesEditor({
                         const activeData = isBorderMatched ? fillData : (layer === 'border' ? borderData : fillData);
                         const activeColor = activeData.color;
                         const activeOp = activeData.opacity;
-                        /* Picker writes both into the editor's local picker state
-                           AND, for fill, straight into the entity's working data
-                           so the left-rail swatch updates live. */
-                        const setColor = (color) => {
+                        /* The shared colour picker reports colour + opacity together.
+                           Write both into the editor's picker state, and for fill also
+                           into the entity's working data so the left-rail swatch
+                           updates live. No-op while a border is matched to the fill. */
+                        const applyColor = (color, opacity) => {
                           if (isBorderMatched) return;
                           if (layer === 'border') {
-                            setBorderColors({ ...borderColors, [r.id]: { color, opacity: borderData.opacity } });
+                            setBorderColors({ ...borderColors, [r.id]: { color, opacity } });
                           } else {
-                            setRoleColors({ ...roleColors, [r.id]: { color, opacity: op } });
+                            setRoleColors({ ...roleColors, [r.id]: { color, opacity } });
                             setEntityColor(r.id, color);
                           }
-                        };
-                        const setOpacity = (opacity) => {
-                          if (isBorderMatched) return;
-                          if (layer === 'border') setBorderColors({ ...borderColors, [r.id]: { color: borderData.color, opacity } });
-                          else setRoleColors({ ...roleColors, [r.id]: { color: c, opacity } });
+                          setDirty(true);
                         };
                         return (
                           <div style={{
@@ -1281,162 +1408,28 @@ export default function TemplatesEditor({
                               ))}
                             </div>
                             <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                              {/* Header: title + view toggle */}
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink)', textTransform: 'capitalize' }}>{tab}</span>
-                                <div style={{ display: 'flex', gap: 4 }}>
-                                  <button
-                                    onClick={() => setColorTab({ ...colorTab, [r.id]: 'presets' })}
-                                    title="Presets"
-                                    style={{
-                                      width: 22, height: 22, borderRadius: 4, padding: 0,
-                                      border: `1px solid ${tab === 'presets' ? 'var(--accent)' : 'var(--rule-strong)'}`,
-                                      background: tab === 'presets' ? 'rgba(216,168,78,0.12)' : 'transparent',
-                                      color: tab === 'presets' ? 'var(--accent)' : 'var(--ink-muted)',
-                                      cursor: 'pointer', display: 'grid', placeItems: 'center', fontFamily: 'inherit',
-                                    }}
-                                  >
-                                    <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
-                                  </button>
-                                  <button
-                                    onClick={() => setColorTab({ ...colorTab, [r.id]: 'custom' })}
-                                    title="Custom"
-                                    style={{
-                                      width: 22, height: 22, borderRadius: 4, padding: 0,
-                                      border: `1px solid ${tab === 'custom' ? 'var(--accent)' : 'var(--rule-strong)'}`,
-                                      background: tab === 'custom' ? 'rgba(216,168,78,0.12)' : 'transparent',
-                                      color: tab === 'custom' ? 'var(--accent)' : 'var(--ink-muted)',
-                                      cursor: 'pointer', display: 'grid', placeItems: 'center', fontFamily: 'inherit',
-                                      fontSize: 12, lineHeight: 1,
-                                    }}
-                                  >✦</button>
-                                </div>
-                              </div>
                               {/* Match Fill row — only on Border tab */}
                               {layer === 'border' && (
                                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
                                   <input
                                     type="checkbox"
                                     checked={match}
-                                    onChange={(e) => setMatchFill({ ...matchFill, [r.id]: e.target.checked })}
+                                    onChange={(e) => { setMatchFill({ ...matchFill, [r.id]: e.target.checked }); setDirty(true); }}
                                     style={{ width: 13, height: 13, margin: 0, accentColor: 'var(--accent)' }}
                                   />
                                   <span style={{ fontSize: 11, fontWeight: 600, color: match ? 'var(--ink)' : 'var(--ink-soft)' }}>Match Fill</span>
                                   {match && <span style={{ fontSize: 10, color: 'var(--ink-muted)', marginLeft: 'auto' }}>using fill color &amp; opacity</span>}
                                 </label>
                               )}
-                              {/* Controls — dimmed/disabled when border + match */}
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, opacity: isBorderMatched ? 0.4 : 1, pointerEvents: isBorderMatched ? 'none' : 'auto' }}>
-                                {tab === 'presets' ? (
-                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 6 }}>
-                                    {PALETTE.map((p) => {
-                                      const isPicked = activeColor.toLowerCase() === p.toLowerCase();
-                                      return (
-                                        <button
-                                          key={p}
-                                          onClick={() => setColor(p)}
-                                          style={{
-                                            width: '100%', aspectRatio: '1 / 1', borderRadius: '50%',
-                                            background: p, border: '1px solid rgba(0,0,0,0.4)',
-                                            outline: isPicked ? '2px solid var(--ink)' : 'none', outlineOffset: 2,
-                                            cursor: 'pointer', padding: 0,
-                                            boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
-                                          }}
-                                        ></button>
-                                      );
-                                    })}
-                                  </div>
-                                ) : (() => {
-                                  const hsl = hexToHsl(activeColor);
-                                  const onSquare = (e, target) => {
-                                    const rect = (target || e.currentTarget).getBoundingClientRect();
-                                    const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-                                    const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
-                                    setColor(hslToHex(Math.round(x * 360), Math.round((1 - y) * 100), hsl.l || 50));
-                                  };
-                                  const darkness = 100 - hsl.l;
-                                  const pureAtL50 = hslToHex(hsl.h, hsl.s, 50);
-                                  return (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                      {/* HS square — x: hue, y: saturation (top saturated, bottom white) */}
-                                      <div
-                                        onMouseDown={(e) => {
-                                          const el = e.currentTarget;
-                                          onSquare(e, el);
-                                          const move = (ev) => onSquare(ev, el);
-                                          const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-                                          window.addEventListener('mousemove', move);
-                                          window.addEventListener('mouseup', up);
-                                        }}
-                                        style={{
-                                          width: '100%', aspectRatio: '5 / 3', borderRadius: 4, position: 'relative',
-                                          background: 'linear-gradient(to bottom, transparent 0%, #fff 100%), linear-gradient(to right, #ff0000, #ff7a00, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)',
-                                          cursor: 'crosshair', border: '1px solid var(--rule-strong)',
-                                        }}
-                                      >
-                                        <div style={{
-                                          position: 'absolute',
-                                          left: `${(hsl.h / 360) * 100}%`, top: `${100 - hsl.s}%`,
-                                          width: 10, height: 10, marginLeft: -5, marginTop: -5,
-                                          borderRadius: '50%', background: 'transparent',
-                                          border: '2px solid #fff', boxShadow: '0 0 0 1px rgba(0,0,0,0.6)',
-                                          pointerEvents: 'none',
-                                        }} />
-                                      </div>
-                                      {/* Lightness slider — left: white → middle: pure → right: black */}
-                                      <div style={{ position: 'relative', height: 14 }}>
-                                        <div style={{
-                                          position: 'absolute', inset: 0, borderRadius: 7,
-                                          background: `linear-gradient(to right, #ffffff 0%, ${pureAtL50} 50%, #000000 100%)`,
-                                          border: '1px solid var(--rule-strong)',
-                                        }} />
-                                        <input
-                                          type="range" min={0} max={100} value={darkness}
-                                          onChange={(e) => setColor(hslToHex(hsl.h, hsl.s, 100 - parseInt(e.target.value)))}
-                                          className="picker-hue-range"
-                                          style={{ position: 'absolute', inset: 0, width: '100%', margin: 0, appearance: 'none', background: 'transparent', cursor: 'pointer' }}
-                                        />
-                                      </div>
-                                      {/* Hex */}
-                                      <input
-                                        value={activeColor.toUpperCase()}
-                                        onChange={(e) => { const v = e.target.value.trim(); const hex = v.startsWith('#') ? v : '#' + v; if (/^#[0-9a-f]{6}$/i.test(hex)) setColor(hex.toLowerCase()); }}
-                                        onBlur={(e) => { let v = e.target.value.trim(); if (!v.startsWith('#')) v = '#' + v; if (/^#[0-9a-f]{6}$/i.test(v)) setColor(v.toLowerCase()); }}
-                                        style={{ width: '100%', background: 'var(--paper-card)', border: '1px solid var(--rule-strong)', color: 'var(--ink)', borderRadius: 4, padding: '6px 8px', fontSize: 11, fontFamily: 'ui-monospace, monospace', outline: 'none', letterSpacing: 0.5 }}
-                                      />
-                                    </div>
-                                  );
-                                })()}
-                                {/* Divider */}
-                                <div style={{ height: 1, background: 'var(--rule)', margin: '2px 0' }} />
-                                {/* Opacity row */}
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink)' }}>Opacity</span>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                      <input
-                                        type="text"
-                                        inputMode="numeric"
-                                        value={Math.round(activeOp * 100)}
-                                        onChange={(e) => { const v = parseInt(e.target.value.replace(/\D/g, '') || '0'); if (!isNaN(v) && v >= 0 && v <= 100) setOpacity(v / 100); }}
-                                        style={{ width: 38, height: 22, background: 'var(--paper-card)', border: '1px solid var(--rule-strong)', color: 'var(--ink)', borderRadius: 4, padding: '0 6px', fontSize: 11, fontFamily: 'ui-monospace, monospace', outline: 'none', textAlign: 'center' }}
-                                      />
-                                      <span className="mono" style={{ fontSize: 10, color: 'var(--ink-muted)', fontWeight: 600 }}>%</span>
-                                    </div>
-                                  </div>
-                                  <div style={{ position: 'relative', height: 4 }}>
-                                    <div style={{
-                                      position: 'absolute', inset: 0, borderRadius: 2,
-                                      background: `linear-gradient(to right, var(--ink-300) 0%, var(--ink-300) ${Math.round(activeOp * 100)}%, var(--rule) ${Math.round(activeOp * 100)}%, var(--rule) 100%)`,
-                                    }} />
-                                    <input
-                                      type="range" min={0} max={100} value={Math.round(activeOp * 100)}
-                                      onChange={(e) => setOpacity(parseInt(e.target.value) / 100)}
-                                      className="picker-op-range"
-                                      style={{ position: 'absolute', inset: '-6px 0', width: '100%', margin: 0, appearance: 'none', background: 'transparent', cursor: 'pointer', height: 16 }}
-                                    />
-                                  </div>
-                                </div>
+                              {/* Shared colour picker — the app's one picker. Dimmed +
+                                  read-only while a border is matched to the fill. */}
+                              <div style={{ opacity: isBorderMatched ? 0.4 : 1, pointerEvents: isBorderMatched ? 'none' : 'auto' }}>
+                                <CompactColorPicker
+                                  color={activeColor}
+                                  opacity={activeOp}
+                                  onChange={applyColor}
+                                  onClose={() => {}}
+                                />
                               </div>
                             </div>
                           </div>

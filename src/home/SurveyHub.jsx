@@ -37,6 +37,7 @@ export default function SurveyHub({
   onUpload,
   onCreateProject,
   onCreateTemplate,
+  onSaveTemplates,
   onDuplicateDocuments,
   onDeleteDocuments,
   onMoveCopyDocuments,
@@ -112,6 +113,7 @@ export default function SurveyHub({
           {...common}
           templates={templates}
           onCreateTemplate={onCreateTemplate}
+          onSaveTemplates={onSaveTemplates}
           onShare={shareTemplate}
         />
       )}
