@@ -1,0 +1,77 @@
+===== SurveyApp Save Log =====
+version:   0.1.45
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1512x826
+locale:    en-US
+timestamp: 2026-05-17T19:58:25.313Z (5/17/2026, 3:58:25 PM)
+==============================
+[dev-auto-login] boot {"hasDevEmail":true,"devEmailHint":"isai***","hasDevPassword":true,"hasCachedSession":true,"cachedSessionEmail":"isaiahcalvo123@gmail.com","cachedSessionExpiresAt":1779050287}
+[dev-auto-login] cached session matches dev email, keeping it
+[dev-auto-login] decision {"needsAutoLogin":false,"willAttemptSignIn":false}
+[CloudSync][hook] session id minted {"sessionId":"17d99ffb-b091-48c6-9fa6-dc1b1cdbe561"}
+[CloudSync][hook][state-obs] annotationsByPage initial {"currentCount":0,"pages":0,"hydrated":false}
+[CloudSync][hook][state-obs] callouts initial {"currentCount":0,"hydrated":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"hydrateEnabled":true,"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":null}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"hydrateEnabled":true,"hasDocumentId":true,"hasUserId":true,"hasPdfId":false}
+[AnnotationHydrationGate][normal] {"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","pdfId":null,"ready":false,"source":"missing-prerequisite","normalReady":false,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true}
+[AnnotationHydrationGate][first-page] {"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","pdfId":null,"pageNumber":1,"ready":false,"visualCoverActive":true,"normal":{"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","pdfId":null,"ready":false,"source":"pending","firstPaintGate":true},"survey":{"ready":true,"source":"local"}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","pdfId":null,"pageNumber":1,"active":true,"reason":"annotation-hydration-gated"}
+[Cloud render cache] doc=clickable-link-test.pdf-23183 painting verified cloud snapshot immediately — count=9.
+[CSeries wipe] doc=clickable-link-test.pdf-23183 totalCounters=1 legacyRemoved=0 — nothing to wipe.
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"e0686482-2307-4e3a-9dca-f3debc1fac84","userId":null,"alreadyRanFor":null,"willRun":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"hydrateEnabled":true,"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"clickable-link-test.pdf-23183"}
+[AnnotationHydrationGate][normal] {"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","pdfId":"clickable-link-test.pdf-23183","ready":false,"source":"starting","normalReady":false,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true}
+[CloudSync][hook] stage=hydrating
+[AnnotationHydrationGate][first-page] {"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","pdfId":"clickable-link-test.pdf-23183","pageNumber":1,"ready":false,"visualCoverActive":true,"normal":{"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","pdfId":null,"ready":false,"source":"missing-prerequisite","normalReady":false,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true},"survey":{"ready":false,"source":"supabase-highlight-starting","documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","pdfId":"clickable-link-test.pdf-23183"}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","pdfId":"clickable-link-test.pdf-23183","pageNumber":1,"active":true,"reason":"annotation-hydration-gated"}
+[AnnotationHydrationGate][first-page] {"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","pdfId":"clickable-link-test.pdf-23183","pageNumber":1,"ready":false,"visualCoverActive":true,"normal":{"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","pdfId":"clickable-link-test.pdf-23183","ready":false,"source":"starting","normalReady":false,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true},"survey":{"ready":false,"source":"supabase-highlight-starting","documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","pdfId":"clickable-link-test.pdf-23183"}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","pdfId":"clickable-link-test.pdf-23183","pageNumber":1,"active":true,"reason":"annotation-hydration-gated"}
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"e0686482-2307-4e3a-9dca-f3debc1fac84","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","alreadyRanFor":null,"willRun":true}
+[Phase31 UAT] backfill:start {"hasYdoc":true,"hasSupabase":true,"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","markCutoverComplete":true}
+[PDFImport] skipped embedded PDF annotation import — cloud/Y.Doc is authoritative {"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84"}
+[PDFCounterImport] summary {"marker":"survey-counter","metadataKey":"SurveyApp","counterAnnotationsImported":0,"plainCirclesImported":0,"counterMetadataParseFailures":0,"appCalloutMarker":"survey-callout","appCalloutMetadataKey":"SurveyAppCallout","appCalloutAnnotationsImported":0,"appCalloutPiecesSkipped":0}
+[PDFAppLayerStateImport] summary {"found":false,"documentId":null,"exportId":null,"scopedAnnotationPages":0,"scopedCallouts":0,"surveyHighlights":0,"spaces":0}
+[PDFImport] native layer policy {"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","cloudAuthoritative":true,"reason":"cloud/Y.Doc annotations are authoritative; native PDF annotation layer is hidden when all renderable native annotations are accounted for by importer diagnostics.","pages":{"1":{"hideNativeLayer":true,"nativeRenderableAnnotationCount":8,"nativeOnlyAnnotationCount":0,"reason":"all-renderable-native-annotations-imported-as-editable-app-annotations"}}}
+[PrintPanel] RENDER — panel closed
+[CloudSync][hook] cutover-complete hydrate — reading from Y.Doc {"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","cutoverTs":"2026-05-17T19:27:33.212+00:00"}
+[Phase31 UAT] hydrate:cutover-sealed {"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","pdfId":"clickable-link-test.pdf-23183","cutoverTs":"2026-05-17T19:27:33.212+00:00","yMapSize":9,"yMapCalloutsSize":0,"materializedTotal":9,"materializedCallouts":0,"materializedDrawnByMe":0,"materializedDrawnByOthers":9,"materializedImported":0,"pages":1,"perPage":{"1":9},"currentStateCount":9,"ydocLooksDegenerate":false}
+[Phase31 UAT] hydrate:cutover-sealed:by-type {"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","pdfFile":"clickable-link-test.pdf-23183","viewerUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapTotal":9,"yMapCalloutsTotal":0,"yMapByType":{"path":2,"rect":4,"polyline":1,"polygon":1,"circle":1},"yMapByAuthor":{"byMe":0,"byOthers":0,"anonymous":9},"yMapByTypeByAuthor":{"path":{"byMe":0,"byOthers":0,"anonymous":2},"rect":{"byMe":0,"byOthers":0,"anonymous":4},"polyline":{"byMe":0,"byOthers":0,"anonymous":1},"polygon":{"byMe":0,"byOthers":0,"anonymous":1},"circle":{"byMe":0,"byOthers":0,"anonymous":1}},"yMapPerTypePerPage":{"path":{"unknown":2},"rect":{"unknown":4},"polyline":{"unknown":1},"polygon":{"unknown":1},"circle":{"unknown":1}},"byPageTotal":9,"byPageByType":{"path":2,"rect":4,"polyline":1,"polygon":1,"circle":1},"byPagePerPagePerType":{"1":{"path":2,"rect":4,"polyline":1,"polygon":1,"circle":1}}}
+[CloudSync][hydrate] loadAllNonHighlightAnnotations start {"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84"}
+[HIGHLIGHT-SYNC][load.legacy][pdf=clickable-link-test.pdf] {"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","totalRows":0,"fabricCarryingDropped":0,"keptCount":0,"keptIds":[]}
+[AnnotationHydrationGate][survey] supabase highlights complete {"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","pdfId":"clickable-link-test.pdf-23183","count":0}
+[AnnotationHydrationGate][first-page] {"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","pdfId":"clickable-link-test.pdf-23183","pageNumber":1,"ready":false,"visualCoverActive":true,"normal":{"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","pdfId":"clickable-link-test.pdf-23183","ready":false,"source":"starting","normalReady":false,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true},"survey":{"ready":true,"source":"supabase-highlight","documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","pdfId":"clickable-link-test.pdf-23183","count":0}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","pdfId":"clickable-link-test.pdf-23183","pageNumber":1,"active":true,"reason":"annotation-hydration-gated"}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[Phase31 UAT] backfill:degeneracy-probe {"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapSize":9,"legacyCount":9,"probeOk":true,"tolerance":100,"yMapLooksHealthy":true,"dedupeRan":true,"lastGoodSize":9,"hardFloorBreached":false}
+[DebugBridge +6431.5ms] pdf_loaded {"pageCount":1,"currentPage":1}
+[CloudSync][hook] fabric push skipped — not hydrated yet
+[CloudSync][hook] callout push skipped — not hydrated yet
+[CloudSync][realtime] subscribing {"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","currentUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","currentSessionId":"17d99ffb-b091-48c6-9fa6-dc1b1cdbe561","hasFabricInsert":true,"hasFabricUpdate":true,"hasFabricDelete":true,"hasCalloutInsert":true,"hasCalloutUpdate":true,"hasCalloutDelete":true}
+[DebugBridge +6458.0ms] zoom_start {"scale":1.33333,"targetScale":0.94,"source":"zoomChange"}
+[CloudSync][realtime] subscribe status {"status":"SUBSCRIBED","error":null}
+[Phase31 UAT] post-subscribe catch-up skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","pdfId":"clickable-link-test.pdf-23183","cutoverTs":"2026-05-17T19:27:33.212+00:00","ydocAuthoritative":true}
+[CloudSync][hydrate] loadAllNonHighlightAnnotations ok {"elapsedMs":341,"totalRowsScanned":9,"scanned":{"nonHighlight":9,"legacyFabricHighlights":0},"totalRows":9,"rowsByType":{"ink":2,"square":4,"polyline":1,"polygon":1,"counter":1},"pagesWithObjects":1,"calloutCount":0}
+[CloudSync][verify] first read summary {"contextLabel":"cutover-source-of-truth","documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","elapsedMs":341,"firstFabricPages":1,"firstFabricObjects":9,"firstCallouts":0,"firstEmpty":false,"localFabricCount":9,"localCalloutCount":0,"localHasData":true,"willVerify":false}
+[CloudSync][source-of-truth] cutover initial hydrate selected Supabase durable snapshot {"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","pdfId":"clickable-link-test.pdf-23183","cutoverTs":"2026-05-17T19:27:33.212+00:00","ydocFabricCount":9,"ydocCalloutCount":0,"supabaseFabricCount":9,"supabaseCalloutCount":0,"rule":"Supabase durable snapshot wins initial load; Y.Doc is reshaped for live collaboration"}
+[Phase31 UAT] save:fan-out done {"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","pdfId":"clickable-link-test.pdf-23183","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","actionType":null,"dispatched":9,"yDocUpdateCount":9,"detected":9,"skippedHighlightOrCallout":0,"skippedOtherType":0,"rawTypeBreakdown":{"counter":1,"pen":1,"path":1,"rect":4,"polyline":1,"polygon":1},"resolvedTypeBreakdown":{"counter":1,"ink":2,"square":4,"polyline":1,"polygon":1},"skipReasons":{},"skipSamples":[],"yMapSizeAfter":9}
+[CloudSync][hook] callout Y.Doc fan-out done {"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","pdfId":"clickable-link-test.pdf-23183","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","actionType":"callout:delta","upserted":0,"deleted":0,"yDocUpdateCount":0,"yMapCalloutsSizeAfter":0}
+[AnnotationHydrationGate][normal] {"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","pdfId":"clickable-link-test.pdf-23183","ready":true,"source":"supabase-durable-snapshot","normalReady":true,"cutoverTs":"2026-05-17T19:27:33.212+00:00","count":9,"calloutCount":0,"firstPaintGate":true}
+[AnnotationHydrationGate][first-page] {"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","pdfId":"clickable-link-test.pdf-23183","pageNumber":1,"ready":true,"visualCoverActive":false,"normal":{"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","pdfId":"clickable-link-test.pdf-23183","ready":true,"source":"supabase-durable-snapshot","normalReady":true,"cutoverTs":"2026-05-17T19:27:33.212+00:00","count":9,"calloutCount":0,"firstPaintGate":true},"survey":{"ready":true,"source":"supabase-highlight","documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","pdfId":"clickable-link-test.pdf-23183","count":0}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"e0686482-2307-4e3a-9dca-f3debc1fac84","pdfId":"clickable-link-test.pdf-23183","pageNumber":1,"active":false,"reason":"hydration-ready"}
+[HyperlinkDiag] post-load scan {"hyperlinkCount":1,"samples":[{"tag":"A","className":"e-pv-hyperlink","href":"https://claude.com","rect":{"x":565.8984375,"y":263.421875,"width":293.328125,"height":32,"top":263.421875,"right":859.2265625,"bottom":295.421875,"left":565.8984375}}]}
+[HyperlinkDiag] page 1 layers {"hyperlinkChildren":1,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","DIV","e-pv-annotation-canvas","e-pv-hyperlink","e-pv-text-layer"]}
+[Diag] tool-switch DETECTED → select (scheduling t+1000ms capture)
+[DebugBridge +8102.8ms] zoom_end {"source":"zoomChange_settle"}
+[Diag select] screenshot saved (162 KB) → /Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/TestLogs/testlog-screenshot-select.png
+[Diag select] CAPTURED @ t+1002ms — annotations=9 callouts=0 svgWrappers=1 svgVis=[visible] svgElems=9 svgVisElems=9 eraserCanvases=0 svgMarkupBytes=30371
+
+===== Undo/Redo Chronology =====
+events=1
+lanes=local annotation history | callout history | legacy history | Yjs/CRDT history
+{"seq":1,"order":null,"at":"2026-05-17T19:58:15.097Z","event":"history_reset_for_pdf_change","actionType":"pdf:change","rawActionType":"pdf:change","annotationType":null,"annotationId":null,"pageNumber":null,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+===== End Undo/Redo Chronology =====
