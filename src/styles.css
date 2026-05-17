@@ -294,6 +294,12 @@
 
 .syncfusion-renderer-only .e-pv-viewer-container {
   background: #2b2b2b !important;
+  /* UX 2026-05-17 — Syncfusion ships a 1px #e0e0e0 border on the viewer
+     container (border-width: 1px 1px 1px 0 — top/right/bottom, no left).
+     Against our dark theme it reads as a stray white frame around the
+     document, so we remove it entirely. Nothing functional depends on it;
+     it is purely the library's default chrome. */
+  border: 0 !important;
 }
 
 /*
