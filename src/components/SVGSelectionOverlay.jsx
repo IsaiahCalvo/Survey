@@ -48,6 +48,7 @@ const SVGSelectionOverlay = memo(({
   // currently unused. moveOnly takes precedence (hides everything).
   hideResizeHandles = false,
   hideRotationHandle = false,
+  selectionGlowOnly = false,
 }) => {
   if (!bbox) return null;
 
@@ -118,14 +119,20 @@ const SVGSelectionOverlay = memo(({
           stroke="#4a90e2"
           strokeOpacity={strokeOpacity}
           strokeWidth={2}
-          strokeDasharray="4,4"
+          strokeDasharray={selectionGlowOnly ? undefined : '4,4'}
           vectorEffect="non-scaling-stroke"
-          style={{ pointerEvents: 'none' }}
+          data-select-delete-only-selection={selectionGlowOnly ? 'true' : undefined}
+          style={{
+            pointerEvents: 'none',
+            filter: selectionGlowOnly
+              ? `drop-shadow(0 0 ${4 * is}px rgba(74,144,226,0.75))`
+              : undefined,
+          }}
         />
       )}
 
       {/* --- Handles (hidden for group selection -- Plan 03 renders group handles) --- */}
-      {!isGroupSelection && !moveOnly && (
+      {!isGroupSelection && !moveOnly && !selectionGlowOnly && (
         <>
           {/* Corner handles (tl, tr, bl, br) - circles */}
           {!hideResizeHandles && cornerHandles.filter((id) => visibleResizeHandles.has(id)).map((id) => {

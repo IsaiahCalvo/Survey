@@ -22,6 +22,8 @@
 // with vector-effect:non-scaling-stroke this becomes the device-pixel floor
 // regardless of zoom.
 const IMPORTED_PATH_MIN_STROKE_WIDTH = 2.5;
+const IMPORTED_SQUIGGLY_MIN_STROKE_WIDTH = 0.6;
+const IMPORTED_SQUIGGLY_MAX_STROKE_WIDTH = 1.1;
 const FILLED_PDF_INK_MODE = 'filled-outline';
 
 /**
@@ -36,6 +38,10 @@ function isPdfImportedPath(obj) {
   if (obj?.isPdfImported === true) return true;
   if (typeof obj?.pdfAnnotationType === 'string' && obj.pdfAnnotationType.length > 0) return true;
   return false;
+}
+
+function isImportedSquigglyPath(obj) {
+  return isPdfImportedPath(obj) && String(obj?.pdfAnnotationType || '').toLowerCase() === 'squiggly';
 }
 
 function isVisiblePaint(value) {
@@ -479,8 +485,10 @@ export function renderPathToSvgAttrs(obj) {
     };
   }
 
-  const strokeWidth = isImported
-    ? Math.max(IMPORTED_PATH_MIN_STROKE_WIDTH, rawWidth)
+  const strokeWidth = isImportedSquigglyPath(obj)
+    ? Math.min(IMPORTED_SQUIGGLY_MAX_STROKE_WIDTH, Math.max(IMPORTED_SQUIGGLY_MIN_STROKE_WIDTH, rawWidth))
+    : isImported
+      ? Math.max(IMPORTED_PATH_MIN_STROKE_WIDTH, rawWidth)
     : rawWidth;
 
   // vectorEffect:non-scaling-stroke means the stroke renders at a constant

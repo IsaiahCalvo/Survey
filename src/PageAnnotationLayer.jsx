@@ -75,6 +75,35 @@ const CONTEXT_MENU_Z_INDEX = 120000;
 const EDIT_MODAL_Z_INDEX = CONTEXT_MENU_Z_INDEX + 1;
 const OVERLAY_OPEN_EVENT = 'survey:page-annotation-overlay-open';
 const OVERLAY_DISMISS_ANIMATION_MS = 100;
+const SELECT_DELETE_ONLY_PDF_MARKUP_TYPES = new Set(['Underline', 'StrikeOut', 'Squiggly']);
+
+const getPdfAnnotationType = (obj) => obj?.pdfAnnotationType || obj?.data?.pdfAnnotationType || null;
+const isSelectDeleteOnlyPdfMarkupObject = (obj) => (
+  Boolean(obj?.isPdfImported) && SELECT_DELETE_ONLY_PDF_MARKUP_TYPES.has(getPdfAnnotationType(obj))
+);
+
+const lockSelectDeleteOnlyPdfMarkupObject = (obj) => {
+  if (!isSelectDeleteOnlyPdfMarkupObject(obj)) return false;
+  obj.set({
+    selectable: true,
+    evented: true,
+    hasControls: false,
+    hasBorders: true,
+    lockMovementX: true,
+    lockMovementY: true,
+    lockScalingX: true,
+    lockScalingY: true,
+    lockRotation: true
+  });
+  if (typeof obj.setControlsVisibility === 'function') {
+    obj.setControlsVisibility({
+      tl: false, tr: false, bl: false, br: false,
+      ml: false, mt: false, mr: false, mb: false,
+      mtr: false
+    });
+  }
+  return true;
+};
 
 const toDebugNumber = (value, digits = 2) => {
   const num = Number(value);
@@ -5047,9 +5076,10 @@ const PageAnnotationLayer = memo(({
           if (objData.isPdfImported) {
             const isShxProxy = objData?.data?.isAutoCadShxText === true;
             const isCalloutGroup = obj?.data?.type === 'callout';
+            const pdfAnnotationType = objData.pdfAnnotationType || objData?.data?.pdfAnnotationType || obj.pdfAnnotationType;
             obj.isPdfImported = true;
             obj.pdfAnnotationId = objData.pdfAnnotationId;
-            obj.pdfAnnotationType = objData.pdfAnnotationType;
+            obj.pdfAnnotationType = pdfAnnotationType;
             obj.layer = objData.layer || 'pdf-annotations';
             obj.set({
               selectable: true,
@@ -5059,6 +5089,7 @@ const PageAnnotationLayer = memo(({
               perPixelTargetFind: (isShxProxy || isCalloutGroup) ? false : true,
               targetFindTolerance: isShxProxy ? 8 : (isCalloutGroup ? 10 : 5)
             });
+            lockSelectDeleteOnlyPdfMarkupObject(obj);
           }
 
           // Preserve layer property
@@ -5530,6 +5561,9 @@ const PageAnnotationLayer = memo(({
         });
       }
 
+      if (e.selected?.some(lockSelectDeleteOnlyPdfMarkupObject)) {
+        canvas.requestRenderAll();
+      }
       setPerPixelTargetFind(e.selected, false);
     });
 
@@ -5576,6 +5610,9 @@ const PageAnnotationLayer = memo(({
         }
       }
 
+      if (e.selected?.some(lockSelectDeleteOnlyPdfMarkupObject)) {
+        canvas.requestRenderAll();
+      }
       setPerPixelTargetFind(e.deselected, true);
       setPerPixelTargetFind(e.selected, false);
     });

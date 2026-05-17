@@ -64,6 +64,14 @@ import { captureSvgCallout } from '../utils/calloutGeometryDiag.js';
 // Constants
 // ---------------------------------------------------------------------------
 
+const SELECT_DELETE_ONLY_PDF_TEXT_MARKUP_TYPES = new Set(['Underline', 'StrikeOut', 'Squiggly']);
+
+const isSelectDeleteOnlyPdfTextMarkupObject = (obj) => {
+  if (!obj?.isPdfImported) return false;
+  const pdfType = obj?.pdfAnnotationType || obj?.data?.pdfAnnotationType;
+  return SELECT_DELETE_ONLY_PDF_TEXT_MARKUP_TYPES.has(String(pdfType || ''));
+};
+
 // 2026-05-03 — Per-page render caps deleted. Adobe / Drawboard PDF render
 // every annotation; silently dropping a user's drawing past an arbitrary
 // ceiling is unacceptable. If a dense page feels laggy, the right answer
@@ -3233,6 +3241,8 @@ const SVGAnnotationLayer = memo(({
         key={`wrapper-${obj.id || i}`}
         data-annotation-index={i}
         data-annotation-id={obj.id || ''}
+        data-pdf-annotation-id={obj?.pdfAnnotationId || obj?.data?.pdfAnnotationId || ''}
+        data-pdf-annotation-type={obj?.pdfAnnotationType || obj?.data?.pdfAnnotationType || ''}
         // Phase 29 (Plan 29-04 Info 1 resolution) — e2e test seams.
         // data-anno-id mirrors the CRDT-side annoId (Plan 29-02 bridge writes
         // the same key into Y.Map), giving Playwright a stable selector that
@@ -3264,6 +3274,7 @@ const SVGAnnotationLayer = memo(({
         {(() => {
           const objTypeLower = String(renderObj.type || '').toLowerCase();
           const isCounterObj = renderObj.data?.type === 'counter';
+          const isSelectDeleteOnlyPdfTextMarkupHitTarget = isSelectDeleteOnlyPdfTextMarkupObject(renderObj);
 
           if (objTypeLower === 'line') {
             const ep = getLineEndpoints(renderObj);
@@ -3585,8 +3596,8 @@ const SVGAnnotationLayer = memo(({
                 <rect
                   x={bbox.left}
                   y={bbox.top}
-                  width={Math.max(bbox.width, 10)}
-                  height={Math.max(bbox.height, 10)}
+                  width={isSelectDeleteOnlyPdfTextMarkupHitTarget ? Math.max(bbox.width, 1) : Math.max(bbox.width, 10)}
+                  height={isSelectDeleteOnlyPdfTextMarkupHitTarget ? Math.max(bbox.height, 1) : Math.max(bbox.height, 10)}
                   transform={hitRotate}
                   fill="transparent"
                   stroke="none"
@@ -3640,8 +3651,8 @@ const SVGAnnotationLayer = memo(({
                 <rect
                   x={bbox.left}
                   y={bbox.top}
-                  width={Math.max(bbox.width, 10)}
-                  height={Math.max(bbox.height, 10)}
+                  width={isSelectDeleteOnlyPdfTextMarkupHitTarget ? Math.max(bbox.width, 1) : Math.max(bbox.width, 10)}
+                  height={isSelectDeleteOnlyPdfTextMarkupHitTarget ? Math.max(bbox.height, 1) : Math.max(bbox.height, 10)}
                   transform={hitRotate}
                   fill="transparent"
                   stroke="none"
@@ -3766,13 +3777,15 @@ const SVGAnnotationLayer = memo(({
               : Math.max(6, sw + 4);
             const hitStrokeWidth = isFilledPdfInkOutline
               ? Math.max(0.75 * inverseScale, 0.75)
+              : isSelectDeleteOnlyPdfTextMarkupHitTarget
+                ? Math.max(4, pathAttrs.strokeWidth || sw || 1)
               : Math.max(12, pathAttrs.strokeWidth || sw || 1, 3 * inverseScale);
             const pathPointerEvents = isSelectTool && isObjectInteractive
-              ? 'all'
+              ? (isSelectDeleteOnlyPdfTextMarkupHitTarget ? 'stroke' : 'all')
               : 'none';
             const pathRawWidth = pathHasBounds ? Math.max(0, pathRawMaxX - pathRawMinX) : 0;
             const pathRawHeight = pathHasBounds ? Math.max(0, pathRawMaxY - pathRawMinY) : 0;
-            const useThinPathHitBox = pathHasBounds && Math.min(pathRawWidth, pathRawHeight) <= 10;
+            const useThinPathHitBox = !isSelectDeleteOnlyPdfTextMarkupHitTarget && pathHasBounds && Math.min(pathRawWidth, pathRawHeight) <= 10;
             return (
               <g>
                 {annotationIsHovered && (
@@ -3857,8 +3870,8 @@ const SVGAnnotationLayer = memo(({
               <rect
                 x={bbox.left}
                 y={bbox.top}
-                width={Math.max(bbox.width, 10)}
-                height={Math.max(bbox.height, 10)}
+                width={isSelectDeleteOnlyPdfTextMarkupHitTarget ? Math.max(bbox.width, 1) : Math.max(bbox.width, 10)}
+                height={isSelectDeleteOnlyPdfTextMarkupHitTarget ? Math.max(bbox.height, 1) : Math.max(bbox.height, 10)}
                 fill="transparent"
                 stroke="none"
                 // UX: Plan 14-02 UX-01 — generic annotation hit-area gated on
@@ -3897,7 +3910,7 @@ const SVGAnnotationLayer = memo(({
         position: 'absolute',
         top: 0,
         left: 0,
-        pointerEvents: isInteractive ? 'auto' : 'none',
+        pointerEvents: isCreationTool ? 'auto' : 'none',
         overflow: 'hidden',
         cursor: interactionState === 'dragging' ? 'grabbing'
               : interactionState === 'rotating' ? 'crosshair'
@@ -4113,6 +4126,7 @@ const SVGAnnotationLayer = memo(({
         const obj = visualTransform?.previewObjects?.[selectedIndex]
           || annotations?.objects?.[selectedIndex];
         if (!obj) return null;
+        const isSelectDeleteOnlyPdfTextMarkup = isSelectDeleteOnlyPdfTextMarkupObject(obj);
 
         // During edit: FabricEditCanvas provides its own handles. For border-flush types
         // (rect, text) there's no dashed bbox to preserve, so hide the overlay entirely.
@@ -4136,7 +4150,7 @@ const SVGAnnotationLayer = memo(({
         // selectedIndex briefly doesn't match (e.g. mid-double-click frame).
         const counterInBboxMode = editIsCounter && isBeingEditedNow && editingAnnotationEditType === 'bbox';
         if (editIsCounter && editingAnnotationIndex != null && !counterInBboxMode) return null;
-        if (isBeingEditedNow && editIsBorderFlush) return null;
+        if (isBeingEditedNow && editIsBorderFlush && !isSelectDeleteOnlyPdfTextMarkup) return null;
 
         // Counter selection (not in bbox edit mode): render only the rotation handle at the
         // nubbin tip. No dashed bbox, no resize handles — Shottr-style minimal chrome.
@@ -4678,9 +4692,10 @@ const SVGAnnotationLayer = memo(({
               // surface — it must show the corner + edge + rotate handles
               // itself, so drop the mask in that case.
               isGroupSelection={isBeingEditedNow && editingAnnotationEditType !== 'bbox'}
-              hideBoundingBox={isBorderFlush}
-              padding={isBorderFlush ? 0 : 2}
+              hideBoundingBox={isBorderFlush && !isSelectDeleteOnlyPdfTextMarkup}
+              padding={isBorderFlush && !isSelectDeleteOnlyPdfTextMarkup ? 0 : 2}
               rotationCenter={overlayRotationCenter}
+              selectionGlowOnly={isSelectDeleteOnlyPdfTextMarkup}
             />
           </g>
         );

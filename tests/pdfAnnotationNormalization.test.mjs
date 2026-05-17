@@ -201,6 +201,22 @@ test('renderPathToSvgAttrs promotes thin imported paths to visible width + non-s
   assert.equal(thickImported.strokeWidth, 4, 'thick imported stroke retains its width');
 });
 
+test('renderPathToSvgAttrs keeps imported PDF Squiggly strokes lightweight', () => {
+  const attrs = renderPathToSvgAttrs({
+    type: 'path',
+    path: [['M', 0, 0], ['L', 30, 0]],
+    stroke: '#ff0000',
+    strokeWidth: 2,
+    fill: null,
+    isPdfImported: true,
+    pdfAnnotationType: 'Squiggly',
+    pdfAnnotationId: 'squiggly-1',
+  });
+
+  assert.ok(attrs.strokeWidth <= 1.1, `squiggle stroke is capped, got ${attrs.strokeWidth}`);
+  assert.equal(attrs.vectorEffect, 'non-scaling-stroke');
+});
+
 test('closed zero-width PDF Ink imports as a filled outline, not a hollow stroke', () => {
   const closedInk = {
     id: 'ink-filled-outline-1',

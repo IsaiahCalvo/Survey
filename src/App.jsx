@@ -206,7 +206,125 @@ import {
 import KeyboardShortcutsOverlay from './components/KeyboardShortcutsOverlay';
 
 const NATIVE_TEXT_MARKUP_TOOLS = new Set(['text-highlight', 'underline', 'strikeout', 'squiggly']);
+const SELECT_DELETE_ONLY_IMPORTED_TEXT_MARKUP_TYPES = new Set(['underline', 'strikeout', 'squiggly']);
 const REVIEW_TOOL_IDS = ['text', 'callout'];
+
+const isSelectDeleteOnlyImportedTextMarkupType = (type) => (
+  (() => {
+    const normalized = String(type || '').toLowerCase().replace(/[^a-z]/g, '');
+    return SELECT_DELETE_ONLY_IMPORTED_TEXT_MARKUP_TYPES.has(normalized) || normalized.includes('strike');
+  })()
+);
+
+const getSelectDeleteOnlyTextMarkupBounds = (obj) => {
+  if (!obj || !isSelectDeleteOnlyImportedTextMarkupType(obj.pdfAnnotationType || obj.data?.pdfAnnotationType)) {
+    return null;
+  }
+  const type = String(obj.type || '').toLowerCase();
+  if (type === 'rect') {
+    const left = Number(obj.left);
+    const top = Number(obj.top);
+    const width = Number(obj.width);
+    const height = Number(obj.height);
+    if ([left, top, width, height].every(Number.isFinite) && width >= 0 && height >= 0) {
+      return { left, top, right: left + width, bottom: top + height };
+    }
+  }
+  if (type === 'path' && Array.isArray(obj.path)) {
+    const xs = [];
+    const ys = [];
+    obj.path.forEach((segment) => {
+      if (!Array.isArray(segment)) return;
+      for (let i = 1; i < segment.length; i += 2) {
+        const x = Number(segment[i]);
+        const y = Number(segment[i + 1]);
+        if (Number.isFinite(x) && Number.isFinite(y)) {
+          xs.push(x);
+          ys.push(y);
+        }
+      }
+    });
+    if (xs.length > 0 && ys.length > 0) {
+      return {
+        left: Math.min(...xs),
+        top: Math.min(...ys),
+        right: Math.max(...xs),
+        bottom: Math.max(...ys)
+      };
+    }
+  }
+  return null;
+};
+
+const distanceToSegment = (point, start, end) => {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSquared = dx * dx + dy * dy;
+  if (lengthSquared === 0) return Math.hypot(point.x - start.x, point.y - start.y);
+  const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared));
+  return Math.hypot(point.x - (start.x + t * dx), point.y - (start.y + t * dy));
+};
+
+const getPathPointDistance = (path, point) => {
+  if (!Array.isArray(path) || !point) return Infinity;
+  let current = null;
+  let minDistance = Infinity;
+  const addLine = (next) => {
+    if (current && Number.isFinite(next.x) && Number.isFinite(next.y)) {
+      minDistance = Math.min(minDistance, distanceToSegment(point, current, next));
+    }
+    current = next;
+  };
+
+  path.forEach((segment) => {
+    if (!Array.isArray(segment) || segment.length < 3) return;
+    const command = segment[0];
+    if (command === 'M') {
+      current = { x: Number(segment[1]), y: Number(segment[2]) };
+      return;
+    }
+    if (command === 'L') {
+      addLine({ x: Number(segment[1]), y: Number(segment[2]) });
+      return;
+    }
+    if ((command === 'Q' || command === 'C') && current) {
+      let previous = current;
+      const samples = 10;
+      for (let i = 1; i <= samples; i += 1) {
+        const t = i / samples;
+        const mt = 1 - t;
+        const next = command === 'Q'
+          ? {
+              x: mt * mt * current.x + 2 * mt * t * Number(segment[1]) + t * t * Number(segment[3]),
+              y: mt * mt * current.y + 2 * mt * t * Number(segment[2]) + t * t * Number(segment[4])
+            }
+          : {
+              x: mt * mt * mt * current.x + 3 * mt * mt * t * Number(segment[1]) + 3 * mt * t * t * Number(segment[3]) + t * t * t * Number(segment[5]),
+              y: mt * mt * mt * current.y + 3 * mt * mt * t * Number(segment[2]) + 3 * mt * t * t * Number(segment[4]) + t * t * t * Number(segment[6])
+            };
+        minDistance = Math.min(minDistance, distanceToSegment(point, previous, next));
+        previous = next;
+      }
+      current = previous;
+    }
+  });
+
+  return minDistance;
+};
+
+const isPointOnSelectDeleteOnlyTextMarkup = (obj, point, tolerance = 2) => {
+  const bounds = getSelectDeleteOnlyTextMarkupBounds(obj);
+  if (!bounds || !point) return false;
+  const type = String(obj?.type || '').toLowerCase();
+  if (type === 'path') {
+    const strokeWidth = Math.max(1, Number(obj.strokeWidth) || 1);
+    return getPathPointDistance(obj.path, point) <= (strokeWidth / 2 + tolerance);
+  }
+  return point.x >= bounds.left - tolerance
+    && point.x <= bounds.right + tolerance
+    && point.y >= bounds.top - tolerance
+    && point.y <= bounds.bottom + tolerance;
+};
 
 const getSyncfusionTextMarkupMode = (tool) => {
   switch (tool) {
@@ -12519,6 +12637,42 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     document.head.appendChild(style);
     return () => { style.remove(); };
   }, [editingAnnotation]);
+
+  // Syncfusion still owns native PDF annotations that stay in the PDF layer
+  // (for example files with form fields/links). Keep its selection border so
+  // users can select/delete, but suppress resize/rotate handles that imply
+  // editing we do not support.
+  useLayoutEffect(() => {
+    const style = document.createElement('style');
+    style.dataset.syncfusionNativeAnnotationHandles = 'hidden';
+    style.textContent = `
+      .e-pdfviewer .e-pv-diagram-resize-handle,
+      .e-pdfviewer .e-pv-diagram-rotate-handle,
+      .e-pdfviewer [id^="resizeNorth"],
+      .e-pdfviewer [id^="resizeSouth"],
+      .e-pdfviewer [id^="resizeEast"],
+      .e-pdfviewer [id^="resizeWest"],
+      .e-pdfviewer [id^="rotate"] {
+        visibility: hidden !important;
+        pointer-events: none !important;
+      }
+    `;
+    document.head.appendChild(style);
+    return () => { style.remove(); };
+  }, []);
+
+  useLayoutEffect(() => {
+    const style = document.createElement('style');
+    style.dataset.syncfusionSelectModeCursor = 'true';
+    style.textContent = `
+      .survey-syncfusion-select-mode .e-pv-text,
+      .survey-syncfusion-select-mode .e-pv-text-layer {
+        cursor: default !important;
+      }
+    `;
+    document.head.appendChild(style);
+    return () => { style.remove(); };
+  }, []);
 
   // newTextPlacement removed — text tool creates text-only callouts via CalloutCanvas
   const [arrowheadStyle, setArrowheadStyle] = useState(ARROWHEAD_STYLES.SOLID_TRIANGLE);
@@ -31718,6 +31872,77 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     // keep native text selection/copy behavior and do not create survey highlights.
   }, []);
 
+  const isImportedSelectDeleteOnlyTextMarkupSelection = useCallback((pageNumber, selectedId, selectedType) => {
+    if (!selectedId) return false;
+    const pageAnnotations = annotationsByPage?.[pageNumber] || annotationsByPage?.[String(pageNumber)];
+    const objects = Array.isArray(pageAnnotations?.objects) ? pageAnnotations.objects : [];
+    return objects.some((obj) => (
+      obj?.isPdfImported === true
+      && isSelectDeleteOnlyImportedTextMarkupType(obj?.pdfAnnotationType || obj?.data?.pdfAnnotationType)
+      && String(obj?.pdfAnnotationId || obj?.id || '') === String(selectedId)
+    ));
+  }, [annotationsByPage]);
+
+  const isImportedSelectDeleteOnlyTextMarkupAtPoint = useCallback((pageNumber, point, tolerance = 2) => {
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return false;
+    const pageAnnotations = annotationsByPage?.[pageNumber] || annotationsByPage?.[String(pageNumber)];
+    const objects = Array.isArray(pageAnnotations?.objects) ? pageAnnotations.objects : [];
+    return objects.some((obj) => {
+      if (obj?.isPdfImported !== true) return false;
+      return isPointOnSelectDeleteOnlyTextMarkup(obj, point, tolerance);
+    });
+  }, [annotationsByPage]);
+
+  const getImportedSelectDeleteOnlyTextMarkupHitAtPoint = useCallback((pageNumber, point, tolerance = 2) => {
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return null;
+    const pageAnnotations = annotationsByPage?.[pageNumber] || annotationsByPage?.[String(pageNumber)];
+    const objects = Array.isArray(pageAnnotations?.objects) ? pageAnnotations.objects : [];
+    for (let index = objects.length - 1; index >= 0; index -= 1) {
+      const obj = objects[index];
+      if (obj?.isPdfImported !== true) continue;
+      if (isPointOnSelectDeleteOnlyTextMarkup(obj, point, tolerance)) {
+        return { pageNumber: Number(pageNumber), annotationIndex: index, annotation: obj };
+      }
+    }
+    return null;
+  }, [annotationsByPage]);
+
+  const selectImportedSelectDeleteOnlyTextMarkup = useCallback((hit, event) => {
+    if (!hit || typeof hit.annotationIndex !== 'number' || !hit.pageNumber) return false;
+    syncfusionViewerRef.current?.clearTextSelection?.();
+    selectedNativeTextMarkupRef.current = null;
+    setSelectedCalloutIds(new Set());
+    setPendingSvgSelection({
+      pageNumber: hit.pageNumber,
+      annotationIndex: hit.annotationIndex,
+      tick: Date.now(),
+    });
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    event?.stopImmediatePropagation?.();
+    return true;
+  }, []);
+
+  const suppressNativeTextMarkupSelection = useCallback((event, options = {}) => {
+    const clearNativeSelection = () => {
+      syncfusionViewerRef.current?.clearTextSelection?.();
+      selectedNativeTextMarkupRef.current = null;
+    };
+    clearNativeSelection();
+    if (typeof window !== 'undefined') {
+      window.requestAnimationFrame?.(clearNativeSelection);
+      window.setTimeout?.(clearNativeSelection, 0);
+      window.setTimeout?.(clearNativeSelection, 50);
+    }
+    selectedNativeTextMarkupRef.current = null;
+    event?.preventDefault?.();
+    if (options.stop !== false) {
+      event?.stopPropagation?.();
+      event?.stopImmediatePropagation?.();
+    }
+    return true;
+  }, []);
+
   const handleSelectSyncfusionTextMarkup = useCallback((pageNumber, event, pageSize) => {
     if (activeTool !== 'select' && activeTool !== 'text-select') return false;
     const target = event?.currentTarget;
@@ -31729,15 +31954,29 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       x: ((event.clientX - rect.left) / rect.width) * pageSize.width,
       y: ((event.clientY - rect.top) / rect.height) * pageSize.height
     };
+    const syncfusionTolerance = Math.max(4, 8 / Math.max(Number(scale) || 1, 0.1));
+    const importedTextMarkupTolerance = Math.max(1, 1.25 / Math.max(Number(scale) || 1, 0.1));
+    const importedHit = getImportedSelectDeleteOnlyTextMarkupHitAtPoint(pageNumber, point, importedTextMarkupTolerance);
+    if (importedHit) {
+      return selectImportedSelectDeleteOnlyTextMarkup(importedHit, event.nativeEvent || event);
+    }
+    const rawEvent = event.nativeEvent || event;
     const selected = syncfusionViewerRef.current?.selectTextMarkupAtPoint?.(
       pageNumber,
       point,
-      Math.max(4, 8 / Math.max(Number(scale) || 1, 0.1)),
-      event.nativeEvent || event
+      syncfusionTolerance,
+      rawEvent
     );
     if (!selected) return false;
     const selectedId = typeof selected === 'object' ? selected.id : selected;
     const selectedType = typeof selected === 'object' ? selected.type : null;
+    if (
+      isSelectDeleteOnlyImportedTextMarkupType(selectedType)
+      || isImportedSelectDeleteOnlyTextMarkupSelection(pageNumber, selectedId, selectedType)
+      || isImportedSelectDeleteOnlyTextMarkupAtPoint(pageNumber, point, importedTextMarkupTolerance)
+    ) {
+      return suppressNativeTextMarkupSelection(rawEvent, { stop: false });
+    }
     const previous = selectedNativeTextMarkupRef.current;
     const now = Date.now();
     const isSecondTap =
@@ -31767,23 +32006,71 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     event.preventDefault();
     event.stopPropagation();
     return true;
-  }, [activeTool, scale]);
+  }, [activeTool, getImportedSelectDeleteOnlyTextMarkupHitAtPoint, isImportedSelectDeleteOnlyTextMarkupAtPoint, isImportedSelectDeleteOnlyTextMarkupSelection, scale, selectImportedSelectDeleteOnlyTextMarkup, suppressNativeTextMarkupSelection]);
 
   const handleSelectSyncfusionTextMarkupFromClientPoint = useCallback((event) => {
     if (activeTool !== 'select' && activeTool !== 'text-select') return false;
     if (!event || typeof event.clientX !== 'number' || typeof event.clientY !== 'number') return false;
-    if (event.target?.closest?.('[data-annotation-context-menu], [data-toolbar], button, input, textarea, select')) return false;
+    if (event.target?.closest?.('[data-annotation-context-menu], [data-toolbar], button, input, textarea, select, a[href], .e-pv-hyperlink, .e-pdfviewer-formFields')) return false;
+    const isPlainPdfTextTarget = !!event.target?.closest?.('.e-pv-text-layer, .e-pv-text');
+
+    const containers = syncfusionViewerRef.current?.getPageContainers?.() || {};
+    const entries = Object.entries(containers);
+    const syncfusionTolerance = Math.max(4, 8 / Math.max(Number(scale) || 1, 0.1));
+    const importedTextMarkupTolerance = Math.max(1, 1.25 / Math.max(Number(scale) || 1, 0.1));
+    for (const [pageKey, pageElement] of entries) {
+      if (!pageElement?.getBoundingClientRect) continue;
+      const pageNumber = Number(pageKey);
+      const pageSize = pageSizes[pageNumber];
+      if (!pageSize?.width || !pageSize?.height) continue;
+      const rect = pageElement.getBoundingClientRect();
+      if (
+        event.clientX < rect.left ||
+        event.clientX > rect.right ||
+        event.clientY < rect.top ||
+        event.clientY > rect.bottom
+      ) {
+        continue;
+      }
+      const point = {
+        x: ((event.clientX - rect.left) / rect.width) * pageSize.width,
+        y: ((event.clientY - rect.top) / rect.height) * pageSize.height
+      };
+      const importedHit = getImportedSelectDeleteOnlyTextMarkupHitAtPoint(pageNumber, point, importedTextMarkupTolerance);
+      if (importedHit) {
+        return selectImportedSelectDeleteOnlyTextMarkup(importedHit, event);
+      }
+    }
 
     const directSelected = syncfusionViewerRef.current?.selectTextMarkupAtClientPoint?.(
       event.clientX,
       event.clientY,
-      Math.max(4, 8 / Math.max(Number(scale) || 1, 0.1)),
+      syncfusionTolerance,
       event
     );
     if (directSelected) {
       const selectedId = typeof directSelected === 'object' ? directSelected.id : directSelected;
       const selectedType = typeof directSelected === 'object' ? directSelected.type : null;
       const selectedPageNumber = Number(directSelected.pageNumber) || null;
+      const pageElement = selectedPageNumber ? containers[selectedPageNumber] : null;
+      const pageSize = selectedPageNumber ? pageSizes[selectedPageNumber] : null;
+      let point = null;
+      if (pageElement?.getBoundingClientRect && pageSize?.width && pageSize?.height) {
+        const rect = pageElement.getBoundingClientRect();
+        if (rect.width && rect.height) {
+          point = {
+            x: ((event.clientX - rect.left) / rect.width) * pageSize.width,
+            y: ((event.clientY - rect.top) / rect.height) * pageSize.height
+          };
+        }
+      }
+      if (
+        isSelectDeleteOnlyImportedTextMarkupType(selectedType)
+        || isImportedSelectDeleteOnlyTextMarkupSelection(selectedPageNumber, selectedId, selectedType)
+        || isImportedSelectDeleteOnlyTextMarkupAtPoint(selectedPageNumber, point, importedTextMarkupTolerance)
+      ) {
+        return suppressNativeTextMarkupSelection(event, { stop: false });
+      }
       selectedNativeTextMarkupRef.current = {
         id: selectedId,
         type: selectedType,
@@ -31796,8 +32083,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       return true;
     }
 
-    const containers = syncfusionViewerRef.current?.getPageContainers?.() || {};
-    const entries = Object.entries(containers);
+    if (activeTool === 'select' && isPlainPdfTextTarget) {
+      return suppressNativeTextMarkupSelection(event, { stop: false });
+    }
+
     for (const [pageKey, pageElement] of entries) {
       if (!pageElement?.getBoundingClientRect) continue;
       const pageNumber = Number(pageKey);
@@ -31820,13 +32109,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       const selected = syncfusionViewerRef.current?.selectTextMarkupAtPoint?.(
         pageNumber,
         point,
-        Math.max(4, 8 / Math.max(Number(scale) || 1, 0.1)),
+        syncfusionTolerance,
         event
       );
       if (!selected) return false;
 
       const selectedId = typeof selected === 'object' ? selected.id : selected;
       const selectedType = typeof selected === 'object' ? selected.type : null;
+      if (
+        isSelectDeleteOnlyImportedTextMarkupType(selectedType)
+        || isImportedSelectDeleteOnlyTextMarkupSelection(pageNumber, selectedId, selectedType)
+        || isImportedSelectDeleteOnlyTextMarkupAtPoint(pageNumber, point, importedTextMarkupTolerance)
+      ) {
+        return suppressNativeTextMarkupSelection(event, { stop: false });
+      }
       const previous = selectedNativeTextMarkupRef.current;
       const now = Date.now();
       const isSecondTap =
@@ -31859,7 +32155,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       return true;
     }
     return false;
-  }, [activeTool, pageSizes, scale]);
+  }, [activeTool, getImportedSelectDeleteOnlyTextMarkupHitAtPoint, isImportedSelectDeleteOnlyTextMarkupAtPoint, isImportedSelectDeleteOnlyTextMarkupSelection, pageSizes, scale, selectImportedSelectDeleteOnlyTextMarkup, suppressNativeTextMarkupSelection]);
 
   useEffect(() => {
     if (activeTool !== 'select' && activeTool !== 'text-select') return undefined;
@@ -34224,6 +34520,7 @@ ${pageBlocks}
                   <SyncfusionPDFContainer
                     id={syncfusionViewerElementId}
                     ref={syncfusionViewerRef}
+                    className={`survey-syncfusion-viewer ${activeTool === 'select' ? 'survey-syncfusion-select-mode' : 'survey-syncfusion-standard-mode'}`}
                     resourceUrl={syncfusionResourceUrl}
                     documentSource={syncfusionDocumentBytes}
                     style={{ width: '100%', height: '100%' }}
@@ -34445,6 +34742,16 @@ ${pageBlocks}
                         [id="${nativePdfPageDivId}"] .e-adorner-layer2 {
                           visibility: hidden !important;
                           pointer-events: none !important;
+                        }
+                        [id="${nativePdfPageDivId}"] .e-pdfviewer-formFields,
+                        [id="${nativePdfPageDivId}"] .e-pdfviewer-formFields *,
+                        [id="${nativePdfPageDivId}"] .e-pv-checkbox-container,
+                        [id="${nativePdfPageDivId}"] .e-pv-checkbox-container *,
+                        [id="${nativePdfPageDivId}"] .e-pv-checkbox-div,
+                        [id="${nativePdfPageDivId}"] .e-pv-checkbox-div *,
+                        [id="${nativePdfPageDivId}"] .e-pv-hyperlink {
+                          visibility: visible !important;
+                          pointer-events: auto !important;
                         }
                       `;
 
@@ -34814,7 +35121,7 @@ ${pageBlocks}
                                   left: 0,
                                   width: '100%',
                                   height: '100%',
-                                  pointerEvents: (svgInteractive && !isFabricEditMode) ? 'auto' : 'none',
+                                  pointerEvents: 'none',
                                   zIndex: 100,
                                   visibility: annotationHydrationGated ? 'hidden' : undefined,
                                   // UX: Fix 3 (2026-04-16) — SVG layer stays visible during
@@ -35721,7 +36028,7 @@ ${pageBlocks}
                                       // UX: Fix 3 (2026-04-16) — see first SVGAnnotationLayer
                                       // mount site. No layer-wide visibility hide; per-callout
                                       // skip happens inside SVGAnnotationLayer via editingCalloutId.
-                                      style={{ position: 'relative', width: '100%', height: '100%', pointerEvents: (svgInteractive && !isFabricEditMode) ? 'auto' : 'none', zIndex: 100, visibility: annotationHydrationGated ? 'hidden' : undefined, cursor: (svgInteractive && !isFabricEditMode) ? 'default' : undefined }}
+                                      style={{ position: 'relative', width: '100%', height: '100%', pointerEvents: 'none', zIndex: 100, visibility: annotationHydrationGated ? 'hidden' : undefined, cursor: (svgInteractive && !isFabricEditMode) ? 'default' : undefined }}
                                       onPointerDown={(svgInteractive && !isFabricEditMode) ? (e) => {
                                         if (handleSelectSyncfusionTextMarkup(pageNumber, e, pageSizes[pageNumber])) return;
                                         e.stopPropagation();
@@ -36339,7 +36646,7 @@ ${pageBlocks}
                                       position: 'relative',
                                       width: '100%',
                                       height: '100%',
-                                      pointerEvents: (svgInteractive && !isFabricEditMode) ? 'auto' : 'none',
+                                      pointerEvents: 'none',
                                       zIndex: 100,
                                       visibility: annotationHydrationGated ? 'hidden' : undefined,
                                       // UX: Fix 3 (2026-04-16) — see first SVGAnnotationLayer

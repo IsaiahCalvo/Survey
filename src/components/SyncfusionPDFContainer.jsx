@@ -200,7 +200,25 @@ const getTextMarkupBoundsList = (annotation) => (
 );
 
 const TEXT_MARKUP_HANDLE_HIT_SIZE = 24;
-const TEXT_MARKUP_HANDLE_VISUAL_SIZE = 10;
+const TEXT_MARKUP_SELECTION_GLOW_ATTR = 'data-betasafe-text-markup-selection-glow';
+
+const clearTextMarkupSelectionGlow = (viewer) => {
+  const root = viewer?.element || document;
+  root?.querySelectorAll?.(`[${TEXT_MARKUP_SELECTION_GLOW_ATTR}="true"]`)
+    ?.forEach((element) => element.remove());
+};
+
+const clearTextMarkupSelectionState = (viewer) => {
+  clearTextMarkupSelectionGlow(viewer);
+  const textMarkupModule = getTextMarkupModule(viewer);
+  if (!textMarkupModule) return;
+  textMarkupModule.currentTextMarkupAnnotation = null;
+  textMarkupModule.selectTextMarkupCurrentPage = null;
+  textMarkupModule.isDropletClicked = false;
+  textMarkupModule.isExtended = false;
+  textMarkupModule.isLeftDropletClicked = false;
+  textMarkupModule.isRightDropletClicked = false;
+};
 
 const installTextMarkupDropletHandlers = (viewer) => {
   const textMarkupModule = getTextMarkupModule(viewer);
@@ -333,37 +351,60 @@ const getTextMarkupPageContainer = (viewer) => (
   null
 );
 
-const normalizeSelectedDropletPositions = (viewer, hitSize = TEXT_MARKUP_HANDLE_HIT_SIZE) => {
+const renderTextMarkupSelectionGlow = (viewer) => {
   const textMarkupModule = getTextMarkupModule(viewer);
   const annotation = textMarkupModule?.currentTextMarkupAnnotation;
   const pageIndex = Number(textMarkupModule?.selectTextMarkupCurrentPage);
   if (!annotation || !Number.isFinite(pageIndex) || typeof document === 'undefined') return;
+
   const boundsList = getTextMarkupBoundsList(annotation);
-  if (!boundsList.length) return;
+  if (!boundsList.length) {
+    clearTextMarkupSelectionGlow(viewer);
+    return;
+  }
   const pageDiv = getTextMarkupPageDiv(viewer, pageIndex);
-  const pageContainer = getTextMarkupPageContainer(viewer);
-  if (!pageDiv?.getBoundingClientRect || !pageContainer?.getBoundingClientRect) return;
+  if (!pageDiv?.getBoundingClientRect) {
+    clearTextMarkupSelectionGlow(viewer);
+    return;
+  }
   const pageRect = pageDiv.getBoundingClientRect();
-  const containerRect = pageContainer.getBoundingClientRect();
   const pageSize = viewer?.viewerBase?.pageSize?.[pageIndex] || {};
   const pageWidth = Number(pageSize.width) || pageRect.width;
   const pageHeight = Number(pageSize.height) || pageRect.height;
-  if (!pageRect.width || !pageRect.height || !pageWidth || !pageHeight) return;
+  if (!pageRect.width || !pageRect.height || !pageWidth || !pageHeight) {
+    clearTextMarkupSelectionGlow(viewer);
+    return;
+  }
 
-  const place = (element, bounds, edge) => {
-    if (!element || !bounds) return;
-    const boundX = edge === 'left' ? bounds.x : bounds.x + bounds.width;
-    const boundY = bounds.y + (bounds.height / 2);
-    const screenX = pageRect.left + (boundX / pageWidth) * pageRect.width;
-    const screenY = pageRect.top + (boundY / pageHeight) * pageRect.height;
-    element.style.setProperty('width', `${hitSize}px`, 'important');
-    element.style.setProperty('height', `${hitSize}px`, 'important');
-    element.style.setProperty('left', `${screenX - containerRect.left - (hitSize / 2)}px`, 'important');
-    element.style.setProperty('top', `${screenY - containerRect.top - (hitSize / 2)}px`, 'important');
+  const root = viewer?.element || document;
+  const existing = Array.from(root.querySelectorAll?.(`[${TEXT_MARKUP_SELECTION_GLOW_ATTR}="true"]`) || []);
+  const used = new Set();
+  const setStyle = (element, key, value) => {
+    if (element.style[key] !== value) element.style[key] = value;
   };
 
-  place(textMarkupModule.dropDivAnnotationLeft, boundsList[0], 'left');
-  place(textMarkupModule.dropDivAnnotationRight, boundsList[boundsList.length - 1], 'right');
+  boundsList.forEach((bounds, index) => {
+    if (!bounds || bounds.width <= 0 || bounds.height <= 0) return;
+    const glow = existing[index] || document.createElement('div');
+    used.add(glow);
+    if (!glow.hasAttribute(TEXT_MARKUP_SELECTION_GLOW_ATTR)) {
+      glow.setAttribute(TEXT_MARKUP_SELECTION_GLOW_ATTR, 'true');
+    }
+    setStyle(glow, 'position', 'absolute');
+    setStyle(glow, 'left', `${(bounds.x / pageWidth) * pageRect.width}px`);
+    setStyle(glow, 'top', `${(bounds.y / pageHeight) * pageRect.height}px`);
+    setStyle(glow, 'width', `${Math.max(2, (bounds.width / pageWidth) * pageRect.width)}px`);
+    setStyle(glow, 'height', `${Math.max(2, (bounds.height / pageHeight) * pageRect.height)}px`);
+    setStyle(glow, 'pointerEvents', 'none');
+    setStyle(glow, 'borderRadius', '4px');
+    setStyle(glow, 'background', 'rgba(74, 144, 226, 0.10)');
+    setStyle(glow, 'boxShadow', '0 0 0 2px rgba(74, 144, 226, 0.75), 0 0 10px rgba(74, 144, 226, 0.65)');
+    setStyle(glow, 'zIndex', '10019');
+    if (glow.parentElement !== pageDiv) pageDiv.appendChild(glow);
+  });
+  existing.forEach((element) => {
+    if (!used.has(element)) element.remove();
+  });
 };
 
 const syncTextMarkupDropletAppearance = (viewer, scheduleFollowUp = true) => {
@@ -381,32 +422,11 @@ const syncTextMarkupDropletAppearance = (viewer, scheduleFollowUp = true) => {
     ? `#${viewerId}_droplet_left, #${viewerId}_droplet_right, #${viewerId}_dropletspan_left, #${viewerId}_dropletspan_right`
     : '.e-pv-drop, .e-pv-droplet';
   document.querySelectorAll(selector).forEach((element) => {
-    const isOuter = element.classList?.contains('e-pv-drop') || /_droplet_(left|right)$/.test(element.id || '');
-    element.style.borderColor = '#4a90e2';
-    element.style.zIndex = '10020';
-    element.style.pointerEvents = 'auto';
-    if (isOuter) {
-      element.style.setProperty('width', `${TEXT_MARKUP_HANDLE_HIT_SIZE}px`, 'important');
-      element.style.setProperty('height', `${TEXT_MARKUP_HANDLE_HIT_SIZE}px`, 'important');
-      element.style.setProperty('background', 'transparent', 'important');
-      element.style.setProperty('border-width', '0', 'important');
-      element.style.cursor = 'ew-resize';
-    } else {
-      const visualSize = TEXT_MARKUP_HANDLE_VISUAL_SIZE;
-      const outerSize = TEXT_MARKUP_HANDLE_HIT_SIZE;
-      element.style.setProperty('background', '#ffffff', 'important');
-      element.style.setProperty('border', '1px solid #4a90e2', 'important');
-      element.style.setProperty('border-radius', '999px', 'important');
-      element.style.setProperty('box-shadow', '0 1px 3px rgba(0,0,0,0.18)', 'important');
-      element.style.setProperty('width', `${visualSize}px`, 'important');
-      element.style.setProperty('height', `${visualSize}px`, 'important');
-      element.style.setProperty('top', `${Math.max(0, (outerSize - visualSize) / 2)}px`, 'important');
-      element.style.setProperty('left', `${Math.max(0, (outerSize - visualSize) / 2)}px`, 'important');
-      element.style.setProperty('transform', 'rotate(0deg)', 'important');
-      element.style.cursor = 'ew-resize';
-    }
+    element.style.setProperty('display', 'none', 'important');
+    element.style.setProperty('visibility', 'hidden', 'important');
+    element.style.setProperty('pointer-events', 'none', 'important');
   });
-  normalizeSelectedDropletPositions(viewer);
+  renderTextMarkupSelectionGlow(viewer);
   if (scheduleFollowUp && typeof window !== 'undefined') {
     window.requestAnimationFrame(() => syncTextMarkupDropletAppearance(viewer, false));
   }
@@ -519,6 +539,7 @@ const deleteTextMarkupAnnotation = (viewer, annotation, pageIndex) => {
   const textMarkupModule = getTextMarkupModule(viewer);
   if (!textMarkupModule || !annotation || !Number.isFinite(pageIndex)) return false;
   try {
+    clearTextMarkupSelectionGlow(viewer);
     textMarkupModule.currentTextMarkupAnnotation = annotation;
     textMarkupModule.selectTextMarkupCurrentPage = pageIndex;
     if (typeof textMarkupModule.deleteTextMarkupAnnotation === 'function') {
@@ -831,6 +852,17 @@ const SyncfusionPDFContainer = forwardRef(({
     pendingRefreshReasonRef.current = null;
     schedulePageContainerRefresh(`resume:${pendingReason}`);
   }, [schedulePageContainerRefresh, suspendContainerRefresh]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const handleClearTextMarkupSelection = () => {
+      clearTextMarkupSelectionState(getViewerInstance());
+    };
+    window.addEventListener('betasafe:clear-text-markup-selection', handleClearTextMarkupSelection);
+    return () => {
+      window.removeEventListener('betasafe:clear-text-markup-selection', handleClearTextMarkupSelection);
+    };
+  }, [getViewerInstance]);
 
   const disconnectPageObserver = useCallback(() => {
     if (pageObserverRef.current) {
@@ -1875,6 +1907,7 @@ const SyncfusionPDFContainer = forwardRef(({
     },
     clearTextSelection: () => {
       const viewer = getViewerInstance();
+      clearTextMarkupSelectionState(viewer);
       viewer?.textSelectionModule?.clearTextSelection?.();
     },
     navigationModule: {
@@ -1914,6 +1947,7 @@ const SyncfusionPDFContainer = forwardRef(({
     textSelectionModule: {
       clearTextSelection: () => {
         const viewer = getViewerInstance();
+        clearTextMarkupSelectionState(viewer);
         viewer?.textSelectionModule?.clearTextSelection?.();
       }
     },
@@ -2447,10 +2481,11 @@ const SyncfusionPDFContainer = forwardRef(({
   }, [getViewerInstance, normalizedScrollDelayMs, restrictZoomRequest]);
 
   useEffect(() => () => {
+    clearTextMarkupSelectionState(getViewerInstance());
     clearRefreshFrame();
     clearBookmarkRetry();
     disconnectPageObserver();
-  }, [clearBookmarkRetry, clearRefreshFrame, disconnectPageObserver]);
+  }, [clearBookmarkRetry, clearRefreshFrame, disconnectPageObserver, getViewerInstance]);
 
   const mergedStyle = useMemo(() => ({
     width: '100%',

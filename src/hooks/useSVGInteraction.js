@@ -59,6 +59,14 @@ import {
   markAnnotationPreviewFrame,
 } from '../utils/annotationPreviewDiag.js';
 
+const isTransformLockedAnnotation = (obj) => Boolean(
+  obj?.lockMovementX
+  && obj?.lockMovementY
+  && obj?.lockScalingX
+  && obj?.lockScalingY
+  && obj?.lockRotation
+);
+
 const cloneAnnotations = (annotations) => JSON.parse(JSON.stringify(annotations));
 
 const diagLog = (...args) => {
@@ -596,6 +604,10 @@ export function useSVGInteraction({
     // Initiate drag-to-move
     const obj = annotations?.objects?.[index];
     if (obj) {
+      if (isTransformLockedAnnotation(obj)) {
+        e.preventDefault();
+        return;
+      }
       if (e.pointerId != null) {
         try { e.target.setPointerCapture(e.pointerId); } catch (_) { /* optional */ }
       }
@@ -773,8 +785,13 @@ export function useSVGInteraction({
       }
     }
     e.stopPropagation();
-    if (onRequestEditMode && annotations?.objects?.[index]) {
-      onRequestEditMode(index, annotations.objects[index].type);
+    const annotation = annotations?.objects?.[index];
+    if (isTransformLockedAnnotation(annotation)) {
+      e.preventDefault();
+      return;
+    }
+    if (onRequestEditMode && annotation) {
+      onRequestEditMode(index, annotation.type);
     }
   }, [onRequestEditMode, annotations]);
 
@@ -4160,6 +4177,9 @@ export function useSVGInteraction({
         checkpointPolicy: 'normal',
       });
       deselectAll();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('betasafe:clear-text-markup-selection'));
+      }
     };
 
     // Phase 35 Plan 04: route through the parent's bulk-delete planner when

@@ -53,6 +53,8 @@ const SUPPORTED_SUBTYPES = [
   'Caret'
 ];
 
+const SELECT_DELETE_ONLY_TEXT_MARKUP_TYPES = new Set(['Underline', 'StrikeOut', 'Squiggly']);
+
 const LINE_CAP_MAP = ['butt', 'round', 'square'];
 const LINE_JOIN_MAP = ['miter', 'round', 'bevel'];
 
@@ -2834,6 +2836,7 @@ function convertUnderlineToFabricRect(annotation, viewport, scale = 1) {
   const height = Math.max(2 * scale, viewportRect.height * 0.1); // Thin line
 
   const color = pdfColorToHex(annotation.color || [1, 0, 0], annotation); // Default red
+  const isSelectDeleteOnly = SELECT_DELETE_ONLY_TEXT_MARKUP_TYPES.has(annotation.subtype);
 
   // Position at bottom for underline, middle for strikeout
   const isStrikeOut = annotation.subtype === 'StrikeOut';
@@ -2853,8 +2856,13 @@ function convertUnderlineToFabricRect(annotation, viewport, scale = 1) {
     // Required Fabric.js properties for proper interaction
     selectable: true,
     evented: true,
-    hasControls: true,
+    hasControls: !isSelectDeleteOnly,
     hasBorders: true,
+    lockMovementX: isSelectDeleteOnly,
+    lockMovementY: isSelectDeleteOnly,
+    lockScalingX: isSelectDeleteOnly,
+    lockScalingY: isSelectDeleteOnly,
+    lockRotation: isSelectDeleteOnly,
     // Mark as imported from PDF
     isPdfImported: true,
     pdfAnnotationId: annotation.id,
@@ -2870,17 +2878,20 @@ function convertSquigglyToFabricPath(annotation, viewport, scale = 1) {
   }
 
   const width = Math.max(4 * scale, viewportRect.width);
-  const amplitude = Math.max(1.5 * scale, viewportRect.height * 0.2);
-  const wavelength = Math.max(6 * scale, amplitude * 3);
-  const segmentCount = Math.max(4, Math.round(width / wavelength) * 2);
-  const top = viewportRect.top + viewportRect.height - amplitude * 2;
+  const minAmplitude = 0.45 * scale;
+  const maxAmplitude = 1.35 * scale;
+  const amplitude = Math.min(maxAmplitude, Math.max(minAmplitude, viewportRect.height * 0.045));
+  const wavelength = Math.max(2.5 * scale, Math.min(3.5 * scale, viewportRect.height * 0.16));
+  const segmentCount = Math.max(12, Math.ceil(width / (wavelength / 4)));
+  const baseline = viewportRect.bottom - amplitude * 1.25;
 
   const points = [];
   for (let i = 0; i <= segmentCount; i += 1) {
     const t = i / segmentCount;
+    const wave = Math.sin((t * width / wavelength) * Math.PI * 2);
     points.push({
       x: viewportRect.left + t * width,
-      y: top + amplitude + (i % 2 === 0 ? -amplitude : amplitude)
+      y: baseline + wave * amplitude
     });
   }
 
@@ -2894,7 +2905,9 @@ function convertSquigglyToFabricPath(annotation, viewport, scale = 1) {
 
   const strokeColor = pdfColorToHex(annotation.color || [1, 0, 0], annotation);
   const strokeOpacity = extractAnnotationOpacity(annotation, 1);
-  const strokeWidth = Math.max(1, getBorderWidth(annotation, 1)) * scale;
+  const rawStrokeWidth = getBorderWidth(annotation, 1);
+  const strokeWidth = Math.min(1.1 * scale, Math.max(0.6 * scale, rawStrokeWidth * 0.55 * scale));
+  const isSelectDeleteOnly = SELECT_DELETE_ONLY_TEXT_MARKUP_TYPES.has(annotation.subtype);
   const internal = makeInternalPenPathSpec({
     stroke: hexToRgba(strokeColor, strokeOpacity),
     strokeWidth
@@ -2910,10 +2923,13 @@ function convertSquigglyToFabricPath(annotation, viewport, scale = 1) {
     path,
     selectable: true,
     evented: true,
-    hasControls: true,
+    hasControls: !isSelectDeleteOnly,
     hasBorders: true,
-    lockMovementX: false,
-    lockMovementY: false,
+    lockMovementX: true,
+    lockMovementY: true,
+    lockScalingX: true,
+    lockScalingY: true,
+    lockRotation: true,
     perPixelTargetFind: true,
     targetFindTolerance: 5,
     isPdfImported: true,

@@ -564,13 +564,47 @@ test('convertPdfAnnotationToFabric maps PDF Squiggly to stroke path contract', (
   assert.equal(obj.fill, null);
   assert.equal(obj.strokeLineCap, 'round');
   assert.equal(obj.strokeLineJoin, 'round');
+  assert.ok(obj.strokeWidth <= 1.1);
   assert.equal(obj.strokeUniform, undefined);
   assert.equal(obj.left, 0);
   assert.equal(obj.top, 0);
   assert.equal(obj.selectable, true);
   assert.equal(obj.evented, true);
+  assert.equal(obj.hasControls, false);
+  assert.equal(obj.lockMovementX, true);
+  assert.equal(obj.lockMovementY, true);
+  assert.equal(obj.lockScalingX, true);
+  assert.equal(obj.lockScalingY, true);
+  assert.equal(obj.lockRotation, true);
   assert.ok(Array.isArray(obj.path));
-  assert.ok(obj.path.length >= 5);
+  assert.ok(obj.path.length >= 80);
+  const yValues = obj.path.map((segment) => segment[2]).filter(Number.isFinite);
+  const peakToValley = Math.max(...yValues) - Math.min(...yValues);
+  assert.ok(peakToValley < 3);
+});
+
+test('convertPdfAnnotationToFabric imports PDF text markup as select-delete only', () => {
+  const viewport = makeViewport({ pageHeight: 200 });
+
+  for (const subtype of ['Underline', 'StrikeOut']) {
+    const obj = convertPdfAnnotationToFabric({
+      id: `${subtype}-1`,
+      subtype,
+      rect: [10, 30, 90, 50],
+      color: [1, 0, 0],
+    }, viewport);
+
+    assert.equal(obj.type, 'rect');
+    assert.equal(obj.pdfAnnotationType, subtype);
+    assert.equal(obj.selectable, true);
+    assert.equal(obj.evented, true);
+    assert.equal(obj.hasControls, false);
+    assert.equal(obj.lockMovementX, true);
+    assert.equal(obj.lockMovementY, true);
+    assert.equal(obj.lockScalingX, true);
+    assert.equal(obj.lockScalingY, true);
+    assert.equal(obj.lockRotation, true);
+  }
 });
 
 test('convertPdfAnnotationToFabric prefers appearance-stream geometry for filled Ink annotations', () => {
