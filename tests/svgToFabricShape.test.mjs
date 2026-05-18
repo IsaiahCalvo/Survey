@@ -67,23 +67,19 @@ test('polyline annotation: preserves points array', () => {
   assert.deepEqual(shape.points, points);
 });
 
-test('polygon annotation: retypes to polyline + appends closing edge', () => {
+test('polygon annotation: preserves polygon type and points for fill-aware hit testing', () => {
   const points = [{ x: 0, y: 0 }, { x: 10, y: 10 }, { x: 20, y: 0 }];
   const ann = { type: 'polygon', points, strokeWidth: 2 };
   const shape = toFabricShape(ann);
-  // Dispatcher only knows polyline; polygon must retype so it gets hit-tested.
-  assert.equal(shape.type, 'polyline');
-  // Closing edge = first point appended at the end.
-  assert.equal(shape.points.length, 4);
-  assert.deepEqual(shape.points[0], shape.points[3]);
-  assert.deepEqual(shape.points.slice(0, 3), points);
+  assert.equal(shape.type, 'polygon');
+  assert.deepEqual(shape.points, points);
 });
 
-test('polygon annotation: degenerate (<=2 points) does not duplicate', () => {
+test('polygon annotation: degenerate (<=2 points) remains polygon', () => {
   const points = [{ x: 0, y: 0 }, { x: 10, y: 10 }];
   const ann = { type: 'polygon', points };
   const shape = toFabricShape(ann);
-  assert.equal(shape.type, 'polyline');
+  assert.equal(shape.type, 'polygon');
   assert.deepEqual(shape.points, points);
 });
 

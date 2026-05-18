@@ -9,6 +9,39 @@
 // Default tolerance for hit testing (in pixels)
 const DEFAULT_TOLERANCE = 3;
 
+const hasVisiblePaint = (value) => {
+  if (value == null) return false;
+  const normalized = String(value).trim().toLowerCase();
+  if (!normalized || normalized === 'none' || normalized === 'transparent') return false;
+  if (/^rgba?\([^)]*,\s*0(?:\.0+)?\s*\)$/.test(normalized)) return false;
+  if (/^#(?:[0-9a-f]{4}|[0-9a-f]{8})$/i.test(normalized)) {
+    return normalized.length === 5
+      ? normalized[4] !== '0'
+      : normalized.slice(7, 9) !== '00';
+  }
+  return true;
+};
+
+const transformPointWithMatrix = (matrix, point) => {
+  const [a, b, c, d, e, f] = matrix;
+  return {
+    x: a * point.x + c * point.y + e,
+    y: b * point.x + d * point.y + f,
+  };
+};
+
+const getTransformedPoints = (obj) => {
+  const points = Array.isArray(obj?.points) ? obj.points : [];
+  if (points.length === 0) return [];
+  const matrix = getObjectTransformMatrix(obj);
+  const pathOffsetX = obj.pathOffset?.x || 0;
+  const pathOffsetY = obj.pathOffset?.y || 0;
+  return points.map((point) => transformPointWithMatrix(matrix, {
+    x: Number(point?.x || 0) - pathOffsetX,
+    y: Number(point?.y || 0) - pathOffsetY,
+  }));
+};
+
 /**
  * Calculate the distance from a point to a line segment
  * @param {Object} point - {x, y} point to test
@@ -211,8 +244,8 @@ export const isPointOnPath = (point, pathObj, tolerance = DEFAULT_TOLERANCE) => 
   if (!pathData || pathData.length === 0) return false;
 
   const strokeWidth = pathObj.strokeWidth || 0;
-  const hasStroke = strokeWidth > 0 && pathObj.stroke && pathObj.stroke !== 'transparent';
-  const hasFill = pathObj.fill && pathObj.fill !== 'transparent' && pathObj.fill !== null;
+  const hasStroke = strokeWidth > 0 && hasVisiblePaint(pathObj.stroke);
+  const hasFill = hasVisiblePaint(pathObj.fill);
   const effectiveDistance = (strokeWidth / 2) + tolerance;
 
   // Get object's transform matrix and calculate inverse to transform point to local space
@@ -373,8 +406,8 @@ export const isPointOnRect = (point, rectObj, tolerance = DEFAULT_TOLERANCE) => 
   const width = rectObj.width || 0;
   const height = rectObj.height || 0;
   const strokeWidth = rectObj.strokeWidth || 0;
-  const hasFill = rectObj.fill && rectObj.fill !== 'transparent' && rectObj.fill !== '';
-  const hasStroke = rectObj.stroke && rectObj.stroke !== 'transparent' && rectObj.stroke !== '';
+  const hasFill = hasVisiblePaint(rectObj.fill);
+  const hasStroke = hasVisiblePaint(rectObj.stroke);
 
   // Account for origin
   const originX = rectObj.originX === 'center' ? -width / 2 : 0;
@@ -439,12 +472,11 @@ export const isPointOnCircle = (point, circleObj, tolerance = DEFAULT_TOLERANCE)
   }
 
   const strokeWidth = circleObj.strokeWidth || 0;
-  const hasFill = circleObj.fill && circleObj.fill !== 'transparent' && circleObj.fill !== '';
-  const hasStroke = circleObj.stroke && circleObj.stroke !== 'transparent' && circleObj.stroke !== '';
+  const hasFill = hasVisiblePaint(circleObj.fill);
+  const hasStroke = hasVisiblePaint(circleObj.stroke);
 
-  // Circle center is at origin in local space (Fabric.js uses center origin by default for circles)
-  const cx = 0;
-  const cy = 0;
+  const cx = circleObj.originX === 'center' ? 0 : rx;
+  const cy = circleObj.originY === 'center' ? 0 : ry;
 
   // Check if point is inside the filled area
   if (hasFill) {
@@ -512,8 +544,8 @@ export const isPointOnTriangle = (point, triangleObj, tolerance = DEFAULT_TOLERA
   const width = triangleObj.width || 0;
   const height = triangleObj.height || 0;
   const strokeWidth = triangleObj.strokeWidth || 0;
-  const hasFill = triangleObj.fill && triangleObj.fill !== 'transparent' && triangleObj.fill !== '';
-  const hasStroke = triangleObj.stroke && triangleObj.stroke !== 'transparent' && triangleObj.stroke !== '';
+  const hasFill = hasVisiblePaint(triangleObj.fill);
+  const hasStroke = hasVisiblePaint(triangleObj.stroke);
 
   // Triangle vertices (default Fabric.js triangle is isoceles, pointing up)
   const vertices = [
@@ -591,20 +623,38 @@ export const isPointOnTextbox = (point, textObj, tolerance = DEFAULT_TOLERANCE) 
 export const isPointOnPolyline = (point, polylineObj, tolerance = DEFAULT_TOLERANCE) => {
   if (!polylineObj || polylineObj.type !== 'polyline') return false;
 
-  const points = polylineObj.points || [];
+  const points = getTransformedPoints(polylineObj);
   if (points.length < 2) return false;
-
-  const matrix = getObjectTransformMatrix(polylineObj);
-  const localPoint = transformPointInverse(point, matrix);
 
   const strokeWidth = polylineObj.strokeWidth || 1;
   const effectiveDistance = strokeWidth / 2 + tolerance;
 
   for (let i = 0; i < points.length - 1; i++) {
-    const dist = distanceToLineSegment(localPoint, points[i], points[i + 1]);
+    const dist = distanceToLineSegment(point, points[i], points[i + 1]);
     if (dist <= effectiveDistance) {
       return true;
     }
+  }
+
+  return false;
+};
+
+export const isPointOnPolygon = (point, polygonObj, tolerance = DEFAULT_TOLERANCE) => {
+  if (!polygonObj || polygonObj.type !== 'polygon') return false;
+
+  const points = getTransformedPoints(polygonObj);
+  if (points.length < 3) return false;
+
+  const strokeWidth = polygonObj.strokeWidth || 0;
+  const hasFill = hasVisiblePaint(polygonObj.fill);
+  const hasStroke = hasVisiblePaint(polygonObj.stroke) && strokeWidth > 0;
+
+  if (hasFill && isPointInPolygon(point, points)) {
+    return true;
+  }
+
+  if (hasStroke && isPointNearPolygonStroke(point, points, strokeWidth, tolerance)) {
+    return true;
   }
 
   return false;
@@ -620,7 +670,7 @@ export const isPointOnPolyline = (point, polylineObj, tolerance = DEFAULT_TOLERA
 export const isPointOnGroup = (point, groupObj, tolerance = DEFAULT_TOLERANCE) => {
   if (!groupObj || groupObj.type !== 'group') return false;
 
-  const objects = groupObj._objects || groupObj.getObjects?.() || [];
+  const objects = groupObj._objects || groupObj.objects || groupObj.getObjects?.() || [];
   if (objects.length === 0) return false;
 
   // Get group's transform matrix
@@ -646,19 +696,6 @@ export const isPointOnGroup = (point, groupObj, tolerance = DEFAULT_TOLERANCE) =
     } catch (e) {
       continue;
     }
-  }
-
-  // Fallback to group bounds to keep group selection practical for sparse geometry.
-  try {
-    const bounds = groupObj.getBoundingRect ? groupObj.getBoundingRect() : null;
-    if (bounds) {
-      return point.x >= bounds.left - tolerance &&
-        point.x <= bounds.left + bounds.width + tolerance &&
-        point.y >= bounds.top - tolerance &&
-        point.y <= bounds.top + bounds.height + tolerance;
-    }
-  } catch (e) {
-    // Ignore fallback errors.
   }
 
   return false;
@@ -693,6 +730,8 @@ export const isPointOnObject = (point, obj, tolerance = DEFAULT_TOLERANCE) => {
       return isPointOnTextbox(point, obj, tolerance);
     case 'polyline':
       return isPointOnPolyline(point, obj, tolerance);
+    case 'polygon':
+      return isPointOnPolygon(point, obj, tolerance);
     case 'group':
       return isPointOnGroup(point, obj, tolerance);
     default:
@@ -897,8 +936,9 @@ export const doesRectIntersectEllipse = (selRect, cx, cy, rx, ry, hasFill, strok
     }
   }
 
-  // Check if ellipse center is inside rect
-  if (cx >= selRect.left && cx <= selRect.right &&
+  // Filled ellipses are selectable by their interior. Stroke-only ellipses
+  // must not select from blank center space.
+  if (hasFill && cx >= selRect.left && cx <= selRect.right &&
     cy >= selRect.top && cy <= selRect.bottom) {
     return true;
   }
@@ -1108,8 +1148,8 @@ export const doesRectIntersectRect = (selRect, rectObj) => {
   const width = rectObj.width || 0;
   const height = rectObj.height || 0;
   const strokeWidth = rectObj.strokeWidth || 0;
-  const hasFill = rectObj.fill && rectObj.fill !== 'transparent' && rectObj.fill !== '';
-  const hasStroke = rectObj.stroke && rectObj.stroke !== 'transparent' && rectObj.stroke !== '';
+  const hasFill = hasVisiblePaint(rectObj.fill);
+  const hasStroke = hasVisiblePaint(rectObj.stroke);
 
   // Account for origin
   const originX = rectObj.originX === 'center' ? -width / 2 : 0;
@@ -1409,10 +1449,14 @@ export const doesRectIntersectCircle = (selRect, circleObj) => {
     rx = ry = circleObj.radius || 0;
   }
 
-  // Transform center to canvas space
-  const [a, b, c, d, e, f] = matrix;
-  const cx = e;
-  const cy = f;
+  const localCenter = {
+    x: circleObj.originX === 'center' ? 0 : rx,
+    y: circleObj.originY === 'center' ? 0 : ry,
+  };
+  const center = transformPointWithMatrix(matrix, localCenter);
+  const [a, b, c, d] = matrix;
+  const cx = center.x;
+  const cy = center.y;
 
   // Account for scale in the transform
   const scaleX = Math.sqrt(a * a + b * b);
@@ -1421,7 +1465,7 @@ export const doesRectIntersectCircle = (selRect, circleObj) => {
   const scaledRy = ry * scaleY;
 
   const strokeWidth = circleObj.strokeWidth || 0;
-  const hasFill = circleObj.fill && circleObj.fill !== 'transparent' && circleObj.fill !== '';
+  const hasFill = hasVisiblePaint(circleObj.fill);
 
   return doesRectIntersectEllipse(selRect, cx, cy, scaledRx, scaledRy, hasFill, strokeWidth);
 };
@@ -1609,13 +1653,55 @@ export const doesRectIntersectTextbox = (selRect, textObj) => {
   return false;
 };
 
+export const doesRectIntersectPolygon = (selRect, polygonObj) => {
+  if (!polygonObj || polygonObj.type !== 'polygon') return false;
+  const points = getTransformedPoints(polygonObj);
+  if (points.length < 3) return false;
+
+  const strokeWidth = polygonObj.strokeWidth || 0;
+  const hasFill = hasVisiblePaint(polygonObj.fill);
+  const hasStroke = hasVisiblePaint(polygonObj.stroke) && strokeWidth > 0;
+
+  if (hasFill) {
+    for (const point of points) {
+      if (
+        point.x >= selRect.left && point.x <= selRect.right &&
+        point.y >= selRect.top && point.y <= selRect.bottom
+      ) {
+        return true;
+      }
+    }
+
+    const rectCorners = [
+      { x: selRect.left, y: selRect.top },
+      { x: selRect.right, y: selRect.top },
+      { x: selRect.right, y: selRect.bottom },
+      { x: selRect.left, y: selRect.bottom },
+    ];
+    if (rectCorners.some((corner) => isPointInPolygon(corner, points))) {
+      return true;
+    }
+  }
+
+  if (hasStroke || hasFill) {
+    for (let i = 0; i < points.length; i++) {
+      const next = (i + 1) % points.length;
+      if (doesRectIntersectLineSegment(selRect, points[i], points[next], hasStroke ? strokeWidth : 0)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+};
+
 /**
  * Check if a selection rectangle intersects a Group object
  */
 export const doesRectIntersectGroup = (selRect, groupObj) => {
   if (!groupObj || groupObj.type !== 'group') return false;
 
-  const objects = groupObj._objects || groupObj.getObjects?.() || [];
+  const objects = groupObj._objects || groupObj.objects || groupObj.getObjects?.() || [];
   if (objects.length === 0) return false;
 
   // Get group's transform matrix
@@ -1652,17 +1738,6 @@ export const doesRectIntersectGroup = (selRect, groupObj) => {
       console.warn('Error checking group child intersection:', e);
       continue;
     }
-  }
-
-  // Fallback: check group's bounding box if no child matched
-  try {
-    const bounds = groupObj.getBoundingRect ? groupObj.getBoundingRect() : null;
-    if (bounds) {
-      return !(selRect.right < bounds.left || selRect.left > bounds.left + bounds.width ||
-        selRect.bottom < bounds.top || selRect.top > bounds.top + bounds.height);
-    }
-  } catch (e) {
-    // Ignore errors in fallback
   }
 
   return false;
@@ -1722,30 +1797,23 @@ export const doesRectIntersectObject = (selRect, obj) => {
       break;
     case 'polyline':
       // Similar to path, check each segment
-      const points = obj.points || [];
+      const points = getTransformedPoints(obj);
       if (points.length < 2) {
         result = false;
         break;
       }
-      const matrix = getObjectTransformMatrix(obj);
-      const [a, b, c, d, e, f] = matrix;
       const strokeWidth = obj.strokeWidth || 1;
 
       result = false;
       for (let i = 0; i < points.length - 1; i++) {
-        const start = {
-          x: a * points[i].x + c * points[i].y + e,
-          y: b * points[i].x + d * points[i].y + f
-        };
-        const end = {
-          x: a * points[i + 1].x + c * points[i + 1].y + e,
-          y: b * points[i + 1].x + d * points[i + 1].y + f
-        };
-        if (doesRectIntersectLineSegment(selRect, start, end, strokeWidth)) {
+        if (doesRectIntersectLineSegment(selRect, points[i], points[i + 1], strokeWidth)) {
           result = true;
           break;
         }
       }
+      break;
+    case 'polygon':
+      result = doesRectIntersectPolygon(selRect, obj);
       break;
     case 'triangle':
       // Get triangle vertices and check
@@ -1763,7 +1831,7 @@ export const doesRectIntersectObject = (selRect, obj) => {
         y: tb * p.x + td * p.y + tf
       }));
 
-      const triHasFill = obj.fill && obj.fill !== 'transparent' && obj.fill !== '';
+      const triHasFill = hasVisiblePaint(obj.fill);
       const triStrokeWidth = obj.strokeWidth || 0;
 
       // Check vertices inside selection
@@ -1990,11 +2058,13 @@ export const getObjectGeometryBounds = (obj) => {
           rx = ry = obj.radius || 0;
         }
         const strokeWidth = (obj.strokeWidth || 0) / 2;
+        const cx = obj.originX === 'center' ? 0 : rx;
+        const cy = obj.originY === 'center' ? 0 : ry;
 
         // Sample ellipse boundary
         for (let angle = 0; angle < 2 * Math.PI; angle += Math.PI / 16) {
-          const x = (rx + strokeWidth) * Math.cos(angle);
-          const y = (ry + strokeWidth) * Math.sin(angle);
+          const x = cx + (rx + strokeWidth) * Math.cos(angle);
+          const y = cy + (ry + strokeWidth) * Math.sin(angle);
           const p = transformPoint(x, y);
           updateBounds(p.x, p.y);
         }
@@ -2015,6 +2085,17 @@ export const getObjectGeometryBounds = (obj) => {
         updateBounds(p2.x + strokeWidth, p2.y + strokeWidth);
         break;
       }
+      case 'polyline':
+      case 'polygon': {
+        const points = getTransformedPoints(obj);
+        if (points.length === 0) return null;
+        const strokePad = hasVisiblePaint(obj.stroke) ? (obj.strokeWidth || 1) / 2 : 0;
+        for (const point of points) {
+          updateBounds(point.x - strokePad, point.y - strokePad);
+          updateBounds(point.x + strokePad, point.y + strokePad);
+        }
+        break;
+      }
       case 'textbox':
       case 'text':
       case 'i-text': {
@@ -2033,7 +2114,7 @@ export const getObjectGeometryBounds = (obj) => {
         break;
       }
       case 'group': {
-        const objects = obj._objects || obj.getObjects?.() || [];
+        const objects = obj._objects || obj.objects || obj.getObjects?.() || [];
         for (const child of objects) {
           const childBounds = getObjectGeometryBounds(child);
           if (childBounds) {

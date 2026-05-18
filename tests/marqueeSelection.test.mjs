@@ -120,6 +120,60 @@ test('resolveMarqueeHits crossing mode: annotations whose bbox overlaps are sele
   assert.deepEqual(annotationIndices.sort(), [0, 2]);
 });
 
+test('resolveMarqueeHits crossing mode: unfilled rect blank interior is not selected', () => {
+  const marquee = { left: 40, top: 40, right: 60, bottom: 60 };
+  const annotations = {
+    objects: [
+      {
+        type: 'rect',
+        left: 10,
+        top: 10,
+        width: 100,
+        height: 80,
+        fill: 'none',
+        stroke: '#111',
+        strokeWidth: 4,
+      },
+    ],
+  };
+  const { annotationIndices } = resolveMarqueeHits({
+    marqueeRect: marquee,
+    direction: 'crossing',
+    annotations,
+    callouts: [],
+    pageWidth: 1000,
+    pageHeight: 800,
+  });
+  assert.deepEqual(annotationIndices, []);
+});
+
+test('resolveMarqueeHits crossing mode: filled rect blank interior is selected', () => {
+  const marquee = { left: 40, top: 40, right: 60, bottom: 60 };
+  const annotations = {
+    objects: [
+      {
+        type: 'rect',
+        left: 10,
+        top: 10,
+        width: 100,
+        height: 80,
+        fill: '#93c5fd',
+        stroke: '#111',
+        strokeWidth: 4,
+      },
+    ],
+  };
+  const { annotationIndices } = resolveMarqueeHits({
+    marqueeRect: marquee,
+    direction: 'crossing',
+    annotations,
+    callouts: [],
+    pageWidth: 1000,
+    pageHeight: 800,
+  });
+  assert.deepEqual(annotationIndices, [0]);
+});
+
 test('resolveMarqueeHits skips annotations outside the rendered/selectable index set', () => {
   const marquee = { left: 0, top: 0, right: 100, bottom: 100 };
   const annotations = {
@@ -225,6 +279,108 @@ test('resolveMarqueeHits: callouts partially inside ARE crossing-selected', () =
     pageHeight: 800,
   });
   assert.deepEqual(calloutIds, ['c1']);
+});
+
+test('resolveMarqueeHits: callout crossing ignores blank space inside callout bbox', () => {
+  const marquee = { left: 190, top: 150, right: 210, bottom: 170 };
+  const callouts = [
+    {
+      id: 'c1',
+      arrowTip: { x: 0.1, y: 0.1 },
+      knee: { x: 0.1, y: 0.3 },
+      textBoxPosition: { x: 0.3, y: 0.1 },
+      textBoxWidth: 0.1,
+      textBoxHeight: 0.05,
+      style: { lineThickness: 2 },
+    },
+  ];
+  const { calloutIds } = resolveMarqueeHits({
+    marqueeRect: marquee,
+    direction: 'crossing',
+    annotations: { objects: [] },
+    callouts,
+    pageWidth: 1000,
+    pageHeight: 800,
+  });
+  assert.deepEqual(calloutIds, []);
+});
+
+test('resolveMarqueeHits: callout crossing selects connector or textbox geometry', () => {
+  const callouts = [
+    {
+      id: 'c1',
+      arrowTip: { x: 0.1, y: 0.1 },
+      knee: { x: 0.1, y: 0.3 },
+      textBoxPosition: { x: 0.3, y: 0.1 },
+      textBoxWidth: 0.1,
+      textBoxHeight: 0.05,
+      style: { lineThickness: 2 },
+    },
+  ];
+  const connectorHit = resolveMarqueeHits({
+    marqueeRect: { left: 95, top: 150, right: 105, bottom: 170 },
+    direction: 'crossing',
+    annotations: { objects: [] },
+    callouts,
+    pageWidth: 1000,
+    pageHeight: 800,
+  });
+  const textboxHit = resolveMarqueeHits({
+    marqueeRect: { left: 320, top: 90, right: 340, bottom: 110 },
+    direction: 'crossing',
+    annotations: { objects: [] },
+    callouts,
+    pageWidth: 1000,
+    pageHeight: 800,
+  });
+  assert.deepEqual(connectorHit.calloutIds, ['c1']);
+  assert.deepEqual(textboxHit.calloutIds, ['c1']);
+});
+
+test('resolveMarqueeHits: page-scopes callouts so off-page hits do not create phantom multi-selection', () => {
+  const marquee = { left: 0, top: 0, right: 100, bottom: 100 };
+  const annotations = {
+    objects: [
+      {
+        id: 'poly-1',
+        type: 'polygon',
+        left: 10,
+        top: 10,
+        points: [{ x: 0, y: 0 }, { x: 30, y: 0 }, { x: 15, y: 25 }],
+      },
+    ],
+  };
+  const callouts = [
+    {
+      id: 'off-page-callout',
+      pageNumber: 2,
+      arrowTip: { x: 0.02, y: 0.02 },
+      knee: { x: 0.03, y: 0.03 },
+      textBoxPosition: { x: 0.04, y: 0.04 },
+      textBoxWidth: 0.02,
+      textBoxHeight: 0.02,
+    },
+    {
+      id: 'same-page-callout-outside-marquee',
+      pageNumber: 1,
+      arrowTip: { x: 0.8, y: 0.8 },
+      knee: { x: 0.82, y: 0.82 },
+      textBoxPosition: { x: 0.84, y: 0.84 },
+      textBoxWidth: 0.02,
+      textBoxHeight: 0.02,
+    },
+  ];
+  const { annotationIndices, calloutIds } = resolveMarqueeHits({
+    marqueeRect: marquee,
+    direction: 'window',
+    annotations,
+    callouts,
+    pageWidth: 1000,
+    pageHeight: 800,
+    pageNumber: 1,
+  });
+  assert.deepEqual(annotationIndices, [0]);
+  assert.deepEqual(calloutIds, []);
 });
 
 test('resolveMarqueeHits: crossing mode fast-rejects non-overlapping annotations', () => {

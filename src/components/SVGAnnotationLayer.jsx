@@ -66,6 +66,38 @@ import { captureSvgCallout } from '../utils/calloutGeometryDiag.js';
 
 const SELECT_DELETE_ONLY_PDF_TEXT_MARKUP_TYPES = new Set(['Underline', 'StrikeOut', 'Squiggly']);
 
+const hasVisiblePaint = (value) => {
+  if (value == null) return false;
+  const normalized = String(value).trim().toLowerCase();
+  if (!normalized || normalized === 'none' || normalized === 'transparent') return false;
+  if (/^rgba?\([^)]*,\s*0(?:\.0+)?\s*\)$/.test(normalized)) return false;
+  if (/^#(?:[0-9a-f]{4}|[0-9a-f]{8})$/i.test(normalized)) {
+    return normalized.length === 5
+      ? normalized[4] !== '0'
+      : normalized.slice(7, 9) !== '00';
+  }
+  return true;
+};
+
+const getShapeHitTargetProps = ({ fill, stroke, strokeWidth, minStrokeWidth = 12, isInteractive }) => {
+  if (!isInteractive) {
+    return {
+      fill: 'none',
+      stroke: 'none',
+      strokeWidth: 0,
+      pointerEvents: 'none',
+    };
+  }
+  const hasFill = hasVisiblePaint(fill);
+  const hasStroke = hasVisiblePaint(stroke) && Number(strokeWidth || 0) > 0;
+  return {
+    fill: hasFill ? 'rgba(0,0,0,0.001)' : 'none',
+    stroke: hasStroke ? 'rgba(0,0,0,0.001)' : 'none',
+    strokeWidth: hasStroke ? Math.max(minStrokeWidth, Number(strokeWidth || 1) + 10) : 0,
+    pointerEvents: hasFill ? 'all' : (hasStroke ? 'stroke' : 'none'),
+  };
+};
+
 const isSelectDeleteOnlyPdfTextMarkupObject = (obj) => {
   if (!obj?.isPdfImported) return false;
   const pdfType = obj?.pdfAnnotationType || obj?.data?.pdfAnnotationType;
@@ -3502,6 +3534,12 @@ const SVGAnnotationLayer = memo(({
             const t2x = cx + Math.cos(t2a) * r;
             const t2y = cy + Math.sin(t2a) * r;
             const pinPathD = `M ${tipX},${tipY} L ${t1x},${t1y} A ${r},${r} 0 1 1 ${t2x},${t2y} Z`;
+            const counterHitProps = getShapeHitTargetProps({
+              fill: renderObj.fill,
+              stroke: renderObj.stroke,
+              strokeWidth: renderObj.strokeWidth || 1,
+              isInteractive: isSelectTool && isObjectInteractive,
+            });
             return (
               <g>
                 {/* Pin-shaped hover glow — stroke only so the number + fill
@@ -3521,22 +3559,12 @@ const SVGAnnotationLayer = memo(({
                     style={{ pointerEvents: 'none' }}
                   />
                 )}
-                {/* Invisible hit-area rect — unchanged from generic branch.
-                    Counter pin extends beyond the circle bbox via the nub, but
-                    click target remains the circle bbox for simplicity. */}
-                <rect
-                  x={bbox.left}
-                  y={bbox.top}
-                  width={Math.max(bbox.width, 10)}
-                  height={Math.max(bbox.height, 10)}
-                  fill="transparent"
-                  stroke="none"
-                  // UX: Plan 14-02 UX-01 — counter hit-area click-to-select
-                  // is gated on isSelectTool so line/arrow/callout creation
-                  // tools do NOT re-enter this counter's selection state
-                  // mid-drag. Creation-tool clicks pass through to
-                  // handleSvgPointerDown on the SVG root.
-                  pointerEvents={isSelectTool && isObjectInteractive ? 'all' : 'none'}
+                <path
+                  d={pinPathD}
+                  fill={counterHitProps.fill}
+                  stroke={counterHitProps.stroke}
+                  strokeWidth={counterHitProps.strokeWidth}
+                  pointerEvents={counterHitProps.pointerEvents}
                   onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
                   onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
                   onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
@@ -3546,13 +3574,97 @@ const SVGAnnotationLayer = memo(({
             );
           }
 
-          // UX: shape-tracing hover halos for polygon / polyline / rect /
-          // circle / ellipse. Each branch duplicates the shape's own geometry
-          // as a fat transparent-blue stroke so the halo hugs the outline
-          // instead of a bbox rectangle around it. Hit-area stays a bbox rect
-          // (unchanged from the old generic branch) so click-to-select
-          // behavior is identical. Width formula Math.max(6, sw + 4) matches
-          // the line-hover pattern at :1360-1369.
+          if (objTypeLower === 'group' && Array.isArray(renderObj.objects) && renderObj.objects.length > 0) {
+            const lineChild = renderObj.objects.find(
+              (o) => o && (o.type === 'line' || o.type === 'polyline' || o.type === 'path')
+            );
+            const arrowHead = renderObj.objects.find(
+              (o) => o && (o.name === 'arrowHead' || o.type === 'triangle')
+            );
+            if (lineChild) {
+              const x1 = (renderObj.left || 0) + (lineChild.x1 || 0);
+              const y1 = (renderObj.top || 0) + (lineChild.y1 || 0);
+              const x2 = (renderObj.left || 0) + (lineChild.x2 || 0);
+              const y2 = (renderObj.top || 0) + (lineChild.y2 || 0);
+              const dx = x2 - x1;
+              const dy = y2 - y1;
+              const angleDeg = Math.atan2(dy, dx) * (180 / Math.PI);
+              const headSize = Math.max(6, (renderObj.strokeWidth || 2) * 3);
+              const lineEndX = arrowHead ? x2 - (headSize / 3) * Math.cos(angleDeg * Math.PI / 180) : x2;
+              const lineEndY = arrowHead ? y2 - (headSize / 3) * Math.sin(angleDeg * Math.PI / 180) : y2;
+              const hitStrokeWidth = Math.max(12, (renderObj.strokeWidth || 2) + 10);
+              return (
+                <g>
+                  {annotationIsHovered && (
+                    <>
+                      <line
+                        x1={x1}
+                        y1={y1}
+                        x2={lineEndX}
+                        y2={lineEndY}
+                        stroke="#4a90e2"
+                        strokeOpacity={0.4}
+                        strokeWidth={Math.max(6, (renderObj.strokeWidth || 2) + 4)}
+                        strokeLinecap="round"
+                        vectorEffect="non-scaling-stroke"
+                        style={{ pointerEvents: 'none' }}
+                      />
+                      {arrowHead && (
+                        <polygon
+                          points={`${-headSize / 3},${-headSize / 2} ${headSize * 2 / 3},0 ${-headSize / 3},${headSize / 2}`}
+                          fill="none"
+                          stroke="#4a90e2"
+                          strokeOpacity={0.45}
+                          strokeWidth={Math.max(3, (renderObj.strokeWidth || 2) + 2)}
+                          strokeLinejoin="round"
+                          vectorEffect="non-scaling-stroke"
+                          transform={`translate(${x2},${y2}) rotate(${angleDeg})`}
+                          style={{ pointerEvents: 'none' }}
+                        />
+                      )}
+                    </>
+                  )}
+                  <line
+                    x1={x1}
+                    y1={y1}
+                    x2={lineEndX}
+                    y2={lineEndY}
+                    stroke="rgba(0,0,0,0.001)"
+                    strokeWidth={hitStrokeWidth}
+                    strokeLinecap="round"
+                    vectorEffect="non-scaling-stroke"
+                    pointerEvents={isSelectTool && isObjectInteractive ? 'stroke' : 'none'}
+                    data-shape-hit-target="group-line"
+                    onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
+                    onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
+                    onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
+                    onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
+                  />
+                  {arrowHead && (
+                    <polygon
+                      points={`${-headSize / 3},${-headSize / 2} ${headSize * 2 / 3},0 ${-headSize / 3},${headSize / 2}`}
+                      fill="rgba(0,0,0,0.001)"
+                      stroke="rgba(0,0,0,0.001)"
+                      strokeWidth={Math.max(2, renderObj.strokeWidth || 2)}
+                      strokeLinejoin="round"
+                      transform={`translate(${x2},${y2}) rotate(${angleDeg})`}
+                      pointerEvents={isSelectTool && isObjectInteractive ? 'all' : 'none'}
+                      data-shape-hit-target="group-arrowhead"
+                      onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
+                      onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
+                      onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
+                      onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
+                    />
+                  )}
+                </g>
+              );
+            }
+          }
+
+          // UX: shape-tracing hover halos and hit targets. These branches
+          // duplicate the shape's own geometry instead of using bbox rects,
+          // so blank interiors of unfilled shapes and concave polygon voids
+          // are not selectable.
           if ((objTypeLower === 'polygon' || objTypeLower === 'polyline')
               && Array.isArray(renderObj.points) && renderObj.points.length > 0) {
             const isPolygonShape = objTypeLower === 'polygon';
@@ -3587,9 +3699,12 @@ const SVGAnnotationLayer = memo(({
             if (shapeSx !== 1 || shapeSy !== 1) shapeTransform += ` scale(${shapeSx}, ${shapeSy})`;
             shapeTransform += ` translate(${-shapePathOffsetX}, ${-shapePathOffsetY})`;
             const sw = renderObj.strokeWidth || 1;
-            const hitRotate = bbox.angle
-              ? `rotate(${bbox.angle}, ${bbox.left + bbox.width / 2}, ${bbox.top + bbox.height / 2})`
-              : undefined;
+            const polyHitProps = getShapeHitTargetProps({
+              fill: isPolygonShape ? renderObj.fill : 'none',
+              stroke: renderObj.stroke,
+              strokeWidth: sw,
+              isInteractive: isSelectTool && isObjectInteractive,
+            });
             return (
               <g>
                 {annotationIsHovered && (
@@ -3621,20 +3736,39 @@ const SVGAnnotationLayer = memo(({
                     />
                   )
                 )}
-                <rect
-                  x={bbox.left}
-                  y={bbox.top}
-                  width={isSelectDeleteOnlyPdfTextMarkupHitTarget ? Math.max(bbox.width, 1) : Math.max(bbox.width, 10)}
-                  height={isSelectDeleteOnlyPdfTextMarkupHitTarget ? Math.max(bbox.height, 1) : Math.max(bbox.height, 10)}
-                  transform={hitRotate}
-                  fill="transparent"
-                  stroke="none"
-                  pointerEvents={isSelectTool && isObjectInteractive ? 'all' : 'none'}
-                  onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
-                  onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
-                  onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
-                  onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
-                />
+                {isPolygonShape ? (
+                  <polygon
+                    points={pointsStr}
+                    transform={shapeTransform}
+                    fill={polyHitProps.fill}
+                    stroke={polyHitProps.stroke}
+                    strokeWidth={polyHitProps.strokeWidth}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    pointerEvents={polyHitProps.pointerEvents}
+                    data-shape-hit-target="polygon"
+                    onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
+                    onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
+                    onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
+                    onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
+                  />
+                ) : (
+                  <polyline
+                    points={pointsStr}
+                    transform={shapeTransform}
+                    fill="none"
+                    stroke={polyHitProps.stroke}
+                    strokeWidth={polyHitProps.strokeWidth}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    pointerEvents={polyHitProps.pointerEvents}
+                    data-shape-hit-target="polyline"
+                    onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
+                    onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
+                    onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
+                    onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
+                  />
+                )}
               </g>
             );
           }
@@ -3655,9 +3789,12 @@ const SVGAnnotationLayer = memo(({
             const rectRotate = renderObj.angle
               ? `rotate(${renderObj.angle}, ${rectCX}, ${rectCY})`
               : undefined;
-            const hitRotate = bbox.angle
-              ? `rotate(${bbox.angle}, ${bbox.left + bbox.width / 2}, ${bbox.top + bbox.height / 2})`
-              : undefined;
+            const rectHitProps = getShapeHitTargetProps({
+              fill: renderObj.fill,
+              stroke: renderObj.stroke,
+              strokeWidth: sw,
+              isInteractive: isSelectTool && isObjectInteractive,
+            });
             return (
               <g>
                 {annotationIsHovered && (
@@ -3677,14 +3814,17 @@ const SVGAnnotationLayer = memo(({
                   />
                 )}
                 <rect
-                  x={bbox.left}
-                  y={bbox.top}
-                  width={isSelectDeleteOnlyPdfTextMarkupHitTarget ? Math.max(bbox.width, 1) : Math.max(bbox.width, 10)}
-                  height={isSelectDeleteOnlyPdfTextMarkupHitTarget ? Math.max(bbox.height, 1) : Math.max(bbox.height, 10)}
-                  transform={hitRotate}
-                  fill="transparent"
-                  stroke="none"
-                  pointerEvents={isSelectTool && isObjectInteractive ? 'all' : 'none'}
+                  x={rectL}
+                  y={rectT}
+                  width={rectW}
+                  height={rectH}
+                  transform={rectRotate}
+                  fill={rectHitProps.fill}
+                  stroke={rectHitProps.stroke}
+                  strokeWidth={rectHitProps.strokeWidth}
+                  strokeLinejoin="round"
+                  pointerEvents={rectHitProps.pointerEvents}
+                  data-shape-hit-target="rect"
                   onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
                   onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
                   onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
@@ -3712,9 +3852,12 @@ const SVGAnnotationLayer = memo(({
             const ellipseRotate = renderObj.angle
               ? `rotate(${renderObj.angle}, ${cx}, ${cy})`
               : undefined;
-            const hitRotate = bbox.angle
-              ? `rotate(${bbox.angle}, ${bbox.left + bbox.width / 2}, ${bbox.top + bbox.height / 2})`
-              : undefined;
+            const ellipseHitProps = getShapeHitTargetProps({
+              fill: renderObj.fill,
+              stroke: renderObj.stroke,
+              strokeWidth: sw,
+              isInteractive: isSelectTool && isObjectInteractive,
+            });
             return (
               <g>
                 {annotationIsHovered && (
@@ -3732,15 +3875,17 @@ const SVGAnnotationLayer = memo(({
                     style={{ pointerEvents: 'none' }}
                   />
                 )}
-                <rect
-                  x={bbox.left}
-                  y={bbox.top}
-                  width={Math.max(bbox.width, 10)}
-                  height={Math.max(bbox.height, 10)}
-                  transform={hitRotate}
-                  fill="transparent"
-                  stroke="none"
-                  pointerEvents={isSelectTool && isObjectInteractive ? 'all' : 'none'}
+                <ellipse
+                  cx={cx}
+                  cy={cy}
+                  rx={rx}
+                  ry={ry}
+                  transform={ellipseRotate}
+                  fill={ellipseHitProps.fill}
+                  stroke={ellipseHitProps.stroke}
+                  strokeWidth={ellipseHitProps.strokeWidth}
+                  pointerEvents={ellipseHitProps.pointerEvents}
+                  data-shape-hit-target={objTypeLower}
                   onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
                   onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
                   onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
@@ -3809,11 +3954,8 @@ const SVGAnnotationLayer = memo(({
                 ? Math.max(4, pathAttrs.strokeWidth || sw || 1)
               : Math.max(12, pathAttrs.strokeWidth || sw || 1, 3 * inverseScale);
             const pathPointerEvents = isSelectTool && isObjectInteractive
-              ? (isSelectDeleteOnlyPdfTextMarkupHitTarget ? 'stroke' : 'all')
+              ? (isFilledPdfInkOutline ? 'all' : 'stroke')
               : 'none';
-            const pathRawWidth = pathHasBounds ? Math.max(0, pathRawMaxX - pathRawMinX) : 0;
-            const pathRawHeight = pathHasBounds ? Math.max(0, pathRawMaxY - pathRawMinY) : 0;
-            const useThinPathHitBox = !isSelectDeleteOnlyPdfTextMarkupHitTarget && pathHasBounds && Math.min(pathRawWidth, pathRawHeight) <= 10;
             return (
               <g>
                 {annotationIsHovered && (
@@ -3852,28 +3994,6 @@ const SVGAnnotationLayer = memo(({
                   onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
                   onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
                 />
-                {useThinPathHitBox && (
-                  <rect
-                    x={pathRawMinX - 4}
-                    y={pathRawMinY - 6}
-                    width={Math.max(1, pathRawWidth) + 8}
-                    height={Math.max(1, pathRawHeight) + 12}
-                    transform={pathTransform}
-                    fill="rgba(0,0,0,0.001)"
-                    stroke="none"
-                    pointerEvents={pathPointerEvents}
-                    data-path-bbox-hit-target="true"
-                    onPointerDown={(e) => handleAnnotationPointerDown(e, i)}
-                    onPointerMove={handlePointerMove}
-                    onPointerUp={handlePointerUp}
-                    onMouseDown={(e) => handleAnnotationPointerDown(e, i)}
-                    onMouseMove={handlePointerMove}
-                    onMouseUp={handlePointerUp}
-                    onPointerEnter={(e) => handleAnnotationPointerEnter(e, i)}
-                    onPointerLeave={(e) => handleAnnotationPointerLeave(e, i)}
-                    onDoubleClick={(e) => handleAnnotationDoubleClick(e, i)}
-                  />
-                )}
               </g>
             );
           }
@@ -3938,7 +4058,7 @@ const SVGAnnotationLayer = memo(({
         position: 'absolute',
         top: 0,
         left: 0,
-        pointerEvents: isCreationTool ? 'auto' : 'none',
+        pointerEvents: isInteractive ? 'auto' : 'none',
         overflow: 'hidden',
         cursor: interactionState === 'dragging' ? 'grabbing'
               : interactionState === 'rotating' ? 'crosshair'

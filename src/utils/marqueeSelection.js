@@ -28,7 +28,7 @@
  */
 
 import { getAnnotationBBox } from './svgBoundingBox.js';
-import { doesRectIntersectObject } from './geometryHitTest.js';
+import { doesRectIntersectObject, isObjectFullyInRect } from './geometryHitTest.js';
 import { toFabricShape } from './svgToFabricShape.js';
 // Phase 35 Plan 03 — owner-aware post-filter on marquee hit-test results.
 // Pulled from the single permission-scope source of truth so the marquee
@@ -106,6 +106,69 @@ function bboxFromCallout(callout, pageWidth, pageHeight) {
   };
 }
 
+function denormalizeCalloutPoint(point, pageWidth, pageHeight) {
+  return {
+    x: (point?.x ?? 0) * (pageWidth || 0),
+    y: (point?.y ?? 0) * (pageHeight || 0),
+  };
+}
+
+function getCalloutGeometry(callout, pageWidth, pageHeight) {
+  const arrowTip = denormalizeCalloutPoint(callout.arrowTip, pageWidth, pageHeight);
+  const knee = denormalizeCalloutPoint(callout.knee, pageWidth, pageHeight);
+  const textLeft = (callout.textBoxPosition?.x ?? 0) * (pageWidth || 0);
+  const textTop = (callout.textBoxPosition?.y ?? 0) * (pageHeight || 0);
+  const textWidth = (callout.textBoxWidth ?? 0) * (pageWidth || 0);
+  const textHeight = (callout.textBoxHeight ?? 0) * (pageHeight || 0);
+  const textCenter = { x: textLeft + textWidth / 2, y: textTop + textHeight / 2 };
+  const strokeWidth = Math.max(1, Number(callout.style?.lineThickness || callout.lineThickness || 2));
+  return {
+    arrowTip,
+    knee,
+    textCenter,
+    textRect: {
+      type: 'rect',
+      left: textLeft,
+      top: textTop,
+      width: textWidth,
+      height: textHeight,
+      fill: 'rgba(0,0,0,0.001)',
+      stroke: callout.style?.borderColor || callout.borderColor || 'transparent',
+      strokeWidth,
+    },
+    segments: [
+      { type: 'line', x1: arrowTip.x, y1: arrowTip.y, x2: knee.x, y2: knee.y, stroke: '#000', strokeWidth },
+      { type: 'line', x1: knee.x, y1: knee.y, x2: textCenter.x, y2: textCenter.y, stroke: '#000', strokeWidth },
+    ],
+  };
+}
+
+function isPointInMarquee(point, marqueeRect) {
+  return point.x >= marqueeRect.left &&
+    point.x <= marqueeRect.right &&
+    point.y >= marqueeRect.top &&
+    point.y <= marqueeRect.bottom;
+}
+
+function isCalloutFullyInRect(marqueeRect, callout, pageWidth, pageHeight) {
+  const geom = getCalloutGeometry(callout, pageWidth, pageHeight);
+  const r = geom.textRect;
+  const textCorners = [
+    { x: r.left, y: r.top },
+    { x: r.left + r.width, y: r.top },
+    { x: r.left + r.width, y: r.top + r.height },
+    { x: r.left, y: r.top + r.height },
+  ];
+  return [geom.arrowTip, geom.knee, geom.textCenter, ...textCorners]
+    .every((point) => isPointInMarquee(point, marqueeRect));
+}
+
+function doesRectIntersectCallout(marqueeRect, callout, pageWidth, pageHeight) {
+  const geom = getCalloutGeometry(callout, pageWidth, pageHeight);
+  if (doesRectIntersectObject(marqueeRect, geom.textRect)) return true;
+  return geom.segments.some((segment) => doesRectIntersectObject(marqueeRect, segment));
+}
+
 export function resolveMarqueeHits({
   marqueeRect,
   direction,
@@ -113,6 +176,7 @@ export function resolveMarqueeHits({
   callouts,
   pageWidth,
   pageHeight,
+  pageNumber,
   selectableAnnotationIndices,
   onCandidateDiagnostic,
 }) {
@@ -148,7 +212,8 @@ export function resolveMarqueeHits({
     }
 
     if (direction === 'window') {
-      if (isBBoxFullyContained(marqueeRect, bbox)) {
+      const shape = toFabricShape(obj);
+      if (isObjectFullyInRect(marqueeRect, shape)) {
         emitDiag({ index: i, included: true, reason: 'window-contained', bbox, obj });
         annotationIndices.push(i);
       } else {
@@ -172,16 +237,22 @@ export function resolveMarqueeHits({
   const calloutArr = Array.isArray(callouts) ? callouts : [];
   for (const callout of calloutArr) {
     if (!callout || !callout.id) continue;
+    if (
+      pageNumber != null &&
+      callout.pageNumber != null &&
+      Number(callout.pageNumber) !== Number(pageNumber)
+    ) {
+      continue;
+    }
     const bbox = bboxFromCallout(callout, pageWidth, pageHeight);
 
     if (direction === 'window') {
-      if (isBBoxFullyContained(marqueeRect, bbox)) {
+      if (isCalloutFullyInRect(marqueeRect, callout, pageWidth, pageHeight)) {
         calloutIds.push(callout.id);
       }
     } else {
       if (!isBBoxOverlapping(marqueeRect, bbox)) continue;
-      const shape = toFabricShape(callout, { pageWidth, pageHeight, kind: 'callout' });
-      if (doesRectIntersectObject(marqueeRect, shape)) {
+      if (doesRectIntersectCallout(marqueeRect, callout, pageWidth, pageHeight)) {
         calloutIds.push(callout.id);
       }
     }

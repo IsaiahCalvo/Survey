@@ -41,6 +41,7 @@ export function toFabricShape(annotation, options = {}) {
     scaleY: a.scaleY ?? 1,
     angle: a.angle ?? 0,
     strokeWidth: a.strokeWidth ?? 0,
+    stroke: a.stroke,
     originX: a.originX,
     originY: a.originY,
     fill: a.fill,
@@ -61,15 +62,28 @@ export function toFabricShape(annotation, options = {}) {
       return { ...base, width: a.width ?? 0, height: a.height ?? 0 };
 
     case 'circle':
-      return { ...base, radius: a.radius ?? 0, width: a.width ?? 0, height: a.height ?? 0 };
+      return {
+        ...base,
+        left: (a.left ?? 0) + (a.radius ?? 0) * Math.abs(a.scaleX ?? 1),
+        top: (a.top ?? 0) + (a.radius ?? 0) * Math.abs(a.scaleY ?? 1),
+        radius: a.radius ?? 0,
+        width: a.width ?? 0,
+        height: a.height ?? 0,
+        originX: 'center',
+        originY: 'center',
+      };
 
     case 'ellipse':
       return {
         ...base,
+        left: (a.left ?? 0) + (a.rx ?? 0) * Math.abs(a.scaleX ?? 1),
+        top: (a.top ?? 0) + (a.ry ?? 0) * Math.abs(a.scaleY ?? 1),
         rx: a.rx ?? 0,
         ry: a.ry ?? 0,
         width: a.width ?? 0,
         height: a.height ?? 0,
+        originX: 'center',
+        originY: 'center',
       };
 
     case 'line':
@@ -82,20 +96,20 @@ export function toFabricShape(annotation, options = {}) {
       };
 
     case 'polyline':
-      return { ...base, points: a.points ?? [] };
+      return {
+        ...base,
+        points: a.points ?? [],
+        calcTransformMatrix: () => getPointsShapeTransformMatrix(a),
+      };
 
     case 'polygon': {
-      // The hit-test dispatcher only has a 'polyline' case — polygons fall
-      // through to a default bbox fallback that can't hit-test plain JSON
-      // annotations (no getBoundingRect). Map polygon -> polyline and
-      // append the closing edge (first point = last point) so the polygon's
-      // outline is fully represented as connected line segments. Matches
-      // how imported PDF polygon regions should participate in the
-      // AutoCAD crossing marquee — their stroked outline is what the user
-      // sees and expects to hit-test against.
       const pts = Array.isArray(a.points) ? a.points : [];
-      const closed = pts.length > 2 ? [...pts, pts[0]] : pts.slice();
-      return { ...base, type: 'polyline', points: closed };
+      return {
+        ...base,
+        type: 'polygon',
+        points: pts.slice(),
+        calcTransformMatrix: () => getPointsShapeTransformMatrix(a),
+      };
     }
 
     case 'path':
@@ -130,6 +144,56 @@ export function toFabricShape(annotation, options = {}) {
       };
     }
   }
+}
+
+function multiply(m1, m2) {
+  const [a1, b1, c1, d1, e1, f1] = m1;
+  const [a2, b2, c2, d2, e2, f2] = m2;
+  return [
+    a1 * a2 + c1 * b2,
+    b1 * a2 + d1 * b2,
+    a1 * c2 + c1 * d2,
+    b1 * c2 + d1 * d2,
+    a1 * e2 + c1 * f2 + e1,
+    b1 * e2 + d1 * f2 + f1,
+  ];
+}
+
+function translate(tx, ty) {
+  return [1, 0, 0, 1, tx, ty];
+}
+
+function scale(sx, sy) {
+  return [sx, 0, 0, sy, 0, 0];
+}
+
+function rotate(deg) {
+  const rad = (Number(deg) || 0) * Math.PI / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return [cos, sin, -sin, cos, 0, 0];
+}
+
+function getPointsShapeTransformMatrix(annotation) {
+  const points = Array.isArray(annotation?.points) ? annotation.points : [];
+  const scaleX = annotation?.scaleX ?? 1;
+  const scaleY = annotation?.scaleY ?? 1;
+  const pathOffsetX = annotation?.pathOffset?.x || 0;
+  const pathOffsetY = annotation?.pathOffset?.y || 0;
+  const xs = points.map((p) => Number(p?.x) || 0);
+  const ys = points.map((p) => Number(p?.y) || 0);
+  const rawCenterX = xs.length ? (Math.min(...xs) + Math.max(...xs)) / 2 : 0;
+  const rawCenterY = ys.length ? (Math.min(...ys) + Math.max(...ys)) / 2 : 0;
+  const rotCenterX = scaleX * (rawCenterX - pathOffsetX);
+  const rotCenterY = scaleY * (rawCenterY - pathOffsetY);
+
+  return [
+    translate(annotation?.left ?? 0, annotation?.top ?? 0),
+    translate(rotCenterX, rotCenterY),
+    rotate(annotation?.angle ?? 0),
+    translate(-rotCenterX, -rotCenterY),
+    scale(scaleX, scaleY),
+  ].reduce((acc, matrix) => multiply(acc, matrix));
 }
 
 function calloutToRect(callout, pageWidth, pageHeight) {
