@@ -26,7 +26,7 @@ import { useFabricCanvas } from '../hooks/useFabricCanvas';
 // Custom properties to include in text serialization (matches PAL/Drawing pattern)
 const CUSTOM_PROPS = [
   'strokeUniform', 'spaceId', 'moduleId', 'regionId',
-  'data', 'name', 'highlightId', 'needsBIC',
+  'data', 'name', 'highlightId', 'needsEntity',
   'globalCompositeOperation', 'layer',
   'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode',
 ];

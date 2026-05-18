@@ -1176,6 +1176,16 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
   // 2026-04-08 gotcha). sanitizeFontFamily strips CSS fallback stacks.
   const safeFontFamily = sanitizeFontFamily(callout.style?.fontFamily);
 
+  // UX: 2026-05-18 — the visible textbox <rect> is drawn taller than the
+  // stored textBox.height by `descenderBuffer` (fontSize * 0.35) so low-
+  // hanging letters (g/j/p/q/y) clear the bottom border. The leader-line
+  // connection math MUST use this same buffered height, otherwise it keeps
+  // the line off the shorter (math-only) box and the line visibly bleeds
+  // through the descender strip at the bottom of the box the user sees.
+  const calloutFs = Number(callout.style?.fontSize || 12);
+  const descenderBuffer = calloutFs * 0.35;
+  const boxHeightWithDescenders = textBox.height + descenderBuffer;
+
   // UX: borderWidth passed as 0 — stored textBox x/y/w/h already represent
   // the OUTER visible border rect (the <rect> below paints at the same dims).
   // Passing lineThickness here would nudge the line's box-end inward by that
@@ -1193,7 +1203,9 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
   let connection;
   if (rawKnee) {
     const boxRight = textBox.x + textBox.width;
-    const boxBottom = textBox.y + textBox.height;
+    // UX: clamp against the buffered (visible) bottom edge, not the shorter
+    // stored height — same reason as the connection math below.
+    const boxBottom = textBox.y + boxHeightWithDescenders;
     const clampedX = Math.max(textBox.x, Math.min(knee.x, boxRight));
     const clampedY = Math.max(textBox.y, Math.min(knee.y, boxBottom));
     connection = {
@@ -1204,7 +1216,7 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
     };
   } else {
     connection = calculateConnection(
-      textBox.x, textBox.y, textBox.width, textBox.height,
+      textBox.x, textBox.y, textBox.width, boxHeightWithDescenders,
       knee, arrowTip, 0
     );
   }
@@ -1324,9 +1336,6 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
         // the growing box while editing. Only the inner text foreignObject
         // is gated by hideText — Fabric paints the live letters during
         // edit and the SVG copy would just create a ghost behind them.
-        const calloutFs = Number(callout.style?.fontSize || 12);
-        const descenderBuffer = calloutFs * 0.35;
-        const boxHeightWithDescenders = textBox.height + descenderBuffer;
         return (
         <>
           <rect

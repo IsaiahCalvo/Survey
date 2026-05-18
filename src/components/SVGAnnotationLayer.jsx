@@ -34,6 +34,7 @@ import {
   renderPolyline,
 } from '../utils/svgAnnotationRenderers';
 import { calculateCalloutConnection } from '../utils/calloutGeometry';
+import { HANDLE_FILL, HANDLE_RING, HANDLE_RING_INVALID } from '../utils/handleStyle';
 import { useSVGInteraction } from '../hooks/useSVGInteraction';
 // Plan 14-03 Task 3 (CREATE-01 callout half): factory for constructing a
 // new callout from the click-drag creation gesture. types.js is the
@@ -193,12 +194,13 @@ const SVGAnnotationLayer = memo(({
   annotations,    // Fabric.js JSON { objects: [...] }
   callouts,       // array of callout objects
   // Survey highlights for this page. Array of:
-  //   { highlightId, x, y, width, height, color, moduleId, regionId, needsBIC }
+  //   { highlightId, x, y, width, height, color, moduleId, regionId, needsEntity }
   // Rendered as SVG rects with mix-blend-mode: multiply, passed through the
   // same three-layer visibility filter as annotation objects.
   surveyHighlights,
   onUpdateSurveyHighlightBounds,
   onDeleteSurveyHighlight,
+  onSurveyHighlightDoubleClick,
   pendingSurveyHighlightSelection,
   onPendingSurveyHighlightSelectionConsumed,
   // Filtering props
@@ -362,6 +364,7 @@ const SVGAnnotationLayer = memo(({
   const annotationsRef = useRef(annotations);
   const renderedAnnotationEntriesRef = useRef([]);
   const surveyHighlightDragRef = useRef(null);
+  const surveyHighlightClickRef = useRef({ highlightId: null, time: 0 });
   const [selectedSurveyHighlightId, setSelectedSurveyHighlightId] = useState(null);
   const [hoveredSurveyHighlightId, setHoveredSurveyHighlightId] = useState(null);
   const [surveyHighlightPreviewBounds, setSurveyHighlightPreviewBounds] = useState(null);
@@ -1928,10 +1931,10 @@ const SVGAnnotationLayer = memo(({
         top: h.y,
         width: h.width,
         height: h.height,
-        fill: h.needsBIC ? 'transparent' : (h.color || 'rgba(255,235,59,0.25)'),
-        stroke: h.needsBIC ? '#4A90E2' : 'transparent',
-        strokeWidth: h.needsBIC ? 2 : 0,
-        strokeDashArray: h.needsBIC ? [5, 5] : undefined,
+        fill: h.needsEntity ? 'transparent' : (h.color || 'rgba(255,235,59,0.25)'),
+        stroke: h.needsEntity ? '#4A90E2' : 'transparent',
+        strokeWidth: h.needsEntity ? 2 : 0,
+        strokeDashArray: h.needsEntity ? [5, 5] : undefined,
         globalCompositeOperation: 'multiply',
         opacity: 1,
         scaleX: 1,
@@ -2156,6 +2159,19 @@ const SVGAnnotationLayer = memo(({
     if (!isSelectTool || !entry?.highlight?.highlightId) return;
     e.stopPropagation();
     e.preventDefault();
+    const highlightId = entry.highlight.highlightId;
+    const now = Date.now();
+    const previousClick = surveyHighlightClickRef.current;
+    if (
+      previousClick.highlightId === highlightId &&
+      now - previousClick.time <= 350
+    ) {
+      surveyHighlightClickRef.current = { highlightId: null, time: 0 };
+      onSurveyHighlightDoubleClick?.(highlightId);
+      return;
+    }
+    surveyHighlightClickRef.current = { highlightId, time: now };
+
     const startPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
     const originalBounds = normalizeSurveyHighlightBounds({
       x: entry.bbox.left,
@@ -2166,16 +2182,23 @@ const SVGAnnotationLayer = memo(({
     });
     deselectAll();
     onSelectedCalloutIdsChange?.(new Set());
-    setSelectedSurveyHighlightId(entry.highlight.highlightId);
+    setSelectedSurveyHighlightId(highlightId);
     surveyHighlightDragRef.current = {
       mode: 'move',
-      highlightId: entry.highlight.highlightId,
+      highlightId,
       startPoint,
       originalBounds,
     };
     setSurveyHighlightPreviewBounds(null);
     try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch (_) {}
-  }, [deselectAll, isSelectTool, normalizeSurveyHighlightBounds, onSelectedCalloutIdsChange]);
+  }, [deselectAll, isSelectTool, normalizeSurveyHighlightBounds, onSelectedCalloutIdsChange, onSurveyHighlightDoubleClick]);
+
+  const handleSurveyHighlightDoubleClick = useCallback((e, entry) => {
+    if (!entry?.highlight?.highlightId) return;
+    e.stopPropagation();
+    e.preventDefault();
+    onSurveyHighlightDoubleClick?.(entry.highlight.highlightId);
+  }, [onSurveyHighlightDoubleClick]);
 
   const handleSurveyHighlightHandlePointerDown = useCallback((e, entry, handleId) => {
     if (!isSelectTool || !entry?.highlight?.highlightId) return;
@@ -2322,6 +2345,7 @@ const SVGAnnotationLayer = memo(({
           pointerEvents={isSelectTool ? 'all' : 'none'}
           style={{ cursor: isSelectTool ? 'move' : undefined }}
           onPointerDown={(e) => handleSurveyHighlightPointerDown(e, entry)}
+          onDoubleClick={(e) => handleSurveyHighlightDoubleClick(e, entry)}
           onPointerEnter={() => setHoveredSurveyHighlightId(highlightId)}
           onPointerLeave={() => setHoveredSurveyHighlightId((prev) => (prev === highlightId ? null : prev))}
         />
@@ -2345,6 +2369,7 @@ const SVGAnnotationLayer = memo(({
     );
   }, [
     handleSurveyHighlightHandlePointerDown,
+    handleSurveyHighlightDoubleClick,
     handleSurveyHighlightPointerDown,
     hoveredSurveyHighlightId,
     inverseScale,
@@ -2407,8 +2432,17 @@ const SVGAnnotationLayer = memo(({
     // hidden and a soft blue outline glow replaces them (matching the
     // annotation hover-glow style). `showGlow` also drives the callout's
     // cursor-hover indicator for solo callouts.
-    const { showHandles = true, showGlow = false } = options;
+    const { showHandles = true, showGlow = false, dragInvalid = false, dragPart = null } = options;
     if (!callout || !callout.arrowTip || !callout.knee) return null;
+    // UX: 2026-05-18 — handle ring colour. Normally the unified blue; turns
+    // red on the handle being dragged while the current spot fails the rule
+    // check (a live "won't be accepted" warning). A whole-textbox drag that
+    // collides reddens both the knee and arrow handles since the box edge is
+    // what's crowding them.
+    const kneeRingColor = (dragInvalid && (dragPart === 'knee' || dragPart === 'textBox'))
+      ? HANDLE_RING_INVALID : HANDLE_RING;
+    const arrowRingColor = (dragInvalid && (dragPart === 'arrowTip' || dragPart === 'textBox'))
+      ? HANDLE_RING_INVALID : HANDLE_RING;
     const { width: W, height: H } = pageSize;
     const atX = callout.arrowTip.x * W;
     const atY = callout.arrowTip.y * H;
@@ -2645,9 +2679,9 @@ const SVGAnnotationLayer = memo(({
               cx={isKneeDragging ? kX : conn.effectiveKnee.x}
               cy={isKneeDragging ? kY : conn.effectiveKnee.y}
               r={7}
-              fill="#ffffff"
-              stroke="#d1d1d1"
-              strokeWidth={1}
+              fill={HANDLE_FILL}
+              stroke={kneeRingColor}
+              strokeWidth={1.5}
               vectorEffect="non-scaling-stroke"
               style={{
                 filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.15))',
@@ -2658,9 +2692,9 @@ const SVGAnnotationLayer = memo(({
               cx={atX}
               cy={atY}
               r={7}
-              fill="#ffffff"
-              stroke="#d1d1d1"
-              strokeWidth={1}
+              fill={HANDLE_FILL}
+              stroke={arrowRingColor}
+              strokeWidth={1.5}
               vectorEffect="non-scaling-stroke"
               style={{
                 filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.15))',
@@ -2689,9 +2723,9 @@ const SVGAnnotationLayer = memo(({
                 cx={p.x}
                 cy={p.y}
                 r={7}
-                fill="#ffffff"
-                stroke="#d1d1d1"
-                strokeWidth={1}
+                fill={HANDLE_FILL}
+                stroke={HANDLE_RING}
+                strokeWidth={1.5}
                 vectorEffect="non-scaling-stroke"
                 style={{
                   filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.15))',
@@ -2843,12 +2877,19 @@ const SVGAnnotationLayer = memo(({
       const isEditingThisCallout = editingCalloutId === displayCallout.id;
       const showHandles = isSelected && !isMultiSelect && !isEditingThisCallout;
       const showGlow = (isSelected && isMultiSelect) || (!isSelected && isHovered);
+      // UX: 2026-05-18 — while THIS callout is being dragged, the live
+      // preview carries `calloutDragInvalid` set by useSVGInteraction's
+      // per-frame rule check. When true, the dragged handle's ring paints
+      // red so the user sees the spot won't be accepted before releasing.
+      const dragInvalid = !!dragPart
+        && visualTransform?.id === 'callout'
+        && visualTransform?.calloutDragInvalid === true;
       const hitTargets = renderCalloutHitTargets(
         displayCallout,
         pageSize,
         isSelected,
         isKneeDragging,
-        { showHandles, showGlow },
+        { showHandles, showGlow, dragInvalid, dragPart },
       );
 
       // UX: 2026-04-20 v2 — group-move callout ride-along. When this
@@ -4339,8 +4380,8 @@ const SVGAnnotationLayer = memo(({
                 cx={tipX}
                 cy={tipY}
                 r={handleR}
-                fill="#ffffff"
-                stroke="#4a90e2"
+                fill={HANDLE_FILL}
+                stroke={HANDLE_RING}
                 strokeWidth={1.5}
                 vectorEffect="non-scaling-stroke"
                 style={{
@@ -4608,8 +4649,8 @@ const SVGAnnotationLayer = memo(({
               <circle
                 cx={ep.x1 + dx} cy={ep.y1 + dy}
                 r={handleR}
-                fill="#ffffff"
-                stroke="#4a90e2"
+                fill={HANDLE_FILL}
+                stroke={HANDLE_RING}
                 strokeWidth={1.5}
                 vectorEffect="non-scaling-stroke"
                 style={handleStyle}
@@ -4619,8 +4660,8 @@ const SVGAnnotationLayer = memo(({
               <circle
                 cx={ep.x2 + dx} cy={ep.y2 + dy}
                 r={handleR}
-                fill="#ffffff"
-                stroke="#4a90e2"
+                fill={HANDLE_FILL}
+                stroke={HANDLE_RING}
                 strokeWidth={1.5}
                 vectorEffect="non-scaling-stroke"
                 style={handleStyle}
@@ -4637,8 +4678,8 @@ const SVGAnnotationLayer = memo(({
                 cx={midpointBase.x + dx}
                 cy={midpointBase.y + dy}
                 r={midpointR}
-                fill="#ffffff"
-                stroke="#4a90e2"
+                fill={HANDLE_FILL}
+                stroke={HANDLE_RING}
                 strokeWidth={1.5}
                 vectorEffect="non-scaling-stroke"
                 style={handleStyle}

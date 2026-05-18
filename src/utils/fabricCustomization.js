@@ -1,5 +1,6 @@
 import { fabric } from 'fabric';
 import rotateIconSvg from '../assets/rotate-icon.svg';
+import { HANDLE_FILL, HANDLE_RING } from './handleStyle';
 
 // Cache for the rotate icon image
 let rotateIconImage = null;
@@ -61,8 +62,8 @@ const renderPillControl = (ctx, left, top, styleOverride, fabricObject) => {
 
     ctx.beginPath();
     ctx.roundRect(x, y, width, height, height / 2);
-    ctx.fillStyle = '#ffffff';
-    ctx.strokeStyle = '#d1d1d1'; // Subtle border/shadow
+    ctx.fillStyle = HANDLE_FILL;
+    ctx.strokeStyle = HANDLE_RING; // Unified white-fill / blue-ring handle look
     ctx.lineWidth = 1;
     ctx.shadowColor = 'rgba(0,0,0,0.15)';
     ctx.shadowBlur = 4;
@@ -98,8 +99,8 @@ const renderVerticalPillControl = (ctx, left, top, styleOverride, fabricObject) 
 
     ctx.beginPath();
     ctx.roundRect(x, y, width, height, width / 2);
-    ctx.fillStyle = '#ffffff';
-    ctx.strokeStyle = '#d1d1d1';
+    ctx.fillStyle = HANDLE_FILL;
+    ctx.strokeStyle = HANDLE_RING; // Unified white-fill / blue-ring handle look
     ctx.lineWidth = 1;
     ctx.shadowColor = 'rgba(0,0,0,0.15)';
     ctx.shadowBlur = 4;
@@ -131,8 +132,8 @@ const renderRotationControl = (ctx, left, top, styleOverride, fabricObject) => {
     // Draw circle centered at origin (0, 0) after transform
     ctx.beginPath();
     ctx.arc(0, 0, size / 2, 0, Math.PI * 2);
-    ctx.fillStyle = '#ffffff';
-    ctx.strokeStyle = '#e0e0e0';
+    ctx.fillStyle = HANDLE_FILL;
+    ctx.strokeStyle = HANDLE_RING; // Unified white-fill / blue-ring handle look
     ctx.lineWidth = 1;
     ctx.shadowColor = 'rgba(0,0,0,0.1)';
     ctx.shadowBlur = 5;
@@ -200,8 +201,8 @@ export const configureFabricOverrides = () => {
     // -- 1. Global Object Styling --
     fabric.Object.prototype.set({
         transparentCorners: false,
-        cornerColor: '#ffffff',
-        cornerStrokeColor: '#d1d1d1', // Subtle grey border around white corners
+        cornerColor: HANDLE_FILL,
+        cornerStrokeColor: HANDLE_RING, // Unified white-fill / blue-ring handle look
         borderColor: '#4a90e2',      // Drawboard blue
         cornerStyle: 'circle',
         borderDashArray: [4, 4],     // Dashed selection
@@ -253,8 +254,8 @@ export const configureFabricOverrides = () => {
         ctx.save();
         ctx.beginPath();
         ctx.arc(left, top, size / 2, 0, 2 * Math.PI, false);
-        ctx.fillStyle = styleOverride.cornerColor || '#ffffff';
-        ctx.strokeStyle = styleOverride.cornerStrokeColor || '#d1d1d1';
+        ctx.fillStyle = styleOverride.cornerColor || HANDLE_FILL;
+        ctx.strokeStyle = styleOverride.cornerStrokeColor || HANDLE_RING;
         ctx.lineWidth = 1;
         ctx.shadowColor = 'rgba(0,0,0,0.15)';
         ctx.shadowBlur = 3;

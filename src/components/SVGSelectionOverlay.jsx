@@ -20,6 +20,7 @@ import {
   getSelectionHandleVisualMetrics,
 } from '../utils/selectionHandleVisibility.js';
 import rotateIconSvg from '../assets/rotate-icon.svg';
+import { HANDLE_FILL, HANDLE_RING } from '../utils/handleStyle';
 
 const SVGSelectionOverlay = memo(({
   bbox,             // { left, top, width, height, angle }
@@ -144,8 +145,8 @@ const SVGSelectionOverlay = memo(({
                 cx={pos.x}
                 cy={pos.y}
                 r={handleMetrics.cornerR}
-                fill="#ffffff"
-                stroke="#d1d1d1"
+                fill={HANDLE_FILL}
+                stroke={HANDLE_RING}
                 strokeWidth={handleMetrics.cornerStrokeWidth}
                 style={{
                   filter: cornerShadow,
@@ -172,8 +173,8 @@ const SVGSelectionOverlay = memo(({
                 width={hPillW}
                 height={hPillH}
                 rx={pillRx}
-                fill="#ffffff"
-                stroke="#d1d1d1"
+                fill={HANDLE_FILL}
+                stroke={HANDLE_RING}
                 strokeWidth={1 * is}
                 style={{
                   filter: pillShadow,
@@ -200,8 +201,8 @@ const SVGSelectionOverlay = memo(({
                 width={vPillW}
                 height={vPillH}
                 rx={pillRx}
-                fill="#ffffff"
-                stroke="#d1d1d1"
+                fill={HANDLE_FILL}
+                stroke={HANDLE_RING}
                 strokeWidth={1 * is}
                 style={{
                   filter: pillShadow,
@@ -234,8 +235,8 @@ const SVGSelectionOverlay = memo(({
               cx={handles.mtr.x}
               cy={handles.mtr.y}
               r={handleMetrics.rotationR}
-              fill="#ffffff"
-              stroke="#e0e0e0"
+              fill={HANDLE_FILL}
+              stroke={HANDLE_RING}
               strokeWidth={1 * is}
               style={{
                 filter: rotationShadow,

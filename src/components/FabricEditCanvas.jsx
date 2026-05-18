@@ -99,7 +99,7 @@ fabric.IText.prototype.renderCursor = function(boundaries, ctx) {
 // Custom properties to include in object serialization (matches FabricDrawingCanvas/FabricEraserCanvas)
 const CUSTOM_PROPS = [
   'strokeUniform', 'spaceId', 'moduleId', 'regionId',
-  'data', 'name', 'highlightId', 'needsBIC',
+  'data', 'name', 'highlightId', 'needsEntity',
   'globalCompositeOperation', 'layer',
   'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode',
 ];
@@ -2686,7 +2686,7 @@ const FabricEditCanvas = memo(({
         if (objData.regionId) obj.regionId = objData.regionId;
         if (objData.layer) obj.layer = objData.layer;
         if (objData.highlightId) obj.highlightId = objData.highlightId;
-        if (objData.needsBIC) obj.needsBIC = objData.needsBIC;
+        if (objData.needsEntity) obj.needsEntity = objData.needsEntity;
         if (objData.data) obj.data = objData.data;
         if (objData.name) obj.name = objData.name;
         if (objData.isPdfImported) obj.isPdfImported = objData.isPdfImported;
@@ -2695,7 +2695,7 @@ const FabricEditCanvas = memo(({
         if (objData.globalCompositeOperation) {
           obj.set({ globalCompositeOperation: objData.globalCompositeOperation });
         }
-        if (obj.highlightId || obj.needsBIC) {
+        if (obj.highlightId || obj.needsEntity) {
           obj.set({ globalCompositeOperation: 'multiply' });
         }
 

@@ -19,7 +19,7 @@
    Real data shape (defensive reads — older templates store modules under
    `spaces` or inside a `config` blob, and entities inside `config`):
      template -> modules -> categories -> checklist items
-     template.ballInCourtEntities  (the right-panel "Entities")
+     template.entities  (the right-panel "Entities")
 
    Interaction model
    -----------------
@@ -174,7 +174,7 @@ if (typeof document !== 'undefined' && !document.getElementById('ed-style')) {
    level, under a legacy `spaces` key, or inside a `config` blob.
    ============================================================ */
 const modulesOf = (t) => t?.modules || t?.spaces || t?.config?.modules || t?.config?.spaces || [];
-const entitiesOf = (t) => t?.ballInCourtEntities || t?.config?.ballInCourtEntities || [];
+const entitiesOf = (t) => t?.entities || t?.config?.entities || [];
 const categoriesOf = (m) => m?.categories || m?.cats || [];
 const checklistOf = (c) => c?.checklist || c?.items || [];
 const itemText = (it) => (typeof it === 'string' ? it : (it?.text ?? it?.name ?? ''));
@@ -831,7 +831,7 @@ export default function TemplatesEditor({
       name: r.name,
       modules: mods,
       spaces: mods,
-      ballInCourtEntities: r.roster.map((e) => {
+      entities: r.roster.map((e) => {
         const fillColor = roleColors[e.id]?.color || e.color || '#8c8c8a';
         const fillOpacity = roleColors[e.id]?.opacity ?? 0.35;
         const mf = !!matchFill[e.id];

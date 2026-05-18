@@ -3723,7 +3723,7 @@ const PageAnnotationLayer = memo(({
     const canvas = fabricRef.current;
     if (!canvas) return;
     sanitizeTextStyles(canvas);
-    const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'highlightId', 'needsBIC', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
+    const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'highlightId', 'needsEntity', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
     onSaveAnnotations(pageNumber, canvasJSON, buildHistorySaveContext(source, context));
   }, [pageNumber, onSaveAnnotations]);
 
@@ -5106,7 +5106,7 @@ const PageAnnotationLayer = memo(({
           if (objData.layer) obj.layer = objData.layer;
 
           // Enforce multiply blend mode for highlights
-          if (obj.highlightId || obj.needsBIC) {
+          if (obj.highlightId || obj.needsEntity) {
             obj.set({ globalCompositeOperation: 'multiply' });
           }
 
@@ -5461,7 +5461,7 @@ const PageAnnotationLayer = memo(({
         sanitizeTextStyles(fabricRef.current);
 
         // Include spaceId in the saved JSON to preserve space associations
-        const canvasJSON = fabricRef.current.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'highlightId', 'needsBIC', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
+        const canvasJSON = fabricRef.current.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'highlightId', 'needsEntity', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
         lastSavedAnnotationsRef.current = canvasJSON; // Update last saved ref
         onSaveAnnotations(pageNumber, canvasJSON, buildHistorySaveContext(source, context));
       } catch (e) {
@@ -6507,34 +6507,6 @@ const PageAnnotationLayer = memo(({
       // For other tools, ignore callout clicks so they don't interfere with annotation tools
       // Only process callout interactions when select, pan, or callout tool is active (handled above)
 
-      // Handle highlight clicks for reverse navigation (non-eraser tools)
-      if (currentTool !== 'eraser' && currentTool !== 'highlight') {
-        const pointer = canvas.getPointer(opt.e);
-        const objects = canvas.getObjects();
-
-        for (const obj of objects) {
-          // Check if this is a highlight with a highlightId
-          const hasHighlightId = obj.highlightId != null;
-          const isColoredHighlight = obj.type === 'rect' && (
-            (obj.fill && typeof obj.fill === 'string' && obj.fill.includes('rgba')) ||
-            (obj.fill && typeof obj.fill === 'string' && obj.fill.match(/rgba\(\d+,\s*\d+,\s*\d+,\s*[\d.]+\)/))
-          );
-
-          if ((hasHighlightId || isColoredHighlight) && obj.highlightId) {
-            // Use geometry-based hit testing for highlight click detection
-            // For filled highlights, check if point is inside the filled rect
-            // For stroke-only highlights, check if point is near the stroke
-            if (isPointOnObject(pointer, obj, 2)) {
-              // Call the reverse navigation callback
-              if (onHighlightClickedRef.current) {
-                onHighlightClickedRef.current(obj.highlightId);
-              }
-              return; // Don't continue with other click handling
-            }
-          }
-        }
-      }
-
       if (currentTool === 'eraser') {
         // Start erasing mode for drag-to-erase (both partial and entire modes)
         // We defer the actual erasure or splitting to mouseUp to allow the user to see the stroke
@@ -7004,7 +6976,7 @@ const PageAnnotationLayer = memo(({
             // For now, let's process them.
 
             const hasHighlightId = obj.highlightId != null;
-            const hasNeedsBICFlag = obj.needsBIC === true;
+            const hasNeedsEntityFlag = obj.needsEntity === true;
             const isColoredHighlight = obj.type === 'rect' && (
               (obj.fill && typeof obj.fill === 'string' && obj.fill.includes('rgba')) ||
               (obj.fill && typeof obj.fill === 'string' && obj.fill.match(/rgba\(\d+,\s*\d+,\s*\d+,\s*[\d.]+\)/))
@@ -7012,8 +6984,8 @@ const PageAnnotationLayer = memo(({
             const fillIsTransparent = !obj.fill || obj.fill === 'transparent' ||
               (typeof obj.fill === 'string' && obj.fill === 'transparent');
             const hasStroke = obj.stroke && typeof obj.stroke === 'string' && obj.stroke !== 'transparent';
-            const isNeedsBICHighlight = obj.type === 'rect' && fillIsTransparent && hasStroke;
-            const isHighlight = hasHighlightId || hasNeedsBICFlag || isColoredHighlight || isNeedsBICHighlight;
+            const isNeedsEntityHighlight = obj.type === 'rect' && fillIsTransparent && hasStroke;
+            const isHighlight = hasHighlightId || hasNeedsEntityFlag || isColoredHighlight || isNeedsEntityHighlight;
 
             // Highlights are special: they are always fully deleted if touched
             if (isHighlight) {
@@ -7406,7 +7378,33 @@ const PageAnnotationLayer = memo(({
       saveCanvas('annotation:create', { tool: currentTool });
     };
 
+    const getSurveyHighlightIdAtPointer = (nativeEvent) => {
+      const currentTool = toolRef.current;
+      if (currentTool === 'eraser' || currentTool === 'highlight') return null;
+
+      const pointer = canvas.getPointer(nativeEvent);
+      const objects = canvas.getObjects();
+      for (const obj of objects) {
+        const hasHighlightId = obj.highlightId != null;
+        const isColoredHighlight = obj.type === 'rect' && (
+          (obj.fill && typeof obj.fill === 'string' && obj.fill.includes('rgba')) ||
+          (obj.fill && typeof obj.fill === 'string' && obj.fill.match(/rgba\(\d+,\s*\d+,\s*\d+,\s*[\d.]+\)/))
+        );
+
+        if ((hasHighlightId || isColoredHighlight) && obj.highlightId && isPointOnObject(pointer, obj, 2)) {
+          return obj.highlightId;
+        }
+      }
+      return null;
+    };
+
     const handleDblClick = (opt) => {
+      const highlightId = opt.target?.highlightId || getSurveyHighlightIdAtPointer(opt.e);
+      if (highlightId) {
+        onHighlightClickedRef.current?.(highlightId);
+        return;
+      }
+
       const target = opt.target;
       if (!target) return;
 
@@ -8462,7 +8460,7 @@ const PageAnnotationLayer = memo(({
           // Keep the exact value: could be null (no regionId), undefined, or a real ID
           preservedRegionId = existingRect.regionId !== undefined ? existingRect.regionId : null;
 
-          // Check if properties match (color, needsBIC, bounds)
+          // Check if properties match (color, needsEntity, bounds)
           const rawColor = highlight.color || highlightColor;
           const color = normalizeHighlightColor(rawColor) || highlightColor;
           const renderScale = currentZoom || scale;
@@ -8486,18 +8484,18 @@ const PageAnnotationLayer = memo(({
             Math.abs(currentHeight - targetHeight) < tolerance;
 
           // Check visual style
-          const needsBIC = !!highlight.needsBIC;
-          const existingNeedsBIC = !!existingRect.needsBIC;
+          const needsEntity = !!highlight.needsEntity;
+          const existingNeedsEntity = !!existingRect.needsEntity;
 
           // If everything matches, skip update
-          if (boundsMatch && needsBIC === existingNeedsBIC) {
+          if (boundsMatch && needsEntity === existingNeedsEntity) {
             // For solid highlights, check color
-            if (!needsBIC) {
+            if (!needsEntity) {
               if (existingRect.fill === color) {
                 return; // Skip, already rendered correctly
               }
             } else {
-              return; // Skip, already rendered correctly (BIC style is constant)
+              return; // Skip, already rendered correctly (entity style is constant)
             }
           }
 
@@ -8513,7 +8511,7 @@ const PageAnnotationLayer = memo(({
       }
 
       // Also remove any existing highlights with matching bounds (regardless of highlightId)
-      // This ensures old colors are removed when ball in court changes
+      // This ensures old colors are removed when entity changes
       const tolerance = 1.0; // Tolerance for floating point precision and coordinate system differences
       // Convert PDF coordinates to canvas coordinates for comparison
       // Use actual canvas zoom for consistency
@@ -8568,9 +8566,9 @@ const PageAnnotationLayer = memo(({
       // Check if we've already processed this highlight (by coordinates if no ID)
       const alreadyProcessed = processedHighlightsRef.current.has(highlightKey);
       if (!alreadyProcessed) {
-        // Check if this highlight needs BIC assignment (transparent with dashed outline)
-        if (highlight.needsBIC) {
-          // Render as transparent with dashed outline (indicating it needs BIC)
+        // Check if this highlight needs entity assignment (transparent with dashed outline)
+        if (highlight.needsEntity) {
+          // Render as transparent with dashed outline (indicating it needs entity)
           // Convert PDF coordinates to canvas coordinates (multiply by actual zoom)
           const renderScale = currentZoom || scale;
           const rect = new Rect({
@@ -8590,8 +8588,8 @@ const PageAnnotationLayer = memo(({
             uniformScaling: false,
             lockUniScaling: false   // Allow free scaling on corner handles
           });
-          // Store the highlightId and needsBIC flag on the object for later reference
-          rect.set({ highlightId: highlight.highlightId, needsBIC: true });
+          // Store the highlightId and needsEntity flag on the object for later reference
+          rect.set({ highlightId: highlight.highlightId, needsEntity: true });
           // Store current moduleId on the highlight
           const objModuleId = highlight.moduleId || selectedModuleIdRef.current;
           if (objModuleId) {
@@ -8741,7 +8739,7 @@ const PageAnnotationLayer = memo(({
       // Save annotations
       try {
         sanitizeTextStyles(canvas);
-        const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'highlightId', 'needsBIC', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
+        const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'highlightId', 'needsEntity', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
         onSaveAnnotations(pageNumber, canvasJSON, buildHistorySaveContext('highlight:apply', {
           addedCount: newHighlights.length
         }));
@@ -8778,8 +8776,8 @@ const PageAnnotationLayer = memo(({
       const objectsToRemove = [];
       canvas.getObjects('rect').forEach(obj => {
         // Check if this is a highlight rectangle
-        // All highlights have a highlightId property (normal highlights and needsBIC dashed outlines)
-        // The needsBIC highlights have fill: 'transparent', so we need to check for highlightId
+        // All highlights have a highlightId property (normal highlights and needsEntity dashed outlines)
+        // The needsEntity highlights have fill: 'transparent', so we need to check for highlightId
         // instead of just checking fill color
         const isHighlight = obj.highlightId !== undefined;
 
@@ -9135,7 +9133,7 @@ const PageAnnotationLayer = memo(({
       // Save the canvas state
       try {
         sanitizeTextStyles(canvas);
-        const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'highlightId', 'needsBIC', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
+        const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'highlightId', 'needsEntity', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
         onSaveAnnotations(pageNumber, canvasJSON, buildHistorySaveContext('keyboard:delete', {
           deletedObjectsCount: activeObjects.length
         }));

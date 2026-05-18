@@ -6,9 +6,23 @@
 // Threshold for considering knee "stacked" with border or arrow (in pixels)
 const STACKED_THRESHOLD = 2;
 
-// Minimum distances to prevent handle overlaps
-export const MIN_KNEE_TO_ARROW_DISTANCE = 15; // Minimum distance from knee center to arrow center (handles are 12x12)
-export const MIN_KNEE_TO_BOX_EDGE_DISTANCE = 10; // Minimum distance from knee center to textbox edge
+// Callout handle geometry. The visible knee + arrow handles render as white
+// circles of radius 7 (diameter 14) in SVGAnnotationLayer. Every no-touch
+// spacing rule below derives from this radius so the collision math always
+// tracks the real handle size instead of stale magic numbers.
+export const HANDLE_RADIUS = 7;
+// Clear daylight the user should always see between two handle circles, or
+// between a handle and the textbox border. A handle "touches" something the
+// moment this gap reaches 0; this keeps a few pixels of separation at all
+// times (user request 2026-05-18 — handles must never visually kiss).
+export const HANDLE_CLEAR_GAP = 4;
+
+// Minimum distances to prevent handle overlaps.
+// Knee <-> arrow: two handle circles — centers must clear both radii + the gap.
+export const MIN_KNEE_TO_ARROW_DISTANCE = HANDLE_RADIUS * 2 + HANDLE_CLEAR_GAP; // 18
+// Knee/arrow <-> textbox border: one handle circle vs the border — the center
+// must clear one radius + the gap.
+export const MIN_KNEE_TO_BOX_EDGE_DISTANCE = HANDLE_RADIUS + HANDLE_CLEAR_GAP; // 11
 export const MIN_SEGMENT_LENGTH = 10; // Minimum length for line segments to keep them visible
 
 // Minimum distance required between textbox edge and arrow tip for knee to exist

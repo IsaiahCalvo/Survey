@@ -36,7 +36,7 @@ import {
 // Custom properties to include in path serialization (matches PAL pattern)
 const CUSTOM_PROPS = [
   'id', 'strokeUniform', 'spaceId', 'moduleId', 'regionId',
-  'data', 'name', 'highlightId', 'needsBIC',
+  'data', 'name', 'highlightId', 'needsEntity',
   'globalCompositeOperation', 'layer',
   'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode',
   'tool',

@@ -3,12 +3,14 @@ import Icon from './Icons';
 import { diff, union, intersection } from 'martinez-polygon-clipping';
 import { REGION_OPERATIONS, simplifyPolygon, subtractRegionFromRegion } from './utils/regionMath';
 import { calculateViewportSafePosition } from './utils/menuPositioning';
+import { HANDLE_FILL, HANDLE_RING } from './utils/handleStyle';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const MIN_REGION_SIZE = 5;
-const REGION_HANDLE_BLUE = '#4a90e2';
-const REGION_HANDLE_STROKE = '#d1d1d1';
-const REGION_HANDLE_FILL = '#ffffff';
+const REGION_HANDLE_BLUE = HANDLE_RING;
+// Unified white-fill / blue-ring handle look (shared with every other handle).
+const REGION_HANDLE_STROKE = HANDLE_RING;
+const REGION_HANDLE_FILL = HANDLE_FILL;
 const REGION_HISTORY_LIMIT = 100;
 const regionEditHistoryStore = new Map();
 

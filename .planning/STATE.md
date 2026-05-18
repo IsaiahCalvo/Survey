@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tools Polish
 status: verifying
-stopped_at: "Phase 32 context gathered (32-CONTEXT.md committed). Next: /gsd:plan-phase 32."
-last_updated: "2026-05-14T04:48:26.460Z"
+stopped_at: Phase 32 UI-SPEC approved
+last_updated: "2026-05-14T16:45:35.247Z"
 last_activity: 2026-05-13 — Phase 31 closed out. 31-VERIFICATION.md (7/7 ACs PASS) + 31-RECONCILIATION.md (DONE) written. Test baseline 640p / 0f / 6s. Undo end-to-end verified in live log capture (Logs/2026-05-13_19-01-59).
 progress:
   total_phases: 15
@@ -307,9 +307,9 @@ Progress: [██████████] 96% — Phase 27 functionally complet
 
 ## Session Continuity
 
-Last session: 2026-05-14T04:48:26.454Z
-Stopped at: Phase 32 context gathered (32-CONTEXT.md committed). Next: /gsd:plan-phase 32.
-Resume file: .planning/phases/32-multi-tab-persistence-hardening/32-CONTEXT.md
+Last session: 2026-05-14T16:45:35.241Z
+Stopped at: Phase 32 UI-SPEC approved
+Resume file: .planning/phases/32-multi-tab-persistence-hardening/32-UI-SPEC.md
 
 ### Resume instructions for the next session (read carefully)
 

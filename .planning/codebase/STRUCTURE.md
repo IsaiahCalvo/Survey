@@ -44,7 +44,7 @@ Survey-BetaSafeS2/
 │   │   ├── LocateModal.jsx     # Find annotation in document
 │   │   ├── CompactColorPicker.jsx # Color selection for tools
 │   │   ├── KeyboardShortcutsOverlay.jsx # Help overlay
-│   │   ├── BallInCourtIndicator.jsx # Status indicator for shared documents
+│   │   ├── EntityIndicator.jsx # Status indicator for shared documents
 │   │   ├── UsageIndicator.jsx  # Subscription limits display
 │   │   ├── LoadingSpinner.jsx  # Generic loading UI
 │   │   ├── ErrorBoundary.jsx   # React error boundary

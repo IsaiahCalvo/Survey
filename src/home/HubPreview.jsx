@@ -91,7 +91,7 @@ const INITIAL_DOCUMENTS = [
 const MOCK_TEMPLATES = [
   {
     id: 't1', name: 'Security Walk-Through', created_at: iso(28),
-    ballInCourtEntities: [
+    entities: [
       { id: 'e1', name: 'GC', color: 'rgba(216,168,78,0.5)' },
       { id: 'e2', name: 'Subcontractor', color: 'rgba(122,183,230,0.5)' },
       { id: 'e3', name: '100% Complete', color: 'rgba(166,224,122,0.5)' },
@@ -117,7 +117,7 @@ const MOCK_TEMPLATES = [
   },
   {
     id: 't2', name: 'MEP As-Built Markup', created_at: iso(22),
-    ballInCourtEntities: [
+    entities: [
       { id: 'e4', name: 'MEP', color: 'rgba(122,183,230,0.5)' },
       { id: 'e5', name: 'Architect', color: 'rgba(194,147,230,0.5)' },
     ],

@@ -995,6 +995,11 @@ export function useSVGInteraction({
         textBoxPosition: { ...callout.textBoxPosition },
         textBoxWidth: callout.textBoxWidth,
         textBoxHeight: callout.textBoxHeight,
+        // UX: 2026-05-18 — capture fontSize so the distance-rule validator can
+        // extend the textbox rect by the descender buffer (fontSize * 0.35)
+        // the renderer adds. Without it the bottom edge the rules measure
+        // against is shorter than the box the user sees.
+        fontSize: callout.style?.fontSize,
       };
       dragStateRef.current = {
         ...dragStateRef.current,
@@ -2465,8 +2470,12 @@ export function useSVGInteraction({
       const boxTopPx = proposed.textBoxPosition.y * H;
       const boxWPx = (original.textBoxWidth || 0) * W;
       const boxHPx = (original.textBoxHeight || 0) * H;
+      // UX: 2026-05-18 — extend the rule rect's bottom by the descender buffer
+      // the renderer adds (fontSize * 0.35) so the validator measures against
+      // the box the user actually sees (matches renderCallout + calloutGeometry).
+      const calloutDescBuffer = Number(original.fontSize || 12) * 0.35;
       const boxRightPx = boxLeftPx + boxWPx;
-      const boxBottomPx = boxTopPx + boxHPx;
+      const boxBottomPx = boxTopPx + boxHPx + calloutDescBuffer;
 
       const distPointToRect = (p, l, t, r, b) => {
         const dx = Math.max(0, Math.max(l - p.x, p.x - r));
@@ -2513,13 +2522,23 @@ export function useSVGInteraction({
       let frameSafe;
       if (ds.partType === 'whole') {
         frameSafe = true;
-      } else if (ds.partType === 'knee') {
-        // Knee-drag frameSafe mirrors the release-time rule: the frame
-        // counts as "safe" only when the knee is outside the textbox AND
-        // the knee→arrow line doesn't cut through it. Unsafe frames do
-        // not advance lastSafe, so a rollback on invalid release lands
-        // on the last genuinely-valid spot the user swept through.
+      } else if (
+        ds.partType === 'knee'
+        || ds.partType === 'textBox'
+        || ds.partType === 'textBoxResize'
+      ) {
+        // UX: 2026-05-18 — knee / textbox / resize drags count as "safe" only
+        // when no handle touches another handle or the textbox border: knee
+        // and arrow both stay outside the box, the knee handle clears the
+        // border, the arrow handle clears the border, the two handles clear
+        // each other, and line2 doesn't cut the box. Distances derive from
+        // the handle radius (calloutGeometry HANDLE_RADIUS). Unsafe frames do
+        // not advance lastSafe, so a rollback lands on the last good spot.
         frameSafe = !kneeInsideBox
+          && !arrowInsideBox
+          && kneeToBoxDist >= MIN_KNEE_TO_BOX_EDGE_DISTANCE
+          && arrowToBoxDist >= MIN_KNEE_TO_BOX_EDGE_DISTANCE
+          && kneeToArrowDist >= MIN_KNEE_TO_ARROW_DISTANCE
           && !segmentCrossesRect(kneePx, atPx, boxLeftPx, boxTopPx, boxRightPx, boxBottomPx);
       } else {
         frameSafe = !arrowInsideBox
@@ -2565,6 +2584,11 @@ export function useSVGInteraction({
         setVisualTransform({
           id: 'callout',
           calloutPreviews: { [ds.calloutId]: patch },
+          // UX: 2026-05-18 — surface this frame's rule check so the renderer
+          // can paint the dragged handle's ring red when the current spot
+          // would be rejected on release. `frameSafe` is the same predicate
+          // the release-time rollback uses; red === "this won't be accepted".
+          calloutDragInvalid: !frameSafe,
         });
       }
       setInteractionState('dragging');
@@ -2604,6 +2628,7 @@ export function useSVGInteraction({
         callouts,
         pageWidth,
         pageHeight,
+        pageNumber,
         selectableAnnotationIndices: typeof getSelectableAnnotationIndices === 'function'
           ? getSelectableAnnotationIndices()
           : undefined,
@@ -3336,8 +3361,14 @@ export function useSVGInteraction({
           // untouched, so the original falls through cleanly.
           const bw = ((current.textBoxWidth ?? original.textBoxWidth) || 0) * W;
           const bh = ((current.textBoxHeight ?? original.textBoxHeight) || 0) * H;
+          // UX: 2026-05-18 — extend the rect bottom by the renderer's descender
+          // buffer (fontSize * 0.35) so the release rules measure against the
+          // box the user sees, not the shorter stored rect.
+          const calloutDescBuffer = Number(
+            current.style?.fontSize ?? original.fontSize ?? 12
+          ) * 0.35;
           const br = bl + bw;
-          const bb = bt + bh;
+          const bb = bt + bh + calloutDescBuffer;
           const pointInsideRect = (p, l, t, r, b) =>
             p.x >= l && p.x <= r && p.y >= t && p.y <= b;
           // UX: Phase 15 UAT-3 (2026-04-18) — segment-rect intersection via
@@ -3369,18 +3400,33 @@ export function useSVGInteraction({
 
           let dropSafe = true;
           if (ds.partType === 'knee' || ds.partType === 'textBox' || ds.partType === 'textBoxResize') {
-            // UX: Phase 15 UAT-3 (2026-04-18) — free drag during mouse
-            // down, release checks the final spot. Invalid if the knee
-            // lands inside the textbox, OR the arrow lands inside the
-            // textbox, OR the knee→arrow line cuts through the textbox
-            // (user dropped the box across that line). Line1 starts on
-            // the textbox edge by construction so it can't cross. On
-            // invalid release we roll back to the pre-drag snapshot:
-            // knee, arrow, textbox, both lines all return together.
+            // UX: free drag during mouse-down, release checks the final spot.
+            // Invalid if the knee or arrow lands inside the textbox, OR the
+            // knee→arrow line cuts through the textbox, OR any handle touches
+            // another handle / the textbox border. Line1 starts on the
+            // textbox edge by construction so it can't cross.
+            // 2026-05-18 — handle-collision rules added: the knee handle and
+            // arrow handle must each clear the border, and clear each other,
+            // by distances derived from the handle radius (calloutGeometry
+            // HANDLE_RADIUS). Knee drags previously enforced no gap at all, so
+            // the knee handle could be dropped flush against the border or
+            // the arrow. On an invalid release we roll back to the pre-drag
+            // snapshot: knee, arrow, textbox, both lines all return together.
             const kneeInside = pointInsideRect(kn, bl, bt, br, bb);
             const arrowInside = pointInsideRect(at, bl, bt, br, bb);
             const line2Cuts = segmentCrossesRect(kn, at, bl, bt, br, bb);
-            dropSafe = !kneeInside && !arrowInside && !line2Cuts;
+            const dRectUp = (pp, l, t, r, b) => {
+              const ddx = Math.max(0, Math.max(l - pp.x, pp.x - r));
+              const ddy = Math.max(0, Math.max(t - pp.y, pp.y - b));
+              return Math.sqrt(ddx * ddx + ddy * ddy);
+            };
+            const kneeToBox = dRectUp(kn, bl, bt, br, bb);
+            const arrowToBox = dRectUp(at, bl, bt, br, bb);
+            const kneeToArrow = Math.hypot(kn.x - at.x, kn.y - at.y);
+            dropSafe = !kneeInside && !arrowInside && !line2Cuts
+              && kneeToBox >= MIN_KNEE_TO_BOX_EDGE_DISTANCE
+              && arrowToBox >= MIN_KNEE_TO_BOX_EDGE_DISTANCE
+              && kneeToArrow >= MIN_KNEE_TO_ARROW_DISTANCE;
           } else {
             // Fallback: prior distance-rule set for arrow drag. Replaced
             // per partType as we tackle each in turn.

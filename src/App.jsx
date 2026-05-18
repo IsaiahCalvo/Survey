@@ -112,7 +112,7 @@ import { UserMenu } from './components/UserMenu';
 import { AccountSettings } from './components/AccountSettings';
 import SurveyHub from './home/SurveyHub';
 import { useOptionalAuth } from './components/OptionalAuthPrompt';
-import BallInCourtIndicator from './components/BallInCourtIndicator';
+import EntityIndicator from './components/EntityIndicator';
 import SearchHighlightLayer from './components/SearchHighlightLayer';
 import UnsupportedAnnotationsNotice from './components/UnsupportedAnnotationsNotice';
 import NewColumnsModal from './components/NewColumnsModal';
@@ -1121,7 +1121,7 @@ const getHexFromColor = (color) => {
   return null;
 };
 
-const getHexFromBallColor = (color) => {
+const getHexFromEntityColor = (color) => {
   if (!color) return '#E3D1FB';
   if (color.startsWith('rgba')) {
     const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/);
@@ -1138,7 +1138,7 @@ const getHexFromBallColor = (color) => {
   return '#E3D1FB';
 };
 
-const getOpacityFromBallColor = (color) => {
+const getOpacityFromEntityColor = (color) => {
   if (!color) return 100;
 
   // Extract opacity from rgba string
@@ -1825,7 +1825,7 @@ const TemplateModuleSortableRow = React.memo(function TemplateModuleSortableRow(
   );
 });
 
-const BallInCourtSortableRow = React.memo(function BallInCourtSortableRow({
+const EntitySortableRow = React.memo(function EntitySortableRow({
   entity,
   selectedColorPickerId,
   onOpenColorPicker,
@@ -1851,8 +1851,8 @@ const BallInCourtSortableRow = React.memo(function BallInCourtSortableRow({
   };
 
   const isColorPickerSelected = selectedColorPickerId === entity.id;
-  const currentHex = getHexFromBallColor(entity.color);
-  const currentOpacity = getOpacityFromBallColor(entity.color);
+  const currentHex = getHexFromEntityColor(entity.color);
+  const currentOpacity = getOpacityFromEntityColor(entity.color);
 
   return (
     <div ref={setNodeRef} style={style}>
@@ -1873,7 +1873,7 @@ const BallInCourtSortableRow = React.memo(function BallInCourtSortableRow({
         <div
           {...attributes}
           {...listeners}
-          data-ball-drag-handle
+          data-entity-drag-handle
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -1966,7 +1966,7 @@ const BallInCourtSortableRow = React.memo(function BallInCourtSortableRow({
           />
         </div>
         <button
-          data-ball-delete
+          data-entity-delete
           onClick={onDelete}
           title="Delete"
           className="btn btn-danger btn-icon-only btn-sm"
@@ -1985,10 +1985,10 @@ const BallInCourtSortableRow = React.memo(function BallInCourtSortableRow({
   );
 });
 
-const BallInCourtDragOverlayItem = ({ entity }) => {
+const EntityDragOverlayItem = ({ entity }) => {
   if (!entity) return null;
-  const currentHex = getHexFromBallColor(entity.color);
-  const currentOpacity = getOpacityFromBallColor(entity.color);
+  const currentHex = getHexFromEntityColor(entity.color);
+  const currentOpacity = getOpacityFromEntityColor(entity.color);
   return (
     <div
       style={{
@@ -3012,7 +3012,7 @@ function PDFThumbnail({ dataUrl, filePath, docId, getDocumentUrl, downloadDocume
 }
 
 // Dashboard Component with document management
-const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, documents, setDocuments, templates: externalTemplates = [], onTemplatesChange, onShowAuthModal, ballInCourtEntities, setBallInCourtEntities }, ref) {
+const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, documents, setDocuments, templates: externalTemplates = [], onTemplatesChange, onShowAuthModal, entities, setEntities }, ref) {
   const fileInputRef = useRef();
   const projectFileInputRef = useRef();
   // Destination project for the next browser-input upload. The browser file
@@ -3046,7 +3046,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   const [isMoveCopyModalOpen, setIsMoveCopyModalOpen] = useState(false);
   const [moveCopyType, setMoveCopyType] = useState(null); // 'module' | 'category' | 'checklistItem'
   const [moveCopyMode, setMoveCopyMode] = useState('copy'); // 'move' | 'copy'
-  // Ball in Court entities: { id, name, color }
+  // Entities: { id, name, color }
   // Auth state and user dropdown menu
   const { user, isAuthenticated, signOut, signInWithGoogle, features } = useAuth();
   const { isAuthenticated: isMSAuthenticated, login: msLogin, logout: msLogout, account: msAccount, needsReconnect: msNeedsReconnect } = useMSGraph();
@@ -3092,7 +3092,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   const [tempColor, setTempColor] = useState(null); // Temporary color while picking
   const [opacityInputValue, setOpacityInputValue] = useState(null); // Temporary opacity input value (null = show current, '' = empty during typing, string = value)
   const [opacityInputFocused, setOpacityInputFocused] = useState(false); // Track if opacity input is focused
-  const ballSensors = useSensors(
+  const entitySensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
         distance: 6
@@ -3117,20 +3117,20 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     };
   }, [showUserDropdown]);
 
-  const [activeBallEntityId, setActiveBallEntityId] = useState(null);
-  const activeBallEntity = useMemo(
-    () => ballInCourtEntities.find((entity) => entity.id === activeBallEntityId) || null,
-    [activeBallEntityId, ballInCourtEntities]
+  const [activeEntityId, setActiveEntityId] = useState(null);
+  const activeEntity = useMemo(
+    () => entities.find((entity) => entity.id === activeEntityId) || null,
+    [activeEntityId, entities]
   );
-  const handleBallDragStart = useCallback(({ active }) => {
-    setActiveBallEntityId(active.id);
+  const handleEntityDragStart = useCallback(({ active }) => {
+    setActiveEntityId(active.id);
   }, []);
-  const handleBallDragEnd = useCallback(({ active, over }) => {
-    setActiveBallEntityId(null);
+  const handleEntityDragEnd = useCallback(({ active, over }) => {
+    setActiveEntityId(null);
     if (!over || active.id === over.id) {
       return;
     }
-    setBallInCourtEntities((prevEntities) => {
+    setEntities((prevEntities) => {
       const oldIndex = prevEntities.findIndex((entity) => entity.id === active.id);
       const newIndex = prevEntities.findIndex((entity) => entity.id === over.id);
       if (oldIndex === -1 || newIndex === -1) {
@@ -3139,20 +3139,20 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       return arrayMove(prevEntities, oldIndex, newIndex);
     });
   }, []);
-  const handleBallDragCancel = useCallback(() => {
-    setActiveBallEntityId(null);
+  const handleEntityDragCancel = useCallback(() => {
+    setActiveEntityId(null);
   }, []);
-  const isAnyBallEntityDragging = Boolean(activeBallEntityId);
+  const isAnyEntityDragging = Boolean(activeEntityId);
   useEffect(() => {
-    if (isAnyBallEntityDragging) {
-      document.body.classList.add('ball-in-court-dragging');
+    if (isAnyEntityDragging) {
+      document.body.classList.add('entity-dragging');
     } else {
-      document.body.classList.remove('ball-in-court-dragging');
+      document.body.classList.remove('entity-dragging');
     }
     return () => {
-      document.body.classList.remove('ball-in-court-dragging');
+      document.body.classList.remove('entity-dragging');
     };
-  }, [isAnyBallEntityDragging]);
+  }, [isAnyEntityDragging]);
   const [projectName, setProjectName] = useState('');
   const [projectFiles, setProjectFiles] = useState([]);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -5696,7 +5696,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           modules: clonedModules,
           spaces: clonedModules,
           createdAt: new Date().toISOString(),
-          ballInCourtEntities: []
+          entities: []
         };
 
         // Save new template
@@ -6100,9 +6100,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     setModules(prev => prev.map(s => s.id === spaceId ? { ...s, categories: s.categories.map(c => c.id === categoryId ? { ...c, checklist: c.checklist.filter(i => i.id !== itemId) } : c) } : s));
   };
 
-  // Ball in Court entity helpers
-  const addBallInCourtEntity = () => {
-    setBallInCourtEntities(prev => {
+  // Entity helpers
+  const addEntity = () => {
+    setEntities(prev => {
       const usedNames = new Set(
         prev.map(entity => normalizeName(entity?.name)).filter(Boolean)
       );
@@ -6121,19 +6121,19 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     });
   };
 
-  const updateBallInCourtEntity = (entityId, updates) => {
-    setBallInCourtEntities(prev =>
+  const updateEntity = (entityId, updates) => {
+    setEntities(prev =>
       prev.map(entity =>
         entity.id === entityId ? { ...entity, ...updates } : entity
       )
     );
   };
 
-  const deleteBallInCourtEntity = (entityId) => {
-    setBallInCourtEntities(prev => prev.filter(e => e.id !== entityId));
+  const deleteEntity = (entityId) => {
+    setEntities(prev => prev.filter(e => e.id !== entityId));
   };
 
-  const handleBallColorPickerOpen = (entityId, hex, opacity) => {
+  const handleEntityColorPickerOpen = (entityId, hex, opacity) => {
     setSelectedColorPickerId(entityId);
     setColorPickerMode('grid');
     setTempColor({ hex, opacity });
@@ -6141,15 +6141,15 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     setOpacityInputFocused(false);
   };
 
-  const handleBallEntityDelete = (entityId) => {
-    deleteBallInCourtEntity(entityId);
+  const handleEntityDelete = (entityId) => {
+    deleteEntity(entityId);
     if (selectedColorPickerId === entityId) {
       setSelectedColorPickerId(null);
     }
   };
 
-  const handleBallEntityNameChange = (entityId, name) => {
-    updateBallInCourtEntity(entityId, { name });
+  const handleEntityNameChange = (entityId, name) => {
+    updateEntity(entityId, { name });
   };
 
   const getTemplateSnapshot = useCallback(() => ({
@@ -6162,8 +6162,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         checklist: (category.checklist || []).map((item) => ({ ...item }))
       }))
     })),
-    ballInCourtEntities: ballInCourtEntities.map((entity) => ({ ...entity }))
-  }), [templateName, templateVisibility, modules, ballInCourtEntities]);
+    entities: entities.map((entity) => ({ ...entity }))
+  }), [templateName, templateVisibility, modules, entities]);
 
   useEffect(() => {
     if (isTemplateModalOpen) {
@@ -6209,8 +6209,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     setMoveCopyNewTemplateName('');
     setMoveCopyNewModuleName('');
     setMoveCopyNewCategoryName('');
-    // Initialize with default Ball in Court entities (entity definitions use 20% opacity for display, highlights use 40%)
-    setBallInCourtEntities([
+    // Initialize with default Entities (entity definitions use 20% opacity for display, highlights use 40%)
+    setEntities([
       { id: `entity-${Date.now()}-1`, name: 'GC', color: hexToRgba('#E3D1FB', 0.2) },
       { id: `entity-${Date.now()}-2`, name: 'Subcontractor', color: hexToRgba('#FFF5C3', 0.2) },
       { id: `entity-${Date.now()}-3`, name: 'My Company', color: hexToRgba('#CBDCFF', 0.2) },
@@ -6278,7 +6278,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     setMoveCopyNewModuleName('');
     setMoveCopyNewCategoryName('');
 
-    // Load Ball in Court entities from template, or use defaults
+    // Load Entities from template, or use defaults
     const defaultEntities = [
       { id: `entity-${Date.now()}-1`, name: 'GC', color: hexToRgba('#E3D1FB', 0.2) },
       { id: `entity-${Date.now()}-2`, name: 'Subcontractor', color: hexToRgba('#FFF5C3', 0.2) },
@@ -6286,7 +6286,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       { id: `entity-${Date.now()}-4`, name: '100% Complete', color: hexToRgba('#B2FFB2', 0.2) },
       { id: `entity-${Date.now()}-5`, name: 'Removed', color: hexToRgba('#BBBBBB', 0.2) }
     ];
-    const loadedEntities = template.ballInCourtEntities || defaultEntities;
+    const loadedEntities = template.entities || defaultEntities;
     // Ensure all loaded entities have rgba format with 20% opacity
     const normalizedEntities = loadedEntities.map(entity => {
       if (!entity.color) {
@@ -6311,7 +6311,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
       return entity;
     });
-    setBallInCourtEntities(normalizedEntities);
+    setEntities(normalizedEntities);
 
     setEditingTemplateId(templateId);
     setIsTemplateModalOpen(true);
@@ -6398,22 +6398,22 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       }))
     }));
 
-    const trimmedBallNames = ballInCourtEntities
+    const trimmedEntityNames = entities
       .map(e => (e?.name || '').trim())
       .filter(Boolean);
 
-    const hasDuplicateBallNames = trimmedBallNames.some((name, index) => {
+    const hasDuplicateEntityNames = trimmedEntityNames.some((name, index) => {
       const normalized = normalizeName(name);
-      return trimmedBallNames.findIndex(other => normalizeName(other) === normalized) !== index;
+      return trimmedEntityNames.findIndex(other => normalizeName(other) === normalized) !== index;
     });
 
-    if (hasDuplicateBallNames) {
-      alert('Each Ball in Court name must be unique. Please resolve duplicate names before saving.');
+    if (hasDuplicateEntityNames) {
+      alert('Each Entity name must be unique. Please resolve duplicate names before saving.');
       return;
     }
 
-    // Clean Ball in Court entities
-    const cleanedBallInCourtEntities = ballInCourtEntities
+    // Clean Entities
+    const cleanedEntities = entities
       .filter(e => e.name.trim())
       .map(e => ({
         id: e.id,
@@ -6443,7 +6443,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
             visibility: templateVisibility,
             modules: cleanedModules,
             spaces: cleanedModules,
-            ballInCourtEntities: cleanedBallInCourtEntities,
+            entities: cleanedEntities,
             updatedAt: timestamp,
             createdAt: template.createdAt || timestamp
           };
@@ -6456,7 +6456,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
             visibility: templateVisibility,
             modules: cleanedModules,
             spaces: cleanedModules,
-            ballInCourtEntities: cleanedBallInCourtEntities,
+            entities: cleanedEntities,
             createdAt: timestamp,
             updatedAt: timestamp
           };
@@ -6472,7 +6472,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         visibility: templateVisibility,
         modules: cleanedModules,
         spaces: cleanedModules,
-        ballInCourtEntities: cleanedBallInCourtEntities,
+        entities: cleanedEntities,
         createdAt: timestamp,
         updatedAt: timestamp
       };
@@ -8123,59 +8123,59 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                   </div>
                 )}
 
-                {/* Ball in Court Section */}
+                {/* Entity Section */}
                 <div style={{ marginTop: '16px', padding: '12px', background: '#141414', border: '1px solid #2a2a2a', borderRadius: '8px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                    <div style={{ fontSize: '13px', fontWeight: 600 }}>Ball in Court</div>
-                    <button onClick={addBallInCourtEntity} className="btn btn-secondary btn-sm" style={{ padding: '6px 10px', fontSize: '12px' }}>+ Add Entity</button>
+                    <div style={{ fontSize: '13px', fontWeight: 600 }}>Entities</div>
+                    <button onClick={addEntity} className="btn btn-secondary btn-sm" style={{ padding: '6px 10px', fontSize: '12px' }}>+ Add Entity</button>
                   </div>
                   <div style={{ fontSize: '11px', color: '#888', marginBottom: '10px' }}>
                     Define entities and their highlight colors for responsibility tracking
                   </div>
                   <style>{`
-                  body.ball-in-court-dragging [data-ball-delete] {
+                  body.entity-dragging [data-entity-delete] {
                     display: none !important;
                   }
                 `}</style>
                   <DndContext
-                    sensors={ballSensors}
+                    sensors={entitySensors}
                     collisionDetection={closestCenter}
-                    onDragStart={handleBallDragStart}
-                    onDragEnd={handleBallDragEnd}
-                    onDragCancel={handleBallDragCancel}
+                    onDragStart={handleEntityDragStart}
+                    onDragEnd={handleEntityDragEnd}
+                    onDragCancel={handleEntityDragCancel}
                   >
                     <SortableContext
-                      items={ballInCourtEntities.map((entity) => entity.id)}
+                      items={entities.map((entity) => entity.id)}
                       strategy={verticalListSortingStrategy}
                     >
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {ballInCourtEntities.map((entity) => (
-                          <BallInCourtSortableRow
+                        {entities.map((entity) => (
+                          <EntitySortableRow
                             key={entity.id}
                             entity={entity}
                             selectedColorPickerId={selectedColorPickerId}
-                            onOpenColorPicker={handleBallColorPickerOpen}
-                            onNameChange={handleBallEntityNameChange}
-                            onDelete={() => handleBallEntityDelete(entity.id)}
-                            isAnyDragging={isAnyBallEntityDragging}
+                            onOpenColorPicker={handleEntityColorPickerOpen}
+                            onNameChange={handleEntityNameChange}
+                            onDelete={() => handleEntityDelete(entity.id)}
+                            isAnyDragging={isAnyEntityDragging}
                           />
                         ))}
-                        {ballInCourtEntities.length === 0 && (
+                        {entities.length === 0 && (
                           <div style={{ color: '#888', fontSize: '13px', fontStyle: 'italic', padding: '12px' }}>
-                            No entities defined. Add at least one entity for Ball in Court tracking.
+                            No entities defined. Add at least one entity for responsibility tracking.
                           </div>
                         )}
                       </div>
                     </SortableContext>
                     <DragOverlay>
-                      {activeBallEntity && <BallInCourtDragOverlayItem entity={activeBallEntity} />}
+                      {activeEntity && <EntityDragOverlayItem entity={activeEntity} />}
                     </DragOverlay>
                   </DndContext>
                 </div>
 
                 {/* Color Picker Dialog */}
                 {selectedColorPickerId && (() => {
-                  const entity = ballInCourtEntities.find(e => e.id === selectedColorPickerId);
+                  const entity = entities.find(e => e.id === selectedColorPickerId);
                   if (!entity) return null;
 
                   const getHexFromColor = (color) => {
@@ -8193,7 +8193,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                   };
 
                   const currentHex = tempColor ? tempColor.hex : getHexFromColor(entity.color);
-                  const currentOpacity = tempColor ? tempColor.opacity : getOpacityFromBallColor(entity.color);
+                  const currentOpacity = tempColor ? tempColor.opacity : getOpacityFromEntityColor(entity.color);
                   const rgb = hexToRgb(currentHex);
                   const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
 
@@ -8285,7 +8285,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                             onClick={() => {
                               const finalOpacity = tempColor ? tempColor.opacity : currentOpacity;
                               const newRgba = hexToRgba(currentHex, finalOpacity / 100);
-                              updateBallInCourtEntity(entity.id, { color: newRgba });
+                              updateEntity(entity.id, { color: newRgba });
                               setSelectedColorPickerId(null);
                               setTempColor(null);
                               setOpacityInputValue(null);
@@ -9864,7 +9864,7 @@ function BottomToolbar(props) {
 }
 
 // PDF Viewer Component with improved typography
-function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, ballInCourtEntities, setBallInCourtEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
+function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
   // phase35Diag logger can prefix every gate decision with the file under test.
   // Production-stripped via import.meta.env.MODE check; tree-shakes from prod.
@@ -15217,7 +15217,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   const [selectedSpaceId, setSelectedSpaceId] = useState(null); // Currently selected space for survey interactions
   const [pendingHighlightName, setPendingHighlightName] = useState(null); // { highlight, categoryId } when prompting for name
   const [highlightNameInput, setHighlightNameInput] = useState(''); // Temporary name input value
-  const [pendingBallInCourtSelection, setPendingBallInCourtSelection] = useState(null); // { highlight, categoryId } when prompting for Ball in Court entity
+  const [pendingEntitySelection, setPendingEntitySelection] = useState(null); // { highlight, categoryId } when prompting for Entity
 
   // NEW: Item and Annotation system state
   const [pdfId, setPdfId] = useState(null);
@@ -20837,16 +20837,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
               return aIndex - bIndex;
             });
 
-            // Build header row: Changed By, Changed Date, Item, [checklist items], Ball in Court, Notes
+            // Build header row: Changed By, Changed Date, Item, [checklist items], Entity, Notes
             const headerRow = ['Changed By', 'Changed Date', 'Item'];
             checklistItems.forEach(checklistItem => {
               headerRow.push(checklistItem.text || '');
             });
-            headerRow.push('Ball in Court');
+            headerRow.push('Entity');
             headerRow.push('Notes');
 
             // Build column mapping for Excel add-in sync
-            // Column mapping: A = changed_by, B = changed_date, C = name, D+ = checklist items, then ball_in_court, notes
+            // Column mapping: A = changed_by, B = changed_date, C = name, D+ = checklist items, then entity, notes
             const columnMapping = {
               'A': 'changed_by',
               'B': 'changed_date',
@@ -20856,9 +20856,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
               const colLetter = String.fromCharCode(68 + idx); // D, E, F, ...
               columnMapping[colLetter] = `checklist_${checklistItem.id}`;
             });
-            const ballInCourtColIdx = 3 + checklistItems.length;
-            const notesColIdx = ballInCourtColIdx + 1;
-            columnMapping[String.fromCharCode(65 + ballInCourtColIdx)] = 'ball_in_court_name';
+            const entityColIdx = 3 + checklistItems.length;
+            const notesColIdx = entityColIdx + 1;
+            columnMapping[String.fromCharCode(65 + entityColIdx)] = 'entity_name';
             columnMapping[String.fromCharCode(65 + notesColIdx)] = 'notes';
 
             // Add to schema mappings
@@ -20872,9 +20872,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
               dataStartRow: 2
             });
 
-            // Get ball in court entities from template
-            const ballInCourtEntities = selectedTemplate?.ballInCourtEntities || [];
-            const ballInCourtNames = ballInCourtEntities.map(e => e.name).filter(Boolean);
+            // Get entity entities from template
+            const entities = selectedTemplate?.entities || [];
+            const entityNames = entities.map(e => e.name).filter(Boolean);
 
             // Build data rows
             const dataRows = [headerRow];
@@ -20911,7 +20911,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
                   item.itemType === categoryName;
               });
 
-              // Get module-specific data for this item (for ball in court fallback)
+              // Get module-specific data for this item (for entity fallback)
               const moduleData = matchingItem?.[moduleDataKey] || {};
 
               // Checklist responses (Y/N/N/A) - use highlight annotation data
@@ -20921,31 +20921,31 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
                 row.push(selection);
               });
 
-              // Ball in Court - check highlight annotation first, then item module data
-              const ballInCourtEntityId = actualHighlight?.ballInCourtEntityId || moduleData.ballInCourtEntityId;
-              const ballInCourtName = actualHighlight?.ballInCourtEntityName ||
-                moduleData.ballInCourtEntityName || '';
-              row.push(ballInCourtName);
+              // Entity - check highlight annotation first, then item module data
+              const entityId = actualHighlight?.entityId || moduleData.entityId;
+              const entityName = actualHighlight?.entityName ||
+                moduleData.entityName || '';
+              row.push(entityName);
 
-              // Get ball in court color - try multiple sources
-              let ballInCourtColor = null;
+              // Get entity color - try multiple sources
+              let entityColor = null;
 
               // First, try to get color directly from highlight annotation
-              if (actualHighlight?.ballInCourtColor) {
-                ballInCourtColor = getHexFromColor(actualHighlight.ballInCourtColor);
+              if (actualHighlight?.entityColor) {
+                entityColor = getHexFromColor(actualHighlight.entityColor);
               }
 
               // If not found, try to get from entity lookup
-              if (!ballInCourtColor && ballInCourtEntityId) {
-                const entity = ballInCourtEntities.find(e => e.id === ballInCourtEntityId);
+              if (!entityColor && entityId) {
+                const entity = entities.find(e => e.id === entityId);
                 if (entity && entity.color) {
-                  ballInCourtColor = getHexFromColor(entity.color);
+                  entityColor = getHexFromColor(entity.color);
                 }
               }
 
               // If still not found, try from module data
-              if (!ballInCourtColor && moduleData.ballInCourtColor) {
-                ballInCourtColor = getHexFromColor(moduleData.ballInCourtColor);
+              if (!entityColor && moduleData.entityColor) {
+                entityColor = getHexFromColor(moduleData.entityColor);
               }
 
               // Notes - get item-level note from highlight annotation
@@ -20977,8 +20977,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
                 });
               } else {
                 // Add borders and alignment to data cells
-                const lastChecklistCol = headerRow.length - 2; // -2 for Ball in Court and Notes
-                const ballInCourtColIndex = headerRow.length - 1; // Second to last column
+                const lastChecklistCol = headerRow.length - 2; // -2 for Entity and Notes
+                const entityColIndex = headerRow.length - 1; // Second to last column
 
                 excelRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
                   cell.border = {
@@ -20991,10 +20991,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
                   // Center align specific columns:
                   // Columns 1-3: Changed By, Changed Date, Item names
                   // Columns 4 to lastChecklistCol: Checklist items (Y/N/N/A)
-                  // Column ballInCourtColIndex: Ball in Court entities
+                  // Column entityColIndex: Entities
                   if (colNumber >= 1 && colNumber <= 3) {
                     cell.alignment = { horizontal: 'center', vertical: 'middle' };
-                  } else if ((colNumber >= 4 && colNumber <= lastChecklistCol) || colNumber === ballInCourtColIndex) {
+                  } else if ((colNumber >= 4 && colNumber <= lastChecklistCol) || colNumber === entityColIndex) {
                     cell.alignment = { horizontal: 'center', vertical: 'middle' };
                   }
                 });
@@ -21002,10 +21002,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
             });
 
             // Calculate column indices
-            // Header structure: Changed By (1), Changed Date (2), Item (3), Checklist items (4...N), Ball in Court (N+1), Notes (N+2)
+            // Header structure: Changed By (1), Changed Date (2), Item (3), Checklist items (4...N), Entity (N+1), Notes (N+2)
             const firstChecklistCol = 4; // Checklist items start at column 4
-            const lastChecklistCol = headerRow.length - 2; // -2 for Ball in Court and Notes
-            const ballInCourtColIndex = headerRow.length - 1; // Second to last column
+            const lastChecklistCol = headerRow.length - 2; // -2 for Entity and Notes
+            const entityColIndex = headerRow.length - 1; // Second to last column
             const itemColIndex = 3; // Item column (1-indexed in ExcelJS)
 
             // Add Data Validation for Checklist Items
@@ -21028,11 +21028,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
               }
             }
 
-            // Add Data Validation for Ball in Court
-            if (ballInCourtNames.length > 0) {
-              const validationFormula = `"${ballInCourtNames.join(',')}"`;
+            // Add Data Validation for Entity
+            if (entityNames.length > 0) {
+              const validationFormula = `"${entityNames.join(',')}"`;
               if (validationFormula.length <= 255) {
-                worksheet.getColumn(ballInCourtColIndex).eachCell((cell, rowNum) => {
+                worksheet.getColumn(entityColIndex).eachCell((cell, rowNum) => {
                   if (rowNum > 1) { // Skip header
                     cell.dataValidation = {
                       type: 'list',
@@ -21046,7 +21046,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
                   }
                 });
               } else {
-                console.warn('Ball in Court validation list exceeds 255 characters. Validation skipped.');
+                console.warn('Entity validation list exceeds 255 characters. Validation skipped.');
               }
             }
 
@@ -21118,12 +21118,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
               }
             }
 
-            // Add Conditional Formatting for Ball in Court entities
-            ballInCourtEntities.forEach((entity, index) => {
+            // Add Conditional Formatting for Entities
+            entities.forEach((entity, index) => {
               if (!entity.name || !entity.color) return;
 
-              const ballInCourtColLetter = String.fromCharCode(64 + ballInCourtColIndex);
-              const range = `${ballInCourtColLetter}2:${ballInCourtColLetter}1000`;
+              const entityColLetter = String.fromCharCode(64 + entityColIndex);
+              const range = `${entityColLetter}2:${entityColLetter}1000`;
 
               let hexColor = getHexFromColor(entity.color);
               if (hexColor && hexColor.startsWith('#')) {
@@ -21192,8 +21192,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
               worksheet.getColumn(col).width = 15;
             }
 
-            // Ball in Court column (width 15)
-            worksheet.getColumn(ballInCourtColIndex).width = 15;
+            // Entity column (width 15)
+            worksheet.getColumn(entityColIndex).width = 15;
 
             // Notes column (width 50)
             const notesColIndex = headerRow.length; // Last column
@@ -22076,7 +22076,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       const checklistItems = updatedCategory.checklist || [];
 
       headerRow.forEach((colText, index) => {
-        if (['Changed By', 'Changed Date', 'Item', 'Ball in Court', 'Notes'].includes(colText)) return;
+        if (['Changed By', 'Changed Date', 'Item', 'Entity', 'Notes'].includes(colText)) return;
         if (!colText?.toString().trim()) return;
 
         const trimmedText = colText.toString().trim();
@@ -22087,7 +22087,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       });
 
       const itemColumnIndex = headerRow.indexOf('Item');
-      const ballInCourtIndex = headerRow.indexOf('Ball in Court');
+      const entityIndex = headerRow.indexOf('Entity');
       const notesIndex = headerRow.indexOf('Notes');
 
       // Collect all item names from Excel for deletion detection
@@ -22151,21 +22151,21 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
             }
           });
 
-          // Update Ball in Court
-          if (ballInCourtIndex !== -1) {
-            const bicName = row[ballInCourtIndex];
-            if (bicName && bicName !== ann.ballInCourtEntityName) {
-              const entities = templateToUse.ballInCourtEntities || [];
+          // Update Entity
+          if (entityIndex !== -1) {
+            const bicName = row[entityIndex];
+            if (bicName && bicName !== ann.entityName) {
+              const entities = templateToUse.entities || [];
               const entity = entities.find(e => e.name === bicName);
               if (entity) {
-                ann.ballInCourtEntityId = entity.id;
-                ann.ballInCourtEntityName = entity.name;
-                ann.ballInCourtColor = entity.color;
+                ann.entityId = entity.id;
+                ann.entityName = entity.name;
+                ann.entityColor = entity.color;
                 changed = true;
               } else if (bicName === '') {
-                ann.ballInCourtEntityId = null;
-                ann.ballInCourtEntityName = null;
-                ann.ballInCourtColor = null;
+                ann.entityId = null;
+                ann.entityName = null;
+                ann.entityColor = null;
                 changed = true;
               }
             }
@@ -22208,19 +22208,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
             }
           });
 
-          let ballInCourtEntityId = null;
-          let ballInCourtEntityName = null;
-          let ballInCourtColor = null;
+          let entityId = null;
+          let entityName = null;
+          let entityColor = null;
 
-          if (ballInCourtIndex !== -1) {
-            const bicName = row[ballInCourtIndex];
+          if (entityIndex !== -1) {
+            const bicName = row[entityIndex];
             if (bicName) {
-              const entities = templateToUse.ballInCourtEntities || [];
+              const entities = templateToUse.entities || [];
               const entity = entities.find(e => e.name === bicName);
               if (entity) {
-                ballInCourtEntityId = entity.id;
-                ballInCourtEntityName = entity.name;
-                ballInCourtColor = entity.color;
+                entityId = entity.id;
+                entityName = entity.name;
+                entityColor = entity.color;
               }
             }
           }
@@ -22236,9 +22236,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
             categoryId: matchedCategory.id,
             moduleId: matchedModuleId,
             checklistResponses: checklistResponses,
-            ballInCourtEntityId,
-            ballInCourtEntityName,
-            ballInCourtColor,
+            entityId,
+            entityName,
+            entityColor,
             note: noteText ? { text: noteText } : {},
             changedBy: '',
             changedDate: new Date().toISOString(),
@@ -22493,7 +22493,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       const checklistItems = updatedCategory.checklist || [];
 
       headerRow.forEach((colText, index) => {
-        if (['Changed By', 'Changed Date', 'Item', 'Ball in Court', 'Notes'].includes(colText)) return;
+        if (['Changed By', 'Changed Date', 'Item', 'Entity', 'Notes'].includes(colText)) return;
         if (!colText?.toString().trim()) return;
 
         const trimmedText = colText.toString().trim();
@@ -22504,7 +22504,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       });
 
       const itemColumnIndex = headerRow.indexOf('Item');
-      const ballInCourtIndex = headerRow.indexOf('Ball in Court');
+      const entityIndex = headerRow.indexOf('Entity');
       const notesIndex = headerRow.indexOf('Notes');
 
       // Collect all item names from Excel for deletion detection
@@ -22568,16 +22568,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
             }
           });
 
-          // Update Ball in Court
-          if (ballInCourtIndex !== -1) {
-            const bicName = row[ballInCourtIndex];
-            if (bicName && bicName !== ann.ballInCourtEntityName) {
-              const entities = templateToUse.ballInCourtEntities || [];
+          // Update Entity
+          if (entityIndex !== -1) {
+            const bicName = row[entityIndex];
+            if (bicName && bicName !== ann.entityName) {
+              const entities = templateToUse.entities || [];
               const entity = entities.find(e => e.name === bicName);
               if (entity) {
-                ann.ballInCourtEntityId = entity.id;
-                ann.ballInCourtEntityName = entity.name;
-                ann.ballInCourtColor = entity.color;
+                ann.entityId = entity.id;
+                ann.entityName = entity.name;
+                ann.entityColor = entity.color;
                 changed = true;
                 const hasValidBounds = ann.bounds && ann.bounds.x !== undefined && ann.bounds.y !== undefined;
                 if (ann.pageNumber && hasValidBounds) {
@@ -22586,13 +22586,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
                     pageNumber: ann.pageNumber,
                     bounds: ann.bounds,
                     color: entity.color,
-                    needsBIC: false
+                    needsEntity: false
                   });
                 }
               } else if (bicName === '') {
-                ann.ballInCourtEntityId = null;
-                ann.ballInCourtEntityName = null;
-                ann.ballInCourtColor = null;
+                ann.entityId = null;
+                ann.entityName = null;
+                ann.entityColor = null;
                 changed = true;
                 const hasValidBounds = ann.bounds && ann.bounds.x !== undefined && ann.bounds.y !== undefined;
                 if (ann.pageNumber && hasValidBounds) {
@@ -22601,7 +22601,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
                     pageNumber: ann.pageNumber,
                     bounds: ann.bounds,
                     color: null,
-                    needsBIC: true
+                    needsEntity: true
                   });
                 }
               }
@@ -22645,19 +22645,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
             }
           });
 
-          let ballInCourtEntityId = null;
-          let ballInCourtEntityName = null;
-          let ballInCourtColor = null;
+          let entityId = null;
+          let entityName = null;
+          let entityColor = null;
 
-          if (ballInCourtIndex !== -1) {
-            const bicName = row[ballInCourtIndex];
+          if (entityIndex !== -1) {
+            const bicName = row[entityIndex];
             if (bicName) {
-              const entities = templateToUse.ballInCourtEntities || [];
+              const entities = templateToUse.entities || [];
               const entity = entities.find(e => e.name === bicName);
               if (entity) {
-                ballInCourtEntityId = entity.id;
-                ballInCourtEntityName = entity.name;
-                ballInCourtColor = entity.color;
+                entityId = entity.id;
+                entityName = entity.name;
+                entityColor = entity.color;
               }
             }
           }
@@ -22673,9 +22673,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
             categoryId: matchedCategory.id,
             moduleId: matchedModuleId,
             checklistResponses: checklistResponses,
-            ballInCourtEntityId,
-            ballInCourtEntityName,
-            ballInCourtColor,
+            entityId,
+            entityName,
+            entityColor,
             note: noteText ? { text: noteText } : {},
             changedBy: '',
             changedDate: new Date().toISOString(),
@@ -22911,7 +22911,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       if (highlightsWithColorChanges.length > 0) {
         setNewHighlightsByPage(prev => {
           const updated = { ...prev };
-          highlightsWithColorChanges.forEach(({ highlightId, pageNumber, bounds, color, needsBIC }) => {
+          highlightsWithColorChanges.forEach(({ highlightId, pageNumber, bounds, color, needsEntity }) => {
             const pageHighlights = updated[pageNumber] || [];
             const filtered = pageHighlights.filter(h => {
               const hasMatchingId = h.highlightId === highlightId;
@@ -22927,7 +22927,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
                 ...bounds,
                 color: color,
                 highlightId: highlightId,
-                needsBIC: needsBIC
+                needsEntity: needsEntity
               }
             ];
           });
@@ -23249,7 +23249,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
           headerRow.forEach((colText, index) => {
             // Skip system columns
-            if (['Changed By', 'Changed Date', 'Item', 'Ball in Court', 'Notes'].includes(colText)) return;
+            if (['Changed By', 'Changed Date', 'Item', 'Entity', 'Notes'].includes(colText)) return;
             if (!colText?.toString().trim()) return;
 
             const trimmedText = colText.toString().trim();
@@ -23416,7 +23416,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
           const foundItemIds = new Set(); // Track which template items are in Excel
 
           headerRow.forEach((colText, index) => {
-            if (['Changed By', 'Changed Date', 'Item', 'Ball in Court', 'Notes'].includes(colText)) return;
+            if (['Changed By', 'Changed Date', 'Item', 'Entity', 'Notes'].includes(colText)) return;
             if (!colText?.toString().trim()) return;
 
             const trimmedText = colText.toString().trim();
@@ -24123,8 +24123,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
             name: annotation.name,
             notes: annotation.notes,
             note: annotation.notes,
-            ballInCourtEntityId: annotation.ballInCourtEntityId,
-            ballInCourtName: annotation.ballInCourtName,
+            entityId: annotation.entityId,
+            entityName: annotation.entityName,
             checklistResponses: annotation.checklistResponses || {},
             changedBy: annotation.changedBy,
             changedDate: annotation.changedDate,
@@ -24156,8 +24156,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
             name: annotation.name,
             notes: annotation.notes,
             note: annotation.notes,
-            ballInCourtEntityId: annotation.ballInCourtEntityId,
-            ballInCourtName: annotation.ballInCourtName,
+            entityId: annotation.entityId,
+            entityName: annotation.entityName,
             checklistResponses: annotation.checklistResponses || {},
             changedBy: annotation.changedBy,
             changedDate: annotation.changedDate,
@@ -25807,7 +25807,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     setPendingHighlight(null);
     setPendingHighlightName(null);
     setHighlightNameInput('');
-    setPendingBallInCourtSelection(null);
+    setPendingEntitySelection(null);
     setShowSpaceSelection(false);
     setShowTemplateSelection(false);
     setCopyModeActive(false);
@@ -26071,7 +26071,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         annotationsByPage: annotationsByPage,
         callouts: callouts, // Callout annotations
         spaces: currentSpaces,
-        ballInCourtEntities: ballInCourtEntities,
+        entities: entities,
         templateId: currentTemplate?.id || null,
         zoomLevel: scale,
         currentPage: pageNum
@@ -26096,7 +26096,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       console.error('Error saving survey data to Supabase:', error);
       // Don't alert here to avoid interrupting the user flow, just log
     }
-  }, [pdfFile, pdfId, annotationsByPage, callouts, ballInCourtEntities, scale, pageNum, uploadDataFile, updateSupabaseDocument]);
+  }, [pdfFile, pdfId, annotationsByPage, callouts, entities, scale, pageNum, uploadDataFile, updateSupabaseDocument]);
 
   // Load survey data from Supabase Storage
   const loadSurveyDataFromSupabase = useCallback(async (doc) => {
@@ -26146,7 +26146,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         }));
       }
       if (data.spaces) setSpaces(data.spaces);
-      if (data.ballInCourtEntities) setBallInCourtEntities(data.ballInCourtEntities);
+      if (data.entities) setEntities(data.entities);
 
       // Restore view state if available
       if (data.zoomLevel) setScale(data.zoomLevel);
@@ -31379,7 +31379,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     });
 
     setPendingHighlight(prev => (prev?.id === highlightId ? null : prev));
-    setPendingBallInCourtSelection(prev => (
+    setPendingEntitySelection(prev => (
       prev?.highlight?.id === highlightId ? null : prev
     ));
     setPendingHighlightName(prev => (
@@ -31410,8 +31410,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     if (extra.color !== undefined) {
       preview.color = extra.color;
     }
-    if (extra.needsBIC !== undefined) {
-      preview.needsBIC = extra.needsBIC;
+    if (extra.needsEntity !== undefined) {
+      preview.needsEntity = extra.needsEntity;
     }
     if (extra.needsCategory !== undefined) {
       preview.needsCategory = extra.needsCategory;
@@ -31484,20 +31484,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
               regionId: pageRegionId
             },
             {
-              color: pendingLocationItem.ballInCourtColor, // Use BIC color if available
-              needsBIC: !pendingLocationItem.ballInCourtColor // Dashed if no color
+              color: pendingLocationItem.entityColor, // Use entity color if available
+              needsEntity: !pendingLocationItem.entityColor // Dashed if no color
             }
           )
         ]
       }));
 
-      // Check if Ball in Court needs to be assigned (only if not already set from Excel)
-      const hasBallInCourt = pendingLocationItem.ballInCourtEntityId || pendingLocationItem.ballInCourtColor;
-      const ballInCourtEntities = selectedTemplate?.ballInCourtEntities || [];
+      // Check if Entity needs to be assigned (only if not already set from Excel)
+      const hasEntity = pendingLocationItem.entityId || pendingLocationItem.entityColor;
+      const entities = selectedTemplate?.entities || [];
 
-      if (!hasBallInCourt && ballInCourtEntities.length > 0) {
-        // Prompt for Ball in Court since it wasn't set in Excel
-        setPendingBallInCourtSelection({
+      if (!hasEntity && entities.length > 0) {
+        // Prompt for Entity since it wasn't set in Excel
+        setPendingEntitySelection({
           highlight: {
             id: highlightId,
             pageNumber,
@@ -31539,7 +31539,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         },
         {
           needsCategory: !selectedCategoryId, // Flag to indicate it needs category selection
-          needsBIC: true // Use needsBIC rendering style (transparent with dashed outline) initially
+          needsEntity: true // Use needsEntity rendering style (transparent with dashed outline) initially
         }
       );
 
@@ -31552,13 +31552,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       };
     });
 
-    // If a category is already selected, show Ball in Court dialog first
+    // If a category is already selected, show Entity dialog first
     if (selectedCategoryId) {
-      // Check if template has Ball in Court entities
-      const ballInCourtEntities = selectedTemplate?.ballInCourtEntities || [];
-      if (ballInCourtEntities.length > 0) {
-        // Show Ball in Court selection dialog
-        setPendingBallInCourtSelection({
+      // Check if template has Entities
+      const entities = selectedTemplate?.entities || [];
+      if (entities.length > 0) {
+        // Show Entity selection dialog
+        setPendingEntitySelection({
           highlight: {
             id: highlightId,
             pageNumber,
@@ -31569,7 +31569,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
           categoryId: selectedCategoryId
         });
       } else {
-        // No Ball in Court entities, go directly to name prompt
+        // No Entities, go directly to name prompt
         setPendingHighlightName({
           highlight: {
             id: highlightId,
@@ -32108,11 +32108,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
             return; // Already added (either as pending or from a previous iteration)
           }
 
-          // Determine if highlight needs BIC (Ball in Court) assignment
-          const needsBIC = !highlight.ballInCourtColor && !highlight.ballInCourtEntityId;
+          // Determine if highlight needs entity (Entity) assignment
+          const needsEntity = !highlight.entityColor && !highlight.entityId;
 
-          // Determine highlight color - use ballInCourtColor first (current BIC state), then stored color
-          const storedColor = highlight.ballInCourtColor || highlight.color;
+          // Determine highlight color - use entityColor first (current entity state), then stored color
+          const storedColor = highlight.entityColor || highlight.color;
           const highlightColor = storedColor
             ? (normalizeHighlightColor(storedColor) || storedColor)
             : null;
@@ -32129,7 +32129,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
             highlightId: highlightId,
             moduleId: highlightModuleId,
             regionId: highlight.regionId ?? null,
-            ...(needsBIC && { needsBIC: true }),
+            ...(needsEntity && { needsEntity: true }),
             ...(highlightColor && { color: highlightColor })
           };
           highlightsByPage[pageNumber].push(highlightData);
@@ -34986,6 +34986,7 @@ ${pageBlocks}
                                   surveyHighlights={newHighlightsByPage[pageNumber]}
                                   onUpdateSurveyHighlightBounds={handleSurveyHighlightBoundsChange}
                                   onDeleteSurveyHighlight={handleDeleteSurveyHighlight}
+                                  onSurveyHighlightDoubleClick={handleHighlightClicked}
                                   pendingSurveyHighlightSelection={pendingSurveyHighlightSelection}
                                   onPendingSurveyHighlightSelectionConsumed={handlePendingSurveyHighlightSelectionConsumed}
                                   selectedModuleId={selectedModuleId}
@@ -35882,6 +35883,7 @@ ${pageBlocks}
                                       surveyHighlights={newHighlightsByPage[pageNumber]}
                                       onUpdateSurveyHighlightBounds={handleSurveyHighlightBoundsChange}
                                       onDeleteSurveyHighlight={handleDeleteSurveyHighlight}
+                                      onSurveyHighlightDoubleClick={handleHighlightClicked}
                                       pendingSurveyHighlightSelection={pendingSurveyHighlightSelection}
                                       onPendingSurveyHighlightSelectionConsumed={handlePendingSurveyHighlightSelectionConsumed}
                                       selectedModuleId={selectedModuleId}
@@ -36508,6 +36510,7 @@ ${pageBlocks}
                                       surveyHighlights={newHighlightsByPage[pageNum]}
                                       onUpdateSurveyHighlightBounds={handleSurveyHighlightBoundsChange}
                                       onDeleteSurveyHighlight={handleDeleteSurveyHighlight}
+                                      onSurveyHighlightDoubleClick={handleHighlightClicked}
                                       pendingSurveyHighlightSelection={pendingSurveyHighlightSelection}
                                       onPendingSurveyHighlightSelectionConsumed={handlePendingSurveyHighlightSelectionConsumed}
                                       selectedModuleId={selectedModuleId}
@@ -38426,7 +38429,7 @@ ${pageBlocks}
                                         ...(prev[pageNum] || []),
                                         {
                                           ...bounds,
-                                          needsBIC: true,
+                                          needsEntity: true,
                                           highlightId: highlightId,
                                           regionId: sourceHighlight?.regionId ?? null
                                         }
@@ -38665,7 +38668,7 @@ ${pageBlocks}
                                       const highlightId = `highlight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
                                       const pageNum = sourceHighlight?.pageNumber || destAnnotation?.pageNumber || 1;
 
-                                      // Create highlight WITHOUT BIC (starts blank in new space)
+                                      // Create highlight WITHOUT entity (starts blank in new space)
                                       newHighlights[highlightId] = {
                                         id: highlightId,
                                         pageNumber: pageNum,
@@ -38674,18 +38677,18 @@ ${pageBlocks}
                                         regionId: sourceHighlight?.regionId ?? null,
                                         categoryId: destCategory?.id || null,
                                         name: item.name || sourceHighlight?.name || 'Untitled Item',
-                                        // Do NOT copy BIC properties - item starts blank in new space
+                                        // Do NOT copy entity properties - item starts blank in new space
                                         checklistResponses: {}
                                       };
 
-                                      // Add to newHighlightsByPage as transparent with dashed outline (needs BIC)
+                                      // Add to newHighlightsByPage as transparent with dashed outline (needs entity)
                                       setNewHighlightsByPage(prev => ({
                                         ...prev,
                                         [pageNum]: [
                                           ...(prev[pageNum] || []),
                                           {
                                             ...bounds,
-                                            needsBIC: true, // Flag to indicate it needs BIC assignment
+                                            needsEntity: true, // Flag to indicate it needs entity assignment
                                             highlightId: highlightId, // Store ID for later reference
                                             regionId: sourceHighlight?.regionId ?? null
                                           }
@@ -40354,7 +40357,7 @@ ${pageBlocks}
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
 
                                                       {(() => {
-                                                        // Get ball-in-court entity for indicator - data-driven from category item's ballInCourt field
+                                                        // Get entity entity for indicator - data-driven from category item's entity field
                                                         let indicatorColor = null;
                                                         let indicatorTooltip = null;
                                                         if (selectedTemplate && selectedModuleId) {
@@ -40366,24 +40369,24 @@ ${pageBlocks}
                                                             item.itemType === categoryName
                                                           );
 
-                                                          // Try to get ballInCourtEntityId from item's module data first, then from highlightData
-                                                          let ballInCourtEntityId = null;
+                                                          // Try to get entityId from item's module data first, then from highlightData
+                                                          let entityId = null;
                                                           if (matchingItem) {
                                                             const moduleName = getModuleName(selectedTemplate, selectedModuleId);
                                                             const dataKey = getModuleDataKey(moduleName);
                                                             const moduleData = matchingItem[dataKey] || {};
-                                                            ballInCourtEntityId = moduleData.ballInCourtEntityId;
+                                                            entityId = moduleData.entityId;
                                                           }
                                                           // Fallback to highlightData if not found in item
-                                                          if (!ballInCourtEntityId && highlightData?.ballInCourtEntityId) {
-                                                            ballInCourtEntityId = highlightData.ballInCourtEntityId;
+                                                          if (!entityId && highlightData?.entityId) {
+                                                            entityId = highlightData.entityId;
                                                           }
 
-                                                          if (ballInCourtEntityId) {
-                                                            const ballInCourtEntities = selectedTemplate?.ballInCourtEntities || [];
-                                                            const entity = ballInCourtEntities.find(e => e.id === ballInCourtEntityId);
+                                                          if (entityId) {
+                                                            const entities = selectedTemplate?.entities || [];
+                                                            const entity = entities.find(e => e.id === entityId);
                                                             if (entity) {
-                                                              // Use the exact color from ballInCourt.color without transformation
+                                                              // Use the exact color from entity.color without transformation
                                                               indicatorColor = entity.color;
                                                               indicatorTooltip = entity.name;
                                                             }
@@ -40391,7 +40394,7 @@ ${pageBlocks}
                                                         }
 
                                                         return (
-                                                          <BallInCourtIndicator
+                                                          <EntityIndicator
                                                             color={indicatorColor}
                                                             size={16}
                                                             tooltipText={indicatorTooltip}
@@ -40636,7 +40639,7 @@ ${pageBlocks}
                                                   </div>
                                                 </div>
 
-                                                {/* Ball in Court selector */}
+                                                {/* Entity selector */}
                                                 {
                                                   isHighlightExpanded && selectedTemplate && selectedModuleId && (() => {
                                                     // Find the item associated with this highlight
@@ -40653,9 +40656,9 @@ ${pageBlocks}
                                                     const dataKey = getModuleDataKey(moduleName);
                                                     const moduleData = matchingItem?.[dataKey] || {};
 
-                                                    // Get current BIC status from item's module-specific data (preferred) or from highlight annotation (legacy)
-                                                    const currentBICEntityId = moduleData.ballInCourtEntityId || highlightData?.ballInCourtEntityId;
-                                                    const ballInCourtEntities = selectedTemplate?.ballInCourtEntities || [];
+                                                    // Get current entity status from item's module-specific data (preferred) or from highlight annotation (legacy)
+                                                    const currentEntityId = moduleData.entityId || highlightData?.entityId;
+                                                    const entities = selectedTemplate?.entities || [];
 
                                                     return (
                                                       <div style={{
@@ -40677,14 +40680,14 @@ ${pageBlocks}
                                                             flex: '1',
                                                             minWidth: '150px'
                                                           }}>
-                                                            Ball in Court:
+                                                            Entity:
                                                           </span>
                                                           <select
-                                                            value={currentBICEntityId || ''}
+                                                            value={currentEntityId || ''}
                                                             onChange={(e) => {
                                                               e.stopPropagation();
                                                               const entityId = e.target.value;
-                                                              const entity = entityId ? ballInCourtEntities.find(e => e.id === entityId) : null;
+                                                              const entity = entityId ? entities.find(e => e.id === entityId) : null;
 
 
                                                               // Update highlight annotation - the useEffect will automatically rebuild newHighlightsByPage
@@ -40693,9 +40696,9 @@ ${pageBlocks}
                                                                   ...prev,
                                                                   [highlightId]: {
                                                                     ...prev[highlightId],
-                                                                    ballInCourtEntityId: entity?.id,
-                                                                    ballInCourtEntityName: entity?.name,
-                                                                    ballInCourtColor: entity?.color
+                                                                    entityId: entity?.id,
+                                                                    entityName: entity?.name,
+                                                                    entityColor: entity?.color
                                                                   }
                                                                 };
                                                                 return updated;
@@ -40704,14 +40707,14 @@ ${pageBlocks}
                                                               // Update item's module-specific data if matchingItem exists
                                                               if (matchingItem) {
                                                                 if (entity) {
-                                                                  // Update item with BIC status
+                                                                  // Update item with entity status
                                                                   const updatedItem = {
                                                                     ...matchingItem,
                                                                     [dataKey]: {
                                                                       ...moduleData,
-                                                                      ballInCourtEntityId: entity.id,
-                                                                      ballInCourtEntityName: entity.name,
-                                                                      ballInCourtColor: entity.color
+                                                                      entityId: entity.id,
+                                                                      entityName: entity.name,
+                                                                      entityColor: entity.color
                                                                     }
                                                                   };
 
@@ -40727,23 +40730,23 @@ ${pageBlocks}
                                                                       if (ann.itemId === matchingItem.itemId && ann.spaceId === selectedSpaceId) {
                                                                         updated[ann.annotationId] = {
                                                                           ...ann,
-                                                                          ballInCourtEntityId: entity.id,
-                                                                          ballInCourtEntityName: entity.name,
-                                                                          ballInCourtColor: entity.color
+                                                                          entityId: entity.id,
+                                                                          entityName: entity.name,
+                                                                          entityColor: entity.color
                                                                         };
                                                                       }
                                                                     });
                                                                     return updated;
                                                                   });
                                                                 } else {
-                                                                  // Remove BIC status from item
+                                                                  // Remove entity status from item
                                                                   const updatedItem = {
                                                                     ...matchingItem,
                                                                     [dataKey]: {
                                                                       ...moduleData,
-                                                                      ballInCourtEntityId: undefined,
-                                                                      ballInCourtEntityName: undefined,
-                                                                      ballInCourtColor: undefined
+                                                                      entityId: undefined,
+                                                                      entityName: undefined,
+                                                                      entityColor: undefined
                                                                     }
                                                                   };
 
@@ -40759,9 +40762,9 @@ ${pageBlocks}
                                                                       if (ann.itemId === matchingItem.itemId && ann.spaceId === selectedSpaceId) {
                                                                         updated[ann.annotationId] = {
                                                                           ...ann,
-                                                                          ballInCourtEntityId: undefined,
-                                                                          ballInCourtEntityName: undefined,
-                                                                          ballInCourtColor: undefined
+                                                                          entityId: undefined,
+                                                                          entityName: undefined,
+                                                                          entityColor: undefined
                                                                         };
                                                                       }
                                                                     });
@@ -40784,7 +40787,7 @@ ${pageBlocks}
                                                             }}
                                                           >
                                                             <option value="">None</option>
-                                                            {ballInCourtEntities.map(entity => (
+                                                            {entities.map(entity => (
                                                               <option key={entity.id} value={entity.id}>
                                                                 {entity.name}
                                                               </option>
@@ -40868,25 +40871,25 @@ ${pageBlocks}
                                                                       const dataKey = getModuleDataKey(moduleName);
                                                                       const moduleData = matchingItem?.[dataKey] || {};
 
-                                                                      // If all items are Y or N/A, automatically set ball in court to "Complete"
+                                                                      // If all items are Y or N/A, automatically set entity to "Complete"
                                                                       if (allItemsComplete) {
                                                                         // Find the "Complete" entity
-                                                                        const ballInCourtEntities = selectedTemplate.ballInCourtEntities || [];
-                                                                        const completeEntity = ballInCourtEntities.find(e =>
+                                                                        const entities = selectedTemplate.entities || [];
+                                                                        const completeEntity = entities.find(e =>
                                                                           e.name.toLowerCase().includes('complete')
                                                                         );
 
                                                                         if (completeEntity) {
                                                                           const entityColor = normalizeHighlightColor(completeEntity.color) || completeEntity.color || hexToRgba('#E3D1FB', DEFAULT_SURVEY_HIGHLIGHT_OPACITY);
-                                                                          // Update item's module-specific data with Complete BIC status
+                                                                          // Update item's module-specific data with Complete entity status
                                                                           if (matchingItem) {
                                                                             const updatedItem = {
                                                                               ...matchingItem,
                                                                               [dataKey]: {
                                                                                 ...moduleData,
-                                                                                ballInCourtEntityId: completeEntity.id,
-                                                                                ballInCourtEntityName: completeEntity.name,
-                                                                                ballInCourtColor: entityColor
+                                                                                entityId: completeEntity.id,
+                                                                                entityName: completeEntity.name,
+                                                                                entityColor: entityColor
                                                                               }
                                                                             };
 
@@ -40903,9 +40906,9 @@ ${pageBlocks}
                                                                                 if (ann.itemId === matchingItem.itemId && annModuleId === selectedModuleId) {
                                                                                   updatedAnns[ann.annotationId] = {
                                                                                     ...ann,
-                                                                                    ballInCourtEntityId: completeEntity.id,
-                                                                                    ballInCourtEntityName: completeEntity.name,
-                                                                                    ballInCourtColor: entityColor
+                                                                                    entityId: completeEntity.id,
+                                                                                    entityName: completeEntity.name,
+                                                                                    entityColor: entityColor
                                                                                   };
                                                                                 }
                                                                               });
@@ -40916,7 +40919,7 @@ ${pageBlocks}
                                                                             if (highlightData?.pageNumber && highlightData?.bounds) {
                                                                               setNewHighlightsByPage(prev => {
                                                                                 const pageHighlights = prev[highlightData.pageNumber] || [];
-                                                                                // Remove any existing highlight with this highlightId or same bounds (regardless of needsBIC or color)
+                                                                                // Remove any existing highlight with this highlightId or same bounds (regardless of needsEntity or color)
                                                                                 const filtered = pageHighlights.filter(h => {
                                                                                   // Keep highlights that don't match by ID or bounds
                                                                                   const hasMatchingId = h.highlightId === highlightId;
@@ -40942,24 +40945,24 @@ ${pageBlocks}
                                                                             }
                                                                           }
 
-                                                                          // Update highlight annotation with Complete BIC status
+                                                                          // Update highlight annotation with Complete entity status
                                                                           updated[highlightId] = {
                                                                             ...updated[highlightId],
-                                                                            ballInCourtEntityId: completeEntity.id,
-                                                                            ballInCourtEntityName: completeEntity.name,
-                                                                            ballInCourtColor: entityColor
+                                                                            entityId: completeEntity.id,
+                                                                            entityName: completeEntity.name,
+                                                                            entityColor: entityColor
                                                                           };
                                                                         }
                                                                       } else {
-                                                                        // Not all items are Y or N/A - remove ball in court status (set to None)
+                                                                        // Not all items are Y or N/A - remove entity status (set to None)
                                                                         if (matchingItem) {
                                                                           const updatedItem = {
                                                                             ...matchingItem,
                                                                             [dataKey]: {
                                                                               ...moduleData,
-                                                                              ballInCourtEntityId: undefined,
-                                                                              ballInCourtEntityName: undefined,
-                                                                              ballInCourtColor: undefined
+                                                                              entityId: undefined,
+                                                                              entityName: undefined,
+                                                                              entityColor: undefined
                                                                             }
                                                                           };
 
@@ -40975,20 +40978,20 @@ ${pageBlocks}
                                                                               if (ann.itemId === matchingItem.itemId && ann.spaceId === selectedSpaceId) {
                                                                                 updatedAnns[ann.annotationId] = {
                                                                                   ...ann,
-                                                                                  ballInCourtEntityId: undefined,
-                                                                                  ballInCourtEntityName: undefined,
-                                                                                  ballInCourtColor: undefined
+                                                                                  entityId: undefined,
+                                                                                  entityName: undefined,
+                                                                                  entityColor: undefined
                                                                                 };
                                                                               }
                                                                             });
                                                                             return updatedAnns;
                                                                           });
 
-                                                                          // Update highlight on PDF - revert to "needs BIC" state (transparent with dashed outline)
+                                                                          // Update highlight on PDF - revert to "needs entity" state (transparent with dashed outline)
                                                                           if (highlightData?.pageNumber && highlightData?.bounds) {
                                                                             setNewHighlightsByPage(prev => {
                                                                               const pageHighlights = prev[highlightData.pageNumber] || [];
-                                                                              // Remove any existing highlight with this highlightId or same bounds (regardless of needsBIC or color)
+                                                                              // Remove any existing highlight with this highlightId or same bounds (regardless of needsEntity or color)
                                                                               const filtered = pageHighlights.filter(h => {
                                                                                 // Keep highlights that don't match by ID or bounds
                                                                                 const hasMatchingId = h.highlightId === highlightId;
@@ -40999,14 +41002,14 @@ ${pageBlocks}
                                                                                 // Remove if it matches by ID or bounds
                                                                                 return !hasMatchingId && !hasMatchingBounds;
                                                                               });
-                                                                              // Add "needs BIC" highlight (transparent with dashed outline)
+                                                                              // Add "needs entity" highlight (transparent with dashed outline)
                                                                               return {
                                                                                 ...prev,
                                                                                 [highlightData.pageNumber]: [
                                                                                   ...filtered,
                                                                                   {
                                                                                     ...highlightData.bounds,
-                                                                                    needsBIC: true,
+                                                                                    needsEntity: true,
                                                                                     highlightId: highlightId
                                                                                   }
                                                                                 ]
@@ -41015,12 +41018,12 @@ ${pageBlocks}
                                                                           }
                                                                         }
 
-                                                                        // Update highlight annotation to remove BIC status
+                                                                        // Update highlight annotation to remove entity status
                                                                         updated[highlightId] = {
                                                                           ...updated[highlightId],
-                                                                          ballInCourtEntityId: undefined,
-                                                                          ballInCourtEntityName: undefined,
-                                                                          ballInCourtColor: undefined
+                                                                          entityId: undefined,
+                                                                          entityName: undefined,
+                                                                          entityColor: undefined
                                                                         };
                                                                       }
                                                                     }
@@ -41744,16 +41747,16 @@ ${pageBlocks}
                           <button
                             key={category.id}
                             onClick={() => {
-                              // Check if template has Ball in Court entities
-                              const ballInCourtEntities = selectedTemplate?.ballInCourtEntities || [];
-                              if (ballInCourtEntities.length > 0) {
-                                // Show Ball in Court selection dialog first
-                                setPendingBallInCourtSelection({
+                              // Check if template has Entities
+                              const entities = selectedTemplate?.entities || [];
+                              if (entities.length > 0) {
+                                // Show Entity selection dialog first
+                                setPendingEntitySelection({
                                   highlight: pendingHighlight,
                                   categoryId: category.id
                                 });
                               } else {
-                                // No Ball in Court entities, go directly to name prompt
+                                // No Entities, go directly to name prompt
                                 setPendingHighlightName({
                                   highlight: pendingHighlight,
                                   categoryId: category.id
@@ -41794,10 +41797,10 @@ ${pageBlocks}
           )
         }
 
-        {/* Ball in Court Selection Dialog */}
+        {/* Entity Selection Dialog */}
         {
-          pendingBallInCourtSelection && selectedTemplate && selectedModuleId && (() => {
-            const ballInCourtEntities = selectedTemplate.ballInCourtEntities || [];
+          pendingEntitySelection && selectedTemplate && selectedModuleId && (() => {
+            const entities = selectedTemplate.entities || [];
 
             return (
               <>
@@ -41805,10 +41808,10 @@ ${pageBlocks}
                   onClick={() => {
                     // Cancel - proceed without entity selection
                     setPendingHighlightName({
-                      highlight: pendingBallInCourtSelection.highlight,
-                      categoryId: pendingBallInCourtSelection.categoryId
+                      highlight: pendingEntitySelection.highlight,
+                      categoryId: pendingEntitySelection.categoryId
                     });
-                    setPendingBallInCourtSelection(null);
+                    setPendingEntitySelection(null);
                     setHighlightNameInput('');
                   }}
                   style={{
@@ -41851,16 +41854,16 @@ ${pageBlocks}
                         color: COLORS.modal.textPrimary,
                         fontFamily: FONT_FAMILY
                       }}>
-                        Ball in Court
+                        Entity
                       </h3>
                       <button
                         onClick={() => {
                           // Cancel - proceed without entity selection
                           setPendingHighlightName({
-                            highlight: pendingBallInCourtSelection.highlight,
-                            categoryId: pendingBallInCourtSelection.categoryId
+                            highlight: pendingEntitySelection.highlight,
+                            categoryId: pendingEntitySelection.categoryId
                           });
-                          setPendingBallInCourtSelection(null);
+                          setPendingEntitySelection(null);
                           setHighlightNameInput('');
                         }}
                         className="btn btn-icon btn-icon-sm"
@@ -41889,7 +41892,7 @@ ${pageBlocks}
                       maxHeight: '400px',
                       overflowY: 'auto'
                     }}>
-                      {ballInCourtEntities.map(entity => (
+                      {entities.map(entity => (
                         <button
                           key={entity.id}
                           onClick={() => {
@@ -41900,29 +41903,29 @@ ${pageBlocks}
                             // Store highlight with entity info
                             setHighlightAnnotations(prev => ({
                               ...prev,
-                              [pendingBallInCourtSelection.highlight.id]: {
-                                ...pendingBallInCourtSelection.highlight,
-                                categoryId: pendingBallInCourtSelection.categoryId,
-                                ballInCourtEntityId: entity.id,
-                                ballInCourtEntityName: entity.name,
-                                ballInCourtColor: entityColor,
+                              [pendingEntitySelection.highlight.id]: {
+                                ...pendingEntitySelection.highlight,
+                                categoryId: pendingEntitySelection.categoryId,
+                                entityId: entity.id,
+                                entityName: entity.name,
+                                entityColor: entityColor,
                                 checklistResponses: {}
                               }
                             }));
 
                             // Update existing highlight on page with entity color (rgba with 100% opacity)
-                            // Replace the existing highlight (with needsBIC) with the new one that has the color
+                            // Replace the existing highlight (with needsEntity) with the new one that has the color
                             setNewHighlightsByPage(prev => {
-                              const pageHighlights = prev[pendingBallInCourtSelection.highlight.pageNumber] || [];
+                              const pageHighlights = prev[pendingEntitySelection.highlight.pageNumber] || [];
                               // Remove existing highlight with this highlightId (if it exists)
-                              const filtered = pageHighlights.filter(h => h.highlightId !== pendingBallInCourtSelection.highlight.id);
+                              const filtered = pageHighlights.filter(h => h.highlightId !== pendingEntitySelection.highlight.id);
                               // Add the new highlight with color
                               return {
                                 ...prev,
-                                [pendingBallInCourtSelection.highlight.pageNumber]: [
+                                [pendingEntitySelection.highlight.pageNumber]: [
                                   ...filtered,
                                   buildSurveyHighlightPreview(
-                                    pendingBallInCourtSelection.highlight,
+                                    pendingEntitySelection.highlight,
                                     { color: entityColor }
                                   )
                                 ]
@@ -41932,14 +41935,14 @@ ${pageBlocks}
                             // Proceed to name prompt
                             setPendingHighlightName({
                               highlight: {
-                                ...pendingBallInCourtSelection.highlight,
-                                ballInCourtEntityId: entity.id,
-                                ballInCourtEntityName: entity.name,
-                                ballInCourtColor: entityColor
+                                ...pendingEntitySelection.highlight,
+                                entityId: entity.id,
+                                entityName: entity.name,
+                                entityColor: entityColor
                               },
-                              categoryId: pendingBallInCourtSelection.categoryId
+                              categoryId: pendingEntitySelection.categoryId
                             });
-                            setPendingBallInCourtSelection(null);
+                            setPendingEntitySelection(null);
                             setHighlightNameInput('');
                           }}
                           style={{
@@ -42000,8 +42003,8 @@ ${pageBlocks}
                   onClick={() => {
                     // Cancel - save with default name
                     // Compute color first so it can be saved with highlightData
-                    const highlightColor = pendingHighlightName.highlight.ballInCourtColor
-                      ? (normalizeHighlightColor(pendingHighlightName.highlight.ballInCourtColor) || pendingHighlightName.highlight.ballInCourtColor)
+                    const highlightColor = pendingHighlightName.highlight.entityColor
+                      ? (normalizeHighlightColor(pendingHighlightName.highlight.entityColor) || pendingHighlightName.highlight.entityColor)
                       : 'rgba(255, 193, 7, 1.0)';
                     const highlightData = {
                       ...pendingHighlightName.highlight,
@@ -42015,8 +42018,8 @@ ${pageBlocks}
                       [pendingHighlightName.highlight.id]: highlightData
                     }));
 
-                    // Update existing highlight with color if Ball in Court was selected (ensure 100% opacity)
-                    // Replace the existing highlight (with needsBIC) with the new one that has the color
+                    // Update existing highlight with color if Entity was selected (ensure 100% opacity)
+                    // Replace the existing highlight (with needsEntity) with the new one that has the color
                     setNewHighlightsByPage(prev => {
                       const pageHighlights = prev[pendingHighlightName.highlight.pageNumber] || [];
                       // Remove existing highlight with this highlightId (if it exists)
@@ -42084,8 +42087,8 @@ ${pageBlocks}
                         onClick={() => {
                           // Cancel - save with default name
                           // Compute color first so it can be saved with highlightData
-                          const highlightColor = pendingHighlightName.highlight.ballInCourtColor
-                            ? (normalizeHighlightColor(pendingHighlightName.highlight.ballInCourtColor) || pendingHighlightName.highlight.ballInCourtColor)
+                          const highlightColor = pendingHighlightName.highlight.entityColor
+                            ? (normalizeHighlightColor(pendingHighlightName.highlight.entityColor) || pendingHighlightName.highlight.entityColor)
                             : 'rgba(255, 193, 7, 1.0)';
                           const highlightData = {
                             ...pendingHighlightName.highlight,
@@ -42099,8 +42102,8 @@ ${pageBlocks}
                             [pendingHighlightName.highlight.id]: highlightData
                           }));
 
-                          // If BIC was selected, also store it in the item's module-specific data
-                          if (highlightData.ballInCourtEntityId && selectedTemplate && selectedModuleId) {
+                          // If entity was selected, also store it in the item's module-specific data
+                          if (highlightData.entityId && selectedTemplate && selectedModuleId) {
                             // Find or create item for this highlight
                             const categoryName = getCategoryName(selectedTemplate, selectedModuleId, pendingHighlightName.categoryId);
                             const moduleName = getModuleName(selectedTemplate, selectedModuleId);
@@ -42113,26 +42116,26 @@ ${pageBlocks}
                             );
 
                             if (existingItem) {
-                              // Update existing item's module-specific data with BIC
+                              // Update existing item's module-specific data with entity
                               const moduleData = existingItem[dataKey] || {};
-                              const ballInCourtEntity = selectedTemplate.ballInCourtEntities?.find(e => e.id === highlightData.ballInCourtEntityId);
+                              const entity = selectedTemplate.entities?.find(e => e.id === highlightData.entityId);
 
-                              if (ballInCourtEntity) {
+                              if (entity) {
                                 setItems(prev => ({
                                   ...prev,
                                   [existingItem.itemId]: {
                                     ...existingItem,
                                     [dataKey]: {
                                       ...moduleData,
-                                      ballInCourtEntityId: ballInCourtEntity.id,
-                                      ballInCourtEntityName: ballInCourtEntity.name,
-                                      ballInCourtColor: ballInCourtEntity.color
+                                      entityId: entity.id,
+                                      entityName: entity.name,
+                                      entityColor: entity.color
                                     }
                                   }
                                 }));
                               }
                             } else {
-                              // Create new item with BIC in module-specific data
+                              // Create new item with entity in module-specific data
                               const newItem = createItem(
                                 selectedTemplate,
                                 selectedModuleId,
@@ -42141,12 +42144,12 @@ ${pageBlocks}
                                 1
                               );
 
-                              const ballInCourtEntity = selectedTemplate.ballInCourtEntities?.find(e => e.id === highlightData.ballInCourtEntityId);
-                              if (ballInCourtEntity) {
+                              const entity = selectedTemplate.entities?.find(e => e.id === highlightData.entityId);
+                              if (entity) {
                                 newItem[dataKey] = {
-                                  ballInCourtEntityId: ballInCourtEntity.id,
-                                  ballInCourtEntityName: ballInCourtEntity.name,
-                                  ballInCourtColor: ballInCourtEntity.color
+                                  entityId: entity.id,
+                                  entityName: entity.name,
+                                  entityColor: entity.color
                                 };
                               }
 
@@ -42165,11 +42168,11 @@ ${pageBlocks}
                                 categoryName
                               );
 
-                              // Set BIC on annotation
-                              if (ballInCourtEntity) {
-                                annotation.ballInCourtEntityId = ballInCourtEntity.id;
-                                annotation.ballInCourtEntityName = ballInCourtEntity.name;
-                                annotation.ballInCourtColor = ballInCourtEntity.color;
+                              // Set entity on annotation
+                              if (entity) {
+                                annotation.entityId = entity.id;
+                                annotation.entityName = entity.name;
+                                annotation.entityColor = entity.color;
                               }
 
                               setAnnotations(prev => ({
@@ -42179,8 +42182,8 @@ ${pageBlocks}
                             }
                           }
 
-                          // Update existing highlight with color if Ball in Court was selected (ensure 100% opacity)
-                          // Replace the existing highlight (with needsBIC) with the new one that has the color
+                          // Update existing highlight with color if Entity was selected (ensure 100% opacity)
+                          // Replace the existing highlight (with needsEntity) with the new one that has the color
                           setNewHighlightsByPage(prev => {
                             const pageHighlights = prev[pendingHighlightName.highlight.pageNumber] || [];
                             // Remove existing highlight with this highlightId (if it exists)
@@ -42226,8 +42229,8 @@ ${pageBlocks}
                         if (e.key === 'Enter') {
                           const name = (highlightNameInput || defaultName).trim() || defaultName;
                           // Compute color first so it can be saved with highlightData
-                          const highlightColor = pendingHighlightName.highlight.ballInCourtColor
-                            ? (normalizeHighlightColor(pendingHighlightName.highlight.ballInCourtColor) || pendingHighlightName.highlight.ballInCourtColor)
+                          const highlightColor = pendingHighlightName.highlight.entityColor
+                            ? (normalizeHighlightColor(pendingHighlightName.highlight.entityColor) || pendingHighlightName.highlight.entityColor)
                             : 'rgba(255, 193, 7, 1.0)';
                           const highlightData = {
                             ...pendingHighlightName.highlight,
@@ -42241,8 +42244,8 @@ ${pageBlocks}
                             [pendingHighlightName.highlight.id]: highlightData
                           }));
 
-                          // Update existing highlight with color if Ball in Court was selected (ensure 100% opacity)
-                          // Replace the existing highlight (with needsBIC) with the new one that has the color
+                          // Update existing highlight with color if Entity was selected (ensure 100% opacity)
+                          // Replace the existing highlight (with needsEntity) with the new one that has the color
                           setNewHighlightsByPage(prev => {
                             const pageHighlights = prev[pendingHighlightName.highlight.pageNumber] || [];
                             // Remove existing highlight with this highlightId (if it exists)
@@ -42266,8 +42269,8 @@ ${pageBlocks}
                         } else if (e.key === 'Escape') {
                           // Cancel - save with default name
                           // Compute color first so it can be saved with highlightData
-                          const highlightColor = pendingHighlightName.highlight.ballInCourtColor
-                            ? (normalizeHighlightColor(pendingHighlightName.highlight.ballInCourtColor) || pendingHighlightName.highlight.ballInCourtColor)
+                          const highlightColor = pendingHighlightName.highlight.entityColor
+                            ? (normalizeHighlightColor(pendingHighlightName.highlight.entityColor) || pendingHighlightName.highlight.entityColor)
                             : 'rgba(255, 193, 7, 1.0)';
                           const highlightData = {
                             ...pendingHighlightName.highlight,
@@ -42281,8 +42284,8 @@ ${pageBlocks}
                             [pendingHighlightName.highlight.id]: highlightData
                           }));
 
-                          // Update existing highlight with color if Ball in Court was selected (ensure 100% opacity)
-                          // Replace the existing highlight (with needsBIC) with the new one that has the color
+                          // Update existing highlight with color if Entity was selected (ensure 100% opacity)
+                          // Replace the existing highlight (with needsEntity) with the new one that has the color
                           setNewHighlightsByPage(prev => {
                             const pageHighlights = prev[pendingHighlightName.highlight.pageNumber] || [];
                             // Remove existing highlight with this highlightId (if it exists)
@@ -42325,8 +42328,8 @@ ${pageBlocks}
                         onClick={() => {
                           // Cancel - save with default name
                           // Compute color first so it can be saved with highlightData
-                          const highlightColor = pendingHighlightName.highlight.ballInCourtColor
-                            ? (normalizeHighlightColor(pendingHighlightName.highlight.ballInCourtColor) || pendingHighlightName.highlight.ballInCourtColor)
+                          const highlightColor = pendingHighlightName.highlight.entityColor
+                            ? (normalizeHighlightColor(pendingHighlightName.highlight.entityColor) || pendingHighlightName.highlight.entityColor)
                             : 'rgba(255, 193, 7, 1.0)';
                           const highlightData = {
                             ...pendingHighlightName.highlight,
@@ -42340,8 +42343,8 @@ ${pageBlocks}
                             [pendingHighlightName.highlight.id]: highlightData
                           }));
 
-                          // If BIC was selected, also store it in the item's module-specific data
-                          if (highlightData.ballInCourtEntityId && selectedTemplate && selectedModuleId) {
+                          // If entity was selected, also store it in the item's module-specific data
+                          if (highlightData.entityId && selectedTemplate && selectedModuleId) {
                             // Find or create item for this highlight
                             const categoryName = getCategoryName(selectedTemplate, selectedModuleId, pendingHighlightName.categoryId);
                             const moduleName = getModuleName(selectedTemplate, selectedModuleId);
@@ -42354,26 +42357,26 @@ ${pageBlocks}
                             );
 
                             if (existingItem) {
-                              // Update existing item's module-specific data with BIC
+                              // Update existing item's module-specific data with entity
                               const moduleData = existingItem[dataKey] || {};
-                              const ballInCourtEntity = selectedTemplate.ballInCourtEntities?.find(e => e.id === highlightData.ballInCourtEntityId);
+                              const entity = selectedTemplate.entities?.find(e => e.id === highlightData.entityId);
 
-                              if (ballInCourtEntity) {
+                              if (entity) {
                                 setItems(prev => ({
                                   ...prev,
                                   [existingItem.itemId]: {
                                     ...existingItem,
                                     [dataKey]: {
                                       ...moduleData,
-                                      ballInCourtEntityId: ballInCourtEntity.id,
-                                      ballInCourtEntityName: ballInCourtEntity.name,
-                                      ballInCourtColor: ballInCourtEntity.color
+                                      entityId: entity.id,
+                                      entityName: entity.name,
+                                      entityColor: entity.color
                                     }
                                   }
                                 }));
                               }
                             } else {
-                              // Create new item with BIC in module-specific data
+                              // Create new item with entity in module-specific data
                               const newItem = createItem(
                                 selectedTemplate,
                                 selectedModuleId,
@@ -42382,12 +42385,12 @@ ${pageBlocks}
                                 1
                               );
 
-                              const ballInCourtEntity = selectedTemplate.ballInCourtEntities?.find(e => e.id === highlightData.ballInCourtEntityId);
-                              if (ballInCourtEntity) {
+                              const entity = selectedTemplate.entities?.find(e => e.id === highlightData.entityId);
+                              if (entity) {
                                 newItem[dataKey] = {
-                                  ballInCourtEntityId: ballInCourtEntity.id,
-                                  ballInCourtEntityName: ballInCourtEntity.name,
-                                  ballInCourtColor: ballInCourtEntity.color
+                                  entityId: entity.id,
+                                  entityName: entity.name,
+                                  entityColor: entity.color
                                 };
                               }
 
@@ -42406,11 +42409,11 @@ ${pageBlocks}
                                 categoryName
                               );
 
-                              // Set BIC on annotation
-                              if (ballInCourtEntity) {
-                                annotation.ballInCourtEntityId = ballInCourtEntity.id;
-                                annotation.ballInCourtEntityName = ballInCourtEntity.name;
-                                annotation.ballInCourtColor = ballInCourtEntity.color;
+                              // Set entity on annotation
+                              if (entity) {
+                                annotation.entityId = entity.id;
+                                annotation.entityName = entity.name;
+                                annotation.entityColor = entity.color;
                               }
 
                               setAnnotations(prev => ({
@@ -42420,8 +42423,8 @@ ${pageBlocks}
                             }
                           }
 
-                          // Update existing highlight with color if Ball in Court was selected (ensure 100% opacity)
-                          // Replace the existing highlight (with needsBIC) with the new one that has the color
+                          // Update existing highlight with color if Entity was selected (ensure 100% opacity)
+                          // Replace the existing highlight (with needsEntity) with the new one that has the color
                           setNewHighlightsByPage(prev => {
                             const pageHighlights = prev[pendingHighlightName.highlight.pageNumber] || [];
                             // Remove existing highlight with this highlightId (if it exists)
@@ -42459,8 +42462,8 @@ ${pageBlocks}
                         onClick={() => {
                           const name = (highlightNameInput || defaultName).trim() || defaultName;
                           // Compute color first so it can be saved with highlightData
-                          const highlightColor = pendingHighlightName.highlight.ballInCourtColor
-                            ? (normalizeHighlightColor(pendingHighlightName.highlight.ballInCourtColor) || pendingHighlightName.highlight.ballInCourtColor)
+                          const highlightColor = pendingHighlightName.highlight.entityColor
+                            ? (normalizeHighlightColor(pendingHighlightName.highlight.entityColor) || pendingHighlightName.highlight.entityColor)
                             : 'rgba(255, 193, 7, 1.0)';
                           const highlightData = {
                             ...pendingHighlightName.highlight,
@@ -42474,8 +42477,8 @@ ${pageBlocks}
                             [pendingHighlightName.highlight.id]: highlightData
                           }));
 
-                          // If BIC was selected, also store it in the item's module-specific data
-                          if (highlightData.ballInCourtEntityId && selectedTemplate && selectedModuleId) {
+                          // If entity was selected, also store it in the item's module-specific data
+                          if (highlightData.entityId && selectedTemplate && selectedModuleId) {
                             // Find or create item for this highlight
                             const categoryName = getCategoryName(selectedTemplate, selectedModuleId, pendingHighlightName.categoryId);
                             const moduleName = getModuleName(selectedTemplate, selectedModuleId);
@@ -42488,26 +42491,26 @@ ${pageBlocks}
                             );
 
                             if (existingItem) {
-                              // Update existing item's module-specific data with BIC
+                              // Update existing item's module-specific data with entity
                               const moduleData = existingItem[dataKey] || {};
-                              const ballInCourtEntity = selectedTemplate.ballInCourtEntities?.find(e => e.id === highlightData.ballInCourtEntityId);
+                              const entity = selectedTemplate.entities?.find(e => e.id === highlightData.entityId);
 
-                              if (ballInCourtEntity) {
+                              if (entity) {
                                 setItems(prev => ({
                                   ...prev,
                                   [existingItem.itemId]: {
                                     ...existingItem,
                                     [dataKey]: {
                                       ...moduleData,
-                                      ballInCourtEntityId: ballInCourtEntity.id,
-                                      ballInCourtEntityName: ballInCourtEntity.name,
-                                      ballInCourtColor: ballInCourtEntity.color
+                                      entityId: entity.id,
+                                      entityName: entity.name,
+                                      entityColor: entity.color
                                     }
                                   }
                                 }));
                               }
                             } else {
-                              // Create new item with BIC in space-specific data
+                              // Create new item with entity in space-specific data
                               const newItem = createItem(
                                 selectedTemplate,
                                 selectedSpaceId,
@@ -42516,12 +42519,12 @@ ${pageBlocks}
                                 1
                               );
 
-                              const ballInCourtEntity = selectedTemplate.ballInCourtEntities?.find(e => e.id === highlightData.ballInCourtEntityId);
-                              if (ballInCourtEntity) {
+                              const entity = selectedTemplate.entities?.find(e => e.id === highlightData.entityId);
+                              if (entity) {
                                 newItem[dataKey] = {
-                                  ballInCourtEntityId: ballInCourtEntity.id,
-                                  ballInCourtEntityName: ballInCourtEntity.name,
-                                  ballInCourtColor: ballInCourtEntity.color
+                                  entityId: entity.id,
+                                  entityName: entity.name,
+                                  entityColor: entity.color
                                 };
                               }
 
@@ -42540,11 +42543,11 @@ ${pageBlocks}
                                 categoryName
                               );
 
-                              // Set BIC on annotation
-                              if (ballInCourtEntity) {
-                                annotation.ballInCourtEntityId = ballInCourtEntity.id;
-                                annotation.ballInCourtEntityName = ballInCourtEntity.name;
-                                annotation.ballInCourtColor = ballInCourtEntity.color;
+                              // Set entity on annotation
+                              if (entity) {
+                                annotation.entityId = entity.id;
+                                annotation.entityName = entity.name;
+                                annotation.entityColor = entity.color;
                               }
 
                               setAnnotations(prev => ({
@@ -42554,8 +42557,8 @@ ${pageBlocks}
                             }
                           }
 
-                          // Update existing highlight with color if Ball in Court was selected (ensure 100% opacity)
-                          // Replace the existing highlight (with needsBIC) with the new one that has the color
+                          // Update existing highlight with color if Entity was selected (ensure 100% opacity)
+                          // Replace the existing highlight (with needsEntity) with the new one that has the color
                           setNewHighlightsByPage(prev => {
                             const pageHighlights = prev[pendingHighlightName.highlight.pageNumber] || [];
                             // Remove existing highlight with this highlightId (if it exists)
@@ -44548,7 +44551,7 @@ export default function App() {
     setAppTemplates(normalized);
   }, []);
 
-  const [ballInCourtEntities, setBallInCourtEntities] = useState([
+  const [entities, setEntities] = useState([
     { id: `entity-${Date.now()}-1`, name: 'GC', color: '#E3D1FB' },
     { id: `entity-${Date.now()}-2`, name: 'Subcontractor', color: '#FFF5C3' },
     { id: `entity-${Date.now()}-3`, name: 'My Company', color: '#CBDCFF' },
@@ -45314,8 +45317,8 @@ export default function App() {
               templates={appTemplates}
               onTemplatesChange={handleTemplatesChange}
               onShowAuthModal={() => setShowAuthModal(true)}
-              ballInCourtEntities={ballInCourtEntities}
-              setBallInCourtEntities={setBallInCourtEntities}
+              entities={entities}
+              setEntities={setEntities}
             />
             {tabs.map(tab => {
               if (tab.isHome) return null;
@@ -45361,8 +45364,8 @@ export default function App() {
                       msAccount={msAccount}
                       msNeedsReconnect={msNeedsReconnect}
                       ensureFreshToken={ensureFreshToken}
-                      ballInCourtEntities={ballInCourtEntities}
-                      setBallInCourtEntities={setBallInCourtEntities}
+                      entities={entities}
+                      setEntities={setEntities}
                     />
                   </YDocProvider>
                 </div>

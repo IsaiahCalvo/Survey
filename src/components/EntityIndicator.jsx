@@ -2,18 +2,18 @@ import React, { useState, useRef, useEffect } from 'react';
 import { COLORS, TYPOGRAPHY, SHADOWS, Z_INDEX, TRANSITIONS } from '../theme';
 
 /**
- * BallInCourtIndicator - A reusable circular indicator for Ball-in-Court status
+ * EntityIndicator - A reusable circular indicator for Entity status
  *
- * This component displays a solid circle with the exact color from the ballInCourt.color field.
+ * This component displays a solid circle with the exact color from the entity.color field.
  * The color is used directly without any transformation or modification.
  *
- * @param {string} color - The exact color value from ballInCourt.color (rgba, hex, or any valid CSS color)
+ * @param {string} color - The exact color value from entity.color (rgba, hex, or any valid CSS color)
  * @param {number} size - The diameter of the circle in pixels (default: 16)
  * @param {function} onClick - Optional click handler
- * @param {string} tooltipText - The ball-in-court value/name to display on hover (e.g., "GC", "Subcontractor")
+ * @param {string} tooltipText - The entity value/name to display on hover (e.g., "GC", "Subcontractor")
  * @param {object} style - Additional inline styles to apply to the container
  */
-const BallInCourtIndicator = ({
+const EntityIndicator = ({
   color,
   size = 16,
   onClick,
@@ -84,9 +84,9 @@ const BallInCourtIndicator = ({
           ...style
         }}
         role={onClick ? 'button' : 'presentation'}
-        aria-label={tooltipText ? `Ball in Court: ${tooltipText}` : undefined}
+        aria-label={tooltipText ? `Entity: ${tooltipText}` : undefined}
       >
-        {/* Inner circle with the actual ball-in-court color */}
+        {/* Inner circle with the actual entity color */}
         <div
           style={{
             width: '100%',
@@ -131,4 +131,4 @@ const BallInCourtIndicator = ({
   );
 };
 
-export default BallInCourtIndicator;
+export default EntityIndicator;

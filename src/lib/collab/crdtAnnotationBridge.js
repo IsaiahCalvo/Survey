@@ -111,7 +111,7 @@ function shallowEqual(a, b) {
  */
 const FABRIC_CUSTOM_PROPS = [
   'strokeUniform', 'spaceId', 'moduleId', 'regionId',
-  'data', 'name', 'highlightId', 'needsBIC',
+  'data', 'name', 'highlightId', 'needsEntity',
   'globalCompositeOperation', 'layer',
   'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode',
 ];

@@ -25,9 +25,9 @@ CREATE TABLE IF NOT EXISTS document_annotations (
     name TEXT,
     notes TEXT,
 
-    -- Ball-in-court tracking
-    ball_in_court_entity_id TEXT,
-    ball_in_court_name TEXT,
+    -- Entity tracking
+    entity_id TEXT,
+    entity_name TEXT,
 
     -- Checklist responses for survey items
     checklist_responses JSONB DEFAULT '{}',  -- { [itemId]: { selection, note } }

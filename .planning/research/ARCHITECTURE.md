@@ -347,7 +347,7 @@ If/when Option C ships, the auth handshake adds an `onAuthenticate(token)` serve
 
 ## 8. Legacy Highlights — Stay Out of the Y.Doc for v2.4
 
-`highlightAnnotations` is a separate React state slice with its own legacy sync path through `documentAnnotationService.js` and dedicated columns (`color`, `opacity`, `name`, `notes`, `category_id`, `module_id`, `space_id`, `checklist_responses`, `ball_in_court_*`). The highlights schema is heavily survey-specific and is **read by the Excel sync subsystem** (`excelGraphService.js`, `excelSessionService.js`) — touching it would cascade into every survey export.
+`highlightAnnotations` is a separate React state slice with its own legacy sync path through `documentAnnotationService.js` and dedicated columns (`color`, `opacity`, `name`, `notes`, `category_id`, `module_id`, `space_id`, `checklist_responses`, `entity_*`). The highlights schema is heavily survey-specific and is **read by the Excel sync subsystem** (`excelGraphService.js`, `excelSessionService.js`) — touching it would cascade into every survey export.
 
 ### Decision: highlights stay on the legacy path through v2.4
 
