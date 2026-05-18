@@ -33,6 +33,10 @@
  */
 
 import { getAnnotationAuthorId } from '../lib/collab/permissionScope.js';
+import {
+  SURVEY_MARKER_TYPE,
+  isSurveyMarkerType,
+} from '../utils/surveyMarkerType.js';
 
 // ----------------------------------------------------------------------------
 // Type mapping: Fabric object kind → DB annotation_type
@@ -69,7 +73,7 @@ const DB_TYPE_TO_FABRIC_DEFAULT = {
 };
 
 const SUPPORTED_DB_TYPES = new Set([
-  'highlight',
+  SURVEY_MARKER_TYPE,
   'ink',
   'freetext',
   'square',
@@ -89,13 +93,13 @@ function hasFabricObjectPayload(row) {
 }
 
 function isLegacyFabricHighlightRow(row) {
-  return row?.annotation_type === 'highlight' && hasFabricObjectPayload(row);
+  return isSurveyMarkerType(row?.annotation_type) && hasFabricObjectPayload(row);
 }
 
 function shouldDeserializeAsFabricObject(row) {
   if (!row) return false;
   if (row.annotation_type === 'callout') return false;
-  if (row.annotation_type === 'highlight') return isLegacyFabricHighlightRow(row);
+  if (isSurveyMarkerType(row.annotation_type)) return isLegacyFabricHighlightRow(row);
   return true;
 }
 
@@ -109,10 +113,10 @@ function getPdfImportDedupeKey(row) {
 
 function preferFabricRow(candidate, current) {
   if (!current) return candidate;
-  if (current.annotation_type === 'highlight' && candidate.annotation_type !== 'highlight') {
+  if (isSurveyMarkerType(current.annotation_type) && !isSurveyMarkerType(candidate.annotation_type)) {
     return candidate;
   }
-  if (candidate.annotation_type === 'highlight' && current.annotation_type !== 'highlight') {
+  if (isSurveyMarkerType(candidate.annotation_type) && !isSurveyMarkerType(current.annotation_type)) {
     return current;
   }
   const candidateTime = Date.parse(candidate.updated_at || candidate.created_at || '');
@@ -298,7 +302,7 @@ export function serializeFabricObjectToRow(fabricObj, opts = {}) {
  */
 export function deserializeRowToFabricObject(row) {
   if (!row) throw new Error('row required');
-  if (row.annotation_type === 'highlight' && !isLegacyFabricHighlightRow(row)) {
+  if (isSurveyMarkerType(row.annotation_type) && !isLegacyFabricHighlightRow(row)) {
     throw new Error(
       'deserializeRowToFabricObject: highlight rows are not Fabric objects — '
       + 'use the highlight-specific deserializer instead.'

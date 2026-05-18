@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SURVEY_MARKER_TYPE, isSurveyMarkerType } from '../src/utils/surveyMarkerType.js';
+import { SURVEY_MARKER_TYPE, SURVEY_MARKER_TYPE_VALUES, isSurveyMarkerType } from '../src/utils/surveyMarkerType.js';
 
 test('canonical type is survey-marker', () => {
   assert.equal(SURVEY_MARKER_TYPE, 'survey-marker');
@@ -19,4 +19,8 @@ test('isSurveyMarkerType rejects other types', () => {
   assert.equal(isSurveyMarkerType('counter'), false);
   assert.equal(isSurveyMarkerType(null), false);
   assert.equal(isSurveyMarkerType(undefined), false);
+});
+
+test('SURVEY_MARKER_TYPE_VALUES contains both accepted values', () => {
+  assert.deepEqual(SURVEY_MARKER_TYPE_VALUES, ['survey-marker', 'highlight']);
 });

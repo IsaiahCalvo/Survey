@@ -10,6 +10,9 @@
 export const SURVEY_MARKER_TYPE = 'survey-marker';
 export const LEGACY_SURVEY_MARKER_TYPE = 'highlight';
 
+// Both accepted annotation_type values, for use in Supabase .in() filters.
+export const SURVEY_MARKER_TYPE_VALUES = [SURVEY_MARKER_TYPE, LEGACY_SURVEY_MARKER_TYPE];
+
 export function isSurveyMarkerType(annotationType) {
   return annotationType === SURVEY_MARKER_TYPE
     || annotationType === LEGACY_SURVEY_MARKER_TYPE;

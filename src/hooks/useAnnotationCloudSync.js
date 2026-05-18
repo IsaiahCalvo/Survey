@@ -59,6 +59,7 @@ import {
 } from '../lib/collab/crdtAnnotationBridge.js';
 import { useYDoc } from './useYDoc.js';
 import { resolveCrdtFanOutAnnotationType } from '../utils/annotationSyncType.js';
+import { isSurveyMarkerType } from '../utils/surveyMarkerType.js';
 import {
   getCalloutSyncFingerprint,
   normalizeCalloutsForSync,
@@ -646,7 +647,7 @@ export function useAnnotationCloudSync({
         summarizeTypeBreakdownValue(__resolvedTypeBreakdown, resolved.annotationType || 'unknown');
         if (!resolved.dispatchable) {
           summarizeTypeBreakdownValue(__skipReasons, resolved.reason || 'unknown');
-          if (resolved.reason === 'highlight' || resolved.reason === 'callout') {
+          if (isSurveyMarkerType(resolved.reason) || resolved.reason === 'callout') {
             __skippedHighlightOrCallout++;
           } else {
             __skippedOtherType++;
@@ -1966,7 +1967,7 @@ export function useAnnotationCloudSync({
               const isImported = fabricObj?.type === 'path' && fabricObj.left == null && Array.isArray(fabricObj.path);
               if (isImported) { skippedImportedOrFiltered++; continue; }
               const annType = fabricObj?.data?.annotationType || fabricObj?.type;
-              if (annType === 'highlight' || annType === 'callout') { skippedImportedOrFiltered++; continue; }
+              if (isSurveyMarkerType(annType) || annType === 'callout') { skippedImportedOrFiltered++; continue; }
               enqueueDualWrite({
                 userId,
                 annoId,

@@ -37,7 +37,8 @@ import { applyFabricCreate } from './crdtAnnotationBridge.js';
 import { buildOrigin } from './originBuilder.js';
 
 // Mirrors annotationCloudSync.js NON_HIGHLIGHT_TYPES (line 26). Backfill
-// excludes 'highlight' rows entirely - Excel-sync carve-out, folded into v2.5.
+// excludes survey-marker rows entirely (both 'highlight' legacy and 'survey-marker'
+// new value) - Excel-sync carve-out, folded into v2.5.
 // CONTEXT.md `<decisions>` "Highlights skipped" (architectural - locked by roadmap).
 export const NON_HIGHLIGHT_TYPES_FOR_BACKFILL = [
   'ink', 'freetext', 'square', 'circle', 'line', 'polyline', 'polygon',

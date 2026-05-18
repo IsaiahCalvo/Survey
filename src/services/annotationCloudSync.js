@@ -42,6 +42,10 @@ import {
 import { applyFabricCommit, applyFabricDelete } from '../lib/collab/crdtAnnotationBridge.js';
 import { isCRDTEnabled } from '../lib/collab/crdtFeatureFlag.js';
 import { enqueue as enqueueDualWrite } from '../lib/collab/crdtDualWriteQueue.js';
+import {
+  isSurveyMarkerType,
+  SURVEY_MARKER_TYPE_VALUES,
+} from '../utils/surveyMarkerType.js';
 
 export const NON_HIGHLIGHT_TYPES = [
   'ink', 'freetext', 'square', 'circle', 'line', 'polyline', 'polygon',
@@ -55,7 +59,7 @@ const SUPABASE_READ_PAGE_CONCURRENCY = 4;
 function isAllTypesOwnedRow(row) {
   if (!row) return false;
   if (NON_HIGHLIGHT_TYPES.includes(row.annotation_type)) return true;
-  return row.annotation_type === 'highlight' && !!row.annotation_data?.fabricObject;
+  return isSurveyMarkerType(row.annotation_type) && !!row.annotation_data?.fabricObject;
 }
 
 async function loadPagedAnnotationRows(documentId, applyFilters) {
@@ -92,7 +96,7 @@ async function loadAllTypesOwnedRowsForDocument(documentId) {
   const legacyFabricHighlights = await loadPagedAnnotationRows(
     documentId,
     (query) => query
-      .eq('annotation_type', 'highlight')
+      .in('annotation_type', SURVEY_MARKER_TYPE_VALUES)
       .not('annotation_data->fabricObject', 'is', null)
   );
   if (legacyFabricHighlights.error) return legacyFabricHighlights;
@@ -490,7 +494,7 @@ export function subscribeToAllNonHighlightAnnotations(documentId, callbacks = {}
       },
       (payload) => {
         const oldRow = payload.old || {};
-        if (oldRow.annotation_type === 'highlight') return; // legacy module owns it
+        if (isSurveyMarkerType(oldRow.annotation_type)) return; // legacy module owns it
         // 2026-04-25 — DO NOT echo-filter DELETEs by user-id. Postgres
         // DELETE payloads only carry the primary key, so we can't
         // recover the originating sessionId. Applying our own DELETE
@@ -560,7 +564,7 @@ export function subscribeToAllNonHighlightAnnotations(documentId, callbacks = {}
 function routeRow(event, row, callbacks, currentUserId, currentSessionId) {
   if (!row) return;
   const type = row.annotation_type;
-  if (type === 'highlight') return; // legacy module owns it
+  if (isSurveyMarkerType(type)) return; // legacy module owns it
 
   // Echo filter — UX rule: a Supabase realtime echo of THIS SESSION's own
   // write would race the user's in-progress UI (counter doubling, pen
@@ -656,7 +660,7 @@ function routeRow(event, row, callbacks, currentUserId, currentSessionId) {
  */
 export async function dualWriteFabricCommit(fabricObj, opts = {}) {
   const annotationType = inferAnnotationTypeForDualWrite(fabricObj, opts);
-  const isHighlight = annotationType === 'highlight';
+  const isHighlight = isSurveyMarkerType(annotationType);
 
   // Plan 30-07 caller seam: when useAnnotationCloudSync's bulk upsert path
   // already fired the legacy write before this fan-out runs (per-page bulk
@@ -754,7 +758,7 @@ export async function dualWriteFabricCommit(fabricObj, opts = {}) {
  * @returns {Promise<{legacy: any, crdt: { ok: boolean } | { error: any } | null}>}
  */
 export async function dualWriteFabricDelete(documentId, annoId, opts = {}) {
-  const isHighlight = opts.annotation_type === 'highlight';
+  const isHighlight = isSurveyMarkerType(opts.annotation_type);
 
   // Plan 30-07 caller seam: same pattern as dualWriteFabricCommit.
   // useAnnotationCloudSync's bulk delete (deleteAnnotations) already removed
