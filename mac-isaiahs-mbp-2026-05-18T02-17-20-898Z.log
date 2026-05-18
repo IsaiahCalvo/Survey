@@ -1,0 +1,127 @@
+===== SurveyApp Save Log =====
+version:   0.1.45
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1203x826
+locale:    en-US
+timestamp: 2026-05-18T02:17:20.896Z (5/17/2026, 10:17:20 PM)
+==============================
+[dev-auto-login] boot {"hasDevEmail":true,"devEmailHint":"isai***","hasDevPassword":true,"hasCachedSession":true,"cachedSessionEmail":"isaiahcalvo123@gmail.com","cachedSessionExpiresAt":1779071386}
+[dev-auto-login] cached session matches dev email, keeping it
+[dev-auto-login] decision {"needsAutoLogin":false,"willAttemptSignIn":false}
+[CloudSync][hook] session id minted {"sessionId":"d4caa269-4c16-4318-a305-e61b49114696"}
+[CloudSync][hook][state-obs] annotationsByPage initial {"currentCount":0,"pages":0,"hydrated":false}
+[CloudSync][hook][state-obs] callouts initial {"currentCount":0,"hydrated":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"hydrateEnabled":true,"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":null}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"hydrateEnabled":true,"hasDocumentId":true,"hasUserId":true,"hasPdfId":false}
+[AnnotationHydrationGate][normal] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":null,"ready":false,"source":"missing-prerequisite","normalReady":false,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true}
+[AnnotationHydrationGate][first-page] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":null,"pageNumber":1,"ready":false,"visualCoverActive":true,"normal":{"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":null,"ready":false,"source":"pending","firstPaintGate":true},"survey":{"ready":true,"source":"local"}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":null,"pageNumber":1,"active":true,"reason":"annotation-hydration-gated"}
+[Cloud render cache] doc=SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080 painting verified cloud snapshot immediately — count=495.
+[CSeries wipe] doc=SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080 totalCounters=0 legacyRemoved=0 — nothing to wipe.
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":null,"alreadyRanFor":null,"willRun":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"hydrateEnabled":true,"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080"}
+[AnnotationHydrationGate][normal] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","ready":false,"source":"starting","normalReady":false,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true}
+[CloudSync][hook] stage=hydrating
+[AnnotationHydrationGate][first-page] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"ready":false,"visualCoverActive":true,"normal":{"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":null,"ready":false,"source":"missing-prerequisite","normalReady":false,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true},"survey":{"ready":false,"source":"supabase-highlight-starting","documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080"}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"active":true,"reason":"annotation-hydration-gated"}
+[AnnotationHydrationGate][first-page] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"ready":false,"visualCoverActive":true,"normal":{"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","ready":false,"source":"starting","normalReady":false,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true},"survey":{"ready":false,"source":"supabase-highlight-starting","documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080"}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"active":true,"reason":"annotation-hydration-gated"}
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","alreadyRanFor":null,"willRun":true}
+[Phase31 UAT] backfill:start {"hasYdoc":true,"hasSupabase":true,"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","markCutoverComplete":true}
+[CloudSync][hook] cutover-complete hydrate — reading from Y.Doc {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","cutoverTs":"2026-05-18T02:05:48.746+00:00"}
+[Phase31 UAT] hydrate:cutover-sealed {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-18T02:05:48.746+00:00","yMapSize":495,"yMapCalloutsSize":0,"materializedTotal":495,"materializedCallouts":0,"materializedDrawnByMe":495,"materializedDrawnByOthers":0,"materializedImported":0,"pages":1,"perPage":{"1":495},"currentStateCount":495,"ydocLooksDegenerate":false}
+[Phase31 UAT] hydrate:cutover-sealed:by-type {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfFile":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","viewerUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapTotal":495,"yMapCalloutsTotal":0,"yMapByType":{"path":1,"polygon":1,"rect":493},"yMapByAuthor":{"byMe":495,"byOthers":0,"anonymous":0},"yMapByTypeByAuthor":{"path":{"byMe":1,"byOthers":0,"anonymous":0},"polygon":{"byMe":1,"byOthers":0,"anonymous":0},"rect":{"byMe":493,"byOthers":0,"anonymous":0}},"yMapPerTypePerPage":{"path":{"unknown":1},"polygon":{"unknown":1},"rect":{"unknown":493}},"byPageTotal":495,"byPageByType":{"path":1,"polygon":1,"rect":493},"byPagePerPagePerType":{"1":{"path":1,"polygon":1,"rect":493}}}
+[CloudSync][hydrate] loadAllNonHighlightAnnotations start {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9"}
+[HIGHLIGHT-SYNC][load.legacy][pdf=SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","totalRows":2,"fabricCarryingDropped":0,"keptCount":2,"keptIds":["highlight-1779059140949-frj1f728o","highlight-1779059167789-838vhdof8"]}
+[AnnotationHydrationGate][survey] supabase highlights complete {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","count":2}
+[AnnotationHydrationGate][first-page] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"ready":false,"visualCoverActive":true,"normal":{"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","ready":false,"source":"starting","normalReady":false,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true},"survey":{"ready":true,"source":"supabase-highlight","documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","count":2}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"active":true,"reason":"annotation-hydration-gated"}
+[PDFImport] skipped embedded PDF annotation import — cloud/Y.Doc is authoritative {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9"}
+[CloudSync][hook] fabric push skipped — not hydrated yet
+[CloudSync][hook] callout push skipped — not hydrated yet
+[CloudSync][realtime] subscribing {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","currentUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","currentSessionId":"d4caa269-4c16-4318-a305-e61b49114696","hasFabricInsert":true,"hasFabricUpdate":true,"hasFabricDelete":true,"hasCalloutInsert":true,"hasCalloutUpdate":true,"hasCalloutDelete":true}
+[Phase31 UAT] backfill:cutover-dedupe-anchor-skip {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapSize":495,"lastGoodSize":495}
+[CloudSync][realtime] subscribe status {"status":"SUBSCRIBED","error":null}
+[Phase31 UAT] post-subscribe catch-up skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-18T02:05:48.746+00:00","ydocAuthoritative":true}
+[CloudSync][hydrate] loadAllNonHighlightAnnotations ok {"elapsedMs":285,"totalRowsScanned":495,"scanned":{"nonHighlight":495,"legacyFabricHighlights":0},"totalRows":495,"rowsByType":{"polygon":1,"ink":1,"square":493},"pagesWithObjects":26,"calloutCount":0}
+[CloudSync][verify] first read summary {"contextLabel":"cutover-source-of-truth","documentId":"00e1cde9-449b-4771-9743-37bd604557a9","elapsedMs":286,"firstFabricPages":26,"firstFabricObjects":495,"firstCallouts":0,"firstEmpty":false,"localFabricCount":495,"localCalloutCount":0,"localHasData":true,"willVerify":false}
+[CloudSync][source-of-truth] cutover initial hydrate selected Supabase durable snapshot {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-18T02:05:48.746+00:00","ydocFabricCount":495,"ydocCalloutCount":0,"supabaseFabricCount":495,"supabaseCalloutCount":0,"rule":"Supabase durable snapshot wins initial load; Y.Doc is reshaped for live collaboration"}
+[Phase31 UAT] save:fan-out done {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","actionType":null,"dispatched":495,"yDocUpdateCount":495,"detected":495,"skippedHighlightOrCallout":0,"skippedOtherType":0,"rawTypeBreakdown":{"polygon":1,"path":1,"rect":493},"resolvedTypeBreakdown":{"polygon":1,"ink":1,"square":493},"skipReasons":{},"skipSamples":[],"yMapSizeAfter":495}
+[CloudSync][hook] callout Y.Doc fan-out done {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","actionType":"callout:delta","upserted":0,"deleted":0,"yDocUpdateCount":0,"yMapCalloutsSizeAfter":0}
+[AnnotationHydrationGate][normal] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","ready":true,"source":"supabase-durable-snapshot","normalReady":true,"cutoverTs":"2026-05-18T02:05:48.746+00:00","count":495,"calloutCount":0,"firstPaintGate":true}
+[AnnotationHydrationGate][first-page] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"ready":true,"visualCoverActive":false,"normal":{"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","ready":true,"source":"supabase-durable-snapshot","normalReady":true,"cutoverTs":"2026-05-18T02:05:48.746+00:00","count":495,"calloutCount":0,"firstPaintGate":true},"survey":{"ready":true,"source":"supabase-highlight","documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","count":2}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"active":false,"reason":"hydration-ready"}
+[PDFCounterImport] summary {"marker":"survey-counter","metadataKey":"SurveyApp","counterAnnotationsImported":0,"plainCirclesImported":0,"counterMetadataParseFailures":0,"appCalloutMarker":"survey-callout","appCalloutMetadataKey":"SurveyAppCallout","appCalloutAnnotationsImported":0,"appCalloutPiecesSkipped":0}
+[PDFAppLayerStateImport] summary {"found":false,"documentId":null,"exportId":null,"scopedAnnotationPages":0,"scopedCallouts":0,"surveyHighlights":0,"spaces":0}
+[PDFImport] native layer policy {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","cloudAuthoritative":true,"reason":"cloud/Y.Doc annotations are authoritative; native PDF annotation layer is hidden when all renderable native annotations are accounted for by importer diagnostics.","pages":{"1":{"hideNativeLayer":true,"nativeRenderableAnnotationCount":2,"nativeOnlyAnnotationCount":0,"reason":"all-renderable-native-annotations-imported-as-editable-app-annotations"},"2":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"3":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"4":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"5":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"6":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"7":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"8":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"9":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"10":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"11":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"12":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"13":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"14":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"15":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"16":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"17":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"18":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"19":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"20":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"21":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"22":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"23":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"24":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"25":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"26":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"27":{"hideN... [truncated 24 chars]
+[PrintPanel] RENDER — panel closed
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[DebugBridge +7814.8ms] pdf_loaded {"pageCount":99,"currentPage":1}
+[DebugBridge +7895.6ms] zoom_start {"scale":0.8799,"targetScale":0.9,"source":"zoomChange"}
+[HyperlinkDiag] post-load scan {"hyperlinkCount":0,"samples":[]}
+[HyperlinkDiag] page 1 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG","IMG","IMG","IMG","e-pv-text-layer"]}
+[HyperlinkDiag] page 2 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG","IMG","e-pv-text-layer","IMG","IMG"]}
+[HyperlinkDiag] page 3 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer","IMG","IMG","IMG","IMG"]}
+[HyperlinkDiag] page 4 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG","e-pv-text-layer","IMG","IMG","IMG"]}
+[HyperlinkDiag] page 5 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 6 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 7 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 8 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 9 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 10 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[DebugBridge +9524.8ms] zoom_end {"source":"zoomChange_settle"}
+[DrawCanvas p1] MOUNT — tool=highlight, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=highlight, isShape=true, isDrawingMode=false
+[DrawCanvas p5] MOUNT — tool=highlight, isShape=true, isDrawingMode=false
+[DrawCanvas p5] shape effect — tool=highlight, isShape=true, isDrawingMode=false
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[DrawCanvas p1] shape effect — tool=highlight, isShape=true, isDrawingMode=false
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[DrawCanvas p4] MOUNT — tool=highlight, isShape=true, isDrawingMode=false
+[DrawCanvas p4] shape effect — tool=highlight, isShape=true, isDrawingMode=false
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[DrawCanvas p5] MOUNT — tool=highlight, isShape=true, isDrawingMode=false
+[DrawCanvas p5] shape effect — tool=highlight, isShape=true, isDrawingMode=false
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[DebugBridge +13773.4ms] zoom_start {"scale":0.679697546823158,"targetScale":1.5,"source":"keyboard_toolbar"}
+[Diag] tool-switch DETECTED → select (scheduling t+1000ms capture)
+[Diag select] screenshot saved (341 KB) → /Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/TestLogs/testlog-screenshot-select.png
+[Diag select] CAPTURED @ t+1000ms — annotations=2 callouts=0 svgWrappers=1 svgVis=[visible] svgElems=0 svgVisElems=0 eraserCanvases=0 svgMarkupBytes=4367
+[DebugBridge +15215.2ms] zoom_end {"source":"zoomChange_settle"}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[DebugBridge +16344.9ms] page_visit_start {"page":4,"pageCount":99,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":true,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +16345.5ms] page_visit_ready {"page":4,"pageCount":99,"revisited":false,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":true,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[DebugBridge +18373.5ms] page_visit_start {"page":1,"pageCount":99,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +18375.1ms] page_visit_ready {"page":1,"pageCount":99,"revisited":false,"waitMs":2,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[DebugBridge +19638.5ms] page_visit_start {"page":4,"pageCount":99,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +19639.5ms] page_visit_ready {"page":4,"pageCount":99,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[DebugBridge +20966.6ms] page_visit_start {"page":1,"pageCount":99,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +20966.9ms] page_visit_ready {"page":1,"pageCount":99,"revisited":true,"waitMs":0,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+
+===== Undo/Redo Chronology =====
+events=1
+lanes=local annotation history | callout history | legacy history | Yjs/CRDT history
+{"seq":1,"order":null,"at":"2026-05-18T02:16:58.296Z","event":"history_reset_for_pdf_change","actionType":"pdf:change","rawActionType":"pdf:change","annotationType":null,"annotationId":null,"pageNumber":null,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+===== End Undo/Redo Chronology =====
