@@ -512,7 +512,7 @@ test('exported hidden app layer state reimports separately from regular PDF anno
     assert.equal(imported.calloutsByPage[1], undefined);
     assert.equal(imported.appLayerState.documentId, 'doc-hidden-layer');
     assert.equal(imported.appLayerState.layers.scopedAnnotationsByPage[1].objects[0].id, 'survey-circle');
-    assert.equal(imported.appLayerState.layers.highlightAnnotations['survey-highlight'].moduleId, 'module-a');
+    assert.equal(imported.appLayerState.layers.surveyMarkers['survey-highlight'].moduleId, 'module-a');
     assert.equal(imported.appLayerState.layers.spaces[0].id, 'space-a');
     assert.equal(imported.appLayerState.layers.callouts[0].id, 'region-callout');
   } finally {

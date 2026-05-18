@@ -3303,7 +3303,12 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
     exportId: appLayerState?.exportId || null,
     scopedAnnotationPages: Object.keys(appLayerState?.layers?.scopedAnnotationsByPage || {}).length,
     scopedCallouts: Array.isArray(appLayerState?.layers?.callouts) ? appLayerState.layers.callouts.length : 0,
-    surveyHighlights: Object.keys(appLayerState?.layers?.highlightAnnotations || {}).length,
+    // readSurveyMarkerLayer handles both new 'surveyMarkers' and legacy 'highlightAnnotations'
+    surveyHighlights: Object.keys(
+      appLayerState?.layers?.surveyMarkers ||
+      appLayerState?.layers?.highlightAnnotations ||
+      {}
+    ).length,
     spaces: Array.isArray(appLayerState?.layers?.spaces) ? appLayerState.layers.spaces.length : 0,
   }));
 

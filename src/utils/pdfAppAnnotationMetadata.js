@@ -1,3 +1,5 @@
+import { SURVEY_MARKER_TYPE, isSurveyMarkerType } from './surveyMarkerType.js';
+
 export const PDF_APP_ANNOTATION_METADATA_KEY = 'SurveyAppAnnotation';
 export const PDF_APP_ANNOTATION_SUBJECT = 'survey-app-annotation';
 export const PDF_APP_ANNOTATION_METADATA_VERSION = 1;
@@ -13,6 +15,7 @@ const DATA_ALLOWLIST = [
   'source',
   'sourceType',
   'isSurveyHighlight',
+  'isSurveyMarker',
   'pdfInkRenderMode',
   'pdfLineEndings',
   'pdfIntent',
@@ -121,7 +124,11 @@ function pickData(data) {
 }
 
 function resolveAppType(fabricObj, item = {}) {
-  if (item.type === 'highlight' || fabricObj?.exportType === 'highlight') return 'highlight';
+  // Survey markers (formerly "highlights") — write the new type name; reading
+  // still works via isSurveyMarkerType which accepts both old and new values.
+  if (isSurveyMarkerType(item.type) || isSurveyMarkerType(fabricObj?.exportType)) {
+    return SURVEY_MARKER_TYPE;
+  }
   if (fabricObj?.data?.type && fabricObj.data.type !== 'counter') return fabricObj.data.type;
   if (fabricObj?.tool === 'arrow') return 'arrow';
   return fabricObj?.exportType || fabricObj?.type || item.type || null;
@@ -164,7 +171,9 @@ export function buildPdfAppAnnotationMetadata(fabricObj, item = {}) {
     flags: {
       tool: fabricObj.tool || null,
       exportType: fabricObj.exportType || null,
-      isSurveyHighlight: item.type === 'highlight' || fabricObj.exportType === 'highlight',
+      // New name written going forward; legacy PDFs carry isSurveyHighlight —
+      // both are kept in DATA_ALLOWLIST so old blobs still parse correctly.
+      isSurveyMarker: isSurveyMarkerType(item.type) || isSurveyMarkerType(fabricObj.exportType),
       lineEnding1: fabricObj.lineEnding1 || fabricObj.data?.lineEnding1 || null,
       lineEnding2: fabricObj.lineEnding2 || fabricObj.data?.lineEnding2 || null,
       arrowheadStyle: fabricObj.arrowheadStyle || fabricObj.data?.arrowheadStyle || null,
@@ -252,7 +261,8 @@ export function applyPdfAppAnnotationMetadata(fabricObj, metadata) {
     out.arrowheadStyle = metadata.flags.arrowheadStyle;
   }
 
-  if (metadata.appType === 'highlight') {
+  // Accept both new ('survey-marker') and legacy ('highlight') appType values.
+  if (isSurveyMarkerType(metadata.appType)) {
     out.highlightId = metadata.id;
     if (style?.fill !== undefined) out.fill = style.fill;
     if (style?.opacity !== undefined) out.opacity = style.opacity;
@@ -306,7 +316,10 @@ export function buildPdfAppLayerStateMetadata({
   exportId = null,
   annotationsByPage = {},
   callouts = [],
+  // Accept both 'highlightAnnotations' (legacy callers) and 'surveyMarkers'
+  // (new callers). highlightAnnotations kept for backward API compat.
   highlightAnnotations = {},
+  surveyMarkers,
   spaces = [],
 } = {}) {
   const scopedAnnotationsByPage = {};
@@ -322,15 +335,18 @@ export function buildPdfAppLayerStateMetadata({
   });
 
   const scopedCallouts = (Array.isArray(callouts) ? callouts : []).filter((callout) => hasScopedLayer(callout));
-  const highlights = highlightAnnotations && typeof highlightAnnotations === 'object'
-    ? cloneJson(highlightAnnotations)
+  // Prefer the explicit surveyMarkers param if provided; fall back to the
+  // legacy highlightAnnotations param so existing callers keep working.
+  const markerSource = surveyMarkers !== undefined ? surveyMarkers : highlightAnnotations;
+  const markers = markerSource && typeof markerSource === 'object'
+    ? cloneJson(markerSource)
     : {};
   const normalizedSpaces = sanitizeSpacesForMetadata(spaces);
 
   const hasPayload = (
     Object.keys(scopedAnnotationsByPage).length > 0
     || scopedCallouts.length > 0
-    || Object.keys(highlights || {}).length > 0
+    || Object.keys(markers || {}).length > 0
     || normalizedSpaces.length > 0
   );
 
@@ -346,10 +362,26 @@ export function buildPdfAppLayerStateMetadata({
     layers: {
       scopedAnnotationsByPage,
       callouts: cloneJson(scopedCallouts),
-      highlightAnnotations: highlights || {},
+      // New key — readers must also check legacy key via readSurveyMarkerLayer.
+      surveyMarkers: markers || {},
       spaces: normalizedSpaces || [],
     },
   };
+}
+
+// Reads the survey-marker layer out of a parsed SurveyAppLayerState blob.
+// New PDFs store it under layers.surveyMarkers; PDFs saved before the
+// Survey Marker rename store it under layers.highlightAnnotations.
+export function readSurveyMarkerLayer(parsed) {
+  const layers = parsed && parsed.layers;
+  if (!layers || typeof layers !== 'object') return {};
+  if (layers.surveyMarkers && typeof layers.surveyMarkers === 'object') {
+    return layers.surveyMarkers;
+  }
+  if (layers.highlightAnnotations && typeof layers.highlightAnnotations === 'object') {
+    return layers.highlightAnnotations;
+  }
+  return {};
 }
 
 export function serializePdfAppLayerStateMetadata(payload) {

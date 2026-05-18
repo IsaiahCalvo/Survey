@@ -281,7 +281,7 @@ test('printable regular annotation filter excludes survey highlights', () => {
   });
 
   assert.deepEqual(payload.highlightAnnotations, {});
-  assert.equal(payload.diagnostics.excluded.surveyHighlights, 4);
+  assert.equal(payload.diagnostics.excluded.surveyMarkers, 4);
 });
 
 test('printable regular annotation filter includes regular counters and excludes scoped counters', () => {
@@ -671,7 +671,7 @@ test('PDF export stores survey, space, and region layers as hidden app metadata'
     assert.equal(metadata.documentId, 'doc-layer-state');
     assert.deepEqual(Object.keys(metadata.layers.scopedAnnotationsByPage), ['1']);
     assert.equal(metadata.layers.scopedAnnotationsByPage[1].objects[0].id, 'survey-circle');
-    assert.equal(metadata.layers.highlightAnnotations['survey-highlight'].moduleId, 'module-a');
+    assert.equal(metadata.layers.surveyMarkers['survey-highlight'].moduleId, 'module-a');
     assert.equal(metadata.layers.spaces[0].id, 'space-a');
     assert.deepEqual(metadata.layers.spaces[0].assignedPages[0].regions.map((region) => region.regionId), ['region-a']);
     assert.equal(metadata.layers.callouts[0].id, 'region-callout');
@@ -794,7 +794,8 @@ test('PDF export embeds app annotation metadata on ordinary app-created annotati
     assert.equal(arrowMetadata.flags.lineEnding2, 'ClosedArrow');
     assert.equal(arrowMetadata.geometry.lineEnding2, 'ClosedArrow');
     const highlightMetadata = metadata.find((entry) => entry.id === 'meta-highlight');
-    assert.equal(highlightMetadata.appType, 'highlight');
+    // New saves write 'survey-marker'; old PDFs carry 'highlight' (both accepted on read).
+    assert.equal(highlightMetadata.appType, 'survey-marker');
     assert.equal(highlightMetadata.style.fill, '#facc15');
     assert.equal(highlightMetadata.style.opacity, 0.35);
   } finally {

@@ -23,6 +23,7 @@ import {
   serializePdfAppLayerStateMetadata,
   serializePdfAppAnnotationMetadata,
 } from './pdfAppAnnotationMetadata.js';
+import { isSurveyMarkerType } from './surveyMarkerType.js';
 import {
   ANNOTATION_VISIBILITY_SCOPE,
   getAnnotationVisibilityScope,
@@ -123,7 +124,7 @@ export function buildPrintableRegularAnnotationPayload({
       fabric: 0,
       callouts: 0,
       counters: 0,
-      surveyHighlights: Object.keys(highlightAnnotations || {}).length,
+      surveyMarkers: Object.keys(highlightAnnotations || {}).length,
       importedPdfNativePreserved: 0,
     },
     excludedByScope: {
@@ -148,7 +149,7 @@ export function buildPrintableRegularAnnotationPayload({
     objects.forEach((obj) => {
       const isCounter = obj?.data?.type === 'counter';
       if (obj?.highlightId) {
-        diagnostics.excluded.surveyHighlights += 1;
+        diagnostics.excluded.surveyMarkers += 1;
         return;
       }
       if (obj?.isPdfImported || obj?.pdfAnnotationId) {
@@ -254,7 +255,7 @@ const highlightToFabricRect = (highlight, highlightId) => {
   if (!bounds) return null;
   return {
     type: 'rect',
-    exportType: 'highlight',
+    exportType: 'survey-marker',
     highlightId,
     left: bounds.left,
     top: bounds.top,
@@ -323,8 +324,8 @@ export function buildPdfExportAnnotationPlan({
       return;
     }
 
-    if (item.source === 'survey-highlight') {
-      recordSkip(diagnostics, item, 'survey-highlight-export-excluded');
+    if (item.source === 'survey-marker') {
+      recordSkip(diagnostics, item, 'survey-marker-export-excluded');
       return;
     }
 
@@ -344,11 +345,11 @@ export function buildPdfExportAnnotationPlan({
     }
 
     if (item.source === 'fabric' && obj?.highlightId) {
-      recordSkip(diagnostics, item, 'legacy-survey-highlight-rendered-from-highlight-state');
+      recordSkip(diagnostics, item, 'legacy-survey-marker-rendered-from-marker-state');
       return;
     }
 
-    if (!EXPORTABLE_FABRIC_TYPES.has(item.fabricType) && item.type !== 'callout' && item.type !== 'highlight') {
+    if (!EXPORTABLE_FABRIC_TYPES.has(item.fabricType) && item.type !== 'callout' && !isSurveyMarkerType(item.type)) {
       recordSkip(diagnostics, item, 'unsupported-type');
       return;
     }
@@ -386,10 +387,10 @@ export function buildPdfExportAnnotationPlan({
     const regionId = highlight?.regionId ?? null;
     const derivedSpaceId = regionId ? getSpaceIdForRegionFromSpaces(regionId, spaces) : null;
     const item = {
-      source: 'survey-highlight',
+      source: 'survey-marker',
       pageNumber,
       id: highlightId,
-      type: 'highlight',
+      type: 'survey-marker',
       fabricType: 'rect',
       scope,
       moduleId: highlight?.moduleId ?? highlight?.spaceId ?? null,
@@ -1473,7 +1474,8 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
           annotRef = createInkAnnotation(pdfDoc, page, obj, pageHeight, appAnnotationOptions);
           break;
         case 'rect':
-          if (item.type === 'highlight') {
+          // isSurveyMarkerType accepts both 'survey-marker' (new) and 'highlight' (legacy)
+          if (isSurveyMarkerType(item.type)) {
             annotRef = createHighlightAnnotation(pdfDoc, page, obj, pageHeight, appAnnotationOptions);
           } else {
             annotRef = createSquareAnnotation(pdfDoc, page, obj, pageHeight, appAnnotationOptions);
