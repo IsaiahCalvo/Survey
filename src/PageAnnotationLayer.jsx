@@ -3120,7 +3120,7 @@ const ensureRgbaOpacity = (color, opacity = 0.2) => {
 
 const DEFAULT_SURVEY_HIGHLIGHT_OPACITY = 0.4;
 
-const normalizeHighlightColor = (color, fallbackOpacity = DEFAULT_SURVEY_HIGHLIGHT_OPACITY) => {
+const normalizeSurveyMarkerColor = (color, fallbackOpacity = DEFAULT_SURVEY_HIGHLIGHT_OPACITY) => {
   if (!color || typeof color !== 'string') {
     return null;
   }
@@ -3188,7 +3188,7 @@ const PageAnnotationLayer = memo(({
   height,
   scale,
   canvasTopPadding = 12,
-  tool = 'pan', // 'pen' | 'highlighter' | 'eraser' | 'text' | 'rect' | 'ellipse' | 'line' | 'arrow' | 'underline' | 'strikeout' | 'squiggly' | 'note' | 'highlight'
+  tool = 'pan', // 'pen' | 'highlighter' | 'eraser' | 'text' | 'rect' | 'ellipse' | 'line' | 'arrow' | 'underline' | 'strikeout' | 'squiggly' | 'note' | 'survey-marker'
   strokeColor = '#DC3545',
   strokeWidth = 3,
   arrowheadStyle = ARROWHEAD_STYLES.SOLID_TRIANGLE,
@@ -5005,7 +5005,7 @@ const PageAnnotationLayer = memo(({
 
     // Update cursors
     // Set cursor based on tool (Using 'none' for eraser to hide native cursor)
-    const shapeTools = ['rect', 'ellipse', 'line', 'arrow', 'callout', 'highlight', 'squiggly', 'counter'];
+    const shapeTools = ['rect', 'ellipse', 'line', 'arrow', 'callout', 'survey-marker', 'squiggly', 'counter'];
     canvas.defaultCursor = (tool === 'eraser' ? 'none' : (tool === 'select' ? 'default' : (tool === 'text' ? 'text' : (shapeTools.includes(tool) ? 'crosshair' : (canvas.isDrawingMode ? 'crosshair' : 'default')))));
     canvas.hoverCursor = tool === 'eraser' ? 'none' : (tool === 'select' ? 'move' : (tool === 'pan' ? 'grab' : 'move'));
     canvas.moveCursor = tool === 'eraser' ? 'none' : 'move';
@@ -6602,7 +6602,7 @@ const PageAnnotationLayer = memo(({
       if (currentTool === 'counter') {
         console.log(`[Counter p${pageNumber}] REACHED shape tools dispatch section — currentTool=${currentTool}`);
       }
-      if (currentTool === 'highlight') {
+      if (currentTool === 'survey-marker') {
         // Highlight tool: create a clear selection rectangle (transparent fill, visible border)
         temp = new Rect({
           left: x,
@@ -7156,7 +7156,7 @@ const PageAnnotationLayer = memo(({
       }
 
       // Handle highlight tool: create rectangle and call callback
-      if (currentTool === 'highlight' && ds.tempObj.type === 'rect') {
+      if (currentTool === 'survey-marker' && ds.tempObj.type === 'rect') {
         const rect = ds.tempObj;
         const rectLeft = rect.left;
         const rectTop = rect.top;
@@ -7378,9 +7378,9 @@ const PageAnnotationLayer = memo(({
       saveCanvas('annotation:create', { tool: currentTool });
     };
 
-    const getSurveyHighlightIdAtPointer = (nativeEvent) => {
+    const getSurveyMarkerIdAtPointer = (nativeEvent) => {
       const currentTool = toolRef.current;
-      if (currentTool === 'eraser' || currentTool === 'highlight') return null;
+      if (currentTool === 'eraser' || currentTool === 'survey-marker') return null;
 
       const pointer = canvas.getPointer(nativeEvent);
       const objects = canvas.getObjects();
@@ -7399,7 +7399,7 @@ const PageAnnotationLayer = memo(({
     };
 
     const handleDblClick = (opt) => {
-      const highlightId = opt.target?.highlightId || getSurveyHighlightIdAtPointer(opt.e);
+      const highlightId = opt.target?.highlightId || getSurveyMarkerIdAtPointer(opt.e);
       if (highlightId) {
         onHighlightClickedRef.current?.(highlightId);
         return;
@@ -8369,7 +8369,7 @@ const PageAnnotationLayer = memo(({
     // Prevent Fabric.js from finding targets for eraser tool - we handle it ourselves with geometry checks
     canvas.skipTargetFind = tool === 'eraser';
     // Set cursor based on tool (Using 'none' for eraser to hide native cursor)
-    const shapeToolsForCursor = ['rect', 'ellipse', 'line', 'arrow', 'callout', 'highlight', 'squiggly', 'counter'];
+    const shapeToolsForCursor = ['rect', 'ellipse', 'line', 'arrow', 'callout', 'survey-marker', 'squiggly', 'counter'];
     canvas.defaultCursor = (tool === 'eraser' ? 'none' : (tool === 'select' ? 'default' : (tool === 'text' ? 'text' : (shapeToolsForCursor.includes(tool) ? 'crosshair' : (canvas.isDrawingMode ? 'crosshair' : 'default')))));
     canvas.hoverCursor = tool === 'eraser' ? 'none' : (tool === 'select' ? 'move' : (tool === 'pan' ? 'grab' : 'move'));
     canvas.moveCursor = tool === 'eraser' ? 'none' : 'move';
@@ -8396,7 +8396,7 @@ const PageAnnotationLayer = memo(({
     canvas.getObjects().forEach((obj, idx) => {
       // Only update interactivity based on tool - don't touch visibility
       // The main visibility filter will have already set visibility correctly
-      const isSelectable = tool !== 'pen' && tool !== 'highlighter' && tool !== 'highlight';
+      const isSelectable = tool !== 'pen' && tool !== 'highlighter' && tool !== 'survey-marker';
       // Callouts should only be evented when using select, pan, or callout tool to prevent blocking other annotation tools
       const isCallout = obj.data?.type === 'callout';
       const shouldBeEvented = isSelectable && (!isCallout || tool === 'select' || tool === 'pan' || tool === 'callout');
@@ -8462,7 +8462,7 @@ const PageAnnotationLayer = memo(({
 
           // Check if properties match (color, needsEntity, bounds)
           const rawColor = highlight.color || highlightColor;
-          const color = normalizeHighlightColor(rawColor) || highlightColor;
+          const color = normalizeSurveyMarkerColor(rawColor) || highlightColor;
           const renderScale = currentZoom || scale;
 
           // Check bounds
@@ -8580,8 +8580,8 @@ const PageAnnotationLayer = memo(({
             stroke: '#4A90E2',
             strokeWidth: 2,
             strokeDashArray: [5, 5],
-            selectable: toolRef.current !== 'pen' && toolRef.current !== 'highlighter' && toolRef.current !== 'highlight',
-            evented: toolRef.current !== 'pen' && toolRef.current !== 'highlighter' && toolRef.current !== 'highlight',
+            selectable: toolRef.current !== 'pen' && toolRef.current !== 'highlighter' && toolRef.current !== 'survey-marker',
+            evented: toolRef.current !== 'pen' && toolRef.current !== 'highlighter' && toolRef.current !== 'survey-marker',
             excludeFromExport: false,
             strokeUniform: true,
             globalCompositeOperation: 'multiply',
@@ -8651,7 +8651,7 @@ const PageAnnotationLayer = memo(({
         } else {
           // Use color from highlight data if provided, otherwise use default, and preserve stored opacity
           const rawColor = highlight.color || highlightColor;
-          const color = normalizeHighlightColor(rawColor) || highlightColor;
+          const color = normalizeSurveyMarkerColor(rawColor) || highlightColor;
           // Convert PDF coordinates to canvas coordinates (multiply by actual zoom)
           const renderScale = currentZoom || scale;
           const rect = new Rect({
@@ -8661,8 +8661,8 @@ const PageAnnotationLayer = memo(({
             height: highlight.height,
             fill: color,
             stroke: 'transparent',
-            selectable: toolRef.current !== 'pen' && toolRef.current !== 'highlighter' && toolRef.current !== 'highlight',
-            evented: toolRef.current !== 'pen' && toolRef.current !== 'highlighter' && toolRef.current !== 'highlight',
+            selectable: toolRef.current !== 'pen' && toolRef.current !== 'highlighter' && toolRef.current !== 'survey-marker',
+            evented: toolRef.current !== 'pen' && toolRef.current !== 'highlighter' && toolRef.current !== 'survey-marker',
             excludeFromExport: false,
             strokeUniform: true,
             globalCompositeOperation: 'multiply',
@@ -9204,7 +9204,7 @@ const PageAnnotationLayer = memo(({
         height: '100%',
         marginTop: '0px',
         paddingTop: `${canvasTopPadding}px`,
-        pointerEvents: (tool === 'pen' || tool === 'highlighter' || tool === 'eraser' || tool === 'select' || tool === 'pan' || tool === 'text' || tool === 'rect' || tool === 'ellipse' || tool === 'line' || tool === 'arrow' || tool === 'callout' || tool === 'underline' || tool === 'strikeout' || tool === 'squiggly' || tool === 'note' || tool === 'highlight' || tool === 'counter') ? 'auto' : 'none',
+        pointerEvents: (tool === 'pen' || tool === 'highlighter' || tool === 'eraser' || tool === 'select' || tool === 'pan' || tool === 'text' || tool === 'rect' || tool === 'ellipse' || tool === 'line' || tool === 'arrow' || tool === 'callout' || tool === 'underline' || tool === 'strikeout' || tool === 'squiggly' || tool === 'note' || tool === 'survey-marker' || tool === 'counter') ? 'auto' : 'none',
         zIndex: 10,
       }}
       data-pal-root={pageNumber}
@@ -9216,7 +9216,7 @@ const PageAnnotationLayer = memo(({
           position: 'absolute',
           top: 0,
           left: 0,
-          cursor: (tool === 'pen' || tool === 'highlighter' || tool === 'highlight') ? 'crosshair' : 'default'
+          cursor: (tool === 'pen' || tool === 'highlighter' || tool === 'survey-marker') ? 'crosshair' : 'default'
         }}
       />
 

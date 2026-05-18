@@ -525,8 +525,8 @@ const FabricDrawingCanvas = memo(({
       drawDiagGestureRef.current = beginAnnotationGesture({
         surface: 'FabricDrawingCanvas',
         tool: activeToolRef.current,
-        type: activeToolRef.current === 'highlight' ? 'survey-highlight' : activeToolRef.current,
-        action: activeToolRef.current === 'highlight' ? 'survey-highlight-draw' : `${activeToolRef.current}-draw`,
+        type: activeToolRef.current === 'survey-marker' ? 'survey-marker' : activeToolRef.current,
+        action: activeToolRef.current === 'survey-marker' ? 'survey-marker-draw' : `${activeToolRef.current}-draw`,
         pointerDown: true,
         pageNumber,
       });
@@ -548,7 +548,7 @@ const FabricDrawingCanvas = memo(({
           left: pointer.x, top: pointer.y, width: 0, height: 0,
           fill: 'transparent', stroke: color, strokeWidth: sw, strokeUniform: true,
         });
-      } else if (tool === 'highlight') {
+      } else if (tool === 'survey-marker') {
         state.shape = new fabric.Rect({
           left: pointer.x, top: pointer.y, width: 0, height: 0,
           fill: 'transparent',
@@ -592,13 +592,13 @@ const FabricDrawingCanvas = memo(({
       const state = shapeDrawingRef.current;
       if (!state.isDrawing || !state.shape) return;
       markAnnotationPreviewFrame(drawDiagGestureRef.current, {
-        action: activeToolRef.current === 'highlight' ? 'survey-highlight-draw' : `${activeToolRef.current}-draw`,
+        action: activeToolRef.current === 'survey-marker' ? 'survey-marker-draw' : `${activeToolRef.current}-draw`,
       });
       const pointer = getPointer(opt);
       state.lastMovePointer = { x: pointer.x, y: pointer.y };
       const tool = activeToolRef.current;
 
-      if (tool === 'rect' || tool === 'highlight') {
+      if (tool === 'rect' || tool === 'survey-marker') {
         if (tool === 'rect') {
           updateBoundaryShapeFromPointer(state.shape, pointer, tool);
         } else {
@@ -634,7 +634,7 @@ const FabricDrawingCanvas = memo(({
       }
       state.isDrawing = false;
       markAnnotationPointerRelease(drawDiagGestureRef.current, {
-        action: activeToolRef.current === 'highlight' ? 'survey-highlight-draw' : `${activeToolRef.current}-draw`,
+        action: activeToolRef.current === 'survey-marker' ? 'survey-marker-draw' : `${activeToolRef.current}-draw`,
       });
 
       // Only commit if shape has meaningful size
@@ -644,7 +644,7 @@ const FabricDrawingCanvas = memo(({
       if (tool === 'rect') {
         const b = s._drawOuterBounds;
         hasSize = (b?.width ?? s.width) > 2 && (b?.height ?? s.height) > 2;
-      } else if (tool === 'highlight') hasSize = s.width > 2 && s.height > 2;
+      } else if (tool === 'survey-marker') hasSize = s.width > 2 && s.height > 2;
       else if (tool === 'ellipse') {
         const b = s._drawOuterBounds;
         hasSize = (b?.width ?? s.rx * 2) > 2 && (b?.height ?? s.ry * 2) > 2;
@@ -672,17 +672,17 @@ const FabricDrawingCanvas = memo(({
         if (tool === 'line' || tool === 'arrow') {
           s.set({ strokeDashArray: null, opacity: 1 });
         }
-        if (tool === 'highlight') {
-          // Survey highlights route through handleHighlightCreated so the
-          // highlightAnnotations state + Supabase sync path used by PAL
+        if (tool === 'survey-marker') {
+          // Survey markers route through handleHighlightCreated so the
+          // surveyMarkers state + Supabase sync path used by PAL
           // stays authoritative. The fabric preview gets removed here (no
           // commitShape → no entry in pageAnnotations.objects); SVG paints
           // the persisted highlight next render.
           canvas.remove(s);
           recordAnnotationCommit({
             surface: 'FabricDrawingCanvas',
-            source: 'survey-highlight:create',
-            action: 'survey-highlight-draw',
+            source: 'survey-marker:create',
+            action: 'survey-marker-draw',
             pageNumber,
           });
           if (onHighlightCreatedRef.current) {
