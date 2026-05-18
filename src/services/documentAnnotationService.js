@@ -19,7 +19,7 @@ import {
 
 const SUPABASE_PAGE_SIZE = 1000;
 
-const isLegacyFabricHighlightRow = (row) =>
+const isLegacyFabricSurveyMarkerRow = (row) =>
   isSurveyMarkerType(row?.annotation_type) && !!row.annotation_data?.fabricObject;
 
 const classifyAnnotationSyncError = (error) => {
@@ -75,16 +75,16 @@ const classifyAnnotationSyncError = (error) => {
  * ink stroke (annotation_type='ink') in the cloud, the row got pulled into
  * the legacy `surveyMarkers` state map with empty/null survey marker
  * fields. The legacy sync useEffect then immediately re-pushed the same
- * row with `annotation_type: 'highlight'` and `bounds: {}`, OVERWRITING
+ * row with `annotation_type: 'survey-marker'` and `bounds: {}`, OVERWRITING
  * the ink stroke's annotation_data via the (document_id, highlight_id)
  * upsert conflict resolution. The new cloud-sync hook on every device
  * filters its hydrate query by NON_HIGHLIGHT_TYPES, so the now-corrupted
  * row was excluded and devices showed empty pages on next refresh.
  *
- * Filtering this loader by annotation_type='highlight' keeps the legacy
- * highlight pipeline strictly highlight-only, so ink/shape/text/callout
+ * Filtering this loader by annotation_type='survey-marker' keeps the legacy
+ * surveyMarker pipeline strictly surveyMarker-only, so ink/shape/text/callout
  * rows owned by the new cloud-sync hook are never round-tripped through
- * highlight format.
+ * surveyMarker format.
  */
 export async function getDocumentAnnotations(documentId) {
   if (!documentId) return { data: [], error: null };
@@ -108,7 +108,7 @@ export async function getDocumentAnnotations(documentId) {
     if (!data || data.length < SUPABASE_PAGE_SIZE) break;
   }
 
-  const filteredRows = rows.filter((row) => !isLegacyFabricHighlightRow(row));
+  const filteredRows = rows.filter((row) => !isLegacyFabricSurveyMarkerRow(row));
   // Bug 1/2 diag — count what the legacy hydrate kept versus dropped. If a
   // survey marker ever shows up DARKER on the second device, this log + the SVG
   // layer's surveyMarkerSkip log answer "did the same row come through
@@ -374,12 +374,12 @@ export function subscribeToDocumentAnnotations(documentId, callbacks = {}) {
         filter: `document_id=eq.${documentId}`
       },
       (payload) => {
-        // 2026-04-27 — Skip non-highlight rows. The new cloud-sync hook
+        // 2026-04-27 — Skip non-surveyMarker rows. The new cloud-sync hook
         // owns ink/shape/text/callout/etc. via its own subscription;
         // routing those rows through this legacy callback corrupts them
         // (see getDocumentAnnotations comment for the data-loss chain).
         if (!isSurveyMarkerType(payload.new?.annotation_type)) return;
-        if (isLegacyFabricHighlightRow(payload.new)) return;
+        if (isLegacyFabricSurveyMarkerRow(payload.new)) return;
         if (onInsert) {
           onInsert(convertToLocalFormat(payload.new));
         }
@@ -395,7 +395,7 @@ export function subscribeToDocumentAnnotations(documentId, callbacks = {}) {
       },
       (payload) => {
         if (!isSurveyMarkerType(payload.new?.annotation_type)) return;
-        if (isLegacyFabricHighlightRow(payload.new)) return;
+        if (isLegacyFabricSurveyMarkerRow(payload.new)) return;
         if (onUpdate) {
           onUpdate(convertToLocalFormat(payload.new), convertToLocalFormat(payload.old));
         }
@@ -412,10 +412,10 @@ export function subscribeToDocumentAnnotations(documentId, callbacks = {}) {
       (payload) => {
         // DELETE payloads can carry the old row when REPLICA IDENTITY FULL
         // is set. Only forward to the legacy handler if the deleted row
-        // was actually a highlight; otherwise the new cloud-sync hook
+        // was actually a surveyMarker; otherwise the new cloud-sync hook
         // handles it.
         if (payload.old?.annotation_type && !isSurveyMarkerType(payload.old.annotation_type)) return;
-        if (isLegacyFabricHighlightRow(payload.old)) return;
+        if (isLegacyFabricSurveyMarkerRow(payload.old)) return;
         if (onDelete) {
           onDelete(payload.old.highlight_id, convertToLocalFormat(payload.old));
         }

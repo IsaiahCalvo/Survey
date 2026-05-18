@@ -6,7 +6,7 @@ const APP_SOURCE = readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf
 const CLOUD_SYNC_SOURCE = readFileSync(new URL('../src/hooks/useAnnotationCloudSync.js', import.meta.url), 'utf8');
 
 test('cloud-backed survey highlights are not painted from localStorage before Supabase settles', () => {
-  assert.match(APP_SOURCE, /const loadedHighlights = isCloudBackedDoc \? \{\} : loadSurveyMarkers\(id\);/);
+  assert.match(APP_SOURCE, /const loadedSurveyMarkers = isCloudBackedDoc \? \{\} : loadSurveyMarkers\(id\);/);
   assert.match(APP_SOURCE, /setSurveyMarkers\(remoteAnnotations \|\| \{\}\);/);
   assert.match(APP_SOURCE, /source: 'supabase-highlight'/);
 });

@@ -1565,7 +1565,7 @@ const SVGAnnotationLayer = memo(({
       // dropped because it carries a highlightId. This bucket should match the
       // count of survey markers rendered through the dedicated memo. If a
       // survey marker ID appears in the layer WITHOUT an entry here, it
-      // means the deserializer-stamp regression is back and the same highlight
+      // means the deserializer-stamp regression is back and the same surveyMarker
       // is rendering twice. Inspect via window.__diagSVGFilterStats[page].
       surveyMarkerSkip: [],
     };
@@ -1600,7 +1600,7 @@ const SVGAnnotationLayer = memo(({
       if (obj.highlightId) {
         // Bug 1 diag — track every skip so the user can compare against the
         // surveyMarkerElements render set; a mismatch means the de-
-        // serializer regression is back and the same highlight is rendering
+        // serializer regression is back and the same surveyMarker is rendering
         // twice (darker on second device).
         dropReasons.surveyMarkerSkip.push({ i, highlightId: obj.highlightId });
         continue;
@@ -1859,7 +1859,7 @@ const SVGAnnotationLayer = memo(({
 
     const elements = [];
     const dropReasons = {
-      nullHighlight: [],
+      nullSurveyMarker: [],
       spaceMismatch: [],
       surveyHidden: [],
       scopedRegionHidden: [],
@@ -1868,7 +1868,7 @@ const SVGAnnotationLayer = memo(({
     for (let i = 0; i < surveyMarkers.length; i++) {
       const h = surveyMarkers[i];
       if (!h) {
-        dropReasons.nullHighlight.push({ i });
+        dropReasons.nullSurveyMarker.push({ i });
         continue;
       }
 
@@ -1989,7 +1989,7 @@ const SVGAnnotationLayer = memo(({
           hasActiveRegions,
         },
         dropReasons: {
-          nullHighlight: dropReasons.nullHighlight.length,
+          nullSurveyMarker: dropReasons.nullSurveyMarker.length,
           spaceMismatch: dropReasons.spaceMismatch.length,
           surveyHidden: dropReasons.surveyHidden.length,
           scopedRegionHidden: dropReasons.scopedRegionHidden.length,
@@ -2321,8 +2321,8 @@ const SVGAnnotationLayer = memo(({
           angle: normalizeDegreesValue(preview.angle),
         }
       : entry.bbox;
-    const isSelectedHighlight = selectedSurveyMarkerId === highlightId;
-    const isHoveredHighlight = hoveredSurveyMarkerId === highlightId;
+    const isSelectedSurveyMarker = selectedSurveyMarkerId === highlightId;
+    const isHoveredSurveyMarker = hoveredSurveyMarkerId === highlightId;
     const centerX = bbox.left + bbox.width / 2;
     const centerY = bbox.top + bbox.height / 2;
     const rotationTransform = bbox.angle
@@ -2348,7 +2348,7 @@ const SVGAnnotationLayer = memo(({
             mixBlendMode: bbox.globalCompositeOperation === 'multiply' ? 'multiply' : undefined,
           }}
         />
-        {isHoveredHighlight && !isSelectedHighlight && (
+        {isHoveredSurveyMarker && !isSelectedSurveyMarker && (
           <rect
             x={bbox.left}
             y={bbox.top}
@@ -2377,7 +2377,7 @@ const SVGAnnotationLayer = memo(({
           onPointerEnter={() => setHoveredSurveyMarkerId(highlightId)}
           onPointerLeave={() => setHoveredSurveyMarkerId((prev) => (prev === highlightId ? null : prev))}
         />
-        {isSelectedHighlight && (
+        {isSelectedSurveyMarker && (
           <SVGSelectionOverlay
             bbox={{
               left: bbox.left,
@@ -3367,7 +3367,7 @@ const SVGAnnotationLayer = memo(({
     // the user sees one consistent rendering across both states — no weight
     // or spacing jump on edit entry/exit. Fabric's glyphs are transparent
     // in edit mode (FabricEditCanvas existing-text path), so only the caret
-    // and selection highlight come from Fabric. liveTextEditBounds feeds
+    // and selection surveyMarker come from Fabric. liveTextEditBounds feeds
     // per-keystroke width/height/text so the SVG box grows with Fabric's
     // wrap as the user types.
     if (isBeingEdited && TEXT_EDIT_TYPES.includes(objTypeForEdit)) {
@@ -3461,7 +3461,7 @@ const SVGAnnotationLayer = memo(({
               : null;
             return (
               <g transform={lineRotate}>
-                {/* Hover highlight along the line */}
+                {/* Hover surveyMarker along the line */}
                 {annotationIsHovered && (
                   lineIsCurved ? (
                     <path

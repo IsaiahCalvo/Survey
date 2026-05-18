@@ -4,7 +4,7 @@ import Icon from '../Icons';
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
 /**
- * LocateModal - Modal for locating text in PDF when item has no highlight
+ * LocateModal - Modal for locating text in PDF when item has no surveyMarker
  * 
  * Props:
  * - isOpen: boolean - whether modal is open
@@ -15,7 +15,7 @@ const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pr
  * - onNavigatePrevious: function - navigate to previous result
  * - onNavigateNext: function - navigate to next result
  * - onSelectResult: function(index) - select a specific result
- * - onDrawHighlight: function - callback when user wants to draw highlight
+ * - onDrawSurveyMarker: function - callback when user wants to draw surveyMarker
  * - position: string - 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left'
  */
 const LocateModal = ({
@@ -27,7 +27,7 @@ const LocateModal = ({
   onNavigatePrevious,
   onNavigateNext,
   onSelectResult,
-  onDrawHighlight,
+  onDrawSurveyMarker,
   position = 'top-right',
   isSearching = false
 }) => {
@@ -62,13 +62,13 @@ const LocateModal = ({
     }
   };
 
-  const handleDrawHighlight = useCallback(() => {
+  const handleDrawSurveyMarker = useCallback(() => {
     setIsDrawing(true);
-    if (onDrawHighlight) {
-      onDrawHighlight();
+    if (onDrawSurveyMarker) {
+      onDrawSurveyMarker();
     }
-    // Modal will be closed by parent after highlight is drawn
-  }, [onDrawHighlight]);
+    // Modal will be closed by parent after surveyMarker is drawn
+  }, [onDrawSurveyMarker]);
 
   // Don't render if not open
   if (!isOpen) return null;
@@ -262,9 +262,9 @@ const LocateModal = ({
             })}
           </div>
 
-          {/* Draw Highlight Button */}
+          {/* Draw SurveyMarker Button */}
           <button
-            onClick={handleDrawHighlight}
+            onClick={handleDrawSurveyMarker}
             disabled={isDrawing || isSearching}
             style={{
               width: '100%',
@@ -289,7 +289,7 @@ const LocateModal = ({
               }
             }}
           >
-            {isDrawing ? 'Drawing...' : isSearching ? 'Searching...' : 'Draw Highlight Here'}
+            {isDrawing ? 'Drawing...' : isSearching ? 'Searching...' : 'Draw SurveyMarker Here'}
           </button>
         </>
       ) : !isSearching ? (

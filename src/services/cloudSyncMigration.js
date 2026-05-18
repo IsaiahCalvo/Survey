@@ -2,7 +2,7 @@
  * One-time local-to-cloud migration for stranded annotations — Phase 21.
  *
  * On first run after this phase ships, scans localStorage for any
- * non-highlight annotations that don't yet exist in Supabase and pushes
+ * non-surveyMarker annotations that don't yet exist in Supabase and pushes
  * them up. Marks the migration complete per (user, document) so subsequent
  * document opens are no-ops.
  *

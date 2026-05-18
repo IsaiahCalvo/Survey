@@ -3,7 +3,7 @@
 // src/lib/collab/crdtBackfill.js.
 //
 // Validates MIGRATE-01: legacy v2.3 rows backfill into Y.Map with author/device/
-// timestamp preservation, idempotency, highlight skip, and the 'crdt-backfill'
+// timestamp preservation, idempotency, surveyMarker skip, and the 'crdt-backfill'
 // origin tag (so Phase 33 activity log can render the "Document migrated" entry).
 //
 // Per-test existsSync skip-guard — when Plan 30-02 lands crdtBackfill.js the
@@ -156,30 +156,30 @@ test(
 );
 
 test(
-  'crdtBackfill #5: skips annotation_type === "highlight" rows via Postgres NOT-IN filter',
+  'crdtBackfill #5: skips annotation_type === "surveyMarker" rows via Postgres NOT-IN filter',
   { skip: !existsSync(TARGET) ? 'crdtBackfill.js not yet present (Plan 30-02)' : (skipReason() || false) },
   async () => {
     const Y = await import('yjs');
     const mod = await import(TARGET);
     const ydoc = new Y.Doc();
     const yMapAnnotations = ydoc.getMap('annotations');
-    // Highlight row WOULD be in the table but the backfill's WHERE clause must
+    // SurveyMarker row WOULD be in the table but the backfill's WHERE clause must
     // filter it out — the supabase mock records the .in() args; we verify
-    // 'highlight' is NOT in the filter list AND no anno-H entry lands.
+    // 'surveyMarker' is NOT in the filter list AND no anno-H entry lands.
     const supabase = makeSupabaseMock([
       { highlight_id: 'anno-A', user_id: 'alice', document_id: 'doc1', annotation_type: 'square',
         created_at: '2026-01-15T10:00:00Z', annotation_data: '{"left":0,"top":0}' },
     ]);
     await mod.runBackfill({ ydoc, yMapAnnotations, supabase, documentId: 'doc1', userId: 'importer1', sessionId: 's1', clientID: ydoc.clientID });
     // Verify the filter: at least one .in('annotation_type', [...]) must have been called
-    // with a list that does NOT include 'highlight'.
+    // with a list that does NOT include 'surveyMarker'.
     const inCalls = supabase._calls.in;
     const typeFilters = inCalls.filter((c) => c[0] === 'annotation_type');
     assert.ok(typeFilters.length >= 1, 'expected at least one .in("annotation_type", [...]) Postgres filter');
     for (const [, vals] of typeFilters) {
-      assert.ok(!vals.includes('highlight'), 'annotation_type filter list must NOT include "highlight"');
+      assert.ok(!vals.includes('surveyMarker'), 'annotation_type filter list must NOT include "surveyMarker"');
     }
-    assert.strictEqual(yMapAnnotations.get('anno-H'), undefined, 'highlight rows must NOT be imported');
+    assert.strictEqual(yMapAnnotations.get('anno-H'), undefined, 'surveyMarker rows must NOT be imported');
   }
 );
 

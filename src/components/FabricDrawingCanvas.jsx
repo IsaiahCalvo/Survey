@@ -42,7 +42,7 @@ const CUSTOM_PROPS = [
   'tool',
 ];
 
-const SHAPE_TOOLS = ['rect', 'ellipse', 'line', 'arrow', 'highlight'];
+const SHAPE_TOOLS = ['rect', 'ellipse', 'line', 'arrow', 'survey-marker'];
 
 function createAnnotationId(prefix = 'anno') {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -185,7 +185,7 @@ const FabricDrawingCanvas = memo(({
   strokeWidth,
   annotations,
   onStrokeCommit,
-  onHighlightCreated,
+  onSurveyMarkerCreated,
   selectedModuleId,
   selectedSpaceId,
   activeRegionId,
@@ -211,7 +211,7 @@ const FabricDrawingCanvas = memo(({
   const spacesRef = useRef(spaces);
   const isRegionOverlayEnabledRef = useRef(isRegionOverlayEnabled);
   const onStrokeCommitRef = useRef(onStrokeCommit);
-  const onHighlightCreatedRef = useRef(onHighlightCreated);
+  const onSurveyMarkerCreatedRef = useRef(onSurveyMarkerCreated);
   const initialZoomGenRef = useRef(zoomGeneration);
   const isDisposingRef = useRef(false);
   const drawDiagGestureRef = useRef(null);
@@ -673,11 +673,11 @@ const FabricDrawingCanvas = memo(({
           s.set({ strokeDashArray: null, opacity: 1 });
         }
         if (tool === 'survey-marker') {
-          // Survey markers route through handleHighlightCreated so the
+          // Survey markers route through handleSurveyMarkerCreated so the
           // surveyMarkers state + Supabase sync path used by PAL
           // stays authoritative. The fabric preview gets removed here (no
           // commitShape → no entry in pageAnnotations.objects); SVG paints
-          // the persisted highlight next render.
+          // the persisted surveyMarker next render.
           canvas.remove(s);
           recordAnnotationCommit({
             surface: 'FabricDrawingCanvas',
@@ -685,8 +685,8 @@ const FabricDrawingCanvas = memo(({
             action: 'survey-marker-draw',
             pageNumber,
           });
-          if (onHighlightCreatedRef.current) {
-            onHighlightCreatedRef.current({
+          if (onSurveyMarkerCreatedRef.current) {
+            onSurveyMarkerCreatedRef.current({
               x: s.left,
               y: s.top,
               width: s.width,
@@ -760,8 +760,8 @@ const FabricDrawingCanvas = memo(({
   }, [onStrokeCommit]);
 
   useEffect(() => {
-    onHighlightCreatedRef.current = onHighlightCreated;
-  }, [onHighlightCreated]);
+    onSurveyMarkerCreatedRef.current = onSurveyMarkerCreated;
+  }, [onSurveyMarkerCreated]);
 
   useEffect(() => {
     annotationsRef.current = annotations;

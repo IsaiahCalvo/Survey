@@ -17,7 +17,7 @@ const getTemplateSyncIdentity = (template) => ({
 export const computeExcelSyncFingerprint = (template, surveyMarkers = {}) => {
   const payload = {
     template: getTemplateSyncIdentity(template),
-    highlights: surveyMarkers || {}
+    surveyMarkers: surveyMarkers || {}
   };
   const serialized = JSON.stringify(payload);
   return {

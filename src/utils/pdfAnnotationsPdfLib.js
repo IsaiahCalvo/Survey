@@ -237,8 +237,8 @@ const recordSkip = (diagnostics, item, reason) => {
   diagnostics.skipped.push(makeSkipDetail({ ...item, reason }));
 };
 
-const normalizeHighlightBounds = (highlight) => {
-  const bounds = highlight?.bounds || highlight?.pdfCoordinates || highlight || {};
+const normalizeSurveyMarkerBounds = (surveyMarker) => {
+  const bounds = surveyMarker?.bounds || surveyMarker?.pdfCoordinates || surveyMarker || {};
   const left = Number(bounds.x ?? bounds.left);
   const top = Number(bounds.y ?? bounds.top);
   const width = Number(bounds.width ?? (Number(bounds.right) - Number(bounds.left)));
@@ -250,8 +250,8 @@ const normalizeHighlightBounds = (highlight) => {
   return { left, top, width, height };
 };
 
-const highlightToFabricRect = (highlight, highlightId) => {
-  const bounds = normalizeHighlightBounds(highlight);
+const surveyMarkerToFabricRect = (surveyMarker, highlightId) => {
+  const bounds = normalizeSurveyMarkerBounds(surveyMarker);
   if (!bounds) return null;
   return {
     type: 'rect',
@@ -261,11 +261,11 @@ const highlightToFabricRect = (highlight, highlightId) => {
     top: bounds.top,
     width: bounds.width,
     height: bounds.height,
-    fill: highlight?.color || '#FFFF00',
-    opacity: highlight?.opacity ?? 0.3,
-    moduleId: highlight?.moduleId ?? highlight?.spaceId ?? null,
-    spaceId: highlight?.spaceId ?? null,
-    regionId: highlight?.regionId ?? null,
+    fill: surveyMarker?.color || '#FFFF00',
+    opacity: surveyMarker?.opacity ?? 0.3,
+    moduleId: surveyMarker?.moduleId ?? surveyMarker?.spaceId ?? null,
+    spaceId: surveyMarker?.spaceId ?? null,
+    regionId: surveyMarker?.regionId ?? null,
   };
 };
 
@@ -380,11 +380,11 @@ export function buildPdfExportAnnotationPlan({
     });
   });
 
-  Object.entries(surveyMarkers || {}).forEach(([highlightId, highlight]) => {
-    const pageNumber = Number(highlight?.pageNumber || 1);
-    const obj = highlightToFabricRect(highlight, highlightId);
-    const scope = getObjectScope(obj || highlight);
-    const regionId = highlight?.regionId ?? null;
+  Object.entries(surveyMarkers || {}).forEach(([highlightId, surveyMarker]) => {
+    const pageNumber = Number(surveyMarker?.pageNumber || 1);
+    const obj = surveyMarkerToFabricRect(surveyMarker, highlightId);
+    const scope = getObjectScope(obj || surveyMarker);
+    const regionId = surveyMarker?.regionId ?? null;
     const derivedSpaceId = regionId ? getSpaceIdForRegionFromSpaces(regionId, spaces) : null;
     const item = {
       source: 'survey-marker',
@@ -393,9 +393,9 @@ export function buildPdfExportAnnotationPlan({
       type: 'survey-marker',
       fabricType: 'rect',
       scope,
-      moduleId: highlight?.moduleId ?? highlight?.spaceId ?? null,
+      moduleId: surveyMarker?.moduleId ?? surveyMarker?.spaceId ?? null,
       regionId,
-      spaceId: highlight?.spaceId ?? derivedSpaceId ?? null,
+      spaceId: surveyMarker?.spaceId ?? derivedSpaceId ?? null,
     };
     if (!obj) {
       recordConsidered(diagnostics, item);
@@ -665,7 +665,7 @@ const createCircleAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
 };
 
 /**
- * Create Highlight annotation
+ * Create SurveyMarker annotation
  * Uses QuadPoints following Adobe's implementation (not PDF spec order)
  */
 const createHighlightAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) => {
@@ -694,7 +694,7 @@ const createHighlightAnnotation = (pdfDoc, page, fabricObj, pageHeight, options 
 
     const annotationDict = {
       Type: 'Annot',
-      Subtype: 'Highlight',
+      Subtype: 'SurveyMarker',
       Rect: [minX, minY, maxX, maxY],
       QuadPoints: quadPoints.map(n => PDFNumber.of(n)),
       C: [color.red, color.green, color.blue],

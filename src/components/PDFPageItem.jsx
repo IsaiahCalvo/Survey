@@ -18,8 +18,8 @@ const PDFPageItem = ({
     regions,
     onTextSelected,
     onFinishRender,
-    highlightsToRemove,
-    onHighlightDeleted
+    surveyMarkersToRemove,
+    onSurveyMarkerDeleted
 }) => {
     if (!isMounted) return null;
 
@@ -56,8 +56,8 @@ const PDFPageItem = ({
                     width={width}
                     height={height}
                     regions={regions}
-                    highlightsToRemove={highlightsToRemove}
-                    onHighlightDeleted={onHighlightDeleted}
+                    surveyMarkersToRemove={surveyMarkersToRemove}
+                    onSurveyMarkerDeleted={onSurveyMarkerDeleted}
                 />
             )}
         </div>

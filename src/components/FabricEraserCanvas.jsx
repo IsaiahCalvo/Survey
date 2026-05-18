@@ -798,7 +798,7 @@ const FabricEraserCanvas = memo(({
             obj.set({ globalCompositeOperation: objData.globalCompositeOperation });
           }
 
-          // Enforce multiply blend mode for highlights
+          // Enforce multiply blend mode for surveyMarkers
           if (obj.highlightId || obj.needsEntity) {
             obj.set({ globalCompositeOperation: 'multiply' });
           }

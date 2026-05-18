@@ -39,7 +39,7 @@ import { buildOrigin } from './originBuilder.js';
 // Mirrors annotationCloudSync.js NON_HIGHLIGHT_TYPES (line 26). Backfill
 // excludes survey-marker rows entirely (both 'highlight' legacy and 'survey-marker'
 // new value) - Excel-sync carve-out, folded into v2.5.
-// CONTEXT.md `<decisions>` "Highlights skipped" (architectural - locked by roadmap).
+// CONTEXT.md `<decisions>` "SurveyMarkers skipped" (architectural - locked by roadmap).
 export const NON_HIGHLIGHT_TYPES_FOR_BACKFILL = [
   'ink', 'freetext', 'square', 'circle', 'line', 'polyline', 'polygon',
   'stamp', 'sticky_note', 'callout', 'counter', 'eraser',
@@ -50,7 +50,7 @@ export const NON_HIGHLIGHT_TYPES_FOR_BACKFILL = [
 // default. A bare `.select('*')` is silently truncated to the first 1000 rows
 // at the server. The legacy reader (annotationCloudSync.loadPagedAnnotationRows)
 // works around this by paginating with `.range(from, to)`. Pre-hotfix the
-// backfill SELECT below did NOT paginate, so docs with >1000 non-highlight
+// backfill SELECT below did NOT paginate, so docs with >1000 non-surveyMarker
 // rows imported only the first page and the verified-count gate
 // (`yMapSize >= imported`) sealed the doc on a truncated baseline.
 const BACKFILL_PAGE_SIZE = 1000;
@@ -446,7 +446,7 @@ async function runBackfillUnlocked(args) {
 
   // Read legacy rows. PAGINATED with `.range()` so the PostgREST max_rows cap
   // (1000) does not silently truncate large docs. Pre-2026-05-03 hotfix this
-  // was a bare `.select('*')` and any doc with >1000 non-highlight rows sealed
+  // was a bare `.select('*')` and any doc with >1000 non-surveyMarker rows sealed
   // on a truncated baseline.
   //
   // Ordering: `page_number ASC` mirrors the production legacy reader

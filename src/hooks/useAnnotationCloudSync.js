@@ -3,7 +3,7 @@
  *
  * React hook that wires the all-types cloud sync into App.jsx with a
  * minimal surface. Mount it once per open document and it handles:
- *   - Hydrating non-highlight annotations from the cloud on document open
+ *   - Hydrating non-surveyMarker annotations from the cloud on document open
  *   - Running the one-time local-to-cloud migration for stranded marks
  *   - Pushing per-page Fabric state diffs and callout state diffs to the
  *     cloud on change, debounced to avoid hammering Supabase mid-drag
@@ -12,7 +12,7 @@
  *   - Falling back to localStorage when Supabase is unreachable and
  *     replaying queued upserts on reconnect
  *
- * Highlights are intentionally NOT touched — they keep their existing
+ * SurveyMarkers are intentionally NOT touched — they keep their existing
  * sync path in documentAnnotationService.js.
  */
 
@@ -28,8 +28,8 @@ import {
   // legacy document_annotations row (preserved here for v2.3 reader compat
   // during the dual-write era) AND the CRDT path via the Phase 29 bridge.
   //
-  // CONTEXT.md `<decisions>` "Highlights skipped" + Pitfall 30-4 two-layer
-  // defense: highlight bypass at THIS call site AND inside the helper.
+  // CONTEXT.md `<decisions>` "SurveyMarkers skipped" + Pitfall 30-4 two-layer
+  // defense: surveyMarker bypass at THIS call site AND inside the helper.
   //
   // CONTEXT.md AC-15 kill-switch fallback: when isCRDTEnabled() returns false,
   // this hook's behavior is byte-identical to pre-Phase-30 (legacy-only path).
@@ -599,12 +599,12 @@ export function useAnnotationCloudSync({
   // skipLegacy: true so the legacy row is not double-written (the bulk
   // upsertAnnotationsByPage already fired before this fan-out runs).
   //
-  // Pitfall 30-4 two-layer highlight defense:
-  //   - Layer 1 (HERE): the call site filters out annotation_type === 'highlight'
+  // Pitfall 30-4 two-layer surveyMarker defense:
+  //   - Layer 1 (HERE): the call site filters out annotation_type === 'surveyMarker'
   //     AND annotation_type === 'callout' AND non-NON_HIGHLIGHT_TYPES — never
   //     even invokes the dual-write helper for them.
   //   - Layer 2 (helper): annotationCloudSync.js dualWriteFabricCommit also
-  //     internally checks isHighlight and returns { crdt: null }.
+  //     internally checks isSurveyMarker and returns { crdt: null }.
   //
   // Callouts have their own state slice. They persist to Supabase first and
   // fan out to the dedicated Y.Doc callouts map only after durable success.
@@ -631,7 +631,7 @@ export function useAnnotationCloudSync({
     const originPayload = (typeof phase30OriginCtx === 'function') ? phase30OriginCtx() : null;
     const ctx = phase30UndoCtx || null;
     let __dispatched = 0;
-    let __skippedHighlightOrCallout = 0;
+    let __skippedSurveyMarkerOrCallout = 0;
     let __skippedOtherType = 0;
     let __detected = 0;
     const __rawTypeBreakdown = {};
@@ -648,7 +648,7 @@ export function useAnnotationCloudSync({
         if (!resolved.dispatchable) {
           summarizeTypeBreakdownValue(__skipReasons, resolved.reason || 'unknown');
           if (isSurveyMarkerType(resolved.reason) || resolved.reason === 'callout') {
-            __skippedHighlightOrCallout++;
+            __skippedSurveyMarkerOrCallout++;
           } else {
             __skippedOtherType++;
           }
@@ -693,7 +693,7 @@ export function useAnnotationCloudSync({
       dispatched: __dispatched,
       yDocUpdateCount: __dispatched,
       detected: __detected,
-      skippedHighlightOrCallout: __skippedHighlightOrCallout,
+      skippedSurveyMarkerOrCallout: __skippedSurveyMarkerOrCallout,
       skippedOtherType: __skippedOtherType,
       rawTypeBreakdown: __rawTypeBreakdown,
       resolvedTypeBreakdown: __resolvedTypeBreakdown,
@@ -730,7 +730,7 @@ export function useAnnotationCloudSync({
           yMapAnnotations,
           originPayload,
           // Generic 'fabric' tag; helper does not filter by this on deletes
-          // (highlight bypass on delete is opt-in via opts.annotation_type).
+          // (surveyMarker bypass on delete is opt-in via opts.annotation_type).
           // Callouts use the dedicated Supabase-first callout path and Y.Doc
           // callouts map, so this Fabric helper is never called for them.
           annotation_type: 'fabric',
@@ -1997,7 +1997,7 @@ export function useAnnotationCloudSync({
         setSyncStatus({ stage: 'queued', error: result.error, kind: 'fabric' });
       } else {
         // Phase 30 — CRDT-side fan-out per annotation. Runs only when kill
-        // switch is on AND Y.Doc is mounted. Highlight bypass + callout bypass
+        // switch is on AND Y.Doc is mounted. SurveyMarker bypass + callout bypass
         // happen at the call site (Pitfall 30-4 layer 1) and again inside the
         // helper (layer 2). skipLegacy: true (legacy bulk upsert just succeeded).
         await fanOutCrdtForAnnotationsByPage(changedAnnotationsByPage, { documentId, userId, actionType: fabricSyncDelta.actionType });

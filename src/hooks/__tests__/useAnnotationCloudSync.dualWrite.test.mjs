@@ -10,7 +10,7 @@
 //   - At least one fabric upsert call site fans out to dualWriteFabricCommit
 //   - At least one fabric delete call site fans out to dualWriteFabricDelete
 //   - Kill-switch fallback path preserved (legacy-only when isCRDTEnabled() === false)
-//   - Highlight rows bypass dual-write at the call site (proximity check)
+//   - SurveyMarker rows bypass dual-write at the call site (proximity check)
 //   - Callout sync path remains on the dedicated upsertCallouts service
 //     surface, with Y.Doc fan-out handled by the callout CRDT bridge.
 //
@@ -81,7 +81,7 @@ test(
 );
 
 test(
-  'useAnnotationCloudSync dualWrite #4: highlight rows bypass dual-write at the call site (proximity check)',
+  'useAnnotationCloudSync dualWrite #4: surveyMarker rows bypass dual-write at the call site (proximity check)',
   { skip: !existsSync(TARGET) ? 'useAnnotationCloudSync.js missing' : SKIP_REASON },
   () => {
     if (!dualWriteWired()) return;
@@ -90,22 +90,22 @@ test(
     let foundProximity = false;
     for (let i = 0; i < lines.length; i++) {
       if (/dualWrite/.test(lines[i])) {
-        // Look 5 lines either side for a 'highlight' reference (filter / type
+        // Look 5 lines either side for a 'surveyMarker' reference (filter / type
         // check / branch comment).
         const start = Math.max(0, i - 5);
         const end = Math.min(lines.length, i + 6);
         const window = lines.slice(start, end).join('\n');
-        if (/highlight/i.test(window)) { foundProximity = true; break; }
+        if (/surveyMarker/i.test(window)) { foundProximity = true; break; }
       }
     }
     // The proximity check is heuristic — if dualWriteFabricCommit's internal
-    // highlight skip is the contract surface (not the call site), this can
+    // surveyMarker skip is the contract surface (not the call site), this can
     // pass via the dual-write helper itself. Either is acceptable: the
-    // contract is "highlights MUST NOT be dual-written" and Plan 30-04
+    // contract is "surveyMarkers MUST NOT be dual-written" and Plan 30-04
     // already locks that at the helper level.
     assert.ok(
       foundProximity || src.includes('NON_HIGHLIGHT_TYPES'),
-      'expected highlight skip reference within 5 lines of dualWrite call site OR NON_HIGHLIGHT_TYPES filter present'
+      'expected surveyMarker skip reference within 5 lines of dualWrite call site OR NON_HIGHLIGHT_TYPES filter present'
     );
   }
 );

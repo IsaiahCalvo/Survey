@@ -1980,7 +1980,7 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
 /**
  * Convert PDF Highlight annotation to Fabric.js Rect with fill
  */
-function convertHighlightToFabricRect(annotation, viewport, scale = 1) {
+function convertSurveyMarkerToFabricRect(annotation, viewport, scale = 1) {
   const viewportRect = convertPdfRectToViewportRect(annotation.rect, viewport, scale);
   if (!viewportRect) {
     return null;
@@ -2997,7 +2997,7 @@ export function convertPdfAnnotationToFabric(annotation, viewport, scale = 1, ra
     case 'Ink':
       return finish(convertInkToFabricPath(normalizedAnnotation, viewport, scale));
     case 'Highlight':
-      return finish(convertHighlightToFabricRect(normalizedAnnotation, viewport, scale));
+      return finish(convertSurveyMarkerToFabricRect(normalizedAnnotation, viewport, scale));
     case 'FreeText':
       return finish(convertFreeTextToFabricTextbox(normalizedAnnotation, viewport, scale));
     case 'Square':

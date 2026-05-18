@@ -16,9 +16,9 @@
  * The deserializer rebuilds the Fabric object from `annotation_data.fabricObject`
  * unchanged — round-trip is byte-identical for all fields the app cares about.
  *
- * Highlights stay on their existing dedicated columns (color, opacity, name,
+ * SurveyMarkers stay on their existing dedicated columns (color, opacity, name,
  * notes, ...) — they are NOT routed through this serializer. That preserves
- * backwards compatibility with every existing highlight row in the database.
+ * backwards compatibility with every existing surveyMarker row in the database.
  *
  * Author-attribution invariant (2026-04-30 hardening):
  *   The serializer treats `meta.authorId` (canonical) as WRITE-ONCE-ON-CREATE.
@@ -92,14 +92,14 @@ function hasFabricObjectPayload(row) {
   return !!(row?.annotation_data && row.annotation_data.fabricObject);
 }
 
-function isLegacyFabricHighlightRow(row) {
+function isLegacyFabricSurveyMarkerRow(row) {
   return isSurveyMarkerType(row?.annotation_type) && hasFabricObjectPayload(row);
 }
 
 function shouldDeserializeAsFabricObject(row) {
   if (!row) return false;
   if (row.annotation_type === 'callout') return false;
-  if (isSurveyMarkerType(row.annotation_type)) return isLegacyFabricHighlightRow(row);
+  if (isSurveyMarkerType(row.annotation_type)) return isLegacyFabricSurveyMarkerRow(row);
   return true;
 }
 
@@ -302,7 +302,7 @@ export function serializeFabricObjectToRow(fabricObj, opts = {}) {
  */
 export function deserializeRowToFabricObject(row) {
   if (!row) throw new Error('row required');
-  if (isSurveyMarkerType(row.annotation_type) && !isLegacyFabricHighlightRow(row)) {
+  if (isSurveyMarkerType(row.annotation_type) && !isLegacyFabricSurveyMarkerRow(row)) {
     throw new Error(
       'deserializeRowToFabricObject: highlight rows are not Fabric objects — '
       + 'use the highlight-specific deserializer instead.'
@@ -325,21 +325,21 @@ export function deserializeRowToFabricObject(row) {
       fabricObject.data.id = row.highlight_id;
     }
     // Bug 1 fix (2026-04-30): stamp highlightId onto the fabric object itself
-    // when the row IS a legacy survey highlight (fabric-carrying highlight row).
+    // when the row IS a legacy survey surveyMarker (fabric-carrying surveyMarker row).
     // SVGAnnotationLayer.jsx ~line 1248 has a skip-guard `if (obj.highlightId)
-    // continue;` that exists to prevent double-render: survey highlights are
+    // continue;` that exists to prevent double-render: survey surveyMarkers are
     // supposed to render ONLY through the dedicated `surveyHighlightElements`
     // memo, NOT through the main fabric annotations loop. The skip-guard
     // depends on `obj.highlightId` being set on the fabric object — which it
-    // wasn't, after a cloud-roundtrip deserialization, so the same highlight
+    // wasn't, after a cloud-roundtrip deserialization, so the same surveyMarker
     // got rendered TWICE on the second device (once via the survey memo, once
     // via the main loop). Two semi-transparent yellow rects compositing to a
     // darker yellow is exactly what the user reported. Conditional on
-    // isLegacyFabricHighlightRow so we don't accidentally stamp `.highlightId`
+    // isLegacyFabricSurveyMarkerRow so we don't accidentally stamp `.highlightId`
     // onto regular fabric annotations (pen, shape, text — they share the
     // `highlight_id` column as their generic annotation ID, but their fabric
     // objects must NOT be skipped by the SVG layer's main loop).
-    if (isLegacyFabricHighlightRow(row)) {
+    if (isLegacyFabricSurveyMarkerRow(row)) {
       fabricObject.highlightId = row.highlight_id;
     }
   }

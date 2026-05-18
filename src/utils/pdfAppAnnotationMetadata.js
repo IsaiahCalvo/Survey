@@ -124,7 +124,7 @@ function pickData(data) {
 }
 
 function resolveAppType(fabricObj, item = {}) {
-  // Survey markers (formerly "highlights") — write the new type name; reading
+  // Survey markers (formerly "surveyMarkers") — write the new type name; reading
   // still works via isSurveyMarkerType which accepts both old and new values.
   if (isSurveyMarkerType(item.type) || isSurveyMarkerType(fabricObj?.exportType)) {
     return SURVEY_MARKER_TYPE;
@@ -261,7 +261,7 @@ export function applyPdfAppAnnotationMetadata(fabricObj, metadata) {
     out.arrowheadStyle = metadata.flags.arrowheadStyle;
   }
 
-  // Accept both new ('survey-marker') and legacy ('highlight') appType values.
+  // Accept both new ('survey-marker') and legacy ('surveyMarker') appType values.
   if (isSurveyMarkerType(metadata.appType)) {
     out.highlightId = metadata.id;
     if (style?.fill !== undefined) out.fill = style.fill;

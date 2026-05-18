@@ -2,12 +2,12 @@
  * All-types annotation cloud sync — Phase 21.
  *
  * Sits next to documentAnnotationService.js and operates on the same
- * document_annotations table. The existing highlight-only flow in
- * documentAnnotationService.js is unchanged and still owns highlight rows.
+ * document_annotations table. The existing surveyMarker-only flow in
+ * documentAnnotationService.js is unchanged and still owns surveyMarker rows.
  * This module owns the rest: ink, freetext, square, circle, line, polyline,
  * polygon, stamp, sticky_note, callout, counter, eraser.
  *
- * The two modules co-exist by row category. Highlights and non-highlight
+ * The two modules co-exist by row category. SurveyMarkers and non-surveyMarker
  * rows share the table but never collide because each row's
  * annotation_type is the source of truth for which module owns it.
  */
@@ -87,33 +87,33 @@ async function loadPagedAnnotationRows(documentId, applyFilters) {
 }
 
 async function loadAllTypesOwnedRowsForDocument(documentId) {
-  const nonHighlight = await loadPagedAnnotationRows(
+  const nonSurveyMarker = await loadPagedAnnotationRows(
     documentId,
     (query) => query.in('annotation_type', NON_HIGHLIGHT_TYPES)
   );
-  if (nonHighlight.error) return nonHighlight;
+  if (nonSurveyMarker.error) return nonSurveyMarker;
 
-  const legacyFabricHighlights = await loadPagedAnnotationRows(
+  const legacyFabricSurveyMarkers = await loadPagedAnnotationRows(
     documentId,
     (query) => query
       .in('annotation_type', SURVEY_MARKER_TYPE_VALUES)
       .not('annotation_data->fabricObject', 'is', null)
   );
-  if (legacyFabricHighlights.error) return legacyFabricHighlights;
+  if (legacyFabricSurveyMarkers.error) return legacyFabricSurveyMarkers;
 
   return {
-    rows: [...nonHighlight.rows, ...legacyFabricHighlights.rows],
+    rows: [...nonSurveyMarker.rows, ...legacyFabricSurveyMarkers.rows],
     error: null,
     scanned: {
-      nonHighlight: nonHighlight.rows.length,
-      legacyFabricHighlights: legacyFabricHighlights.rows.length
+      nonSurveyMarker: nonSurveyMarker.rows.length,
+      legacyFabricSurveyMarkers: legacyFabricSurveyMarkers.rows.length
     }
   };
 }
 
 /**
  * Phase 30 — infer the annotation type from a Fabric object so the dual-write
- * fan-out can apply the highlight carve-out without trusting opts.annotation_type
+ * fan-out can apply the surveyMarker carve-out without trusting opts.annotation_type
  * to be passed in. Mirrors the existing serializeFabricObjectToRow logic.
  *
  * NOTE: this is a Phase 30 addition; existing call sites do not consume it.
@@ -358,7 +358,7 @@ export async function deleteAnnotations(documentId, highlightIds) {
  * Load every non-survey marker annotation for a document and return it split
  * into the in-app shape slices: { annotationsByPage, callouts }.
  *
- * Highlights are intentionally skipped — they have their own loader in
+ * SurveyMarkers are intentionally skipped — they have their own loader in
  * documentAnnotationService.js and own their own state slice in App.jsx.
  */
 export async function loadAllNonSurveyMarkerAnnotations(documentId) {
@@ -429,7 +429,7 @@ export async function loadAllNonSurveyMarkerAnnotations(documentId) {
  * `currentUserId` is kept as a fallback for legacy rows written before the
  * sessionId field existed.
  *
- * The subscriber filters out highlight rows so the existing highlight
+ * The subscriber filters out surveyMarker rows so the existing surveyMarker
  * subscription in documentAnnotationService.js continues to own them
  * without conflict.
  */
@@ -640,8 +640,8 @@ function routeRow(event, row, callbacks, currentUserId, currentSessionId) {
  *     wild read from this column; the dual-write era keeps them whole.
  *   - If isCRDTEnabled() is false → legacy only (kill switch override; current
  *     behavior unchanged for kill-switch-off deployments).
- *   - If annotation_type === 'highlight' → legacy only (Excel-sync carve-out
- *     locked by CONTEXT.md "Highlights skipped"; v2.5 owns highlight migration).
+ *   - If annotation_type === 'surveyMarker' → legacy only (Excel-sync carve-out
+ *     locked by CONTEXT.md "SurveyMarkers skipped"; v2.5 owns surveyMarker migration).
  *   - Otherwise fires applyFabricCommit through the Phase 29 bridge.
  *   - Each side has its own try/catch. On failure, enqueues to the retry queue
  *     (latest-version-wins per annoId). NEVER deletes from either side to
@@ -655,12 +655,12 @@ function routeRow(event, row, callbacks, currentUserId, currentSessionId) {
  * @param {Y.Map} [opts.yMapAnnotations] - ydoc.getMap('annotations')
  * @param {object} [opts.originPayload] - origin payload from originBuilder.buildOrigin (with source: 'local-fabric' for live edits)
  * @param {object} [opts.ctx] - { userId, deviceId, sessionId, clientID } passed to bridge
- * @param {string} [opts.annotation_type] - explicit annotation_type for highlight filter
+ * @param {string} [opts.annotation_type] - explicit annotation_type for surveyMarker filter
  * @returns {Promise<{legacy: any, crdt: { ok: boolean } | { error: any } | null}>}
  */
 export async function dualWriteFabricCommit(fabricObj, opts = {}) {
   const annotationType = inferAnnotationTypeForDualWrite(fabricObj, opts);
-  const isHighlight = isSurveyMarkerType(annotationType);
+  const isSurveyMarker = isSurveyMarkerType(annotationType);
 
   // Plan 30-07 caller seam: when useAnnotationCloudSync's bulk upsert path
   // already fired the legacy write before this fan-out runs (per-page bulk
@@ -709,9 +709,9 @@ export async function dualWriteFabricCommit(fabricObj, opts = {}) {
     }
   }
 
-  // Skip CRDT side when kill switch off OR highlight — clean skip, no scary
+  // Skip CRDT side when kill switch off OR surveyMarker — clean skip, no scary
   // fallback. Returns null for the crdt side so callers can detect the skip.
-  if (!isCRDTEnabled() || isHighlight) {
+  if (!isCRDTEnabled() || isSurveyMarker) {
     return { legacy: legacyResult, crdt: null };
   }
 
@@ -745,7 +745,7 @@ export async function dualWriteFabricCommit(fabricObj, opts = {}) {
  * Phase 30 — Dual-write fan-out for a single Fabric annotation delete.
  *
  * Same shape as dualWriteFabricCommit: ALWAYS fires legacy delete; conditionally
- * fires CRDT-side delete via the bridge. Highlight carve-out preserved.
+ * fires CRDT-side delete via the bridge. SurveyMarker carve-out preserved.
  *
  * @param {string} documentId
  * @param {string} annoId - the stable per-annotation UUID (== highlight_id)
@@ -758,7 +758,7 @@ export async function dualWriteFabricCommit(fabricObj, opts = {}) {
  * @returns {Promise<{legacy: any, crdt: { ok: boolean } | { error: any } | null}>}
  */
 export async function dualWriteFabricDelete(documentId, annoId, opts = {}) {
-  const isHighlight = isSurveyMarkerType(opts.annotation_type);
+  const isSurveyMarker = isSurveyMarkerType(opts.annotation_type);
 
   // Plan 30-07 caller seam: same pattern as dualWriteFabricCommit.
   // useAnnotationCloudSync's bulk delete (deleteAnnotations) already removed
@@ -799,7 +799,7 @@ export async function dualWriteFabricDelete(documentId, annoId, opts = {}) {
     }
   }
 
-  if (!isCRDTEnabled() || isHighlight) {
+  if (!isCRDTEnabled() || isSurveyMarker) {
     return { legacy: legacyResult, crdt: null };
   }
 
