@@ -112,7 +112,7 @@ const clonePlain = (value) => JSON.parse(JSON.stringify(value));
 export function buildPrintableRegularAnnotationPayload({
   annotationsByPage = {},
   callouts = [],
-  highlightAnnotations = {},
+  surveyMarkers = {},
 } = {}) {
   const diagnostics = {
     included: {
@@ -124,7 +124,7 @@ export function buildPrintableRegularAnnotationPayload({
       fabric: 0,
       callouts: 0,
       counters: 0,
-      surveyMarkers: Object.keys(highlightAnnotations || {}).length,
+      surveyMarkers: Object.keys(surveyMarkers || {}).length,
       importedPdfNativePreserved: 0,
     },
     excludedByScope: {
@@ -193,7 +193,7 @@ export function buildPrintableRegularAnnotationPayload({
   return {
     annotationsByPage: printableAnnotationsByPage,
     callouts: printableCallouts,
-    highlightAnnotations: {},
+    surveyMarkers: {},
     diagnostics,
   };
 }
@@ -309,7 +309,7 @@ const calloutToExportObject = (callout, pageSize) => {
 export function buildPdfExportAnnotationPlan({
   annotationsByPage = {},
   callouts = [],
-  highlightAnnotations = {},
+  surveyMarkers = {},
   pageSizes = {},
   spaces = [],
 } = {}) {
@@ -380,7 +380,7 @@ export function buildPdfExportAnnotationPlan({
     });
   });
 
-  Object.entries(highlightAnnotations || {}).forEach(([highlightId, highlight]) => {
+  Object.entries(surveyMarkers || {}).forEach(([highlightId, highlight]) => {
     const pageNumber = Number(highlight?.pageNumber || 1);
     const obj = highlightToFabricRect(highlight, highlightId);
     const scope = getObjectScope(obj || highlight);
@@ -1336,7 +1336,7 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
   const printablePayload = buildPrintableRegularAnnotationPayload({
     annotationsByPage,
     callouts: options?.callouts || [],
-    highlightAnnotations: {},
+    surveyMarkers: {},
   });
   const printableDiagnostics = options?.printableDiagnostics || printablePayload.diagnostics;
   let flattenedPrintAnnotationsAdded = 0;
@@ -1404,7 +1404,7 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
     const exportPlan = buildPdfExportAnnotationPlan({
       annotationsByPage,
       callouts: options?.callouts || [],
-      highlightAnnotations: options?.highlightAnnotations || {},
+      surveyMarkers: options?.surveyMarkers || {},
       pageSizes,
       spaces: options?.spaces || [],
     });
@@ -1414,7 +1414,7 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
       exportId: options?.exportId || `${documentId || 'local'}-${Date.now()}`,
       annotationsByPage,
       callouts: options?.callouts || [],
-      highlightAnnotations: options?.highlightAnnotations || {},
+      surveyMarkers: options?.surveyMarkers || {},
       spaces: options?.spaces || [],
     });
     const appLayerStateEmbedded = applyAppLayerStateMetadataToPdf(pdfDoc, appLayerState);
@@ -1563,7 +1563,7 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
         exportId: appLayerState.exportId,
         scopedAnnotationPages: Object.keys(appLayerState.layers?.scopedAnnotationsByPage || {}).length,
         scopedCallouts: Array.isArray(appLayerState.layers?.callouts) ? appLayerState.layers.callouts.length : 0,
-        surveyHighlights: Object.keys(appLayerState.layers?.highlightAnnotations || {}).length,
+        surveyMarkers: Object.keys(appLayerState.layers?.surveyMarkers || {}).length,
         spaces: Array.isArray(appLayerState.layers?.spaces) ? appLayerState.layers.spaces.length : 0,
       } : null,
       importedAppAnnotationsSkipped: exportDiagnostics.skippedByReason['imported-pdf-native-preserved'] || 0,

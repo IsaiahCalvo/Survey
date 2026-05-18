@@ -449,7 +449,7 @@ const ensureRgbaOpacity = (color, opacity = 0.2) => {
   return `rgba(227, 209, 251, ${opacity})`;
 };
 
-const DEFAULT_SURVEY_HIGHLIGHT_OPACITY = 0.4;
+const DEFAULT_SURVEY_MARKER_OPACITY = 0.4;
 const INTERACTION_PERF_MIN_HOLD_MS = 900;
 const INTERACTION_PERF_SCROLL_HOLD_MS = 1800;
 const INTERACTION_PERF_DRAW_HOLD_MS = 1600;
@@ -1051,7 +1051,7 @@ const parseCssTransformScaleX = (transformValue) => {
 };
 
 // Normalize highlight colors while preserving any opacity saved on the template
-const normalizeHighlightColor = (color, fallbackOpacity = DEFAULT_SURVEY_HIGHLIGHT_OPACITY) => {
+const normalizeHighlightColor = (color, fallbackOpacity = DEFAULT_SURVEY_MARKER_OPACITY) => {
   if (!color || typeof color !== 'string') {
     return null;
   }
@@ -2235,11 +2235,11 @@ const savePDFData = (pdfId, items, annotations) => {
   }
 };
 
-const saveHighlightAnnotations = (pdfId, highlightAnnotations) => {
+const saveSurveyMarkers = (pdfId, surveyMarkers) => {
   if (!pdfId) return;
   try {
     const key = `surveyMarkers_${pdfId}`;
-    const data = JSON.stringify(highlightAnnotations);
+    const data = JSON.stringify(surveyMarkers);
     localStorage.setItem(key, data);
   } catch (e) {
     console.error('Error saving highlight annotations:', e);
@@ -2292,7 +2292,7 @@ const countAnnotationPageObjects = (pages) => Object.values(pages || {}).reduce(
   0
 );
 
-const summarizeAnnotationCountsForSaveExport = (annotationsByPage, callouts = [], highlightAnnotations = {}) => {
+const summarizeAnnotationCountsForSaveExport = (annotationsByPage, callouts = [], surveyMarkers = {}) => {
   const byType = {};
   let totalObjects = 0;
   let importedPdfObjects = 0;
@@ -2307,8 +2307,8 @@ const summarizeAnnotationCountsForSaveExport = (annotationsByPage, callouts = []
   }
   const calloutCount = Array.isArray(callouts) ? callouts.length : 0;
   if (calloutCount > 0) byType.callout = (byType.callout || 0) + calloutCount;
-  const highlightCount = highlightAnnotations && typeof highlightAnnotations === 'object'
-    ? Object.keys(highlightAnnotations).length
+  const highlightCount = surveyMarkers && typeof surveyMarkers === 'object'
+    ? Object.keys(surveyMarkers).length
     : 0;
   if (highlightCount > 0) byType.highlight = (byType.highlight || 0) + highlightCount;
   return {
@@ -2447,15 +2447,15 @@ const loadCloudRenderAnnotationsByPage = (pdfId, metadata) => {
   }
 };
 
-const loadHighlightAnnotations = (pdfId) => {
+const loadSurveyMarkers = (pdfId) => {
   if (!pdfId) return {};
   try {
     let data = localStorage.getItem(`surveyMarkers_${pdfId}`);
     if (!data) {
       // One-time migration: the survey-marker cache key was previously
-      // `highlightAnnotations_*`. Read the old key once, copy it forward
+      // `surveyMarkers_*`. Read the old key once, copy it forward
       // under the new name, then drop the old entry.
-      const legacyKey = `highlightAnnotations_${pdfId}`;
+      const legacyKey = `surveyMarkers_${pdfId}`;
       const legacyData = localStorage.getItem(legacyKey);
       if (legacyData) {
         localStorage.setItem(`surveyMarkers_${pdfId}`, legacyData);
@@ -2522,7 +2522,7 @@ const getCategoryName = (template, moduleId, categoryId) => {
 
 const escapeRegExp = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-const generateDefaultHighlightName = (categoryName, highlights = []) => {
+const generateDefaultSurveyMarkerName = (categoryName, highlights = []) => {
   const baseName = (categoryName && typeof categoryName === 'string' && categoryName.trim()) ? categoryName.trim() : 'Untitled Category';
   const pattern = new RegExp(`^${escapeRegExp(baseName)}\\s+(\\d+)$`, 'i');
   let maxNumber = 0;
@@ -2719,7 +2719,7 @@ const transferItems = (itemsToTransfer, sourceModuleId, destModuleId, template, 
   return { newItems, updatedAnnotations, categoriesToCreate };
 };
 
-// Migrate legacy highlightAnnotations to new system
+// Migrate legacy surveyMarkers to new system
 const migrateLegacyHighlights = (legacyHighlights, items, annotations, template) => {
   const newItems = { ...items };
   const newAnnotations = { ...annotations };
@@ -9760,7 +9760,7 @@ function BottomToolbar(props) {
               const isActive = activeCategoryDropdown === 'survey';
               setActiveCategoryDropdown(isActive ? null : 'survey');
               if (!isActive) {
-                setActiveTool('highlight');
+                setActiveTool('survey-marker');
               }
             }}
             onMouseEnter={(e) => {
@@ -9768,7 +9768,7 @@ function BottomToolbar(props) {
               setTooltip({ visible: true, text: 'Survey', x: rect.left + rect.width / 2, y: rect.top - 10 });
             }}
             onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
-            className={`btn btn-md ${activeTool !== 'pan' && activeTool !== 'select' && (activeCategoryDropdown === 'survey' || activeTool === 'highlight') ? 'btn-active' : 'btn-default'}`}
+            className={`btn btn-md ${activeTool !== 'pan' && activeTool !== 'select' && (activeCategoryDropdown === 'survey' || activeTool === 'survey-marker') ? 'btn-active' : 'btn-default'}`}
             style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
             title="Survey"
           >
@@ -12260,7 +12260,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   // Null when no command is pending. Callouts are handled by a separate
   // session and are intentionally skipped here.
   const [pendingSvgSelection, setPendingSvgSelection] = useState(null);
-  const [pendingSurveyHighlightSelection, setPendingSurveyHighlightSelection] = useState(null);
+  const [pendingSurveyMarkerSelection, setPendingSurveyMarkerSelection] = useState(null);
   const [annotationSelectionClearToken, setAnnotationSelectionClearToken] = useState(0);
   // UX: pan-mode hover broadcast. Set by the document-level mousemove
   // listener (declared after the mousedown/mouseup pair below) to
@@ -12819,7 +12819,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   const [annotationOpacityInputFocused, setAnnotationOpacityInputFocused] = useState(false);
   const [pageObjects, setPageObjects] = useState({}); // Store PDF page objects for text layer
   const [newHighlightsByPage, setNewHighlightsByPage] = useState({}); // { [pageNumber]: [{x, y, width, height}] }
-  const [highlightsToRemoveByPage, setHighlightsToRemoveByPage] = useState({}); // { [pageNumber]: [{x, y, width, height}] }
+  const [surveyMarkersToRemoveByPage, setSurveyMarkersToRemoveByPage] = useState({}); // { [pageNumber]: [{x, y, width, height}] }
 
   // Search state
   const [searchResults, setSearchResults] = useState([]); // Array of search match results
@@ -15217,18 +15217,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   const [noteDialogContent, setNoteDialogContent] = useState({ text: '', photos: [], videos: [] });
   const [pendingHighlight, setPendingHighlight] = useState(null); // { pageNumber, x, y, width, height, id }
   const [showSpaceSelection, setShowSpaceSelection] = useState(false);
-  const [highlightAnnotations, setHighlightAnnotations] = useState({}); // { [highlightId]: { pageNumber, bounds, categoryId, spaceId, checklistResponses: { [itemId]: { selection, note } } } }
+  const [surveyMarkers, setSurveyMarkers] = useState({}); // { [highlightId]: { pageNumber, bounds, categoryId, spaceId, checklistResponses: { [itemId]: { selection, note } } } }
   const [surveyAnnotationHydration, setSurveyAnnotationHydration] = useState(ANNOTATION_HYDRATION_READY_LOCAL);
   const [expandedCategories, setExpandedCategories] = useState({}); // { [categoryId]: boolean }
-  const [expandedHighlights, setExpandedHighlights] = useState({}); // { [highlightId]: boolean }
+  const [expandedSurveyMarkers, setExpandedSurveyMarkers] = useState({}); // { [highlightId]: boolean }
 
 
 
   const [selectedCategoryId, setSelectedCategoryId] = useState(null); // Category selected for highlighting
   const [surveyKeepCategoryActive, setSurveyKeepCategoryActive] = useState(false);
   const [selectedSpaceId, setSelectedSpaceId] = useState(null); // Currently selected space for survey interactions
-  const [pendingHighlightName, setPendingHighlightName] = useState(null); // { highlight, categoryId } when prompting for name
-  const [highlightNameInput, setHighlightNameInput] = useState(''); // Temporary name input value
+  const [pendingSurveyMarkerName, setPendingSurveyMarkerName] = useState(null); // { highlight, categoryId } when prompting for name
+  const [surveyMarkerNameInput, setSurveyMarkerNameInput] = useState(''); // Temporary name input value
   const [pendingEntitySelection, setPendingEntitySelection] = useState(null); // { highlight, categoryId } when prompting for Entity
 
   // NEW: Item and Annotation system state
@@ -17874,8 +17874,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   const { ydoc: yjsDoc, undoManager: yjsUndoManager, undoCtx: yjsUndoCtx } = useYDoc();
 
   // Undo/Redo history state
-  const [undoHistory, setUndoHistory] = useState([]); // Array of { annotationsByPage, highlightAnnotations, spaces }
-  const [redoHistory, setRedoHistory] = useState([]); // Array of { annotationsByPage, highlightAnnotations, spaces }
+  const [undoHistory, setUndoHistory] = useState([]); // Array of { annotationsByPage, surveyMarkers, spaces }
+  const [redoHistory, setRedoHistory] = useState([]); // Array of { annotationsByPage, surveyMarkers, spaces }
   const [localAnnotationHistoryVersion, setLocalAnnotationHistoryVersion] = useState(0);
   const isUndoingRef = useRef(false); // Flag to prevent saving history during undo/redo
   // UX 2026-04-21: short-window suppression counter used by batch operations
@@ -17885,7 +17885,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   // downstream checkpoints to ignore, then runs the individual mutations.
   const suppressBatchCheckpointsRef = useRef(0);
   const annotationsByPageRef = useRef(annotationsByPage);
-  const highlightAnnotationsRef = useRef(highlightAnnotations);
+  const surveyMarkersRef = useRef(surveyMarkers);
   const spacesRef = useRef(spaces);
   const undoHistoryRef = useRef(undoHistory);
   const redoHistoryRef = useRef(redoHistory);
@@ -17908,22 +17908,22 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   }, [annotationsByPage]);
 
   useEffect(() => {
-    highlightAnnotationsRef.current = highlightAnnotations;
-  }, [highlightAnnotations]);
+    surveyMarkersRef.current = surveyMarkers;
+  }, [surveyMarkers]);
 
   const clearExcelSyncCheckpoint = useCallback(() => {
     lastExcelSyncFingerprintRef.current = null;
     setHasPendingExcelSyncChanges(false);
   }, []);
 
-  const markExcelSyncCheckpoint = useCallback((templateOverride = null, highlightAnnotationsOverride = null) => {
+  const markExcelSyncCheckpoint = useCallback((templateOverride = null, surveyMarkersOverride = null) => {
     const templateForSync = templateOverride || selectedTemplate;
     if (!templateForSync?.linkedExcelPath) {
       clearExcelSyncCheckpoint();
       return null;
     }
 
-    const annotationsForSync = highlightAnnotationsOverride || highlightAnnotationsRef.current || {};
+    const annotationsForSync = surveyMarkersOverride || surveyMarkersRef.current || {};
     const fingerprint = computeExcelSyncFingerprint(templateForSync, annotationsForSync);
     lastExcelSyncFingerprintRef.current = fingerprint.hash;
     setHasPendingExcelSyncChanges(false);
@@ -17933,7 +17933,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   useEffect(() => {
     const pending = computeHasPendingExcelSyncChanges({
       template: selectedTemplate,
-      highlightAnnotations,
+      surveyMarkers,
       baselineHash: lastExcelSyncFingerprintRef.current
     });
     setHasPendingExcelSyncChanges(pending);
@@ -17943,7 +17943,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     selectedTemplate?.linkedExcelPath,
     selectedTemplate?.oneDriveApiPath,
     selectedTemplate?.oneDriveFileId,
-    highlightAnnotations
+    surveyMarkers
   ]);
 
   useEffect(() => {
@@ -18062,7 +18062,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     return {
       annotationsPageCount: pageEntries.length,
       annotationObjectCount,
-      highlightCount: Object.keys(snapshot?.highlightAnnotations || {}).length,
+      highlightCount: Object.keys(snapshot?.surveyMarkers || {}).length,
       spacesCount: spacesState.length,
       assignedPagesCount,
       regionCount,
@@ -18075,8 +18075,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   }, [getHistoryFingerprint]);
 
   const summarizeHistoryDelta = useCallback((fromState, toState) => {
-    const fromSnapshot = fromState || { annotationsByPage: {}, highlightAnnotations: {}, spaces: [] };
-    const toSnapshot = toState || { annotationsByPage: {}, highlightAnnotations: {}, spaces: [] };
+    const fromSnapshot = fromState || { annotationsByPage: {}, surveyMarkers: {}, spaces: [] };
+    const toSnapshot = toState || { annotationsByPage: {}, surveyMarkers: {}, spaces: [] };
 
     const fromSummary = summarizeHistorySnapshot(fromSnapshot);
     const toSummary = summarizeHistorySnapshot(toSnapshot);
@@ -18350,7 +18350,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
   const getHistorySnapshot = useCallback(() => ({
     annotationsByPage: JSON.parse(JSON.stringify(annotationsByPageRef.current || {})),
-    highlightAnnotations: JSON.parse(JSON.stringify(highlightAnnotationsRef.current || {})),
+    surveyMarkers: JSON.parse(JSON.stringify(surveyMarkersRef.current || {})),
     spaces: JSON.parse(JSON.stringify(spacesRef.current || [])),
     // UX 2026-04-21: callouts were previously left out of the undo snapshot,
     // so deleting a callout checkpointed only the shape/highlight/space
@@ -18370,7 +18370,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         ...annotationsState,
         [pageKey]: JSON.parse(JSON.stringify(pageState || { objects: [] }))
       },
-      highlightAnnotations: highlightAnnotationsRef.current || {},
+      surveyMarkers: surveyMarkersRef.current || {},
       spaces: spacesRef.current || [],
       callouts: calloutsRef.current || []
     };
@@ -18390,20 +18390,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
   const restoreHistoryState = useCallback((stateToRestore) => {
     const restoredAnnotationsByPage = stateToRestore.annotationsByPage || {};
-    const restoredHighlights = stateToRestore.highlightAnnotations || {};
+    const restoredHighlights = stateToRestore.surveyMarkers || {};
     const restoredSpaces = migrateHistorySpaces(stateToRestore.spaces || []);
     const restoredCallouts = Array.isArray(stateToRestore.callouts)
       ? stateToRestore.callouts
       : [];
 
     annotationsByPageRef.current = restoredAnnotationsByPage;
-    highlightAnnotationsRef.current = restoredHighlights;
+    surveyMarkersRef.current = restoredHighlights;
     spacesRef.current = restoredSpaces;
     calloutsRef.current = restoredCallouts;
 
     const applyRestoredState = () => {
       setAnnotationsByPage(restoredAnnotationsByPage);
-      setHighlightAnnotations(restoredHighlights);
+      setSurveyMarkers(restoredHighlights);
       setSpaces(restoredSpaces);
       setCalloutsIfPersistedChanged(restoredCallouts);
     };
@@ -20433,7 +20433,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       const id = callout?.id || callout?.highlightId || null;
       if (id) cloudDeleteIds.add(id);
     });
-    Object.entries(highlightAnnotationsRef.current || {}).forEach(([highlightId, highlight]) => {
+    Object.entries(surveyMarkersRef.current || {}).forEach(([highlightId, highlight]) => {
       if (shouldDeleteScopedEntry(highlight)) cloudDeleteIds.add(highlightId);
     });
 
@@ -20476,7 +20476,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       return changed ? kept : prev;
     });
 
-    setHighlightAnnotations((prev) => {
+    setSurveyMarkers((prev) => {
       let changed = false;
       const next = { ...(prev || {}) };
       Object.entries(prev || {}).forEach(([highlightId, highlight]) => {
@@ -20830,7 +20830,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
             // Get all highlights for this category and module (same logic as sidebar)
             const categoryHighlights = [];
 
-            Object.entries(highlightAnnotations).forEach(([highlightId, highlight]) => {
+            Object.entries(surveyMarkers).forEach(([highlightId, highlight]) => {
               const highlightModuleId = highlight.moduleId || highlight.spaceId; // Support legacy spaceId
 
               // Use loose equality (==) to handle potential string/number mismatches
@@ -20894,9 +20894,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
             categoryHighlights.forEach((highlight) => {
               const row = [];
 
-              // Get the ACTUAL highlight from highlightAnnotations to ensure we have all data
+              // Get the ACTUAL highlight from surveyMarkers to ensure we have all data
               const highlightId = highlight?.id;
-              let actualHighlight = highlightId ? highlightAnnotations[highlightId] : highlight;
+              let actualHighlight = highlightId ? surveyMarkers[highlightId] : highlight;
 
               // Ensure highlight has metadata (add if missing)
               actualHighlight = ensureHighlightMetadata(actualHighlight);
@@ -21321,7 +21321,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
             // Mark that linked Excel file exists (ensures dropdown menu shows)
             setLinkedExcelExists(true);
-            markExcelSyncCheckpoint(updatedTemplate, highlightAnnotationsRef.current);
+            markExcelSyncCheckpoint(updatedTemplate, surveyMarkersRef.current);
 
             if (!silent) {
               setIsExporting(false);
@@ -21378,7 +21378,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       }
       alert('Unable to create the Excel file. Please try again.');
     }
-  }, [selectedTemplate, items, highlightAnnotations, graphClient, liveSyncEnabled, excelSessionId, oneDriveFileId, liveSyncStatus, markExcelSyncCheckpoint]);
+  }, [selectedTemplate, items, surveyMarkers, graphClient, liveSyncEnabled, excelSessionId, oneDriveFileId, liveSyncStatus, markExcelSyncCheckpoint]);
 
   const handleOpenExcel = useCallback(async () => {
     if (!selectedTemplate?.linkedExcelPath) {
@@ -21940,7 +21940,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
       // Mark that linked Excel file exists (enables dropdown menu)
       setLinkedExcelExists(true);
-      markExcelSyncCheckpoint(updatedTemplate, highlightAnnotationsRef.current);
+      markExcelSyncCheckpoint(updatedTemplate, surveyMarkersRef.current);
 
       // Persist to Supabase
       const supabaseTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id;
@@ -22065,7 +22065,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
   // Helper: Execute the actual Excel import after new columns are handled
   const executeExcelImport = useCallback((worksheetDataList, templateToUse) => {
-    const newHighlightAnnotations = { ...highlightAnnotations };
+    const newHighlightAnnotations = { ...surveyMarkers };
     let updatesCount = 0;
     let deletionsCount = 0;
     const excelItemsByScope = {}; // Track items per category/module for deletion detection
@@ -22293,8 +22293,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       bulkDeletionScopes[scopeKey].toDelete++;
     });
 
-    // Count total items per scope (from original highlightAnnotations, not the modified copy)
-    Object.entries(highlightAnnotations).forEach(([key, ann]) => {
+    // Count total items per scope (from original surveyMarkers, not the modified copy)
+    Object.entries(surveyMarkers).forEach(([key, ann]) => {
       const moduleId = ann.moduleId || ann.spaceId;
       const scopeKey = `${moduleId}-${ann.categoryId}`;
       if (bulkDeletionScopes[scopeKey]) {
@@ -22332,7 +22332,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
       // Queue canvas removal if highlight has visual bounds
       if (ann.pageNumber && ann.bounds) {
-        setHighlightsToRemoveByPage(prev => ({
+        setSurveyMarkersToRemoveByPage(prev => ({
           ...prev,
           [ann.pageNumber]: [...(prev[ann.pageNumber] || []), ann.bounds]
         }));
@@ -22470,18 +22470,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     }
 
     if (updatesCount > 0 || deletionsCount > 0) {
-      setHighlightAnnotations(newHighlightAnnotations);
+      setSurveyMarkers(newHighlightAnnotations);
       markExcelSyncCheckpoint(templateToUse, newHighlightAnnotations);
       alert(`Sync complete! Updated ${updatesCount} items, deleted ${deletionsCount} items.`);
     } else {
       markExcelSyncCheckpoint(templateToUse, newHighlightAnnotations);
       alert('Sync complete! No changes found.');
     }
-  }, [highlightAnnotations, items, setItems, setAnnotations, scale, setAnnotationsByPage, markExcelSyncCheckpoint]);
+  }, [surveyMarkers, items, setItems, setAnnotations, scale, setAnnotationsByPage, markExcelSyncCheckpoint]);
 
   // Helper: Execute auto-sync import with canvas color tracking
   const executeAutoExcelImport = useCallback((worksheetDataList, templateToUse) => {
-    const newHighlightAnnotations = { ...highlightAnnotations };
+    const newHighlightAnnotations = { ...surveyMarkers };
     let updatesCount = 0;
     let deletionsCount = 0;
     const excelItemsByScope = {}; // Track items per category/module for deletion detection
@@ -22730,8 +22730,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       bulkDeletionScopes[scopeKey].toDelete++;
     });
 
-    // Count total items per scope (from original highlightAnnotations, not the modified copy)
-    Object.entries(highlightAnnotations).forEach(([key, ann]) => {
+    // Count total items per scope (from original surveyMarkers, not the modified copy)
+    Object.entries(surveyMarkers).forEach(([key, ann]) => {
       const moduleId = ann.moduleId || ann.spaceId;
       const scopeKey = `${moduleId}-${ann.categoryId}`;
       if (bulkDeletionScopes[scopeKey]) {
@@ -22770,7 +22770,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
       // Queue canvas removal if highlight has visual bounds
       if (ann.pageNumber && ann.bounds) {
-        setHighlightsToRemoveByPage(prev => ({
+        setSurveyMarkersToRemoveByPage(prev => ({
           ...prev,
           [ann.pageNumber]: [...(prev[ann.pageNumber] || []), ann.bounds]
         }));
@@ -22908,7 +22908,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     }
 
     if (updatesCount > 0 || deletionsCount > 0) {
-      setHighlightAnnotations(newHighlightAnnotations);
+      setSurveyMarkers(newHighlightAnnotations);
       markExcelSyncCheckpoint(templateToUse, newHighlightAnnotations);
       const message = deletionsCount > 0
         ? `Auto-synced ${updatesCount} items, deleted ${deletionsCount} items from Excel`
@@ -22951,7 +22951,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       setLastSyncMessage('No changes found');
       setTimeout(() => setLastSyncMessage(''), 5000);
     }
-  }, [highlightAnnotations, items, setItems, setAnnotations, scale, setAnnotationsByPage, markExcelSyncCheckpoint]);
+  }, [surveyMarkers, items, setItems, setAnnotations, scale, setAnnotationsByPage, markExcelSyncCheckpoint]);
 
   // Helper: Create new template with added checklist items from new columns
   const handleCreateNewTemplateFromColumns = useCallback(async (newColumnsByCategory, templateName) => {
@@ -23813,7 +23813,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     }, 5000);
 
     return () => clearTimeout(pushTimeout);
-  }, [liveSyncEnabled, excelSessionId, useFallbackSync, oneDriveFileId, graphClient, liveSyncStatus, highlightAnnotations, selectedTemplate?.linkedExcelPath, handleExportSurveyToExcel]);
+  }, [liveSyncEnabled, excelSessionId, useFallbackSync, oneDriveFileId, graphClient, liveSyncStatus, surveyMarkers, selectedTemplate?.linkedExcelPath, handleExportSurveyToExcel]);
 
 
   // ============================================
@@ -23971,7 +23971,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     let cancelled = false;
 
     loadAnnotationsFromSupabase(documentId)
-      .then(async ({ highlightAnnotations: remoteAnnotations, error }) => {
+      .then(async ({ surveyMarkers: remoteAnnotations, error }) => {
         if (cancelled) return;
         if (error) {
           console.error('[DocumentSync] Error loading annotations:', error);
@@ -23980,7 +23980,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
             source: 'supabase-highlight-error',
             documentId,
             pdfId: hydrationPdfId,
-            count: Object.keys(highlightAnnotationsRef.current || {}).length,
+            count: Object.keys(surveyMarkersRef.current || {}).length,
           });
           return;
         }
@@ -23991,7 +23991,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
           pdfId: hydrationPdfId,
           count: remoteCount,
         }));
-        setHighlightAnnotations(remoteAnnotations || {});
+        setSurveyMarkers(remoteAnnotations || {});
         lastSyncedAnnotationsRef.current = JSON.stringify(remoteAnnotations || {});
         setSurveyAnnotationHydration({
           ready: true,
@@ -24123,7 +24123,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         // Don't apply our own changes
         if (annotation.lastModifiedBy === user.id) return;
 
-        setHighlightAnnotations(prev => ({
+        setSurveyMarkers(prev => ({
           ...prev,
           [annotation.highlightId]: {
             pageNumber: annotation.pageNumber,
@@ -24155,7 +24155,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         // Don't apply our own changes
         if (annotation.lastModifiedBy === user.id) return;
 
-        setHighlightAnnotations(prev => ({
+        setSurveyMarkers(prev => ({
           ...prev,
           [annotation.highlightId]: {
             ...prev[annotation.highlightId],
@@ -24185,7 +24185,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         }));
       },
       onDelete: (highlightId) => {
-        setHighlightAnnotations(prev => {
+        setSurveyMarkers(prev => {
           const next = { ...prev };
           delete next[highlightId];
           return next;
@@ -24216,14 +24216,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       syncRLSErrorShownRef.current ||
       syncStructuralAutoDisabledRef.current
     ) return;
-    if (Object.keys(highlightAnnotations).length === 0) {
+    if (Object.keys(surveyMarkers).length === 0) {
       const priorHadHighlights = lastSyncedAnnotationsRef.current
         && lastSyncedAnnotationsRef.current !== '{}';
       if (!priorHadHighlights) return;
     }
 
     // Check if annotations actually changed (avoid syncing our own remote updates)
-    const annotationsString = JSON.stringify(highlightAnnotations);
+    const annotationsString = JSON.stringify(surveyMarkers);
     if (lastSyncedAnnotationsRef.current === annotationsString) {
       return;
     }
@@ -24238,14 +24238,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       // events to the cloud BEFORE the upsert. Without this, peers keep
       // rendering highlights the user already erased on this device. We parse
       // the cached JSON string defensively — if parse fails (corrupt cache),
-      // priorHighlightAnnotations is null and the service falls back to upsert-
+      // priorSurveyMarkers is null and the service falls back to upsert-
       // only behavior (no regression vs pre-fix).
-      let priorHighlightAnnotations = null;
+      let priorSurveyMarkers = null;
       if (lastSyncedAnnotationsRef.current) {
         try {
-          priorHighlightAnnotations = JSON.parse(lastSyncedAnnotationsRef.current);
+          priorSurveyMarkers = JSON.parse(lastSyncedAnnotationsRef.current);
         } catch (_) {
-          priorHighlightAnnotations = null;
+          priorSurveyMarkers = null;
         }
       }
       const {
@@ -24254,8 +24254,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         errorClass,
         nonRetryable,
         isRLSError
-      } = await syncAnnotationsToSupabase(documentId, user.id, highlightAnnotations, {
-        priorHighlightAnnotations,
+      } = await syncAnnotationsToSupabase(documentId, user.id, surveyMarkers, {
+        priorSurveyMarkers,
       });
 
       if (cancelled) return;
@@ -24265,9 +24265,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         syncErrorCountRef.current = 0; // Reset error count on success
         syncStructuralErrorShownRef.current = false;
         recordAnnotationSyncPush({
-          kind: 'survey-highlight',
+          kind: 'survey-marker',
           count: 1,
-          highlightCount: Object.keys(highlightAnnotations || {}).length,
+          highlightCount: Object.keys(surveyMarkers || {}).length,
         });
       } else {
         syncErrorCountRef.current++;
@@ -24369,26 +24369,26 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         try {
           // Re-derive prior baseline + run upsert directly (cancelled flag
           // would otherwise block runSync()). Fire-and-forget.
-          let priorHighlightAnnotations = null;
+          let priorSurveyMarkers = null;
           if (lastSyncedAnnotationsRef.current && typeof lastSyncedAnnotationsRef.current === 'string') {
             try {
-              priorHighlightAnnotations = JSON.parse(lastSyncedAnnotationsRef.current);
+              priorSurveyMarkers = JSON.parse(lastSyncedAnnotationsRef.current);
             } catch (_) {
-              priorHighlightAnnotations = null;
+              priorSurveyMarkers = null;
             }
           }
           if (!syncStructuralAutoDisabledRef.current) {
             console.log('[DocumentSync] unmount flush — pushing pending highlight sync');
             Promise.resolve(
-              syncAnnotationsToSupabase(documentId, user.id, highlightAnnotations, {
-                priorHighlightAnnotations,
+              syncAnnotationsToSupabase(documentId, user.id, surveyMarkers, {
+                priorSurveyMarkers,
               })
             ).catch(() => { /* swallow on unmount path */ });
           }
         } catch (_e) { /* defensive — never throw from cleanup */ }
       }
     };
-  }, [documentSyncEnabled, getInteractionPerfResumeDelay, highlightAnnotations, isInteractionPerfWindowActive, pdfFile?.id, user?.id]);
+  }, [documentSyncEnabled, getInteractionPerfResumeDelay, surveyMarkers, isInteractionPerfWindowActive, pdfFile?.id, user?.id]);
 
   // 2026-04-30 — Audit hardening (finding #10): mirror the beforeunload flush
   // we added in src/hooks/useAnnotationCloudSync.js for the legacy highlight
@@ -25014,7 +25014,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
     // Survey highlights now render via SVGAnnotationLayer (viewBox-scaled,
     // no Fabric repaint, no flicker) and draw via FabricDrawingCanvas under
-    // the 'highlight' tool — same path used by rect/ellipse/line/arrow. PAL
+    // the 'survey-marker' tool — same path used by rect/ellipse/line/arrow. PAL
     // is retired in SVG mode.
     return false;
   }, [rendererMode]);
@@ -25789,7 +25789,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     objectModifiedInteractionCheckpointRef.current.clear();
     isUndoingRef.current = false;
     annotationsByPageRef.current = {};
-    highlightAnnotationsRef.current = {};
+    surveyMarkersRef.current = {};
     spacesRef.current = [];
     setSyncfusionDocumentBytes(null);
     setSyncfusionPageContainers({});
@@ -25817,8 +25817,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     previousToolRef.current = null;
     isPanningRef.current = false;
     setPendingHighlight(null);
-    setPendingHighlightName(null);
-    setHighlightNameInput('');
+    setPendingSurveyMarkerName(null);
+    setSurveyMarkerNameInput('');
     setPendingEntitySelection(null);
     setShowSpaceSelection(false);
     setShowTemplateSelection(false);
@@ -25850,7 +25850,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       setPdfId(null);
       setItems({});
       setAnnotations({});
-      setHighlightAnnotations({});
+      setSurveyMarkers({});
       setSurveyAnnotationHydration(ANNOTATION_HYDRATION_READY_LOCAL);
       return;
     }
@@ -25871,8 +25871,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     // localStorage snapshot first causes the same visible pop-in/out as
     // normal annotations, so keep them gated until the highlight SELECT
     // below returns.
-    const loadedHighlights = isCloudBackedDoc ? {} : loadHighlightAnnotations(id);
-    setHighlightAnnotations(loadedHighlights);
+    const loadedHighlights = isCloudBackedDoc ? {} : loadSurveyMarkers(id);
+    setSurveyMarkers(loadedHighlights);
     // Cloud-backed docs use the CRDT/Y.Doc snapshot as the annotation source.
     // Loading the older annotationsByPage_* localStorage cache here causes a
     // visible stale-state flash: correct smooth Drawboard paths hydrate, then a
@@ -25979,13 +25979,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     savePDFData(pdfId, items, annotations);
   }, [pdfId, items, annotations]);
 
-  // Save highlightAnnotations to localStorage when they change
+  // Save surveyMarkers to localStorage when they change
   useEffect(() => {
     if (!pdfId) {
       return;
     }
-    saveHighlightAnnotations(pdfId, highlightAnnotations);
-  }, [pdfId, highlightAnnotations]);
+    saveSurveyMarkers(pdfId, surveyMarkers);
+  }, [pdfId, surveyMarkers]);
 
   // Track unsaved annotation changes
   const [hasUnsavedAnnotations, setHasUnsavedAnnotations] = useState(false);
@@ -26079,7 +26079,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         version: 1,
         updatedAt: new Date().toISOString(),
         pdfId,
-        annotations: currentAnnotations, // highlightAnnotations
+        annotations: currentAnnotations, // surveyMarkers
         annotationsByPage: annotationsByPage,
         callouts: callouts, // Callout annotations
         spaces: currentSpaces,
@@ -26133,7 +26133,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       }
 
       // Restore state
-      if (data.annotations) setHighlightAnnotations(data.annotations);
+      if (data.annotations) setSurveyMarkers(data.annotations);
       // Cloud-sync documents source editable annotations from Y.Doc/Supabase
       // rows, not this older Supabase Storage survey-data JSON blob. That
       // blob can hold a pre-cutover annotationsByPage snapshot; restoring it
@@ -26189,7 +26189,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     }
     try {
       const defaultName = (pdfFile.name || 'document').replace(/\.pdf$/i, '') + '-annotated.pdf';
-      const annotationCounts = summarizeAnnotationCountsForSaveExport(annotationsByPage, callouts, highlightAnnotations);
+      const annotationCounts = summarizeAnnotationCountsForSaveExport(annotationsByPage, callouts, surveyMarkers);
       console.log('[PDFSaveExport] action start ' + JSON.stringify({
         actionType: 'pdf-export',
         documentId: pdfFile?.id || null,
@@ -26222,7 +26222,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
           actionType: 'pdf-export',
           documentId: pdfFile?.id || null,
           callouts,
-          highlightAnnotations,
+          surveyMarkers,
           spaces
         }
       );
@@ -26260,7 +26260,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       console.error('[ExportAnnotatedPDF] failed:', err);
       alert(`Export failed: ${err?.message || err}`);
     }
-  }, [pdfFile, annotationsByPage, pageSizes, callouts, highlightAnnotations, spaces]);
+  }, [pdfFile, annotationsByPage, pageSizes, callouts, surveyMarkers, spaces]);
 
   // Subscribe to the File menu item.
   useEffect(() => {
@@ -26288,7 +26288,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       // prompts. The file output runs second and only on explicit user action.
 
       // --- Step 1: cloud / local annotation backup (silent, always runs) ---
-      const annotationCounts = summarizeAnnotationCountsForSaveExport(annotationsByPage, callouts, highlightAnnotations);
+      const annotationCounts = summarizeAnnotationCountsForSaveExport(annotationsByPage, callouts, surveyMarkers);
       let supabaseAnnotationSaveRan = false;
       let supabaseAnnotationSaveError = null;
       console.log('[PDFSaveExport] action start ' + JSON.stringify({
@@ -26310,7 +26310,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         onUnsavedAnnotationsChange(false, tabId);
       }
       if (features?.cloudSync) {
-        await saveSurveyDataToSupabase(highlightAnnotations, spaces, selectedTemplate);
+        await saveSurveyDataToSupabase(surveyMarkers, spaces, selectedTemplate);
         if (pdfFile?.id && user?.id && typeof cloudSyncForceFlush === 'function') {
           try {
             await cloudSyncForceFlush();
@@ -26372,7 +26372,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         alert('Error saving annotations: ' + error.message);
       }
     }
-  }, [pdfId, pdfFile, annotationsByPage, callouts, onUnsavedAnnotationsChange, selectedTemplate, saveSurveyDataToSupabase, pushToExcelWithRetry, features?.cloudSync, features?.excelExport, highlightAnnotations, spaces, tabId, hasPendingExcelSyncChanges, user?.id, cloudSyncForceFlush]);
+  }, [pdfId, pdfFile, annotationsByPage, callouts, onUnsavedAnnotationsChange, selectedTemplate, saveSurveyDataToSupabase, pushToExcelWithRetry, features?.cloudSync, features?.excelExport, surveyMarkers, spaces, tabId, hasPendingExcelSyncChanges, user?.id, cloudSyncForceFlush]);
 
   // Auto-save every 30 seconds when there are unsaved changes and a file path is available
   useEffect(() => {
@@ -26422,7 +26422,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     const highlightId = noteDialogOpen;
 
 
-    const existingNote = highlightAnnotations[highlightId]?.note;
+    const existingNote = surveyMarkers[highlightId]?.note;
 
 
     if (existingNote) {
@@ -26434,19 +26434,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     } else {
       setNoteDialogContent({ text: '', photos: [], videos: [] });
     }
-  }, [noteDialogOpen, highlightAnnotations]);
+  }, [noteDialogOpen, surveyMarkers]);
 
   // Migrate legacy highlights to new system (one-time, when template is selected)
   useEffect(() => {
-    if (!selectedTemplate || !pdfId || Object.keys(highlightAnnotations).length === 0) return;
+    if (!selectedTemplate || !pdfId || Object.keys(surveyMarkers).length === 0) return;
     if (Object.keys(items).length > 0) return; // Already migrated or has data
 
-    const migrated = migrateLegacyHighlights(highlightAnnotations, items, annotations, selectedTemplate);
+    const migrated = migrateLegacyHighlights(surveyMarkers, items, annotations, selectedTemplate);
     if (Object.keys(migrated.items).length > 0) {
       setItems(migrated.items);
       setAnnotations(migrated.annotations);
       // Optionally clear legacy data
-      // setHighlightAnnotations({});
+      // setSurveyMarkers({});
     }
   }, [selectedTemplate, pdfId]); // Only run when template changes
 
@@ -26956,9 +26956,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
             };
           });
 
-          const hiddenHighlights = appLayerState?.layers?.highlightAnnotations || {};
+          const hiddenHighlights = appLayerState?.layers?.surveyMarkers || {};
           if (hiddenHighlights && Object.keys(hiddenHighlights).length > 0) {
-            setHighlightAnnotations((prev) => ({
+            setSurveyMarkers((prev) => ({
               ...(prev || {}),
               ...hiddenHighlights,
             }));
@@ -26986,7 +26986,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
             exportId: appLayerState?.exportId || null,
             scopedAnnotationPages: Object.keys(appLayerState?.layers?.scopedAnnotationsByPage || {}).length,
             scopedCallouts: hiddenLayerCallouts.length,
-            surveyHighlights: Object.keys(hiddenHighlights || {}).length,
+            surveyMarkers: Object.keys(hiddenHighlights || {}).length,
             spaces: hiddenSpaces.length,
           }));
 
@@ -27725,7 +27725,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     return run(0);
   }, [getBoundsCenter, goToPage, pageSizes, resolvePageContentElement, scrollMode, useSyncfusionRenderer]);
 
-  const centerSurveyHighlightElementInViewer = useCallback((highlightId, options = {}) => {
+  const centerSurveyMarkerElementInViewer = useCallback((highlightId, options = {}) => {
     if (!highlightId) return false;
     const {
       behavior = 'auto',
@@ -27742,7 +27742,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         ? CSS.escape(String(value))
         : String(value).replace(/["\\]/g, '\\$&')
     );
-    const selector = `[data-survey-highlight-id="${escapeSelectorValue(highlightId)}"]`;
+    const selector = `[data-survey-marker-id="${escapeSelectorValue(highlightId)}"]`;
 
     const run = (attempt = 0) => {
       const container = containerRef.current;
@@ -29847,7 +29847,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         if (!id) throw new Error('Fix19 annotation id is required');
         return commitAnnotation({ id, scope });
       },
-      async createSurveyHighlight({ id }) {
+      async createSurveyMarker({ id }) {
         if (!pdfFile?.id || !user?.id) {
           throw new Error('Fix19 survey highlight requires authenticated document state');
         }
@@ -29865,10 +29865,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
           opacity: 0.32,
         };
         const nextHighlights = {
-          ...(highlightAnnotationsRef.current || {}),
+          ...(surveyMarkersRef.current || {}),
           [id]: highlight,
         };
-        setHighlightAnnotations(nextHighlights);
+        setSurveyMarkers(nextHighlights);
         setNewHighlightsByPage((prev) => ({
           ...prev,
           [pageNumber]: [
@@ -29909,7 +29909,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     annotationsByPageRef,
     clearAnnotationSelectionForContextChange,
     handleSaveAnnotations,
-    highlightAnnotationsRef,
+    surveyMarkersRef,
     pdfFile?.id,
     setActiveTool,
     user?.id,
@@ -30820,7 +30820,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   const handleHighlightClicked = useCallback((highlightId) => {
     if (!highlightId || !selectedTemplate) return;
 
-    const highlight = highlightAnnotations[highlightId];
+    const highlight = surveyMarkers[highlightId];
     if (!highlight) return;
 
     const moduleId = highlight.moduleId || highlight.spaceId;
@@ -30853,7 +30853,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         }, 2000);
       }
     }, 300);
-  }, [highlightAnnotations, selectedTemplate, showSurveyPanel, isSurveyPanelCollapsed]);
+  }, [surveyMarkers, selectedTemplate, showSurveyPanel, isSurveyPanelCollapsed]);
 
   // Locate item on PDF (Forward Navigation)
   const handleLocateItemOnPDF = useCallback((highlight) => {
@@ -30870,7 +30870,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
     if (highlightId) {
       setActiveTool('select');
-      setPendingSurveyHighlightSelection({
+      setPendingSurveyMarkerSelection({
         pageNumber,
         highlightId,
         tick: Date.now(),
@@ -30895,7 +30895,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       skipIfClosePx = 8,
     } = {}) => {
       if (!highlightId) return false;
-      return centerSurveyHighlightElementInViewer(highlightId, {
+      return centerSurveyMarkerElementInViewer(highlightId, {
         behavior,
         retryBehavior,
         maxRetries: useSyncfusionRenderer ? 14 : 8,
@@ -31054,22 +31054,22 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       exactDelay: null,
     });
   }, [
-    centerSurveyHighlightElementInViewer,
+    centerSurveyMarkerElementInViewer,
     centerPageBoundsInViewer,
     goToPage,
     resolvePageContentElement,
     scale,
     setActiveTool,
     setScaleWithViewportPreservation,
-    setPendingSurveyHighlightSelection,
+    setPendingSurveyMarkerSelection,
     useSyncfusionRenderer
   ]);
 
-  const handlePendingSurveyHighlightSelectionConsumed = useCallback(() => {
-    setPendingSurveyHighlightSelection(null);
+  const handlePendingSurveyMarkerSelectionConsumed = useCallback(() => {
+    setPendingSurveyMarkerSelection(null);
   }, []);
 
-  const handleSurveyHighlightBoundsChange = useCallback((pageNumber, highlightId, bounds, meta = {}) => {
+  const handleSurveyMarkerBoundsChange = useCallback((pageNumber, highlightId, bounds, meta = {}) => {
     if (!highlightId || !bounds) return;
     const rawAngle = Number(bounds.angle);
     const hasExplicitAngle = Number.isFinite(rawAngle);
@@ -31083,12 +31083,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       height: Math.max(1, Number(bounds.height) || 1),
     };
 
-    addHistoryCheckpoint(`survey-highlight:${meta.action || 'bounds'}`, {
+    addHistoryCheckpoint(`survey-marker:${meta.action || 'bounds'}`, {
       pageNumber,
       highlightId,
     });
 
-    setHighlightAnnotations(prev => {
+    setSurveyMarkers(prev => {
       const existing = prev?.[highlightId];
       if (!existing) return prev;
       const existingAngle = Number(existing?.bounds?.angle);
@@ -31149,13 +31149,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       return;
     }
 
-    // Find matching highlights in highlightAnnotations
+    // Find matching highlights in surveyMarkers
     const matchingHighlightIds = [];
 
     if (highlightId) {
       // If highlightId is provided, use it directly (most reliable)
-      if (highlightAnnotations[highlightId]) {
-        const highlight = highlightAnnotations[highlightId];
+      if (surveyMarkers[highlightId]) {
+        const highlight = surveyMarkers[highlightId];
         const highlightModuleId = highlight.moduleId || highlight.spaceId; // Support legacy spaceId
         if (highlightModuleId === selectedModuleId && highlight.pageNumber === pageNumber) {
           matchingHighlightIds.push(highlightId);
@@ -31163,7 +31163,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       }
     } else {
       // Fall back to bounds matching if no highlightId
-      Object.entries(highlightAnnotations).forEach(([id, highlight]) => {
+      Object.entries(surveyMarkers).forEach(([id, highlight]) => {
         const highlightModuleId = highlight.moduleId || highlight.spaceId; // Support legacy spaceId
         if (highlightModuleId === selectedModuleId &&
           highlight.pageNumber === pageNumber &&
@@ -31173,11 +31173,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       });
     }
 
-    // Delete matching highlights from highlightAnnotations
+    // Delete matching highlights from surveyMarkers
     if (matchingHighlightIds.length > 0) {
       // Get highlight data before deleting (since state updates are async)
       const highlightsToDelete = matchingHighlightIds
-        .map(id => ({ id, highlight: highlightAnnotations[id] }))
+        .map(id => ({ id, highlight: surveyMarkers[id] }))
         .filter(({ highlight }) => highlight != null)
         .filter(({ highlight }) => {
           const authorId = highlight.userId || highlight.annotationData?.userId || highlight.lastModifiedBy || null;
@@ -31195,8 +31195,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       }
       const permittedHighlightIds = highlightsToDelete.map(({ id }) => id);
 
-      // Delete from highlightAnnotations
-      setHighlightAnnotations(prev => {
+      // Delete from surveyMarkers
+      setSurveyMarkers(prev => {
         const updated = { ...prev };
         permittedHighlightIds.forEach(id => delete updated[id]);
         return updated;
@@ -31304,9 +31304,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         }
       });
 
-      // Update highlightsToRemoveByPage to ensure visual cleanup on canvas
+      // Update surveyMarkersToRemoveByPage to ensure visual cleanup on canvas
       // This is crucial for Panel -> Canvas sync
-      setHighlightsToRemoveByPage(prev => {
+      setSurveyMarkersToRemoveByPage(prev => {
         const updated = { ...prev };
 
         highlightsToDelete.forEach(({ highlight }) => {
@@ -31329,7 +31329,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
       // Clear the removal queue after a short delay
       setTimeout(() => {
-        setHighlightsToRemoveByPage(prev => {
+        setSurveyMarkersToRemoveByPage(prev => {
           const updated = { ...prev };
           highlightsToDelete.forEach(({ highlight }) => {
             if (highlight && highlight.pageNumber && updated[highlight.pageNumber]) {
@@ -31347,11 +31347,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         });
       }, 100);
     }
-  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, highlightAnnotations, items, boundsMatch, getCategoryName, getModuleName, getModuleDataKey, pdfFile?.id, user?.id, documentSyncEnabled]);
+  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, surveyMarkers, items, boundsMatch, getCategoryName, getModuleName, getModuleDataKey, pdfFile?.id, user?.id, documentSyncEnabled]);
 
   // Handle deletion of a highlight item (from survey panel)
   const handleDeleteHighlightItem = useCallback((highlightId) => {
-    const highlight = highlightAnnotations[highlightId];
+    const highlight = surveyMarkers[highlightId];
     if (!highlight) {
       console.warn('[App] handleDeleteHighlightItem aborted: Highlight not found', highlightId);
       return;
@@ -31360,12 +31360,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     // Use shared handler for consistency
     handleHighlightDeleted(highlight.pageNumber, highlight.bounds, highlightId);
 
-  }, [highlightAnnotations, handleHighlightDeleted]);
+  }, [surveyMarkers, handleHighlightDeleted]);
 
-  const handleDeleteSurveyHighlight = useCallback((highlightId) => {
+  const handleDeleteSurveyMarker = useCallback((highlightId) => {
     if (!highlightId) return;
 
-    const savedHighlight = highlightAnnotations[highlightId];
+    const savedHighlight = surveyMarkers[highlightId];
     if (savedHighlight) {
       handleHighlightDeleted(savedHighlight.pageNumber, savedHighlight.bounds, highlightId);
       return;
@@ -31394,10 +31394,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     setPendingEntitySelection(prev => (
       prev?.highlight?.id === highlightId ? null : prev
     ));
-    setPendingHighlightName(prev => (
+    setPendingSurveyMarkerName(prev => (
       prev?.highlight?.id === highlightId ? null : prev
     ));
-  }, [addHistoryCheckpoint, handleHighlightDeleted, highlightAnnotations]);
+  }, [addHistoryCheckpoint, handleHighlightDeleted, surveyMarkers]);
 
   const getPageSurveyRegionId = useCallback((pageId) => {
     return getActivePageRegionId({
@@ -31411,7 +31411,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   // Persist explicit regionId/null on survey highlight previews so older
   // survey-scoped highlights do not get silently reclassified when a page
   // overlay is later enabled.
-  const buildSurveyHighlightPreview = useCallback((highlight, extra = {}) => {
+  const buildSurveyMarkerPreview = useCallback((highlight, extra = {}) => {
     const preview = {
       ...(highlight?.bounds || {}),
       highlightId: extra.highlightId ?? highlight?.highlightId ?? highlight?.id,
@@ -31466,7 +31466,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       const highlightId = pendingLocationItem.id;
 
       // Update highlight annotations
-      setHighlightAnnotations(prev => {
+      setSurveyMarkers(prev => {
         const existing = prev[highlightId] || {};
         // If it's a new annotation for an existing item, ensure we have all necessary data
         return {
@@ -31488,7 +31488,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         ...prev,
         [pageNumber]: [
           ...(prev[pageNumber] || []),
-          buildSurveyHighlightPreview(
+          buildSurveyMarkerPreview(
             {
               id: highlightId,
               bounds,
@@ -31542,7 +31542,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         }
       });
 
-      const newHighlight = buildSurveyHighlightPreview(
+      const newHighlight = buildSurveyMarkerPreview(
         {
           id: highlightId,
           bounds,
@@ -31582,7 +31582,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         });
       } else {
         // No Entities, go directly to name prompt
-        setPendingHighlightName({
+        setPendingSurveyMarkerName({
           highlight: {
             id: highlightId,
             pageNumber,
@@ -31592,7 +31592,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
           },
           categoryId: selectedCategoryId
         });
-        setHighlightNameInput(''); // Reset input
+        setSurveyMarkerNameInput(''); // Reset input
       }
 
       if (!surveyKeepCategoryActive) {
@@ -31611,13 +31611,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         });
       }
     }
-  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, selectedCategoryId, surveyKeepCategoryActive, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId, getPageSurveyRegionId, buildSurveyHighlightPreview]);
+  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, selectedCategoryId, surveyKeepCategoryActive, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId, getPageSurveyRegionId, buildSurveyMarkerPreview]);
 
   // Auto-switch to highlight tool when template is selected in survey mode (only on initial entry)
   useEffect(() => {
     // Only auto-switch once when first entering survey mode, then allow user to switch tools freely
     if (showSurveyPanel && selectedTemplate && selectedModuleId && !hasSwitchedToHighlightRef.current) {
-      setActiveTool('highlight');
+      setActiveTool('survey-marker');
       hasSwitchedToHighlightRef.current = true;
     }
     // Reset the flag when exiting survey mode
@@ -31670,7 +31670,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   // toggles are intentionally excluded: opening/collapsing the survey panel
   // only changes width by ~320px, which produces a scale delta under ~3% in
   // practice — imperceptible, but the 1-second Syncfusion zoom-settle timer
-  // still fires and blocks dependent effects (e.g. the survey-highlight paint)
+  // still fires and blocks dependent effects (e.g. the survey-marker paint)
   // from running until settle, making template open feel sluggish.
   useEffect(() => {
     requestAnimationFrame(() => {
@@ -32059,7 +32059,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   }, [annotations, selectedModuleId]);
 
   // Restore highlights when switching modules
-  // This merges saved highlights from highlightAnnotations with any pending highlights
+  // This merges saved highlights from surveyMarkers with any pending highlights
   useEffect(() => {
     if (!selectedModuleId) {
       // Don't clear highlights when no module is selected - preserve pending highlights
@@ -32067,18 +32067,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     }
 
     // Rebuild newHighlightsByPage by merging:
-    // 1. Pending highlights (not yet in highlightAnnotations) for current module
-    // 2. Saved highlights from highlightAnnotations for current module
+    // 1. Pending highlights (not yet in surveyMarkers) for current module
+    // 2. Saved highlights from surveyMarkers for current module
     setNewHighlightsByPage(prev => {
       const highlightsByPage = {};
 
-      // First, preserve pending highlights for this module (not yet saved to highlightAnnotations)
+      // First, preserve pending highlights for this module (not yet saved to surveyMarkers)
       Object.entries(prev).forEach(([pageNum, highlights]) => {
         highlights.forEach(highlight => {
           const highlightModuleId = highlight.moduleId;
           if (highlightModuleId === selectedModuleId && highlight.highlightId) {
-            // Check if this highlight is already saved in highlightAnnotations
-            const isSaved = highlightAnnotations && highlightAnnotations[highlight.highlightId];
+            // Check if this highlight is already saved in surveyMarkers
+            const isSaved = surveyMarkers && surveyMarkers[highlight.highlightId];
             if (!isSaved) {
               // This is a pending highlight, preserve it
               const pageNumber = parseInt(pageNum);
@@ -32095,9 +32095,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         });
       });
 
-      // Now add saved highlights from highlightAnnotations for this module
-      if (highlightAnnotations && Object.keys(highlightAnnotations).length > 0) {
-        Object.entries(highlightAnnotations).forEach(([highlightId, highlight]) => {
+      // Now add saved highlights from surveyMarkers for this module
+      if (surveyMarkers && Object.keys(surveyMarkers).length > 0) {
+        Object.entries(surveyMarkers).forEach(([highlightId, highlight]) => {
           // Check if this highlight belongs to the current module
           const highlightModuleId = highlight.moduleId || highlight.spaceId; // Support legacy spaceId
           if (highlightModuleId !== selectedModuleId) {
@@ -32153,14 +32153,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       // for this module has settled.
       return highlightsByPage;
     });
-  }, [selectedModuleId, highlightAnnotations]);
+  }, [selectedModuleId, surveyMarkers]);
 
   // Cleanup orphaned canvas highlights - ensures highlights can only exist if they have a corresponding survey panel item
   useEffect(() => {
-    // Build a set of valid highlight bounds from highlightAnnotations
+    // Build a set of valid highlight bounds from surveyMarkers
     const validHighlightBounds = new Map();
 
-    Object.entries(highlightAnnotations || {}).forEach(([highlightId, ann]) => {
+    Object.entries(surveyMarkers || {}).forEach(([highlightId, ann]) => {
       if (ann.pageNumber && ann.bounds) {
         const pageNum = ann.pageNumber;
         if (!validHighlightBounds.has(pageNum)) {
@@ -32253,7 +32253,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
       return hasChanges ? newState : prev;
     });
-  }, [highlightAnnotations, newHighlightsByPage, scale]);
+  }, [surveyMarkers, newHighlightsByPage, scale]);
 
 
   // Space filtering logic - determine which pages should be visible
@@ -32818,7 +32818,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
               const printableRegularPayload = buildPrintableRegularAnnotationPayload({
                 annotationsByPage: annotationsByPageRef.current || {},
                 callouts: calloutsRef.current || [],
-                highlightAnnotations: highlightAnnotationsRef.current || {},
+                surveyMarkers: surveyMarkersRef.current || {},
                 spaces,
               });
               const annotatedBytes = await savePDFWithFlattenedRegularAnnotationsForPrint(
@@ -34433,10 +34433,10 @@ ${pageBlocks}
                       if (!syncfusionOverlayWindowPages.has(pageNumber)) return false;
                       // Limit portals to pages with content to avoid unbounded memory growth
                       const hasAnnotations = annotationsByPage[pageNumber]?.objects?.length > 0;
-                      const hasSurveyHighlights = (newHighlightsByPage[pageNumber]?.length ?? 0) > 0;
+                      const hasSurveyMarkers = (newHighlightsByPage[pageNumber]?.length ?? 0) > 0;
                       const hasRegions = getPageRegions(pageNumber)?.length > 0;
                       const hasSearchHighlights = searchResultsByPage[pageNumber]?.length > 0;
-                      return hasAnnotations || hasSurveyHighlights || hasRegions || hasSearchHighlights;
+                      return hasAnnotations || hasSurveyMarkers || hasRegions || hasSearchHighlights;
                     })
                     .sort((a, b) => a - b)
                     .map(pageNumber => {
@@ -34460,7 +34460,7 @@ ${pageBlocks}
                       const hideOverlayUntilPdfReady = pageAnnotationObjects.length > 0 &&
                         !pagePdfHasEverBeenReady &&
                         !pagePdfReadyState.ready;
-                      const hasSurveyHighlights = (newHighlightsByPage[pageNumber]?.length ?? 0) > 0;
+                      const hasSurveyMarkers = (newHighlightsByPage[pageNumber]?.length ?? 0) > 0;
 
                       if (showRegionSelection && regionSelectionPage === pageNumber) {
                         console.log(
@@ -34539,7 +34539,7 @@ ${pageBlocks}
                       const isProxyReady = syncfusionProxyReadyPages.has(pageNumber);
                       const shouldHideFullLayer = (
                         shouldRenderLightweightAnnotations &&
-                          !hasSurveyHighlights &&
+                          !hasSurveyMarkers &&
                           proxyHasRenderablePayload &&
                           isProxyReady
                       );
@@ -34705,7 +34705,7 @@ ${pageBlocks}
                                 onToolChange={setActiveTool}
                                 highlightColor="rgba(255, 193, 7, 0.3)"
                                 newHighlights={newHighlightsByPage[pageNumber]}
-                                highlightsToRemove={highlightsToRemoveByPage[pageNumber]}
+                                highlightsToRemove={surveyMarkersToRemoveByPage[pageNumber]}
                                 onHighlightCreated={handleHighlightCreated}
                                 onHighlightDeleted={handleHighlightDeleted}
                                 onHighlightClicked={handleHighlightClicked}
@@ -34858,14 +34858,14 @@ ${pageBlocks}
                           {!requiresLegacyAnnotationLayer && (() => {
                             const svgInteractive = activeTool === 'select' || activeTool === 'text-select';
                             const isTextTool = activeTool === 'text';
-                            const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow' || activeTool === 'highlight';
+                            const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow' || activeTool === 'survey-marker';
                             const isEraserTool = activeTool === 'eraser';
                             const isEditMode = editingAnnotation?.pageNumber === pageNumber;
                             const suspendFullSvgForProxy =
                               activeTool === 'pan' &&
                               syncfusionInteractionPhase === 'interacting' &&
                               shouldRenderLightweightAnnotations &&
-                              !hasSurveyHighlights &&
+                              !hasSurveyMarkers &&
                               proxyHasRenderablePayload &&
                               isProxyReady;
                             // UX 2026-04-19: bbox edit mode (uniform resize + rotate chrome
@@ -34995,12 +34995,12 @@ ${pageBlocks}
                                   height={resolvedPageSize.height}
                                   annotations={pageAnnotations}
                                   callouts={callouts}
-                                  surveyHighlights={newHighlightsByPage[pageNumber]}
-                                  onUpdateSurveyHighlightBounds={handleSurveyHighlightBoundsChange}
-                                  onDeleteSurveyHighlight={handleDeleteSurveyHighlight}
-                                  onSurveyHighlightDoubleClick={handleHighlightClicked}
-                                  pendingSurveyHighlightSelection={pendingSurveyHighlightSelection}
-                                  onPendingSurveyHighlightSelectionConsumed={handlePendingSurveyHighlightSelectionConsumed}
+                                  surveyMarkers={newHighlightsByPage[pageNumber]}
+                                  onUpdateSurveyMarkerBounds={handleSurveyMarkerBoundsChange}
+                                  onDeleteSurveyMarker={handleDeleteSurveyMarker}
+                                  onSurveyMarkerDoubleClick={handleHighlightClicked}
+                                  pendingSurveyMarkerSelection={pendingSurveyMarkerSelection}
+                                  onPendingSurveyMarkerSelectionConsumed={handlePendingSurveyMarkerSelectionConsumed}
                                   selectedModuleId={selectedModuleId}
                                   showSurveyPanel={showSurveyPanel}
                                   selectedSpaceId={annotationSpaceId}
@@ -35814,7 +35814,7 @@ ${pageBlocks}
                                     onToolChange={setActiveTool}
                                     highlightColor="rgba(255, 193, 7, 0.3)"
                                     newHighlights={newHighlightsByPage[pageNumber]}
-                                    highlightsToRemove={highlightsToRemoveByPage[pageNumber]}
+                                    highlightsToRemove={surveyMarkersToRemoveByPage[pageNumber]}
                                     onHighlightCreated={handleHighlightCreated}
                                     onHighlightDeleted={handleHighlightDeleted}
                                     onHighlightClicked={handleHighlightClicked}
@@ -35857,7 +35857,7 @@ ${pageBlocks}
                                 {pageSizes[pageNumber] && !requiresLegacyAnnotationLayer && (() => {
                                   const svgInteractive = activeTool === 'select' || activeTool === 'text-select';
                                   const isTextTool = activeTool === 'text';
-                                  const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow' || activeTool === 'highlight';
+                                  const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow' || activeTool === 'survey-marker';
                                   const isEraserTool = activeTool === 'eraser';
                                   const isEditMode = editingAnnotation?.pageNumber === pageNumber;
                                   // UX 2026-04-19: see first mount site — bbox edit mode
@@ -35892,12 +35892,12 @@ ${pageBlocks}
                                       height={pageSizes[pageNumber].height}
                                       annotations={pageAnnotationsCS}
                                       callouts={callouts}
-                                      surveyHighlights={newHighlightsByPage[pageNumber]}
-                                      onUpdateSurveyHighlightBounds={handleSurveyHighlightBoundsChange}
-                                      onDeleteSurveyHighlight={handleDeleteSurveyHighlight}
-                                      onSurveyHighlightDoubleClick={handleHighlightClicked}
-                                      pendingSurveyHighlightSelection={pendingSurveyHighlightSelection}
-                                      onPendingSurveyHighlightSelectionConsumed={handlePendingSurveyHighlightSelectionConsumed}
+                                      surveyMarkers={newHighlightsByPage[pageNumber]}
+                                      onUpdateSurveyMarkerBounds={handleSurveyMarkerBoundsChange}
+                                      onDeleteSurveyMarker={handleDeleteSurveyMarker}
+                                      onSurveyMarkerDoubleClick={handleHighlightClicked}
+                                      pendingSurveyMarkerSelection={pendingSurveyMarkerSelection}
+                                      onPendingSurveyMarkerSelectionConsumed={handlePendingSurveyMarkerSelectionConsumed}
                                       selectedModuleId={selectedModuleId}
                                       showSurveyPanel={showSurveyPanel}
                                       selectedSpaceId={annotationSpaceId}
@@ -36439,7 +36439,7 @@ ${pageBlocks}
                                 annotations={annotationsByPage[pageNum]}
                                 onSaveAnnotations={handleSaveAnnotations}
                                 newHighlights={newHighlightsByPage[pageNum]}
-                                highlightsToRemove={highlightsToRemoveByPage[pageNum]}
+                                highlightsToRemove={surveyMarkersToRemoveByPage[pageNum]}
                                 onHighlightCreated={handleHighlightCreated}
                                 onHighlightDeleted={handleHighlightDeleted}
                                 onHighlightClicked={handleHighlightClicked}
@@ -36479,7 +36479,7 @@ ${pageBlocks}
                             )}
                             {pageSizes[pageNum] && !requiresLegacyAnnotationLayer && (() => {
                               const svgInteractive = activeTool === 'select' || activeTool === 'text-select';
-                              const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow' || activeTool === 'highlight';
+                              const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow' || activeTool === 'survey-marker';
                               const isEraserTool = activeTool === 'eraser';
                               const isEditMode = editingAnnotation?.pageNumber === pageNum;
                               const isFabricEditMode = isEditMode && editingAnnotation?.editType !== 'bbox';
@@ -36519,12 +36519,12 @@ ${pageBlocks}
                                       height={pageSizes[pageNum].height}
                                       annotations={pageAnnotations}
                                       callouts={callouts}
-                                      surveyHighlights={newHighlightsByPage[pageNum]}
-                                      onUpdateSurveyHighlightBounds={handleSurveyHighlightBoundsChange}
-                                      onDeleteSurveyHighlight={handleDeleteSurveyHighlight}
-                                      onSurveyHighlightDoubleClick={handleHighlightClicked}
-                                      pendingSurveyHighlightSelection={pendingSurveyHighlightSelection}
-                                      onPendingSurveyHighlightSelectionConsumed={handlePendingSurveyHighlightSelectionConsumed}
+                                      surveyMarkers={newHighlightsByPage[pageNum]}
+                                      onUpdateSurveyMarkerBounds={handleSurveyMarkerBoundsChange}
+                                      onDeleteSurveyMarker={handleDeleteSurveyMarker}
+                                      onSurveyMarkerDoubleClick={handleHighlightClicked}
+                                      pendingSurveyMarkerSelection={pendingSurveyMarkerSelection}
+                                      onPendingSurveyMarkerSelectionConsumed={handlePendingSurveyMarkerSelectionConsumed}
                                       selectedModuleId={selectedModuleId}
                                       showSurveyPanel={showSurveyPanel}
                                       selectedSpaceId={annotationSpaceId}
@@ -38071,7 +38071,7 @@ ${pageBlocks}
                     onChange={(e) => {
                       setSelectedModuleId(e.target.value || null);
                       setSelectedCategoryId(null);
-                      setActiveTool('highlight');
+                      setActiveTool('survey-marker');
                     }}
                     disabled={modules.length === 0}
                     title="Survey module"
@@ -38102,7 +38102,7 @@ ${pageBlocks}
                   <div style={{ width: '1px', height: '20px', background: '#444', margin: '0 2px' }} />
 
                   {categories.length > 0 ? categories.map((category) => {
-                    const isActive = selectedCategoryId === category.id && activeTool === 'highlight';
+                    const isActive = selectedCategoryId === category.id && activeTool === 'survey-marker';
                     const glyph = getCategoryGlyphLabel(category.name);
 
                     return (
@@ -38110,7 +38110,7 @@ ${pageBlocks}
                         key={category.id}
                         onClick={() => {
                           setSelectedCategoryId(category.id);
-                          setActiveTool('highlight');
+                          setActiveTool('survey-marker');
                         }}
                         onMouseEnter={(e) => {
                           const rect = e.currentTarget.getBoundingClientRect();
@@ -38275,7 +38275,7 @@ ${pageBlocks}
                   const selectedHighlightIds = Object.keys(copiedItemSelection).filter(id => copiedItemSelection[id]);
                   let sourceModuleId = null;
                   if (selectedHighlightIds.length > 0) {
-                    const firstHighlight = highlightAnnotations[selectedHighlightIds[0]];
+                    const firstHighlight = surveyMarkers[selectedHighlightIds[0]];
                     const highlightModuleId = firstHighlight?.moduleId || firstHighlight?.spaceId; // Support legacy spaceId
                     sourceModuleId = highlightModuleId || selectedModuleId;
                   } else {
@@ -38317,7 +38317,7 @@ ${pageBlocks}
                               // Get all highlights in the selected categories
                               const highlightsToCopy = [];
                               selectedCatIds.forEach(catId => {
-                                const highlightsInCategory = Object.entries(highlightAnnotations).filter(([_, h]) => {
+                                const highlightsInCategory = Object.entries(surveyMarkers).filter(([_, h]) => {
                                   const hModuleId = h.moduleId || h.spaceId; // Support legacy spaceId
                                   return hModuleId === selectedModuleId && h.categoryId === catId;
                                 }
@@ -38345,7 +38345,7 @@ ${pageBlocks}
                               }
 
                               highlightsToCopy.forEach(highlightId => {
-                                const highlight = highlightAnnotations[highlightId];
+                                const highlight = surveyMarkers[highlightId];
                                 if (!highlight || !highlight.categoryId) return;
 
                                 const categoryName = getCategoryName(sourceTemplate, highlight.spaceId, highlight.categoryId);
@@ -38398,10 +38398,10 @@ ${pageBlocks}
                                   });
 
                                   const sourceHighlightId = highlightsToCopy.find(id => {
-                                    const h = highlightAnnotations[id];
+                                    const h = surveyMarkers[id];
                                     return h && h.name === item.name;
                                   });
-                                  const sourceHighlight = sourceHighlightId ? highlightAnnotations[sourceHighlightId] : null;
+                                  const sourceHighlight = sourceHighlightId ? surveyMarkers[sourceHighlightId] : null;
 
                                   const sourceAnnotation = Object.values(annotations).find(a => {
                                     const aModuleId = a.moduleId || a.spaceId; // Support legacy spaceId
@@ -38451,7 +38451,7 @@ ${pageBlocks}
                                 });
 
                                 if (Object.keys(newHighlights).length > 0) {
-                                  setHighlightAnnotations(prev => ({
+                                  setSurveyMarkers(prev => ({
                                     ...prev,
                                     ...newHighlights
                                   }));
@@ -38472,7 +38472,7 @@ ${pageBlocks}
                               } else {
                                 // Fall back to legacy highlight copying
                                 const legacyHighlights = highlightsToCopy
-                                  .map(id => highlightAnnotations[id])
+                                  .map(id => surveyMarkers[id])
                                   .filter(Boolean);
 
                                 if (legacyHighlights.length === 0) {
@@ -38511,7 +38511,7 @@ ${pageBlocks}
                                   };
                                 });
 
-                                setHighlightAnnotations(prev => ({
+                                setSurveyMarkers(prev => ({
                                   ...prev,
                                   ...newHighlights
                                 }));
@@ -38554,7 +38554,7 @@ ${pageBlocks}
 
 
                               selectedHighlightIds.forEach(highlightId => {
-                                const highlight = highlightAnnotations[highlightId];
+                                const highlight = surveyMarkers[highlightId];
 
                                 if (!highlight) {
                                   console.warn(`Highlight ${highlightId} not found`);
@@ -38655,10 +38655,10 @@ ${pageBlocks}
 
                                     // Find source highlight by matching the selected ID
                                     const sourceHighlightId = selectedHighlightIds.find(id => {
-                                      const h = highlightAnnotations[id];
+                                      const h = surveyMarkers[id];
                                       return h && h.name === item.name;
                                     });
-                                    const sourceHighlight = sourceHighlightId ? highlightAnnotations[sourceHighlightId] : null;
+                                    const sourceHighlight = sourceHighlightId ? surveyMarkers[sourceHighlightId] : null;
 
 
                                     // Find destination category ID
@@ -38710,9 +38710,9 @@ ${pageBlocks}
                                     }
                                   });
 
-                                  // Add new highlights to highlightAnnotations
+                                  // Add new highlights to surveyMarkers
                                   if (Object.keys(newHighlights).length > 0) {
-                                    setHighlightAnnotations(prev => ({
+                                    setSurveyMarkers(prev => ({
                                       ...prev,
                                       ...newHighlights
                                     }));
@@ -38734,7 +38734,7 @@ ${pageBlocks}
                               } else {
                                 // No items found - handle as legacy highlights
                                 const legacyHighlights = selectedHighlightIds
-                                  .map(id => highlightAnnotations[id])
+                                  .map(id => surveyMarkers[id])
                                   .filter(Boolean);
 
                                 if (legacyHighlights.length === 0) {
@@ -38777,8 +38777,8 @@ ${pageBlocks}
 
                                 });
 
-                                // Update highlightAnnotations
-                                setHighlightAnnotations(prev => ({
+                                // Update surveyMarkers
+                                setSurveyMarkers(prev => ({
                                   ...prev,
                                   ...newHighlights
                                 }));
@@ -38944,7 +38944,7 @@ ${pageBlocks}
                             setSelectedModuleId(firstModuleId);
                             setSelectedCategoryId(null);
                             setActiveCategoryDropdown('survey');
-                            setActiveTool('highlight');
+                            setActiveTool('survey-marker');
                             setShowTemplateSelection(false);
                             setShowSurveyPanel(true);
                           }}
@@ -39196,7 +39196,7 @@ ${pageBlocks}
                             setSelectedModuleId(module.id);
                             setSelectedCategoryId(null); // Reset category when switching modules
                             setActiveCategoryDropdown('survey');
-                            setActiveTool('highlight');
+                            setActiveTool('survey-marker');
                             // Exit select mode when switching modules
                             setCopyModeActive(false);
                             setCopiedItemSelection({});
@@ -39236,13 +39236,13 @@ ${pageBlocks}
 
                       // Get highlights for this module, grouped by category
                       const highlightsByCategory = {};
-                      Object.entries(highlightAnnotations).forEach(([highlightId, highlight]) => {
+                      Object.entries(surveyMarkers).forEach(([highlightId, highlight]) => {
                         const highlightModuleId = highlight.moduleId || highlight.spaceId; // Support legacy spaceId
                         if (highlightModuleId === selectedModuleId && highlight.categoryId) {
                           if (!highlightsByCategory[highlight.categoryId]) {
                             highlightsByCategory[highlight.categoryId] = [];
                           }
-                          // IMPORTANT: Always use the key from highlightAnnotations as the authoritative ID
+                          // IMPORTANT: Always use the key from surveyMarkers as the authoritative ID
                           // This ensures consistency when selecting/looking up highlights
                           highlightsByCategory[highlight.categoryId].push({
                             ...highlight,
@@ -39338,8 +39338,8 @@ ${pageBlocks}
                             }}>
                               {/* Select All checkbox */}
                               {(() => {
-                                // IMPORTANT: Use the key from highlightAnnotations as the authoritative ID
-                                const allHighlightIds = Object.entries(highlightAnnotations)
+                                // IMPORTANT: Use the key from surveyMarkers as the authoritative ID
+                                const allHighlightIds = Object.entries(surveyMarkers)
                                   .filter(([highlightId, h]) => {
                                     const hModuleId = h.moduleId || h.spaceId; // Support legacy spaceId
                                     return hModuleId === selectedModuleId;
@@ -39426,10 +39426,10 @@ ${pageBlocks}
                                   }
 
                                   // Capture highlights before deletion (state is async)
-                                  const highlightsToDelete = selectedIds.map(id => highlightAnnotations[id]).filter(Boolean);
+                                  const highlightsToDelete = selectedIds.map(id => surveyMarkers[id]).filter(Boolean);
 
-                                  // Delete highlights from highlightAnnotations
-                                  setHighlightAnnotations(prev => {
+                                  // Delete highlights from surveyMarkers
+                                  setSurveyMarkers(prev => {
                                     const updated = { ...prev };
                                     selectedIds.forEach(id => {
                                       delete updated[id];
@@ -39452,13 +39452,13 @@ ${pageBlocks}
                                     return updated;
                                   });
 
-                                  // Trigger removal from canvas via highlightsToRemoveByPage (same as working ✕ button)
+                                  // Trigger removal from canvas via surveyMarkersToRemoveByPage (same as working ✕ button)
                                   highlightsToDelete.forEach(highlight => {
                                     const pageNum = highlight.pageNumber;
                                     const bounds = highlight.bounds;
 
                                     if (pageNum && bounds) {
-                                      setHighlightsToRemoveByPage(prev => ({
+                                      setSurveyMarkersToRemoveByPage(prev => ({
                                         ...prev,
                                         [pageNum]: [...(prev[pageNum] || []), bounds]
                                       }));
@@ -39470,7 +39470,7 @@ ${pageBlocks}
                                     highlightsToDelete.forEach(highlight => {
                                       const pageNum = highlight.pageNumber;
                                       if (pageNum) {
-                                        setHighlightsToRemoveByPage(prev => {
+                                        setSurveyMarkersToRemoveByPage(prev => {
                                           const updated = { ...prev };
                                           delete updated[pageNum];
                                           return updated;
@@ -39767,7 +39767,7 @@ ${pageBlocks}
                                         // Delete categories and their items
                                         selectedCatIds.forEach(catId => {
                                           // Delete all highlights in this category
-                                          const highlightsInCategory = Object.entries(highlightAnnotations).filter(([_, h]) => {
+                                          const highlightsInCategory = Object.entries(surveyMarkers).filter(([_, h]) => {
                                             const hModuleId = h.moduleId || h.spaceId; // Support legacy spaceId
                                             return hModuleId === selectedModuleId && h.categoryId === catId;
                                           });
@@ -39775,15 +39775,15 @@ ${pageBlocks}
                                           highlightsInCategory.forEach(([highlightId, highlight]) => {
                                             // Remove from canvas
                                             if (highlight.pageNumber && highlight.bounds) {
-                                              setHighlightsToRemoveByPage(prev => ({
+                                              setSurveyMarkersToRemoveByPage(prev => ({
                                                 ...prev,
                                                 [highlight.pageNumber]: [...(prev[highlight.pageNumber] || []), highlight.bounds]
                                               }));
                                             }
                                           });
 
-                                          // Delete from highlightAnnotations
-                                          setHighlightAnnotations(prev => {
+                                          // Delete from surveyMarkers
+                                          setSurveyMarkers(prev => {
                                             const updated = { ...prev };
                                             highlightsInCategory.forEach(([highlightId]) => {
                                               delete updated[highlightId];
@@ -40019,7 +40019,7 @@ ${pageBlocks}
                                                 // Minimize survey panel
                                                 setIsSurveyPanelCollapsed(true);
                                                 // Switch to highlight tool
-                                                setActiveTool('highlight');
+                                                setActiveTool('survey-marker');
                                               }}
                                               className="btn btn-default btn-md"
                                               style={{
@@ -40295,10 +40295,10 @@ ${pageBlocks}
 
                                           {categoryHighlights.map((highlight, highlightIndex) => {
                                             const highlightId = highlight.id;
-                                            const isHighlightExpanded = expandedHighlights[highlightId];
+                                            const isHighlightExpanded = expandedSurveyMarkers[highlightId];
                                             const baseCategoryName = category?.name?.trim() || 'Untitled Category';
                                             const fallbackName = `${baseCategoryName} ${highlightIndex + 1}`;
-                                            const highlightName = highlightAnnotations[highlightId]?.name || highlight.name || fallbackName;
+                                            const highlightName = surveyMarkers[highlightId]?.name || highlight.name || fallbackName;
 
                                             return (
                                               <div key={highlight.id} id={`highlight-item-${highlight.id}`} style={{
@@ -40348,7 +40348,7 @@ ${pageBlocks}
                                                   {/* Expandable button */}
                                                   <button
                                                     onClick={() => {
-                                                      setExpandedHighlights(prev => ({
+                                                      setExpandedSurveyMarkers(prev => ({
                                                         ...prev,
                                                         [highlightId]: !prev[highlightId]
                                                       }));
@@ -40373,7 +40373,7 @@ ${pageBlocks}
                                                         let indicatorColor = null;
                                                         let indicatorTooltip = null;
                                                         if (selectedTemplate && selectedModuleId) {
-                                                          const highlightData = highlightAnnotations[highlightId];
+                                                          const highlightData = surveyMarkers[highlightId];
                                                           const categoryName = getCategoryName(selectedTemplate, selectedModuleId, category.id);
                                                           const highlightName = highlightData?.name || highlight.name || '';
                                                           const matchingItem = Object.values(items).find(item =>
@@ -40413,12 +40413,12 @@ ${pageBlocks}
                                                           />
                                                         );
                                                       })()}
-                                                      {highlightAnnotations[highlightId]?.editingName ? (
+                                                      {surveyMarkers[highlightId]?.editingName ? (
                                                         <input
                                                           type="text"
-                                                          value={highlightAnnotations[highlightId]?.name || ''}
+                                                          value={surveyMarkers[highlightId]?.name || ''}
                                                           onChange={(e) => {
-                                                            setHighlightAnnotations(prev => ({
+                                                            setSurveyMarkers(prev => ({
                                                               ...prev,
                                                               [highlight.id]: {
                                                                 ...prev[highlight.id],
@@ -40427,7 +40427,7 @@ ${pageBlocks}
                                                             }));
                                                           }}
                                                           onBlur={() => {
-                                                            setHighlightAnnotations(prev => ({
+                                                            setSurveyMarkers(prev => ({
                                                               ...prev,
                                                               [highlight.id]: {
                                                                 ...prev[highlight.id],
@@ -40439,7 +40439,7 @@ ${pageBlocks}
                                                             if (e.key === 'Enter') {
                                                               e.target.blur();
                                                             } else if (e.key === 'Escape') {
-                                                              setHighlightAnnotations(prev => ({
+                                                              setSurveyMarkers(prev => ({
                                                                 ...prev,
                                                                 [highlight.id]: {
                                                                   ...prev[highlight.id],
@@ -40469,7 +40469,7 @@ ${pageBlocks}
                                                         <span style={{
                                                           fontSize: '12px',
                                                           color: '#999',
-                                                          fontWeight: highlightAnnotations[highlightId]?.name ? '500' : '400'
+                                                          fontWeight: surveyMarkers[highlightId]?.name ? '500' : '400'
                                                         }}>
                                                           {highlightName}
                                                         </span>
@@ -40505,11 +40505,11 @@ ${pageBlocks}
                                                   </button>
 
                                                   {/* Rename button - now a sibling, not nested */}
-                                                  {!highlightAnnotations[highlightId]?.editingName && (
+                                                  {!surveyMarkers[highlightId]?.editingName && (
                                                     <button
                                                       onClick={(e) => {
                                                         e.stopPropagation();
-                                                        setHighlightAnnotations(prev => ({
+                                                        setSurveyMarkers(prev => ({
                                                           ...prev,
                                                           [highlight.id]: {
                                                             ...prev[highlight.id],
@@ -40539,7 +40539,7 @@ ${pageBlocks}
                                                   <button
                                                     onClick={(e) => {
                                                       e.stopPropagation();
-                                                      const highlightData = highlightAnnotations[highlightId];
+                                                      const highlightData = surveyMarkers[highlightId];
                                                       const existingNote = highlightData?.note;
 
                                                       if (existingNote) {
@@ -40558,7 +40558,7 @@ ${pageBlocks}
                                                     style={{
                                                       background: 'transparent',
                                                       border: 'none',
-                                                      color: highlightAnnotations[highlightId]?.note?.text ? '#4A90E2' : '#999',
+                                                      color: surveyMarkers[highlightId]?.note?.text ? '#4A90E2' : '#999',
                                                       cursor: 'pointer',
                                                       padding: '4px',
                                                       fontSize: '12px',
@@ -40567,9 +40567,9 @@ ${pageBlocks}
                                                     }}
                                                     onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
                                                     onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
-                                                    title={highlightAnnotations[highlightId]?.note?.text ? "Edit item notes" : "Add item notes"}
+                                                    title={surveyMarkers[highlightId]?.note?.text ? "Edit item notes" : "Add item notes"}
                                                   >
-                                                    Notes {highlightAnnotations[highlightId]?.note?.text ? '✓' : ''}
+                                                    Notes {surveyMarkers[highlightId]?.note?.text ? '✓' : ''}
                                                   </button>
 
                                                   {/* Locate Button (Magnifying Glass) */}
@@ -40655,7 +40655,7 @@ ${pageBlocks}
                                                 {
                                                   isHighlightExpanded && selectedTemplate && selectedModuleId && (() => {
                                                     // Find the item associated with this highlight
-                                                    const highlightData = highlightAnnotations[highlightId];
+                                                    const highlightData = surveyMarkers[highlightId];
                                                     const categoryName = getCategoryName(selectedTemplate, selectedModuleId, category.id);
                                                     const highlightName = highlightData?.name || highlight.name || '';
                                                     const matchingItem = Object.values(items).find(item =>
@@ -40703,7 +40703,7 @@ ${pageBlocks}
 
 
                                                               // Update highlight annotation - the useEffect will automatically rebuild newHighlightsByPage
-                                                              setHighlightAnnotations(prev => {
+                                                              setSurveyMarkers(prev => {
                                                                 const updated = {
                                                                   ...prev,
                                                                   [highlightId]: {
@@ -40814,7 +40814,7 @@ ${pageBlocks}
                                                 {/* Expanded checklist items */}
                                                 {
                                                   isHighlightExpanded && category.checklist && category.checklist.map(item => {
-                                                    const response = highlightAnnotations[highlightId]?.checklistResponses?.[item.id] || {};
+                                                    const response = surveyMarkers[highlightId]?.checklistResponses?.[item.id] || {};
                                                     const isSelected = response.selection;
                                                     return (
                                                       <div key={item.id} style={{
@@ -40845,7 +40845,7 @@ ${pageBlocks}
                                                                 type="button"
                                                                 onClick={(e) => {
                                                                   e.stopPropagation();
-                                                                  setHighlightAnnotations(prev => {
+                                                                  setSurveyMarkers(prev => {
                                                                     const updated = {
                                                                       ...prev,
                                                                       [highlightId]: {
@@ -40892,7 +40892,7 @@ ${pageBlocks}
                                                                         );
 
                                                                         if (completeEntity) {
-                                                                          const entityColor = normalizeHighlightColor(completeEntity.color) || completeEntity.color || hexToRgba('#E3D1FB', DEFAULT_SURVEY_HIGHLIGHT_OPACITY);
+                                                                          const entityColor = normalizeHighlightColor(completeEntity.color) || completeEntity.color || hexToRgba('#E3D1FB', DEFAULT_SURVEY_MARKER_OPACITY);
                                                                           // Update item's module-specific data with Complete entity status
                                                                           if (matchingItem) {
                                                                             const updatedItem = {
@@ -41648,7 +41648,7 @@ ${pageBlocks}
 
                   // Add to removal list to ensure canvas cleanup
                   if (highlightToRemove.bounds) {
-                    setHighlightsToRemoveByPage(prev => ({
+                    setSurveyMarkersToRemoveByPage(prev => ({
                       ...prev,
                       [highlightToRemove.pageNumber]: [...(prev[highlightToRemove.pageNumber] || []), highlightToRemove.bounds]
                     }));
@@ -41720,7 +41720,7 @@ ${pageBlocks}
 
                         // Add to removal list to ensure canvas cleanup
                         if (highlightToRemove.bounds) {
-                          setHighlightsToRemoveByPage(prev => ({
+                          setSurveyMarkersToRemoveByPage(prev => ({
                             ...prev,
                             [highlightToRemove.pageNumber]: [...(prev[highlightToRemove.pageNumber] || []), highlightToRemove.bounds]
                           }));
@@ -41769,11 +41769,11 @@ ${pageBlocks}
                                 });
                               } else {
                                 // No Entities, go directly to name prompt
-                                setPendingHighlightName({
+                                setPendingSurveyMarkerName({
                                   highlight: pendingHighlight,
                                   categoryId: category.id
                                 });
-                                setHighlightNameInput(''); // Reset input
+                                setSurveyMarkerNameInput(''); // Reset input
                               }
                               // Clear pending highlight modal
                               setPendingHighlight(null);
@@ -41819,12 +41819,12 @@ ${pageBlocks}
                 <div
                   onClick={() => {
                     // Cancel - proceed without entity selection
-                    setPendingHighlightName({
+                    setPendingSurveyMarkerName({
                       highlight: pendingEntitySelection.highlight,
                       categoryId: pendingEntitySelection.categoryId
                     });
                     setPendingEntitySelection(null);
-                    setHighlightNameInput('');
+                    setSurveyMarkerNameInput('');
                   }}
                   style={{
                     position: 'fixed',
@@ -41871,12 +41871,12 @@ ${pageBlocks}
                       <button
                         onClick={() => {
                           // Cancel - proceed without entity selection
-                          setPendingHighlightName({
+                          setPendingSurveyMarkerName({
                             highlight: pendingEntitySelection.highlight,
                             categoryId: pendingEntitySelection.categoryId
                           });
                           setPendingEntitySelection(null);
-                          setHighlightNameInput('');
+                          setSurveyMarkerNameInput('');
                         }}
                         className="btn btn-icon btn-icon-sm"
                         style={{
@@ -41910,10 +41910,10 @@ ${pageBlocks}
                           onClick={() => {
                             // Apply entity color and proceed to name prompt
                             // Use the entity's saved opacity for highlights
-                            const entityColor = normalizeHighlightColor(entity.color) || entity.color || hexToRgba('#E3D1FB', DEFAULT_SURVEY_HIGHLIGHT_OPACITY);
+                            const entityColor = normalizeHighlightColor(entity.color) || entity.color || hexToRgba('#E3D1FB', DEFAULT_SURVEY_MARKER_OPACITY);
 
                             // Store highlight with entity info
-                            setHighlightAnnotations(prev => ({
+                            setSurveyMarkers(prev => ({
                               ...prev,
                               [pendingEntitySelection.highlight.id]: {
                                 ...pendingEntitySelection.highlight,
@@ -41936,7 +41936,7 @@ ${pageBlocks}
                                 ...prev,
                                 [pendingEntitySelection.highlight.pageNumber]: [
                                   ...filtered,
-                                  buildSurveyHighlightPreview(
+                                  buildSurveyMarkerPreview(
                                     pendingEntitySelection.highlight,
                                     { color: entityColor }
                                   )
@@ -41945,7 +41945,7 @@ ${pageBlocks}
                             });
 
                             // Proceed to name prompt
-                            setPendingHighlightName({
+                            setPendingSurveyMarkerName({
                               highlight: {
                                 ...pendingEntitySelection.highlight,
                                 entityId: entity.id,
@@ -41955,7 +41955,7 @@ ${pageBlocks}
                               categoryId: pendingEntitySelection.categoryId
                             });
                             setPendingEntitySelection(null);
-                            setHighlightNameInput('');
+                            setSurveyMarkerNameInput('');
                           }}
                           style={{
                             display: 'flex',
@@ -42002,12 +42002,12 @@ ${pageBlocks}
 
         {/* Name Prompt Modal (after categorizing highlight) */}
         {
-          pendingHighlightName && selectedTemplate && selectedModuleId && (() => {
+          pendingSurveyMarkerName && selectedTemplate && selectedModuleId && (() => {
             const module = ((selectedTemplate.modules || selectedTemplate.spaces) || [])?.find(m => m.id === selectedModuleId);
-            const category = module?.categories?.find(c => c.id === pendingHighlightName.categoryId);
+            const category = module?.categories?.find(c => c.id === pendingSurveyMarkerName.categoryId);
             const categoryName = category?.name?.trim() || 'Untitled Category';
-            const existingHighlights = Object.values(highlightAnnotations).filter(h => h.categoryId === pendingHighlightName.categoryId);
-            const defaultName = generateDefaultHighlightName(categoryName, existingHighlights);
+            const existingHighlights = Object.values(surveyMarkers).filter(h => h.categoryId === pendingSurveyMarkerName.categoryId);
+            const defaultName = generateDefaultSurveyMarkerName(categoryName, existingHighlights);
 
             return (
               <>
@@ -42015,42 +42015,42 @@ ${pageBlocks}
                   onClick={() => {
                     // Cancel - save with default name
                     // Compute color first so it can be saved with highlightData
-                    const highlightColor = pendingHighlightName.highlight.entityColor
-                      ? (normalizeHighlightColor(pendingHighlightName.highlight.entityColor) || pendingHighlightName.highlight.entityColor)
+                    const highlightColor = pendingSurveyMarkerName.highlight.entityColor
+                      ? (normalizeHighlightColor(pendingSurveyMarkerName.highlight.entityColor) || pendingSurveyMarkerName.highlight.entityColor)
                       : 'rgba(255, 193, 7, 1.0)';
                     const highlightData = {
-                      ...pendingHighlightName.highlight,
-                      categoryId: pendingHighlightName.categoryId,
+                      ...pendingSurveyMarkerName.highlight,
+                      categoryId: pendingSurveyMarkerName.categoryId,
                       name: defaultName,
                       checklistResponses: {},
                       color: highlightColor
                     };
-                    setHighlightAnnotations(prev => ({
+                    setSurveyMarkers(prev => ({
                       ...prev,
-                      [pendingHighlightName.highlight.id]: highlightData
+                      [pendingSurveyMarkerName.highlight.id]: highlightData
                     }));
 
                     // Update existing highlight with color if Entity was selected (ensure 100% opacity)
                     // Replace the existing highlight (with needsEntity) with the new one that has the color
                     setNewHighlightsByPage(prev => {
-                      const pageHighlights = prev[pendingHighlightName.highlight.pageNumber] || [];
+                      const pageHighlights = prev[pendingSurveyMarkerName.highlight.pageNumber] || [];
                       // Remove existing highlight with this highlightId (if it exists)
-                      const filtered = pageHighlights.filter(h => h.highlightId !== pendingHighlightName.highlight.id);
+                      const filtered = pageHighlights.filter(h => h.highlightId !== pendingSurveyMarkerName.highlight.id);
                       // Add the new highlight with color
                       return {
                         ...prev,
-                        [pendingHighlightName.highlight.pageNumber]: [
+                        [pendingSurveyMarkerName.highlight.pageNumber]: [
                           ...filtered,
-                          buildSurveyHighlightPreview(
-                            pendingHighlightName.highlight,
+                          buildSurveyMarkerPreview(
+                            pendingSurveyMarkerName.highlight,
                             { color: highlightColor }
                           )
                         ]
                       };
                     });
 
-                    setPendingHighlightName(null);
-                    setHighlightNameInput('');
+                    setPendingSurveyMarkerName(null);
+                    setSurveyMarkerNameInput('');
                     setShowSurveyPanel(true);
                   }}
                   style={{
@@ -42099,25 +42099,25 @@ ${pageBlocks}
                         onClick={() => {
                           // Cancel - save with default name
                           // Compute color first so it can be saved with highlightData
-                          const highlightColor = pendingHighlightName.highlight.entityColor
-                            ? (normalizeHighlightColor(pendingHighlightName.highlight.entityColor) || pendingHighlightName.highlight.entityColor)
+                          const highlightColor = pendingSurveyMarkerName.highlight.entityColor
+                            ? (normalizeHighlightColor(pendingSurveyMarkerName.highlight.entityColor) || pendingSurveyMarkerName.highlight.entityColor)
                             : 'rgba(255, 193, 7, 1.0)';
                           const highlightData = {
-                            ...pendingHighlightName.highlight,
-                            categoryId: pendingHighlightName.categoryId,
+                            ...pendingSurveyMarkerName.highlight,
+                            categoryId: pendingSurveyMarkerName.categoryId,
                             name: defaultName,
                             checklistResponses: {},
                             color: highlightColor
                           };
-                          setHighlightAnnotations(prev => ({
+                          setSurveyMarkers(prev => ({
                             ...prev,
-                            [pendingHighlightName.highlight.id]: highlightData
+                            [pendingSurveyMarkerName.highlight.id]: highlightData
                           }));
 
                           // If entity was selected, also store it in the item's module-specific data
                           if (highlightData.entityId && selectedTemplate && selectedModuleId) {
                             // Find or create item for this highlight
-                            const categoryName = getCategoryName(selectedTemplate, selectedModuleId, pendingHighlightName.categoryId);
+                            const categoryName = getCategoryName(selectedTemplate, selectedModuleId, pendingSurveyMarkerName.categoryId);
                             const moduleName = getModuleName(selectedTemplate, selectedModuleId);
                             const dataKey = getModuleDataKey(moduleName);
 
@@ -42151,7 +42151,7 @@ ${pageBlocks}
                               const newItem = createItem(
                                 selectedTemplate,
                                 selectedModuleId,
-                                pendingHighlightName.categoryId,
+                                pendingSurveyMarkerName.categoryId,
                                 defaultName,
                                 1
                               );
@@ -42172,7 +42172,7 @@ ${pageBlocks}
 
                               // Also create annotation for this item
                               const annotation = createAnnotation(
-                                pendingHighlightName.highlight.bounds,
+                                pendingSurveyMarkerName.highlight.bounds,
                                 'highlight',
                                 selectedTemplate,
                                 selectedSpaceId,
@@ -42197,24 +42197,24 @@ ${pageBlocks}
                           // Update existing highlight with color if Entity was selected (ensure 100% opacity)
                           // Replace the existing highlight (with needsEntity) with the new one that has the color
                           setNewHighlightsByPage(prev => {
-                            const pageHighlights = prev[pendingHighlightName.highlight.pageNumber] || [];
+                            const pageHighlights = prev[pendingSurveyMarkerName.highlight.pageNumber] || [];
                             // Remove existing highlight with this highlightId (if it exists)
-                            const filtered = pageHighlights.filter(h => h.highlightId !== pendingHighlightName.highlight.id);
+                            const filtered = pageHighlights.filter(h => h.highlightId !== pendingSurveyMarkerName.highlight.id);
                             // Add the new highlight with color
                             return {
                               ...prev,
-                              [pendingHighlightName.highlight.pageNumber]: [
+                              [pendingSurveyMarkerName.highlight.pageNumber]: [
                                 ...filtered,
-                                buildSurveyHighlightPreview(
-                                  pendingHighlightName.highlight,
+                                buildSurveyMarkerPreview(
+                                  pendingSurveyMarkerName.highlight,
                                   { color: highlightColor }
                                 )
                               ]
                             };
                           });
 
-                          setPendingHighlightName(null);
-                          setHighlightNameInput('');
+                          setPendingSurveyMarkerName(null);
+                          setSurveyMarkerNameInput('');
                           setShowSurveyPanel(true);
                         }}
                         className="btn btn-icon btn-icon-sm"
@@ -42235,88 +42235,88 @@ ${pageBlocks}
                     <input
                       type="text"
                       autoFocus
-                      value={highlightNameInput || defaultName}
-                      onChange={(e) => setHighlightNameInput(e.target.value)}
+                      value={surveyMarkerNameInput || defaultName}
+                      onChange={(e) => setSurveyMarkerNameInput(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
-                          const name = (highlightNameInput || defaultName).trim() || defaultName;
+                          const name = (surveyMarkerNameInput || defaultName).trim() || defaultName;
                           // Compute color first so it can be saved with highlightData
-                          const highlightColor = pendingHighlightName.highlight.entityColor
-                            ? (normalizeHighlightColor(pendingHighlightName.highlight.entityColor) || pendingHighlightName.highlight.entityColor)
+                          const highlightColor = pendingSurveyMarkerName.highlight.entityColor
+                            ? (normalizeHighlightColor(pendingSurveyMarkerName.highlight.entityColor) || pendingSurveyMarkerName.highlight.entityColor)
                             : 'rgba(255, 193, 7, 1.0)';
                           const highlightData = {
-                            ...pendingHighlightName.highlight,
-                            categoryId: pendingHighlightName.categoryId,
+                            ...pendingSurveyMarkerName.highlight,
+                            categoryId: pendingSurveyMarkerName.categoryId,
                             name: name,
                             checklistResponses: {},
                             color: highlightColor
                           };
-                          setHighlightAnnotations(prev => ({
+                          setSurveyMarkers(prev => ({
                             ...prev,
-                            [pendingHighlightName.highlight.id]: highlightData
+                            [pendingSurveyMarkerName.highlight.id]: highlightData
                           }));
 
                           // Update existing highlight with color if Entity was selected (ensure 100% opacity)
                           // Replace the existing highlight (with needsEntity) with the new one that has the color
                           setNewHighlightsByPage(prev => {
-                            const pageHighlights = prev[pendingHighlightName.highlight.pageNumber] || [];
+                            const pageHighlights = prev[pendingSurveyMarkerName.highlight.pageNumber] || [];
                             // Remove existing highlight with this highlightId (if it exists)
-                            const filtered = pageHighlights.filter(h => h.highlightId !== pendingHighlightName.highlight.id);
+                            const filtered = pageHighlights.filter(h => h.highlightId !== pendingSurveyMarkerName.highlight.id);
                             // Add the new highlight with color
                             return {
                               ...prev,
-                              [pendingHighlightName.highlight.pageNumber]: [
+                              [pendingSurveyMarkerName.highlight.pageNumber]: [
                                 ...filtered,
-                                buildSurveyHighlightPreview(
-                                  pendingHighlightName.highlight,
+                                buildSurveyMarkerPreview(
+                                  pendingSurveyMarkerName.highlight,
                                   { color: highlightColor }
                                 )
                               ]
                             };
                           });
 
-                          setPendingHighlightName(null);
-                          setHighlightNameInput('');
+                          setPendingSurveyMarkerName(null);
+                          setSurveyMarkerNameInput('');
                           setShowSurveyPanel(true);
                         } else if (e.key === 'Escape') {
                           // Cancel - save with default name
                           // Compute color first so it can be saved with highlightData
-                          const highlightColor = pendingHighlightName.highlight.entityColor
-                            ? (normalizeHighlightColor(pendingHighlightName.highlight.entityColor) || pendingHighlightName.highlight.entityColor)
+                          const highlightColor = pendingSurveyMarkerName.highlight.entityColor
+                            ? (normalizeHighlightColor(pendingSurveyMarkerName.highlight.entityColor) || pendingSurveyMarkerName.highlight.entityColor)
                             : 'rgba(255, 193, 7, 1.0)';
                           const highlightData = {
-                            ...pendingHighlightName.highlight,
-                            categoryId: pendingHighlightName.categoryId,
+                            ...pendingSurveyMarkerName.highlight,
+                            categoryId: pendingSurveyMarkerName.categoryId,
                             name: defaultName,
                             checklistResponses: {},
                             color: highlightColor
                           };
-                          setHighlightAnnotations(prev => ({
+                          setSurveyMarkers(prev => ({
                             ...prev,
-                            [pendingHighlightName.highlight.id]: highlightData
+                            [pendingSurveyMarkerName.highlight.id]: highlightData
                           }));
 
                           // Update existing highlight with color if Entity was selected (ensure 100% opacity)
                           // Replace the existing highlight (with needsEntity) with the new one that has the color
                           setNewHighlightsByPage(prev => {
-                            const pageHighlights = prev[pendingHighlightName.highlight.pageNumber] || [];
+                            const pageHighlights = prev[pendingSurveyMarkerName.highlight.pageNumber] || [];
                             // Remove existing highlight with this highlightId (if it exists)
-                            const filtered = pageHighlights.filter(h => h.highlightId !== pendingHighlightName.highlight.id);
+                            const filtered = pageHighlights.filter(h => h.highlightId !== pendingSurveyMarkerName.highlight.id);
                             // Add the new highlight with color
                             return {
                               ...prev,
-                              [pendingHighlightName.highlight.pageNumber]: [
+                              [pendingSurveyMarkerName.highlight.pageNumber]: [
                                 ...filtered,
-                                buildSurveyHighlightPreview(
-                                  pendingHighlightName.highlight,
+                                buildSurveyMarkerPreview(
+                                  pendingSurveyMarkerName.highlight,
                                   { color: highlightColor }
                                 )
                               ]
                             };
                           });
 
-                          setPendingHighlightName(null);
-                          setHighlightNameInput('');
+                          setPendingSurveyMarkerName(null);
+                          setSurveyMarkerNameInput('');
                           setShowSurveyPanel(true);
                         }
                       }}
@@ -42340,25 +42340,25 @@ ${pageBlocks}
                         onClick={() => {
                           // Cancel - save with default name
                           // Compute color first so it can be saved with highlightData
-                          const highlightColor = pendingHighlightName.highlight.entityColor
-                            ? (normalizeHighlightColor(pendingHighlightName.highlight.entityColor) || pendingHighlightName.highlight.entityColor)
+                          const highlightColor = pendingSurveyMarkerName.highlight.entityColor
+                            ? (normalizeHighlightColor(pendingSurveyMarkerName.highlight.entityColor) || pendingSurveyMarkerName.highlight.entityColor)
                             : 'rgba(255, 193, 7, 1.0)';
                           const highlightData = {
-                            ...pendingHighlightName.highlight,
-                            categoryId: pendingHighlightName.categoryId,
+                            ...pendingSurveyMarkerName.highlight,
+                            categoryId: pendingSurveyMarkerName.categoryId,
                             name: defaultName,
                             checklistResponses: {},
                             color: highlightColor
                           };
-                          setHighlightAnnotations(prev => ({
+                          setSurveyMarkers(prev => ({
                             ...prev,
-                            [pendingHighlightName.highlight.id]: highlightData
+                            [pendingSurveyMarkerName.highlight.id]: highlightData
                           }));
 
                           // If entity was selected, also store it in the item's module-specific data
                           if (highlightData.entityId && selectedTemplate && selectedModuleId) {
                             // Find or create item for this highlight
-                            const categoryName = getCategoryName(selectedTemplate, selectedModuleId, pendingHighlightName.categoryId);
+                            const categoryName = getCategoryName(selectedTemplate, selectedModuleId, pendingSurveyMarkerName.categoryId);
                             const moduleName = getModuleName(selectedTemplate, selectedModuleId);
                             const dataKey = getModuleDataKey(moduleName);
 
@@ -42392,7 +42392,7 @@ ${pageBlocks}
                               const newItem = createItem(
                                 selectedTemplate,
                                 selectedModuleId,
-                                pendingHighlightName.categoryId,
+                                pendingSurveyMarkerName.categoryId,
                                 defaultName,
                                 1
                               );
@@ -42413,7 +42413,7 @@ ${pageBlocks}
 
                               // Also create annotation for this item
                               const annotation = createAnnotation(
-                                pendingHighlightName.highlight.bounds,
+                                pendingSurveyMarkerName.highlight.bounds,
                                 'highlight',
                                 selectedTemplate,
                                 selectedSpaceId,
@@ -42438,24 +42438,24 @@ ${pageBlocks}
                           // Update existing highlight with color if Entity was selected (ensure 100% opacity)
                           // Replace the existing highlight (with needsEntity) with the new one that has the color
                           setNewHighlightsByPage(prev => {
-                            const pageHighlights = prev[pendingHighlightName.highlight.pageNumber] || [];
+                            const pageHighlights = prev[pendingSurveyMarkerName.highlight.pageNumber] || [];
                             // Remove existing highlight with this highlightId (if it exists)
-                            const filtered = pageHighlights.filter(h => h.highlightId !== pendingHighlightName.highlight.id);
+                            const filtered = pageHighlights.filter(h => h.highlightId !== pendingSurveyMarkerName.highlight.id);
                             // Add the new highlight with color
                             return {
                               ...prev,
-                              [pendingHighlightName.highlight.pageNumber]: [
+                              [pendingSurveyMarkerName.highlight.pageNumber]: [
                                 ...filtered,
-                                buildSurveyHighlightPreview(
-                                  pendingHighlightName.highlight,
+                                buildSurveyMarkerPreview(
+                                  pendingSurveyMarkerName.highlight,
                                   { color: highlightColor }
                                 )
                               ]
                             };
                           });
 
-                          setPendingHighlightName(null);
-                          setHighlightNameInput('');
+                          setPendingSurveyMarkerName(null);
+                          setSurveyMarkerNameInput('');
                           setShowSurveyPanel(true);
                         }}
                         className="btn btn-default btn-md"
@@ -42472,27 +42472,27 @@ ${pageBlocks}
                       </button>
                       <button
                         onClick={() => {
-                          const name = (highlightNameInput || defaultName).trim() || defaultName;
+                          const name = (surveyMarkerNameInput || defaultName).trim() || defaultName;
                           // Compute color first so it can be saved with highlightData
-                          const highlightColor = pendingHighlightName.highlight.entityColor
-                            ? (normalizeHighlightColor(pendingHighlightName.highlight.entityColor) || pendingHighlightName.highlight.entityColor)
+                          const highlightColor = pendingSurveyMarkerName.highlight.entityColor
+                            ? (normalizeHighlightColor(pendingSurveyMarkerName.highlight.entityColor) || pendingSurveyMarkerName.highlight.entityColor)
                             : 'rgba(255, 193, 7, 1.0)';
                           const highlightData = {
-                            ...pendingHighlightName.highlight,
-                            categoryId: pendingHighlightName.categoryId,
+                            ...pendingSurveyMarkerName.highlight,
+                            categoryId: pendingSurveyMarkerName.categoryId,
                             name: name,
                             checklistResponses: {},
                             color: highlightColor
                           };
-                          setHighlightAnnotations(prev => ({
+                          setSurveyMarkers(prev => ({
                             ...prev,
-                            [pendingHighlightName.highlight.id]: highlightData
+                            [pendingSurveyMarkerName.highlight.id]: highlightData
                           }));
 
                           // If entity was selected, also store it in the item's module-specific data
                           if (highlightData.entityId && selectedTemplate && selectedModuleId) {
                             // Find or create item for this highlight
-                            const categoryName = getCategoryName(selectedTemplate, selectedModuleId, pendingHighlightName.categoryId);
+                            const categoryName = getCategoryName(selectedTemplate, selectedModuleId, pendingSurveyMarkerName.categoryId);
                             const moduleName = getModuleName(selectedTemplate, selectedModuleId);
                             const dataKey = getModuleDataKey(moduleName);
 
@@ -42526,7 +42526,7 @@ ${pageBlocks}
                               const newItem = createItem(
                                 selectedTemplate,
                                 selectedSpaceId,
-                                pendingHighlightName.categoryId,
+                                pendingSurveyMarkerName.categoryId,
                                 name,
                                 1
                               );
@@ -42547,7 +42547,7 @@ ${pageBlocks}
 
                               // Also create annotation for this item
                               const annotation = createAnnotation(
-                                pendingHighlightName.highlight.bounds,
+                                pendingSurveyMarkerName.highlight.bounds,
                                 'highlight',
                                 selectedTemplate,
                                 selectedSpaceId,
@@ -42572,24 +42572,24 @@ ${pageBlocks}
                           // Update existing highlight with color if Entity was selected (ensure 100% opacity)
                           // Replace the existing highlight (with needsEntity) with the new one that has the color
                           setNewHighlightsByPage(prev => {
-                            const pageHighlights = prev[pendingHighlightName.highlight.pageNumber] || [];
+                            const pageHighlights = prev[pendingSurveyMarkerName.highlight.pageNumber] || [];
                             // Remove existing highlight with this highlightId (if it exists)
-                            const filtered = pageHighlights.filter(h => h.highlightId !== pendingHighlightName.highlight.id);
+                            const filtered = pageHighlights.filter(h => h.highlightId !== pendingSurveyMarkerName.highlight.id);
                             // Add the new highlight with color
                             return {
                               ...prev,
-                              [pendingHighlightName.highlight.pageNumber]: [
+                              [pendingSurveyMarkerName.highlight.pageNumber]: [
                                 ...filtered,
-                                buildSurveyHighlightPreview(
-                                  pendingHighlightName.highlight,
+                                buildSurveyMarkerPreview(
+                                  pendingSurveyMarkerName.highlight,
                                   { color: highlightColor }
                                 )
                               ]
                             };
                           });
 
-                          setPendingHighlightName(null);
-                          setHighlightNameInput('');
+                          setPendingSurveyMarkerName(null);
+                          setSurveyMarkerNameInput('');
                           setShowSurveyPanel(true);
                         }}
                         className="btn btn-primary btn-md"
@@ -42890,7 +42890,7 @@ ${pageBlocks}
 
 
                         // Update highlight annotation with item-level note
-                        setHighlightAnnotations(prev => {
+                        setSurveyMarkers(prev => {
 
                           const existingHighlight = prev[highlightId] || {};
 
@@ -42911,7 +42911,7 @@ ${pageBlocks}
 
                           // Save to localStorage immediately
                           if (pdfId) {
-                            saveHighlightAnnotations(pdfId, updated);
+                            saveSurveyMarkers(pdfId, updated);
                           } else {
                             console.warn('Cannot save to localStorage: pdfId is null');
                           }
@@ -43022,7 +43022,7 @@ ${pageBlocks}
 
 
                             transferState.items.forEach(highlightId => {
-                              const highlight = highlightAnnotations[highlightId];
+                              const highlight = surveyMarkers[highlightId];
 
                               if (!highlight) {
                                 // Not a highlight, might be an itemId directly
@@ -43126,7 +43126,7 @@ ${pageBlocks}
                                   // Find source highlight by matching coordinates or by finding the highlight we selected
                                   let sourceHighlight = null;
                                   if (sourceAnnotation && sourceAnnotation.pdfCoordinates) {
-                                    sourceHighlight = Object.values(highlightAnnotations).find(h => {
+                                    sourceHighlight = Object.values(surveyMarkers).find(h => {
                                       const hModuleId = h.moduleId || h.spaceId; // Support legacy spaceId
                                       return hModuleId === transferState.sourceModuleId &&
                                         h.bounds &&
@@ -43138,12 +43138,12 @@ ${pageBlocks}
                                   // Also try to find by matching the highlight ID from transferState.items
                                   if (!sourceHighlight && transferState.items.length > 0) {
                                     const highlightId = transferState.items.find(id => {
-                                      const h = highlightAnnotations[id];
+                                      const h = surveyMarkers[id];
                                       const hModuleId = h?.moduleId || h?.spaceId; // Support legacy spaceId
                                       return h && hModuleId === transferState.sourceModuleId;
                                     });
                                     if (highlightId) {
-                                      sourceHighlight = highlightAnnotations[highlightId];
+                                      sourceHighlight = surveyMarkers[highlightId];
                                     }
                                   }
 
@@ -43180,9 +43180,9 @@ ${pageBlocks}
                                   }
                                 });
 
-                                // Add new highlights to highlightAnnotations
+                                // Add new highlights to surveyMarkers
                                 if (Object.keys(newHighlights).length > 0) {
-                                  setHighlightAnnotations(prev => ({
+                                  setSurveyMarkers(prev => ({
                                     ...prev,
                                     ...newHighlights
                                   }));
@@ -43218,8 +43218,8 @@ ${pageBlocks}
                               });
 
 
-                              // Update highlightAnnotations state
-                              setHighlightAnnotations(prev => ({
+                              // Update surveyMarkers state
+                              setSurveyMarkers(prev => ({
                                 ...prev,
                                 ...newHighlights
                               }));
@@ -43381,7 +43381,7 @@ ${pageBlocks}
                               a.itemId === itemId && a.spaceId === transferState.sourceSpaceId
                             );
 
-                            const sourceHighlight = sourceAnnotation ? Object.values(highlightAnnotations).find(h =>
+                            const sourceHighlight = sourceAnnotation ? Object.values(surveyMarkers).find(h =>
                               h.spaceId === transferState.sourceSpaceId &&
                               h.bounds &&
                               sourceAnnotation.pdfCoordinates &&
@@ -43406,7 +43406,7 @@ ${pageBlocks}
                         });
 
                         if (Object.keys(newHighlights).length > 0) {
-                          setHighlightAnnotations(prev => ({
+                          setSurveyMarkers(prev => ({
                             ...prev,
                             ...newHighlights
                           }));
@@ -43553,7 +43553,7 @@ ${pageBlocks}
                   }
 
                   const matches = [];
-                  Object.values(highlightAnnotations).forEach(highlight => {
+                  Object.values(surveyMarkers).forEach(highlight => {
                     const name = highlight.name || '';
                     const note = highlight.note?.text || '';
 
@@ -43786,7 +43786,7 @@ ${pageBlocks}
                       }
 
                       setLinkedExcelExists(true);
-                      markExcelSyncCheckpoint(updatedTemplate, highlightAnnotationsRef.current);
+                      markExcelSyncCheckpoint(updatedTemplate, surveyMarkersRef.current);
                       alert('Export to computer successful!');
                     }
                   } catch (error) {

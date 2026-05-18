@@ -272,7 +272,7 @@ test('printable regular annotation filter includes normal annotations and exclud
 
 test('printable regular annotation filter excludes survey highlights', () => {
   const payload = buildPrintableRegularAnnotationPayload({
-    highlightAnnotations: {
+    surveyMarkers: {
       'survey-highlight': { pageNumber: 1, bounds: { x: 10, y: 10, width: 20, height: 10 }, moduleId: 'module-a' },
       'region-highlight': { pageNumber: 1, bounds: { x: 20, y: 20, width: 20, height: 10 }, regionId: 'region-a' },
       'space-highlight': { pageNumber: 1, bounds: { x: 30, y: 30, width: 20, height: 10 }, spaceId: 'space-a' },
@@ -280,7 +280,7 @@ test('printable regular annotation filter excludes survey highlights', () => {
     },
   });
 
-  assert.deepEqual(payload.highlightAnnotations, {});
+  assert.deepEqual(payload.surveyMarkers, {});
   assert.equal(payload.diagnostics.excluded.surveyMarkers, 4);
 });
 
@@ -600,7 +600,7 @@ test('PDF export excludes survey highlights and scoped callouts', async () => {
         actionType: 'pdf-export',
         documentId: 'doc-test',
         spaces: [{ id: 'space-a', assignedPages: [{ pageId: 1, regions: [{ regionId: 'region-a' }] }] }],
-        highlightAnnotations: {
+        surveyMarkers: {
           'survey-highlight': { pageNumber: 1, bounds: { x: 10, y: 10, width: 20, height: 10 }, moduleId: 'module-a', color: '#ffff00' },
           'region-highlight': { pageNumber: 1, bounds: { x: 10, y: 30, width: 20, height: 10 }, regionId: 'region-a', color: '#ffff00' },
           'survey-region-highlight': { pageNumber: 1, bounds: { x: 10, y: 50, width: 20, height: 10 }, moduleId: 'module-a', regionId: 'region-a', color: '#ffff00' },
@@ -648,7 +648,7 @@ test('PDF export stores survey, space, and region layers as hidden app metadata'
         actionType: 'pdf-export',
         documentId: 'doc-layer-state',
         spaces: [{ id: 'space-a', assignedPages: [{ pageId: 1, regions: [{ regionId: 'region-a' }] }] }],
-        highlightAnnotations: {
+        surveyMarkers: {
           'survey-highlight': { pageNumber: 1, bounds: { x: 10, y: 10, width: 20, height: 10 }, moduleId: 'module-a', color: '#ffff00' },
         },
         callouts: [{
@@ -762,7 +762,7 @@ test('PDF export embeds app annotation metadata on ordinary app-created annotati
         returnBytes: true,
         actionType: 'pdf-export',
         documentId: 'doc-test',
-        highlightAnnotations: {},
+        surveyMarkers: {},
       },
     );
 
