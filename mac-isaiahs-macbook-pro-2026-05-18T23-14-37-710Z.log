@@ -1,0 +1,321 @@
+===== SurveyApp Save Log =====
+version:   0.1.46
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1512x826
+locale:    en-US
+timestamp: 2026-05-18T23:14:37.703Z (5/18/2026, 7:14:37 PM)
+==============================
+[DebugBridge +50634.9ms] survey_locate_start {"pageNumber":1,"highlightId":"highlight-1779059140949-frj1f728o","currentScale":0.7004069975179081,"targetScale":1.5,"shouldZoom":true}
+[DebugBridge +50776.3ms] survey_locate_zoom_center {"pageNumber":1,"highlightId":"highlight-1779059140949-frj1f728o","targetScale":1.5,"renderedScale":2,"scrollReady":false,"toolbarReady":true,"attempt":0,"centered":true}
+[DebugBridge +52757.7ms] survey_locate_start {"pageNumber":4,"highlightId":"highlight-1779059167789-838vhdof8","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +52757.9ms] survey_locate_direct_center {"pageNumber":4,"highlightId":"highlight-1779059167789-838vhdof8","targetScale":1.5}
+[DebugBridge +54372.8ms] survey_locate_start {"pageNumber":1,"highlightId":"highlight-1779059140949-frj1f728o","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +54372.9ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"highlight-1779059140949-frj1f728o","targetScale":1.5}
+[dev-auto-login] boot {"hasDevEmail":true,"devEmailHint":"isai***","hasDevPassword":true,"hasCachedSession":true,"cachedSessionEmail":"isaiahcalvo123@gmail.com","cachedSessionExpiresAt":1779149562}
+[dev-auto-login] cached session matches dev email, keeping it
+[dev-auto-login] decision {"needsAutoLogin":false,"willAttemptSignIn":false}
+[CloudSync][hook] session id minted {"sessionId":"fbfaef45-e2d0-4dee-9072-ad2da69ce9ad"}
+[CloudSync][hook][state-obs] annotationsByPage initial {"currentCount":0,"pages":0,"hydrated":false}
+[CloudSync][hook][state-obs] callouts initial {"currentCount":0,"hydrated":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"hydrateEnabled":true,"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":null}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"hydrateEnabled":true,"hasDocumentId":true,"hasUserId":true,"hasPdfId":false}
+[AnnotationHydrationGate][normal] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":null,"ready":false,"source":"missing-prerequisite","normalReady":false,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true}
+[AnnotationHydrationGate][first-page] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":null,"pageNumber":1,"ready":false,"visualCoverActive":true,"normal":{"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":null,"ready":false,"source":"pending","firstPaintGate":true},"survey":{"ready":true,"source":"local"}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":null,"pageNumber":1,"active":true,"reason":"annotation-hydration-gated"}
+[Cloud render cache] doc=SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080 painting verified cloud snapshot immediately — count=501.
+[CSeries wipe] doc=SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080 totalCounters=1 legacyRemoved=0 — nothing to wipe.
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":null,"alreadyRanFor":null,"willRun":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"hydrateEnabled":true,"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080"}
+[AnnotationHydrationGate][normal] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","ready":false,"source":"starting","normalReady":false,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true}
+[CloudSync][hook] stage=hydrating
+[AnnotationHydrationGate][first-page] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"ready":false,"visualCoverActive":true,"normal":{"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":null,"ready":false,"source":"missing-prerequisite","normalReady":false,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true},"survey":{"ready":false,"source":"supabase-highlight-starting","documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080"}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"active":true,"reason":"annotation-hydration-gated"}
+[AnnotationHydrationGate][first-page] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"ready":false,"visualCoverActive":true,"normal":{"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","ready":false,"source":"starting","normalReady":false,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true},"survey":{"ready":false,"source":"supabase-highlight-starting","documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080"}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"active":true,"reason":"annotation-hydration-gated"}
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","alreadyRanFor":null,"willRun":true}
+[Phase31 UAT] backfill:start {"hasYdoc":true,"hasSupabase":true,"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","markCutoverComplete":true}
+[PDFImport] skipped embedded PDF annotation import — cloud/Y.Doc is authoritative {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9"}
+[CloudSync][hook] cutover-complete hydrate — reading from Y.Doc {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","cutoverTs":"2026-05-18T02:05:48.746+00:00"}
+[Phase31 UAT] hydrate:cutover-sealed {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-18T02:05:48.746+00:00","yMapSize":501,"yMapCalloutsSize":4,"materializedTotal":501,"materializedCallouts":4,"materializedDrawnByMe":501,"materializedDrawnByOthers":0,"materializedImported":0,"pages":1,"perPage":{"1":501},"currentStateCount":501,"ydocLooksDegenerate":false}
+[Phase31 UAT] hydrate:cutover-sealed:by-type {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfFile":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","viewerUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapTotal":501,"yMapCalloutsTotal":4,"yMapByType":{"path":2,"polygon":1,"rect":494,"circle":1,"ellipse":1,"textbox":2},"yMapByAuthor":{"byMe":501,"byOthers":0,"anonymous":0},"yMapByTypeByAuthor":{"path":{"byMe":2,"byOthers":0,"anonymous":0},"polygon":{"byMe":1,"byOthers":0,"anonymous":0},"rect":{"byMe":494,"byOthers":0,"anonymous":0},"circle":{"byMe":1,"byOthers":0,"anonymous":0},"ellipse":{"byMe":1,"byOthers":0,"anonymous":0},"textbox":{"byMe":2,"byOthers":0,"anonymous":0}},"yMapPerTypePerPage":{"path":{"unknown":2},"polygon":{"unknown":1},"rect":{"unknown":494},"circle":{"unknown":1},"ellipse":{"unknown":1},"textbox":{"unknown":2}},"byPageTotal":501,"byPageByType":{"path":2,"polygon":1,"rect":494,"circle":1,"ellipse":1,"textbox":2},"byPagePerPagePerType":{"1":{"path":2,"polygon":1,"rect":494,"circle":1,"ellipse":1,"textbox":2}}}
+[CloudSync][hydrate] loadAllNonSurveyMarkerAnnotations start {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9"}
+[SURVEY-MARKER-SYNC][load.legacy][pdf=SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","totalRows":2,"fabricCarryingDropped":0,"keptCount":2,"keptIds":["highlight-1779059140949-frj1f728o","highlight-1779059167789-838vhdof8"]}
+[AnnotationHydrationGate][survey] supabase surveyMarkers complete {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","count":2}
+[AnnotationHydrationGate][first-page] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"ready":false,"visualCoverActive":true,"normal":{"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","ready":false,"source":"starting","normalReady":false,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true},"survey":{"ready":true,"source":"supabase-highlight","documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","count":2}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"active":true,"reason":"annotation-hydration-gated"}
+[Phase31 UAT] backfill:cutover-dedupe-anchor-skip {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapSize":501,"lastGoodSize":501}
+[CloudSync][hook] fabric push skipped — not hydrated yet
+[CloudSync][hook] callout push skipped — not hydrated yet
+[CloudSync][realtime] subscribing {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","currentUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","currentSessionId":"fbfaef45-e2d0-4dee-9072-ad2da69ce9ad","hasFabricInsert":true,"hasFabricUpdate":true,"hasFabricDelete":true,"hasCalloutInsert":true,"hasCalloutUpdate":true,"hasCalloutDelete":true}
+[CloudSync][realtime] subscribe status {"status":"SUBSCRIBED","error":null}
+[Phase31 UAT] post-subscribe catch-up skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-18T02:05:48.746+00:00","ydocAuthoritative":true}
+[PDFCounterImport] summary {"marker":"survey-counter","metadataKey":"SurveyApp","counterAnnotationsImported":0,"plainCirclesImported":0,"counterMetadataParseFailures":0,"appCalloutMarker":"survey-callout","appCalloutMetadataKey":"SurveyAppCallout","appCalloutAnnotationsImported":0,"appCalloutPiecesSkipped":0}
+[PDFAppLayerStateImport] summary {"found":false,"documentId":null,"exportId":null,"scopedAnnotationPages":0,"scopedCallouts":0,"surveyMarkers":0,"spaces":0}
+[PDFImport] native layer policy {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","cloudAuthoritative":true,"reason":"cloud/Y.Doc annotations are authoritative; native PDF annotation layer is hidden when all renderable native annotations are accounted for by importer diagnostics.","pages":{"1":{"hideNativeLayer":true,"nativeRenderableAnnotationCount":2,"nativeOnlyAnnotationCount":0,"reason":"all-renderable-native-annotations-imported-as-editable-app-annotations"},"2":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"3":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"4":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"5":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"6":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"7":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"8":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"9":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"10":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"11":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"12":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"13":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"14":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"15":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"16":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"17":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"18":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"19":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"20":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"21":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"22":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"23":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"24":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"25":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"26":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"27":{"hideN... [truncated 24 chars]
+[PrintPanel] RENDER — panel closed
+[CloudSync][hydrate] loadAllNonSurveyMarkerAnnotations ok {"elapsedMs":614,"totalRowsScanned":505,"scanned":{"nonSurveyMarker":505,"legacyFabricSurveyMarkers":0},"totalRows":505,"rowsByType":{"polygon":1,"ink":2,"counter":1,"square":494,"circle":1,"freetext":2,"callout":4},"pagesWithObjects":26,"calloutCount":4}
+[CloudSync][verify] first read summary {"contextLabel":"cutover-source-of-truth","documentId":"00e1cde9-449b-4771-9743-37bd604557a9","elapsedMs":615,"firstFabricPages":26,"firstFabricObjects":501,"firstCallouts":4,"firstEmpty":false,"localFabricCount":501,"localCalloutCount":4,"localHasData":true,"willVerify":false}
+[CloudSync][source-of-truth] cutover initial hydrate selected Supabase durable snapshot {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-18T02:05:48.746+00:00","ydocFabricCount":501,"ydocCalloutCount":4,"supabaseFabricCount":501,"supabaseCalloutCount":4,"rule":"Supabase durable snapshot wins initial load; Y.Doc is reshaped for live collaboration"}
+[Phase31 UAT] save:fan-out done {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","actionType":null,"dispatched":501,"yDocUpdateCount":501,"detected":501,"skippedSurveyMarkerOrCallout":0,"skippedOtherType":0,"rawTypeBreakdown":{"pen":1,"counter":1,"rect":494,"ellipse":1,"textbox":2,"polygon":1,"path":1},"resolvedTypeBreakdown":{"ink":2,"counter":1,"square":494,"circle":1,"freetext":2,"polygon":1},"skipReasons":{},"skipSamples":[],"yMapSizeAfter":501}
+[CloudSync][hook] callout Y.Doc fan-out done {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","actionType":"callout:delta","upserted":4,"deleted":0,"yDocUpdateCount":4,"yMapCalloutsSizeAfter":4}
+[AnnotationHydrationGate][normal] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","ready":true,"source":"supabase-durable-snapshot","normalReady":true,"cutoverTs":"2026-05-18T02:05:48.746+00:00","count":501,"calloutCount":4,"firstPaintGate":true}
+[AnnotationHydrationGate][first-page] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"ready":true,"visualCoverActive":false,"normal":{"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","ready":true,"source":"supabase-durable-snapshot","normalReady":true,"cutoverTs":"2026-05-18T02:05:48.746+00:00","count":501,"calloutCount":4,"firstPaintGate":true},"survey":{"ready":true,"source":"supabase-highlight","documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","count":2}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"active":false,"reason":"hydration-ready"}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[DebugBridge +39561.2ms] pdf_loaded {"pageCount":99,"currentPage":1}
+[DebugBridge +39708.1ms] zoom_start {"scale":1.13317,"targetScale":0.94,"source":"zoomChange"}
+[HyperlinkDiag] post-load scan {"hyperlinkCount":0,"samples":[]}
+[HyperlinkDiag] page 1 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG","IMG","IMG","IMG","e-pv-text-layer"]}
+[HyperlinkDiag] page 2 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG","e-pv-text-layer","IMG","IMG","IMG"]}
+[HyperlinkDiag] page 3 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer","IMG","IMG","IMG","IMG"]}
+[HyperlinkDiag] page 4 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 5 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 6 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 7 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 8 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 9 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 10 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[DrawCanvas p1] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p1] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DebugBridge +41589.3ms] zoom_end {"source":"zoomChange_settle"}
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-1","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-1","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] pointer release {"id":"gesture-1","frames":39,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"f59e8aa1-230a-44f6-bebc-65b577e4dbd4"}
+[PreviewDiag] final commit {"id":"gesture-1","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"f59e8aa1-230a-44f6-bebc-65b577e4dbd4","source":"path:created","objectDelta":1,"previousObjectCount":8,"nextObjectCount":9,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[CounterRenumber] skipped {"pageNumber":1,"source":"path:created","action":"path:created","reason":"non-numbering-save","preserveExistingCounters":true,"intentionalCounterChangeIds":[]}
+[UndoDiag] {"seq":2,"order":1,"at":"2026-05-18T23:13:17.961Z","event":"local_annotation_history_added","actionType":"create","rawActionType":"fabric:create","annotationType":"path","annotationId":"f59e8aa1-230a-44f6-bebc-65b577e4dbd4","pageNumber":1,"lane":"local annotation history","receivedStack":"localAnnotationUndo","chosenStack":null,"chosenLane":"local annotation history","decisionReason":null,"undoDepth":1,"redoDepth":0}
+[CloudSync][hook] fabric state changed — debounce push scheduled {"pageCount":26,"objectCount":502,"priorObjectCount":501,"isWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[CloudSync][status] transition {"from":"idle","to":"pending","kind":"fabric","phase":null,"count":null,"queued":false,"error":null}
+[PreviewDiag] preview {"id":"gesture-1","frames":50,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"f59e8aa1-230a-44f6-bebc-65b577e4dbd4","source":"path:created","objectDelta":1,"previousObjectCount":8,"nextObjectCount":9,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[CloudSync][hook] fabric push debounce elapsed — pushing now {"debounceMs":800,"debounceElapsedMs":866,"deferredQueuedMs":null,"actionType":"path:created"}
+[Phase31 UAT] save:start {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","legacyBulkUpsertEnabled":false,"crdtEnabled":true,"ydocMounted":true,"route":"supabase-durable-then-crdt","currentTotal":502,"currentDrawnByMe":0,"currentDrawnByOthers":502,"currentImported":0,"priorTotal":501,"priorDrawnByMe":0,"priorImported":0,"deltaTotal":1}
+[CloudSync][status] transition {"from":"pending","to":"syncing","kind":"fabric","phase":null,"count":null,"queued":false,"error":null}
+[CloudSync][delta] fabric prepared {"actionType":"path:created","changedIds":["f59e8aa1-230a-44f6-bebc-65b577e4dbd4"],"deletedIds":[],"changedObjectCount":1,"changedCount":1,"dispatchedCount":1,"supabaseUpsertCount":1,"yDocUpdateCount":1,"debounceMs":800,"debounceElapsedMs":866,"fullFanOutReason":null,"totalObjectCount":502,"priorObjectCount":501,"preciseSource":null,"preciseDeletedCount":null,"preciseChangedCount":null}
+[CloudSync][push] upsertAnnotationsByPage start {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","actionType":"path:created","changedIds":["f59e8aa1-230a-44f6-bebc-65b577e4dbd4"],"changedCount":1,"dispatchedCount":1,"supabaseUpsertCount":1,"debounceMs":800,"debounceElapsedMs":866,"fullFanOutReason":null,"totalRows":1,"userDrawnObjects":1,"importedObjects":0,"rowsByType":{"ink":1},"pages":1}
+[CloudSync][push] upsertAnnotationsByPage ok {"elapsedMs":450,"pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","actionType":"path:created","supabaseUpsertCount":1,"rowsReturned":1}
+[UndoDiag] {"seq":5,"order":null,"at":"2026-05-18T23:13:19.300Z","event":"yjs_history_added","actionType":"undo","rawActionType":"undo","annotationType":null,"annotationId":null,"pageNumber":null,"lane":"Yjs/CRDT history","receivedStack":"yjsUndoStack","chosenStack":null,"chosenLane":"Yjs/CRDT history","decisionReason":null,"undoDepth":1,"redoDepth":0}
+[Phase31 UAT] save:fan-out done {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","actionType":"path:created","dispatched":1,"yDocUpdateCount":1,"detected":1,"skippedSurveyMarkerOrCallout":0,"skippedOtherType":0,"rawTypeBreakdown":{"pen":1},"resolvedTypeBreakdown":{"ink":1},"skipReasons":{},"skipSamples":[],"yMapSizeAfter":502}
+[CloudSync][hook] fabric push synced {"count":1}
+[PreviewDiag] sync push {"gestureId":"gesture-1","totalAfterRelease":1,"kind":"fabric","count":1,"changedObjectCount":1,"deletedCount":0,"pageCount":1}
+[CloudSync][status] transition {"from":"syncing","to":"synced","kind":"fabric","phase":null,"count":1,"queued":false,"error":null}
+[CloudSync][realtime] echo-filtered INSERT {"highlightId":"f59e8aa1-230a-44f6-bebc-65b577e4dbd4","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"fbfaef45-e2d0-4dee-9072-ad2da69ce9ad","currentSessionId":"fbfaef45-e2d0-4dee-9072-ad2da69ce9ad","reason":"same-session"}
+[DrawCanvas p1] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p1] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[PreviewDiag] preview {"id":"gesture-1","frames":75,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"highlight-stroke","pageNumber":1,"annotationId":"f59e8aa1-230a-44f6-bebc-65b577e4dbd4","source":"path:created","objectDelta":1,"previousObjectCount":8,"nextObjectCount":9,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"highlighter","type":"highlighter","action":"highlight-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-2","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"highlighter","type":"highlighter","action":"highlight-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] summary path:created started, 86 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 1 sync push after release, 0 backup writes after release {"id":"gesture-1","durationMs":3354.9,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"f59e8aa1-230a-44f6-bebc-65b577e4dbd4","source":"path:created","objectDelta":1,"previousObjectCount":8,"nextObjectCount":9,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[PreviewDiag] pointer release {"id":"gesture-2","frames":23,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"highlighter","type":"highlighter","action":"highlight-stroke","pageNumber":1,"annotationId":"e5eddcb8-7c50-49f8-8b59-6d04da0496e4"}
+[PreviewDiag] final commit {"id":"gesture-2","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"highlighter","type":"highlighter","action":"path:created","pageNumber":1,"annotationId":"e5eddcb8-7c50-49f8-8b59-6d04da0496e4","source":"path:created","objectDelta":1,"previousObjectCount":9,"nextObjectCount":10,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[CounterRenumber] skipped {"pageNumber":1,"source":"path:created","action":"path:created","reason":"non-numbering-save","preserveExistingCounters":true,"intentionalCounterChangeIds":[]}
+[UndoDiag] {"seq":6,"order":2,"at":"2026-05-18T23:13:20.944Z","event":"local_annotation_history_added","actionType":"create","rawActionType":"fabric:create","annotationType":"path","annotationId":"e5eddcb8-7c50-49f8-8b59-6d04da0496e4","pageNumber":1,"lane":"local annotation history","receivedStack":"localAnnotationUndo","chosenStack":null,"chosenLane":"local annotation history","decisionReason":null,"undoDepth":2,"redoDepth":0}
+[CloudSync][hook] fabric state changed — debounce push scheduled {"pageCount":26,"objectCount":503,"priorObjectCount":502,"isWipePush":false,"deferredUntilPointerUp":false,"debounceMs":800}
+[CloudSync][status] transition {"from":"synced","to":"pending","kind":"fabric","phase":null,"count":null,"queued":false,"error":null}
+[PreviewDiag] preview {"id":"gesture-2","frames":25,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"highlighter","type":"highlighter","action":"highlight-stroke","pageNumber":1,"annotationId":"e5eddcb8-7c50-49f8-8b59-6d04da0496e4","source":"path:created","objectDelta":1,"previousObjectCount":9,"nextObjectCount":10,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[CloudSync][hook] fabric push debounce elapsed — pushing now {"debounceMs":800,"debounceElapsedMs":805,"deferredQueuedMs":null,"actionType":"path:created"}
+[Phase31 UAT] save:start {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","legacyBulkUpsertEnabled":false,"crdtEnabled":true,"ydocMounted":true,"route":"supabase-durable-then-crdt","currentTotal":503,"currentDrawnByMe":0,"currentDrawnByOthers":503,"currentImported":0,"priorTotal":502,"priorDrawnByMe":0,"priorImported":0,"deltaTotal":1}
+[CloudSync][status] transition {"from":"pending","to":"syncing","kind":"fabric","phase":null,"count":null,"queued":false,"error":null}
+[CloudSync][delta] fabric prepared {"actionType":"path:created","changedIds":["e5eddcb8-7c50-49f8-8b59-6d04da0496e4"],"deletedIds":[],"changedObjectCount":1,"changedCount":1,"dispatchedCount":1,"supabaseUpsertCount":1,"yDocUpdateCount":1,"debounceMs":800,"debounceElapsedMs":805,"fullFanOutReason":null,"totalObjectCount":503,"priorObjectCount":502,"preciseSource":null,"preciseDeletedCount":null,"preciseChangedCount":null}
+[CloudSync][push] upsertAnnotationsByPage start {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","actionType":"path:created","changedIds":["e5eddcb8-7c50-49f8-8b59-6d04da0496e4"],"changedCount":1,"dispatchedCount":1,"supabaseUpsertCount":1,"debounceMs":800,"debounceElapsedMs":805,"fullFanOutReason":null,"totalRows":1,"userDrawnObjects":1,"importedObjects":0,"rowsByType":{"ink":1},"pages":1}
+[CloudSync][push] upsertAnnotationsByPage ok {"elapsedMs":152,"pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","actionType":"path:created","supabaseUpsertCount":1,"rowsReturned":1}
+[UndoDiag] {"seq":9,"order":null,"at":"2026-05-18T23:13:21.910Z","event":"yjs_history_added","actionType":"undo","rawActionType":"undo","annotationType":null,"annotationId":null,"pageNumber":null,"lane":"Yjs/CRDT history","receivedStack":"yjsUndoStack","chosenStack":null,"chosenLane":"Yjs/CRDT history","decisionReason":null,"undoDepth":2,"redoDepth":0}
+[Phase31 UAT] save:fan-out done {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","actionType":"path:created","dispatched":1,"yDocUpdateCount":1,"detected":1,"skippedSurveyMarkerOrCallout":0,"skippedOtherType":0,"rawTypeBreakdown":{"highlighter":1},"resolvedTypeBreakdown":{"ink":1},"skipReasons":{},"skipSamples":[],"yMapSizeAfter":503}
+[CloudSync][hook] fabric push synced {"count":1}
+[PreviewDiag] sync push {"gestureId":"gesture-2","totalAfterRelease":1,"kind":"fabric","count":1,"changedObjectCount":1,"deletedCount":0,"pageCount":1}
+[CloudSync][status] transition {"from":"syncing","to":"synced","kind":"fabric","phase":null,"count":1,"queued":false,"error":null}
+[CloudSync][realtime] echo-filtered INSERT {"highlightId":"e5eddcb8-7c50-49f8-8b59-6d04da0496e4","annotationType":"ink","lastModifiedBy":"170d915c-5741-4e0b-b03f-deaeedae27bd","rowSessionId":"fbfaef45-e2d0-4dee-9072-ad2da69ce9ad","currentSessionId":"fbfaef45-e2d0-4dee-9072-ad2da69ce9ad","reason":"same-session"}
+[PreviewDiag] summary path:created started, 42 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 1 sync push after release, 0 backup writes after release {"id":"gesture-2","durationMs":2931.7,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"highlighter","type":"highlighter","action":"path:created","pageNumber":1,"annotationId":"e5eddcb8-7c50-49f8-8b59-6d04da0496e4","source":"path:created","objectDelta":1,"previousObjectCount":9,"nextObjectCount":10,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[DrawCanvas p1] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[DrawCanvas p4] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p4] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[DebugBridge +50635.2ms] zoom_start {"scale":0.7004069975179081,"targetScale":1.5,"source":"keyboard_toolbar"}
+[Diag] tool-switch DETECTED → select (scheduling t+1000ms capture)
+[DebugBridge +52268.3ms] zoom_end {"source":"zoomChange_settle"}
+[Diag select] screenshot saved (408 KB) → /Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/TestLogs/testlog-screenshot-select.png
+[Diag select] CAPTURED @ t+1354ms — annotations=10 callouts=3 svgWrappers=1 svgVis=[visible] svgElems=0 svgVisElems=0 eraserCanvases=0 svgMarkupBytes=4361
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[DebugBridge +52773.9ms] page_visit_start {"page":4,"pageCount":99,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":true,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +52774.5ms] page_visit_ready {"page":4,"pageCount":99,"revisited":false,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":true,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[DebugBridge +54644.3ms] page_visit_start {"page":3,"pageCount":99,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":true,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +54644.8ms] page_visit_ready {"page":3,"pageCount":99,"revisited":false,"waitMs":0,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":true,"hasAnnotationOverlay":false,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[DebugBridge +55036.3ms] page_visit_start {"page":1,"pageCount":99,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +55037.2ms] page_visit_ready {"page":1,"pageCount":99,"revisited":false,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[DrawCanvas p1] shape mousedown at (736.3, 145.5), tool=survey-marker
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-3","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-3","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] pointer release {"id":"gesture-3","frames":34,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] shape mouseup — tool=survey-marker, hasSize=true {"left":736.25,"top":145.5,"w":88.5,"h":35.5}
+[PreviewDiag] final commit {"id":"gesture-3","commits":1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create"}
+[UndoDiag] {"seq":10,"order":3,"at":"2026-05-18T23:13:35.119Z","event":"checkpoint_added","actionType":"create","rawActionType":"highlight:create","annotationType":"fabric","annotationId":null,"pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":1,"redoDepth":0}
+[PreviewDiag] summary survey-marker-draw started, 34 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-3","durationMs":2788.2,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create","reason":"settled"}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":3}
+[DrawCanvas p1] shape mousedown at (857.3, 211.0), tool=survey-marker
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-4","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-4","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] pointer release {"id":"gesture-4","frames":29,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] shape mouseup — tool=survey-marker, hasSize=true {"left":857.25,"top":211,"w":50.5,"h":63.5}
+[PreviewDiag] final commit {"id":"gesture-4","commits":1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create"}
+[UndoDiag] {"seq":11,"order":4,"at":"2026-05-18T23:13:39.521Z","event":"checkpoint_added","actionType":"create","rawActionType":"highlight:create","annotationType":"fabric","annotationId":null,"pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":2,"redoDepth":0}
+[PreviewDiag] summary survey-marker-draw started, 29 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-4","durationMs":1873.3,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create","reason":"settled"}
+[DrawCanvas p1] shape mousedown at (541.3, 91.5), tool=survey-marker
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-5","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-5","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] pointer release {"id":"gesture-5","frames":40,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] shape mouseup — tool=survey-marker, hasSize=true {"left":541.25,"top":91.5,"w":87,"h":61}
+[PreviewDiag] final commit {"id":"gesture-5","commits":1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create"}
+[UndoDiag] {"seq":12,"order":5,"at":"2026-05-18T23:13:45.602Z","event":"checkpoint_added","actionType":"create","rawActionType":"highlight:create","annotationType":"fabric","annotationId":null,"pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":3,"redoDepth":0}
+[PreviewDiag] summary survey-marker-draw started, 40 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-5","durationMs":1884.5,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create","reason":"settled"}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":4}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":5}
+[TextSearchDiag] document_key_ready {"at":"2026-05-18T23:13:52.868Z","documentKey":"explicit:00e1cde9-449b-4771-9743-37bd604557a9:SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080:99","numPages":99}
+[TextSearchDiag] search_clear_empty_query {"at":"2026-05-18T23:13:53.109Z","previousResultCount":0,"previousIndex":-1,"documentKey":"explicit:00e1cde9-449b-4771-9743-37bd604557a9:SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080:99"}
+[UndoDiag] {"seq":13,"order":6,"at":"2026-05-18T23:13:54.385Z","event":"checkpoint_added","actionType":"create","rawActionType":"space:create","annotationType":null,"annotationId":null,"pageNumber":null,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":4,"redoDepth":0}
+[App-RegionEdit p1] overlay portal mounted — currentPage=1, activeTool=region-edit, hasAnnotations=true, hasRegions=false, overlayDiv=true, portalTarget=true
+[RegionSelectionTool p1] target query hit — selector=[data-region-selection-target="1"], renderer=syncfusion-svg-stable
+[RegionSelectionTool p1] target missing — space=1779146034386-460olfegv, tool=region-edit, rect=none
+[App-RegionEdit p1] overlay portal mounted — currentPage=1, activeTool=region-edit, hasAnnotations=true, hasRegions=false, overlayDiv=true, portalTarget=true
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[App-RegionEdit p1] overlay portal mounted — currentPage=1, activeTool=region-edit, hasAnnotations=true, hasRegions=false, overlayDiv=true, portalTarget=true
+[RegionSelectionTool p1] target mounted — space=1779146034386-460olfegv, tool=region-edit, rect=-538,0,2448x1584
+[RegionSelectionTool p1] canvasRect — left=-538, top=0, width=2448, height=1584, scale=2.00000
+[App-RegionEdit p1] overlay portal mounted — currentPage=1, activeTool=region-edit, hasAnnotations=true, hasRegions=false, overlayDiv=true, portalTarget=true
+[RegionSelectionTool p1] mouseDown — tool=rectangular, activeTool=region-edit, within=true, client=424,409, rect=-538,0,2448x1584
+[RegionSelectionTool p1] mouseUp commit rectangular — x=481.25, y=204.50, w=70.50, h=76.50, mode=add
+[RegionSelectionTool p1] confirm — input=1, payload=1, valid=1
+[App-RegionEdit] handleRegionComplete — saving regions {"activeSpaceId":"1779146034386-460olfegv","regionSelectionPage":1,"incomingCount":1,"additiveCount":1,"migratedCount":1,"validCount":1,"regionIds":["1779146039273-sb8ol2dg1"]}
+[UndoDiag] {"seq":14,"order":7,"at":"2026-05-18T23:14:00.606Z","event":"checkpoint_added","actionType":"move","rawActionType":"space:update","annotationType":null,"annotationId":null,"pageNumber":null,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":5,"redoDepth":0}
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=2448x1584
+[SpaceRegionOverlay p1] render — regions=1, screen=2448x1584, cutoutPathLength=73, maskId=space-mask-1--r0-
+[SpaceRegionOverlay p1] mounted — root=2448x1584, svg=2448x1584, fillContainer=true, maskId=space-mask-1--r0-
+[DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=2448x1584
+[SpaceRegionOverlay p1] render — regions=1, screen=2448x1584, cutoutPathLength=73, maskId=space-mask-1--r0-
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=2448x1584
+[SpaceRegionOverlay p1] render — regions=1, screen=2448x1584, cutoutPathLength=73, maskId=space-mask-1--r0-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=2448x1584
+[SpaceRegionOverlay p1] render — regions=1, screen=2448x1584, cutoutPathLength=73, maskId=space-mask-1--r0-
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=2448x1584
+[SpaceRegionOverlay p1] render — regions=1, screen=2448x1584, cutoutPathLength=73, maskId=space-mask-1--r0-
+[DrawCanvas p1] shape mousedown at (501.8, 228.5), tool=survey-marker
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=2448x1584
+[PreviewDiag] preview {"id":"gesture-6","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-6","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] pointer release {"id":"gesture-6","frames":37,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] shape mouseup — tool=survey-marker, hasSize=true {"left":501.75,"top":228.5,"w":103.5,"h":36}
+[PreviewDiag] final commit {"id":"gesture-6","commits":1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create"}
+[UndoDiag] {"seq":15,"order":8,"at":"2026-05-18T23:14:03.258Z","event":"checkpoint_added","actionType":"create","rawActionType":"highlight:create","annotationType":"fabric","annotationId":null,"pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":6,"redoDepth":0}
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=2448x1584
+[SpaceRegionOverlay p1] render — regions=1, screen=2448x1584, cutoutPathLength=73, maskId=space-mask-1--r0-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=2448x1584
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=2448x1584
+[SpaceRegionOverlay p1] render — regions=1, screen=2448x1584, cutoutPathLength=73, maskId=space-mask-1--r0-
+[PreviewDiag] summary survey-marker-draw started, 37 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-6","durationMs":1901.4,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create","reason":"settled"}
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=2448x1584
+[SpaceRegionOverlay p1] render — regions=1, screen=2448x1584, cutoutPathLength=73, maskId=space-mask-1--r0-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=2448x1584
+[SpaceRegionOverlay p1] render — regions=1, screen=2448x1584, cutoutPathLength=73, maskId=space-mask-1--r0-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=2448x1584
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=2448x1584
+[SpaceRegionOverlay p1] render — regions=1, screen=2448x1584, cutoutPathLength=73, maskId=space-mask-1--r0-
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":6}
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=2448x1584
+[Phase31 UAT] focus rehydrate skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-18T02:05:48.746+00:00","ydocAuthoritative":true}
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=2448x1584
+[SpaceRegionOverlay p1] render — regions=1, screen=2448x1584, cutoutPathLength=73, maskId=space-mask-1--r0-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=2448x1584
+[SpaceRegionOverlay p1] render — regions=1, screen=2448x1584, cutoutPathLength=73, maskId=space-mask-1--r0-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=2448x1584
+[SpaceRegionOverlay p1] render — regions=1, screen=2448x1584, cutoutPathLength=73, maskId=space-mask-1--r0-
+[DrawCanvas p1] shape mousedown at (667.3, 62.5), tool=survey-marker
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-7","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-7","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] pointer release {"id":"gesture-7","frames":41,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] shape mouseup — tool=survey-marker, hasSize=true {"left":667.25,"top":62.5,"w":51,"h":49}
+[PreviewDiag] final commit {"id":"gesture-7","commits":1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create"}
+[UndoDiag] {"seq":16,"order":9,"at":"2026-05-18T23:14:14.567Z","event":"checkpoint_added","actionType":"create","rawActionType":"highlight:create","annotationType":"fabric","annotationId":null,"pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":7,"redoDepth":0}
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=2448x1584
+[SpaceRegionOverlay p1] render — regions=1, screen=2448x1584, cutoutPathLength=73, maskId=space-mask-1--r0-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=2448x1584
+[PreviewDiag] summary survey-marker-draw started, 41 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-7","durationMs":1901,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create","reason":"settled"}
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=2448x1584
+[SpaceRegionOverlay p1] render — regions=1, screen=2448x1584, cutoutPathLength=73, maskId=space-mask-1--r0-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=2448x1584
+[SpaceRegionOverlay p1] render — regions=1, screen=2448x1584, cutoutPathLength=73, maskId=space-mask-1--r0-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=2448x1584
+[SpaceRegionOverlay p1] render — regions=1, screen=2448x1584, cutoutPathLength=73, maskId=space-mask-1--r0-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=2448x1584
+[SpaceRegionOverlay p1] render — regions=1, screen=2448x1584, cutoutPathLength=73, maskId=space-mask-1--r0-
+[App-RegionOverlay p1] render-svg — regions=1, valid=1, display=2448x1584
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":7}
+[Phase31 UAT] focus rehydrate skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-18T02:05:48.746+00:00","ydocAuthoritative":true}
+
+===== Text Search Diagnostics =====
+[TextSearchDiag] document_key_ready {"at":"2026-05-18T23:13:52.868Z","documentKey":"explicit:00e1cde9-449b-4771-9743-37bd604557a9:SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080:99","numPages":99}
+[TextSearchDiag] search_clear_empty_query {"at":"2026-05-18T23:13:53.109Z","previousResultCount":0,"previousIndex":-1,"documentKey":"explicit:00e1cde9-449b-4771-9743-37bd604557a9:SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080:99"}
+===== End Text Search Diagnostics =====
+
+===== Undo/Redo Chronology =====
+events=16
+lanes=local annotation history | callout history | legacy history | Yjs/CRDT history
+{"seq":1,"order":null,"at":"2026-05-18T23:13:12.067Z","event":"history_reset_for_pdf_change","actionType":"pdf:change","rawActionType":"pdf:change","annotationType":null,"annotationId":null,"pageNumber":null,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+{"seq":2,"order":1,"at":"2026-05-18T23:13:17.961Z","event":"local_annotation_history_added","actionType":"create","rawActionType":"fabric:create","annotationType":"path","annotationId":"f59e8aa1-230a-44f6-bebc-65b577e4dbd4","pageNumber":1,"lane":"local annotation history","receivedStack":"localAnnotationUndo","chosenStack":null,"chosenLane":"local annotation history","decisionReason":null,"undoDepth":1,"redoDepth":0}
+{"seq":3,"order":null,"at":"2026-05-18T23:13:17.961Z","event":"annotations_save_detected","actionType":"annotations:save","rawActionType":"annotations:save","annotationType":null,"annotationId":null,"pageNumber":1,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+{"seq":4,"order":null,"at":"2026-05-18T23:13:17.961Z","event":"annotations_checkpoint_skipped_crdt_history","actionType":"annotations:save","rawActionType":"annotations:save","annotationType":null,"annotationId":null,"pageNumber":1,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+{"seq":5,"order":null,"at":"2026-05-18T23:13:19.300Z","event":"yjs_history_added","actionType":"undo","rawActionType":"undo","annotationType":null,"annotationId":null,"pageNumber":null,"lane":"Yjs/CRDT history","receivedStack":"yjsUndoStack","chosenStack":null,"chosenLane":"Yjs/CRDT history","decisionReason":null,"undoDepth":1,"redoDepth":0}
+{"seq":6,"order":2,"at":"2026-05-18T23:13:20.944Z","event":"local_annotation_history_added","actionType":"create","rawActionType":"fabric:create","annotationType":"path","annotationId":"e5eddcb8-7c50-49f8-8b59-6d04da0496e4","pageNumber":1,"lane":"local annotation history","receivedStack":"localAnnotationUndo","chosenStack":null,"chosenLane":"local annotation history","decisionReason":null,"undoDepth":2,"redoDepth":0}
+{"seq":7,"order":null,"at":"2026-05-18T23:13:20.944Z","event":"annotations_save_detected","actionType":"annotations:save","rawActionType":"annotations:save","annotationType":null,"annotationId":null,"pageNumber":1,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+{"seq":8,"order":null,"at":"2026-05-18T23:13:20.944Z","event":"annotations_checkpoint_skipped_crdt_history","actionType":"annotations:save","rawActionType":"annotations:save","annotationType":null,"annotationId":null,"pageNumber":1,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+{"seq":9,"order":null,"at":"2026-05-18T23:13:21.910Z","event":"yjs_history_added","actionType":"undo","rawActionType":"undo","annotationType":null,"annotationId":null,"pageNumber":null,"lane":"Yjs/CRDT history","receivedStack":"yjsUndoStack","chosenStack":null,"chosenLane":"Yjs/CRDT history","decisionReason":null,"undoDepth":2,"redoDepth":0}
+{"seq":10,"order":3,"at":"2026-05-18T23:13:35.119Z","event":"checkpoint_added","actionType":"create","rawActionType":"highlight:create","annotationType":"fabric","annotationId":null,"pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":1,"redoDepth":0}
+{"seq":11,"order":4,"at":"2026-05-18T23:13:39.521Z","event":"checkpoint_added","actionType":"create","rawActionType":"highlight:create","annotationType":"fabric","annotationId":null,"pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":2,"redoDepth":0}
+{"seq":12,"order":5,"at":"2026-05-18T23:13:45.602Z","event":"checkpoint_added","actionType":"create","rawActionType":"highlight:create","annotationType":"fabric","annotationId":null,"pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":3,"redoDepth":0}
+{"seq":13,"order":6,"at":"2026-05-18T23:13:54.385Z","event":"checkpoint_added","actionType":"create","rawActionType":"space:create","annotationType":null,"annotationId":null,"pageNumber":null,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":4,"redoDepth":0}
+{"seq":14,"order":7,"at":"2026-05-18T23:14:00.606Z","event":"checkpoint_added","actionType":"move","rawActionType":"space:update","annotationType":null,"annotationId":null,"pageNumber":null,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":5,"redoDepth":0}
+{"seq":15,"order":8,"at":"2026-05-18T23:14:03.258Z","event":"checkpoint_added","actionType":"create","rawActionType":"highlight:create","annotationType":"fabric","annotationId":null,"pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":6,"redoDepth":0}
+{"seq":16,"order":9,"at":"2026-05-18T23:14:14.567Z","event":"checkpoint_added","actionType":"create","rawActionType":"highlight:create","annotationType":"fabric","annotationId":null,"pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":7,"redoDepth":0}
+===== End Undo/Redo Chronology =====
