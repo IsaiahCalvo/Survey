@@ -22153,16 +22153,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
           // Update Entity
           if (entityIndex !== -1) {
-            const bicName = row[entityIndex];
-            if (bicName && bicName !== ann.entityName) {
+            const entityNameFromExcel = row[entityIndex];
+            if (entityNameFromExcel && entityNameFromExcel !== ann.entityName) {
               const entities = templateToUse.entities || [];
-              const entity = entities.find(e => e.name === bicName);
+              const entity = entities.find(e => e.name === entityNameFromExcel);
               if (entity) {
                 ann.entityId = entity.id;
                 ann.entityName = entity.name;
                 ann.entityColor = entity.color;
                 changed = true;
-              } else if (bicName === '') {
+              } else if (entityNameFromExcel === '') {
                 ann.entityId = null;
                 ann.entityName = null;
                 ann.entityColor = null;
@@ -22213,10 +22213,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
           let entityColor = null;
 
           if (entityIndex !== -1) {
-            const bicName = row[entityIndex];
-            if (bicName) {
+            const entityNameFromExcel = row[entityIndex];
+            if (entityNameFromExcel) {
               const entities = templateToUse.entities || [];
-              const entity = entities.find(e => e.name === bicName);
+              const entity = entities.find(e => e.name === entityNameFromExcel);
               if (entity) {
                 entityId = entity.id;
                 entityName = entity.name;
@@ -22570,10 +22570,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
           // Update Entity
           if (entityIndex !== -1) {
-            const bicName = row[entityIndex];
-            if (bicName && bicName !== ann.entityName) {
+            const entityNameFromExcel = row[entityIndex];
+            if (entityNameFromExcel && entityNameFromExcel !== ann.entityName) {
               const entities = templateToUse.entities || [];
-              const entity = entities.find(e => e.name === bicName);
+              const entity = entities.find(e => e.name === entityNameFromExcel);
               if (entity) {
                 ann.entityId = entity.id;
                 ann.entityName = entity.name;
@@ -22589,7 +22589,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
                     needsEntity: false
                   });
                 }
-              } else if (bicName === '') {
+              } else if (entityNameFromExcel === '') {
                 ann.entityId = null;
                 ann.entityName = null;
                 ann.entityColor = null;
@@ -22650,10 +22650,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
           let entityColor = null;
 
           if (entityIndex !== -1) {
-            const bicName = row[entityIndex];
-            if (bicName) {
+            const entityNameFromExcel = row[entityIndex];
+            if (entityNameFromExcel) {
               const entities = templateToUse.entities || [];
-              const entity = entities.find(e => e.name === bicName);
+              const entity = entities.find(e => e.name === entityNameFromExcel);
               if (entity) {
                 entityId = entity.id;
                 entityName = entity.name;
