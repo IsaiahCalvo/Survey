@@ -355,13 +355,13 @@ export async function deleteAnnotations(documentId, highlightIds) {
 }
 
 /**
- * Load every non-highlight annotation for a document and return it split
+ * Load every non-survey marker annotation for a document and return it split
  * into the in-app shape slices: { annotationsByPage, callouts }.
  *
  * Highlights are intentionally skipped — they have their own loader in
  * documentAnnotationService.js and own their own state slice in App.jsx.
  */
-export async function loadAllNonHighlightAnnotations(documentId) {
+export async function loadAllNonSurveyMarkerAnnotations(documentId) {
   if (!supabase) {
     return { annotationsByPage: {}, callouts: [], error: new Error('Supabase unavailable') };
   }
@@ -369,11 +369,11 @@ export async function loadAllNonHighlightAnnotations(documentId) {
     return { annotationsByPage: {}, callouts: [], error: null };
   }
   const t0 = Date.now();
-  console.log('[CloudSync][hydrate] loadAllNonHighlightAnnotations start ' + JSON.stringify({ documentId }));
+  console.log('[CloudSync][hydrate] loadAllNonSurveyMarkerAnnotations start ' + JSON.stringify({ documentId }));
   const { rows: allRows, error, scanned } = await loadAllTypesOwnedRowsForDocument(documentId);
   const elapsedMs = Date.now() - t0;
   if (error) {
-    console.error('[CloudSync][hydrate] loadAllNonHighlightAnnotations failed ' + JSON.stringify({
+    console.error('[CloudSync][hydrate] loadAllNonSurveyMarkerAnnotations failed ' + JSON.stringify({
       elapsedMs,
       error: error?.message || String(error)
     }));
@@ -386,7 +386,7 @@ export async function loadAllNonHighlightAnnotations(documentId) {
   }, {});
   const annotationsByPage = deserializeRowsToAnnotationsByPage(rows);
   const callouts = deserializeRowsToCallouts(rows);
-  console.log('[CloudSync][hydrate] loadAllNonHighlightAnnotations ok ' + JSON.stringify({
+  console.log('[CloudSync][hydrate] loadAllNonSurveyMarkerAnnotations ok ' + JSON.stringify({
     elapsedMs,
     totalRowsScanned: allRows?.length || 0,
     scanned,
@@ -404,7 +404,7 @@ export async function loadAllNonHighlightAnnotations(documentId) {
 }
 
 /**
- * Subscribe to real-time changes for non-highlight annotations on a document.
+ * Subscribe to real-time changes for non-survey marker annotations on a document.
  *
  * Routes incoming rows to type-aware callbacks:
  *   - onFabricInsert(fabricObject, pageNumber, highlightId) — for ink, shapes,
@@ -433,7 +433,7 @@ export async function loadAllNonHighlightAnnotations(documentId) {
  * subscription in documentAnnotationService.js continues to own them
  * without conflict.
  */
-export function subscribeToAllNonHighlightAnnotations(documentId, callbacks = {}, options = {}) {
+export function subscribeToAllNonSurveyMarkerAnnotations(documentId, callbacks = {}, options = {}) {
   if (!supabase) return () => {};
 
   const { currentUserId = null, currentSessionId = null } = options;

@@ -10,7 +10,7 @@
  * - All coordinates in unscaled PDF page space
  * - Browser handles zoom scaling automatically via viewBox
  * - vector-effect="non-scaling-stroke" keeps stroke widths constant
- * - mix-blend-mode: multiply for highlight annotations
+ * - mix-blend-mode: multiply for survey marker annotations
  * - pathOffset transform chain for correct pen stroke positioning
  * - Selection handles use inverseScale for constant visual pixel size
  *
@@ -1595,7 +1595,7 @@ const SVGAnnotationLayer = memo(({
       }
       // Skip legacy survey-marker rects baked into pageAnnotations by PAL
       // (they carry a highlightId). They now render through the dedicated
-      // surveyMarkerElements memo below so highlightAnnotations state stays
+      // surveyMarkerElements memo below so surveyMarkers state stays
       // the single source of truth for survey markers.
       if (obj.highlightId) {
         // Bug 1 diag — track every skip so the user can compare against the
@@ -1836,7 +1836,7 @@ const SVGAnnotationLayer = memo(({
   // Survey marker rects — synthesized from the surveyMarkers prop and
   // filtered through the same three-layer visibility rules as annotation
   // objects. They are also selectable/editable through a lightweight SVG path
-  // because they live in highlightAnnotations, not annotations.objects.
+  // because they live in surveyMarkers, not annotations.objects.
   // ---------------------------------------------------------------------------
   const surveyMarkerElements = useMemo(() => {
     if (!Array.isArray(surveyMarkers) || surveyMarkers.length === 0) return [];
@@ -1970,7 +1970,7 @@ const SVGAnnotationLayer = memo(({
         angle: normalizeDegreesValue(h.angle),
       };
       elements.push({
-        highlight: h,
+        surveyMarker: h,
         bbox: pseudoRect,
         key: `survey-hl-${h.highlightId || i}`,
       });
@@ -2024,7 +2024,7 @@ const SVGAnnotationLayer = memo(({
   useEffect(() => {
     if (!selectedSurveyMarkerId) return;
     const stillVisible = surveyMarkerElements.some((entry) =>
-      entry?.highlight?.highlightId === selectedSurveyMarkerId
+      entry?.surveyMarker?.highlightId === selectedSurveyMarkerId
     );
     if (!stillVisible) {
       setSelectedSurveyMarkerId(null);
@@ -2086,7 +2086,7 @@ const SVGAnnotationLayer = memo(({
     }
 
     const isVisible = surveyMarkerElements.some((entry) =>
-      entry?.highlight?.highlightId === highlightId
+      entry?.surveyMarker?.highlightId === highlightId
     );
     if (!isVisible) return;
 
@@ -2184,10 +2184,10 @@ const SVGAnnotationLayer = memo(({
   }, []);
 
   const handleSurveyMarkerPointerDown = useCallback((e, entry) => {
-    if (!isSelectTool || !entry?.highlight?.highlightId) return;
+    if (!isSelectTool || !entry?.surveyMarker?.highlightId) return;
     e.stopPropagation();
     e.preventDefault();
-    const highlightId = entry.highlight.highlightId;
+    const highlightId = entry.surveyMarker.highlightId;
     const now = Date.now();
     const previousClick = surveyMarkerClickRef.current;
     if (
@@ -2222,14 +2222,14 @@ const SVGAnnotationLayer = memo(({
   }, [deselectAll, isSelectTool, normalizeSurveyMarkerBounds, onSelectedCalloutIdsChange, onSurveyMarkerDoubleClick]);
 
   const handleSurveyMarkerDoubleClick = useCallback((e, entry) => {
-    if (!entry?.highlight?.highlightId) return;
+    if (!entry?.surveyMarker?.highlightId) return;
     e.stopPropagation();
     e.preventDefault();
-    onSurveyMarkerDoubleClick?.(entry.highlight.highlightId);
+    onSurveyMarkerDoubleClick?.(entry.surveyMarker.highlightId);
   }, [onSurveyMarkerDoubleClick]);
 
   const handleSurveyMarkerHandlePointerDown = useCallback((e, entry, handleId) => {
-    if (!isSelectTool || !entry?.highlight?.highlightId) return;
+    if (!isSelectTool || !entry?.surveyMarker?.highlightId) return;
     e.stopPropagation();
     e.preventDefault();
     const startPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
@@ -2242,11 +2242,11 @@ const SVGAnnotationLayer = memo(({
     });
     const centerX = originalBounds.x + originalBounds.width / 2;
     const centerY = originalBounds.y + originalBounds.height / 2;
-    setSelectedSurveyMarkerId(entry.highlight.highlightId);
+    setSelectedSurveyMarkerId(entry.surveyMarker.highlightId);
     surveyMarkerDragRef.current = {
       mode: handleId === 'mtr' ? 'rotate' : 'resize',
       handleId,
-      highlightId: entry.highlight.highlightId,
+      highlightId: entry.surveyMarker.highlightId,
       startPoint,
       originalBounds,
       centerX,
@@ -2255,7 +2255,7 @@ const SVGAnnotationLayer = memo(({
         ? normalizeAngle(Math.atan2(startPoint.y - centerY, startPoint.x - centerX))
         : 0,
     };
-    setSurveyMarkerPreviewBounds({ highlightId: entry.highlight.highlightId, bounds: originalBounds });
+    setSurveyMarkerPreviewBounds({ highlightId: entry.surveyMarker.highlightId, bounds: originalBounds });
     try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch (_) {}
   }, [isSelectTool, normalizeSurveyMarkerBounds]);
 
@@ -2306,8 +2306,8 @@ const SVGAnnotationLayer = memo(({
   }, [onUpdateSurveyMarkerBounds, pageNumber, resizeSurveyMarkerBoundsRotated]);
 
   const renderSurveyMarkerEntry = useCallback((entry) => {
-    if (!entry?.highlight?.highlightId) return null;
-    const highlightId = entry.highlight.highlightId;
+    if (!entry?.surveyMarker?.highlightId) return null;
+    const highlightId = entry.surveyMarker.highlightId;
     const preview = surveyMarkerPreviewBounds?.highlightId === highlightId
       ? surveyMarkerPreviewBounds.bounds
       : null;
@@ -2409,7 +2409,7 @@ const SVGAnnotationLayer = memo(({
   const selectedSurveyMarkerEntry = useMemo(() => {
     if (!selectedSurveyMarkerId || selectedAnnotationIndex !== null) return null;
     return surveyMarkerElements.find((entry) =>
-      entry?.highlight?.highlightId === selectedSurveyMarkerId
+      entry?.surveyMarker?.highlightId === selectedSurveyMarkerId
     ) || null;
   }, [selectedAnnotationIndex, selectedSurveyMarkerId, surveyMarkerElements]);
 

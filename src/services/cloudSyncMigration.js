@@ -13,7 +13,7 @@ import { supabase } from '../supabaseClient.js';
 import {
   upsertAnnotationsByPage,
   upsertCallouts,
-  loadAllNonHighlightAnnotations
+  loadAllNonSurveyMarkerAnnotations
 } from './annotationCloudSync.js';
 
 const MIGRATION_KEY_PREFIX = 'cloudSyncMigrated_';
@@ -116,7 +116,7 @@ export async function migrateLocalAnnotationsToCloud(ctx) {
   // full-table read during startup.
   const cloudResult = existingCloudResult && !existingCloudResult.error
     ? existingCloudResult
-    : await loadAllNonHighlightAnnotations(documentId);
+    : await loadAllNonSurveyMarkerAnnotations(documentId);
   if (cloudResult.error) {
     if (onStatus) onStatus({ stage: 'error', error: cloudResult.error });
     return { migrated: false, pushed: 0, skipped: 0, error: cloudResult.error };

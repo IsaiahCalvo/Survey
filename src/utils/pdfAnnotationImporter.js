@@ -3304,7 +3304,7 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
     scopedAnnotationPages: Object.keys(appLayerState?.layers?.scopedAnnotationsByPage || {}).length,
     scopedCallouts: Array.isArray(appLayerState?.layers?.callouts) ? appLayerState.layers.callouts.length : 0,
     // readSurveyMarkerLayer handles both new 'surveyMarkers' and legacy 'highlightAnnotations'
-    surveyHighlights: Object.keys(
+    surveyMarkers: Object.keys(
       appLayerState?.layers?.surveyMarkers ||
       appLayerState?.layers?.highlightAnnotations ||
       {}

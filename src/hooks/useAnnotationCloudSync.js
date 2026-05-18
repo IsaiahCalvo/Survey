@@ -20,8 +20,8 @@ import { useEffect, useRef, useState } from 'react';
 import {
   upsertAnnotationsByPage,
   upsertCallouts,
-  loadAllNonHighlightAnnotations,
-  subscribeToAllNonHighlightAnnotations,
+  loadAllNonSurveyMarkerAnnotations,
+  subscribeToAllNonSurveyMarkerAnnotations,
   deleteAnnotation,
   deleteAnnotations,
   // Phase 30 — dual-write fan-out. Live v2.4 fabric saves write to BOTH the
@@ -468,7 +468,7 @@ export function useAnnotationCloudSync({
   // Phase 31 hotfix (2026-05-03) — cached `documents.cutover_completed_at`
   // for the currently-mounted doc. Set inside the hydrate effect after the
   // Supabase lookup; consumed by onFocus to short-circuit the legacy
-  // loadAllNonHighlightAnnotations path on sealed docs (Y.Doc + realtime
+  // loadAllNonSurveyMarkerAnnotations path on sealed docs (Y.Doc + realtime
   // subscription is the source of truth post-cutover; legacy reads would
   // race-overwrite local state).
   const cutoverTsRef = useRef(null);
@@ -2459,7 +2459,7 @@ export function useAnnotationCloudSync({
     // other side's echo re-painted the missing row. (Logged 2026-04-25 as
     // the eraser-flicker root cause companion to the diff capture-order
     // bug above.)
-    const unsub = subscribeToAllNonHighlightAnnotations(
+    const unsub = subscribeToAllNonSurveyMarkerAnnotations(
       documentId,
       {
         onFabricInsert: (fabricObject, pageNumber, highlightId) => {
@@ -2519,7 +2519,7 @@ export function useAnnotationCloudSync({
           }
           (async () => {
             try {
-              const fresh = await loadAllNonHighlightAnnotations(documentId);
+              const fresh = await loadAllNonSurveyMarkerAnnotations(documentId);
               if (fresh.error) {
                 console.warn('[CloudSync][hook] delete-fallback refetch failed: ' + (fresh.error?.message || fresh.error));
                 return;
@@ -2572,7 +2572,7 @@ export function useAnnotationCloudSync({
           }
           // Cutover-sealed documents are CRDT/Y.Doc authoritative. The legacy
           // row table still contains pre-dedupe/pre-cutover annotation rows
-          // for rollback, so using loadAllNonHighlightAnnotations here can
+          // for rollback, so using loadAllNonSurveyMarkerAnnotations here can
           // replace the correct 3644-entry Y.Doc view with the stale 3058-row
           // snapshot and make Drawboard ink look jagged/duplicated again.
           if (cutoverTsRef.current && phase30Ydoc) {
@@ -2662,7 +2662,7 @@ export function useAnnotationCloudSync({
       // Phase 31 hotfix (2026-05-03) — sealed-doc gate. After the cutover
       // timestamp is set, the Y.Doc is the single source of truth and is
       // kept current by the realtime broadcast subscription. Running the
-      // legacy `loadAllNonHighlightAnnotations` SELECT here would replace
+      // legacy `loadAllNonSurveyMarkerAnnotations` SELECT here would replace
       // local state with a stale snapshot of the legacy table (which is no
       // longer being written to under the kill switch), wiping in-flight
       // CRDT-only writes — exactly the regression captured in Logs/
@@ -3082,7 +3082,7 @@ async function loadCloudWithEmptyVerify(documentId, opts = {}) {
     contextLabel = 'unknown'
   } = opts;
   const t0 = Date.now();
-  const first = await loadAllNonHighlightAnnotations(documentId);
+  const first = await loadAllNonSurveyMarkerAnnotations(documentId);
   if (first.error) return first;
 
   const firstFabric = first.annotationsByPage ? Object.keys(first.annotationsByPage).length : 0;
@@ -3120,7 +3120,7 @@ async function loadCloudWithEmptyVerify(documentId, opts = {}) {
   await new Promise((resolve) => setTimeout(resolve, EMPTY_CLOUD_VERIFY_DELAY_MS));
 
   const t1 = Date.now();
-  const second = await loadAllNonHighlightAnnotations(documentId);
+  const second = await loadAllNonSurveyMarkerAnnotations(documentId);
   if (second.error) {
     console.warn('[CloudSync][verify] verification query errored — keeping first (empty) result ' + JSON.stringify({
       contextLabel,
