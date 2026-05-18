@@ -3,7 +3,7 @@ import Icon from './Icons';
 import { diff, union, intersection } from 'martinez-polygon-clipping';
 import { REGION_OPERATIONS, simplifyPolygon, subtractRegionFromRegion } from './utils/regionMath';
 import { calculateViewportSafePosition } from './utils/menuPositioning';
-import { HANDLE_FILL, HANDLE_RING } from './utils/handleStyle';
+import { HANDLE_FILL, HANDLE_RING, HANDLE_RADIUS } from './utils/handleStyle';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const MIN_REGION_SIZE = 5;
@@ -2625,8 +2625,8 @@ const RegionSelectionTool = ({
                       left: `${x}px`,
                       top: `${y}px`,
                       transform: 'translate(-50%, -50%)',
-                      width: '14px',
-                      height: '14px',
+                      width: `${HANDLE_RADIUS * 2}px`,
+                      height: `${HANDLE_RADIUS * 2}px`,
                       borderRadius: '50%',
                       background: REGION_HANDLE_FILL,
                       border: `1px solid ${REGION_HANDLE_STROKE}`,
@@ -2677,9 +2677,13 @@ const RegionSelectionTool = ({
                   {resizeHandles.map(handle => {
                     const isHorizontalPill = handle.key === 'n' || handle.key === 's';
                     const isVerticalPill = handle.key === 'e' || handle.key === 'w';
-                    const handleWidth = isHorizontalPill ? '36px' : (isVerticalPill ? '10px' : '14px');
-                    const handleHeight = isHorizontalPill ? '10px' : (isVerticalPill ? '36px' : '14px');
-                    const handleRadius = isHorizontalPill || isVerticalPill ? '5px' : '50%';
+                    // Sizes match the SVG selection overlay: 28x8 pills and
+                    // HANDLE_RADIUS-based corner dots, so region-edit handles
+                    // are the same size as every other handle in the app.
+                    const cornerSize = `${HANDLE_RADIUS * 2}px`;
+                    const handleWidth = isHorizontalPill ? '28px' : (isVerticalPill ? '8px' : cornerSize);
+                    const handleHeight = isHorizontalPill ? '8px' : (isVerticalPill ? '28px' : cornerSize);
+                    const handleRadius = isHorizontalPill || isVerticalPill ? '4px' : '50%';
                     return (
                       <div
                         key={handle.key}

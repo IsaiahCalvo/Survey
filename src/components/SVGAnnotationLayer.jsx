@@ -34,7 +34,7 @@ import {
   renderPolyline,
 } from '../utils/svgAnnotationRenderers';
 import { calculateCalloutConnection } from '../utils/calloutGeometry';
-import { HANDLE_FILL, HANDLE_RING, HANDLE_RING_INVALID } from '../utils/handleStyle';
+import { HANDLE_FILL, HANDLE_RING, HANDLE_RING_INVALID, HANDLE_RADIUS, HANDLE_RADIUS_SECONDARY } from '../utils/handleStyle';
 import { useSVGInteraction } from '../hooks/useSVGInteraction';
 // Plan 14-03 Task 3 (CREATE-01 callout half): factory for constructing a
 // new callout from the click-drag creation gesture. types.js is the
@@ -893,8 +893,29 @@ const SVGAnnotationLayer = memo(({
     if (!calloutCreation) return;
     const onMove = (e) => {
       if (!svgRef.current) return;
-      const pt = screenToSVG(svgRef.current, e.clientX, e.clientY);
-      setCalloutCreation((prev) => prev ? { ...prev, currentPointer: pt } : null);
+      const raw = screenToSVG(svgRef.current, e.clientX, e.clientY);
+      setCalloutCreation((prev) => {
+        if (!prev) return null;
+        // UX: 2026-05-18 — during creation the textbox can never be placed
+        // over the arrow. The textbox (120x32, positioned by its top-left)
+        // has a forbidden zone around the arrow tip; if the cursor enters it
+        // the textbox is pushed back out to the nearest edge, so it can
+        // approach the arrow and slide along that boundary but never cover it.
+        const tbW = 120, tbH = 32, clearance = 10;
+        const ax = prev.arrowTip.x, ay = prev.arrowTip.y;
+        const fx0 = ax - tbW - clearance, fx1 = ax + clearance;
+        const fy0 = ay - tbH - clearance, fy1 = ay + clearance;
+        let { x, y } = raw;
+        if (x > fx0 && x < fx1 && y > fy0 && y < fy1) {
+          const dLeft = x - fx0, dRight = fx1 - x, dUp = y - fy0, dDown = fy1 - y;
+          const least = Math.min(dLeft, dRight, dUp, dDown);
+          if (least === dLeft) x = fx0;
+          else if (least === dRight) x = fx1;
+          else if (least === dUp) y = fy0;
+          else y = fy1;
+        }
+        return { ...prev, currentPointer: { x, y } };
+      });
     };
     const onUp = () => {
       const state = calloutCreationRef.current;
@@ -910,12 +931,19 @@ const SVGAnnotationLayer = memo(({
 
       const arrowTipNorm = { x: state.arrowTip.x / W, y: state.arrowTip.y / H };
       const textBoxNorm = { x: state.currentPointer.x / W, y: state.currentPointer.y / H };
-      // UX: combined-tools creation formula — knee midway between textbox
-      // and arrowTip, offset upward by 40 page px.
-      // See COMBINED-TOOLS-AUDIT.md "Text Callout Tool → Creation flow".
+      // UX: 2026-05-18 — knee sits 40 page px out from the arrow toward the
+      // textbox centre, so it swivels around the arrow with the box (matches
+      // the creation preview exactly — no jump on commit). Replaces the old
+      // fixed "40px above" which bent the leader up then down for boxes
+      // dragged below the arrow.
+      const kneeRadiusPx = 40;
+      const tbCenterPx = { x: state.currentPointer.x + 60, y: state.currentPointer.y + 16 };
+      const kneeDx = tbCenterPx.x - state.arrowTip.x;
+      const kneeDy = tbCenterPx.y - state.arrowTip.y;
+      const kneeDist = Math.hypot(kneeDx, kneeDy) || 1;
       const kneeNorm = {
-        x: (arrowTipNorm.x + textBoxNorm.x) / 2,
-        y: arrowTipNorm.y - 40 / H,
+        x: (state.arrowTip.x + (kneeDx / kneeDist) * kneeRadiusPx) / W,
+        y: (state.arrowTip.y + (kneeDy / kneeDist) * kneeRadiusPx) / H,
       };
       const newCallout = createCallout(
         pageNumber,
@@ -2432,17 +2460,16 @@ const SVGAnnotationLayer = memo(({
     // hidden and a soft blue outline glow replaces them (matching the
     // annotation hover-glow style). `showGlow` also drives the callout's
     // cursor-hover indicator for solo callouts.
-    const { showHandles = true, showGlow = false, dragInvalid = false, dragPart = null } = options;
+    const { showHandles = true, showGlow = false, dragInvalid = false, inverseScale = 1 } = options;
     if (!callout || !callout.arrowTip || !callout.knee) return null;
-    // UX: 2026-05-18 — handle ring colour. Normally the unified blue; turns
-    // red on the handle being dragged while the current spot fails the rule
-    // check (a live "won't be accepted" warning). A whole-textbox drag that
-    // collides reddens both the knee and arrow handles since the box edge is
-    // what's crowding them.
-    const kneeRingColor = (dragInvalid && (dragPart === 'knee' || dragPart === 'textBox'))
-      ? HANDLE_RING_INVALID : HANDLE_RING;
-    const arrowRingColor = (dragInvalid && (dragPart === 'arrowTip' || dragPart === 'textBox'))
-      ? HANDLE_RING_INVALID : HANDLE_RING;
+    // UX: 2026-05-18 — handle ring colour. Normally the unified blue; while
+    // the callout is being dragged to a spot that fails the rule check,
+    // EVERY handle on the callout turns red together as one clear "this
+    // callout is in a bad spot" warning (user request 2026-05-18).
+    const ringColor = dragInvalid ? HANDLE_RING_INVALID : HANDLE_RING;
+    // Handle radius — shared HANDLE_RADIUS, sqrt-dampened on zoom so callout
+    // handles match every other handle in both size and zoom behaviour.
+    const calloutHandleR = HANDLE_RADIUS * Math.sqrt(inverseScale > 0 ? inverseScale : 1);
     const { width: W, height: H } = pageSize;
     const atX = callout.arrowTip.x * W;
     const atY = callout.arrowTip.y * H;
@@ -2497,14 +2524,15 @@ const SVGAnnotationLayer = memo(({
           strokeLinecap="round"
           style={{ cursor: 'move', pointerEvents: 'stroke' }}
         />
-        {/* UX: enlarged arrowTip hit target — 12px radius > visible 2-3px
-            circle so touches land reliably. fill=transparent +
-            pointerEvents=all keeps the entire disc clickable. */}
+        {/* UX: 2026-05-18 — arrowTip hit target sized to the visible handle
+            (calloutHandleR). The old fixed 12px disc was far larger than the
+            handle, so the user could grab the arrow just by getting near it;
+            the grab zone now matches what they actually see. */}
         <circle
           data-callout-part="arrowTip"
           cx={atX}
           cy={atY}
-          r={12}
+          r={calloutHandleR}
           fill="transparent"
           style={{ cursor: 'grab', pointerEvents: 'all' }}
         />
@@ -2516,9 +2544,12 @@ const SVGAnnotationLayer = memo(({
             midpoint mid-drag. */}
         <circle
           data-callout-part="knee"
-          cx={isKneeDragging ? kX : conn.effectiveKnee.x}
-          cy={isKneeDragging ? kY : conn.effectiveKnee.y}
-          r={12}
+          cx={kX}
+          cy={kY}
+          // UX: 2026-05-18 — knee hit target sized to the visible handle
+          // (calloutHandleR), not an oversized 12px disc, so the knee can
+          // only be grabbed by landing on it.
+          r={calloutHandleR}
           fill="transparent"
           style={{ cursor: 'grab', pointerEvents: 'all' }}
         />
@@ -2676,11 +2707,11 @@ const SVGAnnotationLayer = memo(({
                 (pointer-events none); the transparent hit circles above
                 own click behavior. */}
             <circle
-              cx={isKneeDragging ? kX : conn.effectiveKnee.x}
-              cy={isKneeDragging ? kY : conn.effectiveKnee.y}
-              r={7}
+              cx={kX}
+              cy={kY}
+              r={calloutHandleR}
               fill={HANDLE_FILL}
-              stroke={kneeRingColor}
+              stroke={ringColor}
               strokeWidth={1.5}
               vectorEffect="non-scaling-stroke"
               style={{
@@ -2691,9 +2722,9 @@ const SVGAnnotationLayer = memo(({
             <circle
               cx={atX}
               cy={atY}
-              r={7}
+              r={calloutHandleR}
               fill={HANDLE_FILL}
-              stroke={arrowRingColor}
+              stroke={ringColor}
               strokeWidth={1.5}
               vectorEffect="non-scaling-stroke"
               style={{
@@ -2722,9 +2753,9 @@ const SVGAnnotationLayer = memo(({
                 data-callout-part={`textBox-${p.id}`}
                 cx={p.x}
                 cy={p.y}
-                r={7}
+                r={calloutHandleR}
                 fill={HANDLE_FILL}
-                stroke={HANDLE_RING}
+                stroke={ringColor}
                 strokeWidth={1.5}
                 vectorEffect="non-scaling-stroke"
                 style={{
@@ -2828,9 +2859,11 @@ const SVGAnnotationLayer = memo(({
       const dragPart = activeCalloutDrag && activeCalloutDrag.id === displayCallout.id
         ? activeCalloutDrag.partType
         : null;
-      const skipAutoRoute = dragPart === 'knee'
-        || dragPart === 'textBox'
-        || dragPart === 'textBoxResize';
+      // UX: 2026-05-18 — the knee stays exactly where the user placed it
+      // during ANY drag of this callout, arrow drags included. It does not
+      // auto-route to follow the arrow. An arrow position that would make the
+      // knee→arrow line cut through the textbox is rejected by the validator.
+      const skipAutoRoute = !!dragPart;
       // UX: CALL-10 — new signature takes pageSize object, emits data attributes
       const element = renderCallout(displayCallout, i, pageSize, calculateCalloutConnection, hideText, liveBoundsForCallout, skipAutoRoute);
       if (!element) continue;
@@ -2889,7 +2922,7 @@ const SVGAnnotationLayer = memo(({
         pageSize,
         isSelected,
         isKneeDragging,
-        { showHandles, showGlow, dragInvalid, dragPart },
+        { showHandles, showGlow, dragInvalid, inverseScale },
       );
 
       // UX: 2026-04-20 v2 — group-move callout ride-along. When this
@@ -2933,8 +2966,12 @@ const SVGAnnotationLayer = memo(({
     // visualTransform added 2026-04-20 v2 — drives the group-move callout
     // ride-along translate so callouts stay in lockstep with annotations
     // during group drag.
+    // UX: 2026-05-18 — inverseScale MUST be a dependency. The callout handles
+    // size themselves from it (HANDLE_RADIUS * sqrt(inverseScale)); without it
+    // here this memo holds a stale value and the handles swell on zoom while
+    // every other shape's handles (which re-read it fresh) stay constant.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [callouts, pageNumber, selectedModuleId, showSurveyPanel, selectedSpaceId, activeSpaceId, activeRegions, activeRegionId, spaces, getCanvasAnnotationVisibilityState, getSurveyAnnotationVisibilityState, isRegionOverlayEnabled, layerVisibility, width, height, editingCalloutId, liveCalloutEditBounds, effectiveSelectedCalloutIds, activeCalloutDrag, visualTransform, isPageInRenderWindow]);
+  }, [callouts, pageNumber, selectedModuleId, showSurveyPanel, selectedSpaceId, activeSpaceId, activeRegions, activeRegionId, spaces, getCanvasAnnotationVisibilityState, getSurveyAnnotationVisibilityState, isRegionOverlayEnabled, layerVisibility, width, height, editingCalloutId, liveCalloutEditBounds, effectiveSelectedCalloutIds, activeCalloutDrag, visualTransform, inverseScale, isPageInRenderWindow]);
 
   // Diagnostic: after the SVG callouts are laid out, walk the DOM and record
   // the source data + every rendered element's screen rect per callout id.
@@ -4222,13 +4259,43 @@ const SVGAnnotationLayer = memo(({
             const tbX = calloutCreation.currentPointer.x;
             const tbY = calloutCreation.currentPointer.y;
             const arrowTip = calloutCreation.arrowTip;
+            // UX: 2026-05-18 — the knee sits 40px out from the arrow toward
+            // the textbox centre, so it swivels around the arrow as the user
+            // drags the box: above the arrow when the box is above, below
+            // when below. The old fixed "40px above" made the leader bend up
+            // then back down whenever the box was dragged below the arrow.
+            const previewKneeRadius = 40;
+            const tbCenterX = tbX + previewW / 2;
+            const tbCenterY = tbY + previewH / 2;
+            const kneeDx = tbCenterX - arrowTip.x;
+            const kneeDy = tbCenterY - arrowTip.y;
+            const kneeDist = Math.hypot(kneeDx, kneeDy) || 1;
             const knee = {
-              x: (arrowTip.x + tbX) / 2,
-              y: arrowTip.y - 40,
+              x: arrowTip.x + (kneeDx / kneeDist) * previewKneeRadius,
+              y: arrowTip.y + (kneeDy / kneeDist) * previewKneeRadius,
             };
             // Keep the ghost geometry in lockstep with the committed callout
             // renderer: connector starts on the textbox edge, not its center.
             const conn = calculateCalloutConnection(tbX, tbY, previewW, previewH, knee, arrowTip, 0);
+            // UX: 2026-05-18 — the creation preview shows a real arrowhead
+            // (solid triangle), not a placeholder dot, so the ghost matches
+            // the committed callout. Mirrors renderCallout's arrowhead path:
+            // angle is the tangent of line2 (knee → arrow tip), and line2 is
+            // shortened into the back of the head so its tail doesn't poke
+            // through the point.
+            const previewArrowAngleRad = Math.atan2(
+              arrowTip.y - conn.line2Start.y,
+              arrowTip.x - conn.line2Start.x,
+            );
+            const previewHeadSize = 8; // = max(8, lineThickness*3) at thickness 2
+            const previewLine2EndX = arrowTip.x - (previewHeadSize / 3) * Math.cos(previewArrowAngleRad);
+            const previewLine2EndY = arrowTip.y - (previewHeadSize / 3) * Math.sin(previewArrowAngleRad);
+            const previewArrowheadSpec = buildArrowheadRenderSpec(
+              ARROWHEAD_STYLES.SOLID_TRIANGLE,
+              arrowTip.x, arrowTip.y,
+              previewArrowAngleRad * 180 / Math.PI,
+              '#1e293b', 2,
+            );
             return (
               <>
                 <rect
@@ -4260,20 +4327,17 @@ const SVGAnnotationLayer = memo(({
                 <line
                   x1={conn.line2Start.x}
                   y1={conn.line2Start.y}
-                  x2={arrowTip.x}
-                  y2={arrowTip.y}
+                  x2={previewLine2EndX}
+                  y2={previewLine2EndY}
                   stroke="#1e293b"
                   strokeWidth={2}
                   strokeDasharray="5,5"
                   strokeLinecap="round"
                   vectorEffect="non-scaling-stroke"
                 />
-                <circle
-                  cx={arrowTip.x}
-                  cy={arrowTip.y}
-                  r={Math.max(2, 2 + 0.4)}
-                  fill="#1e293b"
-                />
+                {previewArrowheadSpec.kind === 'solidTriangle' && (
+                  <polygon {...previewArrowheadSpec.polygon} />
+                )}
               </>
             );
           })()}
@@ -4366,14 +4430,11 @@ const SVGAnnotationLayer = memo(({
           const tipExtension = Math.max(5, radius * 0.5);
           const tipX = cx + Math.cos(angleRad) * (radius + tipExtension);
           const tipY = cy + Math.sin(angleRad) * (radius + tipExtension);
-          // UX: dampened handle sizing. Raw `7 * inverseScale` renders a
-          // constant 7 screen px, which is too big *relative to the pin* at
-          // low zoom (pin shrinks in page-space, handle stays constant, so
-          // the handle dwarfs the pin at 25%). sqrt curve softens the growth
-          // so the handle feels proportional across zoom levels — mirrors
-          // SVGSelectionOverlay.jsx:35 for rect/circle handle sizing.
+          // UX: dampened handle sizing. The sqrt curve softens growth so the
+          // handle feels proportional across zoom levels. Radius comes from
+          // the shared HANDLE_RADIUS constant so every handle is one size.
           const is = Math.sqrt(inverseScale);
-          const handleR = 7 * is;
+          const handleR = HANDLE_RADIUS * is;
           return (
             <g key={`counter-rotate-wrapper-${selectedIndex}`} transform={counterDragTransform}>
               <circle
@@ -4604,7 +4665,7 @@ const SVGAnnotationLayer = memo(({
           // Line: handles at both endpoints
           // Dampened inverse scale (sqrt) to match SVGSelectionOverlay handle sizing
           const handleIs = Math.sqrt(inverseScale);
-          const handleR = 7 * handleIs;
+          const handleR = HANDLE_RADIUS * handleIs;
           const handleStyle = {
             filter: `drop-shadow(0 ${1 * handleIs}px ${3 * handleIs}px rgba(0,0,0,0.15))`,
             cursor: 'grab',
@@ -4627,7 +4688,10 @@ const SVGAnnotationLayer = memo(({
           // is unified. cursor:'grab' so all three handles share grabbable
           // semantics. Dispatches handleId='midpoint' to the existing hook
           // dispatcher — wired in useSVGInteraction.js Plan 15-03 Task 3.
-          const midpointR = 5 * handleIs;
+          // The curve-bend handle is intentionally a touch smaller than the
+          // primary handles (HANDLE_RADIUS_SECONDARY vs HANDLE_RADIUS) so it
+          // still reads as a secondary control after the size unification.
+          const midpointR = HANDLE_RADIUS_SECONDARY * handleIs;
           // UX 2026-04-20: rotate the endpoint + midpoint handles with the
           // line so single-click selection chrome tracks the rotated shape
           // instead of sitting at the pre-rotation endpoints. Pivot is
@@ -4668,8 +4732,9 @@ const SVGAnnotationLayer = memo(({
                 onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, 'p2'); }}
               />
               {/* Phase 15 midpoint curvature handle — Phase 15 LINE-01/ARROW-01.
-                  Smaller r than endpoints (5 vs 7) marks it as a "secondary
-                  control" per 15-UI-SPEC §A. Sits on the curve at t=0.5 when
+                  Smaller r than endpoints (HANDLE_RADIUS_SECONDARY vs
+                  HANDLE_RADIUS) marks it as a "secondary control" per
+                  15-UI-SPEC §A. Sits on the curve at t=0.5 when
                   curved, geometric midpoint when straight. onPointerDown
                   dispatches 'midpoint' handleId to the existing
                   handleHandlePointerDown hook (see useSVGInteraction.js). */}
@@ -4736,7 +4801,7 @@ const SVGAnnotationLayer = memo(({
           // Dampened inverse scale mirrors SVGSelectionOverlay + endpoint
           // handles so vertex dots feel proportional across zoom levels.
           const vHandleIs = Math.sqrt(inverseScale);
-          const vHandleR = 6 * vHandleIs;
+          const vHandleR = HANDLE_RADIUS * vHandleIs;
           const vHandleStyle = {
             filter: `drop-shadow(0 ${1 * vHandleIs}px ${3 * vHandleIs}px rgba(0,0,0,0.15))`,
             cursor: 'grab',

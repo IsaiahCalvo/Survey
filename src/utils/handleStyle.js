@@ -30,3 +30,15 @@ export const HANDLE_RING_INVALID = '#ef4444';
 // Ring thickness for SVG handles (px). Drawn with non-scaling-stroke so it
 // stays visually constant across zoom.
 export const HANDLE_RING_WIDTH = 1.5;
+
+// Base radius for every primary draggable handle (shape corners, callout
+// knee / arrow / textbox, line + arrow endpoints, polygon vertices, counter
+// pin rotation). One number so every handle is the same size — change it
+// here and the whole app follows (user request 2026-05-18: unify all handle
+// sizes onto the small rectangle / pen / text size). SVG call sites still
+// multiply by sqrt(inverseScale) so on-screen size stays constant on zoom.
+export const HANDLE_RADIUS = 5.5;
+
+// Radius for secondary handles that should read as deliberately smaller than
+// the primary ones — currently only the line / arrow curve-bend handle.
+export const HANDLE_RADIUS_SECONDARY = 4;

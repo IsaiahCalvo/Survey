@@ -1,3 +1,5 @@
+import { HANDLE_RADIUS } from './handleStyle.js';
+
 export const CORNER_RESIZE_HANDLES = ['tl', 'tr', 'bl', 'br'];
 export const SIDE_RESIZE_HANDLES = ['mt', 'mb', 'ml', 'mr'];
 export const ALL_RESIZE_HANDLES = [...CORNER_RESIZE_HANDLES, ...SIDE_RESIZE_HANDLES];
@@ -14,7 +16,7 @@ export function getSelectionHandleVisualMetrics(inverseScale) {
   const is = Math.sqrt(inv);
   return {
     scale: is,
-    cornerR: 5.5 * is,
+    cornerR: HANDLE_RADIUS * is,
     cornerStrokeWidth: 1 * is,
     hPillW: 28 * is,
     hPillH: 8 * is,

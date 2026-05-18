@@ -46,12 +46,8 @@ import { canModify } from '../lib/collab/permissionScope.js';
 // Values match combined-tools FabricPDFCanvas collision logic (reference at
 // ~/Desktop/combined-tools/src/lib/calloutGeometry.ts). See isCalloutDragSafe
 // helper below for rule set + rationale.
-import {
-  MIN_KNEE_TO_ARROW_DISTANCE,
-  MIN_KNEE_TO_BOX_EDGE_DISTANCE,
-  MIN_TEXTBOX_TO_ARROW_DISTANCE,
-  calculateCalloutConnection,
-} from '../utils/calloutGeometry.js';
+import { calculateCalloutConnection } from '../utils/calloutGeometry.js';
+import { HANDLE_RADIUS } from '../utils/handleStyle.js';
 import {
   beginAnnotationGesture,
   isAnnotationPreviewDiagEnabled,
@@ -2519,6 +2515,23 @@ export function useSVGInteraction({
         return t0 < t1 && t1 > 0.0001 && t0 < 0.9999;
       };
 
+      // Collision distances must match the handle the user actually sees.
+      // Handles render at HANDLE_RADIUS * sqrt(inverseScale) in page units, so
+      // the rule uses that same effective radius — a static radius only lines
+      // up at 100% zoom and otherwise leaves a gap that can never be closed.
+      const effHandleR = HANDLE_RADIUS * Math.sqrt(inverseScale > 0 ? inverseScale : 1);
+      const minHandleToBox = effHandleR;        // handle edge meets the border
+      const minHandleToHandle = effHandleR * 2; // two handle circles edge-to-edge
+      // Knee / arrow handles must also clear the four textbox CORNER handles.
+      // Those handle circles sit on the box corners and stick out past the
+      // border, so the box-border distance alone misses them (user report
+      // 2026-05-18: knee/arrow handles still collide with corner handles).
+      const frameBoxCorners = [
+        { x: boxLeftPx, y: boxTopPx }, { x: boxRightPx, y: boxTopPx },
+        { x: boxLeftPx, y: boxBottomPx }, { x: boxRightPx, y: boxBottomPx },
+      ];
+      const frameClearsCorners = (p) =>
+        frameBoxCorners.every((c) => Math.hypot(p.x - c.x, p.y - c.y) >= minHandleToHandle);
       let frameSafe;
       if (ds.partType === 'whole') {
         frameSafe = true;
@@ -2528,24 +2541,30 @@ export function useSVGInteraction({
         || ds.partType === 'textBoxResize'
       ) {
         // UX: 2026-05-18 — knee / textbox / resize drags count as "safe" only
-        // when no handle touches another handle or the textbox border: knee
-        // and arrow both stay outside the box, the knee handle clears the
-        // border, the arrow handle clears the border, the two handles clear
-        // each other, and line2 doesn't cut the box. Distances derive from
-        // the handle radius (calloutGeometry HANDLE_RADIUS). Unsafe frames do
-        // not advance lastSafe, so a rollback lands on the last good spot.
+        // when nothing overlaps: knee and arrow stay outside the box, each
+        // handle circle may touch the border but not cross it, the two handle
+        // circles may touch but not overlap, and line2 doesn't cut the box.
+        // Unsafe frames do not advance lastSafe.
         frameSafe = !kneeInsideBox
           && !arrowInsideBox
-          && kneeToBoxDist >= MIN_KNEE_TO_BOX_EDGE_DISTANCE
-          && arrowToBoxDist >= MIN_KNEE_TO_BOX_EDGE_DISTANCE
-          && kneeToArrowDist >= MIN_KNEE_TO_ARROW_DISTANCE
+          && kneeToBoxDist >= minHandleToBox
+          && arrowToBoxDist >= minHandleToBox
+          && kneeToArrowDist >= minHandleToHandle
+          && frameClearsCorners(kneePx)
+          && frameClearsCorners(atPx)
           && !segmentCrossesRect(kneePx, atPx, boxLeftPx, boxTopPx, boxRightPx, boxBottomPx);
       } else {
+        // Arrow drag. The knee stays put, so an arrow position that makes the
+        // knee→arrow line cut through the textbox is rejected here — the arrow
+        // shows red and snaps back; the user moves the knee aside instead.
         frameSafe = !arrowInsideBox
-          && arrowToBoxDist >= MIN_TEXTBOX_TO_ARROW_DISTANCE
-          && kneeToArrowDist >= MIN_KNEE_TO_ARROW_DISTANCE
+          && arrowToBoxDist >= minHandleToBox
+          && kneeToArrowDist >= minHandleToHandle
           && !kneeInsideBox
-          && kneeToBoxDist >= MIN_KNEE_TO_BOX_EDGE_DISTANCE;
+          && kneeToBoxDist >= minHandleToBox
+          && frameClearsCorners(kneePx)
+          && frameClearsCorners(atPx)
+          && !segmentCrossesRect(kneePx, atPx, boxLeftPx, boxTopPx, boxRightPx, boxBottomPx);
       }
       if (frameSafe) {
         ds.lastSafeCalloutPositions = {
@@ -2593,7 +2612,7 @@ export function useSVGInteraction({
       }
       setInteractionState('dragging');
     }
-  }, [svgRef, annotations, onSaveAnnotations, pageWidth, pageHeight, onUpdateCalloutLive, applyMarqueeState]);
+  }, [svgRef, annotations, onSaveAnnotations, pageWidth, pageHeight, onUpdateCalloutLive, applyMarqueeState, inverseScale]);
 
   /**
    * Pointer up on root SVG: commit drag changes to annotation data.
@@ -3398,6 +3417,17 @@ export function useSVGInteraction({
             return t0 < t1 && t1 > 0.0001 && t0 < 0.9999;
           };
 
+          // Same zoom-aware effective handle radius the live drag check uses.
+          const effHandleR = HANDLE_RADIUS * Math.sqrt(inverseScale > 0 ? inverseScale : 1);
+          const minHandleToBox = effHandleR;
+          const minHandleToHandle = effHandleR * 2;
+          // Knee / arrow handles must also clear the four textbox corner
+          // handle circles (which stick out past the border).
+          const dropBoxCorners = [
+            { x: bl, y: bt }, { x: br, y: bt }, { x: bl, y: bb }, { x: br, y: bb },
+          ];
+          const dropClearsCorners = (p) =>
+            dropBoxCorners.every((c) => Math.hypot(p.x - c.x, p.y - c.y) >= minHandleToHandle);
           let dropSafe = true;
           if (ds.partType === 'knee' || ds.partType === 'textBox' || ds.partType === 'textBoxResize') {
             // UX: free drag during mouse-down, release checks the final spot.
@@ -3424,9 +3454,11 @@ export function useSVGInteraction({
             const arrowToBox = dRectUp(at, bl, bt, br, bb);
             const kneeToArrow = Math.hypot(kn.x - at.x, kn.y - at.y);
             dropSafe = !kneeInside && !arrowInside && !line2Cuts
-              && kneeToBox >= MIN_KNEE_TO_BOX_EDGE_DISTANCE
-              && arrowToBox >= MIN_KNEE_TO_BOX_EDGE_DISTANCE
-              && kneeToArrow >= MIN_KNEE_TO_ARROW_DISTANCE;
+              && kneeToBox >= minHandleToBox
+              && arrowToBox >= minHandleToBox
+              && kneeToArrow >= minHandleToHandle
+              && dropClearsCorners(kn)
+              && dropClearsCorners(at);
           } else {
             // Fallback: prior distance-rule set for arrow drag. Replaced
             // per partType as we tackle each in turn.
@@ -3438,10 +3470,15 @@ export function useSVGInteraction({
             };
             dropSafe =
               outside(at, bl, bt, br, bb)
-              && dRect(at, bl, bt, br, bb) >= MIN_TEXTBOX_TO_ARROW_DISTANCE
-              && Math.hypot(kn.x - at.x, kn.y - at.y) >= MIN_KNEE_TO_ARROW_DISTANCE
+              && dRect(at, bl, bt, br, bb) >= minHandleToBox
+              && Math.hypot(kn.x - at.x, kn.y - at.y) >= minHandleToHandle
               && outside(kn, bl, bt, br, bb)
-              && dRect(kn, bl, bt, br, bb) >= MIN_KNEE_TO_BOX_EDGE_DISTANCE;
+              && dRect(kn, bl, bt, br, bb) >= minHandleToBox
+              && dropClearsCorners(at)
+              && dropClearsCorners(kn)
+              // 2026-05-18 — knee stays put on an arrow drag; reject an arrow
+              // drop that leaves the knee→arrow line cutting through the box.
+              && !segmentCrossesRect(kn, at, bl, bt, br, bb);
           }
           if (!dropSafe) {
             // UX: Phase 15 UAT-3 (2026-04-18) — rollback target is the
@@ -3529,7 +3566,7 @@ export function useSVGInteraction({
     };
     setVisualTransform(null);
     setInteractionState('idle');
-  }, [annotations, pageWidth, pageHeight, onSaveAnnotations, svgRef, onUpdateCallout, onUpdateCalloutLive, callouts, applyMarqueeState, deselectAll, onSelectedCalloutIdsChange, activeTool, viewerId, documentOwnerId, pageNumber, getSelectableAnnotationIndices]);
+  }, [annotations, pageWidth, pageHeight, onSaveAnnotations, svgRef, onUpdateCallout, onUpdateCalloutLive, callouts, applyMarqueeState, deselectAll, onSelectedCalloutIdsChange, activeTool, viewerId, documentOwnerId, pageNumber, getSelectableAnnotationIndices, inverseScale]);
 
   /**
    * Handle pointer down on a selection handle (resize/rotate).

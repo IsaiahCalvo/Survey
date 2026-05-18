@@ -3,26 +3,27 @@
  * Ported from combined-tools/src/lib/calloutGeometry.ts
  */
 
+import { HANDLE_RADIUS } from './handleStyle.js';
+
 // Threshold for considering knee "stacked" with border or arrow (in pixels)
 const STACKED_THRESHOLD = 2;
 
-// Callout handle geometry. The visible knee + arrow handles render as white
-// circles of radius 7 (diameter 14) in SVGAnnotationLayer. Every no-touch
-// spacing rule below derives from this radius so the collision math always
-// tracks the real handle size instead of stale magic numbers.
-export const HANDLE_RADIUS = 7;
-// Clear daylight the user should always see between two handle circles, or
-// between a handle and the textbox border. A handle "touches" something the
-// moment this gap reaches 0; this keeps a few pixels of separation at all
-// times (user request 2026-05-18 — handles must never visually kiss).
-export const HANDLE_CLEAR_GAP = 4;
+// Callout handle geometry. The collision math derives every spacing rule from
+// the shared HANDLE_RADIUS constant, so it always tracks the real on-screen
+// handle size instead of a stale magic number.
+//
+// Clear daylight required between a handle and its neighbour. 0 means handles
+// are allowed to just touch — edges kissing, nothing overlapping (user
+// request 2026-05-18: let handles kiss; the previous 4px gap was too much).
+export const HANDLE_CLEAR_GAP = 0;
 
 // Minimum distances to prevent handle overlaps.
 // Knee <-> arrow: two handle circles — centers must clear both radii + the gap.
-export const MIN_KNEE_TO_ARROW_DISTANCE = HANDLE_RADIUS * 2 + HANDLE_CLEAR_GAP; // 18
+// At gap 0 this is exactly the sum of the two radii, so the circles touch.
+export const MIN_KNEE_TO_ARROW_DISTANCE = HANDLE_RADIUS * 2 + HANDLE_CLEAR_GAP;
 // Knee/arrow <-> textbox border: one handle circle vs the border — the center
-// must clear one radius + the gap.
-export const MIN_KNEE_TO_BOX_EDGE_DISTANCE = HANDLE_RADIUS + HANDLE_CLEAR_GAP; // 11
+// must clear one radius + the gap. At gap 0 the circle edge touches the border.
+export const MIN_KNEE_TO_BOX_EDGE_DISTANCE = HANDLE_RADIUS + HANDLE_CLEAR_GAP;
 export const MIN_SEGMENT_LENGTH = 10; // Minimum length for line segments to keep them visible
 
 // Minimum distance required between textbox edge and arrow tip for knee to exist
@@ -305,11 +306,15 @@ export const calculateCalloutConnection = (boxLeft, boxTop, boxW, boxH, knee, ar
         );
 
         if (segment1Length < MIN_SEGMENT_LENGTH || segment2Length < MIN_KNEE_TO_ARROW_DISTANCE) {
-          // Can't fit minimum segments - place knee at border edge
+          // Can't fit minimum segments. 2026-05-18 — even in the tightest
+          // squeeze the knee parks at least one handle-radius
+          // (MIN_KNEE_TO_BOX_EDGE_DISTANCE) outside the box, never on or past
+          // the border, and line1 is always kept — it shrinks to a sliver but
+          // never disappears.
           const unitX2 = distance > 0.001 ? dx / distance : 0;
           const unitY2 = distance > 0.001 ? dy / distance : 0;
           const maxDistFromBorder = Math.max(0, distance - MIN_KNEE_TO_ARROW_DISTANCE);
-          const clampedDistFromBorder = Math.max(0, maxDistFromBorder);
+          const clampedDistFromBorder = Math.max(MIN_KNEE_TO_BOX_EDGE_DISTANCE, maxDistFromBorder);
 
           effectiveKnee = {
             x: closestBorderPoint.x + unitX2 * clampedDistFromBorder,
@@ -317,7 +322,7 @@ export const calculateCalloutConnection = (boxLeft, boxTop, boxW, boxH, knee, ar
           };
           line1Start = closestBorderPoint;
           line2Start = effectiveKnee;
-          shouldHideLine1 = clampedDistFromBorder < MIN_SEGMENT_LENGTH;
+          shouldHideLine1 = false;
         } else {
           line1Start = closestBorderPoint;
           line2Start = midpointKnee;
@@ -414,7 +419,9 @@ export const calculateCalloutConnection = (boxLeft, boxTop, boxW, boxH, knee, ar
             const unitX2 = distance > 0.001 ? dx / distance : 0;
             const unitY2 = distance > 0.001 ? dy / distance : 0;
             const maxDistFromBorder = Math.max(0, distance - MIN_KNEE_TO_ARROW_DISTANCE);
-            const clampedDistFromBorder = Math.max(0, maxDistFromBorder);
+            // 2026-05-18 — knee parks at least one handle-radius outside the
+            // box, never on or past the border (see matching note above).
+            const clampedDistFromBorder = Math.max(MIN_KNEE_TO_BOX_EDGE_DISTANCE, maxDistFromBorder);
 
             effectiveKnee = {
               x: closestBorderPoint.x + unitX2 * clampedDistFromBorder,
@@ -490,7 +497,9 @@ export const calculateCalloutConnection = (boxLeft, boxTop, boxW, boxH, knee, ar
             const unitX2 = distance > 0.001 ? dx / distance : 0;
             const unitY2 = distance > 0.001 ? dy / distance : 0;
             const maxDistFromBorder = Math.max(0, distance - MIN_KNEE_TO_ARROW_DISTANCE);
-            const clampedDistFromBorder = Math.max(0, maxDistFromBorder);
+            // 2026-05-18 — knee parks at least one handle-radius outside the
+            // box, never on or past the border (see matching note above).
+            const clampedDistFromBorder = Math.max(MIN_KNEE_TO_BOX_EDGE_DISTANCE, maxDistFromBorder);
 
             effectiveKnee = {
               x: closestBorderPoint.x + unitX2 * clampedDistFromBorder,
@@ -537,12 +546,19 @@ export const calculateCalloutConnection = (boxLeft, boxTop, boxW, boxH, knee, ar
     }
   }
 
-  // Final check: Ensure effectiveKnee is never inside the textbox
+  // Final check: only re-route the knee when it is GENUINELY INSIDE the
+  // textbox. 2026-05-18 — the knee used to also be re-routed whenever it sat
+  // closer than MIN_KNEE_TO_BOX_EDGE_DISTANCE to the border, but that clamp
+  // pushed the knee away from where the user actually placed it: the drop
+  // check accepts a knee that merely clears the border, while this re-route
+  // demanded extra padding, so a knee dropped in the gap between those two
+  // thresholds was accepted and then drawn somewhere else — making the knee
+  // handle jump on the next grab and the cursor sit offset from it. The knee
+  // now stays exactly where it is unless it is truly inside the box.
   if (arrowTip) {
     const isKneeInside = isPointInsideBox(effectiveKnee, adjustedBoxLeft, adjustedBoxTop, boxRight, boxBottom);
-    const distToEdge = distanceToBoxEdge(effectiveKnee, adjustedBoxLeft, adjustedBoxTop, boxRight, boxBottom);
 
-    if (isKneeInside || distToEdge < MIN_KNEE_TO_BOX_EDGE_DISTANCE) {
+    if (isKneeInside) {
       const closestBorderPoint = findClosestBorderPoint(arrowTip, adjustedBoxLeft, adjustedBoxTop, boxRight, boxBottom);
       const dx = arrowTip.x - closestBorderPoint.x;
       const dy = arrowTip.y - closestBorderPoint.y;
@@ -604,6 +620,13 @@ export const calculateCalloutConnection = (boxLeft, boxTop, boxW, boxH, knee, ar
       }
     }
   }
+
+  // 2026-05-18 — the knee→textbox connector is never hidden. The earlier
+  // hide-when-short behaviour made the line vanish mid-drag; the line may now
+  // shrink to a sliver as the arrow squeezes the knee toward the box, but it
+  // always stays visible. (arrowTip is always present for real callouts; the
+  // no-arrow branch above is the only producer of a true value.)
+  if (arrowTip) shouldHideLine1 = false;
 
   return { line1Start, shouldHideLine1, line2Start, effectiveKnee };
 };
