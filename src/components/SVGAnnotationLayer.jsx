@@ -1183,15 +1183,15 @@ const SVGAnnotationLayer = memo(({
 
     if (typeof annotationIndex === 'string' && annotationIndex.startsWith('survey:')) {
       const highlightId = annotationIndex.slice('survey:'.length);
-      const highlight = Array.isArray(surveyMarkers)
+      const surveyMarker = Array.isArray(surveyMarkers)
         ? surveyMarkers.find((entry) => entry?.highlightId === highlightId)
         : null;
-      if (!highlight) return;
+      if (!surveyMarker) return;
       const nextBounds = normalizeSurveyMarkerBoundsValue({
-        x: highlight.x,
-        y: highlight.y,
-        width: highlight.width,
-        height: highlight.height,
+        x: surveyMarker.x,
+        y: surveyMarker.y,
+        width: surveyMarker.width,
+        height: surveyMarker.height,
         angle: newAngle,
       });
       onUpdateSurveyMarkerBounds?.(pageNumber, highlightId, nextBounds, {
@@ -2415,7 +2415,7 @@ const SVGAnnotationLayer = memo(({
 
   const selectedSurveyMarkerRotationBounds = useMemo(() => {
     if (!selectedSurveyMarkerEntry) return null;
-    const highlightId = selectedSurveyMarkerEntry.highlight.highlightId;
+    const highlightId = selectedSurveyMarkerEntry.surveyMarker.highlightId;
     const preview = surveyMarkerPreviewBounds?.highlightId === highlightId
       ? surveyMarkerPreviewBounds.bounds
       : null;
