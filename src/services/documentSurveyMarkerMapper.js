@@ -1,24 +1,25 @@
 import { ANNOTATION_VISIBILITY_SCOPE, getAnnotationVisibilityScope } from '../utils/annotationVisibilityRules.js';
+import { SURVEY_MARKER_TYPE } from '../utils/surveyMarkerType.js';
 
-const getSurveyHighlightScope = (annotation) => getAnnotationVisibilityScope({
+const getSurveyMarkerScope = (annotation) => getAnnotationVisibilityScope({
   moduleId: annotation?.moduleId ?? null,
   regionId: annotation?.regionId ?? null,
 });
 
-export function buildHighlightRow({
+export function buildSurveyMarkerRow({
   documentId,
   userId,
   highlightId,
   annotation = {},
 }) {
   const regionId = annotation.regionId ?? null;
-  const scope = getSurveyHighlightScope(annotation);
+  const scope = getSurveyMarkerScope(annotation);
 
   return {
     document_id: documentId,
     user_id: userId,
     highlight_id: highlightId,
-    annotation_type: 'highlight',
+    annotation_type: SURVEY_MARKER_TYPE,
     page_number: annotation.pageNumber || 1,
     bounds: annotation.bounds || {},
     category_id: annotation.categoryId || null,
@@ -43,7 +44,7 @@ export function buildHighlightRow({
   };
 }
 
-export function mapHighlightRowToLocalAnnotation(row) {
+export function mapSurveyMarkerRowToLocalAnnotation(row) {
   if (!row) return null;
   const annotationData = row.annotation_data && typeof row.annotation_data === 'object'
     ? row.annotation_data

@@ -9,9 +9,9 @@ import { diffDeletedHighlightIds } from './highlightSyncDiff.js';
 import { highlightSyncDiag } from './highlightSyncDiag.js';
 import { chunkRowsForAnnotationUpsert } from '../utils/annotationBatching.js';
 import {
-  buildHighlightRow,
-  mapHighlightRowToLocalAnnotation,
-} from './documentHighlightMapper.js';
+  buildSurveyMarkerRow,
+  mapSurveyMarkerRowToLocalAnnotation,
+} from './documentSurveyMarkerMapper.js';
 
 const SUPABASE_PAGE_SIZE = 1000;
 
@@ -293,7 +293,7 @@ export async function syncAnnotationsToSupabase(documentId, userId, highlightAnn
   }
 
   const annotations = Object.entries(highlightAnnotations || {}).map(([highlightId, annotation]) =>
-    buildHighlightRow({
+    buildSurveyMarkerRow({
       documentId,
       userId,
       highlightId,
@@ -340,7 +340,7 @@ export async function loadAnnotationsFromSupabase(documentId) {
   // Convert to local highlightAnnotations format
   const highlightAnnotations = {};
   for (const annotation of data) {
-    const localAnnotation = mapHighlightRowToLocalAnnotation(annotation);
+    const localAnnotation = mapSurveyMarkerRowToLocalAnnotation(annotation);
     if (!localAnnotation?.highlightId) continue;
     highlightAnnotations[localAnnotation.highlightId] = localAnnotation;
   }
@@ -435,7 +435,7 @@ export function subscribeToDocumentAnnotations(documentId, callbacks = {}) {
  */
 function convertToLocalFormat(record) {
   if (!record) return null;
-  return mapHighlightRowToLocalAnnotation(record);
+  return mapSurveyMarkerRowToLocalAnnotation(record);
 }
 
 // ============================================
