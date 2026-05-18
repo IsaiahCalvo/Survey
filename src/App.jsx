@@ -2238,7 +2238,7 @@ const savePDFData = (pdfId, items, annotations) => {
 const saveHighlightAnnotations = (pdfId, highlightAnnotations) => {
   if (!pdfId) return;
   try {
-    const key = `highlightAnnotations_${pdfId}`;
+    const key = `surveyMarkers_${pdfId}`;
     const data = JSON.stringify(highlightAnnotations);
     localStorage.setItem(key, data);
   } catch (e) {
@@ -2450,11 +2450,23 @@ const loadCloudRenderAnnotationsByPage = (pdfId, metadata) => {
 const loadHighlightAnnotations = (pdfId) => {
   if (!pdfId) return {};
   try {
-    const data = localStorage.getItem(`highlightAnnotations_${pdfId}`);
+    let data = localStorage.getItem(`surveyMarkers_${pdfId}`);
+    if (!data) {
+      // One-time migration: the survey-marker cache key was previously
+      // `highlightAnnotations_*`. Read the old key once, copy it forward
+      // under the new name, then drop the old entry.
+      const legacyKey = `highlightAnnotations_${pdfId}`;
+      const legacyData = localStorage.getItem(legacyKey);
+      if (legacyData) {
+        localStorage.setItem(`surveyMarkers_${pdfId}`, legacyData);
+        localStorage.removeItem(legacyKey);
+        data = legacyData;
+      }
+    }
     if (!data) return {};
     return JSON.parse(data);
   } catch (e) {
-    console.error('Error loading highlight annotations:', e);
+    console.error('Error loading survey markers:', e);
     return {};
   }
 };
@@ -44584,7 +44596,7 @@ export default function App() {
       localStorage.removeItem('projects');
       localStorage.removeItem('templates');
       localStorage.removeItem('pdfViewerZoomPreference');
-      // Note: We keep PDF-specific data (pdfData_*, highlightAnnotations_*, pdfSidebar_*) 
+      // Note: We keep PDF-specific data (pdfData_*, surveyMarkers_*, pdfSidebar_*)
       // as they're needed for the current session, but they won't persist across sessions
       // for non-authenticated users since they're tied to specific PDF files
     }
