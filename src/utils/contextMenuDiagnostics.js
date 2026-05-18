@@ -152,6 +152,15 @@ function diag(line) {
       return;
     }
 
+    // Region Editor owns its own right-click menu. This dispatcher runs in
+    // capture phase, so without this guard it opens the page-level disabled
+    // Paste menu before RegionSelectionTool can show Copy/Cut/Paste/Merge.
+    if (e.target && typeof e.target.closest === 'function'
+        && e.target.closest('[data-region-selection-ui="true"]')) {
+      diag('[CTXDIAG] suppressed — inside region selection tool');
+      return;
+    }
+
     const { pageNumber, annotationIndex, calloutId, kind, groupIndices } = resolveAnnotationAt(e);
     const globalHandler = typeof window.__onAnnotationContextMenu === 'function'
       ? window.__onAnnotationContextMenu

@@ -1,11 +1,40 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import Icon from './Icons';
 import { diff, union, intersection } from 'martinez-polygon-clipping';
-import { REGION_OPERATIONS, simplifyPolygon, mergeOverlappingRegions, subtractRegionFromRegion } from './utils/regionMath';
+import { REGION_OPERATIONS, simplifyPolygon, subtractRegionFromRegion } from './utils/regionMath';
 import { calculateViewportSafePosition } from './utils/menuPositioning';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const MIN_REGION_SIZE = 5;
+const REGION_HANDLE_BLUE = '#4a90e2';
+const REGION_HANDLE_STROKE = '#d1d1d1';
+const REGION_HANDLE_FILL = '#ffffff';
+const REGION_HISTORY_LIMIT = 100;
+const regionEditHistoryStore = new Map();
+
+const getRegionEditHistoryKey = (spaceId, pageId) => `${spaceId ?? 'unknown-space'}:${pageId ?? 'unknown-page'}`;
+
+const stopRegionKeyboardShortcut = (event) => {
+  event.preventDefault();
+  if (typeof event.stopImmediatePropagation === 'function') {
+    event.stopImmediatePropagation();
+  } else {
+    event.stopPropagation();
+  }
+};
+
+const isEditableKeyboardTarget = () => {
+  const activeElement = document.activeElement;
+  return Boolean(
+    activeElement &&
+    (
+      activeElement.tagName === 'INPUT' ||
+      activeElement.tagName === 'TEXTAREA' ||
+      activeElement.isContentEditable ||
+      activeElement.contentEditable === 'true'
+    )
+  );
+};
 
 // Region Selection Tool Component
 // Provides UI for selecting, transforming, and managing regions on PDF pages
@@ -45,13 +74,19 @@ const RegionSelectionTool = ({
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [lastDrawingTool, setLastDrawingTool] = useState('rectangular');
   const [isToolDropdownOpen, setIsToolDropdownOpen] = useState(false);
-  const [contextMenu, setContextMenu] = useState(null); // { x, y, regionId, type: 'merge' | 'separate' }
+  const [contextMenu, setContextMenu] = useState(null); // { x, y, pageX, pageY, regionId, type, canMerge, canUnmerge }
   const canvasRectRef = useRef(null);
   const lastTargetDebugKeyRef = useRef(null);
   const lastCanvasRectDebugRef = useRef(null);
   const lastTargetQueryDebugRef = useRef(null);
   const regionsRef = useRef([]);
+  const undoStackRef = useRef([]);
+  const redoStackRef = useRef([]);
   const documentDragFallbackRef = useRef(false);
+  const historyKey = useMemo(
+    () => getRegionEditHistoryKey(currentSpaceId, currentPageId),
+    [currentSpaceId, currentPageId]
+  );
 
   const resolvedPageWidth = useMemo(() => {
     if (Number.isFinite(pageWidth) && pageWidth > 0) {
@@ -163,6 +198,85 @@ const RegionSelectionTool = ({
   useEffect(() => {
     regionsRef.current = Array.isArray(regions) ? regions : [];
   }, [regions]);
+
+  const cloneRegionsForUndo = useCallback((sourceRegions) => (
+    (Array.isArray(sourceRegions) ? sourceRegions : []).map(region => ({
+      ...region,
+      coordinates: Array.isArray(region.coordinates) ? [...region.coordinates] : [],
+      sourceRegions: Array.isArray(region.sourceRegions)
+        ? region.sourceRegions.map(sourceRegion => ({
+            ...sourceRegion,
+            coordinates: Array.isArray(sourceRegion.coordinates) ? [...sourceRegion.coordinates] : [],
+            sourceRegions: Array.isArray(sourceRegion.sourceRegions)
+              ? sourceRegion.sourceRegions.map(nestedSourceRegion => ({
+                  ...nestedSourceRegion,
+                  coordinates: Array.isArray(nestedSourceRegion.coordinates) ? [...nestedSourceRegion.coordinates] : []
+                }))
+              : undefined,
+            originCenter: sourceRegion.originCenter ? { ...sourceRegion.originCenter } : undefined
+          }))
+        : undefined,
+      originCenter: region.originCenter ? { ...region.originCenter } : undefined
+    }))
+  ), []);
+
+  const createHistorySnapshot = useCallback(() => ({
+    regions: cloneRegionsForUndo(regionsRef.current)
+  }), [cloneRegionsForUndo]);
+
+  const cloneHistorySnapshot = useCallback((snapshot) => ({
+    regions: cloneRegionsForUndo(snapshot?.regions)
+  }), [cloneRegionsForUndo]);
+
+  const persistHistoryStacks = useCallback(() => {
+    regionEditHistoryStore.set(historyKey, {
+      undo: undoStackRef.current.map(cloneHistorySnapshot),
+      redo: redoStackRef.current.map(cloneHistorySnapshot)
+    });
+  }, [cloneHistorySnapshot, historyKey]);
+
+  const pushUndoSnapshot = useCallback(() => {
+    undoStackRef.current.push(createHistorySnapshot());
+    redoStackRef.current = [];
+    if (undoStackRef.current.length > REGION_HISTORY_LIMIT) {
+      undoStackRef.current.shift();
+    }
+    persistHistoryStacks();
+  }, [createHistorySnapshot, persistHistoryStacks]);
+
+  const restoreHistorySnapshot = useCallback((snapshot) => {
+    if (!snapshot) return false;
+    setRegions(cloneRegionsForUndo(snapshot.regions));
+    setSelectedRegionIds(new Set());
+    setInteractionState(null);
+    setIsDrawing(false);
+    setCurrentRect(null);
+    setPolygonPoints([]);
+    setContextMenu(null);
+    return true;
+  }, [cloneRegionsForUndo]);
+
+  const undoLastRegionEdit = useCallback(() => {
+    const snapshot = undoStackRef.current.pop();
+    if (!snapshot) return false;
+    redoStackRef.current.push(createHistorySnapshot());
+    if (redoStackRef.current.length > REGION_HISTORY_LIMIT) {
+      redoStackRef.current.shift();
+    }
+    persistHistoryStacks();
+    return restoreHistorySnapshot(snapshot);
+  }, [createHistorySnapshot, persistHistoryStacks, restoreHistorySnapshot]);
+
+  const redoLastRegionEdit = useCallback(() => {
+    const snapshot = redoStackRef.current.pop();
+    if (!snapshot) return false;
+    undoStackRef.current.push(createHistorySnapshot());
+    if (undoStackRef.current.length > REGION_HISTORY_LIMIT) {
+      undoStackRef.current.shift();
+    }
+    persistHistoryStacks();
+    return restoreHistorySnapshot(snapshot);
+  }, [createHistorySnapshot, persistHistoryStacks, restoreHistorySnapshot]);
 
   useEffect(() => {
     if (!active) {
@@ -319,8 +433,22 @@ const RegionSelectionTool = ({
 
   // Track if we've initialized regions from initialRegions to avoid overwriting user-drawn regions
   const hasInitializedRegionsRef = useRef(false);
+  const activeHistoryKeyRef = useRef(historyKey);
 
   useEffect(() => {
+    if (!active) return undefined;
+    window.__regionSelectionActive = true;
+    return () => {
+      window.__regionSelectionActive = false;
+    };
+  }, [active]);
+
+  useEffect(() => {
+    if (activeHistoryKeyRef.current !== historyKey) {
+      hasInitializedRegionsRef.current = false;
+      activeHistoryKeyRef.current = historyKey;
+    }
+
     if (active) {
       // Only initialize from initialRegions on first activation, not on every initialRegions change
       // This prevents overwriting user-drawn regions when activeTool changes
@@ -340,9 +468,17 @@ const RegionSelectionTool = ({
           originCenter: region.originCenter ? { ...region.originCenter } : undefined
         }));
         setRegions(clonedRegions);
+        const storedHistory = regionEditHistoryStore.get(historyKey);
+        undoStackRef.current = Array.isArray(storedHistory?.undo)
+          ? storedHistory.undo.map(cloneHistorySnapshot)
+          : [];
+        redoStackRef.current = Array.isArray(storedHistory?.redo)
+          ? storedHistory.redo.map(cloneHistorySnapshot)
+          : [];
         hasInitializedRegionsRef.current = true;
       }
     } else {
+      persistHistoryStacks();
       setRegions([]);
       hasInitializedRegionsRef.current = false;
     }
@@ -352,7 +488,7 @@ const RegionSelectionTool = ({
     setCurrentRect(null);
     setPolygonPoints([]);
     setIsCursorOverCanvas(false);
-  }, [active, initialRegions]);
+  }, [active, initialRegions, historyKey, cloneHistorySnapshot, persistHistoryStacks]);
 
   useEffect(() => {
     setPolygonPoints([]);
@@ -629,6 +765,67 @@ const RegionSelectionTool = ({
     }
   }, [getRegionBounds, regionToPolygon]);
 
+  const cloneRegionForHistory = useCallback((region) => ({
+    ...region,
+    coordinates: Array.isArray(region.coordinates) ? [...region.coordinates] : [],
+    sourceRegions: Array.isArray(region.sourceRegions)
+      ? region.sourceRegions.map(sourceRegion => ({
+          ...sourceRegion,
+          coordinates: Array.isArray(sourceRegion.coordinates) ? [...sourceRegion.coordinates] : []
+        }))
+      : undefined,
+    originCenter: region.originCenter ? { ...region.originCenter } : undefined
+  }), []);
+
+  const canMergeRegions = useCallback((regionsToMerge) => {
+    if (!Array.isArray(regionsToMerge) || regionsToMerge.length < 2) {
+      return false;
+    }
+
+    try {
+      let currentUnion = regionToPolygon(regionsToMerge[0]);
+      if (!currentUnion) return false;
+
+      for (let i = 1; i < regionsToMerge.length; i += 1) {
+        const nextPoly = regionToPolygon(regionsToMerge[i]);
+        if (!nextPoly) return false;
+
+        const result = union(currentUnion, nextPoly);
+        if (!result || result.length === 0 || result.length > 1) {
+          return false;
+        }
+        currentUnion = result;
+      }
+
+      return currentUnion.length === 1;
+    } catch (error) {
+      console.error('Error checking merge capability', error);
+      return false;
+    }
+  }, [regionToPolygon]);
+
+  const getConnectedMergeCandidates = useCallback((seedRegion) => {
+    if (!seedRegion) return [];
+
+    const candidates = [seedRegion];
+    const candidateIds = new Set([seedRegion.regionId]);
+    let changed = true;
+
+    while (changed) {
+      changed = false;
+      for (const region of regions) {
+        if (!region || candidateIds.has(region.regionId)) continue;
+        if (canMergeRegions([...candidates, region])) {
+          candidates.push(region);
+          candidateIds.add(region.regionId);
+          changed = true;
+        }
+      }
+    }
+
+    return candidates;
+  }, [regions, canMergeRegions]);
+
   // Merge overlapping additive regions with a new region
   const mergeRegionWithOverlapping = useCallback((newRegion, existingRegions) => {
     if (!newRegion || !Array.isArray(existingRegions) || existingRegions.length === 0) {
@@ -791,6 +988,10 @@ const RegionSelectionTool = ({
         `[RegionSelectionTool p${currentPageId ?? 'unknown'}] mouseDown ignored — ` +
         `active=${active}, target=${!!targetElement}, tool=${activeTool ?? 'none'}`
       );
+      return;
+    }
+
+    if (event.button === 2) {
       return;
     }
 
@@ -1060,6 +1261,7 @@ const RegionSelectionTool = ({
     if (!isDrawing) return;
 
     if (effectiveToolType === 'rectangular' && currentRect && currentRect.width > MIN_REGION_SIZE && currentRect.height > MIN_REGION_SIZE) {
+      pushUndoSnapshot();
       console.log(
         `[RegionSelectionTool p${currentPageId ?? 'unknown'}] mouseUp commit rectangular — ` +
         `x=${currentRect.x.toFixed(2)}, y=${currentRect.y.toFixed(2)}, ` +
@@ -1103,6 +1305,7 @@ const RegionSelectionTool = ({
         });
       }
     } else if (effectiveToolType === 'freehand' && polygonPoints.length > 2) {
+      pushUndoSnapshot();
       console.log(
         `[RegionSelectionTool p${currentPageId ?? 'unknown'}] mouseUp commit freehand — ` +
         `points=${polygonPoints.length}, mode=${effectiveSelectionMode}`
@@ -1141,7 +1344,12 @@ const RegionSelectionTool = ({
     setStartPoint(null);
     setCurrentRect(null);
     setPolygonPoints([]);
-  }, [active, interactionState, isDrawing, effectiveToolType, currentRect, polygonPoints, currentPageId, effectiveSelectionMode, mergeRegionWithOverlapping, subtractRegionFromRegions]);
+  }, [active, interactionState, isDrawing, effectiveToolType, currentRect, polygonPoints, currentPageId, effectiveSelectionMode, mergeRegionWithOverlapping, subtractRegionFromRegions, pushUndoSnapshot]);
+
+  const handleCanvasMouseLeave = useCallback(() => {
+    setIsCursorOverCanvas(false);
+    handleMouseUp();
+  }, [handleMouseUp]);
 
   const handleConfirm = useCallback(() => {
     if (!onRegionComplete) {
@@ -1150,13 +1358,9 @@ const RegionSelectionTool = ({
 
     const currentRegions = Array.isArray(regionsRef.current) ? regionsRef.current : [];
 
-    // Consolidate regions before confirming
-    // This ensures that any overlapping regions are merged into single polygons
-    // and any subtractions are applied permanently.
-    const consolidatedRegions = mergeOverlappingRegions(currentRegions);
-
-    // Preserve all metadata including sourceRegions and originCenter for unmerge capability
-    const payload = consolidatedRegions.map(region => ({
+    // Preserve exactly what the user created. Touching regions should not merge
+    // unless the user explicitly chooses Merge from the Region Editor menu.
+    const payload = currentRegions.map(region => ({
       ...region,
       coordinates: Array.isArray(region.coordinates) ? [...region.coordinates] : [],
       // Deep copy sourceRegions array to ensure it's preserved
@@ -1171,7 +1375,7 @@ const RegionSelectionTool = ({
     }));
     console.log(
       `[RegionSelectionTool p${currentPageId ?? 'unknown'}] confirm — ` +
-      `input=${currentRegions.length}, consolidated=${consolidatedRegions.length}, payload=${payload.length}, ` +
+      `input=${currentRegions.length}, payload=${payload.length}, ` +
       `valid=${payload.filter(region => Array.isArray(region.coordinates) && region.coordinates.length >= 6).length}`
     );
     onRegionComplete(payload);
@@ -1216,6 +1420,12 @@ const RegionSelectionTool = ({
     if (!active || effectiveToolType !== 'move' || !targetElement) {
       return;
     }
+    if (event.button === 2) {
+      if (!selectedRegionIds.has(region.regionId)) {
+        setSelectedRegionIds(new Set([region.regionId]));
+      }
+      return;
+    }
     event.stopPropagation();
 
     // If not in move mode, ignore
@@ -1239,6 +1449,7 @@ const RegionSelectionTool = ({
 
       // If we just added it, start moving it (and others)
       if (!isSelected) {
+        pushUndoSnapshot();
         setInteractionState({
           type: 'move',
           startPoint: { x: event.clientX, y: event.clientY },
@@ -1250,6 +1461,7 @@ const RegionSelectionTool = ({
       if (!isSelected) {
         // If clicking a new region, select ONLY it
         setSelectedRegionIds(new Set([region.regionId]));
+        pushUndoSnapshot();
         setInteractionState({
           type: 'move',
           startPoint: { x: event.clientX, y: event.clientY },
@@ -1260,6 +1472,7 @@ const RegionSelectionTool = ({
         // But if we just click and release without moving, we might want to deselect others?
         // Standard behavior: MouseDown doesn't clear others if clicking selected, 
         // but MouseUp might if no drag occurred. For now, keep simple: don't clear.
+        pushUndoSnapshot();
         setInteractionState({
           type: 'move',
           startPoint: { x: event.clientX, y: event.clientY },
@@ -1267,24 +1480,37 @@ const RegionSelectionTool = ({
         });
       }
     }
-  }, [active, effectiveToolType, targetElement, scale, regions, selectedRegionIds]);
+  }, [active, effectiveToolType, targetElement, regions, selectedRegionIds, toolType, pushUndoSnapshot]);
 
   const handleVertexPointerDown = useCallback((region, vertexIndex, event) => {
     if (!active || effectiveToolType !== 'move' || !targetElement) return;
+    if (event.button === 2) {
+      if (!selectedRegionIds.has(region.regionId)) {
+        setSelectedRegionIds(new Set([region.regionId]));
+      }
+      return;
+    }
     event.stopPropagation();
     event.preventDefault();
 
     setSelectedRegionIds(new Set([region.regionId])); // Select only this region for vertex editing
+    pushUndoSnapshot();
     setInteractionState({
       type: 'vertex',
       regionId: region.regionId,
       vertexIndex,
       startPoint: { x: event.clientX, y: event.clientY }
     });
-  }, [active, effectiveToolType, targetElement]);
+  }, [active, effectiveToolType, targetElement, selectedRegionIds, pushUndoSnapshot]);
 
   const handleResizePointerDown = useCallback((region, handle, event) => {
     if (!active || effectiveToolType !== 'move' || !targetElement) return;
+    if (event.button === 2) {
+      if (!selectedRegionIds.has(region.regionId)) {
+        setSelectedRegionIds(new Set([region.regionId]));
+      }
+      return;
+    }
     event.stopPropagation();
     event.preventDefault();
 
@@ -1292,6 +1518,7 @@ const RegionSelectionTool = ({
     if (!bounds) return;
 
     setSelectedRegionIds(new Set([region.regionId])); // Select only this region for resizing
+    pushUndoSnapshot();
     setInteractionState({
       type: 'resize',
       regionId: region.regionId,
@@ -1300,17 +1527,19 @@ const RegionSelectionTool = ({
       initialBounds: bounds,
       initialCoords: [...region.coordinates]
     });
-  }, [active, effectiveToolType, targetElement, getRegionBounds]);
+  }, [active, effectiveToolType, targetElement, getRegionBounds, selectedRegionIds, pushUndoSnapshot]);
 
   const handleDeleteSelected = useCallback(() => {
     if (selectedRegionIds.size === 0) return;
+    pushUndoSnapshot();
     setRegions(prev => prev.filter(r => !selectedRegionIds.has(r.regionId)));
     setSelectedRegionIds(new Set());
     setInteractionState(null);
-  }, [selectedRegionIds]);
+  }, [selectedRegionIds, pushUndoSnapshot]);
 
   const handleContextMenu = useCallback((event) => {
     event.preventDefault();
+    event.stopPropagation();
     // Allow context menu in all modes (Draw or Move)
     const constraintRect = getTargetRect();
 
@@ -1321,84 +1550,57 @@ const RegionSelectionTool = ({
     }
     const { x, y } = pointer;
 
-    const clickedRegion = regions.find(r => {
+    const clickedRegion = [...regions].reverse().find(r => {
       const bounds = getRegionBounds(r);
       return bounds && x >= bounds.minX && x <= bounds.maxX && y >= bounds.minY && y <= bounds.maxY;
     });
 
+    const safePosition = calculateViewportSafePosition(event.clientX, event.clientY, {
+      estimatedWidth: 200,
+      estimatedHeight: 250,
+      preferAbove: false,
+      constraintRect
+    });
+
     if (clickedRegion) {
-      // If multiple regions are selected, show "Merge" option
-      if (selectedRegionIds.size > 1 && selectedRegionIds.has(clickedRegion.regionId)) {
-        // Check if they overlap/are contiguous
-        const regionsToMerge = regions.filter(r => selectedRegionIds.has(r.regionId));
-        let canMerge = false;
+      const nextSelectedIds = selectedRegionIds.has(clickedRegion.regionId)
+        ? new Set(selectedRegionIds)
+        : new Set([clickedRegion.regionId]);
+      const selectedRegions = regions.filter(r => nextSelectedIds.has(r.regionId));
+      const regionsToMerge = selectedRegions.length >= 2
+        ? selectedRegions
+        : getConnectedMergeCandidates(clickedRegion);
+      const canMerge = canMergeRegions(regionsToMerge);
+      const canUnmerge = selectedRegions.length === 1 &&
+        Array.isArray(selectedRegions[0]?.sourceRegions) &&
+        selectedRegions[0].sourceRegions.length > 0;
 
-        try {
-          if (regionsToMerge.length >= 2) {
-            let currentUnion = regionToPolygon(regionsToMerge[0]);
-            if (currentUnion) {
-              for (let i = 1; i < regionsToMerge.length; i++) {
-                const nextPoly = regionToPolygon(regionsToMerge[i]);
-                if (nextPoly) {
-                  const result = union(currentUnion, nextPoly);
-                  if (result && result.length > 0) {
-                    currentUnion = result;
-                  }
-                }
-              }
-              if (currentUnion.length === 1) {
-                canMerge = true;
-              }
-            }
-          }
-        } catch (e) {
-          console.error('Error checking merge capability', e);
-        }
-
-        const safePosition = calculateViewportSafePosition(event.clientX, event.clientY, {
-          estimatedWidth: 200,
-          estimatedHeight: 250,
-          preferAbove: false,
-          constraintRect
-        });
-        setContextMenu({
-          x: safePosition.x,
-          y: safePosition.y,
-          type: 'merge',
-          canMerge
-        });
-      }
-      // If single region is selected (or clicked), and it has sourceRegions, show "Separate" option
-      else if (clickedRegion.sourceRegions && clickedRegion.sourceRegions.length > 0) {
-        setSelectedRegionIds(new Set([clickedRegion.regionId]));
-        const safePosition = calculateViewportSafePosition(event.clientX, event.clientY, {
-          estimatedWidth: 200,
-          estimatedHeight: 250,
-          preferAbove: false,
-          constraintRect
-        });
-        setContextMenu({
-          x: safePosition.x,
-          y: safePosition.y,
-          type: 'separate',
-          regionId: clickedRegion.regionId
-        });
-      }
-    } else {
-      // Clicked on background/canvas
-      const safePosition = calculateViewportSafePosition(event.clientX, event.clientY, {
-        estimatedWidth: 200,
-        estimatedHeight: 250,
-        preferAbove: false,
-        constraintRect
-      });
+      setSelectedRegionIds(nextSelectedIds);
       setContextMenu({
         x: safePosition.x,
         y: safePosition.y,
-        type: 'canvas'
+        pageX: x,
+        pageY: y,
+        type: 'region',
+        regionId: clickedRegion.regionId,
+        mergeRegionIds: regionsToMerge.map(region => region.regionId),
+        canMerge,
+        canUnmerge
       });
+      return;
     }
-  }, [active, effectiveToolType, regions, selectedRegionIds, clientPointToPage, getRegionBounds, getTargetRect]);
+
+    setContextMenu({
+      x: safePosition.x,
+      y: safePosition.y,
+      pageX: x,
+      pageY: y,
+      type: 'canvas',
+      mergeRegionIds: [],
+      canMerge: false,
+      canUnmerge: false
+    });
+  }, [regions, selectedRegionIds, clientPointToPage, getRegionBounds, getTargetRect, canMergeRegions, getConnectedMergeCandidates]);
 
   const handleCopy = useCallback(async () => {
     if (selectedRegionIds.size === 0) return;
@@ -1444,8 +1646,9 @@ const RegionSelectionTool = ({
       const centerX = (minX + maxX) / 2;
       const centerY = (minY + maxY) / 2;
 
-      const rect = getTargetRect();
-      const targetPoint = clientPointToPage(contextMenu.x, contextMenu.y, rect);
+      const targetPoint = Number.isFinite(contextMenu.pageX) && Number.isFinite(contextMenu.pageY)
+        ? { x: contextMenu.pageX, y: contextMenu.pageY }
+        : clientPointToPage(contextMenu.x, contextMenu.y, getTargetRect());
       if (!targetPoint) return;
       const { x: targetX, y: targetY } = targetPoint;
 
@@ -1465,6 +1668,7 @@ const RegionSelectionTool = ({
         };
       });
 
+      pushUndoSnapshot();
       setRegions(prev => {
         return [...prev, ...newRegions];
       });
@@ -1475,13 +1679,17 @@ const RegionSelectionTool = ({
     } catch (err) {
       console.error('Failed to paste regions:', err);
     }
-  }, [contextMenu, clientPointToPage, currentPageId, getRegionBounds, getTargetRect]);
+  }, [contextMenu, clientPointToPage, currentPageId, getRegionBounds, getTargetRect, pushUndoSnapshot]);
 
   const handleMergeSelected = useCallback(() => {
-    if (selectedRegionIds.size < 2) return;
+    const mergeIds = Array.isArray(contextMenu?.mergeRegionIds) && contextMenu.mergeRegionIds.length >= 2
+      ? new Set(contextMenu.mergeRegionIds)
+      : selectedRegionIds;
+    if (mergeIds.size < 2) return;
 
-    const regionsToMerge = regions.filter(r => selectedRegionIds.has(r.regionId));
+    const regionsToMerge = regions.filter(r => mergeIds.has(r.regionId));
     if (regionsToMerge.length < 2) return;
+    if (!canMergeRegions(regionsToMerge)) return;
 
     // Calculate geometric union
     let mergedPoly = regionToPolygon(regionsToMerge[0]);
@@ -1531,13 +1739,14 @@ const RegionSelectionTool = ({
           shapeType: 'polygon',
           operation: REGION_OPERATIONS.ADD,
           coordinates: mergedCoords,
-          sourceRegions: regionsToMerge, // Save history
+          sourceRegions: regionsToMerge.map(cloneRegionForHistory),
           originCenter // Save origin center
         };
 
         // Remove original regions and add new one
+        pushUndoSnapshot();
         setRegions(prev => {
-          const remaining = prev.filter(r => !selectedRegionIds.has(r.regionId));
+          const remaining = prev.filter(r => !mergeIds.has(r.regionId));
           return [...remaining, newRegion];
         });
 
@@ -1548,11 +1757,11 @@ const RegionSelectionTool = ({
     } catch (err) {
       console.error('Merge failed', err);
     }
-  }, [selectedRegionIds, regions, currentPageId, getRegionBounds]);
+  }, [contextMenu, selectedRegionIds, regions, currentPageId, getRegionBounds, canMergeRegions, cloneRegionForHistory, pushUndoSnapshot]);
 
   const handleSeparateRegion = useCallback(() => {
-    if (selectedRegionIds.size !== 1) return;
-    const regionId = Array.from(selectedRegionIds)[0];
+    const regionId = contextMenu?.regionId || (selectedRegionIds.size === 1 ? Array.from(selectedRegionIds)[0] : null);
+    if (!regionId) return;
     const region = regions.find(r => r.regionId === regionId);
 
     if (!region || !region.sourceRegions || region.sourceRegions.length === 0) return;
@@ -1624,6 +1833,7 @@ const RegionSelectionTool = ({
       };
     });
 
+    pushUndoSnapshot();
     setRegions(prev => {
       const remaining = prev.filter(r => r.regionId !== regionId);
       return [...remaining, ...restoredRegions];
@@ -1631,7 +1841,7 @@ const RegionSelectionTool = ({
 
     setSelectedRegionIds(new Set(restoredRegions.map(r => r.regionId)));
     setContextMenu(null);
-  }, [selectedRegionIds, regions, getRegionBounds]);
+  }, [contextMenu, selectedRegionIds, regions, getRegionBounds, pushUndoSnapshot]);
 
   // Close context menu on click elsewhere
   useEffect(() => {
@@ -1645,6 +1855,35 @@ const RegionSelectionTool = ({
     if (!active) return;
 
     const handleKeyDown = (event) => {
+      const key = event.key?.toLowerCase?.();
+      const isUndoShortcut = (event.metaKey || event.ctrlKey) && !event.shiftKey && event.key?.toLowerCase?.() === 'z';
+      const isRedoShortcut = (
+        ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key?.toLowerCase?.() === 'z') ||
+        ((event.ctrlKey && !event.metaKey) && event.key?.toLowerCase?.() === 'y')
+      );
+      if (isRedoShortcut) {
+        stopRegionKeyboardShortcut(event);
+        redoLastRegionEdit();
+        return;
+      }
+      if (isUndoShortcut) {
+        stopRegionKeyboardShortcut(event);
+        undoLastRegionEdit();
+        return;
+      }
+      if (
+        key === 'v' &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.shiftKey &&
+        !isEditableKeyboardTarget()
+      ) {
+        stopRegionKeyboardShortcut(event);
+        setToolType('move');
+        setIsToolDropdownOpen(false);
+        return;
+      }
       // Shift forces additive mode
       if (event.shiftKey) {
         setIsShiftPressed(true);
@@ -1682,18 +1921,18 @@ const RegionSelectionTool = ({
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('keydown', handleKeyDown, true);
+    window.addEventListener('keyup', handleKeyUp, true);
 
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('keyup', handleKeyUp, true);
       setIsShiftPressed(false);
       setIsOptionAltPressed(false);
       setIsCmdCtrlPressed(false);
       setIsSpacePressed(false);
     };
-  }, [active]);
+  }, [active, undoLastRegionEdit, redoLastRegionEdit]);
 
   useEffect(() => {
     if (!active || !targetElement) return;
@@ -2063,6 +2302,7 @@ const RegionSelectionTool = ({
       {canvasRect && (
           <div
             ref={containerRef}
+            data-region-selection-ui="true"
             onContextMenu={handleContextMenu}
             style={{
               position: 'fixed',
@@ -2078,7 +2318,7 @@ const RegionSelectionTool = ({
               onMouseDown: handleMouseDown,
               onMouseMove: handleMouseMove,
               onMouseUp: handleMouseUp,
-              onMouseLeave: handleMouseUp
+              onMouseLeave: handleCanvasMouseLeave
             })}
           >
           <svg
@@ -2223,6 +2463,7 @@ const RegionSelectionTool = ({
           {/* Context Menu */}
           {contextMenu && (
             <div
+              data-region-selection-ui="true"
               style={{
                 position: 'fixed',
                 top: contextMenu.y,
@@ -2238,30 +2479,36 @@ const RegionSelectionTool = ({
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Clipboard Actions */}
-              {(contextMenu.type === 'merge' || contextMenu.type === 'separate' || contextMenu.type === 'canvas') && selectedRegionIds.size > 0 && (
-                <>
-                  <div
-                    style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', color: '#333', fontFamily: FONT_FAMILY }}
-                    onClick={handleCut}
-                    onMouseEnter={(e) => e.currentTarget.style.background = '#f0f0f0'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
-                  >
-                    Cut
-                  </div>
-                  <div
-                    style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', color: '#333', fontFamily: FONT_FAMILY }}
-                    onClick={handleCopy}
-                    onMouseEnter={(e) => e.currentTarget.style.background = '#f0f0f0'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
-                  >
-                    Copy
-                  </div>
-                  <div style={{ height: '1px', background: '#e0e0e0', margin: '4px 0' }} />
-                </>
-              )}
-
-              {/* Paste Action */}
+              <div
+                style={{
+                  padding: '8px 12px',
+                  cursor: selectedRegionIds.size > 0 ? 'pointer' : 'not-allowed',
+                  fontSize: '13px',
+                  color: '#333',
+                  fontFamily: FONT_FAMILY,
+                  opacity: selectedRegionIds.size > 0 ? 1 : 0.45
+                }}
+                onClick={selectedRegionIds.size > 0 ? handleCopy : undefined}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#f0f0f0'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
+              >
+                Copy
+              </div>
+              <div
+                style={{
+                  padding: '8px 12px',
+                  cursor: selectedRegionIds.size > 0 ? 'pointer' : 'not-allowed',
+                  fontSize: '13px',
+                  color: '#333',
+                  fontFamily: FONT_FAMILY,
+                  opacity: selectedRegionIds.size > 0 ? 1 : 0.45
+                }}
+                onClick={selectedRegionIds.size > 0 ? handleCut : undefined}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#f0f0f0'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
+              >
+                Cut
+              </div>
               <div
                 style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', color: '#333', fontFamily: FONT_FAMILY }}
                 onClick={handlePaste}
@@ -2270,45 +2517,44 @@ const RegionSelectionTool = ({
               >
                 Paste
               </div>
-
-              {/* Separator if we have merge/separate options */}
-              {(contextMenu.type === 'merge' || contextMenu.type === 'separate') && (
-                <div style={{ height: '1px', background: '#e0e0e0', margin: '4px 0' }} />
-              )}
-
-              {contextMenu.type === 'merge' && (
-                <div
-                  style={{
-                    padding: '8px 12px',
-                    cursor: contextMenu.canMerge ? 'pointer' : 'not-allowed',
-                    opacity: contextMenu.canMerge ? 1 : 0.5,
-                    color: '#333',
-                    fontSize: '13px',
-                    fontFamily: FONT_FAMILY,
-                    pointerEvents: contextMenu.canMerge ? 'auto' : 'none',
-                    background: 'transparent'
-                  }}
-                  onClick={handleMergeSelected}
-                  onMouseEnter={(e) => {
-                    if (contextMenu.canMerge) e.currentTarget.style.background = '#f0f0f0';
-                  }}
-                  onMouseLeave={(e) => {
-                    if (contextMenu.canMerge) e.currentTarget.style.background = 'transparent';
-                  }}
-                >
-                  Merge Areas
-                </div>
-              )}
-              {contextMenu.type === 'separate' && (
-                <div
-                  style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', color: '#333', fontFamily: FONT_FAMILY }}
-                  onClick={handleSeparateRegion}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#f0f0f0'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
-                >
-                  Separate Areas
-                </div>
-              )}
+              <div style={{ height: '1px', background: '#e0e0e0', margin: '4px 0' }} />
+              <div
+                style={{
+                  padding: '8px 12px',
+                  cursor: contextMenu.canMerge ? 'pointer' : 'not-allowed',
+                  opacity: contextMenu.canMerge ? 1 : 0.45,
+                  color: '#333',
+                  fontSize: '13px',
+                  fontFamily: FONT_FAMILY,
+                  background: 'transparent'
+                }}
+                onClick={contextMenu.canMerge ? handleMergeSelected : undefined}
+                onMouseEnter={(e) => {
+                  if (contextMenu.canMerge) e.currentTarget.style.background = '#f0f0f0';
+                }}
+                onMouseLeave={(e) => {
+                  if (contextMenu.canMerge) e.currentTarget.style.background = 'transparent';
+                }}
+              >
+                Merge
+              </div>
+              <div
+                style={{
+                  padding: '8px 12px',
+                  cursor: contextMenu.canUnmerge ? 'pointer' : 'not-allowed',
+                  opacity: contextMenu.canUnmerge ? 1 : 0.45,
+                  color: '#333',
+                  fontSize: '13px',
+                  fontFamily: FONT_FAMILY
+                }}
+                onClick={contextMenu.canUnmerge ? handleSeparateRegion : undefined}
+                onMouseEnter={(e) => {
+                  if (contextMenu.canUnmerge) e.currentTarget.style.background = '#f0f0f0';
+                }}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
+              >
+                Unmerge
+              </div>
             </div>
           )}
 
@@ -2353,7 +2599,7 @@ const RegionSelectionTool = ({
                       width: `${width}px`,
                       height: `${height}px`,
                       background: 'transparent',
-                      border: '1px solid #87CEEB',
+                      border: `2px dashed ${REGION_HANDLE_BLUE}`,
                       borderRadius: '0px',
                       pointerEvents: 'auto',
                       zIndex: 100002,
@@ -2377,11 +2623,12 @@ const RegionSelectionTool = ({
                       left: `${x}px`,
                       top: `${y}px`,
                       transform: 'translate(-50%, -50%)',
-                      width: '10px',
-                      height: '10px',
-                      borderRadius: '0px',
-                      background: 'transparent',
-                      border: '1px solid #87CEEB',
+                      width: '14px',
+                      height: '14px',
+                      borderRadius: '50%',
+                      background: REGION_HANDLE_FILL,
+                      border: `1px solid ${REGION_HANDLE_STROKE}`,
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
                       cursor: 'crosshair',
                       pointerEvents: 'auto',
                       zIndex: 100003
@@ -2417,7 +2664,7 @@ const RegionSelectionTool = ({
                       width: `${width}px`,
                       height: `${height}px`,
                       background: 'transparent',
-                      border: '1px solid #87CEEB',
+                      border: `2px dashed ${REGION_HANDLE_BLUE}`,
                       borderRadius: '0px',
                       pointerEvents: 'auto',
                       zIndex: 100002,
@@ -2426,6 +2673,11 @@ const RegionSelectionTool = ({
                     }}
                   />
                   {resizeHandles.map(handle => {
+                    const isHorizontalPill = handle.key === 'n' || handle.key === 's';
+                    const isVerticalPill = handle.key === 'e' || handle.key === 'w';
+                    const handleWidth = isHorizontalPill ? '36px' : (isVerticalPill ? '10px' : '14px');
+                    const handleHeight = isHorizontalPill ? '10px' : (isVerticalPill ? '36px' : '14px');
+                    const handleRadius = isHorizontalPill || isVerticalPill ? '5px' : '50%';
                     return (
                       <div
                         key={handle.key}
@@ -2435,11 +2687,14 @@ const RegionSelectionTool = ({
                           left: `${left + (handle.offsetX * width)}px`,
                           top: `${top + (handle.offsetY * height)}px`,
                           transform: 'translate(-50%, -50%)',
-                          width: '10px',
-                          height: '10px',
-                          borderRadius: '0px',
-                          background: 'transparent',
-                          border: '1px solid #87CEEB',
+                          width: handleWidth,
+                          height: handleHeight,
+                          borderRadius: handleRadius,
+                          background: REGION_HANDLE_FILL,
+                          border: `1px solid ${REGION_HANDLE_STROKE}`,
+                          boxShadow: isHorizontalPill || isVerticalPill
+                            ? '0 2px 4px rgba(0,0,0,0.15)'
+                            : '0 1px 3px rgba(0,0,0,0.15)',
                           cursor: handle.cursor,
                           pointerEvents: 'auto',
                           zIndex: 100003

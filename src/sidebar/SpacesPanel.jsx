@@ -81,6 +81,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   onExitSpace,
   onToggleSpace,
   isRegionSelectionActive = false,
+  regionSelectionPage = null,
   features,
   getCanvasAnnotationVisibilityState = null,
   onToggleCanvasAnnotations = null,
@@ -99,6 +100,8 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   const [editingRegionValue, setEditingRegionValue] = useState('');
   const editingRegionInputRef = useRef(null);
   const exportControlAnchorRef = useRef(null);
+  const suppressRegionEditClickRef = useRef(null);
+  const skipRegionRenameCommitRef = useRef(false);
   React.useEffect(() => {
     if (!isExpanded) {
       setIsExportMenuOpen(false);
@@ -157,6 +160,10 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   React.useEffect(() => {
     // When edit mode is dismissed, save any active rename
     if (!isRegionSelectionActive && editingRegionId !== null) {
+      if (skipRegionRenameCommitRef.current) {
+        skipRegionRenameCommitRef.current = false;
+        return;
+      }
       commitRegionRename(editingRegionId, false);
     }
   }, [isRegionSelectionActive, editingRegionId, commitRegionRename]);
@@ -661,6 +668,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                         ? page.label.trim()
                         : `Region ${page.pageId}`;
                       const isEditingRegion = editingRegionId === page.pageId;
+                      const isActiveRegionEdit = isRegionSelectionActive && isActive && regionSelectionPage === page.pageId;
 
                       return (
                         <li
@@ -791,8 +799,28 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                                 }}
                               />
                             ) : (
-                              <div style={{ color: '#ddd', fontWeight: 500 }}>
-                                {regionLabel}
+                              <div style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '2px',
+                                minWidth: 0
+                              }}>
+                                <div style={{
+                                  color: '#ddd',
+                                  fontWeight: 500,
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap'
+                                }}>
+                                  {regionLabel}
+                                </div>
+                                <div style={{
+                                  color: '#888',
+                                  fontSize: '11px',
+                                  lineHeight: 1.2
+                                }}>
+                                  Page {page.pageId}
+                                </div>
                               </div>
                             )}
                           </div>
@@ -905,31 +933,56 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                               );
                             })()}
                             <button
-                              onClick={(e) => {
+                              onMouseDown={(e) => {
+                                if (!isActiveRegionEdit) {
+                                  return;
+                                }
+                                e.preventDefault();
                                 e.stopPropagation();
+                                suppressRegionEditClickRef.current = `${space.id}:${page.pageId}`;
+                                skipRegionRenameCommitRef.current = true;
+                                setEditingRegionId(null);
+                                setEditingRegionValue('');
+                                onCancelRegionEdit?.(space.id, page.pageId);
+                              }}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const suppressKey = `${space.id}:${page.pageId}`;
+                                if (suppressRegionEditClickRef.current === suppressKey) {
+                                  suppressRegionEditClickRef.current = null;
+                                  return;
+                                }
+                                if (isActiveRegionEdit) {
+                                  skipRegionRenameCommitRef.current = true;
+                                  setEditingRegionId(null);
+                                  setEditingRegionValue('');
+                                  onCancelRegionEdit?.(space.id, page.pageId);
+                                  return;
+                                }
                                 handleRegionEditClick(page.pageId, regionLabel);
                                 onRequestRegionEdit?.(space.id, page.pageId);
                               }}
                               style={{
-                                background: '#333333',
-                                border: 'none',
+                                background: isActiveRegionEdit ? 'rgba(74, 144, 226, 0.18)' : '#333333',
+                                border: isActiveRegionEdit ? '1px solid rgba(74, 144, 226, 0.55)' : '1px solid transparent',
                                 padding: '4px',
                                 cursor: 'pointer',
                                 borderRadius: '4px',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                color: '#dddddd'
+                                color: isActiveRegionEdit ? '#4A90E2' : '#dddddd'
                               }}
                               onMouseEnter={(e) => {
-                                e.currentTarget.style.background = '#3a3a3a';
-                                e.currentTarget.style.color = '#fff';
+                                e.currentTarget.style.background = isActiveRegionEdit ? 'rgba(74, 144, 226, 0.26)' : '#3a3a3a';
+                                e.currentTarget.style.color = isActiveRegionEdit ? '#5ba1f0' : '#fff';
                               }}
                               onMouseLeave={(e) => {
-                                e.currentTarget.style.background = '#333333';
-                                e.currentTarget.style.color = '#dddddd';
+                                e.currentTarget.style.background = isActiveRegionEdit ? 'rgba(74, 144, 226, 0.18)' : '#333333';
+                                e.currentTarget.style.color = isActiveRegionEdit ? '#4A90E2' : '#dddddd';
                               }}
-                              title="Rename Region"
+                              title={isActiveRegionEdit ? 'Exit Region Edit' : 'Edit Region'}
                             >
                               <Icon name="edit" size={12} />
                             </button>
@@ -982,6 +1035,7 @@ const SpacesPanel = ({
   onExportSpaceCSV,
   onExportSpacePDF,
   isRegionSelectionActive = false,
+  regionSelectionPage = null,
   numPages,
   features,
   getCanvasAnnotationVisibilityState = null,
@@ -1381,6 +1435,7 @@ const SpacesPanel = ({
                     onCancelRegionEdit={(spaceId, pageId) => onCancelRegionEdit?.(spaceId, pageId)}
                     onRemovePage={handleRemovePage}
                     isRegionSelectionActive={isRegionSelectionActive}
+                    regionSelectionPage={regionSelectionPage}
                     features={features}
                     getCanvasAnnotationVisibilityState={getCanvasAnnotationVisibilityState}
                     onToggleCanvasAnnotations={onToggleCanvasAnnotations}

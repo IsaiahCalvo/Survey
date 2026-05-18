@@ -27618,6 +27618,25 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
       const pageContentElement = resolvePageContentElement(pageContainer);
       const pageRect = (pageContentElement || pageContainer).getBoundingClientRect();
+
+      // Syncfusion virtualizes pages: a page-container element can be present
+      // in our ref map while the page itself is still unrendered, in which
+      // case getBoundingClientRect() reports {0,0,0,0}. Running the centering
+      // math against a zero rect yields a garbage scroll target — this was
+      // the "Locate drifts right / jumps to the top" bug when jumping to a
+      // page that wasn't currently on screen. Treat a zero-size rect exactly
+      // like a missing page: navigate to it so Syncfusion renders it, then
+      // retry the measurement until the rect is real.
+      if (!(pageRect.width > 0) || !(pageRect.height > 0)) {
+        if (attempt === 0 && navigateFirst) {
+          goToPage(targetPage, { bypassActiveSpace });
+        }
+        if (attempt < maxRetries && typeof window !== 'undefined') {
+          window.setTimeout(() => run(attempt + 1), retryDelay);
+        }
+        return false;
+      }
+
       const containerRect = container.getBoundingClientRect();
       const pageSize = pageSizesRef.current?.[targetPage] || pageSizes[targetPage] || {};
       const fallbackScale = Math.max(0.01, Number(scaleRef.current) || 1);
@@ -27646,6 +27665,38 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         skipIfClosePx > 0 &&
         Math.abs(container.scrollLeft - nextLeft) <= skipIfClosePx &&
         Math.abs(container.scrollTop - nextTop) <= skipIfClosePx;
+      // [LOCATE-DBG] full scroll-math dump — remove after the centering work is done.
+      console.log('[LOCATE-DBG] centerPageBoundsInViewer.run', JSON.stringify({
+        targetPage,
+        attempt,
+        behaviorUsed: attempt > 0 ? retryBehavior : behavior,
+        leftInset,
+        rightInset,
+        skipIfClosePx,
+        isCloseEnough,
+        container: {
+          clientWidth: container.clientWidth,
+          clientHeight: container.clientHeight,
+          scrollWidth: container.scrollWidth,
+          scrollHeight: container.scrollHeight,
+          scrollLeft: container.scrollLeft,
+          scrollTop: container.scrollTop
+        },
+        containerRect: { left: containerRect.left, top: containerRect.top, width: containerRect.width, height: containerRect.height },
+        pageRect: { left: pageRect.left, top: pageRect.top, width: pageRect.width, height: pageRect.height },
+        pageSize: { width: pageSize.width, height: pageSize.height },
+        pageScaleX,
+        pageScaleY,
+        targetBounds,
+        pageOffsetX,
+        pageOffsetY,
+        visibleWidth,
+        visibleHeight,
+        targetScrollLeft,
+        targetScrollTop,
+        nextLeft,
+        nextTop
+      }));
       if (isCloseEnough) {
         return true;
       }
@@ -30721,6 +30772,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     const currentScale = Math.max(0.01, Number(scaleRef.current) || Number(scale) || 1);
     const targetScale = Math.max(currentScale, 1.5);
     const shouldZoom = targetScale > currentScale + 0.05;
+    // [LOCATE-DBG] entry snapshot — remove after the centering work is done.
+    console.log('[LOCATE-DBG] handleLocateItemOnPDF', JSON.stringify({
+      pageNumber,
+      highlightId,
+      bounds,
+      currentScale,
+      targetScale,
+      shouldZoom,
+      path: shouldZoom ? 'zoom-two-pass' : 'no-zoom-single',
+      containerClientWidth: containerRef.current?.clientWidth ?? null,
+      containerClientHeight: containerRef.current?.clientHeight ?? null,
+      containerScrollLeft: containerRef.current?.scrollLeft ?? null,
+      containerScrollTop: containerRef.current?.scrollTop ?? null
+    }));
     if (highlightId) {
       setActiveTool('select');
       setPendingSurveyHighlightSelection({

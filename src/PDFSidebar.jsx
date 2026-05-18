@@ -47,6 +47,7 @@ const PDFSidebar = React.forwardRef(({
   onSetActiveSpace,
   onExitSpaceMode,
   onRequestRegionEdit,
+  onCancelRegionEdit,
   onSpaceAssignPages,
   onSpaceRenamePage,
   onSpaceRemovePage,
@@ -54,6 +55,7 @@ const PDFSidebar = React.forwardRef(({
   onExportSpaceCSV,
   onExportSpacePDF,
   isRegionSelectionActive,
+  regionSelectionPage = null,
   shouldShowPage,
   activeSpacePages,
   scale,
@@ -345,6 +347,7 @@ const PDFSidebar = React.forwardRef(({
                 onSetActiveSpace={onSetActiveSpace}
                 onExitSpaceMode={onExitSpaceMode}
                 onRequestRegionEdit={onRequestRegionEdit}
+                onCancelRegionEdit={onCancelRegionEdit}
                 onSpaceAssignPages={onSpaceAssignPages}
                 onSpaceRenamePage={onSpaceRenamePage}
                 onSpaceRemovePage={onSpaceRemovePage}
@@ -352,6 +355,7 @@ const PDFSidebar = React.forwardRef(({
                 onExportSpaceCSV={onExportSpaceCSV}
                 onExportSpacePDF={onExportSpacePDF}
                 isRegionSelectionActive={isRegionSelectionActive}
+                regionSelectionPage={regionSelectionPage}
                 numPages={numPages}
                 features={features}
                 getCanvasAnnotationVisibilityState={getCanvasAnnotationVisibilityState}
