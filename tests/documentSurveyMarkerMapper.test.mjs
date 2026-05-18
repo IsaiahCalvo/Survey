@@ -2,13 +2,13 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  buildHighlightRow,
-  mapHighlightRowToLocalAnnotation,
-} from '../src/services/documentHighlightMapper.js';
+  buildSurveyMarkerRow,
+  mapSurveyMarkerRowToLocalAnnotation,
+} from '../src/services/documentSurveyMarkerMapper.js';
 
-describe('document highlight mapper', () => {
+describe('document survey marker mapper', () => {
   it('persists survey-region metadata in annotation_data because document_annotations has no region_id column', () => {
-    const row = buildHighlightRow({
+    const row = buildSurveyMarkerRow({
       documentId: 'doc-1',
       userId: 'user-1',
       highlightId: 'highlight-1',
@@ -28,10 +28,11 @@ describe('document highlight mapper', () => {
     assert.equal(row.space_id, 'space-1');
     assert.equal(row.annotation_data.regionId, 'region-1');
     assert.equal(row.annotation_data.scope, 'survey-region');
+    assert.equal(row.annotation_type, 'survey-marker');
   });
 
   it('hydrates survey-region metadata from annotation_data on reload', () => {
-    const local = mapHighlightRowToLocalAnnotation({
+    const local = mapSurveyMarkerRowToLocalAnnotation({
       id: 'row-1',
       highlight_id: 'highlight-1',
       user_id: 'user-1',
