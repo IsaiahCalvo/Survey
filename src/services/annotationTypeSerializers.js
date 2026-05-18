@@ -325,10 +325,10 @@ export function deserializeRowToFabricObject(row) {
       fabricObject.data.id = row.highlight_id;
     }
     // Bug 1 fix (2026-04-30): stamp highlightId onto the fabric object itself
-    // when the row IS a legacy survey surveyMarker (fabric-carrying surveyMarker row).
+    // when the row IS a legacy survey marker (fabric-carrying survey-marker row).
     // SVGAnnotationLayer.jsx ~line 1248 has a skip-guard `if (obj.highlightId)
-    // continue;` that exists to prevent double-render: survey surveyMarkers are
-    // supposed to render ONLY through the dedicated `surveyHighlightElements`
+    // continue;` that exists to prevent double-render: survey markers are
+    // supposed to render ONLY through the dedicated `surveyMarkerElements`
     // memo, NOT through the main fabric annotations loop. The skip-guard
     // depends on `obj.highlightId` being set on the fabric object — which it
     // wasn't, after a cloud-roundtrip deserialization, so the same surveyMarker
