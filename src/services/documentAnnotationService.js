@@ -5,8 +5,8 @@
  */
 
 import { supabase } from '../supabaseClient';
-import { diffDeletedHighlightIds } from './highlightSyncDiff.js';
-import { highlightSyncDiag } from './highlightSyncDiag.js';
+import { diffDeletedSurveyMarkerIds } from './surveyMarkerSyncDiff.js';
+import { surveyMarkerSyncDiag } from './surveyMarkerSyncDiag.js';
 import { chunkRowsForAnnotationUpsert } from '../utils/annotationBatching.js';
 import {
   buildSurveyMarkerRow,
@@ -73,7 +73,7 @@ const classifyAnnotationSyncError = (error) => {
  * `document_annotations` regardless of `annotation_type`, which caused the
  * cross-device data-loss bug: when a device loaded a document that had an
  * ink stroke (annotation_type='ink') in the cloud, the row got pulled into
- * the legacy `highlightAnnotations` state map with empty/null highlight
+ * the legacy `surveyMarkers` state map with empty/null survey marker
  * fields. The legacy sync useEffect then immediately re-pushed the same
  * row with `annotation_type: 'highlight'` and `bounds: {}`, OVERWRITING
  * the ink stroke's annotation_data via the (document_id, highlight_id)
@@ -110,10 +110,10 @@ export async function getDocumentAnnotations(documentId) {
 
   const filteredRows = rows.filter((row) => !isLegacyFabricHighlightRow(row));
   // Bug 1/2 diag — count what the legacy hydrate kept versus dropped. If a
-  // highlight ever shows up DARKER on the second device, this log + the SVG
-  // layer's surveyHighlightSkip log answer "did the same row come through
+  // survey marker ever shows up DARKER on the second device, this log + the SVG
+  // layer's surveyMarkerSkip log answer "did the same row come through
   // both legacy and new paths" in a single paste.
-  highlightSyncDiag('load.legacy', {
+  surveyMarkerSyncDiag('load.legacy', {
     documentId,
     totalRows: rows.length,
     fabricCarryingDropped: rows.length - filteredRows.length,
@@ -244,9 +244,9 @@ export async function deleteAnnotations(documentId, highlightIds) {
 // ============================================
 
 // Re-export the pure diff helper so existing callers that import it from
-// this module keep working. Implementation lives in `highlightSyncDiff.js`
+// this module keep working. Implementation lives in `surveyMarkerSyncDiff.js`
 // to keep the helper Supabase-free for unit tests under `node --test`.
-export { diffDeletedHighlightIds };
+export { diffDeletedSurveyMarkerIds };
 
 /**
  * Sync all local annotations to Supabase
@@ -254,39 +254,39 @@ export { diffDeletedHighlightIds };
  *
  * @param {string} documentId
  * @param {string} userId
- * @param {object} highlightAnnotations  Current highlightAnnotations dict
+ * @param {object} surveyMarkers  Current surveyMarkers dict
  * @param {object} [options]
- * @param {object|null} [options.priorHighlightAnnotations]  Last-synced state.
+ * @param {object|null} [options.priorSurveyMarkers]  Last-synced state.
  *   When provided, the function diffs prior vs current to find deleted IDs and
  *   calls `deleteAnnotations()` for them BEFORE the upsert. Without this, the
  *   legacy path leaks cloud rows on every erase and peers keep drawing stale
- *   highlights (Bug 2 fix, 2026-04-30).
+ *   survey markers (Bug 2 fix, 2026-04-30).
  */
-export async function syncAnnotationsToSupabase(documentId, userId, highlightAnnotations, options = {}) {
+export async function syncAnnotationsToSupabase(documentId, userId, surveyMarkers, options = {}) {
   if (!documentId || !userId) {
     return { success: false, error: 'Missing documentId or userId' };
   }
 
   // Bug 2 fix: detect erases / removals against the prior synced state and
   // push deletes to the cloud BEFORE the upsert so peers stop rendering
-  // erased highlights. Best-effort — a failed delete logs a warning but does
+  // erased survey markers. Best-effort — a failed delete logs a warning but does
   // not abort the upsert (the upsert remains the more critical write path).
-  const priorHighlightAnnotations = options?.priorHighlightAnnotations;
-  if (priorHighlightAnnotations) {
-    const deletedIds = diffDeletedHighlightIds(priorHighlightAnnotations, highlightAnnotations);
+  const priorSurveyMarkers = options?.priorSurveyMarkers;
+  if (priorSurveyMarkers) {
+    const deletedIds = diffDeletedSurveyMarkerIds(priorSurveyMarkers, surveyMarkers);
     if (deletedIds.length > 0) {
       const { success: deleteSuccess, error: deleteError } = await deleteAnnotations(documentId, deletedIds);
       // Bug 2 diag — log every delete-diff push so the user can confirm that
       // erases on this device generate cloud DELETE events. If a peer never
       // gets the DELETE, this log is the smoking gun (this device WAS told
       // about it; sync upstream is at fault).
-      highlightSyncDiag('push.delete-diff', {
+      surveyMarkerSyncDiag('push.delete-diff', {
         documentId,
         userId,
         deletedIds,
         deletedCount: deletedIds.length,
-        priorCount: Object.keys(priorHighlightAnnotations).length,
-        currentCount: Object.keys(highlightAnnotations || {}).length,
+        priorCount: Object.keys(priorSurveyMarkers).length,
+        currentCount: Object.keys(surveyMarkers || {}).length,
         cloudResult: deleteSuccess ? 'OK' : 'FAILED',
         cloudError: deleteSuccess ? null : (deleteError?.message || String(deleteError)),
       });
@@ -296,7 +296,7 @@ export async function syncAnnotationsToSupabase(documentId, userId, highlightAnn
     }
   }
 
-  const annotations = Object.entries(highlightAnnotations || {}).map(([highlightId, annotation]) =>
+  const annotations = Object.entries(surveyMarkers || {}).map(([highlightId, annotation]) =>
     buildSurveyMarkerRow({
       documentId,
       userId,
@@ -338,18 +338,18 @@ export async function loadAnnotationsFromSupabase(documentId) {
   const { data, error } = await getDocumentAnnotations(documentId);
 
   if (error) {
-    return { highlightAnnotations: {}, error };
+    return { surveyMarkers: {}, error };
   }
 
-  // Convert to local highlightAnnotations format
-  const highlightAnnotations = {};
+  // Convert to local surveyMarkers format
+  const surveyMarkers = {};
   for (const annotation of data) {
     const localAnnotation = mapSurveyMarkerRowToLocalAnnotation(annotation);
     if (!localAnnotation?.highlightId) continue;
-    highlightAnnotations[localAnnotation.highlightId] = localAnnotation;
+    surveyMarkers[localAnnotation.highlightId] = localAnnotation;
   }
 
-  return { highlightAnnotations, error: null };
+  return { surveyMarkers, error: null };
 }
 
 // ============================================

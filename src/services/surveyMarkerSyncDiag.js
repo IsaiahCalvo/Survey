@@ -1,7 +1,7 @@
-// src/services/highlightSyncDiag.js
+// src/services/surveyMarkerSyncDiag.js
 //
-// Highlight cross-device sync diagnostic logger. Production-stripped, dev-only.
-// Default: ON in dev mode. User can hard-disable with `window.__highlightSyncDiag = false`.
+// Survey marker cross-device sync diagnostic logger. Production-stripped, dev-only.
+// Default: ON in dev mode. User can hard-disable with `window.__surveyMarkerSyncDiag = false`.
 //
 // Per project feedback rules:
 //   - feedback_diagnostic_logs_must_identify_pdf — every line records the PDF
@@ -10,7 +10,7 @@
 //     PDFViewer mount in App.jsx as part of the Phase 35 diag setup).
 //   - feedback_diagnostic_log_depth — dump full object state at every
 //     checkpoint. Each call site passes a `payload` with the complete decision
-//     context (highlight IDs, bounds, prior/current counts, deletions, render
+//     context (survey marker IDs, bounds, prior/current counts, deletions, render
 //     source). One paste = one diagnosis.
 //
 // Surface taxonomy (used as the second `[surface]` token in the log prefix):
@@ -21,10 +21,10 @@
 //   push.delete-diff   — syncAnnotationsToSupabase prior-vs-current delete
 //                        detection + cloud-delete result
 //   push.upsert        — syncAnnotationsToSupabase upsert payload + result
-//   render.survey      — SVGAnnotationLayer surveyHighlightElements memo
+//   render.survey      — SVGAnnotationLayer surveyMarkerElements memo
 //                        rebuild — counts, IDs, visibility decisions
-//   render.duplicate   — fired ONLY when the same highlight ID appears in BOTH
-//                        the survey-highlight memo AND the main annotations
+//   render.duplicate   — fired ONLY when the same survey marker ID appears in BOTH
+//                        the survey-marker memo AND the main annotations
 //                        render (Bug 1 detection). Logs the duplicate ID + both
 //                        render-source payloads.
 
@@ -36,7 +36,7 @@ const isProd =
 function isEnabled() {
   if (isProd) return false;
   if (typeof window === 'undefined') return false;
-  if (window.__highlightSyncDiag === false) return false;
+  if (window.__surveyMarkerSyncDiag === false) return false;
   return true;
 }
 
@@ -49,8 +49,8 @@ function pdfName() {
  * @param {string} surface  Surface taxonomy token, e.g. 'push.delete-diff'.
  * @param {object} payload  Full state snapshot for the decision.
  */
-export function highlightSyncDiag(surface, payload = {}) {
+export function surveyMarkerSyncDiag(surface, payload = {}) {
   if (!isEnabled()) return;
   // eslint-disable-next-line no-console
-  console.log(`[HIGHLIGHT-SYNC][${surface}][pdf=${pdfName()}]`, payload);
+  console.log(`[SURVEY-MARKER-SYNC][${surface}][pdf=${pdfName()}]`, payload);
 }

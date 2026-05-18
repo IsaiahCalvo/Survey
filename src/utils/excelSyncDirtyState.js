@@ -14,10 +14,10 @@ const getTemplateSyncIdentity = (template) => ({
   oneDriveFileId: template?.oneDriveFileId || null
 });
 
-export const computeExcelSyncFingerprint = (template, highlightAnnotations = {}) => {
+export const computeExcelSyncFingerprint = (template, surveyMarkers = {}) => {
   const payload = {
     template: getTemplateSyncIdentity(template),
-    highlights: highlightAnnotations || {}
+    highlights: surveyMarkers || {}
   };
   const serialized = JSON.stringify(payload);
   return {
@@ -28,7 +28,7 @@ export const computeExcelSyncFingerprint = (template, highlightAnnotations = {})
 
 export const computeHasPendingExcelSyncChanges = ({
   template,
-  highlightAnnotations,
+  surveyMarkers,
   baselineHash
 }) => {
   if (!template?.linkedExcelPath) {
@@ -39,7 +39,6 @@ export const computeHasPendingExcelSyncChanges = ({
     return true;
   }
 
-  const current = computeExcelSyncFingerprint(template, highlightAnnotations);
+  const current = computeExcelSyncFingerprint(template, surveyMarkers);
   return current.hash !== baselineHash;
 };
-
