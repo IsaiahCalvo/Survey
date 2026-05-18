@@ -54,7 +54,15 @@ export function sanitizeConsoleLogText(text, options = {}) {
     filtered.unshift(`[SaveLog] filtered ${dropped} noisy console lines`);
   }
 
-  let output = filtered.slice(-maxLines).join('\n');
+  // TEMP DIAGNOSTIC 2026-05-18 — locate centering logs can be pushed out of
+  // saved logs by later PDF noise, so keep those lines ahead of the normal trim.
+  const isLocateDiagnosticLine = (line) => (
+    line.includes('[LOCATE-DBG]') ||
+    line.includes('survey_locate_')
+  );
+  const locateDbgLines = filtered.filter(isLocateDiagnosticLine);
+  const nonLocateLines = filtered.filter((l) => !isLocateDiagnosticLine(l));
+  let output = [...locateDbgLines, ...nonLocateLines.slice(-maxLines)].join('\n');
   if (!output.trim()) {
     output = '(no console output captured)';
   }

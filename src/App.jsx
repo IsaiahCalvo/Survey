@@ -27384,8 +27384,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       if (container) {
         const rect = container.getBoundingClientRect();
         const anchor = options.anchor || {};
-        const cursorX = typeof anchor.x === 'number' ? anchor.x : rect.width / 2;
-        const cursorY = typeof anchor.y === 'number' ? anchor.y : rect.height / 2;
+        const hasAnchor = typeof anchor.x === 'number' && typeof anchor.y === 'number';
+        const anchorUsesClientCoordinates = anchor.coordinateSpace === 'client';
+        const cursorX = hasAnchor
+          ? (anchorUsesClientCoordinates ? anchor.x - rect.left : anchor.x)
+          : rect.width / 2;
+        const cursorY = hasAnchor
+          ? (anchorUsesClientCoordinates ? anchor.y - rect.top : anchor.y)
+          : rect.height / 2;
         setAnchor({
           x: cursorX + container.scrollLeft,
           y: cursorY + container.scrollTop
@@ -27454,7 +27460,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         const zoomSource = options.mode || syncfusionZoomSourceRef.current || ZOOM_MODES.MANUAL;
         syncfusionZoomSourceRef.current = zoomSource;
         if (options.anchor && viewer.magnificationModule.initiateMouseZoom) {
-          viewer.magnificationModule.initiateMouseZoom(options.anchor.x, options.anchor.y, zoomPercent);
+          const containerRect = container?.getBoundingClientRect?.();
+          const anchor = options.anchor || {};
+          const anchorUsesClientCoordinates = anchor.coordinateSpace === 'client';
+          const zoomClientX = anchorUsesClientCoordinates || !containerRect
+            ? anchor.x
+            : containerRect.left + anchor.x;
+          const zoomClientY = anchorUsesClientCoordinates || !containerRect
+            ? anchor.y
+            : containerRect.top + anchor.y;
+          viewer.magnificationModule.initiateMouseZoom(zoomClientX, zoomClientY, zoomPercent);
         } else if (viewer.magnificationModule.zoomTo) {
           viewer.magnificationModule.zoomTo(zoomPercent);
         }
@@ -27593,10 +27608,24 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
     const run = (attempt = 0) => {
       const container = containerRef.current;
-      const pageContainer =
+      let pageContainer =
         pageContainersRef.current?.[targetPage] ||
         syncfusionPageContainersStateRef.current?.[targetPage] ||
         null;
+
+      // The page-container ref map only tracks pages Syncfusion has already
+      // rendered, so jumping to a page that wasn't on screen finds nothing
+      // there — the centering then falls back to a plain page jump that
+      // lands on the page but NOT centred on the highlight. When the map
+      // misses, ask the viewer directly for the page element (the same API
+      // refreshSyncfusionPageContainers uses); once goToPage has rendered
+      // the page, a retry picks it up and the precise centring runs.
+      if (!pageContainer && useSyncfusionRenderer) {
+        const liveContainer = syncfusionViewerRef.current?.getPageContainer?.(targetPage);
+        if (liveContainer && liveContainer.isConnected) {
+          pageContainer = liveContainer;
+        }
+      }
 
       if (attempt === 0 && useSyncfusionRenderer && navigateFirst && !pageContainer) {
         goToPage(targetPage, { bypassActiveSpace });
@@ -27665,38 +27694,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         skipIfClosePx > 0 &&
         Math.abs(container.scrollLeft - nextLeft) <= skipIfClosePx &&
         Math.abs(container.scrollTop - nextTop) <= skipIfClosePx;
-      // [LOCATE-DBG] full scroll-math dump — remove after the centering work is done.
-      console.log('[LOCATE-DBG] centerPageBoundsInViewer.run', JSON.stringify({
-        targetPage,
-        attempt,
-        behaviorUsed: attempt > 0 ? retryBehavior : behavior,
-        leftInset,
-        rightInset,
-        skipIfClosePx,
-        isCloseEnough,
-        container: {
-          clientWidth: container.clientWidth,
-          clientHeight: container.clientHeight,
-          scrollWidth: container.scrollWidth,
-          scrollHeight: container.scrollHeight,
-          scrollLeft: container.scrollLeft,
-          scrollTop: container.scrollTop
-        },
-        containerRect: { left: containerRect.left, top: containerRect.top, width: containerRect.width, height: containerRect.height },
-        pageRect: { left: pageRect.left, top: pageRect.top, width: pageRect.width, height: pageRect.height },
-        pageSize: { width: pageSize.width, height: pageSize.height },
-        pageScaleX,
-        pageScaleY,
-        targetBounds,
-        pageOffsetX,
-        pageOffsetY,
-        visibleWidth,
-        visibleHeight,
-        targetScrollLeft,
-        targetScrollTop,
-        nextLeft,
-        nextTop
-      }));
       if (isCloseEnough) {
         return true;
       }
@@ -27715,6 +27712,96 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
     return run(0);
   }, [getBoundsCenter, goToPage, pageSizes, resolvePageContentElement, scrollMode, useSyncfusionRenderer]);
+
+  const centerSurveyHighlightElementInViewer = useCallback((highlightId, options = {}) => {
+    if (!highlightId) return false;
+    const {
+      behavior = 'auto',
+      retryBehavior = 'auto',
+      maxRetries = useSyncfusionRenderer ? 12 : 6,
+      retryDelay = useSyncfusionRenderer ? 80 : 40,
+      leftInset = 0,
+      rightInset = 0,
+      skipIfClosePx = 0,
+    } = options;
+
+    const escapeSelectorValue = (value) => (
+      typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+        ? CSS.escape(String(value))
+        : String(value).replace(/["\\]/g, '\\$&')
+    );
+    const selector = `[data-survey-highlight-id="${escapeSelectorValue(highlightId)}"]`;
+
+    const run = (attempt = 0) => {
+      const container = containerRef.current;
+      const groupElement = typeof document !== 'undefined' ? document.querySelector(selector) : null;
+      const element = groupElement?.querySelector?.(':scope > rect') || groupElement;
+      if (!container || !element) {
+        if (attempt < maxRetries && typeof window !== 'undefined') {
+          window.setTimeout(() => run(attempt + 1), retryDelay);
+        }
+        return false;
+      }
+
+      const containerRect = container.getBoundingClientRect();
+      const elementRect = element.getBoundingClientRect();
+      if (!(elementRect.width > 0) || !(elementRect.height > 0)) {
+        if (attempt < maxRetries && typeof window !== 'undefined') {
+          window.setTimeout(() => run(attempt + 1), retryDelay);
+        }
+        return false;
+      }
+
+      const containerWidth = Number(container.clientWidth) || containerRect.width;
+      const containerHeight = Number(container.clientHeight) || containerRect.height;
+      let effectiveRightInset = Math.max(0, rightInset);
+      if (typeof document !== 'undefined') {
+        const occludingLeft = Array.from(document.querySelectorAll('body *'))
+          .map((node) => node?.getBoundingClientRect?.())
+          .filter((rect) => (
+            rect &&
+            rect.width > 120 &&
+            rect.height >= containerRect.height * 0.75 &&
+            rect.left > containerRect.left + containerRect.width * 0.65 &&
+            rect.left < containerRect.right &&
+            rect.top <= containerRect.top + 4 &&
+            rect.bottom >= containerRect.bottom - 4
+          ))
+          .reduce((minLeft, rect) => Math.min(minLeft, rect.left), Infinity);
+        if (Number.isFinite(occludingLeft)) {
+          effectiveRightInset = Math.max(effectiveRightInset, containerRect.right - occludingLeft);
+        }
+      }
+      const visibleWidth = Math.max(80, containerWidth - Math.max(0, leftInset) - effectiveRightInset);
+      const visibleHeight = Math.max(80, containerHeight);
+      const elementCenterX = elementRect.left + elementRect.width / 2;
+      const elementCenterY = elementRect.top + elementRect.height / 2;
+      const viewportCenterX = containerRect.left + Math.max(0, leftInset) + visibleWidth / 2;
+      const viewportCenterY = containerRect.top + visibleHeight / 2;
+
+      const targetScrollLeft = container.scrollLeft + elementCenterX - viewportCenterX;
+      const targetScrollTop = container.scrollTop + elementCenterY - viewportCenterY;
+      const maxScrollLeft = Math.max(0, container.scrollWidth - container.clientWidth);
+      const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+      const nextLeft = Math.max(0, Math.min(targetScrollLeft, maxScrollLeft));
+      const nextTop = Math.max(0, Math.min(targetScrollTop, maxScrollTop));
+      const isCloseEnough =
+        skipIfClosePx > 0 &&
+        Math.abs(container.scrollLeft - nextLeft) <= skipIfClosePx &&
+        Math.abs(container.scrollTop - nextTop) <= skipIfClosePx;
+
+      if (isCloseEnough) return true;
+
+      container.scrollTo({
+        left: nextLeft,
+        top: nextTop,
+        behavior: attempt > 0 ? retryBehavior : behavior,
+      });
+      return true;
+    };
+
+    return run(0);
+  }, [useSyncfusionRenderer]);
 
   // Navigate to a search match with zoom and centering
   const navigateToMatch = useCallback((match, index) => {
@@ -30769,23 +30856,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       return;
     }
 
-    const currentScale = Math.max(0.01, Number(scaleRef.current) || Number(scale) || 1);
-    const targetScale = Math.max(currentScale, 1.5);
-    const shouldZoom = targetScale > currentScale + 0.05;
-    // [LOCATE-DBG] entry snapshot — remove after the centering work is done.
-    console.log('[LOCATE-DBG] handleLocateItemOnPDF', JSON.stringify({
-      pageNumber,
-      highlightId,
-      bounds,
-      currentScale,
-      targetScale,
-      shouldZoom,
-      path: shouldZoom ? 'zoom-two-pass' : 'no-zoom-single',
-      containerClientWidth: containerRef.current?.clientWidth ?? null,
-      containerClientHeight: containerRef.current?.clientHeight ?? null,
-      containerScrollLeft: containerRef.current?.scrollLeft ?? null,
-      containerScrollTop: containerRef.current?.scrollTop ?? null
-    }));
     if (highlightId) {
       setActiveTool('select');
       setPendingSurveyHighlightSelection({
@@ -30795,13 +30865,59 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       });
     }
 
+    const currentScale = Math.max(0.01, Number(scaleRef.current) || Number(scale) || 1);
+    const targetScale = Math.max(currentScale, 1.5);
+    const shouldZoom = targetScale > currentScale + 0.05;
+
+    debugMark('survey_locate_start', {
+      pageNumber,
+      highlightId,
+      currentScale,
+      targetScale,
+      shouldZoom,
+    });
+
+    const centerRenderedHighlight = ({
+      behavior = 'auto',
+      retryBehavior = 'auto',
+      skipIfClosePx = 8,
+    } = {}) => {
+      if (!highlightId) return false;
+      return centerSurveyHighlightElementInViewer(highlightId, {
+        behavior,
+        retryBehavior,
+        maxRetries: useSyncfusionRenderer ? 14 : 8,
+        retryDelay: useSyncfusionRenderer ? 80 : 40,
+        rightInset: 0,
+        skipIfClosePx,
+      });
+    };
+
     const centerHighlight = ({
       navigateFirst = true,
       behavior = 'smooth',
       retryBehavior = 'smooth',
-      skipIfClosePx = 0
+      skipIfClosePx = 0,
+      exactDelay = useSyncfusionRenderer ? 120 : 60,
+      preferRenderedHighlight = true,
     } = {}) => {
-      centerPageBoundsInViewer(pageNumber, bounds, {
+      const shouldRunExactPass = Number.isFinite(exactDelay) && exactDelay >= 0;
+      if (preferRenderedHighlight && centerRenderedHighlight({
+        behavior,
+        retryBehavior,
+        skipIfClosePx: Math.max(4, skipIfClosePx || 8),
+      })) {
+        if (highlightId && shouldRunExactPass && typeof window !== 'undefined') {
+          window.setTimeout(() => centerRenderedHighlight({
+            behavior: 'auto',
+            retryBehavior: 'auto',
+            skipIfClosePx: 0,
+          }), exactDelay);
+        }
+        return true;
+      }
+
+      const centered = centerPageBoundsInViewer(pageNumber, bounds, {
         behavior,
         maxRetries: useSyncfusionRenderer ? 18 : 8,
         retryDelay: useSyncfusionRenderer ? 80 : 40,
@@ -30813,32 +30929,123 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         retryBehavior,
         skipIfClosePx
       });
+      if (highlightId && shouldRunExactPass && typeof window !== 'undefined') {
+        window.setTimeout(() => centerRenderedHighlight({
+          behavior: retryBehavior,
+          retryBehavior,
+          skipIfClosePx: skipIfClosePx || 0,
+        }), exactDelay);
+      }
+      return centered;
+    };
+
+    const getRenderedPageScale = () => {
+      if (typeof document === 'undefined') return null;
+      const pageContainer =
+        pageContainersRef.current?.[pageNumber] ||
+        syncfusionPageContainersStateRef.current?.[pageNumber] ||
+        syncfusionViewerRef.current?.getPageContainer?.(pageNumber) ||
+        null;
+      const pageElement = resolvePageContentElement(pageContainer) || pageContainer;
+      const pageRect = pageElement?.getBoundingClientRect?.();
+      const pageSize = pageSizesRef.current?.[pageNumber] || {};
+      if (!pageRect || !(pageRect.width > 0) || !(Number(pageSize.width) > 0)) {
+        return null;
+      }
+      return pageRect.width / Number(pageSize.width);
+    };
+
+    const centerAfterZoomSettles = () => {
+      if (typeof window === 'undefined') return;
+      const maxAttempts = useSyncfusionRenderer ? 30 : 8;
+      const retryDelay = useSyncfusionRenderer ? 40 : 25;
+      const initialScrollWidth = Number(containerRef.current?.scrollWidth) || 0;
+      const initialScrollHeight = Number(containerRef.current?.scrollHeight) || 0;
+      const scaleRatio = currentScale > 0 ? targetScale / currentScale : 1;
+      const expectedZoomText = `${Math.round(targetScale * 100)}%`;
+
+      const readZoomDomState = () => {
+        if (typeof document === 'undefined') {
+          return { renderedScale: null, scrollReady: false, toolbarReady: false };
+        }
+        const container = containerRef.current;
+        const zoomText = Array.from(document.querySelectorAll('button'))
+          .map((button) => (button.innerText || '').trim())
+          .find((text) => /^\d+%$/.test(text)) || '';
+        const scrollReady =
+          !!container &&
+          scaleRatio > 1.05 &&
+          (
+            (initialScrollWidth > 0 && container.scrollWidth >= initialScrollWidth * Math.min(scaleRatio * 0.82, scaleRatio - 0.1)) ||
+            (initialScrollHeight > 0 && container.scrollHeight >= initialScrollHeight * Math.min(scaleRatio * 0.82, scaleRatio - 0.1))
+          );
+
+        return {
+          renderedScale: getRenderedPageScale(),
+          scrollReady,
+          toolbarReady: zoomText === expectedZoomText,
+        };
+      };
+
+      const run = (attempt = 0) => {
+        const { renderedScale, scrollReady, toolbarReady } = readZoomDomState();
+        const scaleReady =
+          !useSyncfusionRenderer ||
+          (Number.isFinite(renderedScale) && Math.abs(renderedScale - targetScale) <= 0.08) ||
+          scrollReady ||
+          toolbarReady ||
+          attempt >= maxAttempts;
+
+        if (!scaleReady) {
+          window.setTimeout(() => run(attempt + 1), retryDelay);
+          return;
+        }
+
+        const centered = centerHighlight({
+          navigateFirst: true,
+          behavior: 'auto',
+          retryBehavior: 'auto',
+          skipIfClosePx: 0,
+          exactDelay: null,
+        });
+
+        debugMark('survey_locate_zoom_center', {
+          pageNumber,
+          highlightId,
+          targetScale,
+          renderedScale,
+          scrollReady,
+          toolbarReady,
+          attempt,
+          centered,
+        });
+      };
+
+      window.setTimeout(() => run(0), retryDelay);
     };
 
     if (shouldZoom) {
       setScaleWithViewportPreservation(targetScale, { preserveCenter: false });
-      setTimeout(() => centerHighlight({
-        navigateFirst: true,
-        behavior: 'smooth',
-        retryBehavior: 'smooth'
-      }), useSyncfusionRenderer ? 180 : 60);
-      setTimeout(() => centerHighlight({
-        navigateFirst: false,
-        behavior: 'auto',
-        retryBehavior: 'auto',
-        skipIfClosePx: 24
-      }), useSyncfusionRenderer ? 620 : 240);
+      centerAfterZoomSettles();
       return;
     }
 
+    debugMark('survey_locate_direct_center', {
+      pageNumber,
+      highlightId,
+      targetScale: currentScale,
+    });
     centerHighlight({
       navigateFirst: true,
       behavior: 'smooth',
-      retryBehavior: 'smooth'
+      retryBehavior: 'smooth',
+      exactDelay: null,
     });
   }, [
+    centerSurveyHighlightElementInViewer,
     centerPageBoundsInViewer,
     goToPage,
+    resolvePageContentElement,
     scale,
     setActiveTool,
     setScaleWithViewportPreservation,
