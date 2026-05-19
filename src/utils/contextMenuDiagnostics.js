@@ -161,6 +161,18 @@ function diag(line) {
       return;
     }
 
+    // Survey Markers have no right-click menu in this release. A right-click
+    // that lands on a Survey Marker's interactive hit area is fully swallowed
+    // here — no annotation/page menu and no native browser menu — so nothing
+    // happens, matching the properties-panel suppression above.
+    if (e.target && typeof e.target.closest === 'function'
+        && e.target.closest('[data-survey-marker-id]')) {
+      diag('[CTXDIAG] suppressed — on survey marker');
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+
     const { pageNumber, annotationIndex, calloutId, kind, groupIndices } = resolveAnnotationAt(e);
     const globalHandler = typeof window.__onAnnotationContextMenu === 'function'
       ? window.__onAnnotationContextMenu
