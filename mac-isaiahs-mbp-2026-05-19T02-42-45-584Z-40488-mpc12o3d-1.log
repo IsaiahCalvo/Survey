@@ -1,0 +1,443 @@
+===== SurveyApp Save Log =====
+version:   0.1.46
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1203x822
+locale:    en-US
+timestamp: 2026-05-19T02:42:45.582Z (5/18/2026, 10:42:45 PM)
+==============================
+[DebugBridge +13869.2ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779157453553-rpz0nxd89","currentScale":0.679697546823158,"targetScale":1.5,"shouldZoom":true}
+[DebugBridge +13974.7ms] survey_locate_zoom_center {"pageNumber":1,"highlightId":"surveyMarker-1779157453553-rpz0nxd89","targetScale":1.5,"renderedScale":2,"scrollReady":false,"toolbarReady":true,"attempt":0,"centered":false}
+[DebugBridge +15181.4ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779157453553-rpz0nxd89","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +15181.6ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779157453553-rpz0nxd89","targetScale":1.5}
+[DebugBridge +15359.4ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779157453553-rpz0nxd89","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +15359.5ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779157453553-rpz0nxd89","targetScale":1.5}
+[DebugBridge +20078.8ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779157453553-tr4kjr9cu","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +20079.1ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779157453553-tr4kjr9cu","targetScale":1.5}
+[DebugBridge +24839.0ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779157453553-evv35b09p","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +24839.1ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779157453553-evv35b09p","targetScale":1.5}
+[DebugBridge +25151.5ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779157453553-evv35b09p","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +25151.6ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779157453553-evv35b09p","targetScale":1.5}
+[DebugBridge +25338.4ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779157453553-evv35b09p","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +25338.5ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779157453553-evv35b09p","targetScale":1.5}
+[DebugBridge +25510.7ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779157453553-evv35b09p","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +25510.9ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779157453553-evv35b09p","targetScale":1.5}
+[DebugBridge +25692.6ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779157453553-evv35b09p","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +25692.7ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779157453553-evv35b09p","targetScale":1.5}
+[DebugBridge +30367.6ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779149067882-re5p2wtnk","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +30367.7ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779149067882-re5p2wtnk","targetScale":1.5}
+[DebugBridge +33951.1ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779146015119-5v5p5dbvm","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +33951.3ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779146015119-5v5p5dbvm","targetScale":1.5}
+[DebugBridge +35201.2ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779157453553-z0jd4ied8","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +35201.3ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779157453553-z0jd4ied8","targetScale":1.5}
+[DebugBridge +35742.7ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779157453553-z0jd4ied8","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +35742.9ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779157453553-z0jd4ied8","targetScale":1.5}
+[DebugBridge +35930.2ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779157453553-z0jd4ied8","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +35930.4ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779157453553-z0jd4ied8","targetScale":1.5}
+[DebugBridge +36105.1ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779157453553-z0jd4ied8","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +36105.3ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779157453553-z0jd4ied8","targetScale":1.5}
+[DebugBridge +36301.6ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779157453553-z0jd4ied8","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +36301.8ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779157453553-z0jd4ied8","targetScale":1.5}
+[DebugBridge +36543.2ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779157453553-z0jd4ied8","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +36543.3ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779157453553-z0jd4ied8","targetScale":1.5}
+[dev-auto-login] boot {"hasDevEmail":true,"devEmailHint":"isai***","hasDevPassword":true,"hasCachedSession":true,"cachedSessionEmail":"isaiahcalvo123@gmail.com","cachedSessionExpiresAt":1779160234}
+[dev-auto-login] cached session matches dev email, keeping it
+[dev-auto-login] decision {"needsAutoLogin":false,"willAttemptSignIn":false}
+[CloudSync][hook] session id minted {"sessionId":"4826eb7f-1963-4181-955f-54b9ae4d8855"}
+[CloudSync][hook][state-obs] annotationsByPage initial {"currentCount":0,"pages":0,"hydrated":false}
+[CloudSync][hook][state-obs] callouts initial {"currentCount":0,"hydrated":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"hydrateEnabled":true,"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":null}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"hydrateEnabled":true,"hasDocumentId":true,"hasUserId":true,"hasPdfId":false}
+[AnnotationHydrationGate][normal] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":null,"ready":false,"source":"missing-prerequisite","normalReady":false,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true}
+[AnnotationHydrationGate][first-page] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":null,"pageNumber":1,"ready":false,"visualCoverActive":true,"normal":{"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":null,"ready":false,"source":"pending","firstPaintGate":true},"survey":{"ready":true,"source":"local"}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":null,"pageNumber":1,"active":true,"reason":"annotation-hydration-gated"}
+[Cloud render cache] doc=SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080 painting verified cloud snapshot immediately — count=503.
+[CSeries wipe] doc=SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080 totalCounters=1 legacyRemoved=0 — nothing to wipe.
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":null,"alreadyRanFor":null,"willRun":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"hydrateEnabled":true,"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080"}
+[AnnotationHydrationGate][normal] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","ready":false,"source":"starting","normalReady":false,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true}
+[CloudSync][hook] stage=hydrating
+[AnnotationHydrationGate][first-page] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"ready":false,"visualCoverActive":true,"normal":{"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":null,"ready":false,"source":"missing-prerequisite","normalReady":false,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true},"survey":{"ready":false,"source":"supabase-highlight-starting","documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080"}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"active":true,"reason":"annotation-hydration-gated"}
+[AnnotationHydrationGate][first-page] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"ready":false,"visualCoverActive":true,"normal":{"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","ready":false,"source":"starting","normalReady":false,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true},"survey":{"ready":false,"source":"supabase-highlight-starting","documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080"}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"active":true,"reason":"annotation-hydration-gated"}
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","alreadyRanFor":null,"willRun":true}
+[Phase31 UAT] backfill:start {"hasYdoc":true,"hasSupabase":true,"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","markCutoverComplete":true}
+[SURVEY-MARKER-SYNC][load.legacy][pdf=SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","totalRows":6,"fabricCarryingDropped":0,"keptCount":6,"keptIds":["surveyMarker-1779149067882-re5p2wtnk","surveyMarker-1779157453553-z0jd4ied8","surveyMarker-1779157453553-evv35b09p","surveyMarker-1779157453553-tr4kjr9cu","surveyMarker-1779157453553-rpz0nxd89","surveyMarker-1779146015119-5v5p5dbvm"]}
+[AnnotationHydrationGate][survey] supabase surveyMarkers complete {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","count":6}
+[AnnotationHydrationGate][first-page] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"ready":false,"visualCoverActive":true,"normal":{"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","ready":false,"source":"starting","normalReady":false,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true},"survey":{"ready":true,"source":"supabase-highlight","documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","count":6}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"active":true,"reason":"annotation-hydration-gated"}
+[CloudSync][hook] cutover-complete hydrate — reading from Y.Doc {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","cutoverTs":"2026-05-18T02:05:48.746+00:00"}
+[Phase31 UAT] hydrate:cutover-sealed {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-18T02:05:48.746+00:00","yMapSize":503,"yMapCalloutsSize":4,"materializedTotal":503,"materializedCallouts":4,"materializedDrawnByMe":503,"materializedDrawnByOthers":0,"materializedImported":0,"pages":1,"perPage":{"1":503},"currentStateCount":503,"ydocLooksDegenerate":false}
+[Phase31 UAT] hydrate:cutover-sealed:by-type {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfFile":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","viewerUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapTotal":503,"yMapCalloutsTotal":4,"yMapByType":{"path":4,"polygon":1,"rect":494,"circle":1,"ellipse":1,"textbox":2},"yMapByAuthor":{"byMe":503,"byOthers":0,"anonymous":0},"yMapByTypeByAuthor":{"path":{"byMe":4,"byOthers":0,"anonymous":0},"polygon":{"byMe":1,"byOthers":0,"anonymous":0},"rect":{"byMe":494,"byOthers":0,"anonymous":0},"circle":{"byMe":1,"byOthers":0,"anonymous":0},"ellipse":{"byMe":1,"byOthers":0,"anonymous":0},"textbox":{"byMe":2,"byOthers":0,"anonymous":0}},"yMapPerTypePerPage":{"path":{"unknown":4},"polygon":{"unknown":1},"rect":{"unknown":494},"circle":{"unknown":1},"ellipse":{"unknown":1},"textbox":{"unknown":2}},"byPageTotal":503,"byPageByType":{"path":4,"polygon":1,"rect":494,"circle":1,"ellipse":1,"textbox":2},"byPagePerPagePerType":{"1":{"path":4,"polygon":1,"rect":494,"circle":1,"ellipse":1,"textbox":2}}}
+[CloudSync][hydrate] loadAllNonSurveyMarkerAnnotations start {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9"}
+[CloudSync][hook] fabric push skipped — not hydrated yet
+[CloudSync][hook] callout push skipped — not hydrated yet
+[CloudSync][realtime] subscribing {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","currentUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","currentSessionId":"4826eb7f-1963-4181-955f-54b9ae4d8855","hasFabricInsert":true,"hasFabricUpdate":true,"hasFabricDelete":true,"hasCalloutInsert":true,"hasCalloutUpdate":true,"hasCalloutDelete":true}
+[PDFImport] skipped embedded PDF annotation import — cloud/Y.Doc is authoritative {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9"}
+[Phase31 UAT] backfill:cutover-dedupe-anchor-skip {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapSize":503,"lastGoodSize":502}
+[crdtDedupePdfImports] removed 1 duplicate PDF-imported annotations across 4 unique signatures
+[CloudSync][hook] dedupe-resync — restoring state {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","removed":1,"resyncCount":502}
+[CloudSync][hook][state-obs] SHRINK {"prevCount":503,"currentCount":502,"delta":-1,"hydrated":false,"sameRefAsLastByPage":true,"stack":"    at commitHookEffectListMount (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=cbd96b62:23793:34) |     at commitPassiveMountOnFiber (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=cbd96b62:25034:19) |     at commitPassiveMountEffects_complete (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=cbd96b62:25007:17) |     at commitPassiveMountEffects_begin (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=cbd96b62:24997:15) |     at commitPassiveMountEffects (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=cbd96b62:24987:11) |     at flushPassiveEffectsImpl (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=cbd96b62:26368:11)"}
+[CloudSync][hook] fabric push skipped — not hydrated yet
+[CloudSync][realtime] subscribe status {"status":"SUBSCRIBED","error":null}
+[Phase31 UAT] post-subscribe catch-up skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-18T02:05:48.746+00:00","ydocAuthoritative":true}
+[CloudSync][hydrate] loadAllNonSurveyMarkerAnnotations ok {"elapsedMs":443,"totalRowsScanned":507,"scanned":{"nonSurveyMarker":507,"legacyFabricSurveyMarkers":0},"totalRows":507,"rowsByType":{"polygon":1,"ink":4,"counter":1,"square":494,"circle":1,"freetext":2,"callout":4},"pagesWithObjects":26,"calloutCount":4}
+[CloudSync][verify] first read summary {"contextLabel":"cutover-source-of-truth","documentId":"00e1cde9-449b-4771-9743-37bd604557a9","elapsedMs":444,"firstFabricPages":26,"firstFabricObjects":503,"firstCallouts":4,"firstEmpty":false,"localFabricCount":503,"localCalloutCount":4,"localHasData":true,"willVerify":false}
+[CloudSync][source-of-truth] cutover initial hydrate selected Supabase durable snapshot {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-18T02:05:48.746+00:00","ydocFabricCount":503,"ydocCalloutCount":4,"supabaseFabricCount":503,"supabaseCalloutCount":4,"rule":"Supabase durable snapshot wins initial load; Y.Doc is reshaped for live collaboration"}
+[Phase31 UAT] save:fan-out done {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","actionType":null,"dispatched":503,"yDocUpdateCount":503,"detected":503,"skippedSurveyMarkerOrCallout":0,"skippedOtherType":0,"rawTypeBreakdown":{"pen":2,"counter":1,"rect":494,"ellipse":1,"textbox":2,"highlighter":1,"polygon":1,"path":1},"resolvedTypeBreakdown":{"ink":4,"counter":1,"square":494,"circle":1,"freetext":2,"polygon":1},"skipReasons":{},"skipSamples":[],"yMapSizeAfter":503}
+[CloudSync][hook] callout Y.Doc fan-out done {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","actionType":"callout:delta","upserted":4,"deleted":0,"yDocUpdateCount":4,"yMapCalloutsSizeAfter":4}
+[AnnotationHydrationGate][normal] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","ready":true,"source":"supabase-durable-snapshot","normalReady":true,"cutoverTs":"2026-05-18T02:05:48.746+00:00","count":503,"calloutCount":4,"firstPaintGate":true}
+[AnnotationHydrationGate][first-page] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"ready":true,"visualCoverActive":false,"normal":{"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","ready":true,"source":"supabase-durable-snapshot","normalReady":true,"cutoverTs":"2026-05-18T02:05:48.746+00:00","count":503,"calloutCount":4,"firstPaintGate":true},"survey":{"ready":true,"source":"supabase-highlight","documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","count":6}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"active":false,"reason":"hydration-ready"}
+[PDFCounterImport] summary {"marker":"survey-counter","metadataKey":"SurveyApp","counterAnnotationsImported":0,"plainCirclesImported":0,"counterMetadataParseFailures":0,"appCalloutMarker":"survey-callout","appCalloutMetadataKey":"SurveyAppCallout","appCalloutAnnotationsImported":0,"appCalloutPiecesSkipped":0}
+[PDFAppLayerStateImport] summary {"found":false,"documentId":null,"exportId":null,"scopedAnnotationPages":0,"scopedCallouts":0,"surveyMarkers":0,"spaces":0}
+[PDFImport] native layer policy {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","cloudAuthoritative":true,"reason":"cloud/Y.Doc annotations are authoritative; native PDF annotation layer is hidden when all renderable native annotations are accounted for by importer diagnostics.","pages":{"1":{"hideNativeLayer":true,"nativeRenderableAnnotationCount":2,"nativeOnlyAnnotationCount":0,"reason":"all-renderable-native-annotations-imported-as-editable-app-annotations"},"2":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"3":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"4":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"5":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"6":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"7":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"8":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"9":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"10":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"11":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"12":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"13":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"14":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"15":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"16":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"17":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"18":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"19":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"20":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"21":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"22":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"23":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"24":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"25":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"26":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"27":{"hideN... [truncated 24 chars]
+[PrintPanel] RENDER — panel closed
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[DebugBridge +6589.2ms] pdf_loaded {"pageCount":99,"currentPage":1}
+[DebugBridge +6652.5ms] zoom_start {"scale":0.8799,"targetScale":0.9,"source":"zoomChange"}
+[HyperlinkDiag] post-load scan {"hyperlinkCount":0,"samples":[]}
+[HyperlinkDiag] page 1 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG","IMG","IMG","IMG","e-pv-text-layer"]}
+[HyperlinkDiag] page 2 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG","IMG","e-pv-text-layer","IMG","IMG"]}
+[HyperlinkDiag] page 3 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer","IMG","IMG","IMG","IMG"]}
+[HyperlinkDiag] page 4 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG","e-pv-text-layer"]}
+[HyperlinkDiag] page 5 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 6 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 7 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 8 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 9 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 10 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[DebugBridge +8295.3ms] zoom_end {"source":"zoomChange_settle"}
+[DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p5] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p5] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+console.error @ Warning: Received NaN for the `%s` attribute. If this is expected, cast the value to a string.%s width 
+    at rect
+    at g
+    at g
+    at svg
+    at http://localhost:5173/src/components/SVGAnnotationLayer.jsx:155:3
+    at div
+    at div
+    at div
+    at div
+    at div
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1779158327757:11017:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1779158327757:41945:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:31:5)
+console.error @ Warning: Received NaN for the `%s` attribute. If this is expected, cast the value to a string.%s height 
+    at rect
+    at g
+    at g
+    at svg
+    at http://localhost:5173/src/components/SVGAnnotationLayer.jsx:155:3
+    at div
+    at div
+    at div
+    at div
+    at div
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1779158327757:11017:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1779158327757:41945:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:31:5)
+[Phase31 UAT] focus rehydrate skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-18T02:05:48.746+00:00","ydocAuthoritative":true}
+[DebugBridge +13869.6ms] zoom_start {"scale":0.679697546823158,"targetScale":1.5,"source":"keyboard_toolbar"}
+[Diag] tool-switch DETECTED → select (scheduling t+1000ms capture)
+console.error @ Warning: Received NaN for the `%s` attribute. If this is expected, cast the value to a string.%s x 
+    at rect
+    at g
+    at _c (http://localhost:5173/src/components/SVGSelectionOverlay.jsx:34:3)
+    at g
+    at g
+    at svg
+    at http://localhost:5173/src/components/SVGAnnotationLayer.jsx:155:3
+    at div
+    at div
+    at div
+    at div
+    at div
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1779158327757:11017:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1779158327757:41945:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:31:5)
+console.error @ Warning: Received NaN for the `%s` attribute. If this is expected, cast the value to a string.%s y 
+    at rect
+    at g
+    at _c (http://localhost:5173/src/components/SVGSelectionOverlay.jsx:34:3)
+    at g
+    at g
+    at svg
+    at http://localhost:5173/src/components/SVGAnnotationLayer.jsx:155:3
+    at div
+    at div
+    at div
+    at div
+    at div
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1779158327757:11017:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1779158327757:41945:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:31:5)
+console.error @ Warning: Received NaN for the `%s` attribute. If this is expected, cast the value to a string.%s cx 
+    at circle
+    at g
+    at _c (http://localhost:5173/src/components/SVGSelectionOverlay.jsx:34:3)
+    at g
+    at g
+    at svg
+    at http://localhost:5173/src/components/SVGAnnotationLayer.jsx:155:3
+    at div
+    at div
+    at div
+    at div
+    at div
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1779158327757:11017:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1779158327757:41945:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:31:5)
+console.error @ Warning: Received NaN for the `%s` attribute. If this is expected, cast the value to a string.%s cy 
+    at circle
+    at g
+    at _c (http://localhost:5173/src/components/SVGSelectionOverlay.jsx:34:3)
+    at g
+    at g
+    at svg
+    at http://localhost:5173/src/components/SVGAnnotationLayer.jsx:155:3
+    at div
+    at div
+    at div
+    at div
+    at div
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1779158327757:11017:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1779158327757:41945:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:31:5)
+console.error @ Warning: Received NaN for the `%s` attribute. If this is expected, cast the value to a string.%s x1 
+    at line
+    at g
+    at g
+    at _c (http://localhost:5173/src/components/SVGSelectionOverlay.jsx:34:3)
+    at g
+    at g
+    at svg
+    at http://localhost:5173/src/components/SVGAnnotationLayer.jsx:155:3
+    at div
+    at div
+    at div
+    at div
+    at div
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1779158327757:11017:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1779158327757:41945:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:31:5)
+console.error @ Warning: Received NaN for the `%s` attribute. If this is expected, cast the value to a string.%s y1 
+    at line
+    at g
+    at g
+    at _c (http://localhost:5173/src/components/SVGSelectionOverlay.jsx:34:3)
+    at g
+    at g
+    at svg
+    at http://localhost:5173/src/components/SVGAnnotationLayer.jsx:155:3
+    at div
+    at div
+    at div
+    at div
+    at div
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1779158327757:11017:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1779158327757:41945:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:31:5)
+console.error @ Warning: Received NaN for the `%s` attribute. If this is expected, cast the value to a string.%s x2 
+    at line
+    at g
+    at g
+    at _c (http://localhost:5173/src/components/SVGSelectionOverlay.jsx:34:3)
+    at g
+    at g
+    at svg
+    at http://localhost:5173/src/components/SVGAnnotationLayer.jsx:155:3
+    at div
+    at div
+    at div
+    at div
+    at div
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1779158327757:11017:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1779158327757:41945:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:31:5)
+console.error @ Warning: Received NaN for the `%s` attribute. If this is expected, cast the value to a string.%s y2 
+    at line
+    at g
+    at g
+    at _c (http://localhost:5173/src/components/SVGSelectionOverlay.jsx:34:3)
+    at g
+    at g
+    at svg
+    at http://localhost:5173/src/components/SVGAnnotationLayer.jsx:155:3
+    at div
+    at div
+    at div
+    at div
+    at div
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1779158327757:11017:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:119:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:103:32)
+    at div
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1779158327757:41945:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:37:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:31:5)
+[Diag select] screenshot saved (155 KB) → /Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/TestLogs/testlog-screenshot-select.png
+[Diag select] CAPTURED @ t+1002ms — annotations=10 callouts=3 svgWrappers=1 svgVis=[visible] svgElems=0 svgVisElems=0 eraserCanvases=0 svgMarkupBytes=3862
+[DebugBridge +15316.0ms] zoom_end {"source":"zoomChange_settle"}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":6}
+[UndoDiag] {"seq":2,"order":1,"at":"2026-05-19T02:41:36.297Z","event":"checkpoint_added","actionType":"delete","rawActionType":"highlight:delete","annotationType":"fabric","annotationId":"surveyMarker-1779157453553-rpz0nxd89","pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":1,"redoDepth":0}
+[Phase31 UAT] focus rehydrate skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-18T02:05:48.746+00:00","ydocAuthoritative":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[CloudSync][realtime] applying DELETE {"payloadKeys":["id"]}
+[Phase31 UAT] delete-fallback refetch skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-18T02:05:48.746+00:00","ydocAuthoritative":true}
+[DocumentSync] unmount flush — pushing pending highlight sync
+[SURVEY-MARKER-SYNC][push.delete-diff][pdf=SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","deletedIds":["surveyMarker-1779157453553-rpz0nxd89"],"deletedCount":1,"priorCount":6,"currentCount":5,"cloudResult":"OK","cloudError":null}
+[Phase31 UAT] focus rehydrate skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-18T02:05:48.746+00:00","ydocAuthoritative":true}
+[SURVEY-MARKER-SYNC][push.delete-diff][pdf=SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","deletedIds":["surveyMarker-1779157453553-rpz0nxd89"],"deletedCount":1,"priorCount":6,"currentCount":5,"cloudResult":"OK","cloudError":null}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":5}
+[UndoDiag] {"seq":3,"order":2,"at":"2026-05-19T02:41:41.128Z","event":"checkpoint_added","actionType":"delete","rawActionType":"highlight:delete","annotationType":"fabric","annotationId":"surveyMarker-1779157453553-tr4kjr9cu","pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":2,"redoDepth":0}
+[Phase31 UAT] focus rehydrate skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-18T02:05:48.746+00:00","ydocAuthoritative":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[CloudSync][realtime] applying DELETE {"payloadKeys":["id"]}
+[Phase31 UAT] delete-fallback refetch skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-18T02:05:48.746+00:00","ydocAuthoritative":true}
+[DocumentSync] unmount flush — pushing pending highlight sync
+[SURVEY-MARKER-SYNC][push.delete-diff][pdf=SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","deletedIds":["surveyMarker-1779157453553-tr4kjr9cu"],"deletedCount":1,"priorCount":5,"currentCount":4,"cloudResult":"OK","cloudError":null}
+[Phase31 UAT] focus rehydrate skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-18T02:05:48.746+00:00","ydocAuthoritative":true}
+[SURVEY-MARKER-SYNC][push.delete-diff][pdf=SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","deletedIds":["surveyMarker-1779157453553-tr4kjr9cu"],"deletedCount":1,"priorCount":5,"currentCount":4,"cloudResult":"OK","cloudError":null}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":4}
+[UndoDiag] {"seq":4,"order":3,"at":"2026-05-19T02:41:46.947Z","event":"checkpoint_added","actionType":"delete","rawActionType":"highlight:delete","annotationType":"fabric","annotationId":"surveyMarker-1779157453553-evv35b09p","pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":3,"redoDepth":0}
+[Phase31 UAT] focus rehydrate skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-18T02:05:48.746+00:00","ydocAuthoritative":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[CloudSync][realtime] applying DELETE {"payloadKeys":["id"]}
+[Phase31 UAT] delete-fallback refetch skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-18T02:05:48.746+00:00","ydocAuthoritative":true}
+[DocumentSync] unmount flush — pushing pending highlight sync
+[Phase31 UAT] focus rehydrate skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-18T02:05:48.746+00:00","ydocAuthoritative":true}
+[SURVEY-MARKER-SYNC][push.delete-diff][pdf=SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","deletedIds":["surveyMarker-1779157453553-evv35b09p"],"deletedCount":1,"priorCount":4,"currentCount":3,"cloudResult":"OK","cloudError":null}
+[SURVEY-MARKER-SYNC][push.delete-diff][pdf=SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","deletedIds":["surveyMarker-1779157453553-evv35b09p"],"deletedCount":1,"priorCount":4,"currentCount":3,"cloudResult":"OK","cloudError":null}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":3}
+[UndoDiag] {"seq":5,"order":4,"at":"2026-05-19T02:41:58.525Z","event":"checkpoint_added","actionType":"delete","rawActionType":"highlight:delete","annotationType":"fabric","annotationId":"surveyMarker-1779157453553-z0jd4ied8","pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":4,"redoDepth":0}
+[Phase31 UAT] focus rehydrate skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-18T02:05:48.746+00:00","ydocAuthoritative":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[CloudSync][realtime] applying DELETE {"payloadKeys":["id"]}
+[Phase31 UAT] delete-fallback refetch skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-18T02:05:48.746+00:00","ydocAuthoritative":true}
+[DocumentSync] unmount flush — pushing pending highlight sync
+[SURVEY-MARKER-SYNC][push.delete-diff][pdf=SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","deletedIds":["surveyMarker-1779157453553-z0jd4ied8"],"deletedCount":1,"priorCount":3,"currentCount":2,"cloudResult":"OK","cloudError":null}
+[Phase31 UAT] focus rehydrate skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-18T02:05:48.746+00:00","ydocAuthoritative":true}
+[SURVEY-MARKER-SYNC][push.delete-diff][pdf=SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","deletedIds":["surveyMarker-1779157453553-z0jd4ied8"],"deletedCount":1,"priorCount":3,"currentCount":2,"cloudResult":"OK","cloudError":null}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+[PDFSaveExport] action start {"actionType":"app-state-save","documentId":"00e1cde9-449b-4771-9743-37bd604557a9","supabaseAnnotationSaveRan":false,"pdfBytesGenerated":false,"localFilesystemWrite":false,"outputPath":null,"annotationCountsByType":{"path":4,"circle":1,"rect":494,"ellipse":1,"textbox":2,"polygon":1,"callout":4,"surveyMarker":2},"annotationCountSummary":{"totalObjects":503,"calloutCount":4,"surveyMarkerCount":2,"importedPdfObjects":495,"byType":{"path":4,"circle":1,"rect":494,"ellipse":1,"textbox":2,"polygon":1,"callout":4,"surveyMarker":2}},"embeddedPdfNativeAnnotationHandling":"not-applicable-app-state-only","silent":false}
+[CloudSync][forceFlush] start {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","hasUserId":true,"hasPendingFabric":false,"hasPendingCallout":false,"fabricObjectCount":503,"calloutObjectCount":4,"queueBefore":0}
+[CloudSync][forceFlush] no pending work; preserving synced state
+[CloudSync][forceFlush] synced {"consumedPendingFabric":false,"consumedPendingCallout":false,"directFabricRows":0,"directCalloutRows":0,"fabricObjectCount":503,"calloutObjectCount":4,"queueBefore":0,"queueRemaining":0}
+[CloudSync][status] transition {"from":"idle","to":"synced","kind":"manual-save","phase":null,"count":0,"queued":false,"error":null}
+[PDFSaveExport] action complete {"actionType":"app-state-save","documentId":"00e1cde9-449b-4771-9743-37bd604557a9","supabaseAnnotationSaveRan":true,"supabaseAnnotationSaveError":null,"pdfBytesGenerated":false,"localFilesystemWrite":false,"outputPath":null,"annotationCountsByType":{"path":4,"circle":1,"rect":494,"ellipse":1,"textbox":2,"polygon":1,"callout":4,"surveyMarker":2},"annotationCountSummary":{"totalObjects":503,"calloutCount":4,"surveyMarkerCount":2,"importedPdfObjects":495,"byType":{"path":4,"circle":1,"rect":494,"ellipse":1,"textbox":2,"polygon":1,"callout":4,"surveyMarker":2}},"embeddedPdfNativeAnnotationHandling":"not-applicable-app-state-only","localBackupSaved":true,"surveyDataStorageSaveRequested":true,"silent":false}
+[PDFSaveExport] action start {"actionType":"app-state-save","documentId":"00e1cde9-449b-4771-9743-37bd604557a9","supabaseAnnotationSaveRan":false,"pdfBytesGenerated":false,"localFilesystemWrite":false,"outputPath":null,"annotationCountsByType":{"path":4,"circle":1,"rect":494,"ellipse":1,"textbox":2,"polygon":1,"callout":4,"surveyMarker":2},"annotationCountSummary":{"totalObjects":503,"calloutCount":4,"surveyMarkerCount":2,"importedPdfObjects":495,"byType":{"path":4,"circle":1,"rect":494,"ellipse":1,"textbox":2,"polygon":1,"callout":4,"surveyMarker":2}},"embeddedPdfNativeAnnotationHandling":"not-applicable-app-state-only","silent":false}
+[CloudSync][forceFlush] start {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","hasUserId":true,"hasPendingFabric":false,"hasPendingCallout":false,"fabricObjectCount":503,"calloutObjectCount":4,"queueBefore":0}
+[CloudSync][forceFlush] no pending work; preserving synced state
+[CloudSync][forceFlush] synced {"consumedPendingFabric":false,"consumedPendingCallout":false,"directFabricRows":0,"directCalloutRows":0,"fabricObjectCount":503,"calloutObjectCount":4,"queueBefore":0,"queueRemaining":0}
+[CloudSync][status] transition {"from":"synced","to":"synced","kind":"manual-save","phase":null,"count":0,"queued":false,"error":null}
+[PDFSaveExport] action complete {"actionType":"app-state-save","documentId":"00e1cde9-449b-4771-9743-37bd604557a9","supabaseAnnotationSaveRan":true,"supabaseAnnotationSaveError":null,"pdfBytesGenerated":false,"localFilesystemWrite":false,"outputPath":null,"annotationCountsByType":{"path":4,"circle":1,"rect":494,"ellipse":1,"textbox":2,"polygon":1,"callout":4,"surveyMarker":2},"annotationCountSummary":{"totalObjects":503,"calloutCount":4,"surveyMarkerCount":2,"importedPdfObjects":495,"byType":{"path":4,"circle":1,"rect":494,"ellipse":1,"textbox":2,"polygon":1,"callout":4,"surveyMarker":2}},"embeddedPdfNativeAnnotationHandling":"not-applicable-app-state-only","localBackupSaved":true,"surveyDataStorageSaveRequested":true,"silent":false}
+[Phase31 UAT] focus rehydrate skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-18T02:05:48.746+00:00","ydocAuthoritative":true}
+
+===== Undo/Redo Chronology =====
+events=5
+lanes=local annotation history | callout history | legacy history | Yjs/CRDT history
+{"seq":1,"order":null,"at":"2026-05-19T02:41:23.369Z","event":"history_reset_for_pdf_change","actionType":"pdf:change","rawActionType":"pdf:change","annotationType":null,"annotationId":null,"pageNumber":null,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+{"seq":2,"order":1,"at":"2026-05-19T02:41:36.297Z","event":"checkpoint_added","actionType":"delete","rawActionType":"highlight:delete","annotationType":"fabric","annotationId":"surveyMarker-1779157453553-rpz0nxd89","pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":1,"redoDepth":0}
+{"seq":3,"order":2,"at":"2026-05-19T02:41:41.128Z","event":"checkpoint_added","actionType":"delete","rawActionType":"highlight:delete","annotationType":"fabric","annotationId":"surveyMarker-1779157453553-tr4kjr9cu","pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":2,"redoDepth":0}
+{"seq":4,"order":3,"at":"2026-05-19T02:41:46.947Z","event":"checkpoint_added","actionType":"delete","rawActionType":"highlight:delete","annotationType":"fabric","annotationId":"surveyMarker-1779157453553-evv35b09p","pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":3,"redoDepth":0}
+{"seq":5,"order":4,"at":"2026-05-19T02:41:58.525Z","event":"checkpoint_added","actionType":"delete","rawActionType":"highlight:delete","annotationType":"fabric","annotationId":"surveyMarker-1779157453553-z0jd4ied8","pageNumber":1,"lane":"legacy history","receivedStack":"legacyUndoHistory","chosenStack":null,"chosenLane":"legacy history","decisionReason":null,"undoDepth":4,"redoDepth":0}
+===== End Undo/Redo Chronology =====
