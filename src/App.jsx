@@ -30839,11 +30839,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     // 1. Switch to module
     setSelectedModuleId(moduleId);
 
-    // 2. Expand category
-    setExpandedCategories(prev => ({
-      ...prev,
-      [surveyMarker.categoryId]: true
-    }));
+    // 2. Expand only this Survey Marker's category and collapse every other
+    // category, so the panel stays focused on the double-clicked marker.
+    setExpandedCategories({ [surveyMarker.categoryId]: true });
+
+    // 2b. Expand only this Survey Marker's own row (collapsing any other
+    // previously-expanded marker) so its checklist items are visible —
+    // expanding the category alone only reveals the collapsed row.
+    setExpandedSurveyMarkers({ [highlightId]: true });
 
     // 3. Ensure Survey Panel is open
     if (!showSurveyPanel || isSurveyPanelCollapsed) {
@@ -31146,6 +31149,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     });
   }, [addHistoryCheckpoint]);
 
+  // Set true by handleSurveyMarkerDeleted once a delete commits; the effect
+  // below watches surveyMarkers and re-exports the linked Excel so the
+  // deleted marker's row is removed there too (otherwise the next document
+  // open re-imports the stale row and resurrects the marker).
+  const pendingExcelSyncAfterDeleteRef = useRef(false);
+
   // Handle surveyMarker deletion from PDF (via eraser tool)
   const handleSurveyMarkerDeleted = useCallback((pageNumber, bounds, highlightId = null) => {
     // Checkpoint history before deletion
@@ -31155,8 +31164,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     });
 
 
-    if (!selectedModuleId || !selectedTemplate) {
-      // console.warn('[App] handleSurveyMarkerDeleted aborted: Missing module or template');
+    // When an explicit highlightId is supplied we can always identify the
+    // Survey Marker to remove, so deletion proceeds regardless of which
+    // module/template is active. Only bail when there's nothing to match
+    // against (no id AND no active module to scan by bounds).
+    if (!highlightId && (!selectedModuleId || !selectedTemplate)) {
       return;
     }
 
@@ -31164,13 +31176,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     const matchingSurveyMarkerIds = [];
 
     if (highlightId) {
-      // If highlightId is provided, use it directly (most reliable)
+      // An explicit highlightId is the reliable identity — delete that marker
+      // unconditionally. The old module/page gate here dropped deletions made
+      // while a different module was active, stranding the panel row without
+      // a rect on the page (the orphan Survey Marker bug).
       if (surveyMarkers[highlightId]) {
-        const surveyMarker = surveyMarkers[highlightId];
-        const surveyMarkerModuleId = surveyMarker.moduleId || surveyMarker.spaceId; // Support legacy spaceId
-        if (surveyMarkerModuleId === selectedModuleId && surveyMarker.pageNumber === pageNumber) {
-          matchingSurveyMarkerIds.push(highlightId);
-        }
+        matchingSurveyMarkerIds.push(highlightId);
       }
     } else {
       // Fall back to bounds matching if no highlightId
@@ -31213,6 +31224,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         return updated;
       });
 
+      // Flag a linked-Excel re-export so the deleted marker also loses its
+      // Excel row. The export runs in the effect below, after the
+      // surveyMarkers update above has committed.
+      if (selectedTemplate?.linkedExcelPath) {
+        pendingExcelSyncAfterDeleteRef.current = true;
+      }
+
       // Also remove surveyMarkers from newSurveyMarkersByPage to prevent re-adding to canvas
       // Batch all updates into a single state update to avoid race conditions
       setNewSurveyMarkersByPage(prev => {
@@ -31251,6 +31269,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       // For each matching surveyMarker, find and delete associated items and annotations
       surveyMarkersToDelete.forEach(({ id, surveyMarker }) => {
         if (!surveyMarker) return;
+
+        // The item/annotation association cleanup below needs the template to
+        // resolve category and module names. If no template is loaded, skip
+        // it — the Survey Marker itself is already fully removed above.
+        if (!selectedTemplate) return;
 
         // Find associated item by matching name and category
         const categoryName = getCategoryName(selectedTemplate, surveyMarker.spaceId || surveyMarker.moduleId, surveyMarker.categoryId);
@@ -31359,6 +31382,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       }, 100);
     }
   }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, surveyMarkers, items, boundsMatch, getCategoryName, getModuleName, getModuleDataKey, pdfFile?.id, user?.id, documentSyncEnabled]);
+
+  // After a Survey Marker delete commits to surveyMarkers, re-export the
+  // linked Excel so the deleted marker's row is removed there too. The
+  // exporter rebuilds the whole workbook from the current surveyMarkers
+  // state, so a deleted marker simply produces no row. This runs from an
+  // effect (not inline in handleSurveyMarkerDeleted) so the export reads the
+  // post-delete state instead of the stale closure value.
+  useEffect(() => {
+    if (!pendingExcelSyncAfterDeleteRef.current) return;
+    pendingExcelSyncAfterDeleteRef.current = false;
+    if (!selectedTemplate?.linkedExcelPath) return;
+    pushToExcelWithRetry();
+  }, [surveyMarkers, selectedTemplate?.linkedExcelPath, pushToExcelWithRetry]);
 
   // Handle deletion of a surveyMarker item (from survey panel)
   const handleDeleteSurveyMarkerItem = useCallback((highlightId) => {
