@@ -32189,7 +32189,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
             moduleId: surveyMarkerModuleId,
             regionId: surveyMarker.regionId ?? null,
             ...(needsEntity && { needsEntity: true }),
-            ...(highlightColor && { color: highlightColor })
+            ...(highlightColor && (highlightColor ? { color: highlightColor } : { needsEntity: true }))
           };
           surveyMarkersByPage[pageNumber].push(surveyMarkerData);
         });
@@ -42064,7 +42064,7 @@ ${pageBlocks}
                     // Compute color first so it can be saved with surveyMarkerData
                     const highlightColor = pendingSurveyMarkerName.surveyMarker.entityColor
                       ? (normalizeSurveyMarkerColor(pendingSurveyMarkerName.surveyMarker.entityColor) || pendingSurveyMarkerName.surveyMarker.entityColor)
-                      : 'rgba(255, 193, 7, 1.0)';
+                      : null; // No Entity yet — render as needs-Entity (blue dashed)
                     const surveyMarkerData = {
                       ...pendingSurveyMarkerName.surveyMarker,
                       categoryId: pendingSurveyMarkerName.categoryId,
@@ -42090,7 +42090,7 @@ ${pageBlocks}
                           ...filtered,
                           buildSurveyMarkerPreview(
                             pendingSurveyMarkerName.surveyMarker,
-                            { color: highlightColor }
+                            (highlightColor ? { color: highlightColor } : { needsEntity: true })
                           )
                         ]
                       };
@@ -42148,7 +42148,7 @@ ${pageBlocks}
                           // Compute color first so it can be saved with surveyMarkerData
                           const highlightColor = pendingSurveyMarkerName.surveyMarker.entityColor
                             ? (normalizeSurveyMarkerColor(pendingSurveyMarkerName.surveyMarker.entityColor) || pendingSurveyMarkerName.surveyMarker.entityColor)
-                            : 'rgba(255, 193, 7, 1.0)';
+                            : null; // No Entity yet — render as needs-Entity (blue dashed)
                           const surveyMarkerData = {
                             ...pendingSurveyMarkerName.surveyMarker,
                             categoryId: pendingSurveyMarkerName.categoryId,
@@ -42254,7 +42254,7 @@ ${pageBlocks}
                                 ...filtered,
                                 buildSurveyMarkerPreview(
                                   pendingSurveyMarkerName.surveyMarker,
-                                  { color: highlightColor }
+                                  (highlightColor ? { color: highlightColor } : { needsEntity: true })
                                 )
                               ]
                             };
@@ -42290,7 +42290,7 @@ ${pageBlocks}
                           // Compute color first so it can be saved with surveyMarkerData
                           const highlightColor = pendingSurveyMarkerName.surveyMarker.entityColor
                             ? (normalizeSurveyMarkerColor(pendingSurveyMarkerName.surveyMarker.entityColor) || pendingSurveyMarkerName.surveyMarker.entityColor)
-                            : 'rgba(255, 193, 7, 1.0)';
+                            : null; // No Entity yet — render as needs-Entity (blue dashed)
                           const surveyMarkerData = {
                             ...pendingSurveyMarkerName.surveyMarker,
                             categoryId: pendingSurveyMarkerName.categoryId,
@@ -42316,7 +42316,7 @@ ${pageBlocks}
                                 ...filtered,
                                 buildSurveyMarkerPreview(
                                   pendingSurveyMarkerName.surveyMarker,
-                                  { color: highlightColor }
+                                  (highlightColor ? { color: highlightColor } : { needsEntity: true })
                                 )
                               ]
                             };
@@ -42330,7 +42330,7 @@ ${pageBlocks}
                           // Compute color first so it can be saved with surveyMarkerData
                           const highlightColor = pendingSurveyMarkerName.surveyMarker.entityColor
                             ? (normalizeSurveyMarkerColor(pendingSurveyMarkerName.surveyMarker.entityColor) || pendingSurveyMarkerName.surveyMarker.entityColor)
-                            : 'rgba(255, 193, 7, 1.0)';
+                            : null; // No Entity yet — render as needs-Entity (blue dashed)
                           const surveyMarkerData = {
                             ...pendingSurveyMarkerName.surveyMarker,
                             categoryId: pendingSurveyMarkerName.categoryId,
@@ -42356,7 +42356,7 @@ ${pageBlocks}
                                 ...filtered,
                                 buildSurveyMarkerPreview(
                                   pendingSurveyMarkerName.surveyMarker,
-                                  { color: highlightColor }
+                                  (highlightColor ? { color: highlightColor } : { needsEntity: true })
                                 )
                               ]
                             };
@@ -42389,7 +42389,7 @@ ${pageBlocks}
                           // Compute color first so it can be saved with surveyMarkerData
                           const highlightColor = pendingSurveyMarkerName.surveyMarker.entityColor
                             ? (normalizeSurveyMarkerColor(pendingSurveyMarkerName.surveyMarker.entityColor) || pendingSurveyMarkerName.surveyMarker.entityColor)
-                            : 'rgba(255, 193, 7, 1.0)';
+                            : null; // No Entity yet — render as needs-Entity (blue dashed)
                           const surveyMarkerData = {
                             ...pendingSurveyMarkerName.surveyMarker,
                             categoryId: pendingSurveyMarkerName.categoryId,
@@ -42495,7 +42495,7 @@ ${pageBlocks}
                                 ...filtered,
                                 buildSurveyMarkerPreview(
                                   pendingSurveyMarkerName.surveyMarker,
-                                  { color: highlightColor }
+                                  (highlightColor ? { color: highlightColor } : { needsEntity: true })
                                 )
                               ]
                             };
@@ -42523,7 +42523,7 @@ ${pageBlocks}
                           // Compute color first so it can be saved with surveyMarkerData
                           const highlightColor = pendingSurveyMarkerName.surveyMarker.entityColor
                             ? (normalizeSurveyMarkerColor(pendingSurveyMarkerName.surveyMarker.entityColor) || pendingSurveyMarkerName.surveyMarker.entityColor)
-                            : 'rgba(255, 193, 7, 1.0)';
+                            : null; // No Entity yet — render as needs-Entity (blue dashed)
                           const surveyMarkerData = {
                             ...pendingSurveyMarkerName.surveyMarker,
                             categoryId: pendingSurveyMarkerName.categoryId,
@@ -42629,7 +42629,7 @@ ${pageBlocks}
                                 ...filtered,
                                 buildSurveyMarkerPreview(
                                   pendingSurveyMarkerName.surveyMarker,
-                                  { color: highlightColor }
+                                  (highlightColor ? { color: highlightColor } : { needsEntity: true })
                                 )
                               ]
                             };
