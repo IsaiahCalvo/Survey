@@ -1,0 +1,261 @@
+===== SurveyApp Save Log =====
+version:   0.1.46
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1203x822
+locale:    en-US
+timestamp: 2026-05-19T01:02:02.411Z (5/18/2026, 9:02:02 PM)
+==============================
+[DebugBridge +12338.2ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779146015119-5v5p5dbvm","currentScale":0.679697546823158,"targetScale":1.5,"shouldZoom":true}
+[DebugBridge +12432.1ms] survey_locate_zoom_center {"pageNumber":1,"highlightId":"surveyMarker-1779146015119-5v5p5dbvm","targetScale":1.5,"renderedScale":2,"scrollReady":false,"toolbarReady":true,"attempt":0,"centered":true}
+[DebugBridge +13846.3ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779146054567-6bo4zxqdx","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +13846.6ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779146054567-6bo4zxqdx","targetScale":1.5}
+[DebugBridge +14696.1ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779146054567-6bo4zxqdx","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +14696.2ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779146054567-6bo4zxqdx","targetScale":1.5}
+[DebugBridge +15338.1ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779146054567-6bo4zxqdx","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +15338.4ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779146054567-6bo4zxqdx","targetScale":1.5}
+[DebugBridge +15496.2ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779146054567-6bo4zxqdx","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +15496.4ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779146054567-6bo4zxqdx","targetScale":1.5}
+[DebugBridge +15679.5ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779146054567-6bo4zxqdx","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +15679.7ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779146054567-6bo4zxqdx","targetScale":1.5}
+[DebugBridge +15844.6ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779146054567-6bo4zxqdx","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +15844.8ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779146054567-6bo4zxqdx","targetScale":1.5}
+[DebugBridge +16533.5ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779146015119-5v5p5dbvm","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +16533.7ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779146015119-5v5p5dbvm","targetScale":1.5}
+[DebugBridge +16909.0ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779146054567-6bo4zxqdx","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +16909.2ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779146054567-6bo4zxqdx","targetScale":1.5}
+[DebugBridge +17576.0ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779146054567-6bo4zxqdx","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +17576.2ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779146054567-6bo4zxqdx","targetScale":1.5}
+[DebugBridge +17739.1ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779146054567-6bo4zxqdx","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +17739.1ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779146054567-6bo4zxqdx","targetScale":1.5}
+[DebugBridge +19371.3ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779149067882-re5p2wtnk","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +19371.4ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779149067882-re5p2wtnk","targetScale":1.5}
+[DebugBridge +20638.0ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779146019521-x6ll4lhbq","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +20638.1ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779146019521-x6ll4lhbq","targetScale":1.5}
+[DebugBridge +22179.4ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779146043258-vw4papkvg","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +22179.7ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779146043258-vw4papkvg","targetScale":1.5}
+[DebugBridge +22966.8ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779146043258-vw4papkvg","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +22966.9ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779146043258-vw4papkvg","targetScale":1.5}
+[DebugBridge +23492.0ms] survey_locate_start {"pageNumber":4,"highlightId":"highlight-1779059167789-838vhdof8","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +23492.0ms] survey_locate_direct_center {"pageNumber":4,"highlightId":"highlight-1779059167789-838vhdof8","targetScale":1.5}
+[DebugBridge +23770.0ms] survey_locate_start {"pageNumber":4,"highlightId":"highlight-1779059167789-838vhdof8","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +23770.4ms] survey_locate_direct_center {"pageNumber":4,"highlightId":"highlight-1779059167789-838vhdof8","targetScale":1.5}
+[DebugBridge +24843.4ms] survey_locate_start {"pageNumber":4,"highlightId":"highlight-1779059167789-838vhdof8","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +24843.5ms] survey_locate_direct_center {"pageNumber":4,"highlightId":"highlight-1779059167789-838vhdof8","targetScale":1.5}
+[DebugBridge +25581.1ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779146043258-vw4papkvg","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +25581.2ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779146043258-vw4papkvg","targetScale":1.5}
+[DebugBridge +26479.3ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779146043258-vw4papkvg","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +26479.6ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779146043258-vw4papkvg","targetScale":1.5}
+[DebugBridge +27029.4ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779146019521-x6ll4lhbq","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +27029.6ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779146019521-x6ll4lhbq","targetScale":1.5}
+[DebugBridge +27912.7ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779149067882-re5p2wtnk","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +27912.9ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779149067882-re5p2wtnk","targetScale":1.5}
+[DebugBridge +29358.8ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779146019521-x6ll4lhbq","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +29358.9ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779146019521-x6ll4lhbq","targetScale":1.5}
+[DebugBridge +29858.7ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779146043258-vw4papkvg","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +29858.9ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779146043258-vw4papkvg","targetScale":1.5}
+[DebugBridge +30780.6ms] survey_locate_start {"pageNumber":4,"highlightId":"highlight-1779059167789-838vhdof8","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +30780.8ms] survey_locate_direct_center {"pageNumber":4,"highlightId":"highlight-1779059167789-838vhdof8","targetScale":1.5}
+[DebugBridge +31633.6ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779149067882-re5p2wtnk","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +31633.8ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779149067882-re5p2wtnk","targetScale":1.5}
+[DebugBridge +68033.7ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779149067882-re5p2wtnk","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +68034.1ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779149067882-re5p2wtnk","targetScale":1.5}
+[DebugBridge +69223.6ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779146019521-x6ll4lhbq","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +69223.8ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779146019521-x6ll4lhbq","targetScale":1.5}
+[DebugBridge +70658.4ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779146043258-vw4papkvg","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +70658.6ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779146043258-vw4papkvg","targetScale":1.5}
+[DebugBridge +71732.2ms] survey_locate_start {"pageNumber":4,"highlightId":"highlight-1779059167789-838vhdof8","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +71732.4ms] survey_locate_direct_center {"pageNumber":4,"highlightId":"highlight-1779059167789-838vhdof8","targetScale":1.5}
+[DebugBridge +73166.7ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779146043258-vw4papkvg","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +73166.9ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779146043258-vw4papkvg","targetScale":1.5}
+[DebugBridge +76075.3ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779146019521-x6ll4lhbq","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +76075.5ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779146019521-x6ll4lhbq","targetScale":1.5}
+[DebugBridge +76723.6ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779149067882-re5p2wtnk","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +76723.8ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779149067882-re5p2wtnk","targetScale":1.5}
+[DebugBridge +78457.6ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779146054567-6bo4zxqdx","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +78457.7ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779146054567-6bo4zxqdx","targetScale":1.5}
+[DebugBridge +79766.5ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779146015119-5v5p5dbvm","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +79766.8ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779146015119-5v5p5dbvm","targetScale":1.5}
+[DebugBridge +81475.2ms] survey_locate_start {"pageNumber":1,"highlightId":"surveyMarker-1779146054567-6bo4zxqdx","currentScale":1.5,"targetScale":1.5,"shouldZoom":false}
+[DebugBridge +81475.5ms] survey_locate_direct_center {"pageNumber":1,"highlightId":"surveyMarker-1779146054567-6bo4zxqdx","targetScale":1.5}
+[dev-auto-login] boot {"hasDevEmail":true,"devEmailHint":"isai***","hasDevPassword":true,"hasCachedSession":true,"cachedSessionEmail":"isaiahcalvo123@gmail.com","cachedSessionExpiresAt":1779153049}
+[dev-auto-login] cached session matches dev email, keeping it
+[dev-auto-login] decision {"needsAutoLogin":false,"willAttemptSignIn":false}
+[CloudSync][hook] session id minted {"sessionId":"5ca263b7-b5a4-4099-a9f5-629c52ffc951"}
+[CloudSync][hook][state-obs] annotationsByPage initial {"currentCount":0,"pages":0,"hydrated":false}
+[CloudSync][hook][state-obs] callouts initial {"currentCount":0,"hydrated":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"hydrateEnabled":true,"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":null}
+[CloudSync][hook] hydrate skipped — missing prerequisite {"hydrateEnabled":true,"hasDocumentId":true,"hasUserId":true,"hasPdfId":false}
+[AnnotationHydrationGate][normal] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":null,"ready":false,"source":"missing-prerequisite","normalReady":false,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true}
+[AnnotationHydrationGate][first-page] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":null,"pageNumber":1,"ready":false,"visualCoverActive":true,"normal":{"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":null,"ready":false,"source":"pending","firstPaintGate":true},"survey":{"ready":true,"source":"local"}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":null,"pageNumber":1,"active":true,"reason":"annotation-hydration-gated"}
+[Cloud render cache] doc=SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080 painting verified cloud snapshot immediately — count=503.
+[CSeries wipe] doc=SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080 totalCounters=1 legacyRemoved=0 — nothing to wipe.
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":null,"alreadyRanFor":null,"willRun":false}
+[CloudSync][hook] hydrate effect fired {"enabled":false,"hydrateEnabled":true,"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080"}
+[AnnotationHydrationGate][normal] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","ready":false,"source":"starting","normalReady":false,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true}
+[CloudSync][hook] stage=hydrating
+[AnnotationHydrationGate][first-page] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"ready":false,"visualCoverActive":true,"normal":{"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":null,"ready":false,"source":"missing-prerequisite","normalReady":false,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true},"survey":{"ready":false,"source":"supabase-highlight-starting","documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080"}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"active":true,"reason":"annotation-hydration-gated"}
+[AnnotationHydrationGate][first-page] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"ready":false,"visualCoverActive":true,"normal":{"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","ready":false,"source":"starting","normalReady":false,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true},"survey":{"ready":false,"source":"supabase-highlight-starting","documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080"}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"active":true,"reason":"annotation-hydration-gated"}
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","alreadyRanFor":null,"willRun":true}
+[Phase31 UAT] backfill:start {"hasYdoc":true,"hasSupabase":true,"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","markCutoverComplete":true}
+[SURVEY-MARKER-SYNC][load.legacy][pdf=SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","totalRows":6,"fabricCarryingDropped":0,"keptCount":6,"keptIds":["surveyMarker-1779149067882-re5p2wtnk","surveyMarker-1779146043258-vw4papkvg","surveyMarker-1779146054567-6bo4zxqdx","surveyMarker-1779146015119-5v5p5dbvm","surveyMarker-1779146019521-x6ll4lhbq","highlight-1779059167789-838vhdof8"]}
+[AnnotationHydrationGate][survey] supabase surveyMarkers complete {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","count":6}
+[AnnotationHydrationGate][first-page] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"ready":false,"visualCoverActive":true,"normal":{"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","ready":false,"source":"starting","normalReady":false,"cutoverTs":null,"count":null,"calloutCount":null,"firstPaintGate":true},"survey":{"ready":true,"source":"supabase-highlight","documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","count":6}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"active":true,"reason":"annotation-hydration-gated"}
+[CloudSync][hook] cutover-complete hydrate — reading from Y.Doc {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","cutoverTs":"2026-05-18T02:05:48.746+00:00"}
+[Phase31 UAT] hydrate:cutover-sealed {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-18T02:05:48.746+00:00","yMapSize":503,"yMapCalloutsSize":4,"materializedTotal":503,"materializedCallouts":4,"materializedDrawnByMe":0,"materializedDrawnByOthers":503,"materializedImported":0,"pages":1,"perPage":{"1":503},"currentStateCount":503,"ydocLooksDegenerate":false}
+[Phase31 UAT] hydrate:cutover-sealed:by-type {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfFile":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","viewerUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapTotal":503,"yMapCalloutsTotal":4,"yMapByType":{"path":4,"polygon":1,"rect":494,"circle":1,"ellipse":1,"textbox":2},"yMapByAuthor":{"byMe":0,"byOthers":0,"anonymous":503},"yMapByTypeByAuthor":{"path":{"byMe":0,"byOthers":0,"anonymous":4},"polygon":{"byMe":0,"byOthers":0,"anonymous":1},"rect":{"byMe":0,"byOthers":0,"anonymous":494},"circle":{"byMe":0,"byOthers":0,"anonymous":1},"ellipse":{"byMe":0,"byOthers":0,"anonymous":1},"textbox":{"byMe":0,"byOthers":0,"anonymous":2}},"yMapPerTypePerPage":{"path":{"unknown":4},"polygon":{"unknown":1},"rect":{"unknown":494},"circle":{"unknown":1},"ellipse":{"unknown":1},"textbox":{"unknown":2}},"byPageTotal":503,"byPageByType":{"path":4,"polygon":1,"rect":494,"circle":1,"ellipse":1,"textbox":2},"byPagePerPagePerType":{"1":{"path":4,"polygon":1,"rect":494,"circle":1,"ellipse":1,"textbox":2}}}
+[CloudSync][hydrate] loadAllNonSurveyMarkerAnnotations start {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9"}
+[CloudSync][hook] fabric push skipped — not hydrated yet
+[CloudSync][hook] callout push skipped — not hydrated yet
+[CloudSync][realtime] subscribing {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","currentUserId":"170d915c-5741-4e0b-b03f-deaeedae27bd","currentSessionId":"5ca263b7-b5a4-4099-a9f5-629c52ffc951","hasFabricInsert":true,"hasFabricUpdate":true,"hasFabricDelete":true,"hasCalloutInsert":true,"hasCalloutUpdate":true,"hasCalloutDelete":true}
+[CloudSync][realtime] subscribe status {"status":"SUBSCRIBED","error":null}
+[Phase31 UAT] post-subscribe catch-up skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-18T02:05:48.746+00:00","ydocAuthoritative":true}
+[Phase31 UAT] backfill:cutover-dedupe-anchor-skip {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapSize":503,"lastGoodSize":502}
+[crdtDedupePdfImports] removed 1 duplicate PDF-imported annotations across 4 unique signatures
+[CloudSync][hook] dedupe-resync — restoring state {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","removed":1,"resyncCount":502}
+[CloudSync][hook][state-obs] SHRINK {"prevCount":503,"currentCount":502,"delta":-1,"hydrated":false,"sameRefAsLastByPage":true,"stack":"    at commitHookEffectListMount (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=cbd96b62:23793:34) |     at commitPassiveMountOnFiber (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=cbd96b62:25034:19) |     at commitPassiveMountEffects_complete (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=cbd96b62:25007:17) |     at commitPassiveMountEffects_begin (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=cbd96b62:24997:15) |     at commitPassiveMountEffects (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=cbd96b62:24987:11) |     at flushPassiveEffectsImpl (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=cbd96b62:26368:11)"}
+[CloudSync][hook] fabric push skipped — not hydrated yet
+[CloudSync][hydrate] loadAllNonSurveyMarkerAnnotations ok {"elapsedMs":240,"totalRowsScanned":507,"scanned":{"nonSurveyMarker":507,"legacyFabricSurveyMarkers":0},"totalRows":507,"rowsByType":{"polygon":1,"ink":4,"counter":1,"square":494,"circle":1,"freetext":2,"callout":4},"pagesWithObjects":26,"calloutCount":4}
+[CloudSync][verify] first read summary {"contextLabel":"cutover-source-of-truth","documentId":"00e1cde9-449b-4771-9743-37bd604557a9","elapsedMs":241,"firstFabricPages":26,"firstFabricObjects":503,"firstCallouts":4,"firstEmpty":false,"localFabricCount":503,"localCalloutCount":4,"localHasData":true,"willVerify":false}
+[CloudSync][source-of-truth] cutover initial hydrate selected Supabase durable snapshot {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-18T02:05:48.746+00:00","ydocFabricCount":503,"ydocCalloutCount":4,"supabaseFabricCount":503,"supabaseCalloutCount":4,"rule":"Supabase durable snapshot wins initial load; Y.Doc is reshaped for live collaboration"}
+[Phase31 UAT] save:fan-out done {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","actionType":null,"dispatched":503,"yDocUpdateCount":503,"detected":503,"skippedSurveyMarkerOrCallout":0,"skippedOtherType":0,"rawTypeBreakdown":{"pen":2,"counter":1,"rect":494,"ellipse":1,"textbox":2,"highlighter":1,"polygon":1,"path":1},"resolvedTypeBreakdown":{"ink":4,"counter":1,"square":494,"circle":1,"freetext":2,"polygon":1},"skipReasons":{},"skipSamples":[],"yMapSizeAfter":503}
+[CloudSync][hook] callout Y.Doc fan-out done {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","actionType":"callout:delta","upserted":4,"deleted":0,"yDocUpdateCount":4,"yMapCalloutsSizeAfter":4}
+[AnnotationHydrationGate][normal] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","ready":true,"source":"supabase-durable-snapshot","normalReady":true,"cutoverTs":"2026-05-18T02:05:48.746+00:00","count":503,"calloutCount":4,"firstPaintGate":true}
+[AnnotationHydrationGate][first-page] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"ready":true,"visualCoverActive":false,"normal":{"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","ready":true,"source":"supabase-durable-snapshot","normalReady":true,"cutoverTs":"2026-05-18T02:05:48.746+00:00","count":503,"calloutCount":4,"firstPaintGate":true},"survey":{"ready":true,"source":"supabase-highlight","documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","count":6}}
+[AnnotationHydrationGate][visual-cover] {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","pageNumber":1,"active":false,"reason":"hydration-ready"}
+[PDFImport] skipped embedded PDF annotation import — cloud/Y.Doc is authoritative {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9"}
+[PDFCounterImport] summary {"marker":"survey-counter","metadataKey":"SurveyApp","counterAnnotationsImported":0,"plainCirclesImported":0,"counterMetadataParseFailures":0,"appCalloutMarker":"survey-callout","appCalloutMetadataKey":"SurveyAppCallout","appCalloutAnnotationsImported":0,"appCalloutPiecesSkipped":0}
+[PDFAppLayerStateImport] summary {"found":false,"documentId":null,"exportId":null,"scopedAnnotationPages":0,"scopedCallouts":0,"surveyMarkers":0,"spaces":0}
+[PDFImport] native layer policy {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","cloudAuthoritative":true,"reason":"cloud/Y.Doc annotations are authoritative; native PDF annotation layer is hidden when all renderable native annotations are accounted for by importer diagnostics.","pages":{"1":{"hideNativeLayer":true,"nativeRenderableAnnotationCount":2,"nativeOnlyAnnotationCount":0,"reason":"all-renderable-native-annotations-imported-as-editable-app-annotations"},"2":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"3":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"4":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"5":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"6":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"7":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"8":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"9":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"10":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"11":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"12":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"13":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"14":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"15":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"16":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"17":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"18":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"19":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"20":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"21":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"22":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"23":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"24":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"25":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"26":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"27":{"hideN... [truncated 24 chars]
+[PrintPanel] RENDER — panel closed
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[DebugBridge +5417.7ms] pdf_loaded {"pageCount":99,"currentPage":1}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[DebugBridge +5519.8ms] zoom_start {"scale":0.8799,"targetScale":0.9,"source":"zoomChange"}
+[HyperlinkDiag] post-load scan {"hyperlinkCount":0,"samples":[]}
+[HyperlinkDiag] page 1 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG","IMG","IMG","IMG","e-pv-text-layer"]}
+[HyperlinkDiag] page 2 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG","IMG","e-pv-text-layer","IMG","IMG"]}
+[HyperlinkDiag] page 3 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","e-pv-text-layer","IMG","IMG","IMG","IMG"]}
+[HyperlinkDiag] page 4 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-hide","e-pv-page-canvas","e-pv-annotation-canvas","DIV","IMG","e-pv-text-layer"]}
+[HyperlinkDiag] page 5 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 6 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 7 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 8 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 9 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[HyperlinkDiag] page 10 layers {"hyperlinkChildren":0,"layerClasses":["DIV","e-spinner-pane e-spin-show","e-pv-page-canvas","e-pv-annotation-canvas","DIV"]}
+[Diag] tool-switch DETECTED → select (scheduling t+1000ms capture)
+[DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p5] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p5] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[DrawCanvas p4] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p4] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[DrawCanvas p5] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p5] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[DebugBridge +7330.7ms] zoom_end {"source":"zoomChange_settle"}
+[Phase31 UAT] focus rehydrate skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-18T02:05:48.746+00:00","ydocAuthoritative":true}
+[DebugBridge +9925.3ms] wheel_scroll_motion {"eventCount":4,"rawAbsX":26,"rawAbsY":12,"rawX":26,"rawY":-12,"clippedAbsX":26,"clippedAbsY":12,"clippedX":26,"clippedY":-12,"requestedAppliedX":26.676000000000002,"requestedAppliedY":-12.312,"appliedX":16,"appliedY":-12.312,"actualX":16,"actualY":-6,"sensitivity":1.026,"currentZoomForScroll":1,"maxScrollStepX":16,"maxScrollStepY":16,"diagonalEvents":4,"clippedEvents":0}
+[DebugBridge +9950.0ms] wheel_scroll_motion {"eventCount":6,"rawAbsX":64,"rawAbsY":26,"rawX":64,"rawY":-26,"clippedAbsX":64,"clippedAbsY":26,"clippedX":64,"clippedY":-26,"requestedAppliedX":65.664,"requestedAppliedY":-26.676,"appliedX":16.416,"appliedY":-16,"actualX":16,"actualY":0,"sensitivity":1.026,"currentZoomForScroll":1,"maxScrollStepX":16.416,"maxScrollStepY":16,"diagonalEvents":6,"clippedEvents":0}
+[DebugBridge +9979.3ms] wheel_scroll_motion {"eventCount":7,"rawAbsX":54,"rawAbsY":20,"rawX":54,"rawY":-20,"clippedAbsX":54,"clippedAbsY":20,"clippedX":54,"clippedY":-20,"requestedAppliedX":55.403999999999996,"requestedAppliedY":-20.52,"appliedX":16,"appliedY":-16,"actualX":16,"actualY":0,"sensitivity":1.026,"currentZoomForScroll":1,"maxScrollStepX":16,"maxScrollStepY":16,"diagonalEvents":7,"clippedEvents":0}
+[DebugBridge +10008.7ms] wheel_scroll_motion {"eventCount":7,"rawAbsX":38,"rawAbsY":16,"rawX":38,"rawY":-16,"clippedAbsX":38,"clippedAbsY":16,"clippedX":38,"clippedY":-16,"requestedAppliedX":38.988,"requestedAppliedY":-16.416,"appliedX":16,"appliedY":-16,"actualX":16,"actualY":0,"sensitivity":1.026,"currentZoomForScroll":1,"maxScrollStepX":16,"maxScrollStepY":16,"diagonalEvents":7,"clippedEvents":0}
+[DebugBridge +10040.0ms] wheel_scroll_motion {"eventCount":7,"rawAbsX":32,"rawAbsY":14,"rawX":32,"rawY":-14,"clippedAbsX":32,"clippedAbsY":14,"clippedX":32,"clippedY":-14,"requestedAppliedX":32.832,"requestedAppliedY":-14.363999999999999,"appliedX":16,"appliedY":-14.363999999999999,"actualX":16,"actualY":0,"sensitivity":1.026,"currentZoomForScroll":1,"maxScrollStepX":16,"maxScrollStepY":16,"diagonalEvents":7,"clippedEvents":0}
+[DebugBridge +10073.7ms] wheel_scroll_motion {"eventCount":5,"rawAbsX":16,"rawAbsY":10,"rawX":16,"rawY":-10,"clippedAbsX":16,"clippedAbsY":10,"clippedX":16,"clippedY":-10,"requestedAppliedX":16.416,"requestedAppliedY":-10.26,"appliedX":16,"appliedY":-10.26,"actualX":16,"actualY":0,"sensitivity":1.026,"currentZoomForScroll":1,"maxScrollStepX":16,"maxScrollStepY":16,"diagonalEvents":5,"clippedEvents":0}
+[DebugBridge +10100.3ms] wheel_scroll_motion {"eventCount":6,"rawAbsX":12,"rawAbsY":8,"rawX":12,"rawY":-8,"clippedAbsX":12,"clippedAbsY":8,"clippedX":12,"clippedY":-8,"requestedAppliedX":12.528,"requestedAppliedY":-8.208,"appliedX":12.528,"appliedY":-8.208,"actualX":12.5,"actualY":0,"sensitivity":1.08,"currentZoomForScroll":1,"maxScrollStepX":16,"maxScrollStepY":16,"diagonalEvents":4,"clippedEvents":0}
+[DebugBridge +10124.9ms] wheel_scroll_motion {"eventCount":4,"rawAbsX":12,"rawAbsY":8,"rawX":12,"rawY":-8,"clippedAbsX":12,"clippedAbsY":8,"clippedX":12,"clippedY":-8,"requestedAppliedX":12.312,"requestedAppliedY":-8.208,"appliedX":12.312,"appliedY":-8.208,"actualX":12,"actualY":0,"sensitivity":1.026,"currentZoomForScroll":1,"maxScrollStepX":16,"maxScrollStepY":16,"diagonalEvents":4,"clippedEvents":0}
+[DebugBridge +10150.0ms] wheel_scroll_motion {"eventCount":6,"rawAbsX":12,"rawAbsY":4,"rawX":12,"rawY":-4,"clippedAbsX":12,"clippedAbsY":4,"clippedX":12,"clippedY":-4,"requestedAppliedX":12.744,"requestedAppliedY":-4.104,"appliedX":12.744,"appliedY":-4.104,"actualX":12.5,"actualY":0,"sensitivity":1.026,"currentZoomForScroll":1,"maxScrollStepX":16,"maxScrollStepY":16,"diagonalEvents":2,"clippedEvents":0}
+[DebugBridge +10202.6ms] wheel_scroll_motion {"eventCount":8,"rawAbsX":20,"rawAbsY":8,"rawX":20,"rawY":-8,"clippedAbsX":20,"clippedAbsY":8,"clippedX":20,"clippedY":-8,"requestedAppliedX":21.06,"requestedAppliedY":-8.208,"appliedX":16,"appliedY":-8.208,"actualX":16,"actualY":0,"sensitivity":1.026,"currentZoomForScroll":1,"maxScrollStepX":16,"maxScrollStepY":16,"diagonalEvents":3,"clippedEvents":0}
+[DebugBridge +10259.8ms] wheel_scroll_motion {"eventCount":9,"rawAbsX":42,"rawAbsY":28,"rawX":42,"rawY":-28,"clippedAbsX":42,"clippedAbsY":28,"clippedX":42,"clippedY":-28,"requestedAppliedX":43.092,"requestedAppliedY":-28.728,"appliedX":16,"appliedY":-16,"actualX":16,"actualY":0,"sensitivity":1.026,"currentZoomForScroll":1,"maxScrollStepX":16,"maxScrollStepY":16,"diagonalEvents":9,"clippedEvents":0}
+[DebugBridge +10291.3ms] wheel_scroll_motion {"eventCount":5,"rawAbsX":18,"rawAbsY":10,"rawX":18,"rawY":-10,"clippedAbsX":18,"clippedAbsY":10,"clippedX":18,"clippedY":-10,"requestedAppliedX":18.468,"requestedAppliedY":-10.26,"appliedX":16,"appliedY":-10.26,"actualX":16,"actualY":0,"sensitivity":1.026,"currentZoomForScroll":1,"maxScrollStepX":16,"maxScrollStepY":16,"diagonalEvents":5,"clippedEvents":0}
+[DebugBridge +10342.9ms] wheel_scroll_motion {"eventCount":7,"rawAbsX":34,"rawAbsY":24,"rawX":34,"rawY":-24,"clippedAbsX":34,"clippedAbsY":24,"clippedX":34,"clippedY":-24,"requestedAppliedX":34.884,"requestedAppliedY":-24.624,"appliedX":16,"appliedY":-16,"actualX":16,"actualY":0,"sensitivity":1.026,"currentZoomForScroll":1,"maxScrollStepX":16,"maxScrollStepY":16,"diagonalEvents":7,"clippedEvents":0}
+[DebugBridge +10374.0ms] wheel_scroll_motion {"eventCount":7,"rawAbsX":14,"rawAbsY":14,"rawX":14,"rawY":-14,"clippedAbsX":14,"clippedAbsY":14,"clippedX":14,"clippedY":-14,"requestedAppliedX":14.363999999999999,"requestedAppliedY":-14.363999999999999,"appliedX":14.363999999999999,"appliedY":-14.363999999999999,"actualX":14,"actualY":0,"sensitivity":1.026,"currentZoomForScroll":1,"maxScrollStepX":16,"maxScrollStepY":16,"diagonalEvents":7,"clippedEvents":0}
+[DebugBridge +10399.4ms] wheel_scroll_motion {"eventCount":6,"rawAbsX":12,"rawAbsY":8,"rawX":12,"rawY":-8,"clippedAbsX":12,"clippedAbsY":8,"clippedX":12,"clippedY":-8,"requestedAppliedX":12.527999999999999,"requestedAppliedY":-8.208,"appliedX":12.527999999999999,"appliedY":-8.208,"actualX":12.5,"actualY":0,"sensitivity":1.026,"currentZoomForScroll":1,"maxScrollStepX":16,"maxScrollStepY":16,"diagonalEvents":4,"clippedEvents":0}
+[DebugBridge +10424.7ms] wheel_scroll_motion {"eventCount":6,"rawAbsX":10,"rawAbsY":8,"rawX":10,"rawY":-8,"clippedAbsX":10,"clippedAbsY":8,"clippedX":10,"clippedY":-8,"requestedAppliedX":10.475999999999999,"requestedAppliedY":-8.316,"appliedX":10.475999999999999,"appliedY":-8.316,"actualX":10,"actualY":0,"sensitivity":1.026,"currentZoomForScroll":1,"maxScrollStepX":16,"maxScrollStepY":16,"diagonalEvents":3,"clippedEvents":0}
+[DebugBridge +10620.0ms] wheel_scroll_motion {"eventCount":2,"rawAbsX":2,"rawAbsY":2,"rawX":2,"rawY":-2,"clippedAbsX":2,"clippedAbsY":2,"clippedX":2,"clippedY":-2,"requestedAppliedX":2.16,"requestedAppliedY":-2.16,"appliedX":2.16,"appliedY":-2.16,"actualX":2,"actualY":0,"sensitivity":1.08,"currentZoomForScroll":1,"maxScrollStepX":16,"maxScrollStepY":16,"diagonalEvents":0,"clippedEvents":0}
+[DebugBridge +12338.5ms] zoom_start {"scale":0.679697546823158,"targetScale":1.5,"source":"keyboard_toolbar"}
+[Diag] tool-switch DETECTED → select (scheduling t+1000ms capture)
+[Diag select] screenshot saved (322 KB) → /Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/TestLogs/testlog-screenshot-select.png
+[Diag select] CAPTURED @ t+1001ms — annotations=10 callouts=3 svgWrappers=1 svgVis=[visible] svgElems=0 svgVisElems=0 eraserCanvases=0 svgMarkupBytes=5215
+[DebugBridge +13789.9ms] zoom_end {"source":"zoomChange_settle"}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":6}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[DebugBridge +23509.2ms] page_visit_start {"page":4,"pageCount":99,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":true,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +23510.0ms] page_visit_ready {"page":4,"pageCount":99,"revisited":false,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":true,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[DebugBridge +25594.6ms] page_visit_start {"page":1,"pageCount":99,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +25595.6ms] page_visit_ready {"page":1,"pageCount":99,"revisited":false,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[DebugBridge +30796.6ms] page_visit_start {"page":4,"pageCount":99,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +30797.6ms] page_visit_ready {"page":4,"pageCount":99,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[DebugBridge +31817.9ms] page_visit_start {"page":3,"pageCount":99,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +31818.3ms] page_visit_ready {"page":3,"pageCount":99,"revisited":false,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[DebugBridge +31992.3ms] page_visit_start {"page":2,"pageCount":99,"revisited":false,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[DebugBridge +31992.6ms] page_visit_ready {"page":2,"pageCount":99,"revisited":false,"waitMs":0,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":false,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[DebugBridge +32159.2ms] page_visit_start {"page":1,"pageCount":99,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +32159.4ms] page_visit_ready {"page":1,"pageCount":99,"revisited":true,"waitMs":0,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[Phase31 UAT] focus rehydrate skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-18T02:05:48.746+00:00","ydocAuthoritative":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[DebugBridge +71750.1ms] page_visit_start {"page":4,"pageCount":99,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +71750.9ms] page_visit_ready {"page":4,"pageCount":99,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[DebugBridge +73179.3ms] page_visit_start {"page":1,"pageCount":99,"revisited":true,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[DebugBridge +73180.5ms] page_visit_ready {"page":1,"pageCount":99,"revisited":true,"waitMs":1,"hasContainer":true,"hasPdfSurface":true,"spinnerVisible":false,"hasAnnotationOverlay":true,"ready":true}
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[Phase31 UAT] focus rehydrate skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-18T02:05:48.746+00:00","ydocAuthoritative":true}
+
+===== Undo/Redo Chronology =====
+events=1
+lanes=local annotation history | callout history | legacy history | Yjs/CRDT history
+{"seq":1,"order":null,"at":"2026-05-19T01:00:28.673Z","event":"history_reset_for_pdf_change","actionType":"pdf:change","rawActionType":"pdf:change","annotationType":null,"annotationId":null,"pageNumber":null,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+===== End Undo/Redo Chronology =====
