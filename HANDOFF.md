@@ -70,7 +70,7 @@ merge to `main` remain.
 
 1. `git checkout survey-marker-rename`; `npm install` if needed.
 2. `npm run build` (expect success); `npm test` (expect 673 pass / 1 pre-existing fail / 6 skipped — any *other* failure is a regression).
-3. Start the needs-an-Entity preview task: open the document `SE-011 Security Shop Drawing Rev2` with the Security template, create a Survey Marker but do NOT assign an Entity, and observe its colour. Expected (once fixed): blue dashed outline, transparent fill. If amber, trace where the amber fill is set vs the `needsEntity` blue-dashed path.
+3. Start **Plan B — untangle Space vs Module**. The latent bug: a Survey Marker's `spaceId` field holds *either* a Module ID *or* a real Space ID depending on creation path (dual-meaning write ~`src/App.jsx:31469`). There are ~49 `moduleId || spaceId` fallbacks across `App.jsx`, `pdfAnnotationsPdfLib.js`, `pdfCalloutMetadata.js`, `pdfAppAnnotationMetadata.js`. Plan: split into two distinct fields, migrate/backfill existing rows, then remove the fallbacks. This is a data-model change — scope it carefully before editing (consider a brainstorm/plan pass first) and it will need its own Supabase migration.
 
 ## Warnings
 
