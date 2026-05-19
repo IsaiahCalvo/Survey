@@ -3176,6 +3176,17 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   const projects = supabaseProjects || [];
   // Normalize Supabase templates and merge with local-only templates for optimistic UI
   const templates = useMemo(() => {
+    // Templates created before the "Ball in Court" -> "Entity" rename store the
+    // entity roster under the legacy key `ballInCourtEntities`. Convert it to
+    // `entities` (and drop the stale key) so the rest of the app only ever sees
+    // the current name; the next template save then persists the corrected shape.
+    const normalizeTemplateEntities = (tpl) => {
+      if (!tpl || typeof tpl !== 'object' || tpl.ballInCourtEntities === undefined) {
+        return tpl;
+      }
+      const { ballInCourtEntities, ...rest } = tpl;
+      return { ...rest, entities: rest.entities ?? ballInCourtEntities ?? [] };
+    };
     // First, normalize Supabase templates
     const supabaseNormalized = (supabaseTemplates || []).map((templateRow) => {
       const config = templateRow?.config && typeof templateRow.config === 'object'
@@ -3202,7 +3213,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     );
 
     // Merge: local-only templates first (for immediate visibility), then Supabase templates
-    return [...localOnlyTemplates, ...supabaseNormalized];
+    return [...localOnlyTemplates, ...supabaseNormalized].map(normalizeTemplateEntities);
   }, [supabaseTemplates, externalTemplates]);
 
   // Track previous supabaseTemplates to detect actual Supabase changes

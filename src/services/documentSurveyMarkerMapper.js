@@ -32,7 +32,11 @@ export function buildSurveyMarkerRow({
     checklist_responses: annotation.checklistResponses || {},
     changed_by: annotation.changedBy || null,
     changed_date: annotation.changedDate || null,
-    color: annotation.color || '#FFFF00',
+    // Persist the entity's colour as the marker colour. Editing a marker's
+    // Entity updates `entityColor` but historically not `color`; saving
+    // `entityColor` here keeps the stored colour in step with the Entity so
+    // the marker no longer reloads with a stale fallback fill.
+    color: annotation.entityColor || annotation.color || '#FFFF00',
     opacity: annotation.opacity || 0.3,
     last_modified_by: userId,
     version: (annotation.version || 0) + 1,
@@ -68,6 +72,9 @@ export function mapSurveyMarkerRowToLocalAnnotation(row) {
     changedBy: row.changed_by,
     changedDate: row.changed_date,
     color: row.color,
+    // Mirror the stored colour back onto entityColor so a reloaded marker that
+    // has an Entity renders with the same fill it had before the reload.
+    entityColor: row.entity_id ? row.color : undefined,
     opacity: row.opacity,
     version: row.version,
     supabaseId: row.id,
