@@ -2,7 +2,7 @@
 
 **Generated**: 2026-05-19 (updated)
 **Branch**: `survey-marker-rename` (18 commits ahead of `main`, working tree clean)
-**Status**: In Progress — rename complete; delete/panel/Excel bugs fixed & verified; preview style + Plan B/C + merge remain
+**Status**: In Progress — rename complete; delete/panel/Excel + needs-Entity preview fixed & verified; Plan B/C + merge remain
 
 ## Goal
 
@@ -21,11 +21,11 @@ merge to `main` remain.
 - [x] **Orphan / delete bug fixed.** `handleSurveyMarkerDeleted` now deletes unconditionally when given an explicit `highlightId` (dropped the `!selectedModuleId`/`!selectedTemplate` early-return and module/page-match gate for the ID case; the template-dependent item cleanup is guarded). Deleting a Survey Marker now reliably removes it from the page, the panel, Supabase, and the Excel export.
 - [x] **Right-click on a Survey Marker is suppressed.** No context menu of any kind appears (Survey Markers have no menu actions this release). Fix is in `src/utils/contextMenuDiagnostics.js`.
 - [x] **Double-click on a Survey Marker** now expands its own panel row (showing its checklist items) and collapses every other category/marker row.
+- [x] **Needs-an-Entity preview style fixed.** A Survey Marker created without an Entity now previews as a blue dashed outline with a transparent fill. Cause was not the `needsEntity` pipeline — the six name-prompt commit blocks in `src/App.jsx` hardcoded an amber fallback (`rgba(255,193,7,1.0)`) and built the preview with that color and no `needsEntity` flag. Fallback is now `null`; preview built with `needsEntity:true` when no Entity. Commit `47d5fb45`.
 - [x] **Excel resurrection bug fixed.** Deleting a Survey Marker now re-exports the linked Excel (`pushToExcelWithRetry`, fired from an effect after the `surveyMarkers` delete commits). Previously the deleted marker's Excel row survived, and the next document open re-imported it and resurrected the marker location-less. **Verified by direct inspection of `Security_export.xlsx`**: after deletes the workbook held exactly the 2 surviving markers.
 
 ## Not Yet Done
 
-- [ ] **Needs-an-Entity preview style.** A Survey Marker awaiting an Entity should preview as a blue dashed outline with a clear (transparent) fill; the user reported seeing an amber/yellow fill. NOTE: the merge effect in `src/App.jsx` computes `needsEntity = !entityColor && !entityId`, and `SVGAnnotationLayer.jsx` already renders `needsEntity` rects as `fill:transparent, stroke:#4A90E2, strokeDashArray:[5,5]` (blue dashed). So part of the code already does the right thing — **first confirm what actually draws today and find where the amber comes from** (possibly a create-time preview path, or `entityColor`/`color` defaulting to amber). This is the recommended next task — small and user-visible.
 - [ ] **Plan B — untangle Space vs Module.** Latent data bug: one field on a Survey Marker (`spaceId`) holds *either* a Module ID *or* a real Space ID depending on creation path (dual-meaning write ~`src/App.jsx:31469`). ~49 `moduleId || spaceId` fallbacks across `App.jsx`, `pdfAnnotationsPdfLib.js`, `pdfCalloutMetadata.js`, `pdfAppAnnotationMetadata.js`. Split into two distinct fields, migrate/backfill, remove the fallbacks.
 - [ ] **Plan C — universal-ID rename.** `highlightId` (memory) / `highlight_id` (DB column) are the *universal* identity of EVERY annotation type, misnamed. Rename to `annotationId` / `annotation_id` as its own migration.
 - [ ] **Merge `survey-marker-rename` into `main`** once the user signs off (see Warnings — main is currently DB-incompatible).
