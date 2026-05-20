@@ -23,6 +23,7 @@ import {
   serializePdfAppLayerStateMetadata,
   serializePdfAppAnnotationMetadata,
 } from './pdfAppAnnotationMetadata.js';
+import { isSurveyMarkerType } from './surveyMarkerType.js';
 import {
   ANNOTATION_VISIBILITY_SCOPE,
   getAnnotationVisibilityScope,
@@ -79,7 +80,7 @@ const getObjectScope = (obj) => getAnnotationVisibilityScope({
 const getObjectId = (obj, fallback = null) => (
   obj?.id ||
   obj?.data?.id ||
-  obj?.highlightId ||
+  obj?.annotationId ||
   obj?.pdfAnnotationId ||
   fallback
 );
@@ -111,7 +112,7 @@ const clonePlain = (value) => JSON.parse(JSON.stringify(value));
 export function buildPrintableRegularAnnotationPayload({
   annotationsByPage = {},
   callouts = [],
-  highlightAnnotations = {},
+  surveyMarkers = {},
 } = {}) {
   const diagnostics = {
     included: {
@@ -123,7 +124,7 @@ export function buildPrintableRegularAnnotationPayload({
       fabric: 0,
       callouts: 0,
       counters: 0,
-      surveyHighlights: Object.keys(highlightAnnotations || {}).length,
+      surveyMarkers: Object.keys(surveyMarkers || {}).length,
       importedPdfNativePreserved: 0,
     },
     excludedByScope: {
@@ -147,8 +148,8 @@ export function buildPrintableRegularAnnotationPayload({
 
     objects.forEach((obj) => {
       const isCounter = obj?.data?.type === 'counter';
-      if (obj?.highlightId) {
-        diagnostics.excluded.surveyHighlights += 1;
+      if (obj?.annotationId) {
+        diagnostics.excluded.surveyMarkers += 1;
         return;
       }
       if (obj?.isPdfImported || obj?.pdfAnnotationId) {
@@ -192,7 +193,7 @@ export function buildPrintableRegularAnnotationPayload({
   return {
     annotationsByPage: printableAnnotationsByPage,
     callouts: printableCallouts,
-    highlightAnnotations: {},
+    surveyMarkers: {},
     diagnostics,
   };
 }
@@ -236,8 +237,8 @@ const recordSkip = (diagnostics, item, reason) => {
   diagnostics.skipped.push(makeSkipDetail({ ...item, reason }));
 };
 
-const normalizeHighlightBounds = (highlight) => {
-  const bounds = highlight?.bounds || highlight?.pdfCoordinates || highlight || {};
+const normalizeSurveyMarkerBounds = (surveyMarker) => {
+  const bounds = surveyMarker?.bounds || surveyMarker?.pdfCoordinates || surveyMarker || {};
   const left = Number(bounds.x ?? bounds.left);
   const top = Number(bounds.y ?? bounds.top);
   const width = Number(bounds.width ?? (Number(bounds.right) - Number(bounds.left)));
@@ -249,22 +250,22 @@ const normalizeHighlightBounds = (highlight) => {
   return { left, top, width, height };
 };
 
-const highlightToFabricRect = (highlight, highlightId) => {
-  const bounds = normalizeHighlightBounds(highlight);
+const surveyMarkerToFabricRect = (surveyMarker, annotationId) => {
+  const bounds = normalizeSurveyMarkerBounds(surveyMarker);
   if (!bounds) return null;
   return {
     type: 'rect',
-    exportType: 'highlight',
-    highlightId,
+    exportType: 'survey-marker',
+    annotationId,
     left: bounds.left,
     top: bounds.top,
     width: bounds.width,
     height: bounds.height,
-    fill: highlight?.color || '#FFFF00',
-    opacity: highlight?.opacity ?? 0.3,
-    moduleId: highlight?.moduleId ?? highlight?.spaceId ?? null,
-    spaceId: highlight?.spaceId ?? null,
-    regionId: highlight?.regionId ?? null,
+    fill: surveyMarker?.color || '#FFFF00',
+    opacity: surveyMarker?.opacity ?? 0.3,
+    moduleId: surveyMarker?.moduleId ?? surveyMarker?.spaceId ?? null,
+    spaceId: surveyMarker?.spaceId ?? null,
+    regionId: surveyMarker?.regionId ?? null,
   };
 };
 
@@ -278,7 +279,7 @@ const calloutToExportObject = (callout, pageSize) => {
   return {
     type: 'callout',
     exportType: 'callout',
-    id: callout.id || callout.highlightId || null,
+    id: callout.id || callout.annotationId || null,
     pageNumber: callout.pageNumber,
     moduleId: callout.moduleId ?? callout.spaceId ?? null,
     spaceId: callout.spaceId ?? null,
@@ -308,7 +309,7 @@ const calloutToExportObject = (callout, pageSize) => {
 export function buildPdfExportAnnotationPlan({
   annotationsByPage = {},
   callouts = [],
-  highlightAnnotations = {},
+  surveyMarkers = {},
   pageSizes = {},
   spaces = [],
 } = {}) {
@@ -323,8 +324,8 @@ export function buildPdfExportAnnotationPlan({
       return;
     }
 
-    if (item.source === 'survey-highlight') {
-      recordSkip(diagnostics, item, 'survey-highlight-export-excluded');
+    if (item.source === 'survey-marker') {
+      recordSkip(diagnostics, item, 'survey-marker-export-excluded');
       return;
     }
 
@@ -343,12 +344,12 @@ export function buildPdfExportAnnotationPlan({
       diagnostics.editedImportedCopiesExported += 1;
     }
 
-    if (item.source === 'fabric' && obj?.highlightId) {
-      recordSkip(diagnostics, item, 'legacy-survey-highlight-rendered-from-highlight-state');
+    if (item.source === 'fabric' && obj?.annotationId) {
+      recordSkip(diagnostics, item, 'legacy-survey-marker-rendered-from-marker-state');
       return;
     }
 
-    if (!EXPORTABLE_FABRIC_TYPES.has(item.fabricType) && item.type !== 'callout' && item.type !== 'highlight') {
+    if (!EXPORTABLE_FABRIC_TYPES.has(item.fabricType) && item.type !== 'callout' && !isSurveyMarkerType(item.type)) {
       recordSkip(diagnostics, item, 'unsupported-type');
       return;
     }
@@ -379,22 +380,22 @@ export function buildPdfExportAnnotationPlan({
     });
   });
 
-  Object.entries(highlightAnnotations || {}).forEach(([highlightId, highlight]) => {
-    const pageNumber = Number(highlight?.pageNumber || 1);
-    const obj = highlightToFabricRect(highlight, highlightId);
-    const scope = getObjectScope(obj || highlight);
-    const regionId = highlight?.regionId ?? null;
+  Object.entries(surveyMarkers || {}).forEach(([annotationId, surveyMarker]) => {
+    const pageNumber = Number(surveyMarker?.pageNumber || 1);
+    const obj = surveyMarkerToFabricRect(surveyMarker, annotationId);
+    const scope = getObjectScope(obj || surveyMarker);
+    const regionId = surveyMarker?.regionId ?? null;
     const derivedSpaceId = regionId ? getSpaceIdForRegionFromSpaces(regionId, spaces) : null;
     const item = {
-      source: 'survey-highlight',
+      source: 'survey-marker',
       pageNumber,
-      id: highlightId,
-      type: 'highlight',
+      id: annotationId,
+      type: 'survey-marker',
       fabricType: 'rect',
       scope,
-      moduleId: highlight?.moduleId ?? highlight?.spaceId ?? null,
+      moduleId: surveyMarker?.moduleId ?? surveyMarker?.spaceId ?? null,
       regionId,
-      spaceId: highlight?.spaceId ?? derivedSpaceId ?? null,
+      spaceId: surveyMarker?.spaceId ?? derivedSpaceId ?? null,
     };
     if (!obj) {
       recordConsidered(diagnostics, item);
@@ -664,7 +665,7 @@ const createCircleAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {
 };
 
 /**
- * Create Highlight annotation
+ * Create SurveyMarker annotation
  * Uses QuadPoints following Adobe's implementation (not PDF spec order)
  */
 const createHighlightAnnotation = (pdfDoc, page, fabricObj, pageHeight, options = {}) => {
@@ -693,7 +694,7 @@ const createHighlightAnnotation = (pdfDoc, page, fabricObj, pageHeight, options 
 
     const annotationDict = {
       Type: 'Annot',
-      Subtype: 'Highlight',
+      Subtype: 'SurveyMarker',
       Rect: [minX, minY, maxX, maxY],
       QuadPoints: quadPoints.map(n => PDFNumber.of(n)),
       C: [color.red, color.green, color.blue],
@@ -1335,7 +1336,7 @@ export const savePDFWithFlattenedRegularAnnotationsForPrint = async (
   const printablePayload = buildPrintableRegularAnnotationPayload({
     annotationsByPage,
     callouts: options?.callouts || [],
-    highlightAnnotations: {},
+    surveyMarkers: {},
   });
   const printableDiagnostics = options?.printableDiagnostics || printablePayload.diagnostics;
   let flattenedPrintAnnotationsAdded = 0;
@@ -1403,7 +1404,7 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
     const exportPlan = buildPdfExportAnnotationPlan({
       annotationsByPage,
       callouts: options?.callouts || [],
-      highlightAnnotations: options?.highlightAnnotations || {},
+      surveyMarkers: options?.surveyMarkers || {},
       pageSizes,
       spaces: options?.spaces || [],
     });
@@ -1413,7 +1414,7 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
       exportId: options?.exportId || `${documentId || 'local'}-${Date.now()}`,
       annotationsByPage,
       callouts: options?.callouts || [],
-      highlightAnnotations: options?.highlightAnnotations || {},
+      surveyMarkers: options?.surveyMarkers || {},
       spaces: options?.spaces || [],
     });
     const appLayerStateEmbedded = applyAppLayerStateMetadataToPdf(pdfDoc, appLayerState);
@@ -1473,7 +1474,8 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
           annotRef = createInkAnnotation(pdfDoc, page, obj, pageHeight, appAnnotationOptions);
           break;
         case 'rect':
-          if (item.type === 'highlight') {
+          // isSurveyMarkerType accepts both 'survey-marker' (new) and 'highlight' (legacy)
+          if (isSurveyMarkerType(item.type)) {
             annotRef = createHighlightAnnotation(pdfDoc, page, obj, pageHeight, appAnnotationOptions);
           } else {
             annotRef = createSquareAnnotation(pdfDoc, page, obj, pageHeight, appAnnotationOptions);
@@ -1561,7 +1563,7 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
         exportId: appLayerState.exportId,
         scopedAnnotationPages: Object.keys(appLayerState.layers?.scopedAnnotationsByPage || {}).length,
         scopedCallouts: Array.isArray(appLayerState.layers?.callouts) ? appLayerState.layers.callouts.length : 0,
-        surveyHighlights: Object.keys(appLayerState.layers?.highlightAnnotations || {}).length,
+        surveyMarkers: Object.keys(appLayerState.layers?.surveyMarkers || {}).length,
         spaces: Array.isArray(appLayerState.layers?.spaces) ? appLayerState.layers.spaces.length : 0,
       } : null,
       importedAppAnnotationsSkipped: exportDiagnostics.skippedByReason['imported-pdf-native-preserved'] || 0,

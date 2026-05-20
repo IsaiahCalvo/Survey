@@ -2,7 +2,7 @@
  * One-time local-to-cloud migration for stranded annotations — Phase 21.
  *
  * On first run after this phase ships, scans localStorage for any
- * non-highlight annotations that don't yet exist in Supabase and pushes
+ * non-surveyMarker annotations that don't yet exist in Supabase and pushes
  * them up. Marks the migration complete per (user, document) so subsequent
  * document opens are no-ops.
  *
@@ -13,7 +13,7 @@ import { supabase } from '../supabaseClient.js';
 import {
   upsertAnnotationsByPage,
   upsertCallouts,
-  loadAllNonHighlightAnnotations
+  loadAllNonSurveyMarkerAnnotations
 } from './annotationCloudSync.js';
 
 const MIGRATION_KEY_PREFIX = 'cloudSyncMigrated_';
@@ -116,13 +116,13 @@ export async function migrateLocalAnnotationsToCloud(ctx) {
   // full-table read during startup.
   const cloudResult = existingCloudResult && !existingCloudResult.error
     ? existingCloudResult
-    : await loadAllNonHighlightAnnotations(documentId);
+    : await loadAllNonSurveyMarkerAnnotations(documentId);
   if (cloudResult.error) {
     if (onStatus) onStatus({ stage: 'error', error: cloudResult.error });
     return { migrated: false, pushed: 0, skipped: 0, error: cloudResult.error };
   }
   const cloudIds = new Set(
-    (cloudResult.rawRows || []).map((r) => r.highlight_id).filter(Boolean)
+    (cloudResult.rawRows || []).map((r) => r.annotation_id).filter(Boolean)
   );
   const cloudPdfImportKeys = new Set(
     (cloudResult.rawRows || []).map(getPdfImportKeyForRow).filter(Boolean)
@@ -156,7 +156,7 @@ export async function migrateLocalAnnotationsToCloud(ctx) {
   }
 
   const filteredCallouts = localCallouts.filter((c) => {
-    const id = c.id || c.highlightId;
+    const id = c.id || c.annotationId;
     return !id || !cloudIds.has(id);
   });
   totalToPush += filteredCallouts.length;

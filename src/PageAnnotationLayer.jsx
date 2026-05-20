@@ -140,7 +140,7 @@ const summarizeFabricObjectForHistoryDebug = (object) => {
     type: object.type || null,
     partType: object.partType || object.data?.type || null,
     name: object.name || null,
-    highlightId: object.highlightId || null,
+    annotationId: object.annotationId || null,
     pdfAnnotationId: object.pdfAnnotationId || null,
     moduleId: object.moduleId || null,
     regionId: object.regionId || null,
@@ -3093,7 +3093,7 @@ const erasePathSegment_Deprecated = (pathObj, eraserPath, eraserRadius, canvas) 
   }
 };
 
-// Ensure color is in rgba format with specified opacity (default 0.2, but highlights use 1.0)
+// Ensure color is in rgba format with specified opacity (default 0.2, but surveyMarkers use 1.0)
 const ensureRgbaOpacity = (color, opacity = 0.2) => {
   if (!color) return `rgba(255, 193, 7, ${opacity})`; // Default yellow
 
@@ -3118,9 +3118,9 @@ const ensureRgbaOpacity = (color, opacity = 0.2) => {
   return color;
 };
 
-const DEFAULT_SURVEY_HIGHLIGHT_OPACITY = 0.4;
+const DEFAULT_SURVEY_MARKER_OPACITY = 0.4;
 
-const normalizeHighlightColor = (color, fallbackOpacity = DEFAULT_SURVEY_HIGHLIGHT_OPACITY) => {
+const normalizeSurveyMarkerColor = (color, fallbackOpacity = DEFAULT_SURVEY_MARKER_OPACITY) => {
   if (!color || typeof color !== 'string') {
     return null;
   }
@@ -3188,7 +3188,7 @@ const PageAnnotationLayer = memo(({
   height,
   scale,
   canvasTopPadding = 12,
-  tool = 'pan', // 'pen' | 'highlighter' | 'eraser' | 'text' | 'rect' | 'ellipse' | 'line' | 'arrow' | 'underline' | 'strikeout' | 'squiggly' | 'note' | 'highlight'
+  tool = 'pan', // 'pen' | 'highlighter' | 'eraser' | 'text' | 'rect' | 'ellipse' | 'line' | 'arrow' | 'underline' | 'strikeout' | 'squiggly' | 'note' | 'survey-marker'
   strokeColor = '#DC3545',
   strokeWidth = 3,
   arrowheadStyle = ARROWHEAD_STYLES.SOLID_TRIANGLE,
@@ -3196,15 +3196,15 @@ const PageAnnotationLayer = memo(({
   onSaveAnnotations = () => { },
   onToolChange = () => { },
   highlightColor = 'rgba(255, 193, 7, 0.3)',
-  newHighlights = null, // Array of {x, y, width, height} to add
-  highlightsToRemove = null, // Array of {x, y, width, height} to remove
-  onHighlightCreated = null, // Callback for when highlight tool creates a rectangle
-  onHighlightDeleted = null, // Callback for when highlight is deleted via eraser
-  onHighlightClicked = null, // Callback for when a highlight is clicked (reverse navigation)
+  newSurveyMarkers = null, // Array of {x, y, width, height} to add
+  surveyMarkersToRemove = null, // Array of {x, y, width, height} to remove
+  onSurveyMarkerCreated = null, // Callback for when surveyMarker tool creates a rectangle
+  onSurveyMarkerDeleted = null, // Callback for when surveyMarker is deleted via eraser
+  onSurveyMarkerClicked = null, // Callback for when a surveyMarker is clicked (reverse navigation)
   selectedSpaceId = null, // Space ID to filter annotations by (used for background annotation lightbulb)
   activeSpaceId = null, // Active space ID - region-scoped annotations only visible when this is not null
   selectedModuleId = null, // Module ID to filter annotations by
-  selectedCategoryId = null, // Category ID to keep highlights visible when panel is hidden
+  selectedCategoryId = null, // Category ID to keep surveyMarkers visible when panel is hidden
   activeRegions = null,
   spaces = [], // Array of spaces to look up region-to-space relationships
   getCanvasAnnotationVisibilityState = null, // (spaceId, pageId) => boolean for canvas-scoped annotations
@@ -3246,8 +3246,8 @@ const PageAnnotationLayer = memo(({
   const fabricRef = useRef(null);
   // Fires when fabricRef.current becomes a live canvas. Drives effects that
   // depend on the canvas being ready to paint (e.g. seeding saved survey
-  // highlights on template open, which otherwise race the Fabric mount and
-  // silently drop the first paint until the user draws a new highlight).
+  // surveyMarkers on template open, which otherwise race the Fabric mount and
+  // silently drop the first paint until the user draws a new surveyMarker).
   const [isCanvasReady, setIsCanvasReady] = useState(false);
   const scaleUpdateFrameRef = useRef(null);
   const pointerRecoveryRafRef = useRef(null);
@@ -3263,7 +3263,7 @@ const PageAnnotationLayer = memo(({
   const viewportObserverRef = useRef(null);
   const paintCommitTokenRef = useRef(0);
   const paintCommitRafIdsRef = useRef([]);
-  const processedHighlightsRef = useRef(new Set());
+  const processedSurveyMarkersRef = useRef(new Set());
   const isInitializedRef = useRef(false);
   const drawingStateRef = useRef({ isDrawingShape: false, startX: 0, startY: 0, tempObj: null });
   const justFinishedDrawingRef = useRef(false);
@@ -3296,8 +3296,8 @@ const PageAnnotationLayer = memo(({
   }, [callouts, setCallouts, selectedSpaceId, activeSpaceId, selectedModuleId, showSurveyPanel, activeRegionId, spaces, getCanvasAnnotationVisibilityState, getSurveyAnnotationVisibilityState, isRegionOverlayEnabled, pageNumber]);
   const strokeWidthRef = useRef(strokeWidth);
   const justCreatedCalloutRef = useRef(false);
-  const onHighlightCreatedRef = useRef(onHighlightCreated);
-  const onHighlightDeletedRef = useRef(onHighlightDeleted);
+  const onSurveyMarkerCreatedRef = useRef(onSurveyMarkerCreated);
+  const onSurveyMarkerDeletedRef = useRef(onSurveyMarkerDeleted);
 
   const cancelPendingPaintCommit = useCallback(() => {
     paintCommitTokenRef.current += 1;
@@ -3416,7 +3416,7 @@ const PageAnnotationLayer = memo(({
   }, [pageNumber]);
 
   // [Phase 11] Removed: old presentation snapshot API registration useEffect, inert in SVG mode.
-  const onHighlightClickedRef = useRef(onHighlightClicked);
+  const onSurveyMarkerClickedRef = useRef(onSurveyMarkerClicked);
   const selectedSpaceIdRef = useRef(selectedSpaceId);
   const activeSpaceIdRef = useRef(activeSpaceId);
   const selectedModuleIdRef = useRef(selectedModuleId);
@@ -3723,7 +3723,7 @@ const PageAnnotationLayer = memo(({
     const canvas = fabricRef.current;
     if (!canvas) return;
     sanitizeTextStyles(canvas);
-    const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'highlightId', 'needsEntity', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
+    const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'annotationId', 'needsEntity', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
     onSaveAnnotations(pageNumber, canvasJSON, buildHistorySaveContext(source, context));
   }, [pageNumber, onSaveAnnotations]);
 
@@ -4934,18 +4934,18 @@ const PageAnnotationLayer = memo(({
     };
   }, [editModal?.visible, dismissEditModal]);
 
-  // Keep highlight callback refs in sync
+  // Keep surveyMarker callback refs in sync
   useEffect(() => {
-    onHighlightCreatedRef.current = onHighlightCreated;
-  }, [onHighlightCreated]);
+    onSurveyMarkerCreatedRef.current = onSurveyMarkerCreated;
+  }, [onSurveyMarkerCreated]);
 
   useEffect(() => {
-    onHighlightDeletedRef.current = onHighlightDeleted;
-  }, [onHighlightDeleted]);
+    onSurveyMarkerDeletedRef.current = onSurveyMarkerDeleted;
+  }, [onSurveyMarkerDeleted]);
 
   useEffect(() => {
-    onHighlightClickedRef.current = onHighlightClicked;
-  }, [onHighlightClicked]);
+    onSurveyMarkerClickedRef.current = onSurveyMarkerClicked;
+  }, [onSurveyMarkerClicked]);
 
   // Keep selectedSpaceId and activeSpaceId refs in sync
   useEffect(() => {
@@ -5005,7 +5005,7 @@ const PageAnnotationLayer = memo(({
 
     // Update cursors
     // Set cursor based on tool (Using 'none' for eraser to hide native cursor)
-    const shapeTools = ['rect', 'ellipse', 'line', 'arrow', 'callout', 'highlight', 'squiggly', 'counter'];
+    const shapeTools = ['rect', 'ellipse', 'line', 'arrow', 'callout', 'survey-marker', 'squiggly', 'counter'];
     canvas.defaultCursor = (tool === 'eraser' ? 'none' : (tool === 'select' ? 'default' : (tool === 'text' ? 'text' : (shapeTools.includes(tool) ? 'crosshair' : (canvas.isDrawingMode ? 'crosshair' : 'default')))));
     canvas.hoverCursor = tool === 'eraser' ? 'none' : (tool === 'select' ? 'move' : (tool === 'pan' ? 'grab' : 'move'));
     canvas.moveCursor = tool === 'eraser' ? 'none' : 'move';
@@ -5036,12 +5036,12 @@ const PageAnnotationLayer = memo(({
     if (!canvas) return;
 
     canvas.clear();
-    // Tracking refs for already-rendered survey highlights are tied to live
-    // canvas objects we just destroyed. Reset them so the newHighlights effect
+    // Tracking refs for already-rendered survey markers are tied to live
+    // canvas objects we just destroyed. Reset them so the newSurveyMarkers effect
     // (which runs next when annotations change) re-seeds from scratch instead
     // of thinking they're already on canvas and skipping the paint.
-    renderedHighlightsRef.current = new Map();
-    processedHighlightsRef.current = new Set();
+    renderedSurveyMarkersRef.current = new Map();
+    processedSurveyMarkersRef.current = new Set();
     canvas.setBackgroundColor('transparent', () => { });
 
     if (annotationsData && annotationsData.objects && annotationsData.objects.length > 0) {
@@ -5105,8 +5105,8 @@ const PageAnnotationLayer = memo(({
           // Preserve layer property
           if (objData.layer) obj.layer = objData.layer;
 
-          // Enforce multiply blend mode for highlights
-          if (obj.highlightId || obj.needsEntity) {
+          // Enforce multiply blend mode for surveyMarkers
+          if (obj.annotationId || obj.needsEntity) {
             obj.set({ globalCompositeOperation: 'multiply' });
           }
 
@@ -5461,7 +5461,7 @@ const PageAnnotationLayer = memo(({
         sanitizeTextStyles(fabricRef.current);
 
         // Include spaceId in the saved JSON to preserve space associations
-        const canvasJSON = fabricRef.current.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'highlightId', 'needsEntity', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
+        const canvasJSON = fabricRef.current.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'annotationId', 'needsEntity', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
         lastSavedAnnotationsRef.current = canvasJSON; // Update last saved ref
         onSaveAnnotations(pageNumber, canvasJSON, buildHistorySaveContext(source, context));
       } catch (e) {
@@ -6602,8 +6602,8 @@ const PageAnnotationLayer = memo(({
       if (currentTool === 'counter') {
         console.log(`[Counter p${pageNumber}] REACHED shape tools dispatch section — currentTool=${currentTool}`);
       }
-      if (currentTool === 'highlight') {
-        // Highlight tool: create a clear selection rectangle (transparent fill, visible border)
+      if (currentTool === 'survey-marker') {
+        // SurveyMarker tool: create a clear selection rectangle (transparent fill, visible border)
         temp = new Rect({
           left: x,
           top: y,
@@ -6971,30 +6971,30 @@ const PageAnnotationLayer = memo(({
               continue;
             }
 
-            // Skip highlights from partial logic if you want (or handle them if you want consistency)
-            // Original logic handled highlights separately. We can keep that or unify.
+            // Skip surveyMarkers from partial logic if you want (or handle them if you want consistency)
+            // Original logic handled surveyMarkers separately. We can keep that or unify.
             // For now, let's process them.
 
-            const hasHighlightId = obj.highlightId != null;
+            const hasHighlightId = obj.annotationId != null;
             const hasNeedsEntityFlag = obj.needsEntity === true;
-            const isColoredHighlight = obj.type === 'rect' && (
+            const isColoredSurveyMarker = obj.type === 'rect' && (
               (obj.fill && typeof obj.fill === 'string' && obj.fill.includes('rgba')) ||
               (obj.fill && typeof obj.fill === 'string' && obj.fill.match(/rgba\(\d+,\s*\d+,\s*\d+,\s*[\d.]+\)/))
             );
             const fillIsTransparent = !obj.fill || obj.fill === 'transparent' ||
               (typeof obj.fill === 'string' && obj.fill === 'transparent');
             const hasStroke = obj.stroke && typeof obj.stroke === 'string' && obj.stroke !== 'transparent';
-            const isNeedsEntityHighlight = obj.type === 'rect' && fillIsTransparent && hasStroke;
-            const isHighlight = hasHighlightId || hasNeedsEntityFlag || isColoredHighlight || isNeedsEntityHighlight;
+            const isNeedsEntitySurveyMarker = obj.type === 'rect' && fillIsTransparent && hasStroke;
+            const isSurveyMarker = hasHighlightId || hasNeedsEntityFlag || isColoredSurveyMarker || isNeedsEntitySurveyMarker;
 
-            // Highlights are special: they are always fully deleted if touched
-            if (isHighlight) {
+            // SurveyMarkers are special: they are always fully deleted if touched
+            if (isSurveyMarker) {
               // Check if eraser touched it
               const isTouching = eraserPath.points.some(point => isPointOnObject(point, obj, eraserRadius));
 
               if (isTouching) {
-                // Delete highlight
-                if (onHighlightDeletedRef.current) {
+                // Delete surveyMarker
+                if (onSurveyMarkerDeletedRef.current) {
                   const currentZoom = canvas.getZoom ? canvas.getZoom() : scale;
                   const bounds = {
                     x: obj.left / currentZoom,
@@ -7003,19 +7003,19 @@ const PageAnnotationLayer = memo(({
                     height: obj.height / currentZoom,
                     pageNumber
                   };
-                  const highlightId = obj.highlightId || null;
+                  const annotationId = obj.annotationId || null;
 
-                  if (highlightId && renderedHighlightsRef.current.has(highlightId)) {
-                    renderedHighlightsRef.current.delete(highlightId);
+                  if (annotationId && renderedSurveyMarkersRef.current.has(annotationId)) {
+                    renderedSurveyMarkersRef.current.delete(annotationId);
                   }
 
-                  const highlightKey = highlightId || `${bounds.x}-${bounds.y}-${bounds.width}-${bounds.height}`;
-                  processedHighlightsRef.current.delete(highlightKey);
+                  const surveyMarkerKey = annotationId || `${bounds.x}-${bounds.y}-${bounds.width}-${bounds.height}`;
+                  processedSurveyMarkersRef.current.delete(surveyMarkerKey);
 
                   canvas.remove(obj);
                   needsRenderAndSave = true;
 
-                  onHighlightDeletedRef.current(pageNumber, bounds, highlightId);
+                  onSurveyMarkerDeletedRef.current(pageNumber, bounds, annotationId);
                 } else {
                   canvas.remove(obj);
                   needsRenderAndSave = true;
@@ -7155,8 +7155,8 @@ const PageAnnotationLayer = memo(({
         return;
       }
 
-      // Handle highlight tool: create rectangle and call callback
-      if (currentTool === 'highlight' && ds.tempObj.type === 'rect') {
+      // Handle surveyMarker tool: create rectangle and call callback
+      if (currentTool === 'survey-marker' && ds.tempObj.type === 'rect') {
         const rect = ds.tempObj;
         const rectLeft = rect.left;
         const rectTop = rect.top;
@@ -7168,11 +7168,11 @@ const PageAnnotationLayer = memo(({
         canvas.remove(ds.tempObj);
 
         // Only call callback if rectangle has meaningful size (user actually dragged)
-        if (rectWidth > 5 && rectHeight > 5 && onHighlightCreatedRef.current) {
+        if (rectWidth > 5 && rectHeight > 5 && onSurveyMarkerCreatedRef.current) {
           // Canvas has zoom applied via setZoom(), so coordinates are in canvas space
           // Need to divide by currentZoom to convert to PDF coordinates
           // This matches the rendering logic which multiplies by renderScale (lines 667-670)
-          onHighlightCreatedRef.current(pageNumber, {
+          onSurveyMarkerCreatedRef.current(pageNumber, {
             x: rectLeft,
             y: rectTop,
             width: rectWidth,
@@ -7378,30 +7378,30 @@ const PageAnnotationLayer = memo(({
       saveCanvas('annotation:create', { tool: currentTool });
     };
 
-    const getSurveyHighlightIdAtPointer = (nativeEvent) => {
+    const getSurveyMarkerIdAtPointer = (nativeEvent) => {
       const currentTool = toolRef.current;
-      if (currentTool === 'eraser' || currentTool === 'highlight') return null;
+      if (currentTool === 'eraser' || currentTool === 'survey-marker') return null;
 
       const pointer = canvas.getPointer(nativeEvent);
       const objects = canvas.getObjects();
       for (const obj of objects) {
-        const hasHighlightId = obj.highlightId != null;
-        const isColoredHighlight = obj.type === 'rect' && (
+        const hasHighlightId = obj.annotationId != null;
+        const isColoredSurveyMarker = obj.type === 'rect' && (
           (obj.fill && typeof obj.fill === 'string' && obj.fill.includes('rgba')) ||
           (obj.fill && typeof obj.fill === 'string' && obj.fill.match(/rgba\(\d+,\s*\d+,\s*\d+,\s*[\d.]+\)/))
         );
 
-        if ((hasHighlightId || isColoredHighlight) && obj.highlightId && isPointOnObject(pointer, obj, 2)) {
-          return obj.highlightId;
+        if ((hasHighlightId || isColoredSurveyMarker) && obj.annotationId && isPointOnObject(pointer, obj, 2)) {
+          return obj.annotationId;
         }
       }
       return null;
     };
 
     const handleDblClick = (opt) => {
-      const highlightId = opt.target?.highlightId || getSurveyHighlightIdAtPointer(opt.e);
-      if (highlightId) {
-        onHighlightClickedRef.current?.(highlightId);
+      const annotationId = opt.target?.annotationId || getSurveyMarkerIdAtPointer(opt.e);
+      if (annotationId) {
+        onSurveyMarkerClickedRef.current?.(annotationId);
         return;
       }
 
@@ -8369,7 +8369,7 @@ const PageAnnotationLayer = memo(({
     // Prevent Fabric.js from finding targets for eraser tool - we handle it ourselves with geometry checks
     canvas.skipTargetFind = tool === 'eraser';
     // Set cursor based on tool (Using 'none' for eraser to hide native cursor)
-    const shapeToolsForCursor = ['rect', 'ellipse', 'line', 'arrow', 'callout', 'highlight', 'squiggly', 'counter'];
+    const shapeToolsForCursor = ['rect', 'ellipse', 'line', 'arrow', 'callout', 'survey-marker', 'squiggly', 'counter'];
     canvas.defaultCursor = (tool === 'eraser' ? 'none' : (tool === 'select' ? 'default' : (tool === 'text' ? 'text' : (shapeToolsForCursor.includes(tool) ? 'crosshair' : (canvas.isDrawingMode ? 'crosshair' : 'default')))));
     canvas.hoverCursor = tool === 'eraser' ? 'none' : (tool === 'select' ? 'move' : (tool === 'pan' ? 'grab' : 'move'));
     canvas.moveCursor = tool === 'eraser' ? 'none' : 'move';
@@ -8396,7 +8396,7 @@ const PageAnnotationLayer = memo(({
     canvas.getObjects().forEach((obj, idx) => {
       // Only update interactivity based on tool - don't touch visibility
       // The main visibility filter will have already set visibility correctly
-      const isSelectable = tool !== 'pen' && tool !== 'highlighter' && tool !== 'highlight';
+      const isSelectable = tool !== 'pen' && tool !== 'highlighter' && tool !== 'survey-marker';
       // Callouts should only be evented when using select, pan, or callout tool to prevent blocking other annotation tools
       const isCallout = obj.data?.type === 'callout';
       const shouldBeEvented = isSelectable && (!isCallout || tool === 'select' || tool === 'pan' || tool === 'callout');
@@ -8421,14 +8421,14 @@ const PageAnnotationLayer = memo(({
     // canvas.renderAll();
   }, [tool, strokeColor, strokeWidth, selectedModuleId, selectedSpaceId, showSurveyPanel]);
 
-  // Track rendered highlight objects by highlightId for updates
-  const renderedHighlightsRef = useRef(new Map()); // Map<highlightId, fabric.Rect>
-  // Track regionId for each highlight to prevent mutation across re-renders
-  const highlightRegionIdsRef = useRef(new Map()); // Map<highlightId, regionId | null>
+  // Track rendered surveyMarker objects by annotationId for updates
+  const renderedSurveyMarkersRef = useRef(new Map()); // Map<annotationId, fabric.Rect>
+  // Track regionId for each surveyMarker to prevent mutation across re-renders
+  const surveyMarkerRegionIdsRef = useRef(new Map()); // Map<annotationId, regionId | null>
 
-  // Add highlights when newHighlights prop changes
+  // Add surveyMarkers when newSurveyMarkers prop changes
   useEffect(() => {
-    if (!fabricRef.current || !newHighlights || newHighlights.length === 0) return;
+    if (!fabricRef.current || !newSurveyMarkers || newSurveyMarkers.length === 0) return;
     // Defer painting while a zoom/interaction is in flight. Opening the survey
     // panel force-refits the PDF (App.jsx:26094), so scale goes from e.g. 1.24
     // to 0.69 mid-paint, causing the "flash-then-reposition" flicker. Bail now;
@@ -8440,19 +8440,19 @@ const PageAnnotationLayer = memo(({
     const currentZoom = canvas.getZoom();
     let addedAny = false;
 
-    newHighlights.forEach((highlight, index) => {
-      // Create a unique key for this highlight to avoid duplicates
-      // Use highlightId if available, otherwise use coordinates
-      const highlightKey = highlight.highlightId || `${highlight.x}-${highlight.y}-${highlight.width}-${highlight.height}`;
+    newSurveyMarkers.forEach((surveyMarker, index) => {
+      // Create a unique key for this survey marker to avoid duplicates
+      // Use annotationId if available, otherwise use coordinates
+      const surveyMarkerKey = surveyMarker.annotationId || `${surveyMarker.x}-${surveyMarker.y}-${surveyMarker.width}-${surveyMarker.height}`;
 
       // Track the existing regionId to preserve when re-adding
-      // This prevents highlights created outside a region from getting regionId when re-rendered
+      // This prevents surveyMarkers created outside a region from getting regionId when re-rendered
       // IMPORTANT: undefined means "not captured yet", null means "explicitly no regionId"
       let preservedRegionId; // undefined by default
 
-      // Check if we already have this highlight rendered
-      if (highlight.highlightId && renderedHighlightsRef.current.has(highlight.highlightId)) {
-        const existingRect = renderedHighlightsRef.current.get(highlight.highlightId);
+      // Check if we already have this survey marker rendered
+      if (surveyMarker.annotationId && renderedSurveyMarkersRef.current.has(surveyMarker.annotationId)) {
+        const existingRect = renderedSurveyMarkersRef.current.get(surveyMarker.annotationId);
 
         // Verify it's still on the canvas
         if (canvas.getObjects().includes(existingRect)) {
@@ -8461,8 +8461,8 @@ const PageAnnotationLayer = memo(({
           preservedRegionId = existingRect.regionId !== undefined ? existingRect.regionId : null;
 
           // Check if properties match (color, needsEntity, bounds)
-          const rawColor = highlight.color || highlightColor;
-          const color = normalizeHighlightColor(rawColor) || highlightColor;
+          const rawColor = surveyMarker.color || highlightColor;
+          const color = normalizeSurveyMarkerColor(rawColor) || highlightColor;
           const renderScale = currentZoom || scale;
 
           // Check bounds
@@ -8471,10 +8471,10 @@ const PageAnnotationLayer = memo(({
           const currentWidth = existingRect.width;
           const currentHeight = existingRect.height;
 
-          const targetLeft = highlight.x;
-          const targetTop = highlight.y;
-          const targetWidth = highlight.width;
-          const targetHeight = highlight.height;
+          const targetLeft = surveyMarker.x;
+          const targetTop = surveyMarker.y;
+          const targetWidth = surveyMarker.width;
+          const targetHeight = surveyMarker.height;
 
           const tolerance = 1.0;
           const boundsMatch =
@@ -8484,12 +8484,12 @@ const PageAnnotationLayer = memo(({
             Math.abs(currentHeight - targetHeight) < tolerance;
 
           // Check visual style
-          const needsEntity = !!highlight.needsEntity;
+          const needsEntity = !!surveyMarker.needsEntity;
           const existingNeedsEntity = !!existingRect.needsEntity;
 
           // If everything matches, skip update
           if (boundsMatch && needsEntity === existingNeedsEntity) {
-            // For solid highlights, check color
+            // For solid survey markers, check color
             if (!needsEntity) {
               if (existingRect.fill === color) {
                 return; // Skip, already rendered correctly
@@ -8501,233 +8501,233 @@ const PageAnnotationLayer = memo(({
 
           // If we get here, something changed. Remove the old one and let it be re-added.
           canvas.remove(existingRect);
-          renderedHighlightsRef.current.delete(highlight.highlightId);
-          processedHighlightsRef.current.delete(highlightKey);
+          renderedSurveyMarkersRef.current.delete(surveyMarker.annotationId);
+          processedSurveyMarkersRef.current.delete(surveyMarkerKey);
         } else {
           // Reference exists but object not on canvas (weird), clean up
-          renderedHighlightsRef.current.delete(highlight.highlightId);
-          processedHighlightsRef.current.delete(highlightKey);
+          renderedSurveyMarkersRef.current.delete(surveyMarker.annotationId);
+          processedSurveyMarkersRef.current.delete(surveyMarkerKey);
         }
       }
 
-      // Also remove any existing highlights with matching bounds (regardless of highlightId)
+      // Also remove any existing surveyMarkers with matching bounds (regardless of annotationId)
       // This ensures old colors are removed when entity changes
       const tolerance = 1.0; // Tolerance for floating point precision and coordinate system differences
       // Convert PDF coordinates to canvas coordinates for comparison
       // Use actual canvas zoom for consistency
       const renderScale = currentZoom || scale;
-      const highlightCanvasX = highlight.x;
-      const highlightCanvasY = highlight.y;
-      const highlightCanvasWidth = highlight.width;
-      const highlightCanvasHeight = highlight.height;
+      const surveyMarkerCanvasX = surveyMarker.x;
+      const surveyMarkerCanvasY = surveyMarker.y;
+      const surveyMarkerCanvasWidth = surveyMarker.width;
+      const surveyMarkerCanvasHeight = surveyMarker.height;
 
       const matchingRects = canvas.getObjects('rect').filter(obj => {
         // Don't match the object we just verified as correct above (if any)
 
-        // Check if this is a highlight rectangle (has fill with rgba or transparent with stroke)
-        const isHighlight = (obj.fill && typeof obj.fill === 'string' &&
+        // Check if this is a surveyMarker rectangle (has fill with rgba or transparent with stroke)
+        const isSurveyMarker = (obj.fill && typeof obj.fill === 'string' &&
           (obj.fill.includes('rgba') || obj.fill.includes('transparent'))) ||
           (obj.stroke && typeof obj.stroke === 'string' && obj.stroke !== 'transparent');
 
-        if (!isHighlight) return false;
+        if (!isSurveyMarker) return false;
 
         // Match by bounds with tolerance
-        // Compare canvas coordinates (obj is in canvas coords, highlight converted to canvas coords)
+        // Compare canvas coordinates (obj is in canvas coords, surveyMarker converted to canvas coords)
         const boundsMatch =
-          Math.abs(obj.left - highlightCanvasX) < tolerance &&
-          Math.abs(obj.top - highlightCanvasY) < tolerance &&
-          Math.abs(obj.width - highlightCanvasWidth) < tolerance &&
-          Math.abs(obj.height - highlightCanvasHeight) < tolerance;
+          Math.abs(obj.left - surveyMarkerCanvasX) < tolerance &&
+          Math.abs(obj.top - surveyMarkerCanvasY) < tolerance &&
+          Math.abs(obj.width - surveyMarkerCanvasWidth) < tolerance &&
+          Math.abs(obj.height - surveyMarkerCanvasHeight) < tolerance;
 
         return boundsMatch;
       });
 
-      // Remove matching highlights, but capture regionId if we haven't already
-      // This ensures highlights retain their regionId even when re-rendered via bounds match
+      // Remove matching surveyMarkers, but capture regionId if we haven't already
+      // This ensures surveyMarkers retain their regionId even when re-rendered via bounds match
       matchingRects.forEach(rect => {
         // CRITICAL FIX: Capture regionId from bounds-matched rect if we haven't captured one yet
-        // This handles the case where the highlightId-based check didn't find the highlight
-        // (e.g., when a different highlight's bounds-based removal already deleted it from renderedHighlightsRef)
+        // This handles the case where the annotationId-based check didn't find the surveyMarker
+        // (e.g., when a different surveyMarker's bounds-based removal already deleted it from renderedSurveyMarkersRef)
         if (preservedRegionId === undefined) {
           // Capture the regionId - could be null (explicitly no regionId) or a real ID
           preservedRegionId = rect.regionId !== undefined ? rect.regionId : null;
         }
-        // Remove the old highlight
+        // Remove the old surveyMarker
         canvas.remove(rect);
-        // Clean up refs if it had a highlightId
-        if (rect.highlightId) {
-          renderedHighlightsRef.current.delete(rect.highlightId);
+        // Clean up refs if it had a annotationId
+        if (rect.annotationId) {
+          renderedSurveyMarkersRef.current.delete(rect.annotationId);
         }
-        // Remove from processedHighlightsRef using the old key
-        const oldKey = rect.highlightId || `${rect.left}-${rect.top}-${rect.width}-${rect.height}`;
-        processedHighlightsRef.current.delete(oldKey);
+        // Remove from processedSurveyMarkersRef using the old key
+        const oldKey = rect.annotationId || `${rect.left}-${rect.top}-${rect.width}-${rect.height}`;
+        processedSurveyMarkersRef.current.delete(oldKey);
       });
 
-      // Check if we've already processed this highlight (by coordinates if no ID)
-      const alreadyProcessed = processedHighlightsRef.current.has(highlightKey);
+      // Check if we've already processed this surveyMarker (by coordinates if no ID)
+      const alreadyProcessed = processedSurveyMarkersRef.current.has(surveyMarkerKey);
       if (!alreadyProcessed) {
-        // Check if this highlight needs entity assignment (transparent with dashed outline)
-        if (highlight.needsEntity) {
+        // Check if this survey marker needs entity assignment (transparent with dashed outline)
+        if (surveyMarker.needsEntity) {
           // Render as transparent with dashed outline (indicating it needs entity)
           // Convert PDF coordinates to canvas coordinates (multiply by actual zoom)
           const renderScale = currentZoom || scale;
           const rect = new Rect({
-            left: highlight.x,
-            top: highlight.y,
-            width: highlight.width,
-            height: highlight.height,
+            left: surveyMarker.x,
+            top: surveyMarker.y,
+            width: surveyMarker.width,
+            height: surveyMarker.height,
             fill: 'transparent',
             stroke: '#4A90E2',
             strokeWidth: 2,
             strokeDashArray: [5, 5],
-            selectable: toolRef.current !== 'pen' && toolRef.current !== 'highlighter' && toolRef.current !== 'highlight',
-            evented: toolRef.current !== 'pen' && toolRef.current !== 'highlighter' && toolRef.current !== 'highlight',
+            selectable: toolRef.current !== 'pen' && toolRef.current !== 'highlighter' && toolRef.current !== 'survey-marker',
+            evented: toolRef.current !== 'pen' && toolRef.current !== 'highlighter' && toolRef.current !== 'survey-marker',
             excludeFromExport: false,
             strokeUniform: true,
             globalCompositeOperation: 'multiply',
             uniformScaling: false,
             lockUniScaling: false   // Allow free scaling on corner handles
           });
-          // Store the highlightId and needsEntity flag on the object for later reference
-          rect.set({ highlightId: highlight.highlightId, needsEntity: true });
-          // Store current moduleId on the highlight
-          const objModuleId = highlight.moduleId || selectedModuleIdRef.current;
+          // Store the annotationId and needsEntity flag on the object for later reference
+          rect.set({ annotationId: surveyMarker.annotationId, needsEntity: true });
+          // Store current moduleId on the survey marker
+          const objModuleId = surveyMarker.moduleId || selectedModuleIdRef.current;
           if (objModuleId) {
             rect.set({ moduleId: objModuleId });
           }
           // Preserve existing regionId from canvas object, or assign new one if appropriate
-          // This ensures highlights created outside a region don't get regionId when re-rendered
+          // This ensures surveyMarkers created outside a region don't get regionId when re-rendered
           // CRITICAL: preservedRegionId === null means "explicitly no regionId" (different from undefined)
 
           // NEW: Check persistent ref FIRST - this survives across all re-renders
           let finalRegionId;
-          if (highlight.highlightId && highlightRegionIdsRef.current.has(highlight.highlightId)) {
+          if (surveyMarker.annotationId && surveyMarkerRegionIdsRef.current.has(surveyMarker.annotationId)) {
             // Use the regionId from our persistent ref - this is the source of truth
-            finalRegionId = highlightRegionIdsRef.current.get(highlight.highlightId);
-            debugLog(`[Page ${pageNumber}] Using persistent ref regionId:`, { highlightId: highlight.highlightId, finalRegionId });
+            finalRegionId = surveyMarkerRegionIdsRef.current.get(surveyMarker.annotationId);
+            debugLog(`[Page ${pageNumber}] Using persistent ref regionId:`, { annotationId: surveyMarker.annotationId, finalRegionId });
           } else if (preservedRegionId !== undefined) {
             // We captured the regionId from the existing canvas object (could be null or a real ID)
-            // null means the highlight was INTENTIONALLY created without regionId - preserve that
+            // null means the survey marker was INTENTIONALLY created without regionId - preserve that
             finalRegionId = preservedRegionId;
-            debugLog(`[Page ${pageNumber}] Using preserved regionId:`, { highlightId: highlight.highlightId, preservedRegionId });
-          } else if (highlight.regionId !== undefined) {
-            // Use regionId from highlight data if available (check for undefined, not just truthy)
-            finalRegionId = highlight.regionId;
-            debugLog(`[Page ${pageNumber}] Using highlight.regionId from data:`, { highlightId: highlight.highlightId, regionId: highlight.regionId });
+            debugLog(`[Page ${pageNumber}] Using preserved regionId:`, { annotationId: surveyMarker.annotationId, preservedRegionId });
+          } else if (surveyMarker.regionId !== undefined) {
+            // Use regionId from survey marker data if available (check for undefined, not just truthy)
+            finalRegionId = surveyMarker.regionId;
+            debugLog(`[Page ${pageNumber}] Using surveyMarker.regionId from data:`, { annotationId: surveyMarker.annotationId, regionId: surveyMarker.regionId });
           } else if (shouldAssignRegionId()) {
             // Only assign new regionId if nothing was preserved and conditions are met
-            // This should ONLY apply to brand new highlights, not existing ones
+            // This should ONLY apply to brand new survey markers, not existing ones
             finalRegionId = activeRegionIdRef.current;
-            debugLog(`[Page ${pageNumber}] Assigning active regionId:`, { highlightId: highlight.highlightId, activeRegionId: activeRegionIdRef.current });
+            debugLog(`[Page ${pageNumber}] Assigning active regionId:`, { annotationId: surveyMarker.annotationId, activeRegionId: activeRegionIdRef.current });
           } else {
             // Explicitly no regionId
             finalRegionId = null;
-            debugLog(`[Page ${pageNumber}] Setting regionId to null:`, { highlightId: highlight.highlightId });
+            debugLog(`[Page ${pageNumber}] Setting regionId to null:`, { annotationId: surveyMarker.annotationId });
           }
 
           // Set the regionId on the rect
           rect.set({ regionId: finalRegionId });
 
           // Store in persistent ref for future renders
-          if (highlight.highlightId) {
-            highlightRegionIdsRef.current.set(highlight.highlightId, finalRegionId);
+          if (surveyMarker.annotationId) {
+            surveyMarkerRegionIdsRef.current.set(surveyMarker.annotationId, finalRegionId);
           }
           // Set proper visibility - survey annotations should only be visible when survey panel is open
           const isSurveyAnnotation = objModuleId !== null;
           const surveyAnnotationVisible = !isSurveyAnnotation || (showSurveyPanelRef.current && selectedModuleIdRef.current !== null && objModuleId === selectedModuleIdRef.current);
           rect.set({ visible: surveyAnnotationVisible });
-          debugLog(`[Page ${pageNumber}] Adding highlight:`, {
+          debugLog(`[Page ${pageNumber}] Adding surveyMarker:`, {
             moduleId: rect.moduleId,
             regionId: rect.regionId,
-            highlightId: rect.highlightId,
+            annotationId: rect.annotationId,
             bounds: `${Math.round(rect.left)},${Math.round(rect.top)} ${Math.round(rect.width)}x${Math.round(rect.height)}`
           });
           canvas.add(rect);
-          if (highlight.highlightId) {
-            renderedHighlightsRef.current.set(highlight.highlightId, rect);
+          if (surveyMarker.annotationId) {
+            renderedSurveyMarkersRef.current.set(surveyMarker.annotationId, rect);
           }
-          processedHighlightsRef.current.add(highlightKey);
+          processedSurveyMarkersRef.current.add(surveyMarkerKey);
           addedAny = true;
         } else {
-          // Use color from highlight data if provided, otherwise use default, and preserve stored opacity
-          const rawColor = highlight.color || highlightColor;
-          const color = normalizeHighlightColor(rawColor) || highlightColor;
+          // Use color from survey marker data if provided, otherwise use default, and preserve stored opacity
+          const rawColor = surveyMarker.color || highlightColor;
+          const color = normalizeSurveyMarkerColor(rawColor) || highlightColor;
           // Convert PDF coordinates to canvas coordinates (multiply by actual zoom)
           const renderScale = currentZoom || scale;
           const rect = new Rect({
-            left: highlight.x,
-            top: highlight.y,
-            width: highlight.width,
-            height: highlight.height,
+            left: surveyMarker.x,
+            top: surveyMarker.y,
+            width: surveyMarker.width,
+            height: surveyMarker.height,
             fill: color,
             stroke: 'transparent',
-            selectable: toolRef.current !== 'pen' && toolRef.current !== 'highlighter' && toolRef.current !== 'highlight',
-            evented: toolRef.current !== 'pen' && toolRef.current !== 'highlighter' && toolRef.current !== 'highlight',
+            selectable: toolRef.current !== 'pen' && toolRef.current !== 'highlighter' && toolRef.current !== 'survey-marker',
+            evented: toolRef.current !== 'pen' && toolRef.current !== 'highlighter' && toolRef.current !== 'survey-marker',
             excludeFromExport: false,
             strokeUniform: true,
             globalCompositeOperation: 'multiply',
             uniformScaling: false,
             lockUniScaling: false   // Allow free scaling on corner handles
           });
-          // Store the highlightId if available
-          if (highlight.highlightId) {
-            rect.set({ highlightId: highlight.highlightId });
-            renderedHighlightsRef.current.set(highlight.highlightId, rect);
+          // Store the annotationId if available
+          if (surveyMarker.annotationId) {
+            rect.set({ annotationId: surveyMarker.annotationId });
+            renderedSurveyMarkersRef.current.set(surveyMarker.annotationId, rect);
           }
-          // Store current moduleId on the highlight
-          const objModuleId = highlight.moduleId || selectedModuleIdRef.current;
+          // Store current moduleId on the survey marker
+          const objModuleId = surveyMarker.moduleId || selectedModuleIdRef.current;
           if (objModuleId) {
             rect.set({ moduleId: objModuleId });
           }
           // Preserve existing regionId from canvas object, or assign new one if appropriate
-          // This ensures highlights created outside a region don't get regionId when re-rendered
+          // This ensures surveyMarkers created outside a region don't get regionId when re-rendered
           // CRITICAL: preservedRegionId === null means "explicitly no regionId" (different from undefined)
 
           // NEW: Check persistent ref FIRST - this survives across all re-renders
           let finalRegionId;
-          if (highlight.highlightId && highlightRegionIdsRef.current.has(highlight.highlightId)) {
+          if (surveyMarker.annotationId && surveyMarkerRegionIdsRef.current.has(surveyMarker.annotationId)) {
             // Use the regionId from our persistent ref - this is the source of truth
-            finalRegionId = highlightRegionIdsRef.current.get(highlight.highlightId);
-            debugLog(`[Page ${pageNumber}] Using persistent ref regionId:`, { highlightId: highlight.highlightId, finalRegionId });
+            finalRegionId = surveyMarkerRegionIdsRef.current.get(surveyMarker.annotationId);
+            debugLog(`[Page ${pageNumber}] Using persistent ref regionId:`, { annotationId: surveyMarker.annotationId, finalRegionId });
           } else if (preservedRegionId !== undefined) {
             // We captured the regionId from the existing canvas object (could be null or a real ID)
-            // null means the highlight was INTENTIONALLY created without regionId - preserve that
+            // null means the survey marker was INTENTIONALLY created without regionId - preserve that
             finalRegionId = preservedRegionId;
-            debugLog(`[Page ${pageNumber}] Using preserved regionId:`, { highlightId: highlight.highlightId, preservedRegionId });
-          } else if (highlight.regionId !== undefined) {
-            // Use regionId from highlight data if available (check for undefined, not just truthy)
-            finalRegionId = highlight.regionId;
-            debugLog(`[Page ${pageNumber}] Using highlight.regionId from data:`, { highlightId: highlight.highlightId, regionId: highlight.regionId });
+            debugLog(`[Page ${pageNumber}] Using preserved regionId:`, { annotationId: surveyMarker.annotationId, preservedRegionId });
+          } else if (surveyMarker.regionId !== undefined) {
+            // Use regionId from survey marker data if available (check for undefined, not just truthy)
+            finalRegionId = surveyMarker.regionId;
+            debugLog(`[Page ${pageNumber}] Using surveyMarker.regionId from data:`, { annotationId: surveyMarker.annotationId, regionId: surveyMarker.regionId });
           } else if (shouldAssignRegionId()) {
             // Only assign new regionId if nothing was preserved and conditions are met
-            // This should ONLY apply to brand new highlights, not existing ones
+            // This should ONLY apply to brand new survey markers, not existing ones
             finalRegionId = activeRegionIdRef.current;
-            debugLog(`[Page ${pageNumber}] Assigning active regionId:`, { highlightId: highlight.highlightId, activeRegionId: activeRegionIdRef.current });
+            debugLog(`[Page ${pageNumber}] Assigning active regionId:`, { annotationId: surveyMarker.annotationId, activeRegionId: activeRegionIdRef.current });
           } else {
             // Explicitly no regionId
             finalRegionId = null;
-            debugLog(`[Page ${pageNumber}] Setting regionId to null:`, { highlightId: highlight.highlightId });
+            debugLog(`[Page ${pageNumber}] Setting regionId to null:`, { annotationId: surveyMarker.annotationId });
           }
 
           // Set the regionId on the rect
           rect.set({ regionId: finalRegionId });
 
           // Store in persistent ref for future renders
-          if (highlight.highlightId) {
-            highlightRegionIdsRef.current.set(highlight.highlightId, finalRegionId);
+          if (surveyMarker.annotationId) {
+            surveyMarkerRegionIdsRef.current.set(surveyMarker.annotationId, finalRegionId);
           }
           // Set proper visibility - survey annotations should only be visible when survey panel is open
           const isSurveyAnnotation = objModuleId !== null;
           const surveyAnnotationVisible = !isSurveyAnnotation || (showSurveyPanelRef.current && selectedModuleIdRef.current !== null && objModuleId === selectedModuleIdRef.current);
           rect.set({ visible: surveyAnnotationVisible });
-          debugLog(`[Page ${pageNumber}] Adding highlight:`, {
+          debugLog(`[Page ${pageNumber}] Adding surveyMarker:`, {
             moduleId: rect.moduleId,
             regionId: rect.regionId,
-            highlightId: rect.highlightId,
+            annotationId: rect.annotationId,
             bounds: `${Math.round(rect.left)},${Math.round(rect.top)} ${Math.round(rect.width)}x${Math.round(rect.height)}`
           });
           canvas.add(rect);
-          processedHighlightsRef.current.add(highlightKey);
+          processedSurveyMarkersRef.current.add(surveyMarkerKey);
           addedAny = true;
         }
       }
@@ -8739,25 +8739,25 @@ const PageAnnotationLayer = memo(({
       // Save annotations
       try {
         sanitizeTextStyles(canvas);
-        const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'highlightId', 'needsEntity', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
-        onSaveAnnotations(pageNumber, canvasJSON, buildHistorySaveContext('highlight:apply', {
-          addedCount: newHighlights.length
+        const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'annotationId', 'needsEntity', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
+        onSaveAnnotations(pageNumber, canvasJSON, buildHistorySaveContext('surveyMarker:apply', {
+          addedCount: newSurveyMarkers.length
         }));
       } catch (e) {
         console.error(`[Page ${pageNumber}] Save error:`, e);
       }
     }
-  }, [newHighlights, highlightColor, pageNumber, onSaveAnnotations, scale, isCanvasReady, annotations, isZooming, isInteracting]);
+  }, [newSurveyMarkers, highlightColor, pageNumber, onSaveAnnotations, scale, isCanvasReady, annotations, isZooming, isInteracting]);
 
-  // Remove highlights when highlightsToRemove prop changes
+  // Remove surveyMarkers when surveyMarkersToRemove prop changes
   const processedRemovalsRef = useRef(new Set());
   useEffect(() => {
-    if (!fabricRef.current || !highlightsToRemove || highlightsToRemove.length === 0) return;
+    if (!fabricRef.current || !surveyMarkersToRemove || surveyMarkersToRemove.length === 0) return;
 
     const canvas = fabricRef.current;
     let removedAny = false;
 
-    highlightsToRemove.forEach((boundsToRemove) => {
+    surveyMarkersToRemove.forEach((boundsToRemove) => {
       // Create a unique key for this removal to avoid processing twice
       const removalKey = `${boundsToRemove.x}-${boundsToRemove.y}-${boundsToRemove.width}-${boundsToRemove.height}`;
 
@@ -8775,13 +8775,13 @@ const PageAnnotationLayer = memo(({
       const boundsCanvasHeight = boundsToRemove.height;
       const objectsToRemove = [];
       canvas.getObjects('rect').forEach(obj => {
-        // Check if this is a highlight rectangle
-        // All highlights have a highlightId property (normal highlights and needsEntity dashed outlines)
-        // The needsEntity highlights have fill: 'transparent', so we need to check for highlightId
+        // Check if this is a surveyMarker rectangle
+        // All surveyMarkers have a annotationId property (normal surveyMarkers and needsEntity dashed outlines)
+        // The needsEntity surveyMarkers have fill: 'transparent', so we need to check for annotationId
         // instead of just checking fill color
-        const isHighlight = obj.highlightId !== undefined;
+        const isSurveyMarker = obj.annotationId !== undefined;
 
-        if (isHighlight) {
+        if (isSurveyMarker) {
           // Match by bounds with tolerance for floating point and scaling
           const tolerance = 1.0; // Increased tolerance for scaled coordinates
           // Compare canvas coordinates (obj is in canvas coords, boundsToRemove converted to canvas coords)
@@ -8803,12 +8803,12 @@ const PageAnnotationLayer = memo(({
         removedAny = true;
 
         // Clean up refs
-        if (obj.highlightId) {
-          renderedHighlightsRef.current.delete(obj.highlightId);
+        if (obj.annotationId) {
+          renderedSurveyMarkersRef.current.delete(obj.annotationId);
         }
-        // Remove from processedHighlightsRef
-        const key = obj.highlightId || `${obj.left}-${obj.top}-${obj.width}-${obj.height}`;
-        processedHighlightsRef.current.delete(key);
+        // Remove from processedSurveyMarkersRef
+        const key = obj.annotationId || `${obj.left}-${obj.top}-${obj.width}-${obj.height}`;
+        processedSurveyMarkersRef.current.delete(key);
       });
 
       processedRemovalsRef.current.add(removalKey);
@@ -8821,14 +8821,14 @@ const PageAnnotationLayer = memo(({
       try {
         sanitizeTextStyles(canvas);
         const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
-        onSaveAnnotations(pageNumber, canvasJSON, buildHistorySaveContext('highlight:remove', {
-          removedCount: highlightsToRemove.length
+        onSaveAnnotations(pageNumber, canvasJSON, buildHistorySaveContext('surveyMarker:remove', {
+          removedCount: surveyMarkersToRemove.length
         }));
       } catch (e) {
         console.error(`[Page ${pageNumber}] Save error after removal:`, e);
       }
     }
-  }, [highlightsToRemove, pageNumber, onSaveAnnotations, scale]);
+  }, [surveyMarkersToRemove, pageNumber, onSaveAnnotations, scale]);
 
   // Helper function to get spaceId from regionId
   const getSpaceIdForRegion = useCallback((regionId) => {
@@ -8855,19 +8855,19 @@ const PageAnnotationLayer = memo(({
     const canvas = fabricRef.current;
     const objects = canvas.getObjects();
 
-    // DEBUG: Log all highlights on canvas
-    const highlights = objects.filter(o => o.type === 'rect' && o.moduleId);
-    const highlightsWithRegionId = highlights.filter(h => h.regionId !== null && h.regionId !== undefined);
-    const highlightsWithoutRegionId = highlights.filter(h => h.regionId === null || h.regionId === undefined);
-    debugLog(`[Page ${pageNumber}] Canvas highlights at visibility check:`, {
-      totalHighlights: highlights.length,
-      withRegionId: highlightsWithRegionId.length,
-      withoutRegionId: highlightsWithoutRegionId.length,
+    // DEBUG: Log all survey markers on canvas
+    const surveyMarkers = objects.filter(o => o.type === 'rect' && o.moduleId);
+    const surveyMarkersWithRegionId = surveyMarkers.filter(h => h.regionId !== null && h.regionId !== undefined);
+    const surveyMarkersWithoutRegionId = surveyMarkers.filter(h => h.regionId === null || h.regionId === undefined);
+    debugLog(`[Page ${pageNumber}] Canvas surveyMarkers at visibility check:`, {
+      totalSurveyMarkers: surveyMarkers.length,
+      withRegionId: surveyMarkersWithRegionId.length,
+      withoutRegionId: surveyMarkersWithoutRegionId.length,
       activeSpaceId,
-      highlights: highlights.map(h => ({
+      surveyMarkers: surveyMarkers.map(h => ({
         moduleId: h.moduleId,
         regionId: h.regionId,
-        highlightId: h.highlightId,
+        annotationId: h.annotationId,
         bounds: `${Math.round(h.left)},${Math.round(h.top)} ${Math.round(h.width)}x${Math.round(h.height)}`,
         visible: h.visible
       }))
@@ -8919,7 +8919,7 @@ const PageAnnotationLayer = memo(({
       const objModuleId = obj.moduleId || null;
       const objRegionId = obj.regionId || null; // Get region ID from annotation
 
-      // Check if this is a survey annotation (has moduleId) - applies to highlights, callouts, and other annotations
+      // Check if this is a survey annotation (has moduleId) - applies to surveyMarkers, callouts, and other annotations
       const isSurveyAnnotation = objModuleId !== null;
 
       // Check if this is a scoped region annotation
@@ -8977,20 +8977,20 @@ const PageAnnotationLayer = memo(({
         // First check: if no space is active, hide all region-scoped annotations
         if (activeSpaceId === null) {
           scopedRegionAnnotationVisible = false;
-          debugLog(`[Page ${pageNumber}] Region-scoped annotation HIDDEN: no active space`, { objRegionId, highlightId: obj.highlightId });
+          debugLog(`[Page ${pageNumber}] Region-scoped annotation HIDDEN: no active space`, { objRegionId, annotationId: obj.annotationId });
         } else if (hasActiveRegions) {
           // If there are active regions and a space is active, always show annotations that were created while a region was active
           // This ensures they persist even after region boundaries are modified
           scopedRegionAnnotationVisible = true;
-          debugLog(`[Page ${pageNumber}] Region-scoped annotation VISIBLE: hasActiveRegions=true`, { objRegionId, hasActiveRegions, highlightId: obj.highlightId });
+          debugLog(`[Page ${pageNumber}] Region-scoped annotation VISIBLE: hasActiveRegions=true`, { objRegionId, hasActiveRegions, annotationId: obj.annotationId });
         } else if (activeRegionId !== null) {
           // Fallback: if only activeRegionId is set (backward compatibility)
           scopedRegionAnnotationVisible = objRegionId === activeRegionId;
-          debugLog(`[Page ${pageNumber}] Region-scoped annotation visibility by activeRegionId`, { objRegionId, activeRegionId, visible: scopedRegionAnnotationVisible, highlightId: obj.highlightId });
+          debugLog(`[Page ${pageNumber}] Region-scoped annotation visibility by activeRegionId`, { objRegionId, activeRegionId, visible: scopedRegionAnnotationVisible, annotationId: obj.annotationId });
         } else {
           // No active regions, hide scoped annotations
           scopedRegionAnnotationVisible = false;
-          debugLog(`[Page ${pageNumber}] Region-scoped annotation HIDDEN: region toggle OFF`, { objRegionId, hasActiveRegions, activeRegionId, highlightId: obj.highlightId });
+          debugLog(`[Page ${pageNumber}] Region-scoped annotation HIDDEN: region toggle OFF`, { objRegionId, hasActiveRegions, activeRegionId, annotationId: obj.annotationId });
         }
       }
 
@@ -9098,17 +9098,17 @@ const PageAnnotationLayer = memo(({
       e.stopPropagation();
 
       // Process each selected object for deletion
-      const highlightsToDelete = [];
+      const surveyMarkersToDelete = [];
 
       activeObjects.forEach(activeObject => {
-        // Check if this is a highlight that needs special handling
-        const isHighlight = activeObject.highlightId != null;
+        // Check if this is a surveyMarker that needs special handling
+        const isSurveyMarker = activeObject.annotationId != null;
 
-        if (isHighlight && onHighlightDeletedRef.current) {
-          // Collect highlight info for callback after removal
+        if (isSurveyMarker && onSurveyMarkerDeletedRef.current) {
+          // Collect surveyMarker info for callback after removal
           const bounds = activeObject.getBoundingRect(true);
-          const highlightId = activeObject.highlightId;
-          highlightsToDelete.push({ pageNumber, bounds, highlightId, object: activeObject });
+          const annotationId = activeObject.annotationId;
+          surveyMarkersToDelete.push({ pageNumber, bounds, annotationId, object: activeObject });
         }
       });
 
@@ -9117,23 +9117,23 @@ const PageAnnotationLayer = memo(({
       canvas.discardActiveObject();
       canvas.requestRenderAll();
 
-      // Clean up highlight refs and call callbacks
-      highlightsToDelete.forEach(({ bounds, highlightId, object }) => {
+      // Clean up surveyMarker refs and call callbacks
+      surveyMarkersToDelete.forEach(({ bounds, annotationId, object }) => {
         // Clean up refs
-        renderedHighlightsRef.current.delete(highlightId);
-        const key = highlightId || `${object.left}-${object.top}-${object.width}-${object.height}`;
-        processedHighlightsRef.current.delete(key);
+        renderedSurveyMarkersRef.current.delete(annotationId);
+        const key = annotationId || `${object.left}-${object.top}-${object.width}-${object.height}`;
+        processedSurveyMarkersRef.current.delete(key);
 
-        // Call highlight deletion callback
-        if (onHighlightDeletedRef.current) {
-          onHighlightDeletedRef.current(pageNumber, bounds, highlightId);
+        // Call surveyMarker deletion callback
+        if (onSurveyMarkerDeletedRef.current) {
+          onSurveyMarkerDeletedRef.current(pageNumber, bounds, annotationId);
         }
       });
 
       // Save the canvas state
       try {
         sanitizeTextStyles(canvas);
-        const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'highlightId', 'needsEntity', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
+        const canvasJSON = canvas.toJSON(['strokeUniform', 'spaceId', 'moduleId', 'regionId', 'data', 'name', 'annotationId', 'needsEntity', 'globalCompositeOperation', 'layer', 'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode']);
         onSaveAnnotations(pageNumber, canvasJSON, buildHistorySaveContext('keyboard:delete', {
           deletedObjectsCount: activeObjects.length
         }));
@@ -9204,7 +9204,7 @@ const PageAnnotationLayer = memo(({
         height: '100%',
         marginTop: '0px',
         paddingTop: `${canvasTopPadding}px`,
-        pointerEvents: (tool === 'pen' || tool === 'highlighter' || tool === 'eraser' || tool === 'select' || tool === 'pan' || tool === 'text' || tool === 'rect' || tool === 'ellipse' || tool === 'line' || tool === 'arrow' || tool === 'callout' || tool === 'underline' || tool === 'strikeout' || tool === 'squiggly' || tool === 'note' || tool === 'highlight' || tool === 'counter') ? 'auto' : 'none',
+        pointerEvents: (tool === 'pen' || tool === 'highlighter' || tool === 'eraser' || tool === 'select' || tool === 'pan' || tool === 'text' || tool === 'rect' || tool === 'ellipse' || tool === 'line' || tool === 'arrow' || tool === 'callout' || tool === 'underline' || tool === 'strikeout' || tool === 'squiggly' || tool === 'note' || tool === 'survey-marker' || tool === 'counter') ? 'auto' : 'none',
         zIndex: 10,
       }}
       data-pal-root={pageNumber}
@@ -9216,7 +9216,7 @@ const PageAnnotationLayer = memo(({
           position: 'absolute',
           top: 0,
           left: 0,
-          cursor: (tool === 'pen' || tool === 'highlighter' || tool === 'highlight') ? 'crosshair' : 'default'
+          cursor: (tool === 'pen' || tool === 'highlighter' || tool === 'survey-marker') ? 'crosshair' : 'default'
         }}
       />
 
@@ -10064,9 +10064,9 @@ const PageAnnotationLayer = memo(({
     prevProps.strokeColor === nextProps.strokeColor &&
     prevProps.strokeWidth === nextProps.strokeWidth &&
     prevProps.annotations === nextProps.annotations &&
-    prevProps.newHighlights === nextProps.newHighlights &&
-    prevProps.highlightsToRemove === nextProps.highlightsToRemove &&
-    prevProps.onHighlightCreated === nextProps.onHighlightCreated &&
+    prevProps.newSurveyMarkers === nextProps.newSurveyMarkers &&
+    prevProps.surveyMarkersToRemove === nextProps.surveyMarkersToRemove &&
+    prevProps.onSurveyMarkerCreated === nextProps.onSurveyMarkerCreated &&
     prevProps.selectedSpaceId === nextProps.selectedSpaceId &&
     prevProps.activeSpaceId === nextProps.activeSpaceId &&
     prevProps.selectedModuleId === nextProps.selectedModuleId &&

@@ -2,12 +2,12 @@
  * All-types annotation cloud sync — Phase 21.
  *
  * Sits next to documentAnnotationService.js and operates on the same
- * document_annotations table. The existing highlight-only flow in
- * documentAnnotationService.js is unchanged and still owns highlight rows.
+ * document_annotations table. The existing surveyMarker-only flow in
+ * documentAnnotationService.js is unchanged and still owns surveyMarker rows.
  * This module owns the rest: ink, freetext, square, circle, line, polyline,
  * polygon, stamp, sticky_note, callout, counter, eraser.
  *
- * The two modules co-exist by row category. Highlights and non-highlight
+ * The two modules co-exist by row category. SurveyMarkers and non-surveyMarker
  * rows share the table but never collide because each row's
  * annotation_type is the source of truth for which module owns it.
  */
@@ -42,6 +42,10 @@ import {
 import { applyFabricCommit, applyFabricDelete } from '../lib/collab/crdtAnnotationBridge.js';
 import { isCRDTEnabled } from '../lib/collab/crdtFeatureFlag.js';
 import { enqueue as enqueueDualWrite } from '../lib/collab/crdtDualWriteQueue.js';
+import {
+  isSurveyMarkerType,
+  SURVEY_MARKER_TYPE_VALUES,
+} from '../utils/surveyMarkerType.js';
 
 export const NON_HIGHLIGHT_TYPES = [
   'ink', 'freetext', 'square', 'circle', 'line', 'polyline', 'polygon',
@@ -55,7 +59,7 @@ const SUPABASE_READ_PAGE_CONCURRENCY = 4;
 function isAllTypesOwnedRow(row) {
   if (!row) return false;
   if (NON_HIGHLIGHT_TYPES.includes(row.annotation_type)) return true;
-  return row.annotation_type === 'highlight' && !!row.annotation_data?.fabricObject;
+  return isSurveyMarkerType(row.annotation_type) && !!row.annotation_data?.fabricObject;
 }
 
 async function loadPagedAnnotationRows(documentId, applyFilters) {
@@ -83,33 +87,33 @@ async function loadPagedAnnotationRows(documentId, applyFilters) {
 }
 
 async function loadAllTypesOwnedRowsForDocument(documentId) {
-  const nonHighlight = await loadPagedAnnotationRows(
+  const nonSurveyMarker = await loadPagedAnnotationRows(
     documentId,
     (query) => query.in('annotation_type', NON_HIGHLIGHT_TYPES)
   );
-  if (nonHighlight.error) return nonHighlight;
+  if (nonSurveyMarker.error) return nonSurveyMarker;
 
-  const legacyFabricHighlights = await loadPagedAnnotationRows(
+  const legacyFabricSurveyMarkers = await loadPagedAnnotationRows(
     documentId,
     (query) => query
-      .eq('annotation_type', 'highlight')
+      .in('annotation_type', SURVEY_MARKER_TYPE_VALUES)
       .not('annotation_data->fabricObject', 'is', null)
   );
-  if (legacyFabricHighlights.error) return legacyFabricHighlights;
+  if (legacyFabricSurveyMarkers.error) return legacyFabricSurveyMarkers;
 
   return {
-    rows: [...nonHighlight.rows, ...legacyFabricHighlights.rows],
+    rows: [...nonSurveyMarker.rows, ...legacyFabricSurveyMarkers.rows],
     error: null,
     scanned: {
-      nonHighlight: nonHighlight.rows.length,
-      legacyFabricHighlights: legacyFabricHighlights.rows.length
+      nonSurveyMarker: nonSurveyMarker.rows.length,
+      legacyFabricSurveyMarkers: legacyFabricSurveyMarkers.rows.length
     }
   };
 }
 
 /**
  * Phase 30 — infer the annotation type from a Fabric object so the dual-write
- * fan-out can apply the highlight carve-out without trusting opts.annotation_type
+ * fan-out can apply the surveyMarker carve-out without trusting opts.annotation_type
  * to be passed in. Mirrors the existing serializeFabricObjectToRow logic.
  *
  * NOTE: this is a Phase 30 addition; existing call sites do not consume it.
@@ -128,14 +132,14 @@ function inferAnnotationTypeForDualWrite(fabricObj, opts) {
 
 /**
  * Push a single Fabric object up to the cloud. Inserts or updates by
- * (document_id, highlight_id).
+ * (document_id, annotation_id).
  */
 export async function upsertFabricAnnotation(fabricObj, opts = {}) {
   if (!supabase) return { data: null, error: new Error('Supabase unavailable') };
   const row = serializeFabricObjectToRow(fabricObj, opts);
   const { data, error } = await supabase
     .from('document_annotations')
-    .upsert(row, { onConflict: 'document_id,highlight_id', ignoreDuplicates: false })
+    .upsert(row, { onConflict: 'document_id,annotation_id', ignoreDuplicates: false })
     .select()
     .single();
   if (error) {
@@ -153,7 +157,7 @@ export async function upsertAnnotationsByPage(annotationsByPage, opts = {}) {
   if (!supabase) return { data: [], error: new Error('Supabase unavailable') };
 
   // Serialize FIRST — the serializer mints + stamps a stable id onto every
-  // fabric object that didn't have one (data.id <-> highlight_id). Without
+  // fabric object that didn't have one (data.id <-> annotation_id). Without
   // running this step the caller's annotationsByPage holds id-less strokes
   // and any downstream queue-on-failure logic sees no id and silently drops
   // the entry. UAT 2026-04-29 surfaced this exact mode: stroke drawn,
@@ -222,7 +226,7 @@ export async function upsertAnnotationsByPage(annotationsByPage, opts = {}) {
     const batch = rows.slice(i, i + UPSERT_BATCH_SIZE);
     const result = await supabase
       .from('document_annotations')
-      .upsert(batch, { onConflict: 'document_id,highlight_id', ignoreDuplicates: false })
+      .upsert(batch, { onConflict: 'document_id,annotation_id', ignoreDuplicates: false })
       .select();
     if (result.error) {
       error = result.error;
@@ -279,7 +283,7 @@ export async function upsertCallouts(callouts, opts = {}) {
   }));
   const { data, error } = await supabase
     .from('document_annotations')
-    .upsert(rows, { onConflict: 'document_id,highlight_id', ignoreDuplicates: false })
+    .upsert(rows, { onConflict: 'document_id,annotation_id', ignoreDuplicates: false })
     .select();
   const elapsedMs = Date.now() - t0;
   if (error) {
@@ -299,15 +303,15 @@ export async function upsertCallouts(callouts, opts = {}) {
 }
 
 /**
- * Delete a single annotation row by client-side highlight_id.
+ * Delete a single annotation row by client-side annotation_id.
  */
-export async function deleteAnnotation(documentId, highlightId) {
+export async function deleteAnnotation(documentId, annotationId) {
   if (!supabase) return { success: false, error: new Error('Supabase unavailable') };
   const { error } = await supabase
     .from('document_annotations')
     .delete()
     .eq('document_id', documentId)
-    .eq('highlight_id', highlightId);
+    .eq('annotation_id', annotationId);
   if (error) {
     console.error('[CloudSync] deleteAnnotation failed:', error);
     return { success: false, error };
@@ -316,14 +320,14 @@ export async function deleteAnnotation(documentId, highlightId) {
 }
 
 /**
- * Delete many annotation rows by client-side highlight_ids.
+ * Delete many annotation rows by client-side annotation_ids.
  */
-export async function deleteAnnotations(documentId, highlightIds) {
+export async function deleteAnnotations(documentId, annotationIds) {
   if (!supabase) return { success: false, error: new Error('Supabase unavailable') };
-  if (!Array.isArray(highlightIds) || highlightIds.length === 0) {
+  if (!Array.isArray(annotationIds) || annotationIds.length === 0) {
     return { success: true, error: null };
   }
-  const uniqueIds = [...new Set(highlightIds.filter(Boolean))];
+  const uniqueIds = [...new Set(annotationIds.filter(Boolean))];
   const chunkSize = 200;
   for (let start = 0; start < uniqueIds.length; start += chunkSize) {
     const chunk = uniqueIds.slice(start, start + chunkSize);
@@ -331,7 +335,7 @@ export async function deleteAnnotations(documentId, highlightIds) {
       .from('document_annotations')
       .delete()
       .eq('document_id', documentId)
-      .in('highlight_id', chunk);
+      .in('annotation_id', chunk);
     if (error) {
       console.error('[CloudSync] deleteAnnotations failed:', {
         error,
@@ -351,13 +355,13 @@ export async function deleteAnnotations(documentId, highlightIds) {
 }
 
 /**
- * Load every non-highlight annotation for a document and return it split
+ * Load every non-survey marker annotation for a document and return it split
  * into the in-app shape slices: { annotationsByPage, callouts }.
  *
- * Highlights are intentionally skipped — they have their own loader in
+ * SurveyMarkers are intentionally skipped — they have their own loader in
  * documentAnnotationService.js and own their own state slice in App.jsx.
  */
-export async function loadAllNonHighlightAnnotations(documentId) {
+export async function loadAllNonSurveyMarkerAnnotations(documentId) {
   if (!supabase) {
     return { annotationsByPage: {}, callouts: [], error: new Error('Supabase unavailable') };
   }
@@ -365,11 +369,11 @@ export async function loadAllNonHighlightAnnotations(documentId) {
     return { annotationsByPage: {}, callouts: [], error: null };
   }
   const t0 = Date.now();
-  console.log('[CloudSync][hydrate] loadAllNonHighlightAnnotations start ' + JSON.stringify({ documentId }));
+  console.log('[CloudSync][hydrate] loadAllNonSurveyMarkerAnnotations start ' + JSON.stringify({ documentId }));
   const { rows: allRows, error, scanned } = await loadAllTypesOwnedRowsForDocument(documentId);
   const elapsedMs = Date.now() - t0;
   if (error) {
-    console.error('[CloudSync][hydrate] loadAllNonHighlightAnnotations failed ' + JSON.stringify({
+    console.error('[CloudSync][hydrate] loadAllNonSurveyMarkerAnnotations failed ' + JSON.stringify({
       elapsedMs,
       error: error?.message || String(error)
     }));
@@ -382,7 +386,7 @@ export async function loadAllNonHighlightAnnotations(documentId) {
   }, {});
   const annotationsByPage = deserializeRowsToAnnotationsByPage(rows);
   const callouts = deserializeRowsToCallouts(rows);
-  console.log('[CloudSync][hydrate] loadAllNonHighlightAnnotations ok ' + JSON.stringify({
+  console.log('[CloudSync][hydrate] loadAllNonSurveyMarkerAnnotations ok ' + JSON.stringify({
     elapsedMs,
     totalRowsScanned: allRows?.length || 0,
     scanned,
@@ -400,16 +404,16 @@ export async function loadAllNonHighlightAnnotations(documentId) {
 }
 
 /**
- * Subscribe to real-time changes for non-highlight annotations on a document.
+ * Subscribe to real-time changes for non-survey marker annotations on a document.
  *
  * Routes incoming rows to type-aware callbacks:
- *   - onFabricInsert(fabricObject, pageNumber, highlightId) — for ink, shapes,
+ *   - onFabricInsert(fabricObject, pageNumber, annotationId) — for ink, shapes,
  *     text, stamps, sticky notes, counters, eraser
- *   - onFabricUpdate(fabricObject, pageNumber, highlightId)
- *   - onFabricDelete(highlightId)
+ *   - onFabricUpdate(fabricObject, pageNumber, annotationId)
+ *   - onFabricDelete(annotationId)
  *   - onCalloutInsert(callout)
  *   - onCalloutUpdate(callout)
- *   - onCalloutDelete(highlightId)
+ *   - onCalloutDelete(annotationId)
  *   - onError(error)
  *
  * Echo filter — UX rule: when this CLIENT writes a row, Supabase realtime
@@ -425,11 +429,11 @@ export async function loadAllNonHighlightAnnotations(documentId) {
  * `currentUserId` is kept as a fallback for legacy rows written before the
  * sessionId field existed.
  *
- * The subscriber filters out highlight rows so the existing highlight
+ * The subscriber filters out surveyMarker rows so the existing surveyMarker
  * subscription in documentAnnotationService.js continues to own them
  * without conflict.
  */
-export function subscribeToAllNonHighlightAnnotations(documentId, callbacks = {}, options = {}) {
+export function subscribeToAllNonSurveyMarkerAnnotations(documentId, callbacks = {}, options = {}) {
   if (!supabase) return () => {};
 
   const { currentUserId = null, currentSessionId = null } = options;
@@ -490,28 +494,28 @@ export function subscribeToAllNonHighlightAnnotations(documentId, callbacks = {}
       },
       (payload) => {
         const oldRow = payload.old || {};
-        if (oldRow.annotation_type === 'highlight') return; // legacy module owns it
+        if (isSurveyMarkerType(oldRow.annotation_type)) return; // legacy module owns it
         // 2026-04-25 — DO NOT echo-filter DELETEs by user-id. Postgres
         // DELETE payloads only carry the primary key, so we can't
         // recover the originating sessionId. Applying our own DELETE
-        // echo is harmless: removing a highlight_id that's already
+        // echo is harmless: removing a annotation_id that's already
         // absent from local state is a no-op.
         console.log('[CloudSync][realtime] applying DELETE ' + JSON.stringify({
-          highlightId: oldRow.highlight_id,
+          annotationId: oldRow.annotation_id,
           annotationType: oldRow.annotation_type,
           lastModifiedBy: oldRow.last_modified_by,
           payloadKeys: Object.keys(oldRow)
         }));
         // 2026-04-26 — Per-id apply path requires the row payload to
-        // include `highlight_id` AND `annotation_type`. That requires
+        // include `annotation_id` AND `annotation_type`. That requires
         // the table to be configured with REPLICA IDENTITY FULL — but
         // even with that set, Supabase realtime sometimes serves
         // empty `payload.old` for a window after the schema change.
-        // FALLBACK: when the payload is empty (no highlight_id), do
+        // FALLBACK: when the payload is empty (no annotation_id), do
         // a full cloud refetch and reconcile. This always converges
         // to the correct state regardless of payload completeness,
         // at the cost of one extra fetch per DELETE event.
-        if (!oldRow.highlight_id || !oldRow.annotation_type) {
+        if (!oldRow.annotation_id || !oldRow.annotation_type) {
           if (onDeleteFallback) {
             try {
               onDeleteFallback();
@@ -522,9 +526,9 @@ export function subscribeToAllNonHighlightAnnotations(documentId, callbacks = {}
           return;
         }
         if (oldRow.annotation_type === 'callout') {
-          if (onCalloutDelete) onCalloutDelete(oldRow.highlight_id);
+          if (onCalloutDelete) onCalloutDelete(oldRow.annotation_id);
         } else if (NON_HIGHLIGHT_TYPES.includes(oldRow.annotation_type)) {
-          if (onFabricDelete) onFabricDelete(oldRow.highlight_id);
+          if (onFabricDelete) onFabricDelete(oldRow.annotation_id);
         }
       }
     )
@@ -560,7 +564,7 @@ export function subscribeToAllNonHighlightAnnotations(documentId, callbacks = {}
 function routeRow(event, row, callbacks, currentUserId, currentSessionId) {
   if (!row) return;
   const type = row.annotation_type;
-  if (type === 'highlight') return; // legacy module owns it
+  if (isSurveyMarkerType(type)) return; // legacy module owns it
 
   // Echo filter — UX rule: a Supabase realtime echo of THIS SESSION's own
   // write would race the user's in-progress UI (counter doubling, pen
@@ -570,7 +574,7 @@ function routeRow(event, row, callbacks, currentUserId, currentSessionId) {
   const rowSessionId = row.annotation_data?.clientSessionId || null;
   if (currentSessionId && rowSessionId && rowSessionId === currentSessionId) {
     console.log(`[CloudSync][realtime] echo-filtered ${event.toUpperCase()} ` + JSON.stringify({
-      highlightId: row.highlight_id,
+      annotationId: row.annotation_id,
       annotationType: type,
       lastModifiedBy: row.last_modified_by,
       rowSessionId,
@@ -584,7 +588,7 @@ function routeRow(event, row, callbacks, currentUserId, currentSessionId) {
   // matches the current user, treat as a same-user echo.
   if (!rowSessionId && currentUserId && row.last_modified_by === currentUserId) {
     console.log(`[CloudSync][realtime] echo-filtered ${event.toUpperCase()} ` + JSON.stringify({
-      highlightId: row.highlight_id,
+      annotationId: row.annotation_id,
       annotationType: type,
       lastModifiedBy: row.last_modified_by,
       currentUserId,
@@ -597,7 +601,7 @@ function routeRow(event, row, callbacks, currentUserId, currentSessionId) {
     try {
       const callout = deserializeRowToCallout(row);
       console.log(`[CloudSync][realtime] applying ${event.toUpperCase()} callout ` + JSON.stringify({
-        highlightId: row.highlight_id,
+        annotationId: row.annotation_id,
         pageNumber: row.page_number,
         lastModifiedBy: row.last_modified_by
       }));
@@ -610,17 +614,17 @@ function routeRow(event, row, callbacks, currentUserId, currentSessionId) {
   }
   if (NON_HIGHLIGHT_TYPES.includes(type)) {
     try {
-      const { fabricObject, pageNumber, highlightId } = deserializeRowToFabricObject(row);
+      const { fabricObject, pageNumber, annotationId } = deserializeRowToFabricObject(row);
       console.log(`[CloudSync][realtime] applying ${event.toUpperCase()} fabric ` + JSON.stringify({
-        highlightId,
+        annotationId,
         annotationType: type,
         pageNumber,
         lastModifiedBy: row.last_modified_by
       }));
       if (event === 'insert' && callbacks.onFabricInsert) {
-        callbacks.onFabricInsert(fabricObject, pageNumber, highlightId);
+        callbacks.onFabricInsert(fabricObject, pageNumber, annotationId);
       } else if (event === 'update' && callbacks.onFabricUpdate) {
-        callbacks.onFabricUpdate(fabricObject, pageNumber, highlightId);
+        callbacks.onFabricUpdate(fabricObject, pageNumber, annotationId);
       }
     } catch (err) {
       console.warn('[CloudSync] failed to deserialize fabric row: ' + (err?.message || String(err)));
@@ -636,8 +640,8 @@ function routeRow(event, row, callbacks, currentUserId, currentSessionId) {
  *     wild read from this column; the dual-write era keeps them whole.
  *   - If isCRDTEnabled() is false → legacy only (kill switch override; current
  *     behavior unchanged for kill-switch-off deployments).
- *   - If annotation_type === 'highlight' → legacy only (Excel-sync carve-out
- *     locked by CONTEXT.md "Highlights skipped"; v2.5 owns highlight migration).
+ *   - If annotation_type === 'surveyMarker' → legacy only (Excel-sync carve-out
+ *     locked by CONTEXT.md "SurveyMarkers skipped"; v2.5 owns surveyMarker migration).
  *   - Otherwise fires applyFabricCommit through the Phase 29 bridge.
  *   - Each side has its own try/catch. On failure, enqueues to the retry queue
  *     (latest-version-wins per annoId). NEVER deletes from either side to
@@ -651,12 +655,12 @@ function routeRow(event, row, callbacks, currentUserId, currentSessionId) {
  * @param {Y.Map} [opts.yMapAnnotations] - ydoc.getMap('annotations')
  * @param {object} [opts.originPayload] - origin payload from originBuilder.buildOrigin (with source: 'local-fabric' for live edits)
  * @param {object} [opts.ctx] - { userId, deviceId, sessionId, clientID } passed to bridge
- * @param {string} [opts.annotation_type] - explicit annotation_type for highlight filter
+ * @param {string} [opts.annotation_type] - explicit annotation_type for surveyMarker filter
  * @returns {Promise<{legacy: any, crdt: { ok: boolean } | { error: any } | null}>}
  */
 export async function dualWriteFabricCommit(fabricObj, opts = {}) {
   const annotationType = inferAnnotationTypeForDualWrite(fabricObj, opts);
-  const isHighlight = annotationType === 'highlight';
+  const isSurveyMarker = isSurveyMarkerType(annotationType);
 
   // Plan 30-07 caller seam: when useAnnotationCloudSync's bulk upsert path
   // already fired the legacy write before this fan-out runs (per-page bulk
@@ -705,9 +709,9 @@ export async function dualWriteFabricCommit(fabricObj, opts = {}) {
     }
   }
 
-  // Skip CRDT side when kill switch off OR highlight — clean skip, no scary
+  // Skip CRDT side when kill switch off OR surveyMarker — clean skip, no scary
   // fallback. Returns null for the crdt side so callers can detect the skip.
-  if (!isCRDTEnabled() || isHighlight) {
+  if (!isCRDTEnabled() || isSurveyMarker) {
     return { legacy: legacyResult, crdt: null };
   }
 
@@ -741,10 +745,10 @@ export async function dualWriteFabricCommit(fabricObj, opts = {}) {
  * Phase 30 — Dual-write fan-out for a single Fabric annotation delete.
  *
  * Same shape as dualWriteFabricCommit: ALWAYS fires legacy delete; conditionally
- * fires CRDT-side delete via the bridge. Highlight carve-out preserved.
+ * fires CRDT-side delete via the bridge. SurveyMarker carve-out preserved.
  *
  * @param {string} documentId
- * @param {string} annoId - the stable per-annotation UUID (== highlight_id)
+ * @param {string} annoId - the stable per-annotation UUID (== annotation_id)
  * @param {object} opts
  * @param {string} opts.userId
  * @param {Y.Doc} [opts.ydoc]
@@ -754,7 +758,7 @@ export async function dualWriteFabricCommit(fabricObj, opts = {}) {
  * @returns {Promise<{legacy: any, crdt: { ok: boolean } | { error: any } | null}>}
  */
 export async function dualWriteFabricDelete(documentId, annoId, opts = {}) {
-  const isHighlight = opts.annotation_type === 'highlight';
+  const isSurveyMarker = isSurveyMarkerType(opts.annotation_type);
 
   // Plan 30-07 caller seam: same pattern as dualWriteFabricCommit.
   // useAnnotationCloudSync's bulk delete (deleteAnnotations) already removed
@@ -795,7 +799,7 @@ export async function dualWriteFabricDelete(documentId, annoId, opts = {}) {
     }
   }
 
-  if (!isCRDTEnabled() || isHighlight) {
+  if (!isCRDTEnabled() || isSurveyMarker) {
     return { legacy: legacyResult, crdt: null };
   }
 

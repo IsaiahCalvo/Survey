@@ -16,7 +16,7 @@ const linkedTemplate = {
 test('computeHasPendingExcelSyncChanges returns false when no linked Excel path exists', () => {
   const pending = computeHasPendingExcelSyncChanges({
     template: { id: 'template-1', linkedExcelPath: null },
-    highlightAnnotations: { a: { name: 'Item A' } },
+    surveyMarkers: { a: { name: 'Item A' } },
     baselineHash: null
   });
 
@@ -26,7 +26,7 @@ test('computeHasPendingExcelSyncChanges returns false when no linked Excel path 
 test('computeHasPendingExcelSyncChanges returns true when baseline is missing', () => {
   const pending = computeHasPendingExcelSyncChanges({
     template: linkedTemplate,
-    highlightAnnotations: {},
+    surveyMarkers: {},
     baselineHash: null
   });
 
@@ -34,14 +34,14 @@ test('computeHasPendingExcelSyncChanges returns true when baseline is missing', 
 });
 
 test('computeHasPendingExcelSyncChanges returns false when baseline matches', () => {
-  const highlightAnnotations = {
+  const surveyMarkers = {
     a: { name: 'Item A', checklistResponses: { checklistA: { selection: 'Y' } } }
   };
-  const baseline = computeExcelSyncFingerprint(linkedTemplate, highlightAnnotations);
+  const baseline = computeExcelSyncFingerprint(linkedTemplate, surveyMarkers);
 
   const pending = computeHasPendingExcelSyncChanges({
     template: linkedTemplate,
-    highlightAnnotations,
+    surveyMarkers,
     baselineHash: baseline.hash
   });
 
@@ -55,7 +55,7 @@ test('computeHasPendingExcelSyncChanges returns true when highlight annotations 
 
   const pending = computeHasPendingExcelSyncChanges({
     template: linkedTemplate,
-    highlightAnnotations: changedHighlights,
+    surveyMarkers: changedHighlights,
     baselineHash: baseline.hash
   });
 
@@ -72,7 +72,7 @@ test('computeHasPendingExcelSyncChanges returns true when template identity chan
 
   const pending = computeHasPendingExcelSyncChanges({
     template: movedTemplate,
-    highlightAnnotations: highlights,
+    surveyMarkers: highlights,
     baselineHash: baseline.hash
   });
 

@@ -125,7 +125,7 @@ function summarizeFabricImportForDiag(fabricObj, sourceAnnotation = null, status
     reason,
     rawId: sourceAnnotation?.id || sourceAnnotation?.name || fabricObj?.pdfAnnotationId || null,
     rawSubtype: sourceAnnotation?.subtype || fabricObj?.pdfAnnotationType || null,
-    appId: fabricObj?.id || fabricObj?.highlightId || fabricObj?.pdfAnnotationId || null,
+    appId: fabricObj?.id || fabricObj?.annotationId || fabricObj?.pdfAnnotationId || null,
     appType: fabricObj?.type || null,
     selectable: fabricObj?.selectable ?? null,
     evented: fabricObj?.evented ?? null,
@@ -1980,7 +1980,7 @@ export function convertInkToFabricPath(annotation, viewport, scale = 1) {
 /**
  * Convert PDF Highlight annotation to Fabric.js Rect with fill
  */
-function convertHighlightToFabricRect(annotation, viewport, scale = 1) {
+function convertSurveyMarkerToFabricRect(annotation, viewport, scale = 1) {
   const viewportRect = convertPdfRectToViewportRect(annotation.rect, viewport, scale);
   if (!viewportRect) {
     return null;
@@ -2997,7 +2997,7 @@ export function convertPdfAnnotationToFabric(annotation, viewport, scale = 1, ra
     case 'Ink':
       return finish(convertInkToFabricPath(normalizedAnnotation, viewport, scale));
     case 'Highlight':
-      return finish(convertHighlightToFabricRect(normalizedAnnotation, viewport, scale));
+      return finish(convertSurveyMarkerToFabricRect(normalizedAnnotation, viewport, scale));
     case 'FreeText':
       return finish(convertFreeTextToFabricTextbox(normalizedAnnotation, viewport, scale));
     case 'Square':
@@ -3303,7 +3303,12 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
     exportId: appLayerState?.exportId || null,
     scopedAnnotationPages: Object.keys(appLayerState?.layers?.scopedAnnotationsByPage || {}).length,
     scopedCallouts: Array.isArray(appLayerState?.layers?.callouts) ? appLayerState.layers.callouts.length : 0,
-    surveyHighlights: Object.keys(appLayerState?.layers?.highlightAnnotations || {}).length,
+    // readSurveyMarkerLayer handles both new 'surveyMarkers' and legacy 'highlightAnnotations'
+    surveyMarkers: Object.keys(
+      appLayerState?.layers?.surveyMarkers ||
+      appLayerState?.layers?.highlightAnnotations ||
+      {}
+    ).length,
     spaces: Array.isArray(appLayerState?.layers?.spaces) ? appLayerState.layers.spaces.length : 0,
   }));
 

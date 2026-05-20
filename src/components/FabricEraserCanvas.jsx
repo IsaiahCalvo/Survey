@@ -45,7 +45,7 @@ import {
 // arrow into a plain line on the next render.
 const CUSTOM_PROPS = [
   'strokeUniform', 'spaceId', 'moduleId', 'regionId',
-  'data', 'name', 'highlightId', 'needsEntity',
+  'data', 'name', 'annotationId', 'needsEntity',
   'globalCompositeOperation', 'layer',
   'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode',
   'tool',
@@ -361,7 +361,7 @@ const FabricEraserCanvas = memo(({
           obj.tool === 'pen' ||
           obj.tool === 'highlighter' ||
           obj.pdfAnnotationType === 'Ink' ||
-          (!obj.pdfAnnotationType && !obj.highlightId && !obj.moduleId);
+          (!obj.pdfAnnotationType && !obj.annotationId && !obj.moduleId);
 
         if (mode === 'entire' || !isStrokePath) {
           canvas.remove(obj);
@@ -787,7 +787,7 @@ const FabricEraserCanvas = memo(({
           if (objData.moduleId) obj.moduleId = objData.moduleId;
           if (objData.regionId) obj.regionId = objData.regionId;
           if (objData.layer) obj.layer = objData.layer;
-          if (objData.highlightId) obj.highlightId = objData.highlightId;
+          if (objData.annotationId) obj.annotationId = objData.annotationId;
           if (objData.needsEntity) obj.needsEntity = objData.needsEntity;
           if (objData.data) obj.data = objData.data;
           if (objData.name) obj.name = objData.name;
@@ -798,8 +798,8 @@ const FabricEraserCanvas = memo(({
             obj.set({ globalCompositeOperation: objData.globalCompositeOperation });
           }
 
-          // Enforce multiply blend mode for highlights
-          if (obj.highlightId || obj.needsEntity) {
+          // Enforce multiply blend mode for surveyMarkers
+          if (obj.annotationId || obj.needsEntity) {
             obj.set({ globalCompositeOperation: 'multiply' });
           }
 

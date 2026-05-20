@@ -32,10 +32,10 @@ export function getRecentCalloutRemovalIntent(target = globalThis, now = Date.no
 
 export function diffCalloutIds(before, after) {
   const afterIds = new Set((Array.isArray(after) ? after : [])
-    .map((c) => c?.id || c?.highlightId)
+    .map((c) => c?.id || c?.annotationId)
     .filter(Boolean));
   return (Array.isArray(before) ? before : [])
-    .map((c) => c?.id || c?.highlightId)
+    .map((c) => c?.id || c?.annotationId)
     .filter(Boolean)
     .filter((id) => !afterIds.has(id));
 }

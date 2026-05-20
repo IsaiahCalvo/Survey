@@ -49,7 +49,7 @@ function log(message, payload) {
 }
 
 function formatId(meta) {
-  return meta?.annotationId ?? meta?.calloutId ?? meta?.highlightId ?? meta?.id ?? null;
+  return meta?.annotationId ?? meta?.calloutId ?? meta?.annotationId ?? meta?.id ?? null;
 }
 
 function resolveGesture(gestureId = null) {

@@ -864,7 +864,7 @@ export const DEFAULT_TOOL_PREFERENCES = {
   underline: { strokeColor: '#ff0000', strokeOpacity: 100 },
   strikeout: { strokeColor: '#ff0000', strokeOpacity: 100 },
   squiggly: { strokeColor: '#ff0000', strokeOpacity: 100 },
-  highlight: { strokeColor: '#ffff00', strokeOpacity: 50 },
+  surveyMarker: { strokeColor: '#ffff00', strokeOpacity: 50 },
 };
 
 // Tools that support stroke width

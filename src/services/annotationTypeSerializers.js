@@ -16,9 +16,9 @@
  * The deserializer rebuilds the Fabric object from `annotation_data.fabricObject`
  * unchanged — round-trip is byte-identical for all fields the app cares about.
  *
- * Highlights stay on their existing dedicated columns (color, opacity, name,
+ * SurveyMarkers stay on their existing dedicated columns (color, opacity, name,
  * notes, ...) — they are NOT routed through this serializer. That preserves
- * backwards compatibility with every existing highlight row in the database.
+ * backwards compatibility with every existing surveyMarker row in the database.
  *
  * Author-attribution invariant (2026-04-30 hardening):
  *   The serializer treats `meta.authorId` (canonical) as WRITE-ONCE-ON-CREATE.
@@ -33,6 +33,10 @@
  */
 
 import { getAnnotationAuthorId } from '../lib/collab/permissionScope.js';
+import {
+  SURVEY_MARKER_TYPE,
+  isSurveyMarkerType,
+} from '../utils/surveyMarkerType.js';
 
 // ----------------------------------------------------------------------------
 // Type mapping: Fabric object kind → DB annotation_type
@@ -69,7 +73,7 @@ const DB_TYPE_TO_FABRIC_DEFAULT = {
 };
 
 const SUPPORTED_DB_TYPES = new Set([
-  'highlight',
+  SURVEY_MARKER_TYPE,
   'ink',
   'freetext',
   'square',
@@ -88,14 +92,14 @@ function hasFabricObjectPayload(row) {
   return !!(row?.annotation_data && row.annotation_data.fabricObject);
 }
 
-function isLegacyFabricHighlightRow(row) {
-  return row?.annotation_type === 'highlight' && hasFabricObjectPayload(row);
+function isLegacyFabricSurveyMarkerRow(row) {
+  return isSurveyMarkerType(row?.annotation_type) && hasFabricObjectPayload(row);
 }
 
 function shouldDeserializeAsFabricObject(row) {
   if (!row) return false;
   if (row.annotation_type === 'callout') return false;
-  if (row.annotation_type === 'highlight') return isLegacyFabricHighlightRow(row);
+  if (isSurveyMarkerType(row.annotation_type)) return isLegacyFabricSurveyMarkerRow(row);
   return true;
 }
 
@@ -109,10 +113,10 @@ function getPdfImportDedupeKey(row) {
 
 function preferFabricRow(candidate, current) {
   if (!current) return candidate;
-  if (current.annotation_type === 'highlight' && candidate.annotation_type !== 'highlight') {
+  if (isSurveyMarkerType(current.annotation_type) && !isSurveyMarkerType(candidate.annotation_type)) {
     return candidate;
   }
-  if (candidate.annotation_type === 'highlight' && current.annotation_type !== 'highlight') {
+  if (isSurveyMarkerType(candidate.annotation_type) && !isSurveyMarkerType(current.annotation_type)) {
     return current;
   }
   const candidateTime = Date.parse(candidate.updated_at || candidate.created_at || '');
@@ -195,7 +199,7 @@ export function computeBounds(fabricObj) {
  * @param {string} opts.documentId - The document this annotation belongs to.
  * @param {string} opts.userId - The user who owns this annotation.
  * @param {number} opts.pageNumber - 1-indexed page number.
- * @param {string} [opts.highlightId] - Stable client-side ID. If not
+ * @param {string} [opts.annotationId] - Stable client-side ID. If not
  *   provided, the function tries fabricObj.id, fabricObj.data.id, then a
  *   generated one.
  * @returns {object} A row matching the document_annotations table shape.
@@ -204,7 +208,7 @@ export function serializeFabricObjectToRow(fabricObj, opts = {}) {
   if (!fabricObj || typeof fabricObj !== 'object') {
     throw new Error('serializeFabricObjectToRow: fabricObj is required');
   }
-  const { documentId, userId, pageNumber, highlightId, clientSessionId } = opts;
+  const { documentId, userId, pageNumber, annotationId, clientSessionId } = opts;
   if (!documentId) throw new Error('documentId required');
   if (!userId) throw new Error('userId required');
   if (!Number.isFinite(pageNumber) || pageNumber < 1) {
@@ -216,7 +220,7 @@ export function serializeFabricObjectToRow(fabricObj, opts = {}) {
     throw new Error(`Unsupported Fabric type: ${fabricObj.type} (data.type=${fabricObj.data?.type})`);
   }
 
-  let id = highlightId || fabricObj.id || fabricObj.data?.id;
+  let id = annotationId || fabricObj.id || fabricObj.data?.id;
   if (!id) {
     id = generateClientId(dbType);
     // Stamp the new id back onto the fabric object's data so the SAME
@@ -276,7 +280,7 @@ export function serializeFabricObjectToRow(fabricObj, opts = {}) {
   return {
     document_id: documentId,
     user_id: rowUserId,
-    highlight_id: id,
+    annotation_id: id,
     annotation_type: dbType,
     page_number: pageNumber,
     bounds,
@@ -293,12 +297,12 @@ export function serializeFabricObjectToRow(fabricObj, opts = {}) {
  * Deserialize a DB row back into the in-app Fabric object format.
  *
  * @param {object} row - A row from the document_annotations table.
- * @returns {{ fabricObject: object, pageNumber: number, highlightId: string,
+ * @returns {{ fabricObject: object, pageNumber: number, annotationId: string,
  *            annotationType: string }}
  */
 export function deserializeRowToFabricObject(row) {
   if (!row) throw new Error('row required');
-  if (row.annotation_type === 'highlight' && !isLegacyFabricHighlightRow(row)) {
+  if (isSurveyMarkerType(row.annotation_type) && !isLegacyFabricSurveyMarkerRow(row)) {
     throw new Error(
       'deserializeRowToFabricObject: highlight rows are not Fabric objects — '
       + 'use the highlight-specific deserializer instead.'
@@ -309,41 +313,41 @@ export function deserializeRowToFabricObject(row) {
   const fabricObject = data.fabricObject || null;
   if (!fabricObject) {
     throw new Error(
-      `Row ${row.highlight_id} has no annotation_data.fabricObject — `
+      `Row ${row.annotation_id} has no annotation_data.fabricObject — `
       + 'cannot reconstruct shape.'
     );
   }
-  if (row.highlight_id) {
+  if (row.annotation_id) {
     if (!fabricObject.data || typeof fabricObject.data !== 'object') {
       fabricObject.data = {};
     }
     if (!fabricObject.id && !fabricObject.data.id) {
-      fabricObject.data.id = row.highlight_id;
+      fabricObject.data.id = row.annotation_id;
     }
-    // Bug 1 fix (2026-04-30): stamp highlightId onto the fabric object itself
-    // when the row IS a legacy survey highlight (fabric-carrying highlight row).
-    // SVGAnnotationLayer.jsx ~line 1248 has a skip-guard `if (obj.highlightId)
-    // continue;` that exists to prevent double-render: survey highlights are
-    // supposed to render ONLY through the dedicated `surveyHighlightElements`
+    // Bug 1 fix (2026-04-30): stamp annotationId onto the fabric object itself
+    // when the row IS a legacy survey marker (fabric-carrying survey-marker row).
+    // SVGAnnotationLayer.jsx ~line 1248 has a skip-guard `if (obj.annotationId)
+    // continue;` that exists to prevent double-render: survey markers are
+    // supposed to render ONLY through the dedicated `surveyMarkerElements`
     // memo, NOT through the main fabric annotations loop. The skip-guard
-    // depends on `obj.highlightId` being set on the fabric object — which it
-    // wasn't, after a cloud-roundtrip deserialization, so the same highlight
+    // depends on `obj.annotationId` being set on the fabric object — which it
+    // wasn't, after a cloud-roundtrip deserialization, so the same surveyMarker
     // got rendered TWICE on the second device (once via the survey memo, once
     // via the main loop). Two semi-transparent yellow rects compositing to a
     // darker yellow is exactly what the user reported. Conditional on
-    // isLegacyFabricHighlightRow so we don't accidentally stamp `.highlightId`
+    // isLegacyFabricSurveyMarkerRow so we don't accidentally stamp `.annotationId`
     // onto regular fabric annotations (pen, shape, text — they share the
-    // `highlight_id` column as their generic annotation ID, but their fabric
+    // `annotation_id` column as their generic annotation ID, but their fabric
     // objects must NOT be skipped by the SVG layer's main loop).
-    if (isLegacyFabricHighlightRow(row)) {
-      fabricObject.highlightId = row.highlight_id;
+    if (isLegacyFabricSurveyMarkerRow(row)) {
+      fabricObject.annotationId = row.annotation_id;
     }
   }
 
   return {
     fabricObject,
     pageNumber: data.pageNumber ?? row.page_number,
-    highlightId: row.highlight_id,
+    annotationId: row.annotation_id,
     annotationType: row.annotation_type,
     schemaVersion: data.schemaVersion ?? 1
   };
@@ -365,7 +369,7 @@ export function serializeCalloutToRow(callout, opts = {}) {
   if (!userId) throw new Error('userId required');
   const pageNumber = callout.pageNumber ?? callout.page_number ?? 1;
 
-  const id = callout.id || callout.highlightId || generateClientId('callout');
+  const id = callout.id || callout.annotationId || generateClientId('callout');
 
   // Author-attribution guard (2026-04-30 hardening) — same invariant as
   // serializeFabricObjectToRow. Callouts live on a separate state slice from
@@ -388,7 +392,7 @@ export function serializeCalloutToRow(callout, opts = {}) {
   return {
     document_id: documentId,
     user_id: rowUserId,
-    highlight_id: id,
+    annotation_id: id,
     annotation_type: 'callout',
     page_number: pageNumber,
     bounds,
@@ -411,9 +415,9 @@ export function deserializeRowToCallout(row) {
   const data = row.annotation_data || {};
   const callout = data.callout;
   if (!callout) {
-    throw new Error(`Callout row ${row.highlight_id} has no annotation_data.callout`);
+    throw new Error(`Callout row ${row.annotation_id} has no annotation_data.callout`);
   }
-  return { ...callout, id: callout.id || row.highlight_id };
+  return { ...callout, id: callout.id || row.annotation_id };
 }
 
 // ----------------------------------------------------------------------------

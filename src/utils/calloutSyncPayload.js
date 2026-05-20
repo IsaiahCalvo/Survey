@@ -47,7 +47,7 @@ export function normalizeCalloutsForSync(callouts) {
   if (!Array.isArray(callouts)) return [];
   return callouts
     .map(normalizeCalloutForSync)
-    .sort((a, b) => String(a?.id || a?.highlightId || '').localeCompare(String(b?.id || b?.highlightId || '')));
+    .sort((a, b) => String(a?.id || a?.annotationId || '').localeCompare(String(b?.id || b?.annotationId || '')));
 }
 
 export function getCalloutSyncFingerprint(callouts) {

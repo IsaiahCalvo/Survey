@@ -43,16 +43,18 @@ describe('hydrate path branches on cutover_completed_at (Plan 31-04)', () => {
     );
   });
 
-  it('hook source still references loadAllNonHighlightAnnotations for the legacy fallback path', { skip: HOOK_SKIP }, () => {
+  it('hook source still references loadAllNonSurveyMarkerAnnotations for the legacy fallback path', { skip: HOOK_SKIP }, () => {
     const source = readFileSync(HOOK_PATH, 'utf8');
     // CRITICAL: Plan 31-04 must NOT delete the legacy hydrate path. It MUST
     // stay as the fallback for cold-open of un-cutover docs (so existing
     // data still loads on the first post-cutover open before the backfill
     // marker is set). This invariant is the entire reason the lean-variant
     // accepts deferring `document_annotations` deletion to Phase 32.
+    // (Renamed from loadAllNonHighlightAnnotations → loadAllNonSurveyMarkerAnnotations
+    // in the survey-marker rename sweep.)
     assert.ok(
-      source.includes('loadAllNonHighlightAnnotations'),
-      'legacy fallback (loadAllNonHighlightAnnotations) must stay — required for cold-open of un-cutover docs',
+      source.includes('loadAllNonSurveyMarkerAnnotations'),
+      'legacy fallback (loadAllNonSurveyMarkerAnnotations) must stay — required for cold-open of un-cutover docs',
     );
   });
 

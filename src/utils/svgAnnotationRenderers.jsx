@@ -180,7 +180,7 @@ export const renderPath = (obj, index) => {
   const isHighlight = obj.globalCompositeOperation === 'multiply';
   const erased = isErasedOutline(obj);
 
-  const key = `path-${obj.id || obj.highlightId || obj.pdfAnnotationId || index}`;
+  const key = `path-${obj.id || obj.annotationId || obj.pdfAnnotationId || index}`;
 
   // UX 2026-04-21 (import-normalization Chunk 2): derive the visual attrs
   // via renderPathToSvgAttrs so imported Ink and internal pen strokes
@@ -257,8 +257,8 @@ export const renderRect = (obj, index) => {
   const effectiveHeight = Math.abs((obj.height || 0) * (obj.scaleY || 1));
   const isHighlight = obj.globalCompositeOperation === 'multiply';
 
-  const key = `rect-${obj.id || obj.highlightId || index}`;
-  const shapeId = obj.id || obj.pdfAnnotationId || obj.highlightId || key;
+  const key = `rect-${obj.id || obj.annotationId || index}`;
+  const shapeId = obj.id || obj.pdfAnnotationId || obj.annotationId || key;
   __logShapeRender(obj, 'rect');
 
   const rotateTransform = obj.angle

@@ -36,7 +36,7 @@ let spyOn = false;
 export function logShapeRender(obj, kind) {
   if (!spyOn) return;
   if (!obj) return;
-  const id = obj.id || obj.pdfAnnotationId || obj.highlightId || null;
+  const id = obj.id || obj.pdfAnnotationId || obj.annotationId || null;
   renderBuffer.push({
     t: Date.now(),
     kind,

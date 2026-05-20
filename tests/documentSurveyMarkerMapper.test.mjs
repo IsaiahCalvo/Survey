@@ -2,16 +2,16 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  buildHighlightRow,
-  mapHighlightRowToLocalAnnotation,
-} from '../src/services/documentHighlightMapper.js';
+  buildSurveyMarkerRow,
+  mapSurveyMarkerRowToLocalAnnotation,
+} from '../src/services/documentSurveyMarkerMapper.js';
 
-describe('document highlight mapper', () => {
+describe('document survey marker mapper', () => {
   it('persists survey-region metadata in annotation_data because document_annotations has no region_id column', () => {
-    const row = buildHighlightRow({
+    const row = buildSurveyMarkerRow({
       documentId: 'doc-1',
       userId: 'user-1',
-      highlightId: 'highlight-1',
+      annotationId: 'highlight-1',
       annotation: {
         pageNumber: 4,
         bounds: { x: 10, y: 20, width: 30, height: 40 },
@@ -23,17 +23,20 @@ describe('document highlight mapper', () => {
     });
 
     assert.equal(row.document_id, 'doc-1');
-    assert.equal(row.highlight_id, 'highlight-1');
+    assert.equal(row.annotation_id, 'highlight-1');
     assert.equal(row.module_id, 'module-1');
-    assert.equal(row.space_id, 'space-1');
+    // A Survey Marker never persists a standalone space_id, even if one is
+    // present on the in-memory annotation.
+    assert.equal(row.space_id, null);
     assert.equal(row.annotation_data.regionId, 'region-1');
     assert.equal(row.annotation_data.scope, 'survey-region');
+    assert.equal(row.annotation_type, 'survey-marker');
   });
 
   it('hydrates survey-region metadata from annotation_data on reload', () => {
-    const local = mapHighlightRowToLocalAnnotation({
+    const local = mapSurveyMarkerRowToLocalAnnotation({
       id: 'row-1',
-      highlight_id: 'highlight-1',
+      annotation_id: 'highlight-1',
       user_id: 'user-1',
       last_modified_by: 'user-1',
       page_number: 4,
@@ -54,9 +57,11 @@ describe('document highlight mapper', () => {
       },
     });
 
-    assert.equal(local.highlightId, 'highlight-1');
+    assert.equal(local.annotationId, 'highlight-1');
     assert.equal(local.moduleId, 'module-1');
-    assert.equal(local.spaceId, 'space-1');
+    // A stray space_id on the row is ignored — Survey Markers are scoped by
+    // module + region only.
+    assert.equal(local.spaceId, undefined);
     assert.equal(local.regionId, 'region-1');
   });
 });

@@ -261,7 +261,7 @@ test('exported app-created PDF annotations reimport as editable supported annota
         returnBytes: true,
         actionType: 'pdf-export',
         documentId: 'doc-test',
-        highlightAnnotations: {
+        surveyMarkers: {
           'export-highlight': { pageNumber: 1, bounds: { x: 100, y: 20, width: 40, height: 12 }, color: 'rgba(203, 220, 255, 0.5)', moduleId: 'module-h', regionId: 'region-h', spaceId: 'space-h' },
         },
       },
@@ -485,7 +485,7 @@ test('exported hidden app layer state reimports separately from regular PDF anno
         actionType: 'pdf-export',
         documentId: 'doc-hidden-layer',
         spaces: [{ id: 'space-a', assignedPages: [{ pageId: 1, regions: [{ regionId: 'region-a' }] }] }],
-        highlightAnnotations: {
+        surveyMarkers: {
           'survey-highlight': { pageNumber: 1, moduleId: 'module-a', bounds: { x: 10, y: 10, width: 20, height: 10 } },
         },
         callouts: [{
@@ -512,7 +512,7 @@ test('exported hidden app layer state reimports separately from regular PDF anno
     assert.equal(imported.calloutsByPage[1], undefined);
     assert.equal(imported.appLayerState.documentId, 'doc-hidden-layer');
     assert.equal(imported.appLayerState.layers.scopedAnnotationsByPage[1].objects[0].id, 'survey-circle');
-    assert.equal(imported.appLayerState.layers.highlightAnnotations['survey-highlight'].moduleId, 'module-a');
+    assert.equal(imported.appLayerState.layers.surveyMarkers['survey-highlight'].moduleId, 'module-a');
     assert.equal(imported.appLayerState.layers.spaces[0].id, 'space-a');
     assert.equal(imported.appLayerState.layers.callouts[0].id, 'region-callout');
   } finally {

@@ -2,7 +2,7 @@ export function getAnnotationHistoryId(annotation) {
   return annotation?.data?.id
     || annotation?.data?.annoId
     || annotation?.id
-    || annotation?.highlightId
+    || annotation?.annotationId
     || annotation?.pdfAnnotationId
     || null;
 }

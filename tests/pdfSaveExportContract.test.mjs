@@ -272,7 +272,7 @@ test('printable regular annotation filter includes normal annotations and exclud
 
 test('printable regular annotation filter excludes survey highlights', () => {
   const payload = buildPrintableRegularAnnotationPayload({
-    highlightAnnotations: {
+    surveyMarkers: {
       'survey-highlight': { pageNumber: 1, bounds: { x: 10, y: 10, width: 20, height: 10 }, moduleId: 'module-a' },
       'region-highlight': { pageNumber: 1, bounds: { x: 20, y: 20, width: 20, height: 10 }, regionId: 'region-a' },
       'space-highlight': { pageNumber: 1, bounds: { x: 30, y: 30, width: 20, height: 10 }, spaceId: 'space-a' },
@@ -280,8 +280,8 @@ test('printable regular annotation filter excludes survey highlights', () => {
     },
   });
 
-  assert.deepEqual(payload.highlightAnnotations, {});
-  assert.equal(payload.diagnostics.excluded.surveyHighlights, 4);
+  assert.deepEqual(payload.surveyMarkers, {});
+  assert.equal(payload.diagnostics.excluded.surveyMarkers, 4);
 });
 
 test('printable regular annotation filter includes regular counters and excludes scoped counters', () => {
@@ -600,7 +600,7 @@ test('PDF export excludes survey highlights and scoped callouts', async () => {
         actionType: 'pdf-export',
         documentId: 'doc-test',
         spaces: [{ id: 'space-a', assignedPages: [{ pageId: 1, regions: [{ regionId: 'region-a' }] }] }],
-        highlightAnnotations: {
+        surveyMarkers: {
           'survey-highlight': { pageNumber: 1, bounds: { x: 10, y: 10, width: 20, height: 10 }, moduleId: 'module-a', color: '#ffff00' },
           'region-highlight': { pageNumber: 1, bounds: { x: 10, y: 30, width: 20, height: 10 }, regionId: 'region-a', color: '#ffff00' },
           'survey-region-highlight': { pageNumber: 1, bounds: { x: 10, y: 50, width: 20, height: 10 }, moduleId: 'module-a', regionId: 'region-a', color: '#ffff00' },
@@ -648,7 +648,7 @@ test('PDF export stores survey, space, and region layers as hidden app metadata'
         actionType: 'pdf-export',
         documentId: 'doc-layer-state',
         spaces: [{ id: 'space-a', assignedPages: [{ pageId: 1, regions: [{ regionId: 'region-a' }] }] }],
-        highlightAnnotations: {
+        surveyMarkers: {
           'survey-highlight': { pageNumber: 1, bounds: { x: 10, y: 10, width: 20, height: 10 }, moduleId: 'module-a', color: '#ffff00' },
         },
         callouts: [{
@@ -671,7 +671,7 @@ test('PDF export stores survey, space, and region layers as hidden app metadata'
     assert.equal(metadata.documentId, 'doc-layer-state');
     assert.deepEqual(Object.keys(metadata.layers.scopedAnnotationsByPage), ['1']);
     assert.equal(metadata.layers.scopedAnnotationsByPage[1].objects[0].id, 'survey-circle');
-    assert.equal(metadata.layers.highlightAnnotations['survey-highlight'].moduleId, 'module-a');
+    assert.equal(metadata.layers.surveyMarkers['survey-highlight'].moduleId, 'module-a');
     assert.equal(metadata.layers.spaces[0].id, 'space-a');
     assert.deepEqual(metadata.layers.spaces[0].assignedPages[0].regions.map((region) => region.regionId), ['region-a']);
     assert.equal(metadata.layers.callouts[0].id, 'region-callout');
@@ -762,7 +762,7 @@ test('PDF export embeds app annotation metadata on ordinary app-created annotati
         returnBytes: true,
         actionType: 'pdf-export',
         documentId: 'doc-test',
-        highlightAnnotations: {},
+        surveyMarkers: {},
       },
     );
 
@@ -794,7 +794,8 @@ test('PDF export embeds app annotation metadata on ordinary app-created annotati
     assert.equal(arrowMetadata.flags.lineEnding2, 'ClosedArrow');
     assert.equal(arrowMetadata.geometry.lineEnding2, 'ClosedArrow');
     const highlightMetadata = metadata.find((entry) => entry.id === 'meta-highlight');
-    assert.equal(highlightMetadata.appType, 'highlight');
+    // New saves write 'survey-marker'; old PDFs carry 'highlight' (both accepted on read).
+    assert.equal(highlightMetadata.appType, 'survey-marker');
     assert.equal(highlightMetadata.style.fill, '#facc15');
     assert.equal(highlightMetadata.style.opacity, 0.35);
   } finally {

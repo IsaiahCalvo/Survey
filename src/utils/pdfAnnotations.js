@@ -230,8 +230,8 @@ export const convertPageAnnotationsToPDF = (fabricJSON, pageNumber, pageHeight) 
       return;
     }
 
-    // Skip survey highlight rectangles (they have highlightId)
-    if (obj.highlightId) {
+    // Skip survey surveyMarker rectangles (they have annotationId)
+    if (obj.annotationId) {
       return;
     }
 

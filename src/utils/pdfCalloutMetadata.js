@@ -17,7 +17,7 @@ const normalizePoint = (point) => {
 export function buildPdfCalloutMetadata(callout, pageNumber = null, part = null) {
   if (!callout || typeof callout !== 'object') return null;
 
-  const id = callout.id || callout.highlightId || null;
+  const id = callout.id || callout.annotationId || null;
   const arrowTip = normalizePoint(callout.arrowTip);
   const knee = normalizePoint(callout.knee);
   const textBoxPosition = normalizePoint(callout.textBoxPosition || callout.textBox);

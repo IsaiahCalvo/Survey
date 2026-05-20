@@ -1,5 +1,5 @@
 function getFabricAnnotationId(obj) {
-  return obj?.highlightId
+  return obj?.annotationId
     || obj?.id
     || obj?.data?.id
     || obj?.data?.annoId
@@ -8,7 +8,7 @@ function getFabricAnnotationId(obj) {
 }
 
 function getCalloutId(callout) {
-  return callout?.id || callout?.highlightId || null;
+  return callout?.id || callout?.annotationId || null;
 }
 
 function fingerprint(value) {

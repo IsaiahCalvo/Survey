@@ -297,7 +297,7 @@ test('deserializeRowToFabricObject: recovers legacy highlight rows with Fabric p
   const row = {
     annotation_type: 'highlight',
     page_number: 6,
-    highlight_id: 'ink-legacy',
+    annotation_id: 'ink-legacy',
     annotation_data: {
       pageNumber: 6,
       fabricObject: {
@@ -370,7 +370,7 @@ test('serializeAnnotationsByPage: silently skips unsupported objects', () => {
       userId: USER_ID
     });
     assert.equal(rows.length, 1);
-    assert.equal(rows[0].highlight_id, 'r1');
+    assert.equal(rows[0].annotation_id, 'r1');
   } finally {
     console.warn = originalWarn;
   }
@@ -403,13 +403,13 @@ test('deserializeRowsToAnnotationsByPage: round-trip through page store', () => 
 
 test('deserializeRowsToAnnotationsByPage: skips plain highlight and callout rows', () => {
   const rows = [
-    { annotation_type: 'highlight', annotation_data: {}, page_number: 1, highlight_id: 'h1' },
-    { annotation_type: 'callout', annotation_data: { callout: { id: 'cb', anchor: { x: 0, y: 0 } } }, page_number: 1, highlight_id: 'cb' },
+    { annotation_type: 'highlight', annotation_data: {}, page_number: 1, annotation_id: 'h1' },
+    { annotation_type: 'callout', annotation_data: { callout: { id: 'cb', anchor: { x: 0, y: 0 } } }, page_number: 1, annotation_id: 'cb' },
     {
       annotation_type: 'square',
       annotation_data: { fabricObject: { type: 'rect', left: 0, top: 0, width: 10, height: 10 }, pageNumber: 1 },
       page_number: 1,
-      highlight_id: 'r1'
+      annotation_id: 'r1'
     }
   ];
   const restored = deserializeRowsToAnnotationsByPage(rows);
@@ -433,7 +433,7 @@ test('normalizeFabricAnnotationRows: dedupes repeated PDF imports and prefers co
         stroke: 'red'
       }
     },
-    highlight_id: 'legacy'
+    annotation_id: 'legacy'
   };
   const corrected = {
     annotation_type: 'ink',
@@ -450,7 +450,7 @@ test('normalizeFabricAnnotationRows: dedupes repeated PDF imports and prefers co
         stroke: 'blue'
       }
     },
-    highlight_id: 'corrected'
+    annotation_id: 'corrected'
   };
 
   const normalized = normalizeFabricAnnotationRows([legacy, corrected]);
@@ -521,13 +521,13 @@ test('deserializeRowsToCallouts: pulls only callout rows', () => {
       annotation_type: 'callout',
       annotation_data: { callout: { id: 'co-A', anchor: { x: 0, y: 0 }, pageNumber: 1 }, pageNumber: 1 },
       page_number: 1,
-      highlight_id: 'co-A'
+      annotation_id: 'co-A'
     },
     {
       annotation_type: 'square',
       annotation_data: { fabricObject: { type: 'rect' }, pageNumber: 1 },
       page_number: 1,
-      highlight_id: 'r1'
+      annotation_id: 'r1'
     }
   ];
   const callouts = deserializeRowsToCallouts(rows);

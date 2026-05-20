@@ -4,10 +4,10 @@
 //
 // Validates dual-write fan-out contracts:
 //   - Both legacy upsertFabricAnnotation + bridge applyFabricCommit fire when
-//     CRDT enabled + non-highlight (AC-1)
+//     CRDT enabled + non-surveyMarker (AC-1)
 //   - When kill switch off (isCRDTEnabled() === false), CRDT side is skipped
 //     and legacy behavior is byte-identical (AC-15)
-//   - When annotation_type === 'highlight', CRDT side is skipped regardless of
+//   - When annotation_type === 'surveyMarker', CRDT side is skipped regardless of
 //     kill switch (AC-18 — Excel-sync carve-out, folded into v2.5)
 //   - Legacy-side failure enqueues to retry queue with side: 'legacy'
 //   - CRDT-side failure enqueues to retry queue with side: 'crdt'
@@ -44,7 +44,7 @@ function skipReason() {
 }
 
 test(
-  'dualWriteFabricCommit #1: fires both legacy upsertFabricAnnotation + bridge applyFabricCommit when CRDT enabled + non-highlight',
+  'dualWriteFabricCommit #1: fires both legacy upsertFabricAnnotation + bridge applyFabricCommit when CRDT enabled + non-surveyMarker',
   { skip: !existsSync(TARGET) ? 'annotationCloudSync.js missing' : (skipReason() || false) },
   async (t) => {
     if (!dualWriteSymbolPresent()) {
@@ -75,14 +75,14 @@ test(
 );
 
 test(
-  'dualWriteFabricCommit #3: skips CRDT side when annotation_type === "highlight" regardless of kill switch (AC-18)',
+  'dualWriteFabricCommit #3: skips CRDT side when annotation_type === "surveyMarker" regardless of kill switch (AC-18)',
   { skip: !existsSync(TARGET) ? 'annotationCloudSync.js missing' : (skipReason() || false) },
   async (t) => {
     if (!dualWriteSymbolPresent()) {
       t.skip('dualWriteFabricCommit not yet exported (Plan 30-04)');
       return;
     }
-    // Mock isCRDTEnabled() → true; pass fabricObj with type='highlight';
+    // Mock isCRDTEnabled() → true; pass fabricObj with type='surveyMarker';
     // assert applyFabricCommit NOT called (legacy carve-out for v2.5).
     assert.ok(true, 'contract scaffold — Plan 30-04 implementation flips this to active');
   }

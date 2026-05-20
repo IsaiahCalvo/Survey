@@ -29,11 +29,11 @@ function mergeAnnotationsByPage(local, remote) {
   return out;
 }
 
-function insertOrUpdateOnPage(prev, pageNumber, fabricObject, highlightId) {
+function insertOrUpdateOnPage(prev, pageNumber, fabricObject, annotationId) {
   const pageKey = String(pageNumber);
   const out = { ...(prev || {}) };
   const page = out[pageKey] || { objects: [] };
-  const id = highlightId || fabricObject.id || fabricObject.data?.id;
+  const id = annotationId || fabricObject.id || fabricObject.data?.id;
   const idx = page.objects.findIndex((o) => (o.id || o.data?.id) === id);
   const nextObjects = idx >= 0
     ? page.objects.map((o, i) => (i === idx ? fabricObject : o))
@@ -42,7 +42,7 @@ function insertOrUpdateOnPage(prev, pageNumber, fabricObject, highlightId) {
   return out;
 }
 
-function removeFromAllPages(prev, highlightId) {
+function removeFromAllPages(prev, annotationId) {
   if (!prev) return prev;
   const out = {};
   for (const [pageKey, page] of Object.entries(prev)) {
@@ -50,7 +50,7 @@ function removeFromAllPages(prev, highlightId) {
       out[pageKey] = page;
       continue;
     }
-    const filtered = page.objects.filter((o) => (o.id || o.data?.id) !== highlightId);
+    const filtered = page.objects.filter((o) => (o.id || o.data?.id) !== annotationId);
     out[pageKey] = { ...page, objects: filtered };
   }
   return out;

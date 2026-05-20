@@ -3,7 +3,7 @@
  *
  * React hook that wires the all-types cloud sync into App.jsx with a
  * minimal surface. Mount it once per open document and it handles:
- *   - Hydrating non-highlight annotations from the cloud on document open
+ *   - Hydrating non-surveyMarker annotations from the cloud on document open
  *   - Running the one-time local-to-cloud migration for stranded marks
  *   - Pushing per-page Fabric state diffs and callout state diffs to the
  *     cloud on change, debounced to avoid hammering Supabase mid-drag
@@ -12,7 +12,7 @@
  *   - Falling back to localStorage when Supabase is unreachable and
  *     replaying queued upserts on reconnect
  *
- * Highlights are intentionally NOT touched — they keep their existing
+ * SurveyMarkers are intentionally NOT touched — they keep their existing
  * sync path in documentAnnotationService.js.
  */
 
@@ -20,16 +20,16 @@ import { useEffect, useRef, useState } from 'react';
 import {
   upsertAnnotationsByPage,
   upsertCallouts,
-  loadAllNonHighlightAnnotations,
-  subscribeToAllNonHighlightAnnotations,
+  loadAllNonSurveyMarkerAnnotations,
+  subscribeToAllNonSurveyMarkerAnnotations,
   deleteAnnotation,
   deleteAnnotations,
   // Phase 30 — dual-write fan-out. Live v2.4 fabric saves write to BOTH the
   // legacy document_annotations row (preserved here for v2.3 reader compat
   // during the dual-write era) AND the CRDT path via the Phase 29 bridge.
   //
-  // CONTEXT.md `<decisions>` "Highlights skipped" + Pitfall 30-4 two-layer
-  // defense: highlight bypass at THIS call site AND inside the helper.
+  // CONTEXT.md `<decisions>` "SurveyMarkers skipped" + Pitfall 30-4 two-layer
+  // defense: surveyMarker bypass at THIS call site AND inside the helper.
   //
   // CONTEXT.md AC-15 kill-switch fallback: when isCRDTEnabled() returns false,
   // this hook's behavior is byte-identical to pre-Phase-30 (legacy-only path).
@@ -59,6 +59,7 @@ import {
 } from '../lib/collab/crdtAnnotationBridge.js';
 import { useYDoc } from './useYDoc.js';
 import { resolveCrdtFanOutAnnotationType } from '../utils/annotationSyncType.js';
+import { isSurveyMarkerType } from '../utils/surveyMarkerType.js';
 import {
   getCalloutSyncFingerprint,
   normalizeCalloutsForSync,
@@ -135,10 +136,10 @@ function extractLegacyCalloutFromAnnotationYMap(annoYMap) {
   const fabricObj = materializeAnnoFromYMap(annoYMap);
   const callout = fabricObj?.callout || fabricObj;
   if (!callout || typeof callout !== 'object') return null;
-  const id = annoYMap.get('id') || callout.id || callout.highlightId || fabricObj?.data?.id;
+  const id = annoYMap.get('id') || callout.id || callout.annotationId || fabricObj?.data?.id;
   const pageNumber = annoYMap.get('pageNumber') ?? callout.pageNumber ?? callout.page_number ?? 1;
   const out = { ...callout, id: callout.id || id, pageNumber };
-  if (id && out.highlightId == null) out.highlightId = id;
+  if (id && out.annotationId == null) out.annotationId = id;
   try {
     const metaYMap = annoYMap.get('meta');
     const authorId = metaYMap?.get?.('authorId');
@@ -254,7 +255,7 @@ const EMPTY_CLOUD_VERIFY_DELAY_MS = 1000;
 const RECENT_CLOUD_REFRESH_SKIP_MS = 15000;
 
 function getFabricAnnotationId(obj) {
-  return obj?.highlightId
+  return obj?.annotationId
     || obj?.id
     || obj?.data?.id
     || obj?.data?.annoId
@@ -467,7 +468,7 @@ export function useAnnotationCloudSync({
   // Phase 31 hotfix (2026-05-03) — cached `documents.cutover_completed_at`
   // for the currently-mounted doc. Set inside the hydrate effect after the
   // Supabase lookup; consumed by onFocus to short-circuit the legacy
-  // loadAllNonHighlightAnnotations path on sealed docs (Y.Doc + realtime
+  // loadAllNonSurveyMarkerAnnotations path on sealed docs (Y.Doc + realtime
   // subscription is the source of truth post-cutover; legacy reads would
   // race-overwrite local state).
   const cutoverTsRef = useRef(null);
@@ -598,12 +599,12 @@ export function useAnnotationCloudSync({
   // skipLegacy: true so the legacy row is not double-written (the bulk
   // upsertAnnotationsByPage already fired before this fan-out runs).
   //
-  // Pitfall 30-4 two-layer highlight defense:
-  //   - Layer 1 (HERE): the call site filters out annotation_type === 'highlight'
+  // Pitfall 30-4 two-layer surveyMarker defense:
+  //   - Layer 1 (HERE): the call site filters out annotation_type === 'surveyMarker'
   //     AND annotation_type === 'callout' AND non-NON_HIGHLIGHT_TYPES — never
   //     even invokes the dual-write helper for them.
   //   - Layer 2 (helper): annotationCloudSync.js dualWriteFabricCommit also
-  //     internally checks isHighlight and returns { crdt: null }.
+  //     internally checks isSurveyMarker and returns { crdt: null }.
   //
   // Callouts have their own state slice. They persist to Supabase first and
   // fan out to the dedicated Y.Doc callouts map only after durable success.
@@ -630,7 +631,7 @@ export function useAnnotationCloudSync({
     const originPayload = (typeof phase30OriginCtx === 'function') ? phase30OriginCtx() : null;
     const ctx = phase30UndoCtx || null;
     let __dispatched = 0;
-    let __skippedHighlightOrCallout = 0;
+    let __skippedSurveyMarkerOrCallout = 0;
     let __skippedOtherType = 0;
     let __detected = 0;
     const __rawTypeBreakdown = {};
@@ -646,8 +647,8 @@ export function useAnnotationCloudSync({
         summarizeTypeBreakdownValue(__resolvedTypeBreakdown, resolved.annotationType || 'unknown');
         if (!resolved.dispatchable) {
           summarizeTypeBreakdownValue(__skipReasons, resolved.reason || 'unknown');
-          if (resolved.reason === 'highlight' || resolved.reason === 'callout') {
-            __skippedHighlightOrCallout++;
+          if (isSurveyMarkerType(resolved.reason) || resolved.reason === 'callout') {
+            __skippedSurveyMarkerOrCallout++;
           } else {
             __skippedOtherType++;
           }
@@ -692,7 +693,7 @@ export function useAnnotationCloudSync({
       dispatched: __dispatched,
       yDocUpdateCount: __dispatched,
       detected: __detected,
-      skippedHighlightOrCallout: __skippedHighlightOrCallout,
+      skippedSurveyMarkerOrCallout: __skippedSurveyMarkerOrCallout,
       skippedOtherType: __skippedOtherType,
       rawTypeBreakdown: __rawTypeBreakdown,
       resolvedTypeBreakdown: __resolvedTypeBreakdown,
@@ -729,7 +730,7 @@ export function useAnnotationCloudSync({
           yMapAnnotations,
           originPayload,
           // Generic 'fabric' tag; helper does not filter by this on deletes
-          // (highlight bypass on delete is opt-in via opts.annotation_type).
+          // (surveyMarker bypass on delete is opt-in via opts.annotation_type).
           // Callouts use the dedicated Supabase-first callout path and Y.Doc
           // callouts map, so this Fabric helper is never called for them.
           annotation_type: 'fabric',
@@ -799,7 +800,7 @@ export function useAnnotationCloudSync({
         upserted++;
       } catch (err) {
         console.warn('[CloudSync][hook] callout Y.Doc commit failed ' + JSON.stringify({
-          calloutId: callout?.id || callout?.highlightId || null,
+          calloutId: callout?.id || callout?.annotationId || null,
           error: err?.message || String(err),
         }));
       }
@@ -1023,7 +1024,7 @@ export function useAnnotationCloudSync({
               if (!annoYMap || typeof annoYMap.get !== 'function') return;
               const legacyCallout = extractLegacyCalloutFromAnnotationYMap(annoYMap);
               if (legacyCallout) {
-                const id = legacyCallout.id || legacyCallout.highlightId || annoId;
+                const id = legacyCallout.id || legacyCallout.annotationId || annoId;
                 if (id) calloutsFromYDocById.set(id, { ...legacyCallout, id });
                 return;
               }
@@ -1038,7 +1039,7 @@ export function useAnnotationCloudSync({
             yMapCallouts.forEach((calloutYMap, calloutId) => {
               const callout = materializeCalloutFromYMap(calloutYMap, calloutId);
               if (!callout) return;
-              const id = callout.id || callout.highlightId || calloutId;
+              const id = callout.id || callout.annotationId || calloutId;
               if (id) calloutsFromYDocById.set(id, { ...callout, id });
             });
           }
@@ -1938,13 +1939,13 @@ export function useAnnotationCloudSync({
         // user activity enqueues nothing.
         if (isCRDTEnabled()) {
           // Resolve the stable per-annotation id. Same precedence as the
-          // canonical serializeFabricObjectToRow: highlightId beats Fabric's
-          // own id, which beats the app metadata id. Without highlightId in
+          // canonical serializeFabricObjectToRow: annotationId beats Fabric's
+          // own id, which beats the app metadata id. Without annotationId in
           // this list, freshly-drawn pen strokes (which carry only
-          // fabricObj.highlightId until first push) fall through every check
+          // fabricObj.annotationId until first push) fall through every check
           // and get silently dropped from the queue — verified in the
           // 2026-04-29 UAT log: skippedNoId: 1, enqueuedCount: 0.
-          const idOf = (obj) => obj?.highlightId || obj?.id || obj?.data?.id || null;
+          const idOf = (obj) => obj?.annotationId || obj?.id || obj?.data?.id || null;
           const priorIds = new Set();
           for (const page of Object.values(priorByPage || {})) {
             if (!page || !Array.isArray(page.objects)) continue;
@@ -1966,7 +1967,7 @@ export function useAnnotationCloudSync({
               const isImported = fabricObj?.type === 'path' && fabricObj.left == null && Array.isArray(fabricObj.path);
               if (isImported) { skippedImportedOrFiltered++; continue; }
               const annType = fabricObj?.data?.annotationType || fabricObj?.type;
-              if (annType === 'highlight' || annType === 'callout') { skippedImportedOrFiltered++; continue; }
+              if (isSurveyMarkerType(annType) || annType === 'callout') { skippedImportedOrFiltered++; continue; }
               enqueueDualWrite({
                 userId,
                 annoId,
@@ -1996,7 +1997,7 @@ export function useAnnotationCloudSync({
         setSyncStatus({ stage: 'queued', error: result.error, kind: 'fabric' });
       } else {
         // Phase 30 — CRDT-side fan-out per annotation. Runs only when kill
-        // switch is on AND Y.Doc is mounted. Highlight bypass + callout bypass
+        // switch is on AND Y.Doc is mounted. SurveyMarker bypass + callout bypass
         // happen at the call site (Pitfall 30-4 layer 1) and again inside the
         // helper (layer 2). skipLegacy: true (legacy bulk upsert just succeeded).
         await fanOutCrdtForAnnotationsByPage(changedAnnotationsByPage, { documentId, userId, actionType: fabricSyncDelta.actionType });
@@ -2165,14 +2166,14 @@ export function useAnnotationCloudSync({
       }));
       setSyncStatus({ stage: 'syncing', kind: 'callout' });
       const currentCalloutIds = new Set(
-        (pushCallouts || []).map((c) => c?.id || c?.highlightId).filter(Boolean)
+        (pushCallouts || []).map((c) => c?.id || c?.annotationId).filter(Boolean)
       );
 
       // Detect deleted callouts the same way as fabric annotations.
       const deletedCalloutIds = [];
       if (priorCallouts && priorCallouts !== pushCallouts) {
         for (const c of priorCallouts) {
-          const id = c?.id || c?.highlightId;
+          const id = c?.id || c?.annotationId;
           if (id && !currentCalloutIds.has(id)) deletedCalloutIds.push(id);
         }
       }
@@ -2458,26 +2459,26 @@ export function useAnnotationCloudSync({
     // other side's echo re-painted the missing row. (Logged 2026-04-25 as
     // the eraser-flicker root cause companion to the diff capture-order
     // bug above.)
-    const unsub = subscribeToAllNonHighlightAnnotations(
+    const unsub = subscribeToAllNonSurveyMarkerAnnotations(
       documentId,
       {
-        onFabricInsert: (fabricObject, pageNumber, highlightId) => {
+        onFabricInsert: (fabricObject, pageNumber, annotationId) => {
           setAnnotationsByPage((prev) => {
-            const next = insertOrUpdateOnPage(prev, pageNumber, fabricObject, highlightId);
+            const next = insertOrUpdateOnPage(prev, pageNumber, fabricObject, annotationId);
             lastByPageRef.current = next; // suppress local push echo
             return next;
           });
         },
-        onFabricUpdate: (fabricObject, pageNumber, highlightId) => {
+        onFabricUpdate: (fabricObject, pageNumber, annotationId) => {
           setAnnotationsByPage((prev) => {
-            const next = insertOrUpdateOnPage(prev, pageNumber, fabricObject, highlightId);
+            const next = insertOrUpdateOnPage(prev, pageNumber, fabricObject, annotationId);
             lastByPageRef.current = next; // suppress local push echo
             return next;
           });
         },
-        onFabricDelete: (highlightId) => {
+        onFabricDelete: (annotationId) => {
           setAnnotationsByPage((prev) => {
-            const next = removeFromAllPages(prev, highlightId);
+            const next = removeFromAllPages(prev, annotationId);
             lastByPageRef.current = next; // suppress local push echo
             return next;
           });
@@ -2496,9 +2497,9 @@ export function useAnnotationCloudSync({
             return next;
           });
         },
-        onCalloutDelete: (highlightId) => {
+        onCalloutDelete: (annotationId) => {
           setCallouts((prev) => {
-            const next = (prev || []).filter((c) => (c.id ?? c.highlightId) !== highlightId);
+            const next = (prev || []).filter((c) => (c.id ?? c.annotationId) !== annotationId);
             lastCalloutsRef.current = next; // suppress local push echo
             return next;
           });
@@ -2518,7 +2519,7 @@ export function useAnnotationCloudSync({
           }
           (async () => {
             try {
-              const fresh = await loadAllNonHighlightAnnotations(documentId);
+              const fresh = await loadAllNonSurveyMarkerAnnotations(documentId);
               if (fresh.error) {
                 console.warn('[CloudSync][hook] delete-fallback refetch failed: ' + (fresh.error?.message || fresh.error));
                 return;
@@ -2571,7 +2572,7 @@ export function useAnnotationCloudSync({
           }
           // Cutover-sealed documents are CRDT/Y.Doc authoritative. The legacy
           // row table still contains pre-dedupe/pre-cutover annotation rows
-          // for rollback, so using loadAllNonHighlightAnnotations here can
+          // for rollback, so using loadAllNonSurveyMarkerAnnotations here can
           // replace the correct 3644-entry Y.Doc view with the stale 3058-row
           // snapshot and make Drawboard ink look jagged/duplicated again.
           if (cutoverTsRef.current && phase30Ydoc) {
@@ -2661,7 +2662,7 @@ export function useAnnotationCloudSync({
       // Phase 31 hotfix (2026-05-03) — sealed-doc gate. After the cutover
       // timestamp is set, the Y.Doc is the single source of truth and is
       // kept current by the realtime broadcast subscription. Running the
-      // legacy `loadAllNonHighlightAnnotations` SELECT here would replace
+      // legacy `loadAllNonSurveyMarkerAnnotations` SELECT here would replace
       // local state with a stale snapshot of the legacy table (which is no
       // longer being written to under the kill switch), wiping in-flight
       // CRDT-only writes — exactly the regression captured in Logs/
@@ -2811,10 +2812,10 @@ export function useAnnotationCloudSync({
         return { success: !r.error };
       }
       if (kind === 'delete') {
-        const r = await deleteAnnotation(opts.documentId, opts.highlightId);
+        const r = await deleteAnnotation(opts.documentId, opts.annotationId);
         // Phase 30 — CRDT-side mirror after the queued legacy delete lands.
         if (r?.success) {
-          await fanOutCrdtForDeletedIds(opts.documentId, [opts.highlightId], { userId: opts.userId });
+          await fanOutCrdtForDeletedIds(opts.documentId, [opts.annotationId], { userId: opts.userId });
         }
         return { success: !!r.success };
       }
@@ -2904,9 +2905,9 @@ export function useAnnotationCloudSync({
         return { success: !r?.error };
       }
       if (kind === 'delete') {
-        const r = await deleteAnnotation(opts.documentId, opts.highlightId);
+        const r = await deleteAnnotation(opts.documentId, opts.annotationId);
         if (r?.success) {
-          await fanOutCrdtForDeletedIds(opts.documentId, [opts.highlightId], { userId: opts.userId });
+          await fanOutCrdtForDeletedIds(opts.documentId, [opts.annotationId], { userId: opts.userId });
         }
         return { success: !!r?.success };
       }
@@ -3081,7 +3082,7 @@ async function loadCloudWithEmptyVerify(documentId, opts = {}) {
     contextLabel = 'unknown'
   } = opts;
   const t0 = Date.now();
-  const first = await loadAllNonHighlightAnnotations(documentId);
+  const first = await loadAllNonSurveyMarkerAnnotations(documentId);
   if (first.error) return first;
 
   const firstFabric = first.annotationsByPage ? Object.keys(first.annotationsByPage).length : 0;
@@ -3119,7 +3120,7 @@ async function loadCloudWithEmptyVerify(documentId, opts = {}) {
   await new Promise((resolve) => setTimeout(resolve, EMPTY_CLOUD_VERIFY_DELAY_MS));
 
   const t1 = Date.now();
-  const second = await loadAllNonHighlightAnnotations(documentId);
+  const second = await loadAllNonSurveyMarkerAnnotations(documentId);
   if (second.error) {
     console.warn('[CloudSync][verify] verification query errored — keeping first (empty) result ' + JSON.stringify({
       contextLabel,
@@ -3174,19 +3175,19 @@ function mergeAnnotationsByPage(local, remote) {
 function mergeCallouts(local, remote) {
   if (!remote) return local;
   const out = [...(local || [])];
-  const localIds = new Set(out.map((c) => c.id || c.highlightId).filter(Boolean));
+  const localIds = new Set(out.map((c) => c.id || c.annotationId).filter(Boolean));
   for (const c of remote) {
-    const id = c.id || c.highlightId;
+    const id = c.id || c.annotationId;
     if (!id || !localIds.has(id)) out.push(c);
   }
   return out;
 }
 
-function insertOrUpdateOnPage(prev, pageNumber, fabricObject, highlightId) {
+function insertOrUpdateOnPage(prev, pageNumber, fabricObject, annotationId) {
   const pageKey = String(pageNumber);
   const out = { ...(prev || {}) };
   const page = out[pageKey] || { objects: [] };
-  const id = highlightId || fabricObject.id || fabricObject.data?.id;
+  const id = annotationId || fabricObject.id || fabricObject.data?.id;
   const idx = page.objects.findIndex((o) => (o.id || o.data?.id) === id);
   const nextObjects = idx >= 0
     ? page.objects.map((o, i) => (i === idx ? fabricObject : o))
@@ -3195,7 +3196,7 @@ function insertOrUpdateOnPage(prev, pageNumber, fabricObject, highlightId) {
   return out;
 }
 
-function removeFromAllPages(prev, highlightId) {
+function removeFromAllPages(prev, annotationId) {
   if (!prev) return prev;
   const out = {};
   for (const [pageKey, page] of Object.entries(prev)) {
@@ -3203,7 +3204,7 @@ function removeFromAllPages(prev, highlightId) {
       out[pageKey] = page;
       continue;
     }
-    const filtered = page.objects.filter((o) => (o.id || o.data?.id) !== highlightId);
+    const filtered = page.objects.filter((o) => (o.id || o.data?.id) !== annotationId);
     out[pageKey] = { ...page, objects: filtered };
   }
   return out;
@@ -3211,8 +3212,8 @@ function removeFromAllPages(prev, highlightId) {
 
 function upsertCalloutInList(prev, callout) {
   const list = Array.isArray(prev) ? prev : [];
-  const id = callout.id || callout.highlightId;
-  const idx = list.findIndex((c) => (c.id || c.highlightId) === id);
+  const id = callout.id || callout.annotationId;
+  const idx = list.findIndex((c) => (c.id || c.annotationId) === id);
   if (idx >= 0) {
     return list.map((c, i) => (i === idx ? callout : c));
   }

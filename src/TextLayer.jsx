@@ -129,7 +129,7 @@ const TextLayer = memo(({
             const textLayerRect = textLayerDiv.getBoundingClientRect();
 
             // Convert to coordinates relative to the PDF page (accounting for scale)
-            const highlights = Array.from(rects).map(rect => {
+            const surveyMarkers = Array.from(rects).map(rect => {
               const x = (rect.left - textLayerRect.left) / scale;
               const y = (rect.top - textLayerRect.top) / scale;
               const w = rect.width / scale;
@@ -144,8 +144,8 @@ const TextLayer = memo(({
             });
 
             // Call callback with selection data
-            if (highlights.length > 0) {
-              onTextSelected(pageNumber, selectedText, highlights);
+            if (surveyMarkers.length > 0) {
+              onTextSelected(pageNumber, selectedText, surveyMarkers);
             }
 
             // Clear selection after capturing

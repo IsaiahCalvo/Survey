@@ -5,18 +5,22 @@
  */
 
 import { supabase } from '../supabaseClient';
-import { diffDeletedHighlightIds } from './highlightSyncDiff.js';
-import { highlightSyncDiag } from './highlightSyncDiag.js';
+import { diffDeletedSurveyMarkerIds } from './surveyMarkerSyncDiff.js';
+import { surveyMarkerSyncDiag } from './surveyMarkerSyncDiag.js';
 import { chunkRowsForAnnotationUpsert } from '../utils/annotationBatching.js';
 import {
-  buildHighlightRow,
-  mapHighlightRowToLocalAnnotation,
-} from './documentHighlightMapper.js';
+  buildSurveyMarkerRow,
+  mapSurveyMarkerRowToLocalAnnotation,
+} from './documentSurveyMarkerMapper.js';
+import {
+  isSurveyMarkerType,
+  SURVEY_MARKER_TYPE_VALUES,
+} from '../utils/surveyMarkerType.js';
 
 const SUPABASE_PAGE_SIZE = 1000;
 
-const isLegacyFabricHighlightRow = (row) =>
-  row?.annotation_type === 'highlight' && !!row.annotation_data?.fabricObject;
+const isLegacyFabricSurveyMarkerRow = (row) =>
+  isSurveyMarkerType(row?.annotation_type) && !!row.annotation_data?.fabricObject;
 
 const classifyAnnotationSyncError = (error) => {
   const message = error?.message || '';
@@ -69,18 +73,18 @@ const classifyAnnotationSyncError = (error) => {
  * `document_annotations` regardless of `annotation_type`, which caused the
  * cross-device data-loss bug: when a device loaded a document that had an
  * ink stroke (annotation_type='ink') in the cloud, the row got pulled into
- * the legacy `highlightAnnotations` state map with empty/null highlight
+ * the legacy `surveyMarkers` state map with empty/null survey marker
  * fields. The legacy sync useEffect then immediately re-pushed the same
- * row with `annotation_type: 'highlight'` and `bounds: {}`, OVERWRITING
- * the ink stroke's annotation_data via the (document_id, highlight_id)
+ * row with `annotation_type: 'survey-marker'` and `bounds: {}`, OVERWRITING
+ * the ink stroke's annotation_data via the (document_id, annotation_id)
  * upsert conflict resolution. The new cloud-sync hook on every device
  * filters its hydrate query by NON_HIGHLIGHT_TYPES, so the now-corrupted
  * row was excluded and devices showed empty pages on next refresh.
  *
- * Filtering this loader by annotation_type='highlight' keeps the legacy
- * highlight pipeline strictly highlight-only, so ink/shape/text/callout
+ * Filtering this loader by annotation_type='survey-marker' keeps the legacy
+ * surveyMarker pipeline strictly surveyMarker-only, so ink/shape/text/callout
  * rows owned by the new cloud-sync hook are never round-tripped through
- * highlight format.
+ * surveyMarker format.
  */
 export async function getDocumentAnnotations(documentId) {
   if (!documentId) return { data: [], error: null };
@@ -91,7 +95,7 @@ export async function getDocumentAnnotations(documentId) {
       .from('document_annotations')
       .select('*')
       .eq('document_id', documentId)
-      .eq('annotation_type', 'highlight')
+      .in('annotation_type', SURVEY_MARKER_TYPE_VALUES)
       .order('page_number', { ascending: true })
       .range(from, from + SUPABASE_PAGE_SIZE - 1);
 
@@ -104,17 +108,17 @@ export async function getDocumentAnnotations(documentId) {
     if (!data || data.length < SUPABASE_PAGE_SIZE) break;
   }
 
-  const filteredRows = rows.filter((row) => !isLegacyFabricHighlightRow(row));
+  const filteredRows = rows.filter((row) => !isLegacyFabricSurveyMarkerRow(row));
   // Bug 1/2 diag — count what the legacy hydrate kept versus dropped. If a
-  // highlight ever shows up DARKER on the second device, this log + the SVG
-  // layer's surveyHighlightSkip log answer "did the same row come through
+  // survey marker ever shows up DARKER on the second device, this log + the SVG
+  // layer's surveyMarkerSkip log answer "did the same row come through
   // both legacy and new paths" in a single paste.
-  highlightSyncDiag('load.legacy', {
+  surveyMarkerSyncDiag('load.legacy', {
     documentId,
     totalRows: rows.length,
     fabricCarryingDropped: rows.length - filteredRows.length,
     keptCount: filteredRows.length,
-    keptIds: filteredRows.map((r) => r.highlight_id),
+    keptIds: filteredRows.map((r) => r.annotation_id),
   });
   return { data: filteredRows, error: null };
 }
@@ -126,7 +130,7 @@ export async function upsertAnnotation(annotation) {
   const { data, error } = await supabase
     .from('document_annotations')
     .upsert(annotation, {
-      onConflict: 'document_id,highlight_id',
+      onConflict: 'document_id,annotation_id',
       ignoreDuplicates: false
     })
     .select()
@@ -161,7 +165,7 @@ export async function upsertAnnotations(annotations) {
     const result = await supabase
       .from('document_annotations')
       .upsert(batch, {
-        onConflict: 'document_id,highlight_id',
+        onConflict: 'document_id,annotation_id',
         ignoreDuplicates: false
       })
       .select();
@@ -196,14 +200,14 @@ export async function upsertAnnotations(annotations) {
 }
 
 /**
- * Delete an annotation by highlight_id
+ * Delete an annotation by annotation_id
  */
-export async function deleteAnnotation(documentId, highlightId) {
+export async function deleteAnnotation(documentId, annotationId) {
   const { error } = await supabase
     .from('document_annotations')
     .delete()
     .eq('document_id', documentId)
-    .eq('highlight_id', highlightId);
+    .eq('annotation_id', annotationId);
 
   if (error) {
     console.error('[AnnotationSync] Error deleting annotation:', error);
@@ -214,10 +218,10 @@ export async function deleteAnnotation(documentId, highlightId) {
 }
 
 /**
- * Delete multiple annotations by highlight_ids
+ * Delete multiple annotations by annotation_ids
  */
-export async function deleteAnnotations(documentId, highlightIds) {
-  if (!highlightIds || highlightIds.length === 0) {
+export async function deleteAnnotations(documentId, annotationIds) {
+  if (!annotationIds || annotationIds.length === 0) {
     return { success: true, error: null };
   }
 
@@ -225,7 +229,7 @@ export async function deleteAnnotations(documentId, highlightIds) {
     .from('document_annotations')
     .delete()
     .eq('document_id', documentId)
-    .in('highlight_id', highlightIds);
+    .in('annotation_id', annotationIds);
 
   if (error) {
     console.error('[AnnotationSync] Error deleting annotations:', error);
@@ -240,9 +244,9 @@ export async function deleteAnnotations(documentId, highlightIds) {
 // ============================================
 
 // Re-export the pure diff helper so existing callers that import it from
-// this module keep working. Implementation lives in `highlightSyncDiff.js`
+// this module keep working. Implementation lives in `surveyMarkerSyncDiff.js`
 // to keep the helper Supabase-free for unit tests under `node --test`.
-export { diffDeletedHighlightIds };
+export { diffDeletedSurveyMarkerIds };
 
 /**
  * Sync all local annotations to Supabase
@@ -250,39 +254,39 @@ export { diffDeletedHighlightIds };
  *
  * @param {string} documentId
  * @param {string} userId
- * @param {object} highlightAnnotations  Current highlightAnnotations dict
+ * @param {object} surveyMarkers  Current surveyMarkers dict
  * @param {object} [options]
- * @param {object|null} [options.priorHighlightAnnotations]  Last-synced state.
+ * @param {object|null} [options.priorSurveyMarkers]  Last-synced state.
  *   When provided, the function diffs prior vs current to find deleted IDs and
  *   calls `deleteAnnotations()` for them BEFORE the upsert. Without this, the
  *   legacy path leaks cloud rows on every erase and peers keep drawing stale
- *   highlights (Bug 2 fix, 2026-04-30).
+ *   survey markers (Bug 2 fix, 2026-04-30).
  */
-export async function syncAnnotationsToSupabase(documentId, userId, highlightAnnotations, options = {}) {
+export async function syncAnnotationsToSupabase(documentId, userId, surveyMarkers, options = {}) {
   if (!documentId || !userId) {
     return { success: false, error: 'Missing documentId or userId' };
   }
 
   // Bug 2 fix: detect erases / removals against the prior synced state and
   // push deletes to the cloud BEFORE the upsert so peers stop rendering
-  // erased highlights. Best-effort — a failed delete logs a warning but does
+  // erased survey markers. Best-effort — a failed delete logs a warning but does
   // not abort the upsert (the upsert remains the more critical write path).
-  const priorHighlightAnnotations = options?.priorHighlightAnnotations;
-  if (priorHighlightAnnotations) {
-    const deletedIds = diffDeletedHighlightIds(priorHighlightAnnotations, highlightAnnotations);
+  const priorSurveyMarkers = options?.priorSurveyMarkers;
+  if (priorSurveyMarkers) {
+    const deletedIds = diffDeletedSurveyMarkerIds(priorSurveyMarkers, surveyMarkers);
     if (deletedIds.length > 0) {
       const { success: deleteSuccess, error: deleteError } = await deleteAnnotations(documentId, deletedIds);
       // Bug 2 diag — log every delete-diff push so the user can confirm that
       // erases on this device generate cloud DELETE events. If a peer never
       // gets the DELETE, this log is the smoking gun (this device WAS told
       // about it; sync upstream is at fault).
-      highlightSyncDiag('push.delete-diff', {
+      surveyMarkerSyncDiag('push.delete-diff', {
         documentId,
         userId,
         deletedIds,
         deletedCount: deletedIds.length,
-        priorCount: Object.keys(priorHighlightAnnotations).length,
-        currentCount: Object.keys(highlightAnnotations || {}).length,
+        priorCount: Object.keys(priorSurveyMarkers).length,
+        currentCount: Object.keys(surveyMarkers || {}).length,
         cloudResult: deleteSuccess ? 'OK' : 'FAILED',
         cloudError: deleteSuccess ? null : (deleteError?.message || String(deleteError)),
       });
@@ -292,11 +296,11 @@ export async function syncAnnotationsToSupabase(documentId, userId, highlightAnn
     }
   }
 
-  const annotations = Object.entries(highlightAnnotations || {}).map(([highlightId, annotation]) =>
-    buildHighlightRow({
+  const annotations = Object.entries(surveyMarkers || {}).map(([annotationId, annotation]) =>
+    buildSurveyMarkerRow({
       documentId,
       userId,
-      highlightId,
+      annotationId,
       annotation,
     })
   );
@@ -334,18 +338,18 @@ export async function loadAnnotationsFromSupabase(documentId) {
   const { data, error } = await getDocumentAnnotations(documentId);
 
   if (error) {
-    return { highlightAnnotations: {}, error };
+    return { surveyMarkers: {}, error };
   }
 
-  // Convert to local highlightAnnotations format
-  const highlightAnnotations = {};
+  // Convert to local surveyMarkers format
+  const surveyMarkers = {};
   for (const annotation of data) {
-    const localAnnotation = mapHighlightRowToLocalAnnotation(annotation);
-    if (!localAnnotation?.highlightId) continue;
-    highlightAnnotations[localAnnotation.highlightId] = localAnnotation;
+    const localAnnotation = mapSurveyMarkerRowToLocalAnnotation(annotation);
+    if (!localAnnotation?.annotationId) continue;
+    surveyMarkers[localAnnotation.annotationId] = localAnnotation;
   }
 
-  return { highlightAnnotations, error: null };
+  return { surveyMarkers, error: null };
 }
 
 // ============================================
@@ -370,12 +374,12 @@ export function subscribeToDocumentAnnotations(documentId, callbacks = {}) {
         filter: `document_id=eq.${documentId}`
       },
       (payload) => {
-        // 2026-04-27 — Skip non-highlight rows. The new cloud-sync hook
+        // 2026-04-27 — Skip non-surveyMarker rows. The new cloud-sync hook
         // owns ink/shape/text/callout/etc. via its own subscription;
         // routing those rows through this legacy callback corrupts them
         // (see getDocumentAnnotations comment for the data-loss chain).
-        if (payload.new?.annotation_type !== 'highlight') return;
-        if (isLegacyFabricHighlightRow(payload.new)) return;
+        if (!isSurveyMarkerType(payload.new?.annotation_type)) return;
+        if (isLegacyFabricSurveyMarkerRow(payload.new)) return;
         if (onInsert) {
           onInsert(convertToLocalFormat(payload.new));
         }
@@ -390,8 +394,8 @@ export function subscribeToDocumentAnnotations(documentId, callbacks = {}) {
         filter: `document_id=eq.${documentId}`
       },
       (payload) => {
-        if (payload.new?.annotation_type !== 'highlight') return;
-        if (isLegacyFabricHighlightRow(payload.new)) return;
+        if (!isSurveyMarkerType(payload.new?.annotation_type)) return;
+        if (isLegacyFabricSurveyMarkerRow(payload.new)) return;
         if (onUpdate) {
           onUpdate(convertToLocalFormat(payload.new), convertToLocalFormat(payload.old));
         }
@@ -408,12 +412,12 @@ export function subscribeToDocumentAnnotations(documentId, callbacks = {}) {
       (payload) => {
         // DELETE payloads can carry the old row when REPLICA IDENTITY FULL
         // is set. Only forward to the legacy handler if the deleted row
-        // was actually a highlight; otherwise the new cloud-sync hook
+        // was actually a surveyMarker; otherwise the new cloud-sync hook
         // handles it.
-        if (payload.old?.annotation_type && payload.old.annotation_type !== 'highlight') return;
-        if (isLegacyFabricHighlightRow(payload.old)) return;
+        if (payload.old?.annotation_type && !isSurveyMarkerType(payload.old.annotation_type)) return;
+        if (isLegacyFabricSurveyMarkerRow(payload.old)) return;
         if (onDelete) {
-          onDelete(payload.old.highlight_id, convertToLocalFormat(payload.old));
+          onDelete(payload.old.annotation_id, convertToLocalFormat(payload.old));
         }
       }
     )
@@ -435,7 +439,7 @@ export function subscribeToDocumentAnnotations(documentId, callbacks = {}) {
  */
 function convertToLocalFormat(record) {
   if (!record) return null;
-  return mapHighlightRowToLocalAnnotation(record);
+  return mapSurveyMarkerRowToLocalAnnotation(record);
 }
 
 // ============================================
