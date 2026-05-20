@@ -1,8 +1,8 @@
 # Handoff: Survey-BetaSafeS2 codebase consistency cleanup
 
-**Generated**: 2026-05-19 (updated)
-**Branch**: `survey-marker-rename` (18 commits ahead of `main`, working tree clean)
-**Status**: In Progress — rename complete; delete/panel/Excel + needs-Entity preview fixed & verified; Plan B/C + merge remain
+**Generated**: 2026-05-19 (updated — session closeout)
+**Branch**: merged into `main`; pushed to `origin/main`. `survey-marker-rename` retained as historical reference.
+**Status**: **COMPLETE.** All three renames (Plan A — Survey Highlight → Survey Marker, Plan B — Space vs Module untangle on Survey Markers, Plan C — universal annotation ID rename), every related Supabase migration (applied to live), and the bundled cluster of Survey Marker bug fixes (delete/panel/Excel/needs-Entity preview) are all shipped on main.
 
 ## Goal
 
