@@ -41,6 +41,14 @@ export default function SaveLogBanner() {
   const countdownElapsedRef = useRef(0); // UX: tracks elapsed when frozen so we could resume if needed
   const dismissTimerRef = useRef(null);
   const textareaRef = useRef(null);
+  // KAL-27 — runPush dedupe guard. Set on every push attempt and cleared
+  // when the flow finishes (success/error/early-return). Prevents the
+  // countdown auto-fire and a manual submit from BOTH calling the GitHub
+  // upload for the same banner, and also blocks rapid repeated shortcut/
+  // menu activations from queuing a second push while one is in flight.
+  // Cleared in `dismiss` and on a fresh `save-log-banner-start` event so a
+  // legitimate next Save Log can still run.
+  const pushInFlightRef = useRef(false);
 
   const savePushFailureSnapshot = useCallback(async (failure) => {
     const api = typeof window !== 'undefined' ? window.electronAPI : null;
@@ -76,6 +84,11 @@ export default function SaveLogBanner() {
   const dismiss = useCallback(() => {
     clearTimers();
     setVisible(false);
+    // KAL-27 — clear the in-flight guard so the next Save Log trigger can
+    // open a fresh banner. Without this, a dismissed-while-submitting
+    // banner could leave the flag stuck true and silently swallow the
+    // user's next push.
+    pushInFlightRef.current = false;
     setTimeout(() => {
       setState(null);
       setDescription('');
@@ -86,6 +99,16 @@ export default function SaveLogBanner() {
   }, [clearTimers]);
 
   const runPush = useCallback(async (descriptionText) => {
+    // KAL-27 — idempotency guard. Race vectors closed: countdown auto-fire
+    // racing a manual Submit press, rapid Cmd+Shift+L mashing, and the
+    // keyboard handler firing in the same beat the Electron menu also
+    // does. The flag is reset in `dismiss` and on a fresh banner-start so
+    // a legitimate next Save Log can still run.
+    if (pushInFlightRef.current) {
+      console.log('[SaveLogBanner] runPush ignored — push already in flight for this banner');
+      return;
+    }
+    pushInFlightRef.current = true;
     const api = typeof window !== 'undefined' ? window.electronAPI : null;
     setState('submitting');
     // UX: prepend a rich metadata preamble (version, device, OS, timestamp,
@@ -308,8 +331,12 @@ export default function SaveLogBanner() {
   }, [state, runPush]);
 
   // UX: auto-dismiss success/error after a short read window.
+  // KAL-27 — also clear the in-flight guard the moment the flow lands on
+  // success/error so a fast follow-up Save Log doesn't have to wait for
+  // the 2.8 s auto-dismiss before its push is allowed through.
   useEffect(() => {
     if (state !== 'success' && state !== 'error') return undefined;
+    pushInFlightRef.current = false;
     dismissTimerRef.current = setTimeout(() => dismiss(), AUTO_DISMISS_RESULT_MS);
     return () => {
       if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
@@ -329,11 +356,26 @@ export default function SaveLogBanner() {
   // shortcut twice.
   useEffect(() => {
     const handleStart = (event) => {
+      // KAL-27 — if a push is mid-flight, ignore the new start event so
+      // the in-flight upload finishes cleanly. Without this, a rapid
+      // second trigger (shortcut + menu firing together, or repeated
+      // Cmd+Shift+L) would restart the banner state mid-push and the
+      // pending push would still complete, producing the duplicate GitHub
+      // file the issue is about.
+      if (pushInFlightRef.current) {
+        console.log('[SaveLogBanner] save-log-banner-start ignored — push already in flight');
+        return;
+      }
       const detail = event?.detail || {};
       consoleTextRef.current = typeof detail.consoleText === 'string'
         ? detail.consoleText
         : '';
       clearTimers();
+      // KAL-27 — clear the in-flight guard for the fresh flow. The dismiss
+      // path also clears it, but a brand-new banner-start event should
+      // always start from a clean slate even if the previous result
+      // pill hasn't auto-dismissed yet.
+      pushInFlightRef.current = false;
       setDescription('');
       setProgress(0);
       setResult({ message: '', url: null });
