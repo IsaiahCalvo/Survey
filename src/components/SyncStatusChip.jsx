@@ -12,9 +12,9 @@ import { getSyncStatusViewModel } from '../utils/syncStatusViewModel.js';
  * Compact mode (used by the collapsed sidebar rail): icon-only with a
  * right-side hover tooltip that matches the rail's existing tab tooltips.
  *
- * Hidden entirely when `enabled` is false (e.g. user is on the free tier and
- * cloud sync is gated). The local-only fallback path makes a chip meaningless
- * since there is nothing to sync.
+ * Hidden entirely when `enabled` is false (e.g. no document is open, so there
+ * is nothing to sync). Cloud sync is available to all signed-in tiers,
+ * including Free — the chip shows for any signed-in user with a document open.
  */
 export default function SyncStatusChip({ status, queueSize = 0, enabled = true, compact = false, onRetry = null }) {
   // UX: when the user manually clicks the chip, force the chip into the orange

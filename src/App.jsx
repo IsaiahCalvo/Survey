@@ -24433,9 +24433,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   // The hook is a no-op when documentId or user is missing.
   // 2026-04-25 — Capture status + queueSize so the top-right SyncStatusChip
   // can show "Up to date / Syncing… / Offline · N saved locally" at a glance.
-  // Pro-tier gate is wired here (free accounts skip the cloud sync entirely
-  // and rely on local-only annotations); the chip is hidden for those users
-  // since there's nothing to sync.
+  // 2026-04-26 update — cloud sync is available to ALL signed-in tiers,
+  // including Free. Multi-user editing on a shared PDF is the paid-only
+  // capability (see features.multiUserEdit in AuthContext), not personal
+  // cross-device sync.
   // 2026-04-29 — Split into two flags. `cloudSyncEnabled` reflects entitlement
   // only (does this account get cloud sync at all?) and drives the sidebar
   // footer's visibility — sync status + active-user avatars must stay on

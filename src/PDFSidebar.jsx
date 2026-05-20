@@ -481,7 +481,9 @@ const PDFSidebar = React.forwardRef(({
           below) anchored at the bottom of the rail. Lives here so it stays
           on screen for every page — the previous top-toolbar location
           scrolled off with the PDF area on page change.
-          Hidden entirely when cloud sync is disabled (free tier or no PDF). */}
+          Hidden entirely when cloud sync entitlement is off or no PDF is open.
+          As of 2026-04-26 cloud sync is available to all signed-in tiers
+          (Free included), so this normally shows whenever a document is open. */}
       {cloudSyncEnabled && (
         <div style={{
           borderTop: '1px solid #3a3a3a',

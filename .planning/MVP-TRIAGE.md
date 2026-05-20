@@ -18,7 +18,7 @@ These either break a core feature, risk losing a user's work, or define the MVP 
 - **KAL-10** — Final two-user collaboration validation. Must prove collab works before shipping it.
 - **KAL-29** — Phase 35 mixed-author deletion UAT. Must validate multi-user delete correctness.
 - **KAL-32** — Sync-fail local copy + merge fallback. Protects users from losing work when cloud sync fails.
-- **KAL-26** — Gate cloud sync by paid plan. _Conditional: only if you charge money at launch._
+- **KAL-26** — Audit plan gates: confirm Free keeps personal cloud sync; only multi-user editing is paid. _Code audit + copy cleanup; the real invite-flow enforcement is KAL-31._
 - **KAL-42** — Remove white viewport border. Cheap, visible to every user, bad first impression.
 
 ## Judgment calls — depends on launch scope (4)
