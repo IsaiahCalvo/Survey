@@ -36,7 +36,7 @@ function skipReason() {
 //     .eq('document_id', id)
 //     .in('annotation_type', NON_HIGHLIGHT)
 //     .order('created_at', { ascending: true })
-//     .order('highlight_id', { ascending: true })
+//     .order('annotation_id', { ascending: true })
 //     .range(from, to)
 // Each link returns the next builder; .range() is the terminal Promise. The
 // .range() implementation slices the fixture rows so the production
@@ -73,7 +73,7 @@ test(
     const yMapAnnotations = ydoc.getMap('annotations');
     const supabase = makeSupabaseMock([
       {
-        highlight_id: 'anno-A',
+        annotation_id: 'anno-A',
         user_id: 'alice',
         document_id: 'doc1',
         annotation_type: 'square',
@@ -105,9 +105,9 @@ test(
     const ydoc = new Y.Doc();
     const yMapAnnotations = ydoc.getMap('annotations');
     const supabase = makeSupabaseMock([
-      { highlight_id: 'anno-A', user_id: 'alice', document_id: 'doc1', annotation_type: 'square',
+      { annotation_id: 'anno-A', user_id: 'alice', document_id: 'doc1', annotation_type: 'square',
         created_at: '2026-01-15T10:00:00Z', annotation_data: '{"left":0,"top":0}' },
-      { highlight_id: 'anno-B', user_id: 'bob',   document_id: 'doc1', annotation_type: 'circle',
+      { annotation_id: 'anno-B', user_id: 'bob',   document_id: 'doc1', annotation_type: 'circle',
         created_at: '2026-01-16T10:00:00Z', annotation_data: '{"left":0,"top":0}' },
     ]);
     await mod.runBackfill({ ydoc, yMapAnnotations, supabase, documentId: 'doc1', userId: 'importer1', sessionId: 's1', clientID: ydoc.clientID });
@@ -126,7 +126,7 @@ test(
     const yMapAnnotations = ydoc.getMap('annotations');
     const legacyTs = '2026-01-15T10:00:00Z';
     const supabase = makeSupabaseMock([
-      { highlight_id: 'anno-A', user_id: 'alice', document_id: 'doc1', annotation_type: 'square',
+      { annotation_id: 'anno-A', user_id: 'alice', document_id: 'doc1', annotation_type: 'square',
         created_at: legacyTs, annotation_data: '{"left":0,"top":0}' },
     ]);
     await mod.runBackfill({ ydoc, yMapAnnotations, supabase, documentId: 'doc1', userId: 'importer1', sessionId: 's1', clientID: ydoc.clientID });
@@ -144,7 +144,7 @@ test(
     const ydoc = new Y.Doc();
     const yMapAnnotations = ydoc.getMap('annotations');
     const supabase = makeSupabaseMock([
-      { highlight_id: 'anno-A', user_id: 'alice', document_id: 'doc1', annotation_type: 'square',
+      { annotation_id: 'anno-A', user_id: 'alice', document_id: 'doc1', annotation_type: 'square',
         created_at: '2026-01-15T10:00:00Z', annotation_data: '{"left":0,"top":0}' },
     ]);
     await mod.runBackfill({ ydoc, yMapAnnotations, supabase, documentId: 'doc1', userId: 'importer1', sessionId: 's1', clientID: ydoc.clientID });
@@ -167,7 +167,7 @@ test(
     // filter it out — the supabase mock records the .in() args; we verify
     // 'surveyMarker' is NOT in the filter list AND no anno-H entry lands.
     const supabase = makeSupabaseMock([
-      { highlight_id: 'anno-A', user_id: 'alice', document_id: 'doc1', annotation_type: 'square',
+      { annotation_id: 'anno-A', user_id: 'alice', document_id: 'doc1', annotation_type: 'square',
         created_at: '2026-01-15T10:00:00Z', annotation_data: '{"left":0,"top":0}' },
     ]);
     await mod.runBackfill({ ydoc, yMapAnnotations, supabase, documentId: 'doc1', userId: 'importer1', sessionId: 's1', clientID: ydoc.clientID });
@@ -194,7 +194,7 @@ test(
     const capturedOrigins = [];
     ydoc.on('afterTransaction', (txn) => { capturedOrigins.push(txn.origin); });
     const supabase = makeSupabaseMock([
-      { highlight_id: 'anno-A', user_id: 'alice', document_id: 'doc1', annotation_type: 'square',
+      { annotation_id: 'anno-A', user_id: 'alice', document_id: 'doc1', annotation_type: 'square',
         created_at: '2026-01-15T10:00:00Z', annotation_data: '{"left":0,"top":0}' },
     ]);
     await mod.runBackfill({ ydoc, yMapAnnotations, supabase, documentId: 'doc1', userId: 'importer1', sessionId: 's1', clientID: ydoc.clientID });
@@ -218,7 +218,7 @@ test(
     for (let i = 0; i < BIG_FIXTURE_SIZE; i++) {
       const idStr = String(i).padStart(6, '0');
       rows.push({
-        highlight_id: `anno-${idStr}`,
+        annotation_id: `anno-${idStr}`,
         user_id: 'alice',
         document_id: 'doc1',
         annotation_type: 'square',

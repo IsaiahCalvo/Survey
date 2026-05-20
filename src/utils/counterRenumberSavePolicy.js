@@ -2,7 +2,7 @@ function getCounterId(counter) {
   return counter?.data?.id
     || counter?.data?.annoId
     || counter?.id
-    || counter?.highlightId
+    || counter?.annotationId
     || counter?.pdfAnnotationId
     || null;
 }

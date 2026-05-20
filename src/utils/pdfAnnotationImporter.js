@@ -125,7 +125,7 @@ function summarizeFabricImportForDiag(fabricObj, sourceAnnotation = null, status
     reason,
     rawId: sourceAnnotation?.id || sourceAnnotation?.name || fabricObj?.pdfAnnotationId || null,
     rawSubtype: sourceAnnotation?.subtype || fabricObj?.pdfAnnotationType || null,
-    appId: fabricObj?.id || fabricObj?.highlightId || fabricObj?.pdfAnnotationId || null,
+    appId: fabricObj?.id || fabricObj?.annotationId || fabricObj?.pdfAnnotationId || null,
     appType: fabricObj?.type || null,
     selectable: fabricObj?.selectable ?? null,
     evented: fabricObj?.evented ?? null,

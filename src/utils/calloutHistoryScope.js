@@ -1,5 +1,5 @@
 export function getCalloutHistoryId(callout) {
-  return callout?.id || callout?.highlightId || callout?.data?.id || null;
+  return callout?.id || callout?.annotationId || callout?.data?.id || null;
 }
 
 export function getCalloutHistoryAuthorId(callout) {

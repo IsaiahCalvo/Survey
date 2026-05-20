@@ -102,9 +102,9 @@ test('contract: every generated Fabric annotation type receives and keeps a stab
     const first = serializeFabricObjectToRow(obj, { documentId: DOC_ID, userId: USER_ID, pageNumber: 1 });
     const second = serializeFabricObjectToRow(obj, { documentId: DOC_ID, userId: USER_ID, pageNumber: 1 });
 
-    assert.ok(first.highlight_id, `${name} must produce a row id`);
-    assert.equal(second.highlight_id, first.highlight_id, `${name} must reuse the stamped id`);
-    assert.equal(getContractId(obj), first.highlight_id, `${name} must stamp a local contract id`);
+    assert.ok(first.annotation_id, `${name} must produce a row id`);
+    assert.equal(second.annotation_id, first.annotation_id, `${name} must reuse the stamped id`);
+    assert.equal(getContractId(obj), first.annotation_id, `${name} must stamp a local contract id`);
     assert.equal(first.annotation_data.fabricObject, obj, `${name} row stores the same fabric object payload`);
   }
 });
@@ -174,7 +174,7 @@ test('contract: imported polyline, polygon, and squiggle normalize duplicates an
     const row = serializeFabricObjectToRow(obj, { documentId: DOC_ID, userId: USER_ID, pageNumber: 1 });
     return [
       { ...row, updated_at: `2026-05-12T00:00:0${index}.000Z` },
-      { ...row, highlight_id: `${row.highlight_id}-older`, updated_at: `2026-05-11T00:00:0${index}.000Z` },
+      { ...row, annotation_id: `${row.annotation_id}-older`, updated_at: `2026-05-11T00:00:0${index}.000Z` },
     ];
   });
 

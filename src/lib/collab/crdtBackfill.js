@@ -11,7 +11,7 @@
 //   Notion silent migration.
 //
 // CONTEXT.md `<decisions>` "Backfill idempotency contract":
-//   Idempotency key is client_anno_id (== legacy highlight_id == fabricObject.data.id).
+//   Idempotency key is client_anno_id (== legacy annotation_id == fabricObject.data.id).
 //   Same key + deep-equal value = skip silently. Same key + different value =
 //   bridge through per-property LWW.
 //
@@ -84,19 +84,19 @@ const BACKFILL_ORIGIN_SOURCE = 'crdt-backfill';
  *      raw Fabric properties directly (e.g. `'{"left":10,"top":20}'`). Plan
  *      30-01 test scaffolds use this shape for fixture brevity.
  *
- * Always returns `{ fabricObject, pageNumber, highlightId }` matching the
+ * Always returns `{ fabricObject, pageNumber, annotationId }` matching the
  * deserializer contract. The bridge needs `fabricObject.data.id` to be set;
- * we inject it from row.highlight_id when missing.
+ * we inject it from row.annotation_id when missing.
  */
 function deserializeRowDefensive(row) {
   if (!row) throw new Error('row required');
-  if (!row.highlight_id) throw new Error('row.highlight_id required');
+  if (!row.annotation_id) throw new Error('row.annotation_id required');
 
   let raw = row.annotation_data;
   if (typeof raw === 'string') {
     try { raw = JSON.parse(raw); }
     catch (parseErr) {
-      throw new Error(`row ${row.highlight_id}: annotation_data is malformed JSON`);
+      throw new Error(`row ${row.annotation_id}: annotation_data is malformed JSON`);
     }
   }
   raw = raw || {};
@@ -105,18 +105,18 @@ function deserializeRowDefensive(row) {
   // legacy shape has the Fabric props at the top level.
   const fabricObject = raw.fabricObject ? { ...raw.fabricObject } : { ...raw };
   const pageNumber = raw.pageNumber ?? row.page_number ?? 1;
-  const highlightId = row.highlight_id;
+  const annotationId = row.annotation_id;
 
   // Inject stable annoId. Phase 29 bridge reads fabricObject.data.id (line 183
   // of crdtAnnotationBridge.js). Legacy data already has it via
-  // serializeFabricObjectToRow (line 178: highlight_id: id) but defense:
+  // serializeFabricObjectToRow (line 178: annotation_id: id) but defense:
   if (!fabricObject.data) fabricObject.data = {};
-  if (!fabricObject.data.id) fabricObject.data.id = highlightId;
+  if (!fabricObject.data.id) fabricObject.data.id = annotationId;
   // Type is also surfaced at the top level for the bridge's CREATE branch
   // (annoYMap.set('type', fabricJson.type) at line 234).
   if (!fabricObject.type && row.annotation_type) fabricObject.type = row.annotation_type;
 
-  return { fabricObject, pageNumber, highlightId };
+  return { fabricObject, pageNumber, annotationId };
 }
 
 /**
@@ -550,7 +550,7 @@ async function runBackfillUnlocked(args) {
         const row = rows[i];
         const __rowType = row?.annotation_type || 'unknown';
         try {
-          const { fabricObject, pageNumber, highlightId } = deserializeRowDefensive(row);
+          const { fabricObject, pageNumber, annotationId } = deserializeRowDefensive(row);
           fabricObject.pageNumber = pageNumber;
 
           // Per-row origin still built — used as the inner originPayload arg
@@ -578,7 +578,7 @@ async function runBackfillUnlocked(args) {
           // Inline createdAt override (no inner transact — coalesced into
           // the outer batch transact). Pitfall 30-1 fix preserved.
           const legacyCreatedAtMs = row.created_at ? new Date(row.created_at).getTime() : Date.now();
-          const annoId = fabricObject.data.id || highlightId;
+          const annoId = fabricObject.data.id || annotationId;
           const annoYMap = yMapAnnotations.get(annoId);
           if (annoYMap) {
             const metaYMap = annoYMap.get('meta');
@@ -591,7 +591,7 @@ async function runBackfillUnlocked(args) {
           importedByType[__rowType] = (importedByType[__rowType] || 0) + 1;
         } catch (err) {
           // eslint-disable-next-line no-console
-          console.warn('[crdtBackfill] skipping row', row?.highlight_id, err?.message);
+          console.warn('[crdtBackfill] skipping row', row?.annotation_id, err?.message);
           skipped++;
           skippedByType[__rowType] = (skippedByType[__rowType] || 0) + 1;
         }

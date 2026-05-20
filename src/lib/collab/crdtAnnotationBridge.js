@@ -104,14 +104,14 @@ function shallowEqual(a, b) {
  * Mirrors src/components/FabricEditCanvas.jsx CUSTOM_PROPS (line 65) so the bridge
  * round-trip is byte-identical to the existing local-edit serialization shape.
  *
- * UX comment: 'data' carries the annoId AND type-specific metadata (highlightId,
+ * UX comment: 'data' carries the annoId AND type-specific metadata (annotationId,
  * pdfAnnotationId, etc.); 'strokeUniform' is the CLAUDE.md mathematical invariant
  * that keeps strokes scaling correctly across SVG ↔ Fabric rasterization. Losing
  * either would corrupt the annotation on first remote sync.
  */
 const FABRIC_CUSTOM_PROPS = [
   'strokeUniform', 'spaceId', 'moduleId', 'regionId',
-  'data', 'name', 'highlightId', 'needsEntity',
+  'data', 'name', 'annotationId', 'needsEntity',
   'globalCompositeOperation', 'layer',
   'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode',
 ];
@@ -178,13 +178,13 @@ function getCalloutAuthorId(callout) {
 }
 
 function getCalloutId(callout) {
-  return callout?.id || callout?.highlightId || callout?.data?.id || null;
+  return callout?.id || callout?.annotationId || callout?.data?.id || null;
 }
 
 function cloneCalloutForYDoc(callout, id) {
   const out = { ...(callout || {}) };
   out.id = out.id || id;
-  if (out.highlightId == null && id) out.highlightId = id;
+  if (out.annotationId == null && id) out.annotationId = id;
   return out;
 }
 
@@ -419,9 +419,9 @@ export function materializeCalloutFromYMap(calloutYMap, fallbackId = null) {
     }
   }
   if (!callout) return null;
-  const id = calloutYMap.get('id') || fallbackId || callout.id || callout.highlightId;
+  const id = calloutYMap.get('id') || fallbackId || callout.id || callout.annotationId;
   if (id && callout.id == null) callout.id = id;
-  if (id && callout.highlightId == null) callout.highlightId = id;
+  if (id && callout.annotationId == null) callout.annotationId = id;
   const pageNumber = calloutYMap.get('pageNumber');
   if (pageNumber != null && callout.pageNumber == null) callout.pageNumber = pageNumber;
   try {

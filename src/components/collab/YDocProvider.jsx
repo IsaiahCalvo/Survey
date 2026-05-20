@@ -1010,7 +1010,7 @@ function YDocProviderInner({ docId, children, closeDocument }) {
       }
 
       // Concrete cloud-snapshot read via the verified annotationCloudSync
-      // helper. rawRows is the supabase row shape: { id, highlight_id,
+      // helper. rawRows is the supabase row shape: { id, annotation_id,
       // user_id, annotation_type, annotation_data, ... }. Map to the
       // auditResidue contract shape (id, authorId, lastEditedAt) before
       // passing in — the helper resolves authorId via getAnnotationAuthorId
@@ -1032,12 +1032,12 @@ function YDocProviderInner({ docId, children, closeDocument }) {
         return;
       }
       const rawRows = result.rawRows || [];
-      // UX: map raw supabase rows to the audit shape. id = highlight_id (the
+      // UX: map raw supabase rows to the audit shape. id = annotation_id (the
       // client-side stable id the delete API takes); authorId = user_id;
       // lastEditedAt = updated_at parsed to epoch ms (audit uses strict
       // less-than comparison against the local-deleted cutoff).
       const cloudAnnotations = rawRows.map((row) => ({
-        id: row.highlight_id,
+        id: row.annotation_id,
         authorId: row.user_id,
         lastEditedAt: row.updated_at ? Date.parse(row.updated_at) : null,
       })).filter((a) => typeof a.id === 'string');

@@ -2664,7 +2664,7 @@ export function useSVGInteraction({
             bbox: entry?.bbox || null,
             id: obj?.id || null,
             fabricId: obj?.data?.fabricId || null,
-            highlightId: obj?.highlightId || obj?.data?.highlightId || null,
+            annotationId: obj?.annotationId || obj?.data?.annotationId || null,
             type: obj?.type || null,
             tool: obj?.tool || null,
             dataType: obj?.data?.type || null,

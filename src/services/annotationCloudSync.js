@@ -132,14 +132,14 @@ function inferAnnotationTypeForDualWrite(fabricObj, opts) {
 
 /**
  * Push a single Fabric object up to the cloud. Inserts or updates by
- * (document_id, highlight_id).
+ * (document_id, annotation_id).
  */
 export async function upsertFabricAnnotation(fabricObj, opts = {}) {
   if (!supabase) return { data: null, error: new Error('Supabase unavailable') };
   const row = serializeFabricObjectToRow(fabricObj, opts);
   const { data, error } = await supabase
     .from('document_annotations')
-    .upsert(row, { onConflict: 'document_id,highlight_id', ignoreDuplicates: false })
+    .upsert(row, { onConflict: 'document_id,annotation_id', ignoreDuplicates: false })
     .select()
     .single();
   if (error) {
@@ -157,7 +157,7 @@ export async function upsertAnnotationsByPage(annotationsByPage, opts = {}) {
   if (!supabase) return { data: [], error: new Error('Supabase unavailable') };
 
   // Serialize FIRST — the serializer mints + stamps a stable id onto every
-  // fabric object that didn't have one (data.id <-> highlight_id). Without
+  // fabric object that didn't have one (data.id <-> annotation_id). Without
   // running this step the caller's annotationsByPage holds id-less strokes
   // and any downstream queue-on-failure logic sees no id and silently drops
   // the entry. UAT 2026-04-29 surfaced this exact mode: stroke drawn,
@@ -226,7 +226,7 @@ export async function upsertAnnotationsByPage(annotationsByPage, opts = {}) {
     const batch = rows.slice(i, i + UPSERT_BATCH_SIZE);
     const result = await supabase
       .from('document_annotations')
-      .upsert(batch, { onConflict: 'document_id,highlight_id', ignoreDuplicates: false })
+      .upsert(batch, { onConflict: 'document_id,annotation_id', ignoreDuplicates: false })
       .select();
     if (result.error) {
       error = result.error;
@@ -283,7 +283,7 @@ export async function upsertCallouts(callouts, opts = {}) {
   }));
   const { data, error } = await supabase
     .from('document_annotations')
-    .upsert(rows, { onConflict: 'document_id,highlight_id', ignoreDuplicates: false })
+    .upsert(rows, { onConflict: 'document_id,annotation_id', ignoreDuplicates: false })
     .select();
   const elapsedMs = Date.now() - t0;
   if (error) {
@@ -303,15 +303,15 @@ export async function upsertCallouts(callouts, opts = {}) {
 }
 
 /**
- * Delete a single annotation row by client-side highlight_id.
+ * Delete a single annotation row by client-side annotation_id.
  */
-export async function deleteAnnotation(documentId, highlightId) {
+export async function deleteAnnotation(documentId, annotationId) {
   if (!supabase) return { success: false, error: new Error('Supabase unavailable') };
   const { error } = await supabase
     .from('document_annotations')
     .delete()
     .eq('document_id', documentId)
-    .eq('highlight_id', highlightId);
+    .eq('annotation_id', annotationId);
   if (error) {
     console.error('[CloudSync] deleteAnnotation failed:', error);
     return { success: false, error };
@@ -320,14 +320,14 @@ export async function deleteAnnotation(documentId, highlightId) {
 }
 
 /**
- * Delete many annotation rows by client-side highlight_ids.
+ * Delete many annotation rows by client-side annotation_ids.
  */
-export async function deleteAnnotations(documentId, highlightIds) {
+export async function deleteAnnotations(documentId, annotationIds) {
   if (!supabase) return { success: false, error: new Error('Supabase unavailable') };
-  if (!Array.isArray(highlightIds) || highlightIds.length === 0) {
+  if (!Array.isArray(annotationIds) || annotationIds.length === 0) {
     return { success: true, error: null };
   }
-  const uniqueIds = [...new Set(highlightIds.filter(Boolean))];
+  const uniqueIds = [...new Set(annotationIds.filter(Boolean))];
   const chunkSize = 200;
   for (let start = 0; start < uniqueIds.length; start += chunkSize) {
     const chunk = uniqueIds.slice(start, start + chunkSize);
@@ -335,7 +335,7 @@ export async function deleteAnnotations(documentId, highlightIds) {
       .from('document_annotations')
       .delete()
       .eq('document_id', documentId)
-      .in('highlight_id', chunk);
+      .in('annotation_id', chunk);
     if (error) {
       console.error('[CloudSync] deleteAnnotations failed:', {
         error,
@@ -407,13 +407,13 @@ export async function loadAllNonSurveyMarkerAnnotations(documentId) {
  * Subscribe to real-time changes for non-survey marker annotations on a document.
  *
  * Routes incoming rows to type-aware callbacks:
- *   - onFabricInsert(fabricObject, pageNumber, highlightId) — for ink, shapes,
+ *   - onFabricInsert(fabricObject, pageNumber, annotationId) — for ink, shapes,
  *     text, stamps, sticky notes, counters, eraser
- *   - onFabricUpdate(fabricObject, pageNumber, highlightId)
- *   - onFabricDelete(highlightId)
+ *   - onFabricUpdate(fabricObject, pageNumber, annotationId)
+ *   - onFabricDelete(annotationId)
  *   - onCalloutInsert(callout)
  *   - onCalloutUpdate(callout)
- *   - onCalloutDelete(highlightId)
+ *   - onCalloutDelete(annotationId)
  *   - onError(error)
  *
  * Echo filter — UX rule: when this CLIENT writes a row, Supabase realtime
@@ -498,24 +498,24 @@ export function subscribeToAllNonSurveyMarkerAnnotations(documentId, callbacks =
         // 2026-04-25 — DO NOT echo-filter DELETEs by user-id. Postgres
         // DELETE payloads only carry the primary key, so we can't
         // recover the originating sessionId. Applying our own DELETE
-        // echo is harmless: removing a highlight_id that's already
+        // echo is harmless: removing a annotation_id that's already
         // absent from local state is a no-op.
         console.log('[CloudSync][realtime] applying DELETE ' + JSON.stringify({
-          highlightId: oldRow.highlight_id,
+          annotationId: oldRow.annotation_id,
           annotationType: oldRow.annotation_type,
           lastModifiedBy: oldRow.last_modified_by,
           payloadKeys: Object.keys(oldRow)
         }));
         // 2026-04-26 — Per-id apply path requires the row payload to
-        // include `highlight_id` AND `annotation_type`. That requires
+        // include `annotation_id` AND `annotation_type`. That requires
         // the table to be configured with REPLICA IDENTITY FULL — but
         // even with that set, Supabase realtime sometimes serves
         // empty `payload.old` for a window after the schema change.
-        // FALLBACK: when the payload is empty (no highlight_id), do
+        // FALLBACK: when the payload is empty (no annotation_id), do
         // a full cloud refetch and reconcile. This always converges
         // to the correct state regardless of payload completeness,
         // at the cost of one extra fetch per DELETE event.
-        if (!oldRow.highlight_id || !oldRow.annotation_type) {
+        if (!oldRow.annotation_id || !oldRow.annotation_type) {
           if (onDeleteFallback) {
             try {
               onDeleteFallback();
@@ -526,9 +526,9 @@ export function subscribeToAllNonSurveyMarkerAnnotations(documentId, callbacks =
           return;
         }
         if (oldRow.annotation_type === 'callout') {
-          if (onCalloutDelete) onCalloutDelete(oldRow.highlight_id);
+          if (onCalloutDelete) onCalloutDelete(oldRow.annotation_id);
         } else if (NON_HIGHLIGHT_TYPES.includes(oldRow.annotation_type)) {
-          if (onFabricDelete) onFabricDelete(oldRow.highlight_id);
+          if (onFabricDelete) onFabricDelete(oldRow.annotation_id);
         }
       }
     )
@@ -574,7 +574,7 @@ function routeRow(event, row, callbacks, currentUserId, currentSessionId) {
   const rowSessionId = row.annotation_data?.clientSessionId || null;
   if (currentSessionId && rowSessionId && rowSessionId === currentSessionId) {
     console.log(`[CloudSync][realtime] echo-filtered ${event.toUpperCase()} ` + JSON.stringify({
-      highlightId: row.highlight_id,
+      annotationId: row.annotation_id,
       annotationType: type,
       lastModifiedBy: row.last_modified_by,
       rowSessionId,
@@ -588,7 +588,7 @@ function routeRow(event, row, callbacks, currentUserId, currentSessionId) {
   // matches the current user, treat as a same-user echo.
   if (!rowSessionId && currentUserId && row.last_modified_by === currentUserId) {
     console.log(`[CloudSync][realtime] echo-filtered ${event.toUpperCase()} ` + JSON.stringify({
-      highlightId: row.highlight_id,
+      annotationId: row.annotation_id,
       annotationType: type,
       lastModifiedBy: row.last_modified_by,
       currentUserId,
@@ -601,7 +601,7 @@ function routeRow(event, row, callbacks, currentUserId, currentSessionId) {
     try {
       const callout = deserializeRowToCallout(row);
       console.log(`[CloudSync][realtime] applying ${event.toUpperCase()} callout ` + JSON.stringify({
-        highlightId: row.highlight_id,
+        annotationId: row.annotation_id,
         pageNumber: row.page_number,
         lastModifiedBy: row.last_modified_by
       }));
@@ -614,17 +614,17 @@ function routeRow(event, row, callbacks, currentUserId, currentSessionId) {
   }
   if (NON_HIGHLIGHT_TYPES.includes(type)) {
     try {
-      const { fabricObject, pageNumber, highlightId } = deserializeRowToFabricObject(row);
+      const { fabricObject, pageNumber, annotationId } = deserializeRowToFabricObject(row);
       console.log(`[CloudSync][realtime] applying ${event.toUpperCase()} fabric ` + JSON.stringify({
-        highlightId,
+        annotationId,
         annotationType: type,
         pageNumber,
         lastModifiedBy: row.last_modified_by
       }));
       if (event === 'insert' && callbacks.onFabricInsert) {
-        callbacks.onFabricInsert(fabricObject, pageNumber, highlightId);
+        callbacks.onFabricInsert(fabricObject, pageNumber, annotationId);
       } else if (event === 'update' && callbacks.onFabricUpdate) {
-        callbacks.onFabricUpdate(fabricObject, pageNumber, highlightId);
+        callbacks.onFabricUpdate(fabricObject, pageNumber, annotationId);
       }
     } catch (err) {
       console.warn('[CloudSync] failed to deserialize fabric row: ' + (err?.message || String(err)));
@@ -748,7 +748,7 @@ export async function dualWriteFabricCommit(fabricObj, opts = {}) {
  * fires CRDT-side delete via the bridge. SurveyMarker carve-out preserved.
  *
  * @param {string} documentId
- * @param {string} annoId - the stable per-annotation UUID (== highlight_id)
+ * @param {string} annoId - the stable per-annotation UUID (== annotation_id)
  * @param {object} opts
  * @param {string} opts.userId
  * @param {Y.Doc} [opts.ydoc]

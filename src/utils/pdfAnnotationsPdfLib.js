@@ -80,7 +80,7 @@ const getObjectScope = (obj) => getAnnotationVisibilityScope({
 const getObjectId = (obj, fallback = null) => (
   obj?.id ||
   obj?.data?.id ||
-  obj?.highlightId ||
+  obj?.annotationId ||
   obj?.pdfAnnotationId ||
   fallback
 );
@@ -148,7 +148,7 @@ export function buildPrintableRegularAnnotationPayload({
 
     objects.forEach((obj) => {
       const isCounter = obj?.data?.type === 'counter';
-      if (obj?.highlightId) {
+      if (obj?.annotationId) {
         diagnostics.excluded.surveyMarkers += 1;
         return;
       }
@@ -250,13 +250,13 @@ const normalizeSurveyMarkerBounds = (surveyMarker) => {
   return { left, top, width, height };
 };
 
-const surveyMarkerToFabricRect = (surveyMarker, highlightId) => {
+const surveyMarkerToFabricRect = (surveyMarker, annotationId) => {
   const bounds = normalizeSurveyMarkerBounds(surveyMarker);
   if (!bounds) return null;
   return {
     type: 'rect',
     exportType: 'survey-marker',
-    highlightId,
+    annotationId,
     left: bounds.left,
     top: bounds.top,
     width: bounds.width,
@@ -279,7 +279,7 @@ const calloutToExportObject = (callout, pageSize) => {
   return {
     type: 'callout',
     exportType: 'callout',
-    id: callout.id || callout.highlightId || null,
+    id: callout.id || callout.annotationId || null,
     pageNumber: callout.pageNumber,
     moduleId: callout.moduleId ?? callout.spaceId ?? null,
     spaceId: callout.spaceId ?? null,
@@ -344,7 +344,7 @@ export function buildPdfExportAnnotationPlan({
       diagnostics.editedImportedCopiesExported += 1;
     }
 
-    if (item.source === 'fabric' && obj?.highlightId) {
+    if (item.source === 'fabric' && obj?.annotationId) {
       recordSkip(diagnostics, item, 'legacy-survey-marker-rendered-from-marker-state');
       return;
     }
@@ -380,16 +380,16 @@ export function buildPdfExportAnnotationPlan({
     });
   });
 
-  Object.entries(surveyMarkers || {}).forEach(([highlightId, surveyMarker]) => {
+  Object.entries(surveyMarkers || {}).forEach(([annotationId, surveyMarker]) => {
     const pageNumber = Number(surveyMarker?.pageNumber || 1);
-    const obj = surveyMarkerToFabricRect(surveyMarker, highlightId);
+    const obj = surveyMarkerToFabricRect(surveyMarker, annotationId);
     const scope = getObjectScope(obj || surveyMarker);
     const regionId = surveyMarker?.regionId ?? null;
     const derivedSpaceId = regionId ? getSpaceIdForRegionFromSpaces(regionId, spaces) : null;
     const item = {
       source: 'survey-marker',
       pageNumber,
-      id: highlightId,
+      id: annotationId,
       type: 'survey-marker',
       fabricType: 'rect',
       scope,

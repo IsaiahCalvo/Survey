@@ -581,7 +581,7 @@ const toHistoryObjectDebug = (object, index) => ({
   type: object?.type || null,
   partType: object?.partType || object?.data?.type || null,
   name: object?.name || null,
-  highlightId: object?.highlightId || null,
+  annotationId: object?.annotationId || null,
   pdfAnnotationId: object?.pdfAnnotationId || null,
   left: roundHistoryDebugNumber(object?.left),
   top: roundHistoryDebugNumber(object?.top),
@@ -616,7 +616,7 @@ const getHistoryObjectSignature = (object) => [
   object?.type || '',
   object?.partType || '',
   object?.name || '',
-  object?.highlightId || '',
+  object?.annotationId || '',
   object?.pdfAnnotationId || '',
   object?.left ?? '',
   object?.top ?? '',
@@ -631,7 +631,7 @@ const getHistoryAnnotationId = (annotation) => (
   annotation?.data?.id
   || annotation?.data?.annoId
   || annotation?.id
-  || annotation?.highlightId
+  || annotation?.annotationId
   || annotation?.pdfAnnotationId
   || null
 );
@@ -727,7 +727,7 @@ const summarizeHistoryMetaForLog = (meta) => {
     actionType: normalizeHistoryActionType(meta.reason, null, meta.reason),
     rawActionType: meta.reason || null,
     annotationType: context.calloutId || context.calloutIds ? 'callout' : context.pageNumber ? 'fabric' : null,
-    annotationId: context.annotationId || context.calloutId || context.highlightId || null,
+    annotationId: context.annotationId || context.calloutId || context.annotationId || null,
     annotationIds: Array.isArray(context.calloutIds) ? context.calloutIds : undefined,
     pageNumber: context.pageNumber ?? null,
     checkpointId: meta.checkpointId ?? null,
@@ -2332,7 +2332,7 @@ const isPdfImportedAnnotationObject = (obj) => Boolean(obj?.isPdfImported || obj
 const getPdfImportedAnnotationKey = (obj) => (
   obj?.id
   || obj?.data?.id
-  || obj?.highlightId
+  || obj?.annotationId
   || (obj?.pdfAnnotationId ? `pdf:${obj.pdfAnnotationId}` : null)
 );
 
@@ -10991,8 +10991,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       .filter((object) => !!object)
       .slice(0, 520)
       .map((object, index) => ({
-        id: object?.id || object?.highlightId || object?.pdfAnnotationId || `obj-${pageNumber}-${index}`,
-        highlightId: object?.highlightId || null,
+        id: object?.id || object?.annotationId || object?.pdfAnnotationId || `obj-${pageNumber}-${index}`,
+        annotationId: object?.annotationId || null,
         pdfAnnotationId: object?.pdfAnnotationId || null,
         type: object?.type || null,
         moduleId: object?.moduleId ?? null,
@@ -15228,10 +15228,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   const [noteDialogContent, setNoteDialogContent] = useState({ text: '', photos: [], videos: [] });
   const [pendingSurveyMarker, setPendingSurveyMarker] = useState(null); // { pageNumber, x, y, width, height, id }
   const [showSpaceSelection, setShowSpaceSelection] = useState(false);
-  const [surveyMarkers, setSurveyMarkers] = useState({}); // { [highlightId]: { pageNumber, bounds, categoryId, spaceId, checklistResponses: { [itemId]: { selection, note } } } }
+  const [surveyMarkers, setSurveyMarkers] = useState({}); // { [annotationId]: { pageNumber, bounds, categoryId, spaceId, checklistResponses: { [itemId]: { selection, note } } } }
   const [surveyAnnotationHydration, setSurveyAnnotationHydration] = useState(ANNOTATION_HYDRATION_READY_LOCAL);
   const [expandedCategories, setExpandedCategories] = useState({}); // { [categoryId]: boolean }
-  const [expandedSurveyMarkers, setExpandedSurveyMarkers] = useState({}); // { [highlightId]: boolean }
+  const [expandedSurveyMarkers, setExpandedSurveyMarkers] = useState({}); // { [annotationId]: boolean }
 
 
 
@@ -15391,7 +15391,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   const [transferState, setTransferState] = useState(null); // { mode: 'select'|'prompt'|'checklist', sourceSpaceId, items, destSpaceId }
 
   // Item selection state for Copy to Spaces feature
-  const [copiedItemSelection, setCopiedItemSelection] = useState({}); // { [highlightId]: boolean }
+  const [copiedItemSelection, setCopiedItemSelection] = useState({}); // { [annotationId]: boolean }
   const [showCopyToSpacesModal, setShowCopyToSpacesModal] = useState(false);
   const [copyModeActive, setCopyModeActive] = useState(false); // Whether copy mode is enabled
 
@@ -15402,7 +15402,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
   // Item-level selection state (within a category)
   const [itemSelectModeActive, setItemSelectModeActive] = useState({}); // { [categoryId]: boolean } - per-category item select mode
-  const [selectedItemsInCategory, setSelectedItemsInCategory] = useState({}); // { [categoryId]: { [highlightId]: boolean } } - selected items per category
+  const [selectedItemsInCategory, setSelectedItemsInCategory] = useState({}); // { [categoryId]: { [annotationId]: boolean } } - selected items per category
 
   // File watcher state
   const [fileWatcherActive, setFileWatcherActive] = useState(false);
@@ -19049,10 +19049,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         }
         setCalloutsIfPersistedChanged((prev) => {
           const list = Array.isArray(prev) ? prev : [];
-          if (!materializedCallout) return list.filter((callout) => callout?.id !== annotationId && callout?.highlightId !== annotationId);
+          if (!materializedCallout) return list.filter((callout) => callout?.id !== annotationId && callout?.annotationId !== annotationId);
           let replaced = false;
           const next = list.map((callout) => {
-            if (callout?.id === annotationId || callout?.highlightId === annotationId) {
+            if (callout?.id === annotationId || callout?.annotationId === annotationId) {
               replaced = true;
               return materializedCallout;
             }
@@ -20441,11 +20441,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     });
     (calloutsRef.current || []).forEach((callout) => {
       if (!shouldDeleteScopedEntry(callout)) return;
-      const id = callout?.id || callout?.highlightId || null;
+      const id = callout?.id || callout?.annotationId || null;
       if (id) cloudDeleteIds.add(id);
     });
-    Object.entries(surveyMarkersRef.current || {}).forEach(([highlightId, surveyMarker]) => {
-      if (shouldDeleteScopedEntry(surveyMarker)) cloudDeleteIds.add(highlightId);
+    Object.entries(surveyMarkersRef.current || {}).forEach(([annotationId, surveyMarker]) => {
+      if (shouldDeleteScopedEntry(surveyMarker)) cloudDeleteIds.add(annotationId);
     });
 
     setAnnotationsByPage((prev) => {
@@ -20479,7 +20479,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       let changed = false;
       const kept = (Array.isArray(prev) ? prev : []).filter((callout) => {
         if (!shouldDeleteScopedEntry(callout)) return true;
-        const id = callout?.id || callout?.highlightId || null;
+        const id = callout?.id || callout?.annotationId || null;
         if (id) cloudDeleteIds.add(id);
         changed = true;
         return false;
@@ -20490,10 +20490,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     setSurveyMarkers((prev) => {
       let changed = false;
       const next = { ...(prev || {}) };
-      Object.entries(prev || {}).forEach(([highlightId, surveyMarker]) => {
+      Object.entries(prev || {}).forEach(([annotationId, surveyMarker]) => {
         if (!shouldDeleteScopedEntry(surveyMarker)) return;
-        delete next[highlightId];
-        cloudDeleteIds.add(highlightId);
+        delete next[annotationId];
+        cloudDeleteIds.add(annotationId);
         changed = true;
       });
       return changed ? next : prev;
@@ -20841,14 +20841,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
             // Get all surveyMarkers for this category and module (same logic as sidebar)
             const categorySurveyMarkers = [];
 
-            Object.entries(surveyMarkers).forEach(([highlightId, surveyMarker]) => {
+            Object.entries(surveyMarkers).forEach(([annotationId, surveyMarker]) => {
               const surveyMarkerModuleId = surveyMarker.moduleId;
 
               // Use loose equality (==) to handle potential string/number mismatches
               if (surveyMarkerModuleId == moduleId && surveyMarker.categoryId == category.id) {
                 categorySurveyMarkers.push({
                   ...surveyMarker,
-                  id: highlightId  // Use the key, not surveyMarker.id
+                  id: annotationId  // Use the key, not surveyMarker.id
                 });
               }
             });
@@ -20906,8 +20906,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
               const row = [];
 
               // Get the ACTUAL survey marker from surveyMarkers to ensure we have all data
-              const highlightId = surveyMarker?.id;
-              let actualSurveyMarker = highlightId ? surveyMarkers[highlightId] : surveyMarker;
+              const annotationId = surveyMarker?.id;
+              let actualSurveyMarker = annotationId ? surveyMarkers[annotationId] : surveyMarker;
 
               // Ensure survey marker has metadata (add if missing)
               actualSurveyMarker = ensureSurveyMarkerMetadata(actualSurveyMarker);
@@ -22395,7 +22395,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
           const updated = { ...prev };
           const pageSurveyMarkers = updated[ann.pageNumber] || [];
           const filtered = pageSurveyMarkers.filter(h => {
-            if (h.highlightId === key) return false;
+            if (h.annotationId === key) return false;
             if (ann.bounds && h.x !== undefined && h.y !== undefined) {
               return !boundsMatch(
                 { x: h.x, y: h.y, width: h.width, height: h.height },
@@ -22605,7 +22605,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
                 const hasValidBounds = ann.bounds && ann.bounds.x !== undefined && ann.bounds.y !== undefined;
                 if (ann.pageNumber && hasValidBounds) {
                   surveyMarkersWithColorChanges.push({
-                    highlightId: key,
+                    annotationId: key,
                     pageNumber: ann.pageNumber,
                     bounds: ann.bounds,
                     color: entity.color,
@@ -22620,7 +22620,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
                 const hasValidBounds = ann.bounds && ann.bounds.x !== undefined && ann.bounds.y !== undefined;
                 if (ann.pageNumber && hasValidBounds) {
                   surveyMarkersWithColorChanges.push({
-                    highlightId: key,
+                    annotationId: key,
                     pageNumber: ann.pageNumber,
                     bounds: ann.bounds,
                     color: null,
@@ -22833,7 +22833,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
           const updated = { ...prev };
           const pageSurveyMarkers = updated[ann.pageNumber] || [];
           const filtered = pageSurveyMarkers.filter(h => {
-            if (h.highlightId === key) return false;
+            if (h.annotationId === key) return false;
             if (ann.bounds && h.x !== undefined && h.y !== undefined) {
               return !boundsMatch(
                 { x: h.x, y: h.y, width: h.width, height: h.height },
@@ -22934,10 +22934,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       if (surveyMarkersWithColorChanges.length > 0) {
         setNewSurveyMarkersByPage(prev => {
           const updated = { ...prev };
-          surveyMarkersWithColorChanges.forEach(({ highlightId, pageNumber, bounds, color, needsEntity }) => {
+          surveyMarkersWithColorChanges.forEach(({ annotationId, pageNumber, bounds, color, needsEntity }) => {
             const pageSurveyMarkers = updated[pageNumber] || [];
             const filtered = pageSurveyMarkers.filter(h => {
-              const hasMatchingId = h.highlightId === highlightId;
+              const hasMatchingId = h.annotationId === annotationId;
               const hasMatchingBounds = h.x === bounds.x &&
                 h.y === bounds.y &&
                 h.width === bounds.width &&
@@ -22949,7 +22949,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
               {
                 ...bounds,
                 color: color,
-                highlightId: highlightId,
+                annotationId: annotationId,
                 needsEntity: needsEntity
               }
             ];
@@ -24136,7 +24136,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
         setSurveyMarkers(prev => ({
           ...prev,
-          [annotation.highlightId]: {
+          [annotation.annotationId]: {
             pageNumber: annotation.pageNumber,
             bounds: annotation.bounds,
             categoryId: annotation.categoryId,
@@ -24167,8 +24167,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
         setSurveyMarkers(prev => ({
           ...prev,
-          [annotation.highlightId]: {
-            ...prev[annotation.highlightId],
+          [annotation.annotationId]: {
+            ...prev[annotation.annotationId],
             pageNumber: annotation.pageNumber,
             bounds: annotation.bounds,
             categoryId: annotation.categoryId,
@@ -24193,10 +24193,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
           }
         }));
       },
-      onDelete: (highlightId) => {
+      onDelete: (annotationId) => {
         setSurveyMarkers(prev => {
           const next = { ...prev };
-          delete next[highlightId];
+          delete next[annotationId];
           return next;
         });
       },
@@ -26427,11 +26427,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       return;
     }
 
-    // For item-level notes, noteDialogOpen is just the highlightId
-    const highlightId = noteDialogOpen;
+    // For item-level notes, noteDialogOpen is just the annotationId
+    const annotationId = noteDialogOpen;
 
 
-    const existingNote = surveyMarkers[highlightId]?.note;
+    const existingNote = surveyMarkers[annotationId]?.note;
 
 
     if (existingNote) {
@@ -27734,8 +27734,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     return run(0);
   }, [getBoundsCenter, goToPage, pageSizes, resolvePageContentElement, scrollMode, useSyncfusionRenderer]);
 
-  const centerSurveyMarkerElementInViewer = useCallback((highlightId, options = {}) => {
-    if (!highlightId) return false;
+  const centerSurveyMarkerElementInViewer = useCallback((annotationId, options = {}) => {
+    if (!annotationId) return false;
     const {
       behavior = 'auto',
       retryBehavior = 'auto',
@@ -27751,7 +27751,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         ? CSS.escape(String(value))
         : String(value).replace(/["\\]/g, '\\$&')
     );
-    const selector = `[data-survey-marker-id="${escapeSelectorValue(highlightId)}"]`;
+    const selector = `[data-survey-marker-id="${escapeSelectorValue(annotationId)}"]`;
 
     const run = (attempt = 0) => {
       const container = containerRef.current;
@@ -29862,7 +29862,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         }
         if (!id) throw new Error('Fix19 survey marker id is required');
         const surveyMarker = {
-          highlightId: id,
+          annotationId: id,
           pageNumber,
           bounds: { x: 285, y: 145, width: 70, height: 24 },
           moduleId,
@@ -29881,13 +29881,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         setNewSurveyMarkersByPage((prev) => ({
           ...prev,
           [pageNumber]: [
-            ...(prev?.[pageNumber] || []).filter((entry) => entry?.highlightId !== id),
+            ...(prev?.[pageNumber] || []).filter((entry) => entry?.annotationId !== id),
             {
               x: surveyMarker.bounds.x,
               y: surveyMarker.bounds.y,
               width: surveyMarker.bounds.width,
               height: surveyMarker.bounds.height,
-              highlightId: id,
+              annotationId: id,
               moduleId,
               regionId: null,
               color: surveyMarker.color,
@@ -29928,7 +29928,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     if (!import.meta.env.DEV || typeof window === 'undefined') return undefined;
 
     const pageNumber = 1;
-    const annotationIdOf = (obj) => obj?.id || obj?.data?.id || obj?.highlightId || null;
+    const annotationIdOf = (obj) => obj?.id || obj?.data?.id || obj?.annotationId || null;
     const getObjects = () => Object.values(annotationsByPageRef.current || {})
       .flatMap((page) => Array.isArray(page?.objects) ? page.objects : []);
     const getObjectById = (id) => getObjects().find((obj) => annotationIdOf(obj) === id) || null;
@@ -30009,7 +30009,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     });
     const makeCallout = (id) => ({
       id,
-      highlightId: id,
+      annotationId: id,
       pageNumber,
       arrowTip: { x: user?.id?.endsWith?.('1c') ? 0.24 : 0.48, y: 0.42 },
       knee: { x: user?.id?.endsWith?.('1c') ? 0.34 : 0.58, y: 0.36 },
@@ -30826,10 +30826,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   };
 
   // Navigate to survey item when surveyMarker is clicked (reverse navigation)
-  const handleSurveyMarkerClicked = useCallback((highlightId) => {
-    if (!highlightId || !selectedTemplate) return;
+  const handleSurveyMarkerClicked = useCallback((annotationId) => {
+    if (!annotationId || !selectedTemplate) return;
 
-    const surveyMarker = surveyMarkers[highlightId];
+    const surveyMarker = surveyMarkers[annotationId];
     if (!surveyMarker) return;
 
     const moduleId = surveyMarker.moduleId;
@@ -30844,7 +30844,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     // 2b. Expand only this Survey Marker's own row (collapsing any other
     // previously-expanded marker) so its checklist items are visible —
     // expanding the category alone only reveals the collapsed row.
-    setExpandedSurveyMarkers({ [highlightId]: true });
+    setExpandedSurveyMarkers({ [annotationId]: true });
 
     // 3. Ensure Survey Panel is open
     if (!showSurveyPanel || isSurveyPanelCollapsed) {
@@ -30854,7 +30854,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
     // 4. Scroll to item
     setTimeout(() => {
-      const element = document.getElementById(`highlight-item-${highlightId}`);
+      const element = document.getElementById(`highlight-item-${annotationId}`);
       if (element) {
         element.scrollIntoView({ behavior: 'smooth', block: 'center' });
         // Flash effect
@@ -30871,7 +30871,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   const handleLocateItemOnPDF = useCallback((surveyMarker) => {
     if (!surveyMarker) return;
     const { pageNumber, bounds } = surveyMarker;
-    const highlightId = surveyMarker.id || surveyMarker.highlightId || null;
+    const annotationId = surveyMarker.id || surveyMarker.annotationId || null;
 
     if (!pageNumber || !bounds) {
       if (pageNumber) {
@@ -30880,11 +30880,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       return;
     }
 
-    if (highlightId) {
+    if (annotationId) {
       setActiveTool('select');
       setPendingSurveyMarkerSelection({
         pageNumber,
-        highlightId,
+        annotationId,
         tick: Date.now(),
       });
     }
@@ -30895,7 +30895,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
     debugMark('survey_locate_start', {
       pageNumber,
-      highlightId,
+      annotationId,
       currentScale,
       targetScale,
       shouldZoom,
@@ -30906,8 +30906,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       retryBehavior = 'auto',
       skipIfClosePx = 8,
     } = {}) => {
-      if (!highlightId) return false;
-      return centerSurveyMarkerElementInViewer(highlightId, {
+      if (!annotationId) return false;
+      return centerSurveyMarkerElementInViewer(annotationId, {
         behavior,
         retryBehavior,
         maxRetries: useSyncfusionRenderer ? 14 : 8,
@@ -30931,7 +30931,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         retryBehavior,
         skipIfClosePx: Math.max(4, skipIfClosePx || 8),
       })) {
-        if (highlightId && shouldRunExactPass && typeof window !== 'undefined') {
+        if (annotationId && shouldRunExactPass && typeof window !== 'undefined') {
           window.setTimeout(() => centerRenderedSurveyMarker({
             behavior: 'auto',
             retryBehavior: 'auto',
@@ -30953,7 +30953,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         retryBehavior,
         skipIfClosePx
       });
-      if (highlightId && shouldRunExactPass && typeof window !== 'undefined') {
+      if (annotationId && shouldRunExactPass && typeof window !== 'undefined') {
         window.setTimeout(() => centerRenderedSurveyMarker({
           behavior: retryBehavior,
           retryBehavior,
@@ -31035,7 +31035,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
         debugMark('survey_locate_zoom_center', {
           pageNumber,
-          highlightId,
+          annotationId,
           targetScale,
           renderedScale,
           scrollReady,
@@ -31056,7 +31056,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
     debugMark('survey_locate_direct_center', {
       pageNumber,
-      highlightId,
+      annotationId,
       targetScale: currentScale,
     });
     centerSurveyMarker({
@@ -31081,8 +31081,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     setPendingSurveyMarkerSelection(null);
   }, []);
 
-  const handleSurveyMarkerBoundsChange = useCallback((pageNumber, highlightId, bounds, meta = {}) => {
-    if (!highlightId || !bounds) return;
+  const handleSurveyMarkerBoundsChange = useCallback((pageNumber, annotationId, bounds, meta = {}) => {
+    if (!annotationId || !bounds) return;
     const rawAngle = Number(bounds.angle);
     const hasExplicitAngle = Number.isFinite(rawAngle);
     const normalizedAngle = hasExplicitAngle
@@ -31097,11 +31097,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
     addHistoryCheckpoint(`survey-marker:${meta.action || 'bounds'}`, {
       pageNumber,
-      highlightId,
+      annotationId,
     });
 
     setSurveyMarkers(prev => {
-      const existing = prev?.[highlightId];
+      const existing = prev?.[annotationId];
       if (!existing) return prev;
       const existingAngle = Number(existing?.bounds?.angle);
       const nextAngle = hasExplicitAngle
@@ -31109,7 +31109,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         : (Number.isFinite(existingAngle) ? ((existingAngle % 360) + 360) % 360 : 0);
       return {
         ...prev,
-        [highlightId]: {
+        [annotationId]: {
           ...existing,
           pageNumber,
           bounds: {
@@ -31122,13 +31122,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
     setNewSurveyMarkersByPage(prev => {
       const pageSurveyMarkers = Array.isArray(prev?.[pageNumber]) ? prev[pageNumber] : [];
-      if (!pageSurveyMarkers.some((surveyMarker) => surveyMarker?.highlightId === highlightId)) {
+      if (!pageSurveyMarkers.some((surveyMarker) => surveyMarker?.annotationId === annotationId)) {
         return prev;
       }
       return {
         ...prev,
         [pageNumber]: pageSurveyMarkers.map((surveyMarker) => (
-          surveyMarker?.highlightId === highlightId
+          surveyMarker?.annotationId === annotationId
             ? {
                 ...surveyMarker,
                 x: normalizedBounds.x,
@@ -31154,35 +31154,35 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   const pendingExcelSyncAfterDeleteRef = useRef(false);
 
   // Handle surveyMarker deletion from PDF (via eraser tool)
-  const handleSurveyMarkerDeleted = useCallback((pageNumber, bounds, highlightId = null) => {
+  const handleSurveyMarkerDeleted = useCallback((pageNumber, bounds, annotationId = null) => {
     // Checkpoint history before deletion
     addHistoryCheckpoint('highlight:delete', {
       pageNumber,
-      highlightId: highlightId || null
+      annotationId: annotationId || null
     });
 
 
-    // When an explicit highlightId is supplied we can always identify the
+    // When an explicit annotationId is supplied we can always identify the
     // Survey Marker to remove, so deletion proceeds regardless of which
     // module/template is active. Only bail when there's nothing to match
     // against (no id AND no active module to scan by bounds).
-    if (!highlightId && (!selectedModuleId || !selectedTemplate)) {
+    if (!annotationId && (!selectedModuleId || !selectedTemplate)) {
       return;
     }
 
     // Find matching surveyMarkers in surveyMarkers
     const matchingSurveyMarkerIds = [];
 
-    if (highlightId) {
-      // An explicit highlightId is the reliable identity — delete that marker
+    if (annotationId) {
+      // An explicit annotationId is the reliable identity — delete that marker
       // unconditionally. The old module/page gate here dropped deletions made
       // while a different module was active, stranding the panel row without
       // a rect on the page (the orphan Survey Marker bug).
-      if (surveyMarkers[highlightId]) {
-        matchingSurveyMarkerIds.push(highlightId);
+      if (surveyMarkers[annotationId]) {
+        matchingSurveyMarkerIds.push(annotationId);
       }
     } else {
-      // Fall back to bounds matching if no highlightId
+      // Fall back to bounds matching if no annotationId
       Object.entries(surveyMarkers).forEach(([id, surveyMarker]) => {
         const surveyMarkerModuleId = surveyMarker.moduleId;
         if (surveyMarkerModuleId === selectedModuleId &&
@@ -31208,7 +31208,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       if (surveyMarkersToDelete.length === 0) {
         console.warn('[App] handleSurveyMarkerDeleted blocked by ownership gate', {
           pageNumber,
-          highlightId: highlightId || null,
+          annotationId: annotationId || null,
           viewerId: user?.id || null
         });
         return;
@@ -31238,9 +31238,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         surveyMarkersToDelete.forEach(({ id, surveyMarker }) => {
           if (surveyMarker && surveyMarker.pageNumber) {
             const pageSurveyMarkers = updated[surveyMarker.pageNumber] || [];
-            // Remove survey marker by highlightId or by bounds match
+            // Remove survey marker by annotationId or by bounds match
             const filtered = pageSurveyMarkers.filter(h => {
-              if (h.highlightId === id) return false;
+              if (h.annotationId === id) return false;
               if (surveyMarker.bounds && h.x !== undefined && h.y !== undefined) {
                 return !boundsMatch(
                   { x: h.x, y: h.y, width: h.width, height: h.height },
@@ -31395,36 +31395,36 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   }, [surveyMarkers, selectedTemplate?.linkedExcelPath, pushToExcelWithRetry]);
 
   // Handle deletion of a surveyMarker item (from survey panel)
-  const handleDeleteSurveyMarkerItem = useCallback((highlightId) => {
-    const surveyMarker = surveyMarkers[highlightId];
+  const handleDeleteSurveyMarkerItem = useCallback((annotationId) => {
+    const surveyMarker = surveyMarkers[annotationId];
     if (!surveyMarker) {
-      console.warn('[App] handleDeleteSurveyMarkerItem aborted: SurveyMarker not found', highlightId);
+      console.warn('[App] handleDeleteSurveyMarkerItem aborted: SurveyMarker not found', annotationId);
       return;
     }
 
     // Use shared handler for consistency
-    handleSurveyMarkerDeleted(surveyMarker.pageNumber, surveyMarker.bounds, highlightId);
+    handleSurveyMarkerDeleted(surveyMarker.pageNumber, surveyMarker.bounds, annotationId);
 
   }, [surveyMarkers, handleSurveyMarkerDeleted]);
 
-  const handleDeleteSurveyMarker = useCallback((highlightId) => {
-    if (!highlightId) return;
+  const handleDeleteSurveyMarker = useCallback((annotationId) => {
+    if (!annotationId) return;
 
-    const savedSurveyMarker = surveyMarkers[highlightId];
+    const savedSurveyMarker = surveyMarkers[annotationId];
     if (savedSurveyMarker) {
-      handleSurveyMarkerDeleted(savedSurveyMarker.pageNumber, savedSurveyMarker.bounds, highlightId);
+      handleSurveyMarkerDeleted(savedSurveyMarker.pageNumber, savedSurveyMarker.bounds, annotationId);
       return;
     }
 
     addHistoryCheckpoint('highlight:delete-pending', {
-      highlightId
+      annotationId
     });
 
     setNewSurveyMarkersByPage(prev => {
       let changed = false;
       const next = {};
       Object.entries(prev || {}).forEach(([pageNumberKey, pageSurveyMarkers]) => {
-        const filtered = (pageSurveyMarkers || []).filter((surveyMarker) => surveyMarker?.highlightId !== highlightId);
+        const filtered = (pageSurveyMarkers || []).filter((surveyMarker) => surveyMarker?.annotationId !== annotationId);
         if (filtered.length !== (pageSurveyMarkers || []).length) {
           changed = true;
         }
@@ -31435,12 +31435,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       return changed ? next : prev;
     });
 
-    setPendingSurveyMarker(prev => (prev?.id === highlightId ? null : prev));
+    setPendingSurveyMarker(prev => (prev?.id === annotationId ? null : prev));
     setPendingEntitySelection(prev => (
-      prev?.surveyMarker?.id === highlightId ? null : prev
+      prev?.surveyMarker?.id === annotationId ? null : prev
     ));
     setPendingSurveyMarkerName(prev => (
-      prev?.surveyMarker?.id === highlightId ? null : prev
+      prev?.surveyMarker?.id === annotationId ? null : prev
     ));
   }, [addHistoryCheckpoint, handleSurveyMarkerDeleted, surveyMarkers]);
 
@@ -31459,7 +31459,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   const buildSurveyMarkerPreview = useCallback((surveyMarker, extra = {}) => {
     const preview = {
       ...(surveyMarker?.bounds || {}),
-      highlightId: extra.highlightId ?? surveyMarker?.highlightId ?? surveyMarker?.id,
+      annotationId: extra.annotationId ?? surveyMarker?.annotationId ?? surveyMarker?.id,
       moduleId: extra.moduleId ?? surveyMarker?.moduleId ?? selectedModuleId ?? null,
       regionId: extra.regionId !== undefined ? extra.regionId : (surveyMarker?.regionId ?? null)
     };
@@ -31508,15 +31508,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
     // Handle locating a pending item (from "Locate" button on unlocated item)
     if (pendingLocationItem) {
-      const highlightId = pendingLocationItem.id;
+      const annotationId = pendingLocationItem.id;
 
       // Update survey marker annotations
       setSurveyMarkers(prev => {
-        const existing = prev[highlightId] || {};
+        const existing = prev[annotationId] || {};
         // If it's a new annotation for an existing item, ensure we have all necessary data
         return {
           ...prev,
-          [highlightId]: {
+          [annotationId]: {
             ...pendingLocationItem, // Base on the item data
             ...existing, // Override with any existing annotation data
             pageNumber,
@@ -31534,7 +31534,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
           ...(prev[pageNumber] || []),
           buildSurveyMarkerPreview(
             {
-              id: highlightId,
+              id: annotationId,
               bounds,
               moduleId: effectiveModuleId,
               regionId: pageRegionId
@@ -31555,7 +31555,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         // Prompt for Entity since it wasn't set in Excel
         setPendingEntitySelection({
           surveyMarker: {
-            id: highlightId,
+            id: annotationId,
             pageNumber,
             bounds,
             moduleId: effectiveModuleId,
@@ -31570,7 +31570,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     }
 
     // Create a unique ID for this surveyMarker
-    const highlightId = `surveyMarker-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const annotationId = `surveyMarker-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const moduleName = getModuleName(selectedTemplate, effectiveModuleId);
 
 
@@ -31588,7 +31588,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
       const newSurveyMarker = buildSurveyMarkerPreview(
         {
-          id: highlightId,
+          id: annotationId,
           bounds,
           moduleId: effectiveModuleId,
           regionId: pageRegionId
@@ -31616,7 +31616,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         // Show Entity selection dialog
         setPendingEntitySelection({
           surveyMarker: {
-            id: highlightId,
+            id: annotationId,
             pageNumber,
             bounds,
             moduleId: effectiveModuleId,
@@ -31628,7 +31628,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         // No Entities, go directly to name prompt
         setPendingSurveyMarkerName({
           surveyMarker: {
-            id: highlightId,
+            id: annotationId,
             pageNumber,
             bounds,
             moduleId: effectiveModuleId,
@@ -31647,7 +31647,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       // No category selected, show category selection modal (only if survey panel is visible)
       if (showSurveyPanel) {
         setPendingSurveyMarker({
-          id: highlightId,
+          id: annotationId,
           pageNumber,
           bounds,
           moduleId: effectiveModuleId,
@@ -32120,9 +32120,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       Object.entries(prev).forEach(([pageNum, pageSurveyMarkers]) => {
         pageSurveyMarkers.forEach(surveyMarker => {
           const surveyMarkerModuleId = surveyMarker.moduleId;
-          if (surveyMarkerModuleId === selectedModuleId && surveyMarker.highlightId) {
+          if (surveyMarkerModuleId === selectedModuleId && surveyMarker.annotationId) {
             // Check if this survey marker is already saved in surveyMarkers
-            const isSaved = surveyMarkers && surveyMarkers[surveyMarker.highlightId];
+            const isSaved = surveyMarkers && surveyMarkers[surveyMarker.annotationId];
             if (!isSaved) {
               // This is a pending survey marker, preserve it
               const pageNumber = parseInt(pageNum);
@@ -32130,7 +32130,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
                 surveyMarkersByPage[pageNumber] = [];
               }
               // Avoid duplicates
-              const exists = surveyMarkersByPage[pageNumber].some(h => h.highlightId === surveyMarker.highlightId);
+              const exists = surveyMarkersByPage[pageNumber].some(h => h.annotationId === surveyMarker.annotationId);
               if (!exists) {
                 surveyMarkersByPage[pageNumber].push(surveyMarker);
               }
@@ -32141,7 +32141,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
 
       // Now add saved surveyMarkers from surveyMarkers for this module
       if (surveyMarkers && Object.keys(surveyMarkers).length > 0) {
-        Object.entries(surveyMarkers).forEach(([highlightId, surveyMarker]) => {
+        Object.entries(surveyMarkers).forEach(([annotationId, surveyMarker]) => {
           // Check if this survey marker belongs to the current module
           const surveyMarkerModuleId = surveyMarker.moduleId;
           if (surveyMarkerModuleId !== selectedModuleId) {
@@ -32159,7 +32159,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
           }
 
           // Check if this survey marker is already in the list (avoid duplicates)
-          const exists = surveyMarkersByPage[pageNumber].some(h => h.highlightId === highlightId);
+          const exists = surveyMarkersByPage[pageNumber].some(h => h.annotationId === annotationId);
           if (exists) {
             return; // Already added (either as pending or from a previous iteration)
           }
@@ -32182,7 +32182,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
             angle: Number.isFinite(Number(surveyMarker.bounds.angle))
               ? ((Number(surveyMarker.bounds.angle) % 360) + 360) % 360
               : 0,
-            highlightId: highlightId,
+            annotationId: annotationId,
             moduleId: surveyMarkerModuleId,
             regionId: surveyMarker.regionId ?? null,
             ...(needsEntity && { needsEntity: true }),
@@ -32204,7 +32204,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     // Build a set of valid surveyMarker bounds from surveyMarkers
     const validSurveyMarkerBounds = new Map();
 
-    Object.entries(surveyMarkers || {}).forEach(([highlightId, ann]) => {
+    Object.entries(surveyMarkers || {}).forEach(([annotationId, ann]) => {
       if (ann.pageNumber && ann.bounds) {
         const pageNum = ann.pageNumber;
         if (!validSurveyMarkerBounds.has(pageNum)) {
@@ -32215,7 +32215,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
           y: ann.bounds.y,
           width: ann.bounds.width,
           height: ann.bounds.height,
-          highlightId
+          annotationId
         });
       }
     });
@@ -32233,7 +32233,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
             y: h.y,
             width: h.width,
             height: h.height,
-            highlightId: h.highlightId
+            annotationId: h.annotationId
           });
         }
       });
@@ -34568,7 +34568,7 @@ ${pageBlocks}
                       );
                       const firstObject = pageAnnotationObjects.length > 0 ? pageAnnotationObjects[0] : null;
                       const lastObject = pageAnnotationObjects.length > 0 ? pageAnnotationObjects[pageAnnotationObjects.length - 1] : null;
-                      const annotationRevision = `${pageAnnotationObjects.length}:${firstObject?.id || firstObject?.highlightId || firstObject?.pdfAnnotationId || firstObject?.type || ''}:${lastObject?.id || lastObject?.highlightId || lastObject?.pdfAnnotationId || lastObject?.type || ''}`;
+                      const annotationRevision = `${pageAnnotationObjects.length}:${firstObject?.id || firstObject?.annotationId || firstObject?.pdfAnnotationId || firstObject?.type || ''}:${lastObject?.id || lastObject?.annotationId || lastObject?.pdfAnnotationId || lastObject?.type || ''}`;
                       const pageCalloutCount = lightweightCalloutCountByPage[pageNumber] || 0;
                       const calloutRevision = `${pageCalloutCount}:${selectedModuleId || ''}:${showSurveyPanel ? 1 : 0}`;
                       const proxyPayload = syncfusionInteractionProxyPayloads[pageNumber] || null;
@@ -38366,8 +38366,8 @@ ${pageBlocks}
                                   return hModuleId === selectedModuleId && h.categoryId === catId;
                                 }
                                 );
-                                surveyMarkersInCategory.forEach(([highlightId, surveyMarker]) => {
-                                  surveyMarkersToCopy.push(highlightId);
+                                surveyMarkersInCategory.forEach(([annotationId, surveyMarker]) => {
+                                  surveyMarkersToCopy.push(annotationId);
                                 });
                               });
 
@@ -38388,8 +38388,8 @@ ${pageBlocks}
                                 return;
                               }
 
-                              surveyMarkersToCopy.forEach(highlightId => {
-                                const surveyMarker = surveyMarkers[highlightId];
+                              surveyMarkersToCopy.forEach(annotationId => {
+                                const surveyMarker = surveyMarkers[annotationId];
                                 if (!surveyMarker || !surveyMarker.categoryId) return;
 
                                 const categoryName = getCategoryName(sourceTemplate, surveyMarker.moduleId, surveyMarker.categoryId);
@@ -38465,11 +38465,11 @@ ${pageBlocks}
                                   }
 
                                   if (bounds) {
-                                    const highlightId = `surveyMarker-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                                    const annotationId = `surveyMarker-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
                                     const pageNum = sourceSurveyMarker?.pageNumber || destAnnotation?.pageNumber || 1;
 
-                                    newSurveyMarkers[highlightId] = {
-                                      id: highlightId,
+                                    newSurveyMarkers[annotationId] = {
+                                      id: annotationId,
                                       pageNumber: pageNum,
                                       bounds: bounds,
                                       moduleId: module.id,
@@ -38486,7 +38486,7 @@ ${pageBlocks}
                                         {
                                           ...bounds,
                                           needsEntity: true,
-                                          highlightId: highlightId,
+                                          annotationId: annotationId,
                                           regionId: sourceSurveyMarker?.regionId ?? null
                                         }
                                       ]
@@ -38597,16 +38597,16 @@ ${pageBlocks}
                               }
 
 
-                              selectedSurveyMarkerIds.forEach(highlightId => {
-                                const surveyMarker = surveyMarkers[highlightId];
+                              selectedSurveyMarkerIds.forEach(annotationId => {
+                                const surveyMarker = surveyMarkers[annotationId];
 
                                 if (!surveyMarker) {
-                                  console.warn(`SurveyMarker ${highlightId} not found`);
+                                  console.warn(`SurveyMarker ${annotationId} not found`);
                                   return;
                                 }
 
                                 if (!surveyMarker.categoryId) {
-                                  console.warn(`SurveyMarker ${highlightId} has no categoryId`);
+                                  console.warn(`SurveyMarker ${annotationId} has no categoryId`);
                                   return;
                                 }
 
@@ -38643,7 +38643,7 @@ ${pageBlocks}
                                     }
                                   }
                                 } else {
-                                  console.warn(`No matching item found for surveyMarker ${highlightId} with name "${surveyMarker.name}" and category "${categoryName}"`);
+                                  console.warn(`No matching item found for surveyMarker ${annotationId} with name "${surveyMarker.name}" and category "${categoryName}"`);
                                 }
                               });
 
@@ -38721,12 +38721,12 @@ ${pageBlocks}
 
 
                                     if (bounds) {
-                                      const highlightId = `surveyMarker-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                                      const annotationId = `surveyMarker-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
                                       const pageNum = sourceSurveyMarker?.pageNumber || destAnnotation?.pageNumber || 1;
 
                                       // Create surveyMarker WITHOUT entity (starts blank in new space)
-                                      newSurveyMarkers[highlightId] = {
-                                        id: highlightId,
+                                      newSurveyMarkers[annotationId] = {
+                                        id: annotationId,
                                         pageNumber: pageNum,
                                         bounds: bounds,
                                         moduleId: space.id,
@@ -38745,7 +38745,7 @@ ${pageBlocks}
                                           {
                                             ...bounds,
                                             needsEntity: true, // Flag to indicate it needs entity assignment
-                                            highlightId: highlightId, // Store ID for later reference
+                                            annotationId: annotationId, // Store ID for later reference
                                             regionId: sourceSurveyMarker?.regionId ?? null
                                           }
                                         ]
@@ -39280,7 +39280,7 @@ ${pageBlocks}
 
                       // Get surveyMarkers for this module, grouped by category
                       const surveyMarkersByCategory = {};
-                      Object.entries(surveyMarkers).forEach(([highlightId, surveyMarker]) => {
+                      Object.entries(surveyMarkers).forEach(([annotationId, surveyMarker]) => {
                         const surveyMarkerModuleId = surveyMarker.moduleId;
                         if (surveyMarkerModuleId === selectedModuleId && surveyMarker.categoryId) {
                           if (!surveyMarkersByCategory[surveyMarker.categoryId]) {
@@ -39290,7 +39290,7 @@ ${pageBlocks}
                           // This ensures consistency when selecting/looking up survey markers
                           surveyMarkersByCategory[surveyMarker.categoryId].push({
                             ...surveyMarker,
-                            id: highlightId  // Use the key, not surveyMarker.id
+                            id: annotationId  // Use the key, not surveyMarker.id
                           });
                         }
                       });
@@ -39384,11 +39384,11 @@ ${pageBlocks}
                               {(() => {
                                 // IMPORTANT: Use the key from surveyMarkers as the authoritative ID
                                 const allSurveyMarkerIds = Object.entries(surveyMarkers)
-                                  .filter(([highlightId, h]) => {
+                                  .filter(([annotationId, h]) => {
                                     const hModuleId = h.moduleId;
                                     return hModuleId === selectedModuleId;
                                   })
-                                  .map(([highlightId, h]) => highlightId);  // Use the key, not h.id
+                                  .map(([annotationId, h]) => annotationId);  // Use the key, not h.id
                                 const moduleSelectedCount = allSurveyMarkerIds.filter(id => copiedItemSelection[id] === true).length;
                                 const moduleAllSelected = moduleSelectedCount === allSurveyMarkerIds.length && allSurveyMarkerIds.length > 0;
 
@@ -39816,7 +39816,7 @@ ${pageBlocks}
                                             return hModuleId === selectedModuleId && h.categoryId === catId;
                                           });
 
-                                          surveyMarkersInCategory.forEach(([highlightId, surveyMarker]) => {
+                                          surveyMarkersInCategory.forEach(([annotationId, surveyMarker]) => {
                                             // Remove from canvas
                                             if (surveyMarker.pageNumber && surveyMarker.bounds) {
                                               setSurveyMarkersToRemoveByPage(prev => ({
@@ -39829,8 +39829,8 @@ ${pageBlocks}
                                           // Delete from surveyMarkers
                                           setSurveyMarkers(prev => {
                                             const updated = { ...prev };
-                                            surveyMarkersInCategory.forEach(([highlightId]) => {
-                                              delete updated[highlightId];
+                                            surveyMarkersInCategory.forEach(([annotationId]) => {
+                                              delete updated[annotationId];
                                             });
                                             return updated;
                                           });
@@ -40261,8 +40261,8 @@ ${pageBlocks}
                                                   }
 
                                                   // Delete selected items
-                                                  selectedItemIds.forEach(highlightId => {
-                                                    handleDeleteSurveyMarkerItem(highlightId);
+                                                  selectedItemIds.forEach(annotationId => {
+                                                    handleDeleteSurveyMarkerItem(annotationId);
                                                   });
 
                                                   // Clear selection and exit item select mode if no items left
@@ -40338,11 +40338,11 @@ ${pageBlocks}
                                           )}
 
                                           {categorySurveyMarkers.map((surveyMarker, surveyMarkerIndex) => {
-                                            const highlightId = surveyMarker.id;
-                                            const isSurveyMarkerExpanded = expandedSurveyMarkers[highlightId];
+                                            const annotationId = surveyMarker.id;
+                                            const isSurveyMarkerExpanded = expandedSurveyMarkers[annotationId];
                                             const baseCategoryName = category?.name?.trim() || 'Untitled Category';
                                             const fallbackName = `${baseCategoryName} ${surveyMarkerIndex + 1}`;
-                                            const surveyMarkerName = surveyMarkers[highlightId]?.name || surveyMarker.name || fallbackName;
+                                            const surveyMarkerName = surveyMarkers[annotationId]?.name || surveyMarker.name || fallbackName;
 
                                             return (
                                               <div key={surveyMarker.id} id={`highlight-item-${surveyMarker.id}`} style={{
@@ -40360,8 +40360,8 @@ ${pageBlocks}
                                                       type="checkbox"
                                                       checked={
                                                         isItemSelectModeActiveForCategory
-                                                          ? selectedItemsForCategory[highlightId] === true
-                                                          : copiedItemSelection[highlightId] === true
+                                                          ? selectedItemsForCategory[annotationId] === true
+                                                          : copiedItemSelection[annotationId] === true
                                                       }
                                                       onChange={(e) => {
                                                         if (isItemSelectModeActiveForCategory) {
@@ -40369,16 +40369,16 @@ ${pageBlocks}
                                                             ...prev,
                                                             [category.id]: {
                                                               ...(prev[category.id] || {}),
-                                                              [highlightId]: e.target.checked
+                                                              [annotationId]: e.target.checked
                                                             }
                                                           }));
                                                         } else {
                                                           setCopiedItemSelection(prev => {
                                                             const newSelection = { ...prev };
                                                             if (e.target.checked) {
-                                                              newSelection[highlightId] = true;
+                                                              newSelection[annotationId] = true;
                                                             } else {
-                                                              delete newSelection[highlightId];
+                                                              delete newSelection[annotationId];
                                                             }
                                                             return newSelection;
                                                           });
@@ -40394,7 +40394,7 @@ ${pageBlocks}
                                                     onClick={() => {
                                                       setExpandedSurveyMarkers(prev => ({
                                                         ...prev,
-                                                        [highlightId]: !prev[highlightId]
+                                                        [annotationId]: !prev[annotationId]
                                                       }));
                                                     }}
                                                     style={{
@@ -40417,7 +40417,7 @@ ${pageBlocks}
                                                         let indicatorColor = null;
                                                         let indicatorTooltip = null;
                                                         if (selectedTemplate && selectedModuleId) {
-                                                          const surveyMarkerData = surveyMarkers[highlightId];
+                                                          const surveyMarkerData = surveyMarkers[annotationId];
                                                           const categoryName = getCategoryName(selectedTemplate, selectedModuleId, category.id);
                                                           const surveyMarkerName = surveyMarkerData?.name || surveyMarker.name || '';
                                                           const matchingItem = Object.values(items).find(item =>
@@ -40457,10 +40457,10 @@ ${pageBlocks}
                                                           />
                                                         );
                                                       })()}
-                                                      {surveyMarkers[highlightId]?.editingName ? (
+                                                      {surveyMarkers[annotationId]?.editingName ? (
                                                         <input
                                                           type="text"
-                                                          value={surveyMarkers[highlightId]?.name || ''}
+                                                          value={surveyMarkers[annotationId]?.name || ''}
                                                           onChange={(e) => {
                                                             setSurveyMarkers(prev => ({
                                                               ...prev,
@@ -40513,7 +40513,7 @@ ${pageBlocks}
                                                         <span style={{
                                                           fontSize: '12px',
                                                           color: '#999',
-                                                          fontWeight: surveyMarkers[highlightId]?.name ? '500' : '400'
+                                                          fontWeight: surveyMarkers[annotationId]?.name ? '500' : '400'
                                                         }}>
                                                           {surveyMarkerName}
                                                         </span>
@@ -40549,7 +40549,7 @@ ${pageBlocks}
                                                   </button>
 
                                                   {/* Rename button - now a sibling, not nested */}
-                                                  {!surveyMarkers[highlightId]?.editingName && (
+                                                  {!surveyMarkers[annotationId]?.editingName && (
                                                     <button
                                                       onClick={(e) => {
                                                         e.stopPropagation();
@@ -40583,7 +40583,7 @@ ${pageBlocks}
                                                   <button
                                                     onClick={(e) => {
                                                       e.stopPropagation();
-                                                      const surveyMarkerData = surveyMarkers[highlightId];
+                                                      const surveyMarkerData = surveyMarkers[annotationId];
                                                       const existingNote = surveyMarkerData?.note;
 
                                                       if (existingNote) {
@@ -40596,13 +40596,13 @@ ${pageBlocks}
                                                         setNoteDialogContent({ text: '', photos: [], videos: [] });
                                                       }
 
-                                                      // For item-level notes, we only need the highlightId
-                                                      setNoteDialogOpen(highlightId);
+                                                      // For item-level notes, we only need the annotationId
+                                                      setNoteDialogOpen(annotationId);
                                                     }}
                                                     style={{
                                                       background: 'transparent',
                                                       border: 'none',
-                                                      color: surveyMarkers[highlightId]?.note?.text ? '#4A90E2' : '#999',
+                                                      color: surveyMarkers[annotationId]?.note?.text ? '#4A90E2' : '#999',
                                                       cursor: 'pointer',
                                                       padding: '4px',
                                                       fontSize: '12px',
@@ -40611,9 +40611,9 @@ ${pageBlocks}
                                                     }}
                                                     onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
                                                     onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
-                                                    title={surveyMarkers[highlightId]?.note?.text ? "Edit item notes" : "Add item notes"}
+                                                    title={surveyMarkers[annotationId]?.note?.text ? "Edit item notes" : "Add item notes"}
                                                   >
-                                                    Notes {surveyMarkers[highlightId]?.note?.text ? '✓' : ''}
+                                                    Notes {surveyMarkers[annotationId]?.note?.text ? '✓' : ''}
                                                   </button>
 
                                                   {/* Locate Button (Magnifying Glass) */}
@@ -40657,7 +40657,7 @@ ${pageBlocks}
                                                     onClick={(e) => {
                                                       e.stopPropagation();
                                                       if (confirm('Are you sure you want to delete this item?')) {
-                                                        handleDeleteSurveyMarkerItem(highlightId);
+                                                        handleDeleteSurveyMarkerItem(annotationId);
                                                       }
                                                     }}
                                                     style={{
@@ -40699,7 +40699,7 @@ ${pageBlocks}
                                                 {
                                                   isSurveyMarkerExpanded && selectedTemplate && selectedModuleId && (() => {
                                                     // Find the item associated with this surveyMarker
-                                                    const surveyMarkerData = surveyMarkers[highlightId];
+                                                    const surveyMarkerData = surveyMarkers[annotationId];
                                                     const categoryName = getCategoryName(selectedTemplate, selectedModuleId, category.id);
                                                     const surveyMarkerName = surveyMarkerData?.name || surveyMarker.name || '';
                                                     const matchingItem = Object.values(items).find(item =>
@@ -40750,8 +40750,8 @@ ${pageBlocks}
                                                               setSurveyMarkers(prev => {
                                                                 const updated = {
                                                                   ...prev,
-                                                                  [highlightId]: {
-                                                                    ...prev[highlightId],
+                                                                  [annotationId]: {
+                                                                    ...prev[annotationId],
                                                                     entityId: entity?.id,
                                                                     entityName: entity?.name,
                                                                     entityColor: entity?.color
@@ -40858,7 +40858,7 @@ ${pageBlocks}
                                                 {/* Expanded checklist items */}
                                                 {
                                                   isSurveyMarkerExpanded && category.checklist && category.checklist.map(item => {
-                                                    const response = surveyMarkers[highlightId]?.checklistResponses?.[item.id] || {};
+                                                    const response = surveyMarkers[annotationId]?.checklistResponses?.[item.id] || {};
                                                     const isSelected = response.selection;
                                                     return (
                                                       <div key={item.id} style={{
@@ -40892,12 +40892,12 @@ ${pageBlocks}
                                                                   setSurveyMarkers(prev => {
                                                                     const updated = {
                                                                       ...prev,
-                                                                      [highlightId]: {
-                                                                        ...prev[highlightId],
+                                                                      [annotationId]: {
+                                                                        ...prev[annotationId],
                                                                         checklistResponses: {
-                                                                          ...prev[highlightId]?.checklistResponses,
+                                                                          ...prev[annotationId]?.checklistResponses,
                                                                           [item.id]: {
-                                                                            ...prev[highlightId]?.checklistResponses?.[item.id],
+                                                                            ...prev[annotationId]?.checklistResponses?.[item.id],
                                                                             selection: option
                                                                           }
                                                                         }
@@ -40905,7 +40905,7 @@ ${pageBlocks}
                                                                     };
 
                                                                     // Check if all checklist items are Y or N/A
-                                                                    const updatedSurveyMarker = updated[highlightId];
+                                                                    const updatedSurveyMarker = updated[annotationId];
                                                                     if (updatedSurveyMarker && category.checklist && category.checklist.length > 0 && selectedTemplate && selectedSpaceId) {
                                                                       const allItemsComplete = category.checklist.every(checklistItem => {
                                                                         const response = updatedSurveyMarker.checklistResponses?.[checklistItem.id];
@@ -40914,7 +40914,7 @@ ${pageBlocks}
                                                                       });
 
                                                                       // Find the item associated with this surveyMarker
-                                                                      const surveyMarkerData = updated[highlightId];
+                                                                      const surveyMarkerData = updated[annotationId];
                                                                       const categoryName = getCategoryName(selectedTemplate, selectedModuleId, category.id);
                                                                       const surveyMarkerName = surveyMarkerData?.name || surveyMarker.name || '';
                                                                       const matchingItem = Object.values(items).find(item =>
@@ -40975,10 +40975,10 @@ ${pageBlocks}
                                                                             if (surveyMarkerData?.pageNumber && surveyMarkerData?.bounds) {
                                                                               setNewSurveyMarkersByPage(prev => {
                                                                                 const pageSurveyMarkers = prev[surveyMarkerData.pageNumber] || [];
-                                                                                // Remove any existing surveyMarker with this highlightId or same bounds (regardless of needsEntity or color)
+                                                                                // Remove any existing surveyMarker with this annotationId or same bounds (regardless of needsEntity or color)
                                                                                 const filtered = pageSurveyMarkers.filter(h => {
                                                                                   // Keep surveyMarkers that don't match by ID or bounds
-                                                                                  const hasMatchingId = h.highlightId === highlightId;
+                                                                                  const hasMatchingId = h.annotationId === annotationId;
                                                                                   const hasMatchingBounds = h.x === surveyMarkerData.bounds.x &&
                                                                                     h.y === surveyMarkerData.bounds.y &&
                                                                                     h.width === surveyMarkerData.bounds.width &&
@@ -40993,7 +40993,7 @@ ${pageBlocks}
                                                                                     {
                                                                                       ...surveyMarkerData.bounds,
                                                                                       color: entityColor,
-                                                                                      highlightId: highlightId
+                                                                                      annotationId: annotationId
                                                                                     }
                                                                                   ]
                                                                                 };
@@ -41002,8 +41002,8 @@ ${pageBlocks}
                                                                           }
 
                                                                           // Update survey marker annotation with Complete entity status
-                                                                          updated[highlightId] = {
-                                                                            ...updated[highlightId],
+                                                                          updated[annotationId] = {
+                                                                            ...updated[annotationId],
                                                                             entityId: completeEntity.id,
                                                                             entityName: completeEntity.name,
                                                                             entityColor: entityColor
@@ -41047,10 +41047,10 @@ ${pageBlocks}
                                                                           if (surveyMarkerData?.pageNumber && surveyMarkerData?.bounds) {
                                                                             setNewSurveyMarkersByPage(prev => {
                                                                               const pageSurveyMarkers = prev[surveyMarkerData.pageNumber] || [];
-                                                                              // Remove any existing surveyMarker with this highlightId or same bounds (regardless of needsEntity or color)
+                                                                              // Remove any existing surveyMarker with this annotationId or same bounds (regardless of needsEntity or color)
                                                                               const filtered = pageSurveyMarkers.filter(h => {
                                                                                 // Keep surveyMarkers that don't match by ID or bounds
-                                                                                const hasMatchingId = h.highlightId === highlightId;
+                                                                                const hasMatchingId = h.annotationId === annotationId;
                                                                                 const hasMatchingBounds = h.x === surveyMarkerData.bounds.x &&
                                                                                   h.y === surveyMarkerData.bounds.y &&
                                                                                   h.width === surveyMarkerData.bounds.width &&
@@ -41066,7 +41066,7 @@ ${pageBlocks}
                                                                                   {
                                                                                     ...surveyMarkerData.bounds,
                                                                                     needsEntity: true,
-                                                                                    highlightId: highlightId
+                                                                                    annotationId: annotationId
                                                                                   }
                                                                                 ]
                                                                               };
@@ -41075,8 +41075,8 @@ ${pageBlocks}
                                                                         }
 
                                                                         // Update survey marker annotation to remove entity status
-                                                                        updated[highlightId] = {
-                                                                          ...updated[highlightId],
+                                                                        updated[annotationId] = {
+                                                                          ...updated[annotationId],
                                                                           entityId: undefined,
                                                                           entityName: undefined,
                                                                           entityColor: undefined
@@ -41680,7 +41680,7 @@ ${pageBlocks}
                     const updated = { ...prev };
                     if (updated[surveyMarkerToRemove.pageNumber]) {
                       updated[surveyMarkerToRemove.pageNumber] = updated[surveyMarkerToRemove.pageNumber].filter(
-                        h => h.highlightId !== surveyMarkerToRemove.id
+                        h => h.annotationId !== surveyMarkerToRemove.id
                       );
                       // Clean up empty arrays
                       if (updated[surveyMarkerToRemove.pageNumber].length === 0) {
@@ -41752,7 +41752,7 @@ ${pageBlocks}
                           const updated = { ...prev };
                           if (updated[surveyMarkerToRemove.pageNumber]) {
                             updated[surveyMarkerToRemove.pageNumber] = updated[surveyMarkerToRemove.pageNumber].filter(
-                              h => h.highlightId !== surveyMarkerToRemove.id
+                              h => h.annotationId !== surveyMarkerToRemove.id
                             );
                             // Clean up empty arrays
                             if (updated[surveyMarkerToRemove.pageNumber].length === 0) {
@@ -41973,8 +41973,8 @@ ${pageBlocks}
                             // Replace the existing surveyMarker (with needsEntity) with the new one that has the color
                             setNewSurveyMarkersByPage(prev => {
                               const pageSurveyMarkers = prev[pendingEntitySelection.surveyMarker.pageNumber] || [];
-                              // Remove existing surveyMarker with this highlightId (if it exists)
-                              const filtered = pageSurveyMarkers.filter(h => h.highlightId !== pendingEntitySelection.surveyMarker.id);
+                              // Remove existing surveyMarker with this annotationId (if it exists)
+                              const filtered = pageSurveyMarkers.filter(h => h.annotationId !== pendingEntitySelection.surveyMarker.id);
                               // Add the new surveyMarker with color
                               return {
                                 ...prev,
@@ -42078,8 +42078,8 @@ ${pageBlocks}
                     // Replace the existing surveyMarker (with needsEntity) with the new one that has the color
                     setNewSurveyMarkersByPage(prev => {
                       const pageSurveyMarkers = prev[pendingSurveyMarkerName.surveyMarker.pageNumber] || [];
-                      // Remove existing surveyMarker with this highlightId (if it exists)
-                      const filtered = pageSurveyMarkers.filter(h => h.highlightId !== pendingSurveyMarkerName.surveyMarker.id);
+                      // Remove existing surveyMarker with this annotationId (if it exists)
+                      const filtered = pageSurveyMarkers.filter(h => h.annotationId !== pendingSurveyMarkerName.surveyMarker.id);
                       // Add the new surveyMarker with color
                       return {
                         ...prev,
@@ -42242,8 +42242,8 @@ ${pageBlocks}
                           // Replace the existing surveyMarker (with needsEntity) with the new one that has the color
                           setNewSurveyMarkersByPage(prev => {
                             const pageSurveyMarkers = prev[pendingSurveyMarkerName.surveyMarker.pageNumber] || [];
-                            // Remove existing surveyMarker with this highlightId (if it exists)
-                            const filtered = pageSurveyMarkers.filter(h => h.highlightId !== pendingSurveyMarkerName.surveyMarker.id);
+                            // Remove existing surveyMarker with this annotationId (if it exists)
+                            const filtered = pageSurveyMarkers.filter(h => h.annotationId !== pendingSurveyMarkerName.surveyMarker.id);
                             // Add the new surveyMarker with color
                             return {
                               ...prev,
@@ -42304,8 +42304,8 @@ ${pageBlocks}
                           // Replace the existing surveyMarker (with needsEntity) with the new one that has the color
                           setNewSurveyMarkersByPage(prev => {
                             const pageSurveyMarkers = prev[pendingSurveyMarkerName.surveyMarker.pageNumber] || [];
-                            // Remove existing surveyMarker with this highlightId (if it exists)
-                            const filtered = pageSurveyMarkers.filter(h => h.highlightId !== pendingSurveyMarkerName.surveyMarker.id);
+                            // Remove existing surveyMarker with this annotationId (if it exists)
+                            const filtered = pageSurveyMarkers.filter(h => h.annotationId !== pendingSurveyMarkerName.surveyMarker.id);
                             // Add the new surveyMarker with color
                             return {
                               ...prev,
@@ -42344,8 +42344,8 @@ ${pageBlocks}
                           // Replace the existing surveyMarker (with needsEntity) with the new one that has the color
                           setNewSurveyMarkersByPage(prev => {
                             const pageSurveyMarkers = prev[pendingSurveyMarkerName.surveyMarker.pageNumber] || [];
-                            // Remove existing surveyMarker with this highlightId (if it exists)
-                            const filtered = pageSurveyMarkers.filter(h => h.highlightId !== pendingSurveyMarkerName.surveyMarker.id);
+                            // Remove existing surveyMarker with this annotationId (if it exists)
+                            const filtered = pageSurveyMarkers.filter(h => h.annotationId !== pendingSurveyMarkerName.surveyMarker.id);
                             // Add the new surveyMarker with color
                             return {
                               ...prev,
@@ -42483,8 +42483,8 @@ ${pageBlocks}
                           // Replace the existing surveyMarker (with needsEntity) with the new one that has the color
                           setNewSurveyMarkersByPage(prev => {
                             const pageSurveyMarkers = prev[pendingSurveyMarkerName.surveyMarker.pageNumber] || [];
-                            // Remove existing surveyMarker with this highlightId (if it exists)
-                            const filtered = pageSurveyMarkers.filter(h => h.highlightId !== pendingSurveyMarkerName.surveyMarker.id);
+                            // Remove existing surveyMarker with this annotationId (if it exists)
+                            const filtered = pageSurveyMarkers.filter(h => h.annotationId !== pendingSurveyMarkerName.surveyMarker.id);
                             // Add the new surveyMarker with color
                             return {
                               ...prev,
@@ -42617,8 +42617,8 @@ ${pageBlocks}
                           // Replace the existing surveyMarker (with needsEntity) with the new one that has the color
                           setNewSurveyMarkersByPage(prev => {
                             const pageSurveyMarkers = prev[pendingSurveyMarkerName.surveyMarker.pageNumber] || [];
-                            // Remove existing surveyMarker with this highlightId (if it exists)
-                            const filtered = pageSurveyMarkers.filter(h => h.highlightId !== pendingSurveyMarkerName.surveyMarker.id);
+                            // Remove existing surveyMarker with this annotationId (if it exists)
+                            const filtered = pageSurveyMarkers.filter(h => h.annotationId !== pendingSurveyMarkerName.surveyMarker.id);
                             // Add the new surveyMarker with color
                             return {
                               ...prev,
@@ -42929,14 +42929,14 @@ ${pageBlocks}
                       type="button"
                       onClick={() => {
 
-                        // For item-level notes, noteDialogOpen is just the highlightId
-                        const highlightId = noteDialogOpen;
+                        // For item-level notes, noteDialogOpen is just the annotationId
+                        const annotationId = noteDialogOpen;
 
 
                         // Update survey marker annotation with item-level note
                         setSurveyMarkers(prev => {
 
-                          const existingSurveyMarker = prev[highlightId] || {};
+                          const existingSurveyMarker = prev[annotationId] || {};
 
                           const newNote = {
                             text: noteDialogContent.text,
@@ -42946,7 +42946,7 @@ ${pageBlocks}
 
                           const updated = {
                             ...prev,
-                            [highlightId]: {
+                            [annotationId]: {
                               ...existingSurveyMarker, // Preserve all existing data
                               note: newNote  // Save note at surveyMarker level
                             }
@@ -43065,13 +43065,13 @@ ${pageBlocks}
                             const legacySurveyMarkersToCopy = [];
 
 
-                            transferState.items.forEach(highlightId => {
-                              const surveyMarker = surveyMarkers[highlightId];
+                            transferState.items.forEach(annotationId => {
+                              const surveyMarker = surveyMarkers[annotationId];
 
                               if (!surveyMarker) {
                                 // Not a survey marker, might be an itemId directly
-                                if (items[highlightId]) {
-                                  itemIdsToCopy.push(highlightId);
+                                if (items[annotationId]) {
+                                  itemIdsToCopy.push(annotationId);
                                 }
                                 return;
                               }
@@ -43181,13 +43181,13 @@ ${pageBlocks}
 
                                   // Also try to find by matching the surveyMarker ID from transferState.items
                                   if (!sourceSurveyMarker && transferState.items.length > 0) {
-                                    const highlightId = transferState.items.find(id => {
+                                    const annotationId = transferState.items.find(id => {
                                       const h = surveyMarkers[id];
                                       const hModuleId = h?.moduleId;
                                       return h && hModuleId === transferState.sourceModuleId;
                                     });
-                                    if (highlightId) {
-                                      sourceSurveyMarker = surveyMarkers[highlightId];
+                                    if (annotationId) {
+                                      sourceSurveyMarker = surveyMarkers[annotationId];
                                     }
                                   }
 
@@ -43209,9 +43209,9 @@ ${pageBlocks}
 
 
                                   if (bounds) {
-                                    const highlightId = `surveyMarker-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                                    newSurveyMarkers[highlightId] = {
-                                      id: highlightId,
+                                    const annotationId = `surveyMarker-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                                    newSurveyMarkers[annotationId] = {
+                                      id: annotationId,
                                       pageNumber: sourceSurveyMarker?.pageNumber || 1,
                                       bounds: bounds,
                                       moduleId: module.id,
@@ -43436,9 +43436,9 @@ ${pageBlocks}
                             const destModule = ((selectedTemplate.modules || selectedTemplate.spaces) || []).find(m => m.id === transferState.destModuleId);
                             const destCategory = destModule?.categories?.find(c => c.name === item.itemType);
 
-                            const highlightId = `surveyMarker-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                            newSurveyMarkers[highlightId] = {
-                              id: highlightId,
+                            const annotationId = `surveyMarker-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                            newSurveyMarkers[annotationId] = {
+                              id: annotationId,
                               pageNumber: sourceSurveyMarker?.pageNumber || 1,
                               bounds: destAnnotation.pdfCoordinates,
                               moduleId: transferState.destModuleId,

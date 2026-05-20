@@ -122,7 +122,7 @@ export async function migrateLocalAnnotationsToCloud(ctx) {
     return { migrated: false, pushed: 0, skipped: 0, error: cloudResult.error };
   }
   const cloudIds = new Set(
-    (cloudResult.rawRows || []).map((r) => r.highlight_id).filter(Boolean)
+    (cloudResult.rawRows || []).map((r) => r.annotation_id).filter(Boolean)
   );
   const cloudPdfImportKeys = new Set(
     (cloudResult.rawRows || []).map(getPdfImportKeyForRow).filter(Boolean)
@@ -156,7 +156,7 @@ export async function migrateLocalAnnotationsToCloud(ctx) {
   }
 
   const filteredCallouts = localCallouts.filter((c) => {
-    const id = c.id || c.highlightId;
+    const id = c.id || c.annotationId;
     return !id || !cloudIds.has(id);
   });
   totalToPush += filteredCallouts.length;

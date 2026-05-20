@@ -136,10 +136,10 @@ function extractLegacyCalloutFromAnnotationYMap(annoYMap) {
   const fabricObj = materializeAnnoFromYMap(annoYMap);
   const callout = fabricObj?.callout || fabricObj;
   if (!callout || typeof callout !== 'object') return null;
-  const id = annoYMap.get('id') || callout.id || callout.highlightId || fabricObj?.data?.id;
+  const id = annoYMap.get('id') || callout.id || callout.annotationId || fabricObj?.data?.id;
   const pageNumber = annoYMap.get('pageNumber') ?? callout.pageNumber ?? callout.page_number ?? 1;
   const out = { ...callout, id: callout.id || id, pageNumber };
-  if (id && out.highlightId == null) out.highlightId = id;
+  if (id && out.annotationId == null) out.annotationId = id;
   try {
     const metaYMap = annoYMap.get('meta');
     const authorId = metaYMap?.get?.('authorId');
@@ -255,7 +255,7 @@ const EMPTY_CLOUD_VERIFY_DELAY_MS = 1000;
 const RECENT_CLOUD_REFRESH_SKIP_MS = 15000;
 
 function getFabricAnnotationId(obj) {
-  return obj?.highlightId
+  return obj?.annotationId
     || obj?.id
     || obj?.data?.id
     || obj?.data?.annoId
@@ -800,7 +800,7 @@ export function useAnnotationCloudSync({
         upserted++;
       } catch (err) {
         console.warn('[CloudSync][hook] callout Y.Doc commit failed ' + JSON.stringify({
-          calloutId: callout?.id || callout?.highlightId || null,
+          calloutId: callout?.id || callout?.annotationId || null,
           error: err?.message || String(err),
         }));
       }
@@ -1024,7 +1024,7 @@ export function useAnnotationCloudSync({
               if (!annoYMap || typeof annoYMap.get !== 'function') return;
               const legacyCallout = extractLegacyCalloutFromAnnotationYMap(annoYMap);
               if (legacyCallout) {
-                const id = legacyCallout.id || legacyCallout.highlightId || annoId;
+                const id = legacyCallout.id || legacyCallout.annotationId || annoId;
                 if (id) calloutsFromYDocById.set(id, { ...legacyCallout, id });
                 return;
               }
@@ -1039,7 +1039,7 @@ export function useAnnotationCloudSync({
             yMapCallouts.forEach((calloutYMap, calloutId) => {
               const callout = materializeCalloutFromYMap(calloutYMap, calloutId);
               if (!callout) return;
-              const id = callout.id || callout.highlightId || calloutId;
+              const id = callout.id || callout.annotationId || calloutId;
               if (id) calloutsFromYDocById.set(id, { ...callout, id });
             });
           }
@@ -1939,13 +1939,13 @@ export function useAnnotationCloudSync({
         // user activity enqueues nothing.
         if (isCRDTEnabled()) {
           // Resolve the stable per-annotation id. Same precedence as the
-          // canonical serializeFabricObjectToRow: highlightId beats Fabric's
-          // own id, which beats the app metadata id. Without highlightId in
+          // canonical serializeFabricObjectToRow: annotationId beats Fabric's
+          // own id, which beats the app metadata id. Without annotationId in
           // this list, freshly-drawn pen strokes (which carry only
-          // fabricObj.highlightId until first push) fall through every check
+          // fabricObj.annotationId until first push) fall through every check
           // and get silently dropped from the queue — verified in the
           // 2026-04-29 UAT log: skippedNoId: 1, enqueuedCount: 0.
-          const idOf = (obj) => obj?.highlightId || obj?.id || obj?.data?.id || null;
+          const idOf = (obj) => obj?.annotationId || obj?.id || obj?.data?.id || null;
           const priorIds = new Set();
           for (const page of Object.values(priorByPage || {})) {
             if (!page || !Array.isArray(page.objects)) continue;
@@ -2166,14 +2166,14 @@ export function useAnnotationCloudSync({
       }));
       setSyncStatus({ stage: 'syncing', kind: 'callout' });
       const currentCalloutIds = new Set(
-        (pushCallouts || []).map((c) => c?.id || c?.highlightId).filter(Boolean)
+        (pushCallouts || []).map((c) => c?.id || c?.annotationId).filter(Boolean)
       );
 
       // Detect deleted callouts the same way as fabric annotations.
       const deletedCalloutIds = [];
       if (priorCallouts && priorCallouts !== pushCallouts) {
         for (const c of priorCallouts) {
-          const id = c?.id || c?.highlightId;
+          const id = c?.id || c?.annotationId;
           if (id && !currentCalloutIds.has(id)) deletedCalloutIds.push(id);
         }
       }
@@ -2462,23 +2462,23 @@ export function useAnnotationCloudSync({
     const unsub = subscribeToAllNonSurveyMarkerAnnotations(
       documentId,
       {
-        onFabricInsert: (fabricObject, pageNumber, highlightId) => {
+        onFabricInsert: (fabricObject, pageNumber, annotationId) => {
           setAnnotationsByPage((prev) => {
-            const next = insertOrUpdateOnPage(prev, pageNumber, fabricObject, highlightId);
+            const next = insertOrUpdateOnPage(prev, pageNumber, fabricObject, annotationId);
             lastByPageRef.current = next; // suppress local push echo
             return next;
           });
         },
-        onFabricUpdate: (fabricObject, pageNumber, highlightId) => {
+        onFabricUpdate: (fabricObject, pageNumber, annotationId) => {
           setAnnotationsByPage((prev) => {
-            const next = insertOrUpdateOnPage(prev, pageNumber, fabricObject, highlightId);
+            const next = insertOrUpdateOnPage(prev, pageNumber, fabricObject, annotationId);
             lastByPageRef.current = next; // suppress local push echo
             return next;
           });
         },
-        onFabricDelete: (highlightId) => {
+        onFabricDelete: (annotationId) => {
           setAnnotationsByPage((prev) => {
-            const next = removeFromAllPages(prev, highlightId);
+            const next = removeFromAllPages(prev, annotationId);
             lastByPageRef.current = next; // suppress local push echo
             return next;
           });
@@ -2497,9 +2497,9 @@ export function useAnnotationCloudSync({
             return next;
           });
         },
-        onCalloutDelete: (highlightId) => {
+        onCalloutDelete: (annotationId) => {
           setCallouts((prev) => {
-            const next = (prev || []).filter((c) => (c.id ?? c.highlightId) !== highlightId);
+            const next = (prev || []).filter((c) => (c.id ?? c.annotationId) !== annotationId);
             lastCalloutsRef.current = next; // suppress local push echo
             return next;
           });
@@ -2812,10 +2812,10 @@ export function useAnnotationCloudSync({
         return { success: !r.error };
       }
       if (kind === 'delete') {
-        const r = await deleteAnnotation(opts.documentId, opts.highlightId);
+        const r = await deleteAnnotation(opts.documentId, opts.annotationId);
         // Phase 30 — CRDT-side mirror after the queued legacy delete lands.
         if (r?.success) {
-          await fanOutCrdtForDeletedIds(opts.documentId, [opts.highlightId], { userId: opts.userId });
+          await fanOutCrdtForDeletedIds(opts.documentId, [opts.annotationId], { userId: opts.userId });
         }
         return { success: !!r.success };
       }
@@ -2905,9 +2905,9 @@ export function useAnnotationCloudSync({
         return { success: !r?.error };
       }
       if (kind === 'delete') {
-        const r = await deleteAnnotation(opts.documentId, opts.highlightId);
+        const r = await deleteAnnotation(opts.documentId, opts.annotationId);
         if (r?.success) {
-          await fanOutCrdtForDeletedIds(opts.documentId, [opts.highlightId], { userId: opts.userId });
+          await fanOutCrdtForDeletedIds(opts.documentId, [opts.annotationId], { userId: opts.userId });
         }
         return { success: !!r?.success };
       }
@@ -3175,19 +3175,19 @@ function mergeAnnotationsByPage(local, remote) {
 function mergeCallouts(local, remote) {
   if (!remote) return local;
   const out = [...(local || [])];
-  const localIds = new Set(out.map((c) => c.id || c.highlightId).filter(Boolean));
+  const localIds = new Set(out.map((c) => c.id || c.annotationId).filter(Boolean));
   for (const c of remote) {
-    const id = c.id || c.highlightId;
+    const id = c.id || c.annotationId;
     if (!id || !localIds.has(id)) out.push(c);
   }
   return out;
 }
 
-function insertOrUpdateOnPage(prev, pageNumber, fabricObject, highlightId) {
+function insertOrUpdateOnPage(prev, pageNumber, fabricObject, annotationId) {
   const pageKey = String(pageNumber);
   const out = { ...(prev || {}) };
   const page = out[pageKey] || { objects: [] };
-  const id = highlightId || fabricObject.id || fabricObject.data?.id;
+  const id = annotationId || fabricObject.id || fabricObject.data?.id;
   const idx = page.objects.findIndex((o) => (o.id || o.data?.id) === id);
   const nextObjects = idx >= 0
     ? page.objects.map((o, i) => (i === idx ? fabricObject : o))
@@ -3196,7 +3196,7 @@ function insertOrUpdateOnPage(prev, pageNumber, fabricObject, highlightId) {
   return out;
 }
 
-function removeFromAllPages(prev, highlightId) {
+function removeFromAllPages(prev, annotationId) {
   if (!prev) return prev;
   const out = {};
   for (const [pageKey, page] of Object.entries(prev)) {
@@ -3204,7 +3204,7 @@ function removeFromAllPages(prev, highlightId) {
       out[pageKey] = page;
       continue;
     }
-    const filtered = page.objects.filter((o) => (o.id || o.data?.id) !== highlightId);
+    const filtered = page.objects.filter((o) => (o.id || o.data?.id) !== annotationId);
     out[pageKey] = { ...page, objects: filtered };
   }
   return out;
@@ -3212,8 +3212,8 @@ function removeFromAllPages(prev, highlightId) {
 
 function upsertCalloutInList(prev, callout) {
   const list = Array.isArray(prev) ? prev : [];
-  const id = callout.id || callout.highlightId;
-  const idx = list.findIndex((c) => (c.id || c.highlightId) === id);
+  const id = callout.id || callout.annotationId;
+  const idx = list.findIndex((c) => (c.id || c.annotationId) === id);
   if (idx >= 0) {
     return list.map((c, i) => (i === idx ? callout : c));
   }

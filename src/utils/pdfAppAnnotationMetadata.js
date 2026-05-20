@@ -11,7 +11,7 @@ const DATA_ALLOWLIST = [
   'type',
   'tool',
   'annoId',
-  'highlightId',
+  'annotationId',
   'source',
   'sourceType',
   'isSurveyHighlight',
@@ -139,7 +139,7 @@ export function buildPdfAppAnnotationMetadata(fabricObj, item = {}) {
   if (fabricObj?.data?.type === 'counter') return null;
   if (item.type === 'callout' || fabricObj.type === 'callout' || fabricObj?.data?.type === 'callout') return null;
 
-  const id = item.id || fabricObj.id || fabricObj.data?.id || fabricObj.highlightId || null;
+  const id = item.id || fabricObj.id || fabricObj.data?.id || fabricObj.annotationId || null;
   const appType = resolveAppType(fabricObj, item);
   if (!id || !appType) return null;
 
@@ -263,7 +263,7 @@ export function applyPdfAppAnnotationMetadata(fabricObj, metadata) {
 
   // Accept both new ('survey-marker') and legacy ('surveyMarker') appType values.
   if (isSurveyMarkerType(metadata.appType)) {
-    out.highlightId = metadata.id;
+    out.annotationId = metadata.id;
     if (style?.fill !== undefined) out.fill = style.fill;
     if (style?.opacity !== undefined) out.opacity = style.opacity;
     if (style?.stroke !== undefined) out.stroke = style.stroke;
@@ -325,7 +325,7 @@ export function buildPdfAppLayerStateMetadata({
   const scopedAnnotationsByPage = {};
   Object.entries(annotationsByPage || {}).forEach(([pageKey, pageData]) => {
     const objects = Array.isArray(pageData?.objects) ? pageData.objects : [];
-    const scopedObjects = objects.filter((obj) => hasScopedLayer(obj) || obj?.highlightId);
+    const scopedObjects = objects.filter((obj) => hasScopedLayer(obj) || obj?.annotationId);
     if (scopedObjects.length > 0) {
       scopedAnnotationsByPage[pageKey] = {
         ...(pageData || {}),

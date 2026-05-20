@@ -36,7 +36,7 @@ import {
 // Custom properties to include in path serialization (matches PAL pattern)
 const CUSTOM_PROPS = [
   'id', 'strokeUniform', 'spaceId', 'moduleId', 'regionId',
-  'data', 'name', 'highlightId', 'needsEntity',
+  'data', 'name', 'annotationId', 'needsEntity',
   'globalCompositeOperation', 'layer',
   'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode',
   'tool',
@@ -53,7 +53,7 @@ function createAnnotationId(prefix = 'anno') {
 
 function ensureAnnotationId(fabricObject, prefix) {
   if (!fabricObject) return null;
-  const existing = fabricObject?.data?.id || fabricObject?.data?.annoId || fabricObject?.id || fabricObject?.highlightId;
+  const existing = fabricObject?.data?.id || fabricObject?.data?.annoId || fabricObject?.id || fabricObject?.annotationId;
   if (existing) {
     fabricObject.id = existing;
     if (!fabricObject.data || typeof fabricObject.data !== 'object') {
@@ -327,7 +327,7 @@ const FabricDrawingCanvas = memo(({
       // Assign metadata
       ensureAnnotationId(e.path, activeToolRef.current === 'highlighter' ? 'highlighter' : 'path');
       updateAnnotationGesture(drawDiagGestureRef.current, {
-        annotationId: e.path.id || e.path.highlightId || e.path.data?.id,
+        annotationId: e.path.id || e.path.annotationId || e.path.data?.id,
       });
       if (selectedModuleIdRef.current) {
         e.path.set({ moduleId: selectedModuleIdRef.current });

@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import { readSurveyMarkerLayer } from '../src/utils/pdfAppAnnotationMetadata.js';
 
 test('reads the new layer key', () => {
-  const parsed = { layers: { surveyMarkers: { a: { highlightId: 'a' } } } };
-  assert.deepEqual(readSurveyMarkerLayer(parsed), { a: { highlightId: 'a' } });
+  const parsed = { layers: { surveyMarkers: { a: { annotationId: 'a' } } } };
+  assert.deepEqual(readSurveyMarkerLayer(parsed), { a: { annotationId: 'a' } });
 });
 
 test('falls back to the legacy layer key', () => {
-  const parsed = { layers: { highlightAnnotations: { b: { highlightId: 'b' } } } };
-  assert.deepEqual(readSurveyMarkerLayer(parsed), { b: { highlightId: 'b' } });
+  const parsed = { layers: { highlightAnnotations: { b: { annotationId: 'b' } } } };
+  assert.deepEqual(readSurveyMarkerLayer(parsed), { b: { annotationId: 'b' } });
 });
 
 test('prefers the new key when both are present', () => {

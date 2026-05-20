@@ -99,7 +99,7 @@ fabric.IText.prototype.renderCursor = function(boundaries, ctx) {
 // Custom properties to include in object serialization (matches FabricDrawingCanvas/FabricEraserCanvas)
 const CUSTOM_PROPS = [
   'strokeUniform', 'spaceId', 'moduleId', 'regionId',
-  'data', 'name', 'highlightId', 'needsEntity',
+  'data', 'name', 'annotationId', 'needsEntity',
   'globalCompositeOperation', 'layer',
   'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode',
 ];
@@ -113,7 +113,7 @@ function createAnnotationId(prefix = 'anno') {
 
 function ensureJsonAnnotationId(json, prefix) {
   if (!json || typeof json !== 'object') return;
-  const existing = json?.data?.id || json?.data?.annoId || json?.id || json?.highlightId;
+  const existing = json?.data?.id || json?.data?.annoId || json?.id || json?.annotationId;
   if (!json.data || typeof json.data !== 'object') {
     json.data = {};
   }
@@ -2685,7 +2685,7 @@ const FabricEditCanvas = memo(({
         if (objData.moduleId) obj.moduleId = objData.moduleId;
         if (objData.regionId) obj.regionId = objData.regionId;
         if (objData.layer) obj.layer = objData.layer;
-        if (objData.highlightId) obj.highlightId = objData.highlightId;
+        if (objData.annotationId) obj.annotationId = objData.annotationId;
         if (objData.needsEntity) obj.needsEntity = objData.needsEntity;
         if (objData.data) obj.data = objData.data;
         if (objData.name) obj.name = objData.name;
@@ -2695,7 +2695,7 @@ const FabricEditCanvas = memo(({
         if (objData.globalCompositeOperation) {
           obj.set({ globalCompositeOperation: objData.globalCompositeOperation });
         }
-        if (obj.highlightId || obj.needsEntity) {
+        if (obj.annotationId || obj.needsEntity) {
           obj.set({ globalCompositeOperation: 'multiply' });
         }
 

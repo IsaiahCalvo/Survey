@@ -104,7 +104,7 @@ test(
     const ydoc = new Y.Doc();
     const yMapAnnotations = ydoc.getMap('annotations');
     const supabase = makeSupabaseMock([
-      { highlight_id: 'anno-A', user_id: 'alice', document_id: 'doc1', annotation_type: 'square',
+      { annotation_id: 'anno-A', user_id: 'alice', document_id: 'doc1', annotation_type: 'square',
         created_at: '2026-01-15T10:00:00Z', annotation_data: '{"left":0,"top":0}' },
     ]);
 
@@ -135,7 +135,7 @@ test(
     const ydoc = new Y.Doc();
     const yMapAnnotations = ydoc.getMap('annotations');
     const supabase = makeSupabaseMock([
-      { highlight_id: 'anno-A', user_id: 'alice', document_id: 'doc1', annotation_type: 'square',
+      { annotation_id: 'anno-A', user_id: 'alice', document_id: 'doc1', annotation_type: 'square',
         created_at: '2026-01-15T10:00:00Z', annotation_data: '{"left":0,"top":0}' },
     ]);
 

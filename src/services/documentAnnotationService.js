@@ -76,7 +76,7 @@ const classifyAnnotationSyncError = (error) => {
  * the legacy `surveyMarkers` state map with empty/null survey marker
  * fields. The legacy sync useEffect then immediately re-pushed the same
  * row with `annotation_type: 'survey-marker'` and `bounds: {}`, OVERWRITING
- * the ink stroke's annotation_data via the (document_id, highlight_id)
+ * the ink stroke's annotation_data via the (document_id, annotation_id)
  * upsert conflict resolution. The new cloud-sync hook on every device
  * filters its hydrate query by NON_HIGHLIGHT_TYPES, so the now-corrupted
  * row was excluded and devices showed empty pages on next refresh.
@@ -118,7 +118,7 @@ export async function getDocumentAnnotations(documentId) {
     totalRows: rows.length,
     fabricCarryingDropped: rows.length - filteredRows.length,
     keptCount: filteredRows.length,
-    keptIds: filteredRows.map((r) => r.highlight_id),
+    keptIds: filteredRows.map((r) => r.annotation_id),
   });
   return { data: filteredRows, error: null };
 }
@@ -130,7 +130,7 @@ export async function upsertAnnotation(annotation) {
   const { data, error } = await supabase
     .from('document_annotations')
     .upsert(annotation, {
-      onConflict: 'document_id,highlight_id',
+      onConflict: 'document_id,annotation_id',
       ignoreDuplicates: false
     })
     .select()
@@ -165,7 +165,7 @@ export async function upsertAnnotations(annotations) {
     const result = await supabase
       .from('document_annotations')
       .upsert(batch, {
-        onConflict: 'document_id,highlight_id',
+        onConflict: 'document_id,annotation_id',
         ignoreDuplicates: false
       })
       .select();
@@ -200,14 +200,14 @@ export async function upsertAnnotations(annotations) {
 }
 
 /**
- * Delete an annotation by highlight_id
+ * Delete an annotation by annotation_id
  */
-export async function deleteAnnotation(documentId, highlightId) {
+export async function deleteAnnotation(documentId, annotationId) {
   const { error } = await supabase
     .from('document_annotations')
     .delete()
     .eq('document_id', documentId)
-    .eq('highlight_id', highlightId);
+    .eq('annotation_id', annotationId);
 
   if (error) {
     console.error('[AnnotationSync] Error deleting annotation:', error);
@@ -218,10 +218,10 @@ export async function deleteAnnotation(documentId, highlightId) {
 }
 
 /**
- * Delete multiple annotations by highlight_ids
+ * Delete multiple annotations by annotation_ids
  */
-export async function deleteAnnotations(documentId, highlightIds) {
-  if (!highlightIds || highlightIds.length === 0) {
+export async function deleteAnnotations(documentId, annotationIds) {
+  if (!annotationIds || annotationIds.length === 0) {
     return { success: true, error: null };
   }
 
@@ -229,7 +229,7 @@ export async function deleteAnnotations(documentId, highlightIds) {
     .from('document_annotations')
     .delete()
     .eq('document_id', documentId)
-    .in('highlight_id', highlightIds);
+    .in('annotation_id', annotationIds);
 
   if (error) {
     console.error('[AnnotationSync] Error deleting annotations:', error);
@@ -296,11 +296,11 @@ export async function syncAnnotationsToSupabase(documentId, userId, surveyMarker
     }
   }
 
-  const annotations = Object.entries(surveyMarkers || {}).map(([highlightId, annotation]) =>
+  const annotations = Object.entries(surveyMarkers || {}).map(([annotationId, annotation]) =>
     buildSurveyMarkerRow({
       documentId,
       userId,
-      highlightId,
+      annotationId,
       annotation,
     })
   );
@@ -345,8 +345,8 @@ export async function loadAnnotationsFromSupabase(documentId) {
   const surveyMarkers = {};
   for (const annotation of data) {
     const localAnnotation = mapSurveyMarkerRowToLocalAnnotation(annotation);
-    if (!localAnnotation?.highlightId) continue;
-    surveyMarkers[localAnnotation.highlightId] = localAnnotation;
+    if (!localAnnotation?.annotationId) continue;
+    surveyMarkers[localAnnotation.annotationId] = localAnnotation;
   }
 
   return { surveyMarkers, error: null };
@@ -417,7 +417,7 @@ export function subscribeToDocumentAnnotations(documentId, callbacks = {}) {
         if (payload.old?.annotation_type && !isSurveyMarkerType(payload.old.annotation_type)) return;
         if (isLegacyFabricSurveyMarkerRow(payload.old)) return;
         if (onDelete) {
-          onDelete(payload.old.highlight_id, convertToLocalFormat(payload.old));
+          onDelete(payload.old.annotation_id, convertToLocalFormat(payload.old));
         }
       }
     )

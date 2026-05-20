@@ -9,7 +9,7 @@ const getSurveyMarkerScope = (annotation) => getAnnotationVisibilityScope({
 export function buildSurveyMarkerRow({
   documentId,
   userId,
-  highlightId,
+  annotationId,
   annotation = {},
 }) {
   const regionId = annotation.regionId ?? null;
@@ -18,7 +18,7 @@ export function buildSurveyMarkerRow({
   return {
     document_id: documentId,
     user_id: userId,
-    highlight_id: highlightId,
+    annotation_id: annotationId,
     annotation_type: SURVEY_MARKER_TYPE,
     page_number: annotation.pageNumber || 1,
     bounds: annotation.bounds || {},
@@ -58,7 +58,7 @@ export function mapSurveyMarkerRowToLocalAnnotation(row) {
   const regionId = annotationData.regionId ?? null;
 
   return {
-    highlightId: row.highlight_id,
+    annotationId: row.annotation_id,
     pageNumber: row.page_number,
     bounds: row.bounds,
     categoryId: row.category_id,

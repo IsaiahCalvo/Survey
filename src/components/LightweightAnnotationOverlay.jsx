@@ -71,7 +71,7 @@ const LightweightAnnotationOverlay = memo(({
     for (let index = 0; index < objects.length; index += 1) {
       const object = objects[index];
       if (!object) continue;
-      if (object.highlightId) continue;
+      if (object.annotationId) continue;
       if (previews.length >= MAX_PREVIEW_OBJECTS) break;
       if (!isAnnotationVisibleInContext({
         annotation: object,
@@ -134,7 +134,7 @@ const LightweightAnnotationOverlay = memo(({
       const objScaleY = toNumber(object.scaleY, 1);
 
       previews.push({
-        key: object.id || object.highlightId || object.pdfAnnotationId || `obj-${index}`,
+        key: object.id || object.annotationId || object.pdfAnnotationId || `obj-${index}`,
         left: bounds.left,
         top: bounds.top,
         width: bounds.width,
