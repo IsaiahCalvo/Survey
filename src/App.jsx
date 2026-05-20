@@ -20842,7 +20842,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
             const categorySurveyMarkers = [];
 
             Object.entries(surveyMarkers).forEach(([highlightId, surveyMarker]) => {
-              const surveyMarkerModuleId = surveyMarker.moduleId || surveyMarker.spaceId; // Support legacy spaceId
+              const surveyMarkerModuleId = surveyMarker.moduleId;
 
               // Use loose equality (==) to handle potential string/number mismatches
               if (surveyMarkerModuleId == moduleId && surveyMarker.categoryId == category.id) {
@@ -22438,7 +22438,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         itemsToDelete.forEach(({ surveyMarker, item }) => {
           Object.values(updated).forEach(ann => {
             const annModuleId = ann.spaceId || ann.moduleId;
-            const surveyMarkerModuleId = surveyMarker.spaceId || surveyMarker.moduleId;
+            const surveyMarkerModuleId = surveyMarker.moduleId;
             if (ann.itemId === item.itemId && annModuleId === surveyMarkerModuleId) {
               if (surveyMarker.bounds && ann.pdfCoordinates && boundsMatch(ann.pdfCoordinates, surveyMarker.bounds)) {
                 delete updated[ann.annotationId];
@@ -22876,7 +22876,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         itemsToDelete.forEach(({ surveyMarker, item }) => {
           Object.values(updated).forEach(ann => {
             const annModuleId = ann.spaceId || ann.moduleId;
-            const surveyMarkerModuleId = surveyMarker.spaceId || surveyMarker.moduleId;
+            const surveyMarkerModuleId = surveyMarker.moduleId;
             if (ann.itemId === item.itemId && annModuleId === surveyMarkerModuleId) {
               if (surveyMarker.bounds && ann.pdfCoordinates && boundsMatch(ann.pdfCoordinates, surveyMarker.bounds)) {
                 delete updated[ann.annotationId];
@@ -24141,7 +24141,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
             bounds: annotation.bounds,
             categoryId: annotation.categoryId,
             moduleId: annotation.moduleId,
-            spaceId: annotation.spaceId,
             regionId: annotation.regionId ?? null,
             name: annotation.name,
             notes: annotation.notes,
@@ -24174,7 +24173,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
             bounds: annotation.bounds,
             categoryId: annotation.categoryId,
             moduleId: annotation.moduleId,
-            spaceId: annotation.spaceId,
             regionId: annotation.regionId ?? null,
             name: annotation.name,
             notes: annotation.notes,
@@ -30834,7 +30832,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     const surveyMarker = surveyMarkers[highlightId];
     if (!surveyMarker) return;
 
-    const moduleId = surveyMarker.moduleId || surveyMarker.spaceId;
+    const moduleId = surveyMarker.moduleId;
 
     // 1. Switch to module
     setSelectedModuleId(moduleId);
@@ -31186,7 +31184,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     } else {
       // Fall back to bounds matching if no highlightId
       Object.entries(surveyMarkers).forEach(([id, surveyMarker]) => {
-        const surveyMarkerModuleId = surveyMarker.moduleId || surveyMarker.spaceId; // Support legacy spaceId
+        const surveyMarkerModuleId = surveyMarker.moduleId;
         if (surveyMarkerModuleId === selectedModuleId &&
           surveyMarker.pageNumber === pageNumber &&
           boundsMatch(surveyMarker.bounds, bounds)) {
@@ -31276,7 +31274,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         if (!selectedTemplate) return;
 
         // Find associated item by matching name and category
-        const categoryName = getCategoryName(selectedTemplate, surveyMarker.spaceId || surveyMarker.moduleId, surveyMarker.categoryId);
+        const categoryName = getCategoryName(selectedTemplate, surveyMarker.moduleId, surveyMarker.categoryId);
         const matchingItem = Object.values(items).find(item =>
           item.name === surveyMarker.name &&
           item.itemType === categoryName
@@ -31287,8 +31285,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
           setAnnotations(prev => {
             const updated = { ...prev };
             Object.values(updated).forEach(ann => {
-              const annSpaceId = ann.spaceId || ann.moduleId; // Support legacy spaceId
-              const surveyMarkerSpaceId = surveyMarker.spaceId || surveyMarker.moduleId; // Support legacy spaceId
+              const annSpaceId = ann.spaceId || ann.moduleId;
+              const surveyMarkerSpaceId = surveyMarker.moduleId;
               if (ann.itemId === matchingItem.itemId && annSpaceId === surveyMarkerSpaceId) {
                 // Also check if coordinates match
                 if (ann.pdfCoordinates && boundsMatch(ann.pdfCoordinates, bounds)) {
@@ -31300,7 +31298,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
           });
 
           // Check if item has data in other modules - if not, delete the item
-          const surveyMarkerModuleId = surveyMarker.moduleId || surveyMarker.spaceId; // Support legacy spaceId
+          const surveyMarkerModuleId = surveyMarker.moduleId;
           const moduleName = getModuleName(selectedTemplate, surveyMarkerModuleId);
           const dataKey = getModuleDataKey(moduleName);
           const item = items[matchingItem.itemId];
@@ -31524,8 +31522,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
             pageNumber,
             bounds,
             moduleId: effectiveModuleId,
-            regionId: pageRegionId,
-            spaceId: activeSpaceId ?? selectedSpaceId // Ensure spaceId is set
+            regionId: pageRegionId
           }
         };
       });
@@ -32146,7 +32143,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       if (surveyMarkers && Object.keys(surveyMarkers).length > 0) {
         Object.entries(surveyMarkers).forEach(([highlightId, surveyMarker]) => {
           // Check if this survey marker belongs to the current module
-          const surveyMarkerModuleId = surveyMarker.moduleId || surveyMarker.spaceId; // Support legacy spaceId
+          const surveyMarkerModuleId = surveyMarker.moduleId;
           if (surveyMarkerModuleId !== selectedModuleId) {
             return; // Skip survey markers from other modules
           }
@@ -38323,7 +38320,7 @@ ${pageBlocks}
                   let sourceModuleId = null;
                   if (selectedSurveyMarkerIds.length > 0) {
                     const firstSurveyMarker = surveyMarkers[selectedSurveyMarkerIds[0]];
-                    const surveyMarkerModuleId = firstSurveyMarker?.moduleId || firstSurveyMarker?.spaceId; // Support legacy spaceId
+                    const surveyMarkerModuleId = firstSurveyMarker?.moduleId;
                     sourceModuleId = surveyMarkerModuleId || selectedModuleId;
                   } else {
                     sourceModuleId = selectedModuleId;
@@ -38365,7 +38362,7 @@ ${pageBlocks}
                               const surveyMarkersToCopy = [];
                               selectedCatIds.forEach(catId => {
                                 const surveyMarkersInCategory = Object.entries(surveyMarkers).filter(([_, h]) => {
-                                  const hModuleId = h.moduleId || h.spaceId; // Support legacy spaceId
+                                  const hModuleId = h.moduleId;
                                   return hModuleId === selectedModuleId && h.categoryId === catId;
                                 }
                                 );
@@ -38395,7 +38392,7 @@ ${pageBlocks}
                                 const surveyMarker = surveyMarkers[highlightId];
                                 if (!surveyMarker || !surveyMarker.categoryId) return;
 
-                                const categoryName = getCategoryName(sourceTemplate, surveyMarker.spaceId, surveyMarker.categoryId);
+                                const categoryName = getCategoryName(sourceTemplate, surveyMarker.moduleId, surveyMarker.categoryId);
                                 const matchingItem = Object.values(items).find(item =>
                                   item.name === surveyMarker.name &&
                                   item.itemType === categoryName
@@ -38530,7 +38527,7 @@ ${pageBlocks}
                                 const destModule = ((template.modules || template.spaces) || []).find(m => m.id === module.id);
                                 const missingCategories = [];
                                 legacySurveyMarkers.forEach(h => {
-                                  const hModuleId = h.moduleId || h.spaceId; // Support legacy spaceId
+                                  const hModuleId = h.moduleId;
                                   const sourceCategoryName = getCategoryName(sourceTemplate, hModuleId, h.categoryId);
                                   const destCategory = destModule?.categories?.find(c => c.name === sourceCategoryName);
                                   if (!destCategory && sourceCategoryName && !missingCategories.includes(sourceCategoryName)) {
@@ -38545,7 +38542,7 @@ ${pageBlocks}
 
                                 const newSurveyMarkers = {};
                                 legacySurveyMarkers.forEach(h => {
-                                  const hModuleId = h.moduleId || h.spaceId; // Support legacy spaceId
+                                  const hModuleId = h.moduleId;
                                   const sourceCategoryName = getCategoryName(sourceTemplate, hModuleId, h.categoryId);
                                   const destCategory = destModule?.categories?.find(c => c.name === sourceCategoryName);
 
@@ -38614,7 +38611,7 @@ ${pageBlocks}
                                 }
 
                                 // Find corresponding item by matching name and category (same logic as transfer)
-                                const categoryName = getCategoryName(sourceTemplate, surveyMarker.spaceId, surveyMarker.categoryId);
+                                const categoryName = getCategoryName(sourceTemplate, surveyMarker.moduleId, surveyMarker.categoryId);
 
                                 // Find items that match name and category
                                 const matchingItem = Object.values(items).find(item =>
@@ -38628,7 +38625,7 @@ ${pageBlocks}
                                   // Try to find annotation - don't require displayType to be 'surveyMarker'
                                   const matchingAnnotation = Object.values(annotations).find(ann =>
                                     ann.itemId === matchingItem.itemId &&
-                                    ann.spaceId === surveyMarker.spaceId
+                                    ann.spaceId === surveyMarker.moduleId
                                   );
 
 
@@ -38732,7 +38729,7 @@ ${pageBlocks}
                                         id: highlightId,
                                         pageNumber: pageNum,
                                         bounds: bounds,
-                                        spaceId: space.id,
+                                        moduleId: space.id,
                                         regionId: sourceSurveyMarker?.regionId ?? null,
                                         categoryId: destCategory?.id || null,
                                         name: item.name || sourceSurveyMarker?.name || 'Untitled Item',
@@ -38795,7 +38792,7 @@ ${pageBlocks}
                                 const destSpace = template.spaces.find(s => s.id === space.id);
                                 const missingCategories = [];
                                 legacySurveyMarkers.forEach(h => {
-                                  const sourceCategoryName = getCategoryName(sourceTemplate, h.spaceId, h.categoryId);
+                                  const sourceCategoryName = getCategoryName(sourceTemplate, h.moduleId, h.categoryId);
                                   const destCategory = destSpace?.categories?.find(c => c.name === sourceCategoryName);
                                   if (!destCategory && sourceCategoryName && !missingCategories.includes(sourceCategoryName)) {
                                     missingCategories.push(sourceCategoryName);
@@ -38811,14 +38808,14 @@ ${pageBlocks}
                                 const newSurveyMarkers = {};
                                 legacySurveyMarkers.forEach(h => {
                                   // Find matching category in destination space by name
-                                  const sourceCategoryName = getCategoryName(sourceTemplate, h.spaceId, h.categoryId);
+                                  const sourceCategoryName = getCategoryName(sourceTemplate, h.moduleId, h.categoryId);
                                   const destCategory = destSpace?.categories?.find(c => c.name === sourceCategoryName);
 
                                   const newId = `surveyMarker-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
                                   newSurveyMarkers[newId] = {
                                     ...h,
                                     id: newId,
-                                    spaceId: space.id,
+                                    moduleId: space.id,
                                     categoryId: destCategory?.id || null
                                   };
 
@@ -39284,7 +39281,7 @@ ${pageBlocks}
                       // Get surveyMarkers for this module, grouped by category
                       const surveyMarkersByCategory = {};
                       Object.entries(surveyMarkers).forEach(([highlightId, surveyMarker]) => {
-                        const surveyMarkerModuleId = surveyMarker.moduleId || surveyMarker.spaceId; // Support legacy spaceId
+                        const surveyMarkerModuleId = surveyMarker.moduleId;
                         if (surveyMarkerModuleId === selectedModuleId && surveyMarker.categoryId) {
                           if (!surveyMarkersByCategory[surveyMarker.categoryId]) {
                             surveyMarkersByCategory[surveyMarker.categoryId] = [];
@@ -39388,7 +39385,7 @@ ${pageBlocks}
                                 // IMPORTANT: Use the key from surveyMarkers as the authoritative ID
                                 const allSurveyMarkerIds = Object.entries(surveyMarkers)
                                   .filter(([highlightId, h]) => {
-                                    const hModuleId = h.moduleId || h.spaceId; // Support legacy spaceId
+                                    const hModuleId = h.moduleId;
                                     return hModuleId === selectedModuleId;
                                   })
                                   .map(([highlightId, h]) => highlightId);  // Use the key, not h.id
@@ -39582,7 +39579,7 @@ ${pageBlocks}
                                   surveyMarkersToDelete.forEach(surveyMarker => {
 
                                     // Find associated item by matching name and category
-                                    const categoryName = getCategoryName(selectedTemplate, surveyMarker.spaceId, surveyMarker.categoryId);
+                                    const categoryName = getCategoryName(selectedTemplate, surveyMarker.moduleId, surveyMarker.categoryId);
                                     const matchingItem = Object.values(items).find(item =>
                                       item.name === surveyMarker.name &&
                                       item.itemType === categoryName
@@ -39593,7 +39590,7 @@ ${pageBlocks}
                                       setAnnotations(prev => {
                                         const updated = { ...prev };
                                         Object.values(updated).forEach(ann => {
-                                          if (ann.itemId === matchingItem.itemId && ann.spaceId === surveyMarker.spaceId) {
+                                          if (ann.itemId === matchingItem.itemId && ann.spaceId === surveyMarker.moduleId) {
                                             delete updated[ann.annotationId];
                                           }
                                         });
@@ -39601,7 +39598,7 @@ ${pageBlocks}
                                       });
 
                                       // Check if item has data in other modules - if not, delete the item
-                                      const surveyMarkerModuleId = surveyMarker.moduleId || surveyMarker.spaceId; // Support legacy spaceId
+                                      const surveyMarkerModuleId = surveyMarker.moduleId;
                                       const moduleName = getModuleName(selectedTemplate, surveyMarkerModuleId);
                                       const dataKey = getModuleDataKey(moduleName);
                                       const item = items[matchingItem.itemId];
@@ -39815,7 +39812,7 @@ ${pageBlocks}
                                         selectedCatIds.forEach(catId => {
                                           // Delete all surveyMarkers in this category
                                           const surveyMarkersInCategory = Object.entries(surveyMarkers).filter(([_, h]) => {
-                                            const hModuleId = h.moduleId || h.spaceId; // Support legacy spaceId
+                                            const hModuleId = h.moduleId;
                                             return hModuleId === selectedModuleId && h.categoryId === catId;
                                           });
 
@@ -43080,7 +43077,7 @@ ${pageBlocks}
                               }
 
                               // Try to find corresponding item by matching name and category (same logic as migration)
-                              const categoryName = getCategoryName(selectedTemplate, surveyMarker.spaceId, surveyMarker.categoryId);
+                              const categoryName = getCategoryName(selectedTemplate, surveyMarker.moduleId, surveyMarker.categoryId);
 
                               // Find items that match name and category
                               const matchingItem = Object.values(items).find(item =>
@@ -43094,7 +43091,7 @@ ${pageBlocks}
                                 // Try to find annotation - don't require displayType to be 'surveyMarker'
                                 const matchingAnnotation = Object.values(annotations).find(ann =>
                                   ann.itemId === matchingItem.itemId &&
-                                  ann.spaceId === surveyMarker.spaceId
+                                  ann.spaceId === surveyMarker.moduleId
                                 );
 
 
@@ -43174,7 +43171,7 @@ ${pageBlocks}
                                   let sourceSurveyMarker = null;
                                   if (sourceAnnotation && sourceAnnotation.pdfCoordinates) {
                                     sourceSurveyMarker = Object.values(surveyMarkers).find(h => {
-                                      const hModuleId = h.moduleId || h.spaceId; // Support legacy spaceId
+                                      const hModuleId = h.moduleId;
                                       return hModuleId === transferState.sourceModuleId &&
                                         h.bounds &&
                                         Math.abs((h.bounds.x || 0) - (sourceAnnotation.pdfCoordinates.x || 0)) < 1 &&
@@ -43186,7 +43183,7 @@ ${pageBlocks}
                                   if (!sourceSurveyMarker && transferState.items.length > 0) {
                                     const highlightId = transferState.items.find(id => {
                                       const h = surveyMarkers[id];
-                                      const hModuleId = h?.moduleId || h?.spaceId; // Support legacy spaceId
+                                      const hModuleId = h?.moduleId;
                                       return h && hModuleId === transferState.sourceModuleId;
                                     });
                                     if (highlightId) {
@@ -43217,7 +43214,7 @@ ${pageBlocks}
                                       id: highlightId,
                                       pageNumber: sourceSurveyMarker?.pageNumber || 1,
                                       bounds: bounds,
-                                      spaceId: space.id,
+                                      moduleId: module.id,
                                       regionId: sourceSurveyMarker?.regionId ?? null,
                                       categoryId: destCategory?.id || null,
                                       name: item.name || sourceSurveyMarker?.name || 'Untitled Item',
@@ -43609,7 +43606,7 @@ ${pageBlocks}
                     let moduleName = '';
 
                     if (selectedTemplate) {
-                      const moduleId = surveyMarker.moduleId || surveyMarker.spaceId;
+                      const moduleId = surveyMarker.moduleId;
                       const module = (selectedTemplate.modules || selectedTemplate.spaces || []).find(m => m.id === moduleId);
                       if (module) {
                         moduleName = module.name;
@@ -43650,7 +43647,7 @@ ${pageBlocks}
                       key={surveyMarker.id}
                       onClick={() => {
                         // Navigation Logic
-                        const moduleId = surveyMarker.moduleId || surveyMarker.spaceId;
+                        const moduleId = surveyMarker.moduleId;
 
                         // 1. Switch to module
                         setSelectedModuleId(moduleId);

@@ -24,7 +24,9 @@ export function buildSurveyMarkerRow({
     bounds: annotation.bounds || {},
     category_id: annotation.categoryId || null,
     module_id: annotation.moduleId || null,
-    space_id: annotation.spaceId || null,
+    // Survey Markers belong to a Module + optional Region only. They never
+    // carry a standalone space_id; that column stays null for this type.
+    space_id: null,
     name: annotation.name || null,
     notes: annotation.notes || annotation.note || null,
     entity_id: annotation.entityId || null,
@@ -61,7 +63,6 @@ export function mapSurveyMarkerRowToLocalAnnotation(row) {
     bounds: row.bounds,
     categoryId: row.category_id,
     moduleId: row.module_id,
-    spaceId: row.space_id,
     regionId,
     name: row.name,
     notes: row.notes,

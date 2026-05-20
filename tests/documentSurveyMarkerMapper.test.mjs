@@ -25,7 +25,9 @@ describe('document survey marker mapper', () => {
     assert.equal(row.document_id, 'doc-1');
     assert.equal(row.highlight_id, 'highlight-1');
     assert.equal(row.module_id, 'module-1');
-    assert.equal(row.space_id, 'space-1');
+    // A Survey Marker never persists a standalone space_id, even if one is
+    // present on the in-memory annotation.
+    assert.equal(row.space_id, null);
     assert.equal(row.annotation_data.regionId, 'region-1');
     assert.equal(row.annotation_data.scope, 'survey-region');
     assert.equal(row.annotation_type, 'survey-marker');
@@ -57,7 +59,9 @@ describe('document survey marker mapper', () => {
 
     assert.equal(local.highlightId, 'highlight-1');
     assert.equal(local.moduleId, 'module-1');
-    assert.equal(local.spaceId, 'space-1');
+    // A stray space_id on the row is ignored — Survey Markers are scoped by
+    // module + region only.
+    assert.equal(local.spaceId, undefined);
     assert.equal(local.regionId, 'region-1');
   });
 });
