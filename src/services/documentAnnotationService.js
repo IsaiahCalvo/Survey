@@ -361,7 +361,7 @@ export async function loadAnnotationsFromSupabase(documentId) {
  * @returns cleanup function to unsubscribe
  */
 export function subscribeToDocumentAnnotations(documentId, callbacks = {}) {
-  const { onInsert, onUpdate, onDelete, onError } = callbacks;
+  const { onInsert, onUpdate, onDelete, onError, onSubscribed } = callbacks;
 
   const channel = supabase
     .channel(`document-annotations:${documentId}`)
@@ -425,6 +425,22 @@ export function subscribeToDocumentAnnotations(documentId, callbacks = {}) {
       if (err) {
         console.error('[AnnotationSync] Subscription error:', err);
         if (onError) onError(err);
+      }
+      // KAL-24 — Closes the survey-marker open-document race window.
+      // The initial hydrate (loadAnnotationsFromSupabase) returns rows up
+      // to T1; the subscription only forwards events that arrive after it
+      // becomes live at T2. Survey markers inserted on another client
+      // between T1 and T2 were silently dropped on this receiver until a
+      // manual refresh. Firing onSubscribed when the channel becomes live
+      // lets the App-side caller re-fetch and merge any rows that landed
+      // in the gap. Mirrors the same pattern in annotationCloudSync.js
+      // (the non-survey path already had this; only the survey marker
+      // path was missing it).
+      if (status === 'SUBSCRIBED' && typeof onSubscribed === 'function') {
+        try { onSubscribed(); }
+        catch (cbErr) {
+          console.warn('[AnnotationSync] onSubscribed callback threw: ' + (cbErr?.message || String(cbErr)));
+        }
       }
     });
 

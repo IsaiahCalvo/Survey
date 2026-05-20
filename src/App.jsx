@@ -24202,6 +24202,55 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       },
       onError: (error) => {
         console.error('[DocumentSync] Subscription error:', error);
+      },
+      // KAL-24 — Survey marker catch-up rehydrate. Fires once the realtime
+      // channel becomes live, re-runs the initial hydrate query, and adds
+      // any markers that landed on Supabase during the hydrate-vs-subscribe
+      // gap. Insert-only merge: existing local entries are preserved (they
+      // may carry unflushed local edits that the catch-up snapshot would
+      // otherwise stomp). Updates/deletes inside the same gap are not
+      // resurrected here — the realtime channel and focus rehydrate cover
+      // those naturally. Closes the "Mac marks invisible on Windows until
+      // refresh" report by ensuring any source-side inserts in that ~100-
+      // 500 ms window are visible after the open settles.
+      onSubscribed: () => {
+        loadAnnotationsFromSupabase(documentId)
+          .then(({ surveyMarkers: catchUpMarkers, error }) => {
+            if (error) {
+              console.warn('[DocumentSync] survey-marker catch-up rehydrate failed: ' + (error?.message || String(error)));
+              return;
+            }
+            const incoming = catchUpMarkers || {};
+            const incomingIds = Object.keys(incoming);
+            if (incomingIds.length === 0) return;
+            // Pure functional updater: no side effects inside; React may
+            // invoke this twice in StrictMode. Logging happens after.
+            let addedSnapshot = 0;
+            setSurveyMarkers(prev => {
+              const prevIds = new Set(Object.keys(prev || {}));
+              const next = { ...(prev || {}) };
+              let added = 0;
+              for (const id of incomingIds) {
+                if (!prevIds.has(id)) {
+                  next[id] = incoming[id];
+                  added += 1;
+                }
+              }
+              addedSnapshot = added;
+              if (added === 0) return prev;
+              return next;
+            });
+            if (addedSnapshot > 0) {
+              console.log('[DocumentSync] survey-marker catch-up rehydrate added missed inserts ' + JSON.stringify({
+                documentId,
+                incomingCount: incomingIds.length,
+                addedCount: addedSnapshot
+              }));
+            }
+          })
+          .catch(err => {
+            console.warn('[DocumentSync] survey-marker catch-up rehydrate threw: ' + (err?.message || String(err)));
+          });
       }
     });
 
