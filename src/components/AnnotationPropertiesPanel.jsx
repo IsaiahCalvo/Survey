@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { createPortal } from 'react-dom';
 import CompactColorPicker from './CompactColorPicker';
 import { resolvePropertiesPanelShape, computeBorderStylePatch } from './propertiesPanelShape';
+import { ARROWHEAD_STYLES, ARROWHEAD_STYLE_LABELS } from './Callout/types';
 
 // UX: right-click → context menu → Properties opens this panel in place of
 // the context menu. Replaces the deprecated floating mini-toolbar that used
@@ -212,6 +213,13 @@ const AnnotationPropertiesPanel = ({
   // cloud branch stays active even after the user picks solid / dashed.
   const handleBorderStyleChange = (nextStyle) => {
     onUpdate(computeBorderStylePatch(annotation, nextStyle));
+  };
+  // KAL-33: arrowhead style writes to annotation.data.arrowheadStyle — the
+  // canonical key honored by lineRenderHelpers (explicit override) and the
+  // SVG renderer (SVGAnnotationLayer + svgAnnotationRenderers). Preserve any
+  // other data.* fields so we don't strip midpoint / pdfAnnotationId / etc.
+  const handleArrowheadStyleChange = (nextStyle) => {
+    onUpdate({ data: { ...(annotation?.data ?? {}), arrowheadStyle: nextStyle } });
   };
   // UX 2026-04-21: bump size stepper for cloud shapes. Clamps to 1..4 to
   // match the renderer's bump-count heuristic (see buildCloudPathCommands).
@@ -487,7 +495,7 @@ const AnnotationPropertiesPanel = ({
           {/* UX 2026-04-21: open shapes (line / arrow / polyline) get the
               two-option picker only. Cloud style is reserved for closed
               boundary shapes (rect / polygon) per PDF /BE semantics. */}
-          <section style={{ marginBottom: 4 }}>
+          <section style={{ marginBottom: targetKind === 'arrow' ? 14 : 4 }}>
             {renderLabel('Border Style')}
             {renderDropdownRow(
               [
@@ -498,6 +506,27 @@ const AnnotationPropertiesPanel = ({
               handleBorderStyleChange,
             )}
           </section>
+          {/* KAL-33: arrowhead style picker for arrows. Six styles match the
+              renderer dispatch in lineRenderHelpers / svgAnnotationRenderers.
+              Lines and polylines keep their tail-only rendering and do not
+              expose an arrowhead control. */}
+          {targetKind === 'arrow' && (
+            <section style={{ marginBottom: 4 }}>
+              {renderLabel('Arrowhead')}
+              {renderDropdownRow(
+                [
+                  { value: ARROWHEAD_STYLES.SOLID_TRIANGLE, label: ARROWHEAD_STYLE_LABELS[ARROWHEAD_STYLES.SOLID_TRIANGLE] },
+                  { value: ARROWHEAD_STYLES.OPEN_TRIANGLE, label: ARROWHEAD_STYLE_LABELS[ARROWHEAD_STYLES.OPEN_TRIANGLE] },
+                  { value: ARROWHEAD_STYLES.V_SHAPE, label: ARROWHEAD_STYLE_LABELS[ARROWHEAD_STYLES.V_SHAPE] },
+                  { value: ARROWHEAD_STYLES.OPEN_CIRCLE, label: ARROWHEAD_STYLE_LABELS[ARROWHEAD_STYLES.OPEN_CIRCLE] },
+                  { value: ARROWHEAD_STYLES.HORIZONTAL_LINE, label: ARROWHEAD_STYLE_LABELS[ARROWHEAD_STYLES.HORIZONTAL_LINE] },
+                  { value: ARROWHEAD_STYLES.NONE, label: ARROWHEAD_STYLE_LABELS[ARROWHEAD_STYLES.NONE] },
+                ],
+                annotation?.data?.arrowheadStyle ?? ARROWHEAD_STYLES.SOLID_TRIANGLE,
+                handleArrowheadStyleChange,
+              )}
+            </section>
+          )}
         </>
       );
     }
