@@ -10169,6 +10169,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   const [printPanelOpen, setPrintPanelOpen] = useState(false);
   const [printPanelPrinters, setPrintPanelPrinters] = useState([]);
   const [isLoadingPDF, setIsLoadingPDF] = useState(true);
+  // KAL-21: in-app PDF load failure state — replaces browser alerts when the
+  // pdf-lib rewrite/retry path or Syncfusion render path can't recover.
+  const [pdfLoadError, setPdfLoadError] = useState(null);
+  const [loadRetryToken, setLoadRetryToken] = useState(0);
   const syncfusionPageContainersStateRef = useRef({});
   const syncfusionCommittedPageScalesRef = useRef({});
   const syncfusionInteractionActiveRef = useRef(false);
@@ -14885,6 +14889,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     setSyncfusionCommittedPageScales({});
     finishSyncfusionInteractionWindow();
     pendingRendererRestoreRef.current = null;
+    // KAL-21: surface unrecoverable Syncfusion render failures in the in-app
+    // failure panel. SyncfusionPDFContainer already performs one sanitize/retry
+    // before calling this handler, so by here the document truly can't render.
+    setIsLoadingPDF(false);
+    setPdfLoadError({
+      kind: 'syncfusion',
+      message: detail?.message || 'The PDF rendered as unreadable.',
+    });
   }, [finishSyncfusionInteractionWindow]);
 
   const readSyncfusionPageVisitState = useCallback((pageNumber) => {
@@ -27124,15 +27136,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         console.error('Error loading PDF:', error);
         console.error('Error stack:', error.stack);
         setIsLoadingPDF(false);
-        alert('Error loading PDF: ' + error.message + '. Please try uploading the file again.');
+        setPdfLoadError({
+          kind: 'parse',
+          message: error?.message || 'The PDF could not be opened.',
+        });
       }
     };
 
+    setPdfLoadError(null);
     loadPDF();
     return () => {
       isCancelled = true;
     };
-  }, [pdfFile]);
+  }, [pdfFile, loadRetryToken]);
 
   // Memoized render page function with caching
   // NOTE: Rendering is now handled by PDFPageCanvas. This function is kept for compatibility
@@ -33604,6 +33620,101 @@ ${pageBlocks}
     user,
     handleLeftRailToggleCollapse
   ]);
+
+  // KAL-21: in-app failure state — replaces the old browser alerts when the
+  // PDF parse path or Syncfusion render path cannot recover. Pre-empts the
+  // loading/spinner branch so we never leave the viewer blank.
+  if (pdfLoadError) {
+    const docName = pdfFile?.name || 'this document';
+    return (
+      <div style={{
+        height: '100vh',
+        display: 'flex',
+        flexDirection: 'row',
+        background: '#2b2b2b',
+        color: '#ddd',
+        fontFamily: FONT_FAMILY
+      }}>
+        <div style={{
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '24px'
+        }}>
+          <div style={{
+            maxWidth: '480px',
+            background: '#1f1f1f',
+            border: '1px solid #3a3a3a',
+            borderRadius: '8px',
+            padding: '32px',
+            textAlign: 'center',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
+          }}>
+            <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'center' }}>
+              <Icon name="document" size={48} />
+            </div>
+            <div style={{ fontSize: '18px', color: '#eee', marginBottom: '8px', fontWeight: 500 }}>
+              Couldn’t open this PDF
+            </div>
+            <div style={{ fontSize: '13px', color: '#a8a8a8', marginBottom: '8px' }}>
+              {docName}
+            </div>
+            <div style={{ fontSize: '13px', color: '#9a9a9a', marginBottom: '24px', lineHeight: 1.5 }}>
+              {pdfLoadError.kind === 'syncfusion'
+                ? 'The viewer couldn’t render this file. It may be corrupted or use an unsupported PDF feature.'
+                : 'The file couldn’t be parsed. It may be corrupted, encrypted, or not a valid PDF.'}
+            </div>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setPdfLoadError(null);
+                  setIsLoadingPDF(true);
+                  setSyncfusionPageContainers({});
+                  setSyncfusionCommittedPageScales({});
+                  setLoadRetryToken((t) => t + 1);
+                }}
+                style={{
+                  background: '#3b82f6',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '10px 18px',
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  fontFamily: FONT_FAMILY
+                }}
+              >
+                Try again
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPdfLoadError(null);
+                  if (typeof onBack === 'function') onBack();
+                }}
+                style={{
+                  background: 'transparent',
+                  color: '#ddd',
+                  border: '1px solid #4a4a4a',
+                  borderRadius: '6px',
+                  padding: '10px 18px',
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  fontFamily: FONT_FAMILY
+                }}
+              >
+                Back to dashboard
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Show loading state when PDF is not loaded yet
   if (!pdfDoc || isLoadingPDF) {
