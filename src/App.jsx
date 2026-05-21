@@ -3039,6 +3039,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   // dismiss; toast auto-clears after the next successful action.
   const [dashboardError, setDashboardError] = useState('');
   const [uploadInFlight, setUploadInFlight] = useState(false);
+  // KAL-23 verification hook: expose setter on window in development only so
+  // automated UAT can force the toast without needing a real upload failure.
+  // The user-visible upload/create paths still drive setDashboardError normally.
+  if (typeof window !== 'undefined' && import.meta.env?.DEV) {
+    window.__kal23_setDashboardError = setDashboardError;
+  }
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
@@ -3435,7 +3441,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         }
 
         if (!user) {
-          alert('Please sign in to upload documents');
+          setDashboardError('Please sign in to upload documents.');
           onShowAuthModal();
           return;
         }
@@ -3565,7 +3571,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     if (file && file.type === 'application/pdf') {
 
       if (!user) {
-        alert('Please sign in to upload documents');
+        setDashboardError('Please sign in to upload documents.');
         onShowAuthModal();
         event.target.value = '';
         return;
@@ -3897,7 +3903,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
   const handleConfirmCreateProject = async () => {
     if (!projectName.trim()) {
-      alert('Please enter a project name.');
+      setDashboardError('Please enter a project name.');
       return;
     }
     const trimmedProjectName = projectName.trim();
@@ -4602,7 +4608,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       }));
 
       if (!user) {
-        alert('Please sign in to create projects');
+        setDashboardError('Please sign in to create projects.');
         return;
       }
 
