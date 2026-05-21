@@ -217,7 +217,12 @@ const buildRich = (templates) => templates.map((t, i) => {
     categories: categoriesOf(m).map((c, ci) => ({
       id: c?.id ?? newId('c'),
       name: c?.name || `Category ${ci + 1}`,
-      items: checklistOf(c).map((it) => ({ id: newId('i'), text: itemText(it) })),
+      // KAL-43: preserve existing checklist item IDs so renames, reorders,
+      // and adds/deletes never silently churn the IDs survey data maps to.
+      items: checklistOf(c).map((it) => ({
+        id: (typeof it === 'object' && it?.id) || newId('i'),
+        text: itemText(it),
+      })),
     })),
   }));
   const roster = entitiesOf(t).map((e, ei) => ({
