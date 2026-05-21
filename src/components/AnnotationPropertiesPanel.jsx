@@ -527,6 +527,34 @@ const AnnotationPropertiesPanel = ({
     }
 
     if (targetKind === 'text') {
+      // KAL-34: text styling controls. Font family options are single-name
+      // only — Fabric.js measures characters at CACHE_FONT_SIZE=400px and
+      // scales down, so any CSS fallback stack would cause cursor drift when
+      // the browser resolves a different fallback at 400 vs the real size.
+      // CLAUDE.md 2026-04-08 documents this in detail.
+      const currentFontFamily = annotation?.fontFamily ?? 'Helvetica';
+      const currentTextAlign = annotation?.textAlign ?? 'left';
+      const isBold = annotation?.fontWeight === 'bold' || annotation?.fontWeight === 700;
+      const isItalic = annotation?.fontStyle === 'italic';
+      const isUnderline = annotation?.underline === true;
+      const isStrikethrough = annotation?.linethrough === true;
+      const renderToggleButton = (label, active, onToggle, fontStyle = {}) => (
+        <button
+          type="button"
+          onClick={onToggle}
+          style={{
+            flex: 1,
+            height: 28,
+            borderRadius: 4,
+            border: '1px solid #d1d5db',
+            background: active ? '#1e293b' : '#fff',
+            color: active ? '#fff' : '#374151',
+            fontSize: 13,
+            cursor: 'pointer',
+            ...fontStyle,
+          }}
+        >{label}</button>
+      );
       return (
         <>
           <section style={{ marginBottom: 14 }}>
@@ -538,12 +566,68 @@ const AnnotationPropertiesPanel = ({
               () => setShowFillPicker((v) => !v),
             )}
           </section>
-          <section style={{ marginBottom: 4 }}>
+          <section style={{ marginBottom: 14 }}>
+            {renderLabel('Font')}
+            {renderDropdownRow(
+              [
+                { value: 'Helvetica', label: 'Helvetica' },
+                { value: 'Arial', label: 'Arial' },
+                { value: 'Times New Roman', label: 'Times New Roman' },
+                { value: 'Courier New', label: 'Courier New' },
+                { value: 'Georgia', label: 'Georgia' },
+              ],
+              currentFontFamily,
+              (next) => onUpdate({ fontFamily: next }),
+            )}
+          </section>
+          <section style={{ marginBottom: 14 }}>
             {renderLabel('Font Size')}
             {renderStepperRow(
               `${annotation?.fontSize ?? 14}px`,
               () => onUpdate({ fontSize: Math.max(6, (annotation?.fontSize ?? 14) - 1) }),
               () => onUpdate({ fontSize: Math.min(96, (annotation?.fontSize ?? 14) + 1) }),
+            )}
+          </section>
+          <section style={{ marginBottom: 14 }}>
+            {renderLabel('Style')}
+            <div style={{ display: 'flex', gap: 6 }}>
+              {renderToggleButton(
+                'B',
+                isBold,
+                () => onUpdate({ fontWeight: isBold ? 'normal' : 'bold' }),
+                { fontWeight: 700 },
+              )}
+              {renderToggleButton(
+                'I',
+                isItalic,
+                () => onUpdate({ fontStyle: isItalic ? 'normal' : 'italic' }),
+                { fontStyle: 'italic' },
+              )}
+              {renderToggleButton(
+                'U',
+                isUnderline,
+                () => onUpdate({ underline: !isUnderline }),
+                { textDecoration: 'underline' },
+              )}
+              {renderToggleButton(
+                'S',
+                isStrikethrough,
+                () => onUpdate({ linethrough: !isStrikethrough }),
+                { textDecoration: 'line-through' },
+              )}
+            </div>
+          </section>
+          <section style={{ marginBottom: 4 }}>
+            {renderLabel('Align')}
+            {renderDropdownRow(
+              [
+                { value: 'left', label: 'Left' },
+                { value: 'center', label: 'Center' },
+                { value: 'right', label: 'Right' },
+                { value: 'justify', label: 'Justify' },
+              ],
+              currentTextAlign,
+              (next) => onUpdate({ textAlign: next }),
             )}
           </section>
         </>

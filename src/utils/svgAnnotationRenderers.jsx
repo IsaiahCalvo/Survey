@@ -1056,6 +1056,13 @@ export const renderText = (obj, index, liveBounds = null, hideText = false) => {
             fontStyle: obj.fontStyle || 'normal',
             color: obj.fill || '#000',
             textAlign: obj.textAlign || 'left',
+            // KAL-34: text decoration honors underline + linethrough flags set
+            // via AnnotationPropertiesPanel. Both can stack ("underline line-
+            // through") to match Fabric.js text-decoration semantics.
+            textDecoration: [
+              obj.underline ? 'underline' : null,
+              obj.linethrough ? 'line-through' : null,
+            ].filter(Boolean).join(' ') || 'none',
             // UX: Fabric 5.x textbox per-line pixel step =
             // `fontSize × lineHeight × _fontSizeMult` where `_fontSizeMult` is
             // the hard-coded 1.13 on Fabric.Text.prototype. CSS unitless
