@@ -42,6 +42,8 @@ const STYLE_KEYS = [
   'fontWeight',
   'fontStyle',
   'textAlign',
+  'underline',
+  'linethrough',
   'lineHeight',
   'charSpacing',
   'rx',
