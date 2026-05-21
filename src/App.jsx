@@ -8,6 +8,7 @@ import * as XLSX from 'xlsx-js-style';
 import ExcelJS from 'exceljs';
 import { useMSGraph } from './contexts/MSGraphContext';
 import { uploadExcelFile, getFileMetadata, getFileById, downloadExcelFile, downloadExcelFileByPath, getFileETag, uploadFileContentById, checkFileExists, checkFileExistsInDrive, getTemplateIdFromExcel, uploadFileToDrive } from './services/excelGraphService';
+import { collectLiveChecklistIds, countMarkersReferencingItem, stripOrphanResponseKeys } from './services/checklistOrphanCleanup';
 import {
   getFileIdFromPath,
   createWorkbookSession,
@@ -6540,9 +6541,23 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   // Open a document in the PDF viewer — reuse the existing open path.
   const hubOpenDocument = (doc) => { if (doc) handleDocumentClick(doc); };
 
+  // Count how many in-memory survey markers reference a given checklist item id.
+  // Forwarded to TemplatesEditor so the delete-item confirmation can name the
+  // impact ("3 survey markers had responses for this item — continue?"). See
+  // KAL-44. This only sees markers for the currently-open document; cross-doc
+  // markers are caught on next load by the orphan-strip pass below.
+  const hubChecklistItemUsageCount = useCallback((itemId) => {
+    return countMarkersReferencingItem(surveyMarkers, itemId);
+  }, [surveyMarkers]);
+
   // Persist edits made in the Survey Hub's Templates editor. Mirrors the
   // logged-in / guest split used by saveTemplate so hub edits land in
   // Supabase (config JSONB) for signed-in users, or localStorage otherwise.
+  //
+  // KAL-44: After saving the templates, strip any orphan checklist_responses
+  // keys from in-memory survey markers (markers for the currently-open doc).
+  // Keys are orphan when they no longer appear in any template's checklist —
+  // typically because the user just hard-deleted that checklist item.
   const hubSaveTemplates = async (nextTemplates) => {
     if (!Array.isArray(nextTemplates)) return;
     try {
@@ -6553,6 +6568,37 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         localStorage.setItem('templates', JSON.stringify(nextTemplates));
         updateTemplates(nextTemplates);
       }
+
+      // Build the union of live checklist ids across ALL saved templates.
+      const liveIds = new Set();
+      for (const t of nextTemplates) {
+        for (const id of collectLiveChecklistIds(t)) liveIds.add(id);
+      }
+      // Walk the in-memory surveyMarkers map and rewrite any marker whose
+      // checklistResponses contains an orphan key.
+      setSurveyMarkers((prev) => {
+        if (!prev || typeof prev !== 'object') return prev;
+        let changed = false;
+        const next = {};
+        for (const annId of Object.keys(prev)) {
+          const marker = prev[annId];
+          if (!marker || !marker.checklistResponses) {
+            next[annId] = marker;
+            continue;
+          }
+          const { cleaned, removedKeys } = stripOrphanResponseKeys(
+            marker.checklistResponses,
+            liveIds,
+          );
+          if (removedKeys.length > 0) {
+            changed = true;
+            next[annId] = { ...marker, checklistResponses: cleaned };
+          } else {
+            next[annId] = marker;
+          }
+        }
+        return changed ? next : prev;
+      });
     } catch (e) {
       console.error('Failed to save templates', e);
       alert('Failed to save templates.');
@@ -9553,6 +9599,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       onCreateProject={handleCreateProjectClick}
       onCreateTemplate={openTemplateModal}
       onSaveTemplates={hubSaveTemplates}
+      getChecklistItemUsageCount={hubChecklistItemUsageCount}
       onDuplicateDocuments={hubDuplicateDocuments}
       onDeleteDocuments={hubDeleteDocuments}
       onMoveCopyDocuments={hubMoveCopyDocuments}

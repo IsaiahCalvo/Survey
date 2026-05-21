@@ -43,6 +43,10 @@ export default function SurveyHub({
   onMoveCopyDocuments,
   onSettings,
   onSignOut,
+  // KAL-44: optional host lookup — given a checklist item id, returns the
+  // number of survey markers currently referencing it. Forwarded to the
+  // TemplatesEditor so the delete-item confirmation can name the impact.
+  getChecklistItemUsageCount,
 }) {
   const [tab, setTab] = useState(() => {
     if (initialTab) return initialTab;
@@ -115,6 +119,7 @@ export default function SurveyHub({
           onCreateTemplate={onCreateTemplate}
           onSaveTemplates={onSaveTemplates}
           onShare={shareTemplate}
+          getChecklistItemUsageCount={getChecklistItemUsageCount}
         />
       )}
 

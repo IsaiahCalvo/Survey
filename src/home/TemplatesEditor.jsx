@@ -432,6 +432,11 @@ export default function TemplatesEditor({
   onCreateTemplate,
   onSaveTemplates,
   onShare,
+  // Optional: host-supplied lookup that returns how many survey markers
+  // currently reference a given checklist item id. When provided, the delete
+  // confirmation surfaces the count. When absent, the confirmation falls back
+  // to a generic warning. See KAL-44.
+  getChecklistItemUsageCount,
 }) {
   /* ---- mutable working data ----
      Seeded from the `templates` prop, then owned locally so every editor
@@ -748,9 +753,24 @@ export default function TemplatesEditor({
   const renameItem = (ci, itemId, text) => mutateCategory(ci, (c) => ({
     ...c, items: c.items.map((it) => (it.id === itemId ? { ...it, text } : it)),
   }));
-  const deleteItem = (ci, itemId) => mutateCategory(ci, (c) => ({
-    ...c, items: c.items.filter((it) => it.id !== itemId),
-  }));
+  /* Hard-delete a checklist item. If the host wired up a usage-count lookup
+     and the item is referenced by existing survey markers, surface a confirm
+     so the user knows the responses on those markers will become unreachable
+     and will be stripped on next save (orphan cleanup). See KAL-44. */
+  const deleteItem = (ci, itemId) => {
+    const usageCount = typeof getChecklistItemUsageCount === 'function'
+      ? Math.max(0, Number(getChecklistItemUsageCount(itemId)) || 0)
+      : 0;
+    if (usageCount > 0) {
+      const noun = usageCount === 1 ? 'survey marker' : 'survey markers';
+      const msg = `${usageCount} ${noun} had responses for this checklist item. `
+        + 'Deleting will remove those responses permanently. Continue?';
+      if (!window.confirm(msg)) return;
+    }
+    mutateCategory(ci, (c) => ({
+      ...c, items: c.items.filter((it) => it.id !== itemId),
+    }));
+  };
 
   /* --- entity-level --- */
   const addEntity = () => {
