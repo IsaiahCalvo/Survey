@@ -85,6 +85,7 @@ import { pdfWorkerManager } from './utils/PDFWorkerManager';
 import Icon from './Icons';
 import CompactColorPicker from './components/CompactColorPicker';
 import PDFSidebar from './PDFSidebar';
+import SpacesPanel from './sidebar/SpacesPanel';
 import RegionSelectionTool from './RegionSelectionTool';
 import SpaceRegionOverlay from './SpaceRegionOverlay';
 import TabBar from './TabBar';
@@ -44551,6 +44552,28 @@ export default function App() {
   // input. Typing is clamped to 10–500 (the app's allowable zoom range).
   const [isEditingRailZoom, setIsEditingRailZoom] = useState(false);
 
+  // UX 2026-05-21 (KAL-40): right-rail expand/collapse state. Default
+  // collapsed (48px) — clicking the arrow control or the Spaces tab
+  // expands to 272px and switches Survey / Spaces / page / zoom / fit
+  // controls into horizontal labeled groups. `rightRailActivePanel`
+  // controls which body panel mounts when expanded (currently 'spaces'
+  // or null for the chrome-only expanded state).
+  const [rightRailExpanded, setRightRailExpanded] = useState(false);
+  const [rightRailActivePanel, setRightRailActivePanel] = useState(null);
+  const toggleRightRailExpanded = useCallback(() => {
+    setRightRailExpanded((prev) => {
+      const next = !prev;
+      if (!next) {
+        setRightRailActivePanel(null);
+      }
+      return next;
+    });
+  }, []);
+  const openRightRailSpaces = useCallback(() => {
+    setRightRailExpanded(true);
+    setRightRailActivePanel('spaces');
+  }, []);
+
 
   // UX 2026-05-13: App-level bottom toolbar state. The chrome-bottom host
   // mounts with final rail dimensions as soon as a PDF tab is active; the active
@@ -45199,47 +45222,10 @@ export default function App() {
                 <Icon name="text" size={18} />
               </button>
 
-              {/* Survey toggle lives in the former survey-tool slot so users
-                  enter/exit survey mode from the same top toolbar cluster as
-                  the annotation tools. The subtoolbar still opens
-                  automatically after template selection. */}
-              {topToolbarApi.onSurveyToggle && (
-                <button
-                  onClick={() => {
-                    if (topToolbarApi.surveyActive) {
-                      bottomToolbarApi.setActiveCategoryDropdown(null);
-                    }
-                    topToolbarApi.onSurveyToggle();
-                  }}
-                  onMouseEnter={(e) => {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    bottomToolbarApi.setTooltip({
-                      visible: true,
-                      text: 'Survey',
-                      x: rect.left + rect.width / 2,
-                      y: rect.bottom + 10,
-                      placement: 'below'
-                    });
-                  }}
-                  onMouseLeave={() => bottomToolbarApi.setTooltip({ visible: false, text: '', x: 0, y: 0 })}
-                  className={`btn btn-md ${topToolbarApi.surveyActive ? 'btn-active' : 'btn-default'}`}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '4px 10px',
-                    opacity: topToolbarApi.surveyEnabled ? 1 : 0.6,
-                    cursor: topToolbarApi.surveyEnabled ? 'pointer' : 'not-allowed',
-                    position: 'relative'
-                  }}
-                  title={!topToolbarApi.surveyEnabled ? 'Pro feature - Upgrade to unlock' : 'Survey'}
-                >
-                  <Icon name="survey" size={16} />
-                  {!topToolbarApi.surveyEnabled && (
-                    <Icon name="lock" size={9} style={{ marginLeft: '-3px' }} />
-                  )}
-                </button>
-              )}
+              {/* UX 2026-05-21 (KAL-40): Survey toggle button removed from the
+                  top toolbar — it lives in the right rail top slot now. The
+                  topToolbarApi.onSurveyToggle handler is still consumed by
+                  the right-rail Survey button below. */}
 
               <div style={{ width: '1px', height: '20px', background: '#555', margin: '0 4px' }} />
 
@@ -45320,10 +45306,11 @@ export default function App() {
               </div>
             </>
           )}
-          {/* UX 2026-05-14: Survey toggle button moved to the new chrome-right-host
-              rail (top slot). Reuses the same topToolbarApi.onSurveyToggle
-              handler, Pro gate, and active styling — JSX is rendered inside
-              the right rail block further down. */}
+          {/* UX 2026-05-21 (KAL-40): Survey button moved to the right rail top
+              slot. Reuses the same topToolbarApi.onSurveyToggle handler,
+              Pro gate, and active styling — JSX is rendered inside the
+              chrome-right-host block below. Survey click only drops the
+              sub-toolbar; it does NOT expand the right rail. */}
         </div>
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative', display: 'flex' }}>
           <div
@@ -45429,39 +45416,448 @@ export default function App() {
             })}
           </div>
           </div>
-          {/* UX 2026-05-14: chrome-right-host — slim always-visible right rail.
-              Pinned to the viewport's right edge. Zoom + page nav live at the
-              bottom; the Survey toggle now lives in the top toolbar with the
-              annotation tools. */}
+          {/* UX 2026-05-21 (KAL-40): chrome-right-host — right rail with its own
+              expand/collapse state. Collapsed = 48px slim rail (Survey / Spaces
+              / page / zoom / fit as icon-only column). Expanded = 272px panel
+              with horizontal labeled groups and the Spaces body panel when
+              activated. The chevron arrow at the top toggles expand/collapse.
+              Survey click drops the existing sub-toolbar without expanding the
+              rail; Spaces click auto-expands the rail and mounts SpacesPanel. */}
           <div
             id="chrome-right-host"
             style={{
               display: isViewerVisible ? 'flex' : 'none',
               flexShrink: 0,
-              width: '48px',
+              width: rightRailExpanded ? '272px' : '48px',
               alignSelf: 'stretch',
               background: '#252525',
+              borderLeft: '1px solid #3a3a3a',
               color: '#ddd',
               fontFamily: FONT_FAMILY,
               flexDirection: 'column',
-              alignItems: 'center',
-              padding: '8px 0',
-              gap: '8px',
+              alignItems: rightRailExpanded ? 'stretch' : 'center',
+              padding: rightRailExpanded ? 0 : '8px 0',
+              gap: rightRailExpanded ? 0 : '8px',
               position: 'relative',
-              zIndex: 5500
+              zIndex: 5500,
+              transition: 'width 0.2s ease'
             }}
           >
-            {/* Spacer pushes the bottom slot to the bottom of the rail. */}
-            <div style={{ flex: 1 }} />
+            {/* UX 2026-05-21 (KAL-40): top header row — chevron toggles the
+                right rail expand/collapse. Sits at the very top of the rail
+                so the user can read "this rail opens" before scanning the
+                control stack underneath. */}
+            <div style={{
+              height: '35px',
+              padding: '0 8px',
+              borderBottom: '1px solid #3a3a3a',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: rightRailExpanded ? 'flex-start' : 'center',
+              background: '#252525',
+              flexShrink: 0
+            }}>
+              <button
+                onClick={toggleRightRailExpanded}
+                title={rightRailExpanded ? 'Collapse right rail' : 'Expand right rail'}
+                aria-label={rightRailExpanded ? 'Collapse right rail' : 'Expand right rail'}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#999',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  borderRadius: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'background 0.15s ease'
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = '#333'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+              >
+                <Icon name={rightRailExpanded ? 'chevronRight' : 'chevronLeft'} size={16} color="#999" />
+              </button>
+            </div>
 
-            {/* Bottom slot — page nav above zoom controls. All handlers come
-                from bottomToolbarApi which PDFViewer already publishes.
-                UX 2026-05-14: Sizing matched to the Walkthrough reference
-                app — smaller buttons (24-28px), 10px tabular-nums fonts,
-                and a middle dot between current page and total instead of
-                a slash. Tighter overall to fit the 48px-wide rail more
-                neatly. */}
-            {bottomToolbarApi && (
+            {/* UX 2026-05-21 (KAL-40): Top slot — Survey + Spaces buttons.
+                Survey click toggles showSurveyPanel (drops the sub-toolbar
+                via the existing handler) but does NOT change rail expansion.
+                Spaces click auto-expands the rail AND mounts the SpacesPanel
+                in the body slot below. */}
+            {(topToolbarApi.onSurveyToggle || leftRailApi) && (
+              <div style={{
+                display: 'flex',
+                flexDirection: rightRailExpanded ? 'row' : 'column',
+                alignItems: 'center',
+                justifyContent: rightRailExpanded ? 'flex-start' : 'center',
+                gap: rightRailExpanded ? '4px' : '4px',
+                padding: rightRailExpanded ? '8px' : '8px 0',
+                borderBottom: rightRailExpanded ? '1px solid #3a3a3a' : 'none',
+                flexShrink: 0,
+                width: '100%',
+                boxSizing: 'border-box'
+              }}>
+                {topToolbarApi.onSurveyToggle && (
+                  <button
+                    onClick={() => {
+                      if (topToolbarApi.surveyActive && bottomToolbarApi?.setActiveCategoryDropdown) {
+                        bottomToolbarApi.setActiveCategoryDropdown(null);
+                      }
+                      topToolbarApi.onSurveyToggle();
+                    }}
+                    title={!topToolbarApi.surveyEnabled ? 'Pro feature — Upgrade to unlock' : 'Survey'}
+                    aria-pressed={topToolbarApi.surveyActive}
+                    style={{
+                      flex: rightRailExpanded ? 1 : 'unset',
+                      width: rightRailExpanded ? 'auto' : '36px',
+                      height: rightRailExpanded ? 'auto' : '36px',
+                      minHeight: rightRailExpanded ? '44px' : '36px',
+                      padding: rightRailExpanded ? '6px 8px' : '6px',
+                      background: topToolbarApi.surveyActive ? '#2b2b2b' : 'transparent',
+                      border: 'none',
+                      borderBottom: rightRailExpanded
+                        ? (topToolbarApi.surveyActive ? '2px solid #4A90E2' : '2px solid transparent')
+                        : 'none',
+                      borderRadius: rightRailExpanded ? '0' : '6px',
+                      color: topToolbarApi.surveyActive ? '#ddd' : '#999',
+                      fontSize: '11px',
+                      fontFamily: FONT_FAMILY,
+                      fontWeight: topToolbarApi.surveyActive ? 500 : 400,
+                      cursor: topToolbarApi.surveyEnabled ? 'pointer' : 'not-allowed',
+                      opacity: topToolbarApi.surveyEnabled ? 1 : 0.6,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '4px',
+                      position: 'relative',
+                      whiteSpace: 'nowrap',
+                      transition: 'background 0.15s ease'
+                    }}
+                    onMouseEnter={(e) => { if (!topToolbarApi.surveyActive) e.currentTarget.style.background = '#2b2b2b'; }}
+                    onMouseLeave={(e) => { if (!topToolbarApi.surveyActive) e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Icon name="survey" size={16} color={topToolbarApi.surveyActive ? '#4A90E2' : '#999'} />
+                      {!topToolbarApi.surveyEnabled && (
+                        <Icon name="lock" size={9} style={{ marginLeft: '-3px' }} />
+                      )}
+                    </span>
+                    {rightRailExpanded && <span>Survey</span>}
+                  </button>
+                )}
+                {leftRailApi && (
+                  <button
+                    onClick={() => {
+                      if (rightRailActivePanel === 'spaces' && rightRailExpanded) {
+                        // Toggle off: collapse the rail and clear the panel.
+                        setRightRailActivePanel(null);
+                        setRightRailExpanded(false);
+                      } else {
+                        openRightRailSpaces();
+                      }
+                    }}
+                    title="Spaces"
+                    aria-pressed={rightRailExpanded && rightRailActivePanel === 'spaces'}
+                    style={{
+                      flex: rightRailExpanded ? 1 : 'unset',
+                      width: rightRailExpanded ? 'auto' : '36px',
+                      height: rightRailExpanded ? 'auto' : '36px',
+                      minHeight: rightRailExpanded ? '44px' : '36px',
+                      padding: rightRailExpanded ? '6px 8px' : '6px',
+                      background: (rightRailExpanded && rightRailActivePanel === 'spaces') ? '#2b2b2b' : 'transparent',
+                      border: 'none',
+                      borderBottom: rightRailExpanded
+                        ? ((rightRailActivePanel === 'spaces') ? '2px solid #4A90E2' : '2px solid transparent')
+                        : 'none',
+                      borderRadius: rightRailExpanded ? '0' : '6px',
+                      color: (rightRailExpanded && rightRailActivePanel === 'spaces') ? '#ddd' : '#999',
+                      fontSize: '11px',
+                      fontFamily: FONT_FAMILY,
+                      fontWeight: (rightRailExpanded && rightRailActivePanel === 'spaces') ? 500 : 400,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '4px',
+                      whiteSpace: 'nowrap',
+                      transition: 'background 0.15s ease'
+                    }}
+                    onMouseEnter={(e) => { if (!(rightRailExpanded && rightRailActivePanel === 'spaces')) e.currentTarget.style.background = '#2b2b2b'; }}
+                    onMouseLeave={(e) => { if (!(rightRailExpanded && rightRailActivePanel === 'spaces')) e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    <Icon name="folder" size={16} color={(rightRailExpanded && rightRailActivePanel === 'spaces') ? '#4A90E2' : '#999'} />
+                    {rightRailExpanded && <span>Spaces</span>}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* UX 2026-05-21 (KAL-40): Body panel slot — only mounted when
+                the rail is expanded AND a panel is active. Currently only
+                'spaces' uses this slot, reusing the same SpacesPanel that
+                previously lived in the left rail. Props come from
+                leftRailApi which PDFViewer publishes for every active tab. */}
+            {rightRailExpanded && rightRailActivePanel === 'spaces' && leftRailApi && (
+              <div style={{
+                flex: 1,
+                minHeight: 0,
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                background: '#252525'
+              }}>
+                <SpacesPanel
+                  spaces={leftRailApi.spaces}
+                  activeSpaceId={leftRailApi.activeSpaceId}
+                  onSpaceCreate={leftRailApi.onSpaceCreate}
+                  onSpaceUpdate={leftRailApi.onSpaceUpdate}
+                  onSpaceDelete={leftRailApi.onSpaceDelete}
+                  onSetActiveSpace={leftRailApi.onSetActiveSpace}
+                  onExitSpaceMode={leftRailApi.onExitSpaceMode}
+                  onRequestRegionEdit={leftRailApi.onRequestRegionEdit}
+                  onCancelRegionEdit={leftRailApi.onCancelRegionEdit}
+                  onSpaceAssignPages={leftRailApi.onSpaceAssignPages}
+                  onSpaceRenamePage={leftRailApi.onSpaceRenamePage}
+                  onSpaceRemovePage={leftRailApi.onSpaceRemovePage}
+                  onReorderSpaces={leftRailApi.onReorderSpaces}
+                  onExportSpaceCSV={leftRailApi.onExportSpaceCSV}
+                  onExportSpacePDF={leftRailApi.onExportSpacePDF}
+                  isRegionSelectionActive={leftRailApi.isRegionSelectionActive}
+                  regionSelectionPage={leftRailApi.regionSelectionPage}
+                  numPages={leftRailApi.numPages}
+                  features={leftRailApi.features}
+                  getCanvasAnnotationVisibilityState={leftRailApi.getCanvasAnnotationVisibilityState}
+                  onToggleCanvasAnnotations={leftRailApi.onToggleCanvasAnnotations}
+                  getSurveyAnnotationVisibilityState={leftRailApi.getSurveyAnnotationVisibilityState}
+                  onToggleSurveyAnnotations={leftRailApi.onToggleSurveyAnnotations}
+                  externalSelectedSpaceId={leftRailApi.selectedSpaceId}
+                  onToggleRegionOverlay={leftRailApi.onToggleRegionOverlay}
+                  getRegionOverlayEnabled={leftRailApi.getRegionOverlayEnabled}
+                  isRegionOverlayToggleEnabled={leftRailApi.isRegionOverlayToggleEnabled}
+                  showSurveyPanel={leftRailApi.showSurveyPanel}
+                  selectedModuleId={leftRailApi.selectedModuleId}
+                />
+              </div>
+            )}
+
+            {/* Spacer pushes the bottom slot to the bottom of the rail
+                when collapsed; when expanded with a panel mounted the
+                spacer is suppressed so the panel can take the available
+                space and the bottom slot anchors directly under it. */}
+            {!(rightRailExpanded && rightRailActivePanel === 'spaces') && <div style={{ flex: 1 }} />}
+
+            {/* UX 2026-05-21 (KAL-40): Expanded bottom slot — horizontal
+                labeled groups for page nav / zoom / fit. Mirrors the same
+                handlers as the collapsed vertical stack below but renders
+                three labeled rows so the expanded rail earns its width.
+                Uses tabular-nums so digit positions stay stable on input
+                edit. */}
+            {rightRailExpanded && bottomToolbarApi && (
+              <div style={{
+                borderTop: '1px solid #3a3a3a',
+                padding: '12px 14px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px',
+                background: '#252525'
+              }}>
+                {/* Page row — label + prev / page-input / total / next */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <span style={{ fontSize: '10px', color: '#888', fontFamily: FONT_FAMILY, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Page</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <button
+                      onClick={bottomToolbarApi.goToPreviousPage}
+                      disabled={bottomToolbarApi.pageNum <= 1}
+                      title="Previous page"
+                      style={{
+                        width: '28px', height: '28px',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        padding: 0, background: 'transparent', border: 'none',
+                        borderRadius: '4px', color: '#bbb',
+                        cursor: bottomToolbarApi.pageNum <= 1 ? 'not-allowed' : 'pointer',
+                        opacity: bottomToolbarApi.pageNum <= 1 ? 0.35 : 1
+                      }}
+                    >
+                      <Icon name="chevronLeft" size={14} />
+                    </button>
+                    <input
+                      ref={bottomToolbarApi.pageInputRef}
+                      type="text"
+                      data-page-number-input
+                      value={isEditingRailPage ? bottomToolbarApi.pageInputValue : String(bottomToolbarApi.pageNum)}
+                      onFocus={() => setIsEditingRailPage(true)}
+                      onChange={bottomToolbarApi.handlePageInputChange}
+                      onKeyDown={(e) => {
+                        bottomToolbarApi.handlePageInputKeyDown(e);
+                        if (e.key === 'Enter' || e.key === 'Escape') setIsEditingRailPage(false);
+                      }}
+                      onBlur={(e) => { bottomToolbarApi.handlePageInputBlur(e); setIsEditingRailPage(false); }}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      aria-label="Current page"
+                      style={{
+                        flex: 1, minWidth: 0, height: '24px',
+                        padding: '2px 6px', background: '#1f1f1f',
+                        color: '#4A90E2', border: '1px solid #3a3a3a',
+                        borderRadius: '4px', fontSize: '12px',
+                        fontFamily: FONT_FAMILY, fontWeight: 600,
+                        fontVariantNumeric: 'tabular-nums', textAlign: 'center', outline: 'none'
+                      }}
+                    />
+                    <span style={{ color: '#888', fontSize: '11px', fontFamily: FONT_FAMILY, fontVariantNumeric: 'tabular-nums' }}>
+                      / {bottomToolbarApi.numPages}
+                    </span>
+                    <button
+                      onClick={bottomToolbarApi.goToNextPage}
+                      disabled={bottomToolbarApi.pageNum >= bottomToolbarApi.numPages}
+                      title="Next page"
+                      style={{
+                        width: '28px', height: '28px',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        padding: 0, background: 'transparent', border: 'none',
+                        borderRadius: '4px', color: '#bbb',
+                        cursor: bottomToolbarApi.pageNum >= bottomToolbarApi.numPages ? 'not-allowed' : 'pointer',
+                        opacity: bottomToolbarApi.pageNum >= bottomToolbarApi.numPages ? 0.35 : 1
+                      }}
+                    >
+                      <Icon name="chevronRight" size={14} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Zoom row — label + zoom-out / zoom-input / zoom-in */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <span style={{ fontSize: '10px', color: '#888', fontFamily: FONT_FAMILY, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Zoom</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <button
+                      onClick={bottomToolbarApi.zoomOut}
+                      title="Zoom out"
+                      style={{
+                        width: '28px', height: '28px',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        padding: 0, background: 'transparent', border: 'none',
+                        borderRadius: '4px', color: '#bbb', cursor: 'pointer'
+                      }}
+                    >
+                      <Icon name="minus" size={14} />
+                    </button>
+                    <input
+                      ref={bottomToolbarApi.zoomInputRef}
+                      type="text"
+                      value={isEditingRailZoom
+                        ? bottomToolbarApi.zoomInputValue
+                        : `${bottomToolbarApi.zoomInputValue || Math.round((bottomToolbarApi.manualZoomScale || 1) * 100)}%`}
+                      onFocus={() => setIsEditingRailZoom(true)}
+                      onChange={bottomToolbarApi.handleZoomInputChange}
+                      onKeyDown={(e) => {
+                        bottomToolbarApi.handleZoomInputKeyDown(e);
+                        if (e.key === 'Enter' || e.key === 'Escape') setIsEditingRailZoom(false);
+                      }}
+                      onBlur={(e) => { bottomToolbarApi.handleZoomInputBlur(e); setIsEditingRailZoom(false); }}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      aria-label="Zoom percentage"
+                      style={{
+                        flex: 1, minWidth: 0, height: '24px',
+                        padding: '2px 6px', background: '#1f1f1f',
+                        color: '#ddd', border: '1px solid #3a3a3a',
+                        borderRadius: '4px', fontSize: '12px',
+                        fontFamily: FONT_FAMILY, fontWeight: 500,
+                        fontVariantNumeric: 'tabular-nums', textAlign: 'center', outline: 'none'
+                      }}
+                    />
+                    <button
+                      onClick={bottomToolbarApi.zoomIn}
+                      title="Zoom in"
+                      style={{
+                        width: '28px', height: '28px',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        padding: 0, background: 'transparent', border: 'none',
+                        borderRadius: '4px', color: '#bbb', cursor: 'pointer'
+                      }}
+                    >
+                      <Icon name="plus" size={14} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Fit row — label + three labeled fit buttons (page / width / height) */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <span style={{ fontSize: '10px', color: '#888', fontFamily: FONT_FAMILY, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Fit</span>
+                  <div style={{ display: 'flex', alignItems: 'stretch', gap: '4px' }}>
+                    {ZOOM_MODE_OPTIONS.filter(o => o.id !== ZOOM_MODES.MANUAL).map((option) => {
+                      const isActive = option.id === bottomToolbarApi.zoomMode;
+                      const stroke = {
+                        fill: 'none', stroke: 'currentColor',
+                        strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 1.7
+                      };
+                      let iconSvg;
+                      if (option.id === ZOOM_MODES.FIT_WIDTH) {
+                        iconSvg = (
+                          <svg viewBox="0 0 24 24" aria-hidden="true" style={{ width: '14px', height: '14px' }}>
+                            <rect x="4" y="5" width="16" height="14" rx="1.5" {...stroke} />
+                            <path d="M7 12h10M7 12l3-3M7 12l3 3M17 12l-3-3M17 12l-3 3" {...stroke} />
+                          </svg>
+                        );
+                      } else if (option.id === ZOOM_MODES.FIT_HEIGHT) {
+                        iconSvg = (
+                          <svg viewBox="0 0 24 24" aria-hidden="true" style={{ width: '14px', height: '14px' }}>
+                            <rect x="5" y="4" width="14" height="16" rx="1.5" {...stroke} />
+                            <path d="M12 7v10M12 7l-3 3M12 7l3 3M12 17l-3-3M12 17l3-3" {...stroke} />
+                          </svg>
+                        );
+                      } else {
+                        iconSvg = (
+                          <svg viewBox="0 0 24 24" aria-hidden="true" style={{ width: '14px', height: '14px' }}>
+                            <rect x="6" y="3" width="12" height="18" rx="1.5" {...stroke} />
+                            <path d="M9 7h6M9 11h6M9 15h4" {...stroke} />
+                          </svg>
+                        );
+                      }
+                      return (
+                        <button
+                          key={option.id}
+                          onClick={() => bottomToolbarApi.handleZoomModeSelect(option.id)}
+                          data-active={isActive}
+                          title={option.label}
+                          style={{
+                            flex: 1, minWidth: 0,
+                            display: 'flex', flexDirection: 'column',
+                            alignItems: 'center', justifyContent: 'center',
+                            gap: '2px', padding: '6px 4px',
+                            background: isActive ? '#2b2b2b' : 'transparent',
+                            border: '1px solid ' + (isActive ? '#4A90E2' : '#3a3a3a'),
+                            borderRadius: '4px',
+                            color: isActive ? '#e0e0e0' : '#bbb',
+                            cursor: 'pointer',
+                            fontSize: '10px',
+                            fontFamily: FONT_FAMILY,
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis'
+                          }}
+                        >
+                          {iconSvg}
+                          <span>{option.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Collapsed bottom slot — page nav above zoom controls. All
+                handlers come from bottomToolbarApi which PDFViewer already
+                publishes. UX 2026-05-14: Sizing matched to the Walkthrough
+                reference app — smaller buttons (24-28px), 10px
+                tabular-nums fonts, and a middle dot between current page
+                and total instead of a slash. Tighter overall to fit the
+                48px-wide rail more neatly. */}
+            {!rightRailExpanded && bottomToolbarApi && (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
                 {/* Page previous — chevron up because vertical layout */}
                 <button

@@ -3,7 +3,6 @@ import Icon from './Icons';
 import PagesPanel from './sidebar/PagesPanel';
 import SearchTextPanel from './sidebar/SearchTextPanel';
 import BookmarksPanel from './sidebar/BookmarksPanel';
-import SpacesPanel from './sidebar/SpacesPanel';
 import SyncStatusChip from './components/SyncStatusChip';
 import PresenceAvatars from './components/PresenceAvatars';
 
@@ -127,14 +126,14 @@ const PDFSidebar = React.forwardRef(({
     }
   }), [onToggleCollapse]);
 
-  // 2026-04-25 (revised) — Survey is back in the top toolbar; this rail
-  // owns the four navigation tabs only. The collaboration footer below the
-  // tab content carries the sync status chip + live presence row instead.
+  // UX 2026-05-21 (KAL-40): Spaces tab moved to the right rail; this rail
+  // now owns Pages / Search / Bookmarks only. SpacesPanel still mounts in
+  // App.jsx — see chrome-right-host. The collaboration footer below the
+  // tab content carries the sync status chip + live presence row.
   const tabs = [
     { id: 'pages', label: 'Pages', icon: 'pages' },
     { id: 'search', label: 'Search Text', icon: 'search' },
-    { id: 'bookmarks', label: 'Bookmarks', icon: 'bookmark' },
-    { id: 'spaces', label: 'Spaces', icon: 'folder' }
+    { id: 'bookmarks', label: 'Bookmarks', icon: 'bookmark' }
   ];
 
   return (
@@ -336,40 +335,9 @@ const PDFSidebar = React.forwardRef(({
               />
             </div>
 
-            {/* Spaces Panel */}
-            <div style={{ display: activeTab === 'spaces' ? 'flex' : 'none', flex: 1, flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-              <SpacesPanel
-                spaces={spaces}
-                activeSpaceId={activeSpaceId}
-                onSpaceCreate={onSpaceCreate}
-                onSpaceUpdate={onSpaceUpdate}
-                onSpaceDelete={onSpaceDelete}
-                onSetActiveSpace={onSetActiveSpace}
-                onExitSpaceMode={onExitSpaceMode}
-                onRequestRegionEdit={onRequestRegionEdit}
-                onCancelRegionEdit={onCancelRegionEdit}
-                onSpaceAssignPages={onSpaceAssignPages}
-                onSpaceRenamePage={onSpaceRenamePage}
-                onSpaceRemovePage={onSpaceRemovePage}
-                onReorderSpaces={onReorderSpaces}
-                onExportSpaceCSV={onExportSpaceCSV}
-                onExportSpacePDF={onExportSpacePDF}
-                isRegionSelectionActive={isRegionSelectionActive}
-                regionSelectionPage={regionSelectionPage}
-                numPages={numPages}
-                features={features}
-                getCanvasAnnotationVisibilityState={getCanvasAnnotationVisibilityState}
-                onToggleCanvasAnnotations={onToggleCanvasAnnotations}
-                getSurveyAnnotationVisibilityState={getSurveyAnnotationVisibilityState}
-                onToggleSurveyAnnotations={onToggleSurveyAnnotations}
-                externalSelectedSpaceId={selectedSpaceId}
-                onToggleRegionOverlay={onToggleRegionOverlay}
-                getRegionOverlayEnabled={getRegionOverlayEnabled}
-                isRegionOverlayToggleEnabled={isRegionOverlayToggleEnabled}
-                showSurveyPanel={showSurveyPanel}
-                selectedModuleId={selectedModuleId}
-              />
-            </div>
+            {/* UX 2026-05-21 (KAL-40): Spaces panel removed from the left
+                rail. It now lives in chrome-right-host and is opened via
+                the right-rail Spaces button. */}
           </div>
         </>
       )}
