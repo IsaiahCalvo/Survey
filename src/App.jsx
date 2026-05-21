@@ -3033,6 +3033,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   const uploadTargetProjectRef = useRef(null);
   // Track documents being cleaned up to prevent duplicate cleanup attempts
   const cleaningUpDocumentsRef = useRef(new Set());
+  // KAL-23: dashboard-level error toast for upload/create/save flows. Replaces
+  // the noisy browser alerts that used to interrupt the user when an upload or
+  // project save failed asynchronously. Click the close × on the toast to
+  // dismiss; toast auto-clears after the next successful action.
+  const [dashboardError, setDashboardError] = useState('');
+  const [uploadInFlight, setUploadInFlight] = useState(false);
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
@@ -3532,13 +3538,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
             console.error('Error uploading file in background:', err);
             // Remove temp document from list since upload failed
             setDocuments(prev => prev.filter(d => !(d.id === tempDoc.id)));
-            alert('Failed to save document to cloud: ' + (err.message || 'Unknown error'));
+            setDashboardError('Couldn’t save the document to the cloud: ' + (err.message || 'Unknown error') + '. Your file is still on disk — try uploading again or check your connection.');
           }
         })();
 
       } catch (error) {
         console.error('Error opening file:', error);
-        alert('Failed to open file: ' + error.message);
+        setDashboardError('Couldn’t open that file: ' + (error?.message || 'Unknown error'));
       }
     } else {
       // Fallback to browser file input. Stash the destination project id and
@@ -3672,7 +3678,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           console.error('Error uploading file in background:', err);
           // Remove temp document from list since upload failed
           setDocuments(prev => prev.filter(d => !(d.id === tempDoc.id)));
-          alert('Failed to save document to cloud: ' + (err.message || 'Unknown error'));
+          setDashboardError('Couldn’t save the document to the cloud: ' + (err.message || 'Unknown error') + '. Your file is still on disk — try uploading again or check your connection.');
         }
       })();
 
@@ -3906,57 +3912,61 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     }
 
     if (hasNameConflict(latestProjects, trimmedProjectName, { getName: (project) => project?.name })) {
-      alert('A project with this name already exists. Please choose a different name.');
+      setDashboardError('A project with this name already exists. Please choose a different name.');
       return;
     }
     if (projectFiles.length === 0) {
-      alert('Please add at least one PDF.');
+      setDashboardError('Add at least one PDF to the project before creating it.');
       return;
     }
+    setUploadInFlight(true);
     try {
       await persistProject(trimmedProjectName, projectFiles);
       setIsProjectModalOpen(false);
       setProjectName('');
       setProjectFiles([]);
+      setDashboardError('');
     } catch (err) {
       console.error('Error creating project:', err);
 
       if (err?.code === 'DUPLICATE_PROJECT_NAME') {
-        alert(err.message);
+        setDashboardError(err.message);
         return;
       }
 
       if (err?.code === 'NOT_AUTHENTICATED') {
-        alert('Please sign in to create projects.');
+        setDashboardError('Please sign in to create projects.');
         onShowAuthModal();
         return;
       }
 
       if (err?.code === 'PROJECT_LIMIT_REACHED') {
-        alert(err.message);
+        setDashboardError(err.message);
         return;
       }
 
       if (err?.code === 'UPLOAD_LIMIT_REACHED') {
-        alert(err.message);
+        setDashboardError(err.message);
         return;
       }
 
       if (err?.code === 'NO_FILES_UPLOADED') {
-        const errorDetails = err.uploadErrors?.map(e => `\n- ${e.fileName}: ${e.error}`).join('') || '';
-        alert(`Failed to upload files:${errorDetails}\n\nPlease check your file sizes and try again.`);
+        const errorDetails = err.uploadErrors?.map(e => `\n• ${e.fileName}: ${e.error}`).join('') || '';
+        setDashboardError(`Couldn’t upload your files:${errorDetails}\n\nCheck file sizes and try again.`);
         return;
       }
 
       if (err?.code === 'PROJECT_CREATE_FAILED' || err?.code === 'PROJECT_UPDATE_FAILED') {
         const errorMsg = err.originalError?.message || err.message || 'Unknown error';
-        alert(`Failed to save project: ${errorMsg}\n\nPlease check your connection and try again.`);
+        setDashboardError(`Couldn’t save the project: ${errorMsg}. Check your connection and try again.`);
         return;
       }
 
       // Generic error message with more details if available
       const errorMsg = err.message || err.toString() || 'Unknown error';
-      alert(`There was an error creating the project: ${errorMsg}\n\nPlease try again or check the console for more details.`);
+      setDashboardError(`Couldn’t create the project: ${errorMsg}. Try again or check the console for details.`);
+    } finally {
+      setUploadInFlight(false);
     }
   };
 
@@ -9541,24 +9551,73 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   /* Home redesign: render the new Survey Hub instead of the legacy grid/table.
      Every prop maps to data/handlers that already exist in Dashboard/App. */
   return (
-    <SurveyHub
-      documents={documents}
-      projects={projects}
-      templates={templates}
-      members={[]}
-      user={user ? { id: user.id, name: user.user_metadata?.full_name || user.name || user.email, email: user.email } : null}
-      isPro={!!features?.advancedSurvey}
-      onOpenDocument={hubOpenDocument}
-      onUpload={handleUploadClick}
-      onCreateProject={handleCreateProjectClick}
-      onCreateTemplate={openTemplateModal}
-      onSaveTemplates={hubSaveTemplates}
-      onDuplicateDocuments={hubDuplicateDocuments}
-      onDeleteDocuments={hubDeleteDocuments}
-      onMoveCopyDocuments={hubMoveCopyDocuments}
-      onSettings={() => setShowAccountSettings(true)}
-      onSignOut={signOut}
-    />
+    <>
+      <SurveyHub
+        documents={documents}
+        projects={projects}
+        templates={templates}
+        members={[]}
+        user={user ? { id: user.id, name: user.user_metadata?.full_name || user.name || user.email, email: user.email } : null}
+        isPro={!!features?.advancedSurvey}
+        onOpenDocument={hubOpenDocument}
+        onUpload={handleUploadClick}
+        onCreateProject={handleCreateProjectClick}
+        onCreateTemplate={openTemplateModal}
+        onSaveTemplates={hubSaveTemplates}
+        onDuplicateDocuments={hubDuplicateDocuments}
+        onDeleteDocuments={hubDeleteDocuments}
+        onMoveCopyDocuments={hubMoveCopyDocuments}
+        onSettings={() => setShowAccountSettings(true)}
+        onSignOut={signOut}
+      />
+      {/* KAL-23: inline error toast for upload/create/save failures. Replaces
+          browser alerts so async failure surfaces without interrupting flow. */}
+      {dashboardError && (
+        <div
+          role="alert"
+          style={{
+            position: 'fixed',
+            bottom: 24,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            maxWidth: 520,
+            background: '#1f1f1f',
+            color: '#fff',
+            border: '1px solid rgba(249, 115, 115, 0.65)',
+            borderRadius: 8,
+            padding: '12px 14px 12px 16px',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 12,
+            boxShadow: '0 10px 30px rgba(0,0,0,0.45)',
+            zIndex: 2000,
+            fontFamily: FONT_FAMILY,
+            fontSize: 13,
+            lineHeight: 1.45,
+            whiteSpace: 'pre-line',
+          }}
+        >
+          <span style={{ flex: 1 }}>{dashboardError}</span>
+          <button
+            type="button"
+            onClick={() => setDashboardError('')}
+            aria-label="Dismiss error"
+            style={{
+              flex: 'none',
+              background: 'transparent',
+              color: '#bbb',
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: 16,
+              lineHeight: 1,
+              padding: 0,
+              width: 22,
+              height: 22,
+            }}
+          >×</button>
+        </div>
+      )}
+    </>
   );
 });
 
