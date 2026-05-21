@@ -688,11 +688,11 @@ export async function getDocumentCollaborators(documentId) {
  * Add a collaborator to a document
  * @param {string} documentId - The document to add collaborator to
  * @param {string} userIdOrEmail - User ID or email of the collaborator
- * @param {string} role - Role: 'viewer', 'commenter', 'editor'
+ * @param {string} role - Role: 'viewer' | 'editor' | 'owner' (KAL-31: `commenter` removed from the active role set).
  * @param {string} invitedBy - User ID of who is inviting
  * @returns {Promise<{success: boolean, data?: any, error?: string, requiresUpgrade?: boolean}>}
  */
-export async function addDocumentCollaborator(documentId, userIdOrEmail, role = 'editor', invitedBy = null) {
+export async function addDocumentCollaborator(documentId, userIdOrEmail, role = 'viewer', invitedBy = null) {
   // Check if it's an email or user ID
   const isEmail = userIdOrEmail.includes('@');
 
@@ -838,11 +838,11 @@ export async function getProjectCollaborators(projectId) {
  * Add a collaborator to a project
  * @param {string} projectId - The project to add collaborator to
  * @param {string} userIdOrEmail - User ID or email of the collaborator
- * @param {string} role - Role: 'viewer', 'commenter', 'editor'
+ * @param {string} role - Role: 'viewer' | 'editor' | 'owner' (KAL-31: `commenter` removed).
  * @param {string} invitedBy - User ID of who is inviting
  * @returns {Promise<{success: boolean, data?: any, error?: string, requiresUpgrade?: boolean}>}
  */
-export async function addProjectCollaborator(projectId, userIdOrEmail, role = 'editor', invitedBy = null) {
+export async function addProjectCollaborator(projectId, userIdOrEmail, role = 'viewer', invitedBy = null) {
   // Check if it's an email or user ID
   const isEmail = userIdOrEmail.includes('@');
 
