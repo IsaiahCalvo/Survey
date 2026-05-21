@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>KAL-20 Unsupported Notice Live Test</title>
+    <style>
+      html, body {
+        background: #0c0c0e;
+        color: #e0e0e0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        margin: 0;
+        padding: 24px;
+      }
+      pre {
+        background: #1a1a1a;
+        padding: 12px 16px;
+        border-radius: 8px;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+      h1 { font-size: 18px; }
+      .ok { color: #4caf50; }
+      .bad { color: #ef5350; }
+      button.kal-action {
+        background: #2a2a2c; color: #e0e0e0;
+        border: 1px solid #444; padding: 6px 12px;
+        border-radius: 6px; cursor: pointer; margin-right: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>KAL-20 — Live importer + UnsupportedAnnotationsNotice harness</h1>
+    <p>
+      Loads the synthetic mixed-annotation fixture, runs the production
+      <code>importAnnotationsFromPdf</code>, and mounts the real
+      <code>UnsupportedAnnotationsNotice</code> component in the bottom-right —
+      the same component App.jsx mounts at <code>App.jsx:34145</code>.
+    </p>
+    <div id="status">Loading PDF.js + importer…</div>
+    <pre id="result">(pending)</pre>
+    <div id="controls">
+      <button class="kal-action" id="rerender">Re-render notice</button>
+      <button class="kal-action" id="rerun-negative">Re-run on supported-only fixture (negative case)</button>
+    </div>
+    <pre id="result-negative" style="display:none">(pending)</pre>
+    <div id="notice-root"></div>
+    <script type="module" src="/src/kal20Harness.jsx"></script>
+  </body>
+</html>
