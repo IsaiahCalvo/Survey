@@ -9946,7 +9946,7 @@ function BottomToolbar(props) {
 }
 
 // PDF Viewer Component with improved typography
-function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
+function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, isActive, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
   // phase35Diag logger can prefix every gate decision with the file under test.
   // Production-stripped via import.meta.env.MODE check; tree-shakes from prod.
@@ -33751,8 +33751,23 @@ ${pageBlocks}
               <button
                 type="button"
                 onClick={() => {
+                  // KAL-46: a failed parse leaves the current pdfFile in a
+                  // transient state — either mutated into a rewritten Blob
+                  // (__rewrittenForParse: true) or simply the original failed
+                  // file. Either way, re-mounting this viewer later with the
+                  // same reference will NOT re-fire the PDF load effect and
+                  // the viewer hangs on the loading spinner. Closing this
+                  // failed tab on Back is the cleanest reset: a subsequent
+                  // open of the same document creates a fresh tab with a
+                  // freshly-picked File reference, and the load effect runs
+                  // cleanly. Falls back to onBack() if a close-on-failure
+                  // handler wasn't provided.
                   setPdfLoadError(null);
-                  if (typeof onBack === 'function') onBack();
+                  if (typeof onCloseAfterFailure === 'function') {
+                    onCloseAfterFailure(tabId);
+                  } else if (typeof onBack === 'function') {
+                    onBack();
+                  }
                 }}
                 style={{
                   background: 'transparent',
@@ -44849,11 +44864,27 @@ export default function App() {
     if (existingTab) {
       // Clear the opening flag in case it was set (shouldn't happen, but just in case)
       openingPdfsRef.current.delete(pdfKey);
-      // Switch to existing tab
-      setActiveTabId(existingTab.id);
-      if (selectedPDF !== existingTab.file) {
-        setSelectedPDF(existingTab.file);
+      // KAL-46: when the user re-selects a document via the upload flow, a
+      // previous failed parse can leave the tab's file in a stuck transient
+      // state (mutated to a rewritten Blob carrying __rewrittenForParse: true,
+      // or simply the original failed reference). Re-mounting the viewer
+      // with that stale reference will NOT re-fire the PDF load effect and
+      // the viewer hangs on the loading spinner. To make same-document
+      // reopen deterministic in those cases, replace the tab's file with the
+      // freshly-selected reference. For healthy already-loaded tabs we keep
+      // the existing reference to preserve scroll position / in-flight work.
+      const previousFile = existingTab.file;
+      const previousLoadFailed = previousFile?.__rewrittenForParse === true
+        || previousFile?.__pdfLoadFailed === true;
+      if (previousLoadFailed) {
+        setTabs(prev => prev.map(tab =>
+          tab.id === existingTab.id ? { ...tab, file: file, filePath: filePath ?? tab.filePath } : tab
+        ));
+        setSelectedPDF(file);
+      } else if (selectedPDF !== previousFile) {
+        setSelectedPDF(previousFile);
       }
+      setActiveTabId(existingTab.id);
       setCurrentView('viewer');
       return;
     }
@@ -45575,6 +45606,7 @@ export default function App() {
                       onLeftRailApiChange={setLeftRailApi}
                       onPageDrop={handlePageDrop}
                       onUpdatePDFFile={handleUpdatePDFFile}
+                      onCloseAfterFailure={handleTabClose}
                       onUnsavedAnnotationsChange={handleUnsavedAnnotationsChange}
                       onAnnotationsExistChange={handleAnnotationsExistChange}
                       onRequestCreateTemplate={handleCreateTemplateRequest}
