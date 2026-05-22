@@ -9539,26 +9539,50 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   void legacyHomeUI;
 
   /* Home redesign: render the new Survey Hub instead of the legacy grid/table.
-     Every prop maps to data/handlers that already exist in Dashboard/App. */
+     Every prop maps to data/handlers that already exist in Dashboard/App.
+
+     KAL-54 audit (2026-05-22): the legacy home JSX (which carried the hidden
+     <input type="file"> attached to `fileInputRef`) is no longer rendered, so
+     the SurveyHub Documents-tab Upload button was a no-op (fileInputRef.current
+     was null). The ProjectsFolderTree had its own local input, masking the
+     gap. We render the hidden inputs here so handleUploadClick / browser
+     fallback continues to work from the Documents tab in v2.0. */
   return (
-    <SurveyHub
-      documents={documents}
-      projects={projects}
-      templates={templates}
-      members={[]}
-      user={user ? { id: user.id, name: user.user_metadata?.full_name || user.name || user.email, email: user.email } : null}
-      isPro={!!features?.advancedSurvey}
-      onOpenDocument={hubOpenDocument}
-      onUpload={handleUploadClick}
-      onCreateProject={handleCreateProjectClick}
-      onCreateTemplate={openTemplateModal}
-      onSaveTemplates={hubSaveTemplates}
-      onDuplicateDocuments={hubDuplicateDocuments}
-      onDeleteDocuments={hubDeleteDocuments}
-      onMoveCopyDocuments={hubMoveCopyDocuments}
-      onSettings={() => setShowAccountSettings(true)}
-      onSignOut={signOut}
-    />
+    <>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/pdf"
+        onChange={handleFileUpload}
+        style={{ display: 'none' }}
+      />
+      <input
+        ref={projectFileInputRef}
+        type="file"
+        accept="application/pdf"
+        onChange={handleProjectFilesSelected}
+        multiple
+        style={{ display: 'none' }}
+      />
+      <SurveyHub
+        documents={documents}
+        projects={projects}
+        templates={templates}
+        members={[]}
+        user={user ? { id: user.id, name: user.user_metadata?.full_name || user.name || user.email, email: user.email } : null}
+        isPro={!!features?.advancedSurvey}
+        onOpenDocument={hubOpenDocument}
+        onUpload={handleUploadClick}
+        onCreateProject={handleCreateProjectClick}
+        onCreateTemplate={openTemplateModal}
+        onSaveTemplates={hubSaveTemplates}
+        onDuplicateDocuments={hubDuplicateDocuments}
+        onDeleteDocuments={hubDeleteDocuments}
+        onMoveCopyDocuments={hubMoveCopyDocuments}
+        onSettings={() => setShowAccountSettings(true)}
+        onSignOut={signOut}
+      />
+    </>
   );
 });
 

@@ -1,0 +1,67 @@
+{
+  "area_03": {
+    "signed_in_as": "survey-test-pro-1779477209996@example.com",
+    "upload_btn_visible": false
+  },
+  "area_04": {},
+  "area_06": {},
+  "area_07": {
+    "pro_signed_in_as": "survey-test-pro-1779477209996@example.com",
+    "ent_signed_in_as": "survey-test-enterprise-1779477209996@example.com"
+  },
+  "area_08": {
+    "free_signed_in_as": "survey-test-free-1779477209996@example.com"
+  },
+  "area_09": {},
+  "area_10": {},
+  "area_11": {},
+  "console_by_label": {
+    "a03-pro": {
+      "error_count": 8,
+      "warn_count": 2,
+      "errors_first5": [
+        "Failed to load resource: the server responded with a status of 400 ()",
+        "Failed to load resource: the server responded with a status of 400 ()",
+        "Failed to load resource: the server responded with a status of 400 ()",
+        "Failed to load resource: the server responded with a status of 400 ()",
+        "Failed to load resource: the server responded with a status of 400 ()"
+      ]
+    },
+    "a08-free": {
+      "error_count": 0,
+      "warn_count": 1,
+      "errors_first5": []
+    },
+    "a11-pro-form": {
+      "error_count": 4,
+      "warn_count": 1,
+      "errors_first5": [
+        "Failed to load resource: the server responded with a status of 400 ()",
+        "Failed to load resource: the server responded with a status of 400 ()",
+        "Failed to load resource: the server responded with a status of 400 ()",
+        "Failed to load resource: the server responded with a status of 400 ()"
+      ]
+    },
+    "a07-pro": {
+      "error_count": 4,
+      "warn_count": 1,
+      "errors_first5": [
+        "Failed to load resource: the server responded with a status of 400 ()",
+        "Failed to load resource: the server responded with a status of 400 ()",
+        "Failed to load resource: the server responded with a status of 400 ()",
+        "Failed to load resource: the server responded with a status of 400 ()"
+      ]
+    },
+    "a07-ent": {
+      "error_count": 4,
+      "warn_count": 1,
+      "errors_first5": [
+        "Failed to load resource: the server responded with a status of 400 ()",
+        "Failed to load resource: the server responded with a status of 400 ()",
+        "Failed to load resource: the server responded with a status of 400 ()",
+        "Failed to load resource: the server responded with a status of 400 ()"
+      ]
+    }
+  },
+  "page_errors": []
+}

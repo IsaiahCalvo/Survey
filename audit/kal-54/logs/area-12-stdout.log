@@ -1,0 +1,105 @@
+{
+  "docId": "ccd7bf00-e164-40c7-b800-aadfced7b683",
+  "projectId": "d291054d-ec10-4a08-a8e2-0f859fb1f27d",
+  "findings": {
+    "documents_columns_present": [
+      "id",
+      "user_id",
+      "project_id",
+      "template_id",
+      "name",
+      "description",
+      "file_path",
+      "file_size",
+      "page_count",
+      "is_survey_mode",
+      "current_page",
+      "zoom_level",
+      "created_at",
+      "updated_at",
+      "last_opened_at",
+      "tool_preferences",
+      "archived",
+      "first_opened_device",
+      "first_opened_user_tier",
+      "first_opened_app_version",
+      "cutover_completed_at",
+      "locked_at",
+      "locked_by",
+      "locked_label"
+    ],
+    "projects_columns_present": [
+      "id",
+      "user_id",
+      "name",
+      "description",
+      "color",
+      "created_at",
+      "updated_at",
+      "archived"
+    ],
+    "project_create": {
+      "ok": true,
+      "id": "d291054d-ec10-4a08-a8e2-0f859fb1f27d"
+    },
+    "document_create": {
+      "ok": true,
+      "id": "ccd7bf00-e164-40c7-b800-aadfced7b683"
+    },
+    "access_matrix": {
+      "owner_pro": {
+        "label": "owner_pro",
+        "rpc": {
+          "value": true
+        },
+        "select": {
+          "rows": 1
+        }
+      },
+      "unauthorized_free": {
+        "label": "unauthorized_free",
+        "rpc": {
+          "value": false
+        },
+        "select": {
+          "rows": 0
+        }
+      },
+      "unauthorized_enterprise": {
+        "label": "unauthorized_enterprise",
+        "rpc": {
+          "value": false
+        },
+        "select": {
+          "rows": 0
+        }
+      },
+      "collaborator_enterprise": {
+        "label": "collaborator_enterprise",
+        "rpc": {
+          "value": true
+        },
+        "select": {
+          "rows": 1
+        }
+      }
+    },
+    "collaborator_invite": {
+      "ok": true,
+      "row": {
+        "id": "85427196-e538-4311-9293-65c7175c718e",
+        "document_id": "ccd7bf00-e164-40c7-b800-aadfced7b683",
+        "user_id": "9a54cb45-8d56-4b05-9b6b-bd39c2e338ea",
+        "invited_by": "80b5d007-c9d9-4937-b67b-8cb404c9d141",
+        "role": "viewer",
+        "email": null,
+        "status": "active",
+        "created_at": "2026-05-22T19:16:21.703793+00:00",
+        "updated_at": "2026-05-22T19:16:21.703793+00:00"
+      }
+    },
+    "rpc_with_junk_doc": {
+      "value": false
+    }
+  }
+}
