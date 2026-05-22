@@ -126,14 +126,29 @@ test('normal Save success path does not show a blocking saved alert', () => {
   assert.match(APP_SOURCE, /localFilesystemWrite:\s*false/);
 });
 
-test('Electron File menu labels explicit PDF output as Export', () => {
-  assert.match(ELECTRON_MAIN_SOURCE, /label:\s*'Export'/);
-  assert.equal(
-    ELECTRON_MAIN_SOURCE.includes("label: 'Export Annotated PDF"),
-    false,
-    'File menu export item should be labeled Export',
-  );
+test('Electron File menu wires the annotated PDF export path with the documented accelerator', () => {
+  // KAL-51: lock the export PATH (IPC channel + accelerator), not the literal label
+  // string. The label was renamed from "Export" to "Export Annotated PDF…" to
+  // disambiguate it from "Print PDF…" and "Print PDF with Annotations…". The
+  // contract that matters is that Cmd/Ctrl+Shift+E still dispatches the
+  // menu:export-annotated-pdf IPC channel that App.jsx listens on.
   assert.match(ELECTRON_MAIN_SOURCE, /menu:export-annotated-pdf/);
+  assert.match(ELECTRON_MAIN_SOURCE, /accelerator:\s*'CmdOrCtrl\+Shift\+E'/);
+  // The export menu item's click handler must send the export-annotated-pdf
+  // channel; assert the accelerator and channel co-occur in a single submenu item.
+  assert.match(
+    ELECTRON_MAIN_SOURCE,
+    /accelerator:\s*'CmdOrCtrl\+Shift\+E'[\s\S]{0,400}menu:export-annotated-pdf/,
+    'Cmd+Shift+E must dispatch menu:export-annotated-pdf',
+  );
+  // The label must not regress to the bare ambiguous "Export" word that the
+  // KAL-8 audit flagged. It must clearly mark annotated PDF output.
+  assert.equal(
+    /label:\s*'Export'\s*,/.test(ELECTRON_MAIN_SOURCE),
+    false,
+    'File menu export item must not use the bare ambiguous "Export" label (KAL-51)',
+  );
+  assert.match(ELECTRON_MAIN_SOURCE, /label:\s*'Export Annotated PDF/);
 });
 
 test('current print-with-annotations path prints regular app annotations through flattened temporary PDF bytes', () => {
