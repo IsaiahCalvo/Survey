@@ -460,9 +460,9 @@ direction." All claims above point to a file + line or a closed issue.
 
 | Local id | Title | Linear id | Tier |
 | --- | --- | --- | --- |
-| Gap A | Add document sign-off / release / lock state | _(filed via mcp__claude_ai_Linear__save_issue — see KAL-15 comment)_ | Pre-MVP |
-| Gap B | First-class document revision / version history | _(filed via mcp__claude_ai_Linear__save_issue — see KAL-15 comment)_ | Pre-MVP / Post-release |
-| Gap C | Implement native / editable PDF export (`bakeAnnotationsIntoPdf`) | _(filed via mcp__claude_ai_Linear__save_issue — see KAL-15 comment)_ | Post-release |
+| Gap A | Add document sign-off / release / lock state | **KAL-49** | Pre-MVP |
+| Gap B | First-class document revision / version history | **KAL-48** | Post-release |
+| Gap C | Implement native / editable PDF export (`bakeAnnotationsIntoPdf`) | **KAL-50** | Post-release |
 
 ---
 
