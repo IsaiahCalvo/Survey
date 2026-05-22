@@ -122,6 +122,7 @@ import TemplateOverwriteWarningModal from './components/TemplateOverwriteWarning
 import ExcelSyncConfirmModal from './components/ExcelSyncConfirmModal';
 import SyncfusionPDFContainer from './components/SyncfusionPDFContainer';
 import YDocProvider from './components/collab/YDocProvider.jsx';
+import DocumentLockBanner from './components/DocumentLockBanner.jsx';
 // Phase 29 — per-user Y.UndoManager hook + user-action wrappers. handleUndo and
 // handleRedo bodies route through these so trackedOrigins reference equality
 // (Pitfall 7) holds across the bridge and the keyboard handler call sites.
@@ -4875,9 +4876,44 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       await handleDocumentClick(data);
       return data;
     };
+    // KAL-49 harness — dev-only probe used by scripts/kal49-document-lock-e2e.mjs
+    // to drive a Supabase annotation INSERT against the *current authenticated
+    // session* so the verifier can prove the RLS deny path. Same shape as the
+    // service singleton uses; this is the only point in the app where we have
+    // both the imported `supabase` client and the current auth context.
+    window.__kal49Harness = {
+      async insertAnnotationProbe(documentId) {
+        if (!documentId) throw new Error('kal49 probe requires documentId');
+        const session = (await supabase.auth.getSession()).data?.session || null;
+        const userId = session?.user?.id || null;
+        if (!userId) return { error: { message: 'no session' } };
+        const { data, error } = await supabase
+          .from('document_annotations')
+          .insert({
+            document_id: documentId,
+            user_id: userId,
+            annotation_id: `kal49-probe-${Date.now()}`,
+            page_number: 1,
+            annotation_type: 'ink',
+            annotation_data: { type: 'ink', test: 'kal49' },
+            // bounds is NOT NULL on document_annotations — fill with a degenerate
+            // single-point bound so the schema check passes; RLS is what we're
+            // probing, not geometry.
+            bounds: { x: 0, y: 0, width: 1, height: 1 },
+          })
+          .select();
+        return {
+          data: data ?? null,
+          error: error ? { code: error.code, message: error.message, status: error.status } : null,
+        };
+      },
+    };
     return () => {
       if (window.__fix20OpenDocumentById) {
         delete window.__fix20OpenDocumentById;
+      }
+      if (window.__kal49Harness) {
+        delete window.__kal49Harness;
       }
     };
   }, [handleDocumentClick]);
@@ -45394,6 +45430,15 @@ export default function App() {
                   }}
                 >
                   <YDocProvider docId={tab.file?.id}>
+                    {/* KAL-49 — document lock banner. Mounted as a sibling
+                        inside YDocProvider so it sees the same per-tab Y.Doc
+                        scope (the lock state is a document-level concept and
+                        keys on the same documentId). */}
+                    <DocumentLockBanner
+                      documentId={tab.file?.id || null}
+                      documentOwnerId={tab.file?.user_id || null}
+                      viewerUserId={user?.id || null}
+                    />
                     <PDFViewer
                       pdfFile={tab.file}
                       pdfFilePath={tab.filePath}
