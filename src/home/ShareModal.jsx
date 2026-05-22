@@ -115,6 +115,8 @@ export default function ShareModal({
       role: role.toLowerCase(),
       email: null, // link-only
       currentUser,
+      documentName: name || '',
+      inviterName: currentUser?.user_metadata?.full_name || currentUser?.email || null,
     });
     setBusy(false);
     if (!res.success) { setError(res.error || 'Could not create invite link.'); return; }
@@ -138,13 +140,15 @@ export default function ShareModal({
         role: role.toLowerCase(),
         email: addr,
         currentUser,
+        documentName: name || '',
+        inviterName: currentUser?.user_metadata?.full_name || currentUser?.email || null,
       })));
     setBusy(false);
     const failed = results.filter((r) => !r.success);
     if (failed.length) {
       setError(`Sent ${results.length - failed.length} of ${results.length}. First failure: ${failed[0].error || 'unknown'}.`);
     } else {
-      setSuccess(`Sent ${results.length} ${role} invite${results.length === 1 ? '' : 's'}. (Email delivery wires through Phase C; tokens are live.)`);
+      setSuccess(`Sent ${results.length} ${role} invite${results.length === 1 ? '' : 's'}.`);
       setEmails('');
     }
   };

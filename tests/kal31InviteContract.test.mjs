@@ -84,3 +84,62 @@ test('KAL-31: AccessManagementModal exposes only viewer/editor/owner', () => {
   match(src, /const ROLES\s*=\s*\['Owner',\s*'Editor',\s*'Viewer'\]/);
   ok(!/Commenter/i.test(src), 'AccessManagementModal must not advertise Commenter');
 });
+
+test('KAL-31 Phase C: send-email function has invite/permission-changed/access-removed templates', () => {
+  const src = fs.readFileSync(
+    path.join(repoRoot, 'supabase/functions/send-email/index.ts'),
+    'utf8',
+  );
+  match(src, /'document-invite':/);
+  match(src, /'permission-changed':/);
+  match(src, /'access-removed':/);
+});
+
+test('KAL-31 Phase D: InviteAcceptPage renders the six acceptance states', () => {
+  const src = fs.readFileSync(
+    path.join(repoRoot, 'src/home/InviteAcceptPage.jsx'),
+    'utf8',
+  );
+  for (const status of ['accepted', 'wrong_account', 'expired', 'revoked', 'already_accepted', 'invalid']) {
+    match(src, new RegExp(`'${status}'`), `InviteAcceptPage must handle '${status}'`);
+  }
+  match(src, /acceptDocumentInvite/);
+  // Upgrade-required banner for free-user editor/owner invites.
+  match(src, /upgradeRequired/);
+});
+
+test('KAL-31 Phase D: main.jsx routes /invite/<token> to the accept page', () => {
+  const src = fs.readFileSync(
+    path.join(repoRoot, 'src/main.jsx'),
+    'utf8',
+  );
+  match(src, /\/invite\\\//);
+  match(src, /InviteAcceptPage/);
+});
+
+test('KAL-31 Phase E: AccessManagementModal wires live backend behavior', () => {
+  const src = fs.readFileSync(
+    path.join(repoRoot, 'src/home/AccessManagementModal.jsx'),
+    'utf8',
+  );
+  match(src, /getDocumentCollaborators/);
+  match(src, /updateCollaboratorRole/);
+  match(src, /removeDocumentCollaborator/);
+  match(src, /listDocumentInvites/);
+  match(src, /revokeDocumentInvite/);
+  match(src, /resendDocumentInvite/);
+  match(src, /sendPermissionChangedEmail/);
+  match(src, /sendAccessRemovedEmail/);
+  match(src, /cannot demote the last owner/);
+});
+
+test('KAL-31 Phase C/E: shareEmailService exists and wraps send-email', () => {
+  const src = fs.readFileSync(
+    path.join(repoRoot, 'src/services/shareEmailService.js'),
+    'utf8',
+  );
+  match(src, /sendDocumentInviteEmail/);
+  match(src, /sendPermissionChangedEmail/);
+  match(src, /sendAccessRemovedEmail/);
+  match(src, /functions\.invoke\('send-email'/);
+});
