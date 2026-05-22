@@ -39,6 +39,10 @@ export default function SurveyHub({
   onCreateProject,
   onCreateTemplate,
   onSaveTemplates,
+  /* KAL-44 — host (App.jsx) supplies this so TemplatesEditor can decide
+     whether deleting a checklist item should hard-delete or trigger the
+     archive confirmation flow. Pure callback: (itemId) => number. */
+  getChecklistItemUsageCount,
   onDuplicateDocuments,
   onDeleteDocuments,
   onMoveCopyDocuments,
@@ -122,6 +126,7 @@ export default function SurveyHub({
           onCreateTemplate={onCreateTemplate}
           onSaveTemplates={onSaveTemplates}
           onShare={shareTemplate}
+          getChecklistItemUsageCount={getChecklistItemUsageCount}
         />
       )}
 

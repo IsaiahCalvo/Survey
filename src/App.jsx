@@ -168,8 +168,10 @@ import {
   subscribeToDocumentAnnotations,
   updateDocumentPresence,
   removeDocumentPresence,
-  deleteAnnotations
+  deleteAnnotations,
+  countSurveyMarkersReferencingChecklistItem,
 } from './services/documentAnnotationService';
+import { countMarkersReferencingItem as countMarkersReferencingItemInMemory } from './services/checklistOrphanCleanup';
 import { perfUpload, perfLoad, perfRender, perfZoom, setDebugEnabled as setPerfDebugEnabled } from './utils/performanceLogger';
 import {
   setDebugEnabled as setPdfDebugEnabled,
@@ -6550,6 +6552,23 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   // Open a document in the PDF viewer — reuse the existing open path.
   const hubOpenDocument = (doc) => { if (doc) handleDocumentClick(doc); };
 
+  /* KAL-44 — count survey markers that reference a checklist item id across
+     every document, so the templates editor can decide to archive vs hard-
+     delete. Hub has no in-memory marker map (no document is open), so this
+     hits Supabase. Guests get 0 (no cloud data) which preserves the
+     pre-KAL-44 hard-delete path for unsigned-in users. The TemplatesEditor
+     awaits this promise inside its async delete handler. */
+  const hubGetChecklistItemUsageCount = useCallback(async (itemId) => {
+    if (!itemId || typeof itemId !== 'string') return 0;
+    if (!user) return 0;
+    try {
+      return await countSurveyMarkersReferencingChecklistItem(itemId);
+    } catch (err) {
+      console.warn('[ChecklistArchive] hub count failed:', err);
+      return 0;
+    }
+  }, [user]);
+
   // Persist edits made in the Survey Hub's Templates editor. Mirrors the
   // logged-in / guest split used by saveTemplate so hub edits land in
   // Supabase (config JSONB) for signed-in users, or localStorage otherwise.
@@ -9564,14 +9583,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         onCreateProject={handleCreateProjectClick}
         onCreateTemplate={openTemplateModal}
         onSaveTemplates={hubSaveTemplates}
+        getChecklistItemUsageCount={hubGetChecklistItemUsageCount}
         onDuplicateDocuments={hubDuplicateDocuments}
         onDeleteDocuments={hubDeleteDocuments}
         onMoveCopyDocuments={hubMoveCopyDocuments}
         onSettings={() => setShowAccountSettings(true)}
         onSignOut={signOut}
       />
-      {/* KAL-23: inline error toast for upload/create/save failures. Replaces
-          browser alerts so async failure surfaces without interrupting flow. */}
       {dashboardError && (
         <div
           role="alert"
@@ -41040,9 +41058,12 @@ ${pageBlocks}
                                                   })()
                                                 }
 
-                                                {/* Expanded checklist items */}
+                                                {/* Expanded checklist items — active items only.
+                                                    KAL-44: archived items are rendered separately
+                                                    below so new markers don't see them as active
+                                                    prompts, but old responses still surface. */}
                                                 {
-                                                  isSurveyMarkerExpanded && category.checklist && category.checklist.map(item => {
+                                                  isSurveyMarkerExpanded && category.checklist && category.checklist.filter(item => item && item.archived !== true).map(item => {
                                                     const response = surveyMarkers[annotationId]?.checklistResponses?.[item.id] || {};
                                                     const isSelected = response.selection;
                                                     return (
@@ -41089,10 +41110,13 @@ ${pageBlocks}
                                                                       }
                                                                     };
 
-                                                                    // Check if all checklist items are Y or N/A
+                                                                    // Check if all checklist items are Y or N/A.
+                                                                    // KAL-44: archived items don't gate auto-complete; only
+                                                                    // active items count toward "all complete".
                                                                     const updatedSurveyMarker = updated[annotationId];
-                                                                    if (updatedSurveyMarker && category.checklist && category.checklist.length > 0 && selectedTemplate && selectedSpaceId) {
-                                                                      const allItemsComplete = category.checklist.every(checklistItem => {
+                                                                    const activeChecklist = (category.checklist || []).filter(it => it && it.archived !== true);
+                                                                    if (updatedSurveyMarker && activeChecklist.length > 0 && selectedTemplate && selectedSpaceId) {
+                                                                      const allItemsComplete = activeChecklist.every(checklistItem => {
                                                                         const response = updatedSurveyMarker.checklistResponses?.[checklistItem.id];
                                                                         const selection = response?.selection;
                                                                         return selection === 'Y' || selection === 'N/A';
@@ -41299,6 +41323,99 @@ ${pageBlocks}
                                                       </div>
                                                     );
                                                   })
+                                                }
+
+                                                {/* KAL-44 — Archived items section.
+                                                    Items that were archived from the template
+                                                    after this marker recorded a response. The
+                                                    response payload stays intact under its
+                                                    original item id; we render the last-known
+                                                    label in a quiet section so the data is
+                                                    still inspectable but isn't an active prompt
+                                                    for new markers (new markers won't have a
+                                                    response under that id, so this section is
+                                                    empty for them). */}
+                                                {
+                                                  isSurveyMarkerExpanded && (() => {
+                                                    const responses = surveyMarkers[annotationId]?.checklistResponses || {};
+                                                    const archivedItems = (category.checklist || []).filter(it => it && it.archived === true);
+                                                    const archivedWithResponses = archivedItems.filter(it => Object.prototype.hasOwnProperty.call(responses, it.id));
+                                                    if (archivedWithResponses.length === 0) return null;
+                                                    return (
+                                                      <div
+                                                        data-testid={`archived-checklist-${annotationId}`}
+                                                        style={{
+                                                          padding: '6px 8px',
+                                                          background: '#2a2a2a',
+                                                          borderTop: '2px solid #555',
+                                                          marginTop: '0',
+                                                        }}
+                                                      >
+                                                        <div style={{
+                                                          fontSize: '10px',
+                                                          color: '#888',
+                                                          textTransform: 'uppercase',
+                                                          letterSpacing: '0.6px',
+                                                          marginBottom: '4px',
+                                                          fontWeight: 600,
+                                                        }}>
+                                                          Archived ({archivedWithResponses.length})
+                                                        </div>
+                                                        {archivedWithResponses.map(item => {
+                                                          const response = responses[item.id] || {};
+                                                          const sel = response.selection;
+                                                          const label = item.lastKnownLabel || item.text || 'Archived item';
+                                                          return (
+                                                            <div
+                                                              key={item.id}
+                                                              data-archived-response-id={item.id}
+                                                              style={{
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: '8px',
+                                                                padding: '3px 0',
+                                                                opacity: 0.78,
+                                                              }}
+                                                            >
+                                                              <span
+                                                                title={`Archived${item.archivedAt ? ` ${new Date(item.archivedAt).toLocaleString()}` : ''} — read-only historical response`}
+                                                                style={{
+                                                                  color: '#bbb',
+                                                                  fontSize: '12px',
+                                                                  flex: 1,
+                                                                  fontStyle: 'italic',
+                                                                  textDecoration: 'line-through',
+                                                                  textDecorationColor: '#666',
+                                                                }}
+                                                              >
+                                                                {label}
+                                                              </span>
+                                                              <span
+                                                                style={{
+                                                                  minWidth: '28px',
+                                                                  padding: '2px 6px',
+                                                                  fontSize: '10px',
+                                                                  fontWeight: 600,
+                                                                  borderRadius: '3px',
+                                                                  background: sel === 'Y'
+                                                                    ? '#7aa78f'
+                                                                    : sel === 'N'
+                                                                      ? '#a77a7a'
+                                                                      : sel
+                                                                        ? '#666'
+                                                                        : '#444',
+                                                                  color: sel ? '#FFFFFF' : '#999',
+                                                                  textAlign: 'center',
+                                                                }}
+                                                              >
+                                                                {sel || '—'}
+                                                              </span>
+                                                            </div>
+                                                          );
+                                                        })}
+                                                      </div>
+                                                    );
+                                                  })()
                                                 }
                                               </div>
                                             );
@@ -42022,11 +42139,18 @@ ${pageBlocks}
                             <div style={{ fontWeight: '500', color: COLORS.modal.textPrimary }}>
                               {category.name || 'Untitled Category'}
                             </div>
-                            {category.checklist && category.checklist.length > 0 && (
-                              <div style={{ fontSize: '12px', color: COLORS.modal.textMuted, marginTop: '4px' }}>
-                                {category.checklist.length} checklist item{category.checklist.length !== 1 ? 's' : ''}
-                              </div>
-                            )}
+                            {(() => {
+                              /* KAL-44: count only active (non-archived) items here so the
+                                 "N checklist items" preview reflects what a new marker would
+                                 actually see. */
+                              const activeCount = (category.checklist || []).filter(it => it && it.archived !== true).length;
+                              if (activeCount === 0) return null;
+                              return (
+                                <div style={{ fontSize: '12px', color: COLORS.modal.textMuted, marginTop: '4px' }}>
+                                  {activeCount} checklist item{activeCount !== 1 ? 's' : ''}
+                                </div>
+                              );
+                            })()}
                           </button>
                         ))}
                       </div>
