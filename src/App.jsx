@@ -122,6 +122,9 @@ import TemplateOverwriteWarningModal from './components/TemplateOverwriteWarning
 import ExcelSyncConfirmModal from './components/ExcelSyncConfirmModal';
 import SyncfusionPDFContainer from './components/SyncfusionPDFContainer';
 import YDocProvider from './components/collab/YDocProvider.jsx';
+// KAL-48 — document revision (snapshot) drawer. Mounts as sibling of PDFViewer
+// inside the YDocProvider tree so this file stays nearly diff-free.
+import RevisionsPanel from './components/revisions/RevisionsPanel.jsx';
 // Phase 29 — per-user Y.UndoManager hook + user-action wrappers. handleUndo and
 // handleRedo bodies route through these so trackedOrigins reference equality
 // (Pitfall 7) holds across the bridge and the keyboard handler call sites.
@@ -45423,6 +45426,8 @@ export default function App() {
                       entities={entities}
                       setEntities={setEntities}
                     />
+                    {/* KAL-48 — revisions drawer (own portal-style positioning). */}
+                    <RevisionsPanel documentId={tab.file?.id} user={user} />
                   </YDocProvider>
                 </div>
               );
