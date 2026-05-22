@@ -18,6 +18,7 @@ import {
   Print,
   LinkAnnotation,
   FormFields,
+  FormDesigner,
   Inject
 } from '@syncfusion/ej2-react-pdfviewer';
 
@@ -655,7 +656,20 @@ const SyncfusionPDFContainer = forwardRef(({
   onPDFBookmarksAvailable,
   onPageContainersChange,
   onDebugEvent,
-  onDocumentUnload
+  onDocumentUnload,
+  // KAL-47: Survey-native form designer wiring.
+  // Survey owns the UI; we just bridge Syncfusion events back to App so
+  // the custom Forms toolbar / properties panel can react. Designer mode
+  // (`viewer.designerMode`) is toggled imperatively via the ref so we never
+  // surface Syncfusion's own form-designer chrome.
+  formDesignerEnabled = false,
+  onFormFieldAdd,
+  onFormFieldSelect,
+  onFormFieldUnselect,
+  onFormFieldRemove,
+  onFormFieldPropertiesChange,
+  onFormFieldClick,
+  onFormFieldDoubleClick
 }, ref) => {
   const viewerRef = useRef(null);
   const readyRef = useRef(false);
@@ -1969,6 +1983,108 @@ const SyncfusionPDFContainer = forwardRef(({
     get zoomValue() {
       const viewer = getViewerInstance();
       return coerceZoom(viewer?.zoomValue, zoomValue || 100);
+    },
+
+    // KAL-47: imperative wrapper around Syncfusion's FormDesigner API.
+    // We intentionally expose only the operations Survey needs — create,
+    // place-mode, select, update, delete, list — so the App layer cannot
+    // accidentally drive Syncfusion's built-in form-designer chrome.
+    setDesignerMode: (enabled) => {
+      const viewer = getViewerInstance();
+      if (!viewer) return false;
+      const next = enabled === true;
+      try {
+        viewer.designerMode = next;
+        return true;
+      } catch (err) {
+        console.warn('[KAL-47] setDesignerMode failed', err);
+        return false;
+      }
+    },
+    setFormFieldMode: (formFieldType, options) => {
+      const viewer = getViewerInstance();
+      const designerModule = viewer?.formDesignerModule;
+      if (!viewer || !designerModule || typeof designerModule.setFormFieldMode !== 'function') {
+        return false;
+      }
+      try {
+        // Designer mode must be ON for the placement crosshair to react.
+        if (viewer.designerMode !== true) viewer.designerMode = true;
+        designerModule.setFormFieldMode(formFieldType, options);
+        return true;
+      } catch (err) {
+        console.warn('[KAL-47] setFormFieldMode failed', { formFieldType, err });
+        return false;
+      }
+    },
+    addFormField: (formFieldType, options) => {
+      const viewer = getViewerInstance();
+      const designerModule = viewer?.formDesignerModule;
+      if (!viewer || !designerModule || typeof designerModule.addFormField !== 'function') {
+        return null;
+      }
+      try {
+        return designerModule.addFormField(formFieldType, options);
+      } catch (err) {
+        console.warn('[KAL-47] addFormField failed', { formFieldType, err });
+        return null;
+      }
+    },
+    updateFormField: (formFieldId, options) => {
+      const viewer = getViewerInstance();
+      const designerModule = viewer?.formDesignerModule;
+      if (!viewer || !designerModule || typeof designerModule.updateFormField !== 'function') {
+        return false;
+      }
+      try {
+        designerModule.updateFormField(formFieldId, options);
+        return true;
+      } catch (err) {
+        console.warn('[KAL-47] updateFormField failed', { formFieldId, err });
+        return false;
+      }
+    },
+    deleteFormField: (formFieldIdOrObject) => {
+      const viewer = getViewerInstance();
+      if (!viewer) return false;
+      // Syncfusion exposes a delete on the form-designer module; if not
+      // present we fall back to the form-fields module's deleteFormField.
+      const designerModule = viewer.formDesignerModule;
+      const formFieldsModule = viewer.formFieldsModule;
+      try {
+        if (designerModule && typeof designerModule.deleteFormField === 'function') {
+          designerModule.deleteFormField(formFieldIdOrObject);
+          return true;
+        }
+        if (formFieldsModule && typeof formFieldsModule.deleteFormField === 'function') {
+          formFieldsModule.deleteFormField(formFieldIdOrObject);
+          return true;
+        }
+      } catch (err) {
+        console.warn('[KAL-47] deleteFormField failed', err);
+      }
+      return false;
+    },
+    selectFormField: (formFieldId) => {
+      const viewer = getViewerInstance();
+      const designerModule = viewer?.formDesignerModule;
+      if (!viewer || !designerModule || typeof designerModule.selectFormField !== 'function') {
+        return false;
+      }
+      try {
+        designerModule.selectFormField(formFieldId);
+        return true;
+      } catch (err) {
+        console.warn('[KAL-47] selectFormField failed', { formFieldId, err });
+        return false;
+      }
+    },
+    getFormFieldCollection: () => {
+      const viewer = getViewerInstance();
+      if (!viewer) return [];
+      // Two surfaces in different Syncfusion builds; prefer the public one.
+      const coll = viewer.formFieldCollections || viewer.formFieldCollection || [];
+      return Array.isArray(coll) ? coll.slice() : [];
     }
   }), [
     currentPage,
@@ -1991,7 +2107,17 @@ const SyncfusionPDFContainer = forwardRef(({
     emitDebugEvent('viewer_created');
     requestPageContainerRefresh('viewer_created');
     connectPageObserver();
-  }, [connectPageObserver, emitDebugEvent, patchSignatureStoreGuard, requestPageContainerRefresh]);
+    // KAL-47: dev-only window hook so the standalone Playwright verify
+    // script (and ad-hoc devtools sessions) can poke at the Syncfusion
+    // viewer without scraping internal DOM. Skipped in production builds
+    // because Vite tree-shakes the import.meta.env.PROD branch.
+    if (typeof window !== 'undefined') {
+      try {
+        // eslint-disable-next-line no-underscore-dangle
+        window.__syncfusionPdfViewer__ = getViewerInstance();
+      } catch {/* never hard-fail the viewer for a debug hook */}
+    }
+  }, [connectPageObserver, emitDebugEvent, getViewerInstance, patchSignatureStoreGuard, requestPageContainerRefresh]);
 
   const handleResourcesLoaded = useCallback(() => {
     setResourcesReady(true);
@@ -2263,6 +2389,49 @@ const SyncfusionPDFContainer = forwardRef(({
     emitDebugEvent('document_unload');
   }, [clearBookmarkRetry, disconnectPageObserver, emitDebugEvent, onDocumentUnload, onPageContainersChange]);
 
+  // KAL-47: bridge Syncfusion FormDesigner events to App handlers.
+  // We only forward — the App owns selection state, the properties panel,
+  // and decides what to do (e.g. open the FormFieldPropertiesPanel popover).
+  const handleFormFieldAdd = useCallback((args) => {
+    onFormFieldAdd?.(args);
+  }, [onFormFieldAdd]);
+  const handleFormFieldSelect = useCallback((args) => {
+    onFormFieldSelect?.(args);
+  }, [onFormFieldSelect]);
+  const handleFormFieldUnselect = useCallback((args) => {
+    onFormFieldUnselect?.(args);
+  }, [onFormFieldUnselect]);
+  const handleFormFieldRemove = useCallback((args) => {
+    onFormFieldRemove?.(args);
+  }, [onFormFieldRemove]);
+  const handleFormFieldPropertiesChange = useCallback((args) => {
+    onFormFieldPropertiesChange?.(args);
+  }, [onFormFieldPropertiesChange]);
+  const handleFormFieldClick = useCallback((args) => {
+    onFormFieldClick?.(args);
+  }, [onFormFieldClick]);
+  const handleFormFieldDoubleClick = useCallback((args) => {
+    onFormFieldDoubleClick?.(args);
+  }, [onFormFieldDoubleClick]);
+
+  // KAL-47: keep `viewer.designerMode` in sync with the App's Form mode.
+  // Designer mode is the only way `addFormField` / `setFormFieldMode`
+  // produce interactive editing handles. We toggle it here imperatively
+  // so Survey can flip in/out of Forms mode without touching component-
+  // level props (which would force a viewer recreate on every change).
+  useEffect(() => {
+    const viewer = getViewerInstance();
+    if (!viewer) return;
+    const next = formDesignerEnabled === true;
+    if (viewer.designerMode !== next) {
+      try {
+        viewer.designerMode = next;
+      } catch (err) {
+        console.warn('[KAL-47] failed to toggle designerMode', err);
+      }
+    }
+  }, [formDesignerEnabled, getViewerInstance, isReady]);
+
   useEffect(() => {
     if (!isReady || !resourcesReady || !documentSource) return;
 
@@ -2510,7 +2679,13 @@ const SyncfusionPDFContainer = forwardRef(({
       enablePrint={true}
       enableAnnotation={true}
       enableFormFields={true}
-      enableFormDesigner={false}
+      // KAL-47: `enableFormDesigner` actually controls whether the
+      // FormDesigner module is loaded at all (PdfViewer.requiredModules
+      // gates on this flag). It does NOT show built-in toolbar UI because
+      // `enableToolbar={false}` and `enableFormDesignerToolbar={false}`
+      // keep both toolbars hidden. We need this on so `formDesignerModule`
+      // exists for Survey's custom Forms toolbar to call.
+      enableFormDesigner={true}
       enablePageOrganizer={false}
       enableHyperlink={true}
       hyperlinkOpenState="NewTab"
@@ -2570,8 +2745,15 @@ const SyncfusionPDFContainer = forwardRef(({
       textSelectionEnd={handleTextSelectionEnd}
       ajaxRequestSuccess={handleAjaxRequestSuccess}
       documentUnload={handleDocumentUnload}
+      formFieldAdd={handleFormFieldAdd}
+      formFieldSelect={handleFormFieldSelect}
+      formFieldUnselect={handleFormFieldUnselect}
+      formFieldRemove={handleFormFieldRemove}
+      formFieldPropertiesChange={handleFormFieldPropertiesChange}
+      formFieldClick={handleFormFieldClick}
+      formFieldDoubleClick={handleFormFieldDoubleClick}
     >
-      <Inject services={[Magnification, Navigation, BookmarkView, TextSelection, TextSearch, Annotation, Print, LinkAnnotation, FormFields]} />
+      <Inject services={[Magnification, Navigation, BookmarkView, TextSelection, TextSearch, Annotation, Print, LinkAnnotation, FormFields, FormDesigner]} />
     </PdfViewerComponent>
   );
 });
