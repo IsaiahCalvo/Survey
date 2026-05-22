@@ -70,3 +70,6 @@ supabase/.temp/
 
 # User diagnostic snapshots from Cmd+Shift+L (dated subfolders, auto-pruned to 20)
 /Logs/
+
+# KAL-48 verification artifacts (transient: screenshots + scratch scripts)
+/.kal48/
