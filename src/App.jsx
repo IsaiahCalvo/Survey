@@ -26241,7 +26241,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
       }
       const bytes = Array.from(new Uint8Array(buffer));
       const result = await api.saveFile({
-        title: 'Export',
+        title: 'Export Annotated PDF',
         defaultPath: defaultName,
         filters: [{ name: 'PDF Files', extensions: ['pdf'] }],
         data: bytes

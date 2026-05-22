@@ -427,7 +427,7 @@ function createAppMenu() {
           }
         },
         {
-          label: 'Export',
+          label: 'Export Annotated PDF…',
           accelerator: 'CmdOrCtrl+Shift+E',
           click: () => {
             const win = getTargetWindow();
