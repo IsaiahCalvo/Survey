@@ -19,6 +19,7 @@ import DocumentsLedger from './DocumentsLedger';
 import ProjectsFolderTree from './ProjectsFolderTree';
 import TemplatesEditor from './TemplatesEditor';
 import ShareModal from './ShareModal';
+import AccessManagementModal from './AccessManagementModal';
 import { HubChromeContext } from './HubShell';
 import { AccountSettings } from '../components/AccountSettings';
 import './hub.css';
@@ -48,7 +49,7 @@ export default function SurveyHub({
     if (initialTab) return initialTab;
     try { return localStorage.getItem(TAB_KEY) || 'documents'; } catch { return 'documents'; }
   });
-  const [share, setShare] = useState(null); // null | { kind, name }
+  const [share, setShare] = useState(null); // null | { kind, name, item, manage }
   const [settingsOpen, setSettingsOpen] = useState(false); // settings page shown over the hub
 
   useEffect(() => {
@@ -61,13 +62,19 @@ export default function SurveyHub({
 
   const shareDocuments = (docs) => {
     if (!docs || !docs.length) return;
-    setShare({ kind: 'document', name: docs.length === 1 ? docs[0].name : `${docs.length} documents` });
+    const single = docs.length === 1 ? docs[0] : null;
+    setShare({
+      kind: 'document',
+      name: single ? single.name : `${docs.length} documents`,
+      item: single,
+      manage: !!single?.shared,
+    });
   };
   const shareProject = (project) => {
-    if (project) setShare({ kind: 'project', name: project.name });
+    if (project) setShare({ kind: 'project', name: project.name, item: project, manage: false });
   };
   const shareTemplate = (template) => {
-    if (template) setShare({ kind: 'template', name: template.name });
+    if (template) setShare({ kind: 'template', name: template.name, item: template, manage: !!template.shared });
   };
 
   const common = { onNav: setTab, user, templatesLocked: !isPro };
@@ -119,9 +126,18 @@ export default function SurveyHub({
       )}
 
       <ShareModal
-        open={!!share}
+        open={!!share && !share.manage}
         kind={share?.kind}
         name={share?.name}
+        item={share?.item}
+        onClose={() => setShare(null)}
+      />
+
+      <AccessManagementModal
+        open={!!share?.manage}
+        kind={share?.kind}
+        item={share?.item}
+        user={user}
         onClose={() => setShare(null)}
       />
 

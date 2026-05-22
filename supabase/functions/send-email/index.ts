@@ -106,7 +106,52 @@ Deno.serve(async (req) => {
                         Questions about your billing? Contact us at support@yourcompany.com
                     </p>
                 </div>
-            `
+            `,
+
+            // ==============================================================
+            // KAL-31 sharing templates.
+            // ==============================================================
+
+            'document-invite': (data: any) => `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                    <h2 style="color: #d8a84e;">You're invited to ${data.documentName || 'a document'}</h2>
+                    <p>Hi,</p>
+                    <p><strong>${data.inviterName || 'A Survey user'}</strong> invited you to join <strong>${data.documentName || 'a document'}</strong> as <strong>${data.role || 'Viewer'}</strong> on Survey.</p>
+                    <div style="margin: 30px 0;">
+                        <a href="${data.inviteUrl}" style="background: #d8a84e; color: #15110a; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 600;">
+                            Open invite
+                        </a>
+                    </div>
+                    <p style="color: #666; font-size: 13px;">This invite expires on ${data.expiresAt || '7 days from now'}.</p>
+                    <p style="color: #666; font-size: 13px;">If the button doesn't work, copy and paste this link:<br/><span style="font-family: monospace; word-break: break-all;">${data.inviteUrl}</span></p>
+                    <p style="color: #999; font-size: 12px; margin-top: 30px;">If you weren't expecting this invite, you can safely ignore this email.</p>
+                </div>
+            `,
+
+            'permission-changed': (data: any) => `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                    <h2 style="color: #3b82f6;">Your access changed on ${data.documentName || 'a document'}</h2>
+                    <p>Hi,</p>
+                    <p><strong>${data.changedByName || 'An owner'}</strong> changed your access to <strong>${data.documentName || 'a document'}</strong>.</p>
+                    <p>Your new role is: <strong>${data.newRole || 'Viewer'}</strong>${data.oldRole ? ' (was <strong>' + data.oldRole + '</strong>)' : ''}.</p>
+                    <div style="margin: 30px 0;">
+                        <a href="${data.documentUrl || data.appUrl || '#'}" style="background: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 600;">
+                            Open ${data.documentName || 'document'}
+                        </a>
+                    </div>
+                    <p style="color: #666; font-size: 13px;">Permission changes apply immediately. If you have unsaved changes, they may be blocked from saving after a downgrade.</p>
+                </div>
+            `,
+
+            'access-removed': (data: any) => `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                    <h2 style="color: #cf6f6f;">Your access to ${data.documentName || 'a document'} was removed</h2>
+                    <p>Hi,</p>
+                    <p><strong>${data.removedByName || 'An owner'}</strong> removed your access to <strong>${data.documentName || 'a document'}</strong> on Survey.</p>
+                    <p>You can no longer open, view, or edit this item. If you believe this was a mistake, contact the owner directly.</p>
+                    <p style="color: #666; font-size: 12px; margin-top: 30px;">This is an automated notification. Please do not reply.</p>
+                </div>
+            `,
         };
 
         const getTemplate = templates[template as keyof typeof templates];

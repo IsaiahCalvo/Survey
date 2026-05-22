@@ -97,7 +97,9 @@ const ActivityModal = ({ member, onClose }) => {
 const InviteModal = ({ project, onClose }) => {
   const [emails, setEmails] = React.useState("");
   const [copied, setCopied] = React.useState(false);
-  const url = `survey.hub/p/${(project.code || "p").toLowerCase()}/invite`;
+  const [linkRole, setLinkRole] = React.useState("Viewer");
+  const [emailRole, setEmailRole] = React.useState("Editor");
+  const url = `survey.hub/p/${(project.code || "p").toLowerCase()}/invite?role=${linkRole.toLowerCase()}`;
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(13,15,20,0.55)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 130, fontFamily: "\"Helvetica Neue\", Helvetica, Arial, sans-serif" }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: 440, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 10, boxShadow: "0 24px 60px rgba(0,0,0,0.55)", color: BONE_100, overflow: "hidden" }}>
@@ -112,21 +114,33 @@ const InviteModal = ({ project, onClose }) => {
         <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 18 }}>
           <div>
             <div style={{ fontSize: 10.5, letterSpacing: 0.14, textTransform: "uppercase", color: INK_200, fontWeight: 700, marginBottom: 8 }}>Share link</div>
-            <div style={{ display: "flex", gap: 6 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 96px 82px", gap: 6 }}>
               <div className="mono" style={{ fontFamily: MONO_FONT, flex: 1, minWidth: 0, background: INK_800, border: `1px solid ${INK_500}`, borderRadius: 6, padding: "0 11px", height: 30, display: "flex", alignItems: "center", fontSize: 11.5, color: BONE_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{url}</div>
+              <select value={linkRole} onChange={(e) => setLinkRole(e.target.value)} style={{ height: 30, background: INK_700, color: BONE_100, border: `1px solid ${INK_500}`, borderRadius: 6, padding: "0 8px", fontSize: 11.5, fontFamily: "inherit" }}>
+                <option>Viewer</option>
+                <option>Editor</option>
+                <option>Owner</option>
+              </select>
               <button onClick={() => { navigator.clipboard && navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1800); }} style={{ flex: "none", height: 30, whiteSpace: "nowrap", background: INK_700, color: BONE_100, border: `1px solid ${INK_500}`, borderRadius: 6, padding: "0 11px", fontSize: 11.5, cursor: "pointer", fontFamily: "inherit", boxSizing: "border-box" }}>{copied ? "Copied" : "Copy link"}</button>
             </div>
-            <div style={{ fontSize: 11, color: INK_200, marginTop: 8, lineHeight: 1.4 }}>Anyone with this link can request access.</div>
+            <div style={{ fontSize: 11, color: INK_200, marginTop: 8, lineHeight: 1.4 }}>Anyone with this link can request {linkRole} access. Free users enter as Viewer until upgrade.</div>
           </div>
           <div>
             <div style={{ fontSize: 10.5, letterSpacing: 0.14, textTransform: "uppercase", color: INK_200, fontWeight: 700, marginBottom: 8 }}>Invite by email</div>
-            <textarea value={emails} onChange={(e) => setEmails(e.target.value)} placeholder="name@example.com, name@example.com" rows={3} style={{ width: "100%", background: INK_800, border: `1px solid ${INK_500}`, borderRadius: 6, padding: "9px 11px", fontSize: 12.5, fontFamily: "inherit", color: BONE_100, resize: "vertical", outline: "none", minHeight: 72, lineHeight: 1.45, boxSizing: "border-box" }}/>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 96px", gap: 6 }}>
+              <textarea value={emails} onChange={(e) => setEmails(e.target.value)} placeholder="name@example.com, name@example.com" rows={3} style={{ width: "100%", background: INK_800, border: `1px solid ${INK_500}`, borderRadius: 6, padding: "9px 11px", fontSize: 12.5, fontFamily: "inherit", color: BONE_100, resize: "vertical", outline: "none", minHeight: 72, lineHeight: 1.45, boxSizing: "border-box" }}/>
+              <select value={emailRole} onChange={(e) => setEmailRole(e.target.value)} style={{ height: 30, alignSelf: "start", background: INK_700, color: BONE_100, border: `1px solid ${INK_500}`, borderRadius: 6, padding: "0 8px", fontSize: 11.5, fontFamily: "inherit" }}>
+                <option>Viewer</option>
+                <option>Editor</option>
+                <option>Owner</option>
+              </select>
+            </div>
             <div style={{ fontSize: 11, color: INK_200, marginTop: 8, lineHeight: 1.4 }}>Separate addresses with commas. Invitees will get an email with a link to join.</div>
           </div>
         </div>
         <div style={{ padding: "12px 16px", borderTop: `1px solid ${INK_500}`, background: INK_800, display: "flex", gap: 8, justifyContent: "flex-end", alignItems: "center" }}>
           <button onClick={onClose} style={{ background: "transparent", border: 0, color: INK_200, padding: "6px 10px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", borderRadius: 6 }}>Cancel</button>
-          <button disabled={!emails.trim()} onClick={() => onClose()} style={{ opacity: emails.trim() ? 1 : 0.45, cursor: emails.trim() ? "pointer" : "not-allowed", background: GOLD, color: "#15110a", border: 0, borderRadius: 6, padding: "5px 14px", height: 28, fontSize: 11.5, fontWeight: 600, fontFamily: "inherit" }}>Send invite</button>
+          <button disabled={!emails.trim()} onClick={() => onClose()} style={{ opacity: emails.trim() ? 1 : 0.45, cursor: emails.trim() ? "pointer" : "not-allowed", background: GOLD, color: "#15110a", border: 0, borderRadius: 6, padding: "5px 14px", height: 28, fontSize: 11.5, fontWeight: 600, fontFamily: "inherit" }}>Send {emailRole} invite</button>
         </div>
       </div>
     </div>

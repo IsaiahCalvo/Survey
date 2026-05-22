@@ -1123,7 +1123,6 @@ export default function TemplatesEditor({
                           <button onClick={() => setSelCats(allSel ? new Set() : new Set(visibleCats.map((cat) => cat.id)))} style={{ ...baseBtn, color: 'var(--ink-soft)' }}>{allSel ? 'None' : 'All'}</button>
                           <button disabled={!c} onClick={() => duplicateCategories(selCats)} style={{ ...baseBtn, color: c ? 'var(--ink-soft)' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed' }}>Duplicate</button>
                           <button disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'category' })} style={{ ...baseBtn, color: c ? 'var(--ink-soft)' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed' }}>Move/Copy</button>
-                          <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} style={{ ...baseBtn, color: c ? 'var(--ink-soft)' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center' }} title="Share"><Icon name="share" size={11} /></button>
                           <button disabled={!c} onClick={() => deleteCategories(selCats)} style={{ ...baseBtn, color: c ? '#cf6f6f' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center' }} title="Delete"><Icon name="trash" size={11} /></button>
                         </>
                       );
@@ -1273,7 +1272,6 @@ export default function TemplatesEditor({
                       <button onClick={() => setSelEntities(allSel ? new Set() : new Set(tpl.roster.map((r) => r.id)))} style={{ ...baseBtn, color: 'var(--ink-soft)' }}>{allSel ? 'None' : 'All'}</button>
                       <button disabled={!c} onClick={() => duplicateEntities(selEntities)} style={{ ...baseBtn, color: c ? 'var(--ink-soft)' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed' }}>Duplicate</button>
                       <button disabled={!c} onClick={() => setMoveModal({ count: c, kind: 'entity' })} style={{ ...baseBtn, color: c ? 'var(--ink-soft)' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed' }}>Move/Copy</button>
-                      <button disabled={!c} onClick={() => { if (c && tpl) onShare && onShare(tpl); }} style={{ ...baseBtn, color: c ? 'var(--ink-soft)' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center' }} title="Share"><Icon name="share" size={10} /></button>
                       <button disabled={!c} onClick={() => deleteEntities(selEntities)} style={{ ...baseBtn, color: c ? '#cf6f6f' : 'var(--ink-quiet)', cursor: c ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center' }} title="Delete"><Icon name="trash" size={10} /></button>
                     </>
                   );
@@ -1479,7 +1477,6 @@ export default function TemplatesEditor({
           items={[
             { label: 'Duplicate', onClick: () => duplicateEntities(new Set([ent.id])) },
             { label: 'Move/Copy', onClick: () => setMoveModal({ count: 1, kind: 'entity' }) },
-            { label: 'Share', onClick: () => { if (tpl) onShare && onShare(tpl); } },
             { label: 'Rename', onClick: () => setOpenColor(null) },
             { label: 'Delete', danger: true, onClick: () => deleteEntities(new Set([ent.id])) },
           ]}
@@ -1545,7 +1542,6 @@ export default function TemplatesEditor({
               <button onClick={() => { const allSel = selMods.size === mods.length; setSelMods(allSel ? new Set() : new Set(mods.map((_, i) => i))); }} style={{ background: 'transparent', border: '1px solid #3a4252', color: '#e8e2d4', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>{selMods.size === mods.length && mods.length > 0 ? 'None' : 'All'}</button>
               <button onClick={() => duplicateModules(selMods)} disabled={!selCount} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#e8e2d4' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Duplicate</button>
               <button onClick={() => { if (selCount) setMoveModal({ count: selCount, kind: 'module' }); }} disabled={!selCount} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#e8e2d4' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Move/Copy</button>
-              <button disabled={!selCount} onClick={() => { if (selCount && tpl) onShare && onShare(tpl); }} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#e8e2d4' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }} title="Share"><Icon name="share" size={12} /></button>
               <button onClick={() => deleteModules(selMods)} disabled={!selCount} style={{ background: 'transparent', border: '1px solid #3a4252', color: selCount ? '#cf6f6f' : '#5a6473', borderRadius: 4, padding: '5px 9px', fontSize: 11.5, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }} title="Delete"><Icon name="trash" size={12} /></button>
               <span style={{ flex: 1 }} />
               <button onClick={() => setModEdit(false)} style={{ background: '#d8a84e', border: '1px solid #d8a84e', color: '#15110a', borderRadius: 4, padding: '5px 16px', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Done</button>

@@ -230,6 +230,25 @@ if (import.meta.env.DEV) {
   }
 }
 
+// KAL-31 Phase D: `/invite/<token>` landing page. Rendered inside AuthProvider
+// so the page can read the current user and call the accept RPC. Mounted at
+// the same root, replacing the App until the user is done with the invite.
+const isInviteRoute = typeof window !== 'undefined'
+  && /^\/invite\/[^/?#]+/.test(window.location.pathname || '');
+
+if (!devRouteActive && isInviteRoute) {
+  devRouteActive = true;
+  import('./home/InviteAcceptPage').then(({ default: InviteAcceptPage }) => {
+    createRoot(document.getElementById('root')).render(
+      <ErrorBoundary>
+        <AuthProvider>
+          <InviteAcceptPage />
+        </AuthProvider>
+      </ErrorBoundary>
+    );
+  });
+}
+
 if (!devRouteActive) {
   createRoot(document.getElementById('root')).render(
     <ErrorBoundary>

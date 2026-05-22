@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Manage Access Mockup</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f1115;
+      --ink-800: #12151c;
+      --ink-700: #181c24;
+      --ink-500: #2a3140;
+      --ink-400: #3a4252;
+      --ink-300: #5a6473;
+      --ink-200: #8d96a6;
+      --bone-100: #f4f1ea;
+      --bone-200: #e8e2d4;
+      --gold: #d8a84e;
+      --green: #69c391;
+      --red: #cf6f6f;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        linear-gradient(#171b20 1px, transparent 1px),
+        linear-gradient(90deg, #171b20 1px, transparent 1px),
+        var(--bg);
+      background-size: 34px 34px;
+      color: var(--bone-100);
+      font: 14px/1.45 "Helvetica Neue", Helvetica, Arial, sans-serif;
+    }
+
+    button, select, textarea, input {
+      font: inherit;
+      color: var(--bone-100);
+    }
+
+    button {
+      border: 1px solid var(--ink-500);
+      border-radius: 6px;
+      background: var(--ink-700);
+      cursor: pointer;
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: .45;
+    }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .modal {
+      width: 590px;
+      max-width: 96vw;
+      max-height: 86vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid var(--ink-500);
+      border-radius: 10px;
+      background: var(--ink-700);
+      box-shadow: 0 24px 60px rgba(0,0,0,.55);
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 18px 12px;
+      border-bottom: 1px solid var(--ink-500);
+    }
+
+    .ribbon {
+      width: 3px;
+      height: 30px;
+      border-radius: 2px;
+      background: var(--gold);
+      flex: none;
+      margin-right: 8px;
+    }
+
+    .title {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .eyebrow {
+      font-size: 10.5px;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--ink-200);
+      font-weight: 700;
+    }
+
+    h1 {
+      margin: 4px 0 0;
+      font-size: 17px;
+      line-height: 1.15;
+      letter-spacing: -.015em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .primary {
+      height: 28px;
+      padding: 0 11px;
+      border: 0;
+      background: var(--gold);
+      color: #15110a;
+      font-size: 11.5px;
+      font-weight: 700;
+    }
+
+    .icon-btn {
+      width: 24px;
+      height: 24px;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      color: var(--ink-200);
+      background: transparent;
+      font-size: 14px;
+      line-height: 1;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 18px;
+      border-bottom: 1px solid var(--ink-500);
+    }
+
+    .search {
+      flex: 1;
+      min-width: 0;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 10px;
+      border: 1px solid var(--ink-500);
+      border-radius: 6px;
+      background: var(--ink-800);
+      color: var(--ink-200);
+      font-size: 12px;
+    }
+
+    .search input {
+      width: 100%;
+      min-width: 0;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--bone-100);
+      font-size: 12px;
+    }
+
+    .link-btn {
+      height: 28px;
+      padding: 0 9px;
+      border: 0;
+      background: transparent;
+      color: var(--gold);
+      font-size: 11.5px;
+      font-weight: 700;
+    }
+
+    .cols {
+      display: grid;
+      grid-template-columns: 30px 1fr 120px 120px 28px;
+      gap: 14px;
+      align-items: center;
+      padding: 8px 18px 6px;
+      border-bottom: 1px solid var(--ink-500);
+      color: var(--ink-200);
+      font-size: 10.5px;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+
+    .rows {
+      min-height: 0;
+      max-height: 330px;
+      overflow: auto;
+      padding: 6px 8px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 30px 1fr 120px 120px 28px;
+      gap: 14px;
+      align-items: center;
+      height: 50px;
+      padding: 8px 10px;
+      border-radius: 6px;
+    }
+
+    .row:hover {
+      background: rgba(255,255,255,.035);
+    }
+
+    .avatar {
+      width: 30px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      background: var(--gold);
+      color: #15110a;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .person {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .person b {
+      font-size: 13px;
+      font-weight: 650;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .person span, .mono {
+      color: var(--ink-200);
+      font-family: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+      font-size: 11px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    select {
+      height: 24px;
+      max-width: 110px;
+      padding: 0 22px 0 7px;
+      border: 0;
+      background: transparent;
+      color: var(--bone-200);
+      font-size: 11.5px;
+      outline: 0;
+    }
+
+    .note {
+      color: var(--ink-200);
+      font-size: 11.5px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      border-top: 1px solid var(--ink-500);
+      background: var(--ink-800);
+    }
+
+    .footer span {
+      color: var(--ink-200);
+      font-size: 10.5px;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+
+    .submodal {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(13,15,20,.55);
+      backdrop-filter: blur(8px);
+      z-index: 10;
+    }
+
+    .submodal.open { display: flex; }
+
+    .invite {
+      width: 460px;
+      max-width: 96vw;
+      overflow: hidden;
+      border: 1px solid var(--ink-500);
+      border-radius: 10px;
+      background: var(--ink-700);
+      box-shadow: 0 24px 60px rgba(0,0,0,.55);
+    }
+
+    .invite-body {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding: 16px 18px;
+    }
+
+    .field-label {
+      margin-bottom: 8px;
+      color: var(--ink-200);
+      font-size: 10.5px;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+
+    .link-line {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 98px 76px;
+      gap: 6px;
+    }
+
+    .email-line {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 98px;
+      gap: 6px;
+    }
+
+    .fake-link {
+      height: 30px;
+      display: flex;
+      align-items: center;
+      min-width: 0;
+      padding: 0 11px;
+      border: 1px solid var(--ink-500);
+      border-radius: 6px;
+      background: var(--ink-800);
+      color: var(--bone-200);
+      font-family: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+      font-size: 11.5px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .mini {
+      height: 30px;
+      padding: 0 10px;
+      font-size: 11.5px;
+      white-space: nowrap;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 72px;
+      resize: vertical;
+      padding: 9px 11px;
+      border: 1px solid var(--ink-500);
+      border-radius: 6px;
+      outline: 0;
+      background: var(--ink-800);
+      color: var(--bone-100);
+      font-size: 12.5px;
+      line-height: 1.45;
+    }
+
+    .help {
+      margin-top: 8px;
+      color: var(--ink-200);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .warn {
+      padding: 7px 9px;
+      border: 1px solid #6b5020;
+      border-radius: 6px;
+      background: #241f15;
+      color: #e8d6ad;
+      font-size: 11px;
+      line-height: 1.3;
+    }
+
+    .invite-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 12px 16px;
+      border-top: 1px solid var(--ink-500);
+      background: var(--ink-800);
+    }
+
+    .ghost {
+      height: 28px;
+      padding: 0 10px;
+      border: 0;
+      background: transparent;
+      color: var(--ink-200);
+      font-size: 12px;
+    }
+
+    .toast {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      display: none;
+      padding: 8px 10px;
+      border: 1px solid #385542;
+      background: #17251d;
+      color: #bff0cf;
+      font-size: 11px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.35);
+      z-index: 20;
+    }
+
+    .toast.show { display: block; }
+
+    @media (max-width: 640px) {
+      .app { padding: 10px; }
+      .cols, .row { grid-template-columns: 30px 1fr 96px; }
+      .cols span:nth-child(4), .cols span:nth-child(5), .row .note, .row .more { display: none; }
+      .link-line, .email-line { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="modal">
+      <header class="header">
+        <span class="ribbon"></span>
+        <div class="title">
+          <div class="eyebrow" id="kindLabel">Manage Access</div>
+          <h1 id="itemName">North Tower - Level 04.pdf</h1>
+        </div>
+        <button class="primary" id="inviteBtn">+ Invite</button>
+        <button class="icon-btn">×</button>
+      </header>
+
+      <div class="toolbar">
+        <div class="search">⌕<input placeholder="Find a person..." /></div>
+        <button class="link-btn" id="projectBtn">Project</button>
+        <button class="link-btn" id="documentBtn">Document</button>
+        <button class="link-btn" id="templateBtn">Template</button>
+      </div>
+
+      <div class="cols">
+        <span></span>
+        <span>Users</span>
+        <span>Role</span>
+        <span>Access</span>
+        <span></span>
+      </div>
+
+      <div class="rows" id="rows"></div>
+
+      <footer class="footer">
+        <span id="count">4 members</span>
+        <button class="primary">Done</button>
+      </footer>
+    </section>
+  </main>
+
+  <section class="submodal" id="inviteModal">
+    <div class="invite">
+      <header class="header">
+        <span class="ribbon"></span>
+        <div class="title">
+          <div class="eyebrow">Invite User</div>
+          <h1 id="inviteName">North Tower - Level 04.pdf</h1>
+        </div>
+        <button class="icon-btn" id="closeInvite">×</button>
+      </header>
+
+      <div class="invite-body">
+        <div>
+          <div class="field-label">Permissioned link</div>
+          <div class="link-line">
+            <div class="fake-link" id="shareLink">survey.app/document/north-tower-level-04?role=viewer</div>
+            <select id="linkRole">
+              <option>Viewer</option>
+              <option>Editor</option>
+              <option>Owner</option>
+            </select>
+            <button class="mini" id="copyLink">Copy</button>
+          </div>
+          <div class="help" id="linkHelp">Anyone with this link can request Viewer access.</div>
+          <div class="actions" style="margin-top:8px; display:flex; gap:6px;">
+            <button class="mini" id="revokeLink">Revoke</button>
+            <button class="mini" id="regenLink">Regenerate</button>
+          </div>
+        </div>
+
+        <div>
+          <div class="field-label">Invite by email</div>
+          <div class="email-line">
+            <textarea id="emails" placeholder="name@example.com, name@example.com">alex@example.com, taylor@example.com</textarea>
+            <select id="emailRole">
+              <option>Viewer</option>
+              <option selected>Editor</option>
+              <option>Owner</option>
+            </select>
+          </div>
+          <div class="help">Separate addresses with commas. Free recipients enter as Viewer until they upgrade.</div>
+        </div>
+
+        <div class="warn" id="scopeWarn">This uses the existing Manage Team pattern. For templates, backend collaborator support must be added before this can be real.</div>
+      </div>
+
+      <footer class="invite-footer">
+        <button class="ghost" id="cancelInvite">Cancel</button>
+        <button class="primary" id="sendInvite">Send invite</button>
+      </footer>
+    </div>
+  </section>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const state = {
+      kind: 'document',
+      name: 'North Tower - Level 04.pdf',
+      linkActive: true,
+      linkRole: 'Viewer',
+      seed: 'north-tower-level-04',
+      members: [
+        { initials: 'IC', name: 'Isaiah Calvo', email: 'isaiah@example.com', role: 'Owner', access: 'Owner' },
+        { initials: 'AJ', name: 'Alex Johnson', email: 'alex@example.com', role: 'Editor', access: 'Direct invite' },
+        { initials: 'TR', name: 'Taylor Reed', email: 'taylor@example.com', role: 'Viewer', access: 'Free, invited as Editor' },
+        { initials: 'MS', name: 'Morgan Smith', email: 'morgan@example.com', role: 'Viewer', access: 'Link access' },
+      ],
+    };
+
+    const $ = (id) => document.getElementById(id);
+
+    function showToast(text) {
+      $('toast').textContent = text;
+      $('toast').classList.add('show');
+      clearTimeout(showToast.timer);
+      showToast.timer = setTimeout(() => $('toast').classList.remove('show'), 1700);
+    }
+
+    function linkBase() {
+      return `survey.app/${state.kind}/${state.seed}`;
+    }
+
+    function renderRows() {
+      $('rows').innerHTML = state.members.map((m, index) => `
+        <div class="row">
+          <div class="avatar">${m.initials}</div>
+          <div class="person">
+            <b>${m.name}</b>
+            <span>${m.email}</span>
+          </div>
+          <select ${index === 0 ? 'disabled' : ''}>
+            <option ${m.role === 'Viewer' ? 'selected' : ''}>Viewer</option>
+            <option ${m.role === 'Editor' ? 'selected' : ''}>Editor</option>
+            <option ${m.role === 'Owner' ? 'selected' : ''}>Owner</option>
+          </select>
+          <div class="note">${m.access}</div>
+          <button class="icon-btn more">⋯</button>
+        </div>
+      `).join('');
+      $('count').textContent = `${state.members.length} member${state.members.length === 1 ? '' : 's'}`;
+    }
+
+    function render() {
+      $('kindLabel').textContent = `Manage ${state.kind} access`;
+      $('itemName').textContent = state.name;
+      $('inviteName').textContent = state.name;
+      $('shareLink').textContent = state.linkActive
+        ? `${linkBase()}?role=${state.linkRole.toLowerCase()}`
+        : 'No active link';
+      $('linkHelp').textContent = state.linkActive
+        ? `Anyone with this link can request ${state.linkRole} access. Free recipients enter as Viewer until upgrade.`
+        : 'This link is revoked. Regenerate to create a new permissioned link.';
+      $('copyLink').disabled = !state.linkActive;
+      $('revokeLink').disabled = !state.linkActive;
+      $('scopeWarn').textContent = state.kind === 'template'
+        ? 'Template sharing should reuse this UI, but backend template collaborators/RLS must be added first.'
+        : 'This extends the existing Manage Team pattern instead of replacing it.';
+      renderRows();
+    }
+
+    function setKind(kind, name) {
+      state.kind = kind;
+      state.name = name;
+      state.seed = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 36);
+      render();
+    }
+
+    $('projectBtn').addEventListener('click', () => setKind('project', 'North Tower'));
+    $('documentBtn').addEventListener('click', () => setKind('document', 'North Tower - Level 04.pdf'));
+    $('templateBtn').addEventListener('click', () => setKind('template', 'Security Survey Template'));
+    $('inviteBtn').addEventListener('click', () => $('inviteModal').classList.add('open'));
+    $('closeInvite').addEventListener('click', () => $('inviteModal').classList.remove('open'));
+    $('cancelInvite').addEventListener('click', () => $('inviteModal').classList.remove('open'));
+    $('linkRole').addEventListener('change', (e) => {
+      state.linkRole = e.target.value;
+      render();
+    });
+    $('copyLink').addEventListener('click', () => showToast('Permissioned link copied'));
+    $('revokeLink').addEventListener('click', () => {
+      state.linkActive = false;
+      render();
+      showToast('Link revoked');
+    });
+    $('regenLink').addEventListener('click', () => {
+      state.linkActive = true;
+      state.seed = `${state.seed.split('-').slice(0, 4).join('-')}-${Math.floor(Math.random() * 9000 + 1000)}`;
+      render();
+      showToast('New link generated');
+    });
+    $('sendInvite').addEventListener('click', () => {
+      $('inviteModal').classList.remove('open');
+      showToast(`Invite sent as ${$('emailRole').value}`);
+    });
+
+    render();
+  </script>
+</body>
+</html>

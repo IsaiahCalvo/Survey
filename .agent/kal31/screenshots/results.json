@@ -1,0 +1,114 @@
+{
+  "base_url": "http://localhost:5251/",
+  "stamp": 1779421325839,
+  "accounts": {
+    "owner": {
+      "email": "survey-test-owner-1779421325839@example.com",
+      "tier": "pro"
+    },
+    "editorPaid": {
+      "email": "survey-test-editor-paid-1779421325839@example.com",
+      "tier": "pro"
+    },
+    "editorFree": {
+      "email": "survey-test-editor-free-1779421325839@example.com",
+      "tier": "free"
+    },
+    "viewer": {
+      "email": "survey-test-viewer-1779421325839@example.com",
+      "tier": "free"
+    },
+    "unregistered": {
+      "email": "survey-test-unreg-1779421325839@example.com",
+      "tier": null
+    }
+  },
+  "documentId": "67d54966-e8d2-4ff4-971a-67dcdb1c4433",
+  "results": [
+    {
+      "name": "Phase F · provision · service-role create users + document",
+      "status": "PASS",
+      "notes": ""
+    },
+    {
+      "name": "AC: paid invitee accepts Viewer invite — UI shows accepted",
+      "status": "PASS",
+      "notes": ""
+    },
+    {
+      "name": "AC: paid invitee accepts Viewer invite — DB row has role=viewer",
+      "status": "PASS",
+      "notes": "db role=viewer"
+    },
+    {
+      "name": "AC: paid invitee accepts Editor invite — UI shows accepted",
+      "status": "PASS",
+      "notes": ""
+    },
+    {
+      "name": "AC: paid invitee accepts Editor invite — DB row has role=editor",
+      "status": "PASS",
+      "notes": "db role=editor"
+    },
+    {
+      "name": "AC: free invitee accepts Editor invite — DB downgrades to viewer",
+      "status": "PASS",
+      "notes": "db role=viewer"
+    },
+    {
+      "name": "AC: free invitee accepts Editor invite — UI shows upgrade banner",
+      "status": "PASS",
+      "notes": "status=accepted"
+    },
+    {
+      "name": "AC: free invitee accepts Owner invite — DB downgrades to viewer",
+      "status": "PASS",
+      "notes": ""
+    },
+    {
+      "name": "AC: free invitee accepts Owner invite — UI shows upgrade-to-Owner banner",
+      "status": "PASS",
+      "notes": ""
+    },
+    {
+      "name": "AC: wrong-account state — UI shows wrong_account",
+      "status": "PASS",
+      "notes": "status=wrong_account"
+    },
+    {
+      "name": "AC: invalid-token state — UI shows invalid",
+      "status": "PASS",
+      "notes": ""
+    },
+    {
+      "name": "AC: expired-token state — UI shows expired",
+      "status": "PASS",
+      "notes": ""
+    },
+    {
+      "name": "AC: revoked-token state — UI shows revoked",
+      "status": "PASS",
+      "notes": ""
+    },
+    {
+      "name": "AC: already-accepted setup — first acceptance is accepted",
+      "status": "PASS",
+      "notes": ""
+    },
+    {
+      "name": "AC: already-accepted state — UI shows already_accepted",
+      "status": "PASS",
+      "notes": ""
+    },
+    {
+      "name": "AC: last-owner cannot be removed at DB layer",
+      "status": "PASS",
+      "notes": "kal31_guard_last_owner: cannot remove last owner of document 67d54966-e8d2-4ff4-971a-67dcdb1c4433"
+    },
+    {
+      "name": "AC: unauthenticated invite open shows needs-auth state",
+      "status": "PASS",
+      "notes": ""
+    }
+  ]
+}
