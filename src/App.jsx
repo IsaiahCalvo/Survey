@@ -121,6 +121,14 @@ import OneDriveFileSaveModal from './components/OneDriveFileSaveModal';
 import TemplateOverwriteWarningModal from './components/TemplateOverwriteWarningModal';
 import ExcelSyncConfirmModal from './components/ExcelSyncConfirmModal';
 import SyncfusionPDFContainer from './components/SyncfusionPDFContainer';
+import FormFieldPropertiesPanel from './components/FormFieldPropertiesPanel';
+import {
+  FORM_TOOLS as FORM_DESIGNER_TOOLS,
+  FORM_TOOL_IDS,
+  isFormTool,
+  getFormFieldTypeForTool,
+  buildFieldSettings as buildFormFieldSettings
+} from './components/formDesignerTools';
 import YDocProvider from './components/collab/YDocProvider.jsx';
 // Phase 29 — per-user Y.UndoManager hook + user-action wrappers. handleUndo and
 // handleRedo bodies route through these so trackedOrigins reference equality
@@ -11934,6 +11942,110 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   // Annotation tools state
   const [activeTool, setActiveTool] = useState('pan');
   const activeToolRef = useRef('pan');
+
+  // KAL-47 Forms mode state.
+  // - `formMode` toggles Syncfusion's `designerMode`. When true, the
+  //   container becomes form-aware; the custom toolbar drives placement
+  //   through `setFormFieldMode`.
+  // - `selectedFormField` is hydrated from `formFieldSelect` events.
+  // - `lastFormTool` lets the Forms category dropdown remember which
+  //   form-field button the user last clicked, matching the Draw / Shape
+  //   "remember last sub-tool" pattern used elsewhere in BottomToolbar.
+  const [selectedFormField, setSelectedFormField] = useState(null);
+  const [lastFormTool, setLastFormTool] = useState('form-textbox');
+
+  // Derived: are we in Forms mode? Stays in sync with the toolbar's
+  // `activeTool` so toggling away from a form-* tool exits designer mode
+  // and lets pan/select/draw/etc. resume normal behavior.
+  const formModeActive = isFormTool(activeTool);
+
+  // KAL-47: when a form tool is selected, ask Syncfusion to enter the
+  // matching placement mode. The next click on the PDF page produces the
+  // field via the bridged formFieldAdd event.
+  useEffect(() => {
+    const viewer = syncfusionViewerRef.current;
+    if (!viewer || typeof viewer.setFormFieldMode !== 'function') return;
+    if (!formModeActive) {
+      // Leaving Forms mode — flip designer off so pan/select/draw work.
+      viewer.setDesignerMode?.(false);
+      return;
+    }
+    const formFieldType = getFormFieldTypeForTool(activeTool);
+    if (!formFieldType) return;
+    setLastFormTool(activeTool);
+    viewer.setDesignerMode?.(true);
+    viewer.setFormFieldMode(formFieldType);
+  }, [activeTool, formModeActive]);
+
+  // KAL-47 event handlers. We forward into App state so the properties
+  // panel + tests can observe creation/selection without reaching into
+  // Syncfusion internals. Wrapped in stable callbacks so the container
+  // doesn't re-subscribe on every render.
+  const handleFormFieldAdd = useCallback((args) => {
+    const field = args?.field || args?.value || args;
+    if (!field) return;
+    setSelectedFormField({
+      id: field.id || field.formFieldId || null,
+      type: field.formFieldAnnotationType || field.type || null,
+      name: field.name || '',
+      value: field.value || '',
+      isRequired: field.isRequired === true,
+      isReadOnly: field.isReadOnly === true,
+      tooltip: field.tooltip || ''
+    });
+  }, []);
+  const handleFormFieldSelect = useCallback((args) => {
+    const field = args?.field || args?.value || args;
+    if (!field) return;
+    setSelectedFormField({
+      id: field.id || field.formFieldId || null,
+      type: field.formFieldAnnotationType || field.type || null,
+      name: field.name || '',
+      value: field.value || '',
+      isRequired: field.isRequired === true,
+      isReadOnly: field.isReadOnly === true,
+      tooltip: field.tooltip || ''
+    });
+  }, []);
+  const handleFormFieldUnselect = useCallback(() => {
+    setSelectedFormField(null);
+  }, []);
+  const handleFormFieldRemove = useCallback(() => {
+    setSelectedFormField(null);
+  }, []);
+  const handleFormFieldPropertiesChange = useCallback((args) => {
+    const field = args?.field || args?.value;
+    if (!field) return;
+    setSelectedFormField((prev) => {
+      if (!prev) return prev;
+      const sameField = prev.id && (field.id === prev.id || field.formFieldId === prev.id);
+      if (!sameField) return prev;
+      return {
+        ...prev,
+        name: field.name ?? prev.name,
+        value: field.value ?? prev.value,
+        isRequired: field.isRequired ?? prev.isRequired,
+        isReadOnly: field.isReadOnly ?? prev.isReadOnly,
+        tooltip: field.tooltip ?? prev.tooltip
+      };
+    });
+  }, []);
+
+  const handleFormFieldPropertiesPanelChange = useCallback((next) => {
+    if (!selectedFormField?.id) return;
+    const viewer = syncfusionViewerRef.current;
+    if (!viewer || typeof viewer.updateFormField !== 'function') return;
+    viewer.updateFormField(selectedFormField.id, next);
+    setSelectedFormField((prev) => (prev ? { ...prev, ...next } : prev));
+  }, [selectedFormField]);
+
+  const handleFormFieldPropertiesPanelDelete = useCallback(() => {
+    if (!selectedFormField?.id) return;
+    const viewer = syncfusionViewerRef.current;
+    if (!viewer || typeof viewer.deleteFormField !== 'function') return;
+    viewer.deleteFormField(selectedFormField.id);
+    setSelectedFormField(null);
+  }, [selectedFormField]);
   useEffect(() => {
     activeToolRef.current = activeTool;
     // Force cursor re-evaluation on tool switch.
@@ -34441,8 +34553,25 @@ ${pageBlocks}
                     onPageContainersChange={handleSyncfusionPageContainersChange}
                     onDebugEvent={handleSyncfusionDebugEvent}
                     onDocumentUnload={handleDocumentUnload}
+                    formDesignerEnabled={formModeActive}
+                    onFormFieldAdd={handleFormFieldAdd}
+                    onFormFieldSelect={handleFormFieldSelect}
+                    onFormFieldUnselect={handleFormFieldUnselect}
+                    onFormFieldRemove={handleFormFieldRemove}
+                    onFormFieldPropertiesChange={handleFormFieldPropertiesChange}
                   />
                 </div>
+                {/* KAL-47: Survey-native form-field properties popover. Mounts
+                    only when a field is selected. The Syncfusion built-in
+                    properties dialog stays disabled. */}
+                {selectedFormField && (
+                  <FormFieldPropertiesPanel
+                    selectedFormField={selectedFormField}
+                    onChange={handleFormFieldPropertiesPanelChange}
+                    onDelete={handleFormFieldPropertiesPanelDelete}
+                    onClose={() => setSelectedFormField(null)}
+                  />
+                )}
                 {numPages > 0 && (() => {
                   const syncfusionViewerScale = clampScale(
                     Number(
@@ -38224,6 +38353,44 @@ ${pageBlocks}
                 </>
               );
             })()}
+
+            {/* KAL-47: Forms subtoolbar. Each button selects a form-field tool
+                (e.g. `form-textbox`), which triggers the useEffect that calls
+                Syncfusion's `setFormFieldMode`. Designer mode is toggled on
+                automatically and the next click on the PDF places the field. */}
+            {activeCategoryDropdown === 'forms' && (
+              <>
+                {FORM_DESIGNER_TOOLS.map((t) => {
+                  const isActive = activeTool === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => {
+                        setActiveTool(t.id);
+                      }}
+                      onMouseEnter={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setTooltip({
+                          visible: true,
+                          text: t.label,
+                          x: rect.left + rect.width / 2,
+                          y: rect.bottom + 10,
+                          placement: 'below'
+                        });
+                      }}
+                      onMouseLeave={() => setTooltip({ visible: false, text: '', x: 0, y: 0 })}
+                      className={`btn btn-md ${isActive ? 'btn-active' : 'btn-default'}`}
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px' }}
+                      title={t.label}
+                      data-form-tool={t.id}
+                    >
+                      <Icon name={t.iconName} size={16} />
+                      <span style={{ fontSize: '12px' }}>{t.label}</span>
+                    </button>
+                  );
+                })}
+              </>
+            )}
           </div>,
           document.getElementById('chrome-sub-toolbar-host')
         )}
@@ -45197,6 +45364,46 @@ export default function App() {
                 title="Text"
               >
                 <Icon name="text" size={18} />
+              </button>
+
+              {/* KAL-47: Forms category. Opens the form-field subtoolbar
+                  (Textbox / Checkbox / Radio / Signature) and routes
+                  activeTool through the FORM_TOOL_IDS set. We do not
+                  enable Syncfusion's built-in form-designer toolbar — the
+                  subtoolbar is wired directly to the FormDesigner API
+                  through the syncfusionViewerRef. */}
+              <button
+                data-testid="forms-category-button"
+                onClick={() => {
+                  const isActive = bottomToolbarApi.activeCategoryDropdown === 'forms';
+                  bottomToolbarApi.setActiveCategoryDropdown(isActive ? null : 'forms');
+                  if (!isActive) {
+                    if (!FORM_TOOL_IDS.includes(bottomToolbarApi.activeTool)) {
+                      bottomToolbarApi.setActiveTool(lastFormTool || 'form-textbox');
+                    }
+                  } else {
+                    // Closing dropdown: leave Forms mode so pan/select work.
+                    if (FORM_TOOL_IDS.includes(bottomToolbarApi.activeTool)) {
+                      bottomToolbarApi.setActiveTool('pan');
+                    }
+                  }
+                }}
+                onMouseEnter={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  bottomToolbarApi.setTooltip({
+                    visible: true,
+                    text: 'Forms',
+                    x: rect.left + rect.width / 2,
+                    y: rect.bottom + 10,
+                    placement: 'below'
+                  });
+                }}
+                onMouseLeave={() => bottomToolbarApi.setTooltip({ visible: false, text: '', x: 0, y: 0 })}
+                className={`btn btn-md ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'forms' || FORM_TOOL_IDS.includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px' }}
+                title="Forms"
+              >
+                <Icon name="edit" size={18} />
               </button>
 
               {/* Survey toggle lives in the former survey-tool slot so users

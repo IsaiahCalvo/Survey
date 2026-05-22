@@ -1,0 +1,20 @@
+{
+  "server": true,
+  "pdfLoaded": true,
+  "fieldsPlaced": [
+    "Textbox",
+    "CheckBox",
+    "RadioButton",
+    "SignatureField"
+  ],
+  "propertiesPanel": true,
+  "formCollectionLength": 4,
+  "notes": [
+    "form-field collection available — designerMode=true, count=4, types=[\"Textbox\",\"Checkbox\",\"RadioButton\",\"SignatureField\"]",
+    "saveAsBlob: {\"ok\":true,\"byteLength\":0}"
+  ],
+  "persistenceCheck": {
+    "ok": true,
+    "byteLength": 0
+  }
+}
