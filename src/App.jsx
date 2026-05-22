@@ -9539,26 +9539,43 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   void legacyHomeUI;
 
   /* Home redesign: render the new Survey Hub instead of the legacy grid/table.
-     Every prop maps to data/handlers that already exist in Dashboard/App. */
+     Every prop maps to data/handlers that already exist in Dashboard/App.
+
+     KAL-45 fix: the hidden <input ref={fileInputRef} type="file" /> used by the
+     browser fallback in handleUploadClick previously only lived inside the
+     legacy home UI (no longer rendered). Without a mounted input, the browser
+     Upload action silently did nothing. Mount it as a sibling here so the
+     existing handleUploadClick -> fileInputRef.current?.click() path works in
+     browser mode. handleFileUpload already resets event.target.value so the
+     same file can be re-picked. */
   return (
-    <SurveyHub
-      documents={documents}
-      projects={projects}
-      templates={templates}
-      members={[]}
-      user={user ? { id: user.id, name: user.user_metadata?.full_name || user.name || user.email, email: user.email } : null}
-      isPro={!!features?.advancedSurvey}
-      onOpenDocument={hubOpenDocument}
-      onUpload={handleUploadClick}
-      onCreateProject={handleCreateProjectClick}
-      onCreateTemplate={openTemplateModal}
-      onSaveTemplates={hubSaveTemplates}
-      onDuplicateDocuments={hubDuplicateDocuments}
-      onDeleteDocuments={hubDeleteDocuments}
-      onMoveCopyDocuments={hubMoveCopyDocuments}
-      onSettings={() => setShowAccountSettings(true)}
-      onSignOut={signOut}
-    />
+    <>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/pdf"
+        onChange={handleFileUpload}
+        style={{ display: 'none' }}
+      />
+      <SurveyHub
+        documents={documents}
+        projects={projects}
+        templates={templates}
+        members={[]}
+        user={user ? { id: user.id, name: user.user_metadata?.full_name || user.name || user.email, email: user.email } : null}
+        isPro={!!features?.advancedSurvey}
+        onOpenDocument={hubOpenDocument}
+        onUpload={handleUploadClick}
+        onCreateProject={handleCreateProjectClick}
+        onCreateTemplate={openTemplateModal}
+        onSaveTemplates={hubSaveTemplates}
+        onDuplicateDocuments={hubDuplicateDocuments}
+        onDeleteDocuments={hubDeleteDocuments}
+        onMoveCopyDocuments={hubMoveCopyDocuments}
+        onSettings={() => setShowAccountSettings(true)}
+        onSignOut={signOut}
+      />
+    </>
   );
 });
 
