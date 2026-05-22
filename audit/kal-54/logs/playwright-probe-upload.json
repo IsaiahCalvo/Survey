@@ -1,0 +1,23 @@
+{
+  "info": {
+    "matches": [
+      {
+        "text": "Upload",
+        "className": "btn primary",
+        "visible": true,
+        "rect": {
+          "x": 1345.515625,
+          "y": 53,
+          "width": 76.484375,
+          "height": 28,
+          "top": 53,
+          "right": 1422,
+          "bottom": 81,
+          "left": 1345.515625
+        }
+      }
+    ],
+    "fileInputs": []
+  },
+  "captured": []
+}

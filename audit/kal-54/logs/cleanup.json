@@ -1,0 +1,98 @@
+{
+  "user_deletes": [
+    {
+      "userId": "790ea927-2a37-4d9f-886f-1d10af5e328d",
+      "email": "survey-test-free-1779477209996@example.com"
+    },
+    {
+      "userId": "80b5d007-c9d9-4937-b67b-8cb404c9d141",
+      "email": "survey-test-pro-1779477209996@example.com",
+      "error": "Database error deleting user"
+    },
+    {
+      "userId": "2526cc39-773e-476e-9e1c-72c6d0fa75f5",
+      "email": "survey-test-developer-1779477209996@example.com"
+    },
+    {
+      "userId": "9a54cb45-8d56-4b05-9b6b-bd39c2e338ea",
+      "email": "survey-test-enterprise-1779477209996@example.com"
+    }
+  ],
+  "projects_deleted": [
+    {
+      "id": "ed3aacff-3168-4632-9fb9-37537ed3195c"
+    },
+    {
+      "id": "d291054d-ec10-4a08-a8e2-0f859fb1f27d",
+      "error": "kal31_guard_last_owner: cannot remove last owner of document ccd7bf00-e164-40c7-b800-aadfced7b683"
+    }
+  ],
+  "docs_deleted": [
+    {
+      "id": "c727486e-542a-4751-a09d-80d0a110efa7"
+    },
+    {
+      "id": "ccd7bf00-e164-40c7-b800-aadfced7b683",
+      "error": "kal31_guard_last_owner: cannot remove last owner of document ccd7bf00-e164-40c7-b800-aadfced7b683"
+    },
+    {
+      "id": "403b8c9b-4354-488a-b032-500cb310916d"
+    }
+  ],
+  "storage_removed": [
+    {
+      "filePath": "80b5d007-c9d9-4937-b67b-8cb404c9d141/general/1779478161074.pdf"
+    },
+    {
+      "filePath": "audit/kal-54/1779477380135/doc.pdf"
+    },
+    {
+      "filePath": "80b5d007-c9d9-4937-b67b-8cb404c9d141/general/1779478185556.pdf"
+    }
+  ],
+  "surveyTestRemaining": [
+    {
+      "id": "80b5d007-c9d9-4937-b67b-8cb404c9d141",
+      "email": "survey-test-pro-1779477209996@example.com",
+      "created_at": "2026-05-22T19:13:31.617831Z",
+      "audit": "kal-54"
+    },
+    {
+      "id": "2e2b758a-07fa-4805-b014-fe517db77957",
+      "email": "survey-test-owner-1779421325839@example.com",
+      "created_at": "2026-05-22T03:42:06.240511Z",
+      "audit": null
+    },
+    {
+      "id": "ecac4bca-e343-4177-8c9f-53f50b7a1005",
+      "email": "survey-test-owner-1779421273637@example.com",
+      "created_at": "2026-05-22T03:41:13.926298Z",
+      "audit": null
+    },
+    {
+      "id": "49fa88ca-b72b-492e-80a1-3efcf24ae61c",
+      "email": "survey-test-owner-1779420950004@example.com",
+      "created_at": "2026-05-22T03:35:50.313943Z",
+      "audit": null
+    },
+    {
+      "id": "e21481fd-e2ab-4311-8b8d-43b0cf4d20db",
+      "email": "survey-test-owner-1779420805480@example.com",
+      "created_at": "2026-05-22T03:33:25.803336Z",
+      "audit": null
+    },
+    {
+      "id": "f9fd0bbb-b39b-4f1b-943a-82b71f3d00fa",
+      "email": "survey-test-owner-1779420604591@example.com",
+      "created_at": "2026-05-22T03:30:04.727327Z",
+      "audit": null
+    },
+    {
+      "id": "44abc67b-48bd-4c82-b756-3a072ba081af",
+      "email": "survey-test-owner-1779420453613@example.com",
+      "created_at": "2026-05-22T03:27:33.820951Z",
+      "audit": null
+    }
+  ],
+  "surveyTestRemainingCount": 7
+}

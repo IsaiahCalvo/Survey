@@ -1,0 +1,15 @@
+
+> survey@0.1.46 build
+> vite build
+
+vite v5.4.21 building for production...
+transforming...
+✓ 1734 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                2.22 kB │ gzip:     1.07 kB
+dist/assets/pdfRender.worker-jRuCnUFI.js     584.22 kB
+dist/assets/pdf.worker.min-DKQKFyKK.js     1,087.21 kB
+dist/assets/index-BYMAPLXP.css             2,358.42 kB │ gzip:   297.90 kB
+dist/assets/index-BRY5JdLE.js             14,880.36 kB │ gzip: 4,876.33 kB
+✓ built in 20.29s

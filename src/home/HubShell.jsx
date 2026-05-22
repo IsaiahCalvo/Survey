@@ -2,6 +2,23 @@
    Ported from the Claude Design prototype (survey-hub/shell.jsx). All markup is
    rendered inside a `.survey-hub` root so hub.css stays fully scoped. */
 import React, { useState, useRef, useEffect, useContext, createContext } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+
+/* Friendly per-tier label used in the bottom-left profile chip. Maps the
+   raw plan/tier string from AuthContext to the short capitalised form. The
+   default of "Synced · Pro" used to be hardcoded, which displayed "Pro"
+   even for free / enterprise / developer users — a release-blocking lie
+   about subscription status. (KAL-54 audit, 2026-05-22.) */
+const TIER_LABEL = {
+  free: 'Free',
+  pro: 'Pro',
+  enterprise: 'Enterprise',
+  developer: 'Developer'
+};
+const tierLabelFromAuth = (tier) => {
+  const key = String(tier || '').toLowerCase();
+  return TIER_LABEL[key] || (key ? key[0].toUpperCase() + key.slice(1) : 'Free');
+};
 
 /* Context for chrome-level data/callbacks (the profile menu) so the per-tab
    shells don't have to prop-drill them. SurveyHub provides it. */
@@ -92,6 +109,10 @@ const initialsOf = (name) => (name || 'You')
    Reads the user and the two callbacks from HubChromeContext. */
 const ProfileMenu = ({ userName, userMeta }) => {
   const { user, onSettings, onSignOut } = useContext(HubChromeContext);
+  // Resolve the per-tier badge text. Callers may pass `userMeta` explicitly;
+  // otherwise we read from AuthContext so free users no longer see "Pro".
+  const auth = useAuth();
+  const resolvedMeta = userMeta || `Synced · ${tierLabelFromAuth(auth?.tier)}`;
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -114,7 +135,7 @@ const ProfileMenu = ({ userName, userMeta }) => {
         <Avatar initials={initials} size={24} />
         <div style={{ minWidth: 0 }}>
           <div className="name">{name}</div>
-          <div className="who-meta">{userMeta}</div>
+          <div className="who-meta">{resolvedMeta}</div>
         </div>
       </button>
       {open && (
@@ -144,7 +165,7 @@ const ProfileMenu = ({ userName, userMeta }) => {
 
 /* Sidebar + header frame. The three tabs are always rendered so the chrome
    feels permanent; only the body content (children) changes per tab. */
-export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userName = 'You', userMeta = 'Synced · Pro', templatesLocked = false }) => {
+export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userName = 'You', userMeta = undefined, templatesLocked = false }) => {
   const navBtn = (key, icon, label, disabled = false) => (
     <button
       className={tab === key ? 'active' : ''}

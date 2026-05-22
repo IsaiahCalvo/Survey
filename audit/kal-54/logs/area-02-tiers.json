@@ -1,0 +1,98 @@
+[
+  {
+    "role": "free",
+    "email": "survey-test-free-1779477209996@example.com",
+    "userId": "790ea927-2a37-4d9f-886f-1d10af5e328d",
+    "upsert": {
+      "ok": true,
+      "row": {
+        "id": "0ec3eb2c-db8d-4d19-aa2c-e634dd6fe6fc",
+        "user_id": "790ea927-2a37-4d9f-886f-1d10af5e328d",
+        "tier": "free",
+        "status": "active",
+        "stripe_customer_id": null,
+        "stripe_subscription_id": null,
+        "stripe_price_id": null,
+        "trial_ends_at": null,
+        "current_period_start": null,
+        "current_period_end": null,
+        "storage_used_bytes": 0,
+        "metadata": {},
+        "created_at": "2026-05-22T19:13:30.399589+00:00",
+        "updated_at": "2026-05-22T19:14:02.184536+00:00"
+      }
+    }
+  },
+  {
+    "role": "pro",
+    "email": "survey-test-pro-1779477209996@example.com",
+    "userId": "80b5d007-c9d9-4937-b67b-8cb404c9d141",
+    "upsert": {
+      "ok": true,
+      "row": {
+        "id": "111acb64-ac37-4a85-bdc2-43923504bbc7",
+        "user_id": "80b5d007-c9d9-4937-b67b-8cb404c9d141",
+        "tier": "pro",
+        "status": "active",
+        "stripe_customer_id": null,
+        "stripe_subscription_id": null,
+        "stripe_price_id": null,
+        "trial_ends_at": null,
+        "current_period_start": null,
+        "current_period_end": null,
+        "storage_used_bytes": 0,
+        "metadata": {},
+        "created_at": "2026-05-22T19:13:31.617531+00:00",
+        "updated_at": "2026-05-22T19:14:02.272241+00:00"
+      }
+    }
+  },
+  {
+    "role": "developer",
+    "email": "survey-test-developer-1779477209996@example.com",
+    "userId": "2526cc39-773e-476e-9e1c-72c6d0fa75f5",
+    "upsert": {
+      "ok": true,
+      "row": {
+        "id": "a159b1cf-ac5d-4bbe-b982-85794ab1a654",
+        "user_id": "2526cc39-773e-476e-9e1c-72c6d0fa75f5",
+        "tier": "developer",
+        "status": "active",
+        "stripe_customer_id": null,
+        "stripe_subscription_id": null,
+        "stripe_price_id": null,
+        "trial_ends_at": null,
+        "current_period_start": null,
+        "current_period_end": null,
+        "storage_used_bytes": 0,
+        "metadata": {},
+        "created_at": "2026-05-22T19:13:32.125033+00:00",
+        "updated_at": "2026-05-22T19:14:02.342855+00:00"
+      }
+    }
+  },
+  {
+    "role": "enterprise",
+    "email": "survey-test-enterprise-1779477209996@example.com",
+    "userId": "9a54cb45-8d56-4b05-9b6b-bd39c2e338ea",
+    "upsert": {
+      "ok": true,
+      "row": {
+        "id": "9a6ad321-d4fb-419e-9ae3-e087cdccf529",
+        "user_id": "9a54cb45-8d56-4b05-9b6b-bd39c2e338ea",
+        "tier": "enterprise",
+        "status": "active",
+        "stripe_customer_id": null,
+        "stripe_subscription_id": null,
+        "stripe_price_id": null,
+        "trial_ends_at": null,
+        "current_period_start": null,
+        "current_period_end": null,
+        "storage_used_bytes": 0,
+        "metadata": {},
+        "created_at": "2026-05-22T19:13:32.612571+00:00",
+        "updated_at": "2026-05-22T19:14:02.411666+00:00"
+      }
+    }
+  }
+]

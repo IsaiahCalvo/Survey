@@ -1,0 +1,130 @@
+{
+  "perUser": [
+    {
+      "email": "survey-test-pro-1779477209996@example.com",
+      "id": "80b5d007-c9d9-4937-b67b-8cb404c9d141",
+      "steps": [
+        {
+          "docs_owned": 1
+        },
+        {
+          "doc_del_err": "kal31_guard_last_owner: cannot remove last owner of document ccd7bf00-e164-40c7-b800-aadfced7b683",
+          "docId": "ccd7bf00-e164-40c7-b800-aadfced7b683"
+        },
+        {
+          "proj_del_err": "kal31_guard_last_owner: cannot remove last owner of document ccd7bf00-e164-40c7-b800-aadfced7b683",
+          "projId": "d291054d-ec10-4a08-a8e2-0f859fb1f27d"
+        },
+        {
+          "user_delete": "Database error deleting user"
+        }
+      ]
+    },
+    {
+      "email": "survey-test-owner-1779421325839@example.com",
+      "id": "2e2b758a-07fa-4805-b014-fe517db77957",
+      "steps": [
+        {
+          "docs_owned": 1
+        },
+        {
+          "doc_del_err": "kal31_guard_last_owner: cannot remove last owner of document 67d54966-e8d2-4ff4-971a-67dcdb1c4433",
+          "docId": "67d54966-e8d2-4ff4-971a-67dcdb1c4433"
+        },
+        {
+          "user_delete": "Database error deleting user"
+        }
+      ]
+    },
+    {
+      "email": "survey-test-owner-1779421273637@example.com",
+      "id": "ecac4bca-e343-4177-8c9f-53f50b7a1005",
+      "steps": [
+        {
+          "docs_owned": 1
+        },
+        {
+          "doc_del_err": "kal31_guard_last_owner: cannot remove last owner of document 9a929068-c384-4d72-b6dd-0063f2289966",
+          "docId": "9a929068-c384-4d72-b6dd-0063f2289966"
+        },
+        {
+          "user_delete": "Database error deleting user"
+        }
+      ]
+    },
+    {
+      "email": "survey-test-owner-1779420950004@example.com",
+      "id": "49fa88ca-b72b-492e-80a1-3efcf24ae61c",
+      "steps": [
+        {
+          "docs_owned": 1
+        },
+        {
+          "doc_del_err": "kal31_guard_last_owner: cannot remove last owner of document aba014c1-1238-48d7-9df7-b950206a053a",
+          "docId": "aba014c1-1238-48d7-9df7-b950206a053a"
+        },
+        {
+          "user_delete": "Database error deleting user"
+        }
+      ]
+    },
+    {
+      "email": "survey-test-owner-1779420805480@example.com",
+      "id": "e21481fd-e2ab-4311-8b8d-43b0cf4d20db",
+      "steps": [
+        {
+          "docs_owned": 1
+        },
+        {
+          "doc_del_err": "kal31_guard_last_owner: cannot remove last owner of document 0d6d391a-cc4f-44bd-a2dc-05b9b0979774",
+          "docId": "0d6d391a-cc4f-44bd-a2dc-05b9b0979774"
+        },
+        {
+          "user_delete": "Database error deleting user"
+        }
+      ]
+    },
+    {
+      "email": "survey-test-owner-1779420604591@example.com",
+      "id": "f9fd0bbb-b39b-4f1b-943a-82b71f3d00fa",
+      "steps": [
+        {
+          "docs_owned": 1
+        },
+        {
+          "doc_del_err": "kal31_guard_last_owner: cannot remove last owner of document 23df9fb5-4910-4f93-9984-39c45ec5d1c8",
+          "docId": "23df9fb5-4910-4f93-9984-39c45ec5d1c8"
+        },
+        {
+          "user_delete": "Database error deleting user"
+        }
+      ]
+    },
+    {
+      "email": "survey-test-owner-1779420453613@example.com",
+      "id": "44abc67b-48bd-4c82-b756-3a072ba081af",
+      "steps": [
+        {
+          "docs_owned": 1
+        },
+        {
+          "doc_del_err": "kal31_guard_last_owner: cannot remove last owner of document a3182b48-11df-420e-bcf9-9dbeae84dc90",
+          "docId": "a3182b48-11df-420e-bcf9-9dbeae84dc90"
+        },
+        {
+          "user_delete": "Database error deleting user"
+        }
+      ]
+    }
+  ],
+  "finalLeftoverCount": 7,
+  "finalLeftoverEmails": [
+    "survey-test-pro-1779477209996@example.com",
+    "survey-test-owner-1779421325839@example.com",
+    "survey-test-owner-1779421273637@example.com",
+    "survey-test-owner-1779420950004@example.com",
+    "survey-test-owner-1779420805480@example.com",
+    "survey-test-owner-1779420604591@example.com",
+    "survey-test-owner-1779420453613@example.com"
+  ]
+}

@@ -12,7 +12,15 @@ test('cloud-backed survey highlights are not painted from localStorage before Su
 });
 
 test('normal annotation hydration can start before live sync subscription is enabled', () => {
-  assert.match(APP_SOURCE, /enabled: cloudSyncActive,\s*hydrateEnabled: cloudSyncEnabled && !!pdfFile\?\.id && !!user\?\.id/s);
+  // App.jsx may guard the call with `isActive && ` before the two flags; the
+  // contract is that hydrateEnabled does NOT require cloudSyncActive — it only
+  // requires cloudSyncEnabled + pdfFile + user. This regression test allows
+  // the optional `isActive && ` prefix introduced after the hydration gate
+  // landed without changing the underlying contract.
+  assert.match(
+    APP_SOURCE,
+    /enabled: (?:isActive && )?cloudSyncActive,\s*hydrateEnabled: (?:isActive && )?cloudSyncEnabled && !!pdfFile\?\.id && !!user\?\.id/s
+  );
   assert.match(CLOUD_SYNC_SOURCE, /hydrateEnabled = enabled/);
   assert.match(CLOUD_SYNC_SOURCE, /if \(!hydrateEnabled \|\| !documentId \|\| !userId \|\| !pdfId\)/);
 });
