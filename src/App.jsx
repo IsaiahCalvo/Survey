@@ -3033,6 +3033,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   const uploadTargetProjectRef = useRef(null);
   // Track documents being cleaned up to prevent duplicate cleanup attempts
   const cleaningUpDocumentsRef = useRef(new Set());
+  // KAL-23: dashboard-level error toast for upload/create/save flows. Replaces
+  // the noisy browser alerts that used to interrupt the user when an upload or
+  // project save failed asynchronously. Click the close × on the toast to
+  // dismiss; toast auto-clears after the next successful action.
+  const [dashboardError, setDashboardError] = useState('');
+  const [uploadInFlight, setUploadInFlight] = useState(false);
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
@@ -3532,13 +3538,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
             console.error('Error uploading file in background:', err);
             // Remove temp document from list since upload failed
             setDocuments(prev => prev.filter(d => !(d.id === tempDoc.id)));
-            alert('Failed to save document to cloud: ' + (err.message || 'Unknown error'));
+            setDashboardError('Couldn’t save the document to the cloud: ' + (err.message || 'Unknown error') + '. Your file is still on disk — try uploading again or check your connection.');
           }
         })();
 
       } catch (error) {
         console.error('Error opening file:', error);
-        alert('Failed to open file: ' + error.message);
+        setDashboardError('Couldn’t open that file: ' + (error?.message || 'Unknown error'));
       }
     } else {
       // Fallback to browser file input. Stash the destination project id and
@@ -3672,7 +3678,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           console.error('Error uploading file in background:', err);
           // Remove temp document from list since upload failed
           setDocuments(prev => prev.filter(d => !(d.id === tempDoc.id)));
-          alert('Failed to save document to cloud: ' + (err.message || 'Unknown error'));
+          setDashboardError('Couldn’t save the document to the cloud: ' + (err.message || 'Unknown error') + '. Your file is still on disk — try uploading again or check your connection.');
         }
       })();
 
@@ -3906,57 +3912,61 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     }
 
     if (hasNameConflict(latestProjects, trimmedProjectName, { getName: (project) => project?.name })) {
-      alert('A project with this name already exists. Please choose a different name.');
+      setDashboardError('A project with this name already exists. Please choose a different name.');
       return;
     }
     if (projectFiles.length === 0) {
-      alert('Please add at least one PDF.');
+      setDashboardError('Add at least one PDF to the project before creating it.');
       return;
     }
+    setUploadInFlight(true);
     try {
       await persistProject(trimmedProjectName, projectFiles);
       setIsProjectModalOpen(false);
       setProjectName('');
       setProjectFiles([]);
+      setDashboardError('');
     } catch (err) {
       console.error('Error creating project:', err);
 
       if (err?.code === 'DUPLICATE_PROJECT_NAME') {
-        alert(err.message);
+        setDashboardError(err.message);
         return;
       }
 
       if (err?.code === 'NOT_AUTHENTICATED') {
-        alert('Please sign in to create projects.');
+        setDashboardError('Please sign in to create projects.');
         onShowAuthModal();
         return;
       }
 
       if (err?.code === 'PROJECT_LIMIT_REACHED') {
-        alert(err.message);
+        setDashboardError(err.message);
         return;
       }
 
       if (err?.code === 'UPLOAD_LIMIT_REACHED') {
-        alert(err.message);
+        setDashboardError(err.message);
         return;
       }
 
       if (err?.code === 'NO_FILES_UPLOADED') {
-        const errorDetails = err.uploadErrors?.map(e => `\n- ${e.fileName}: ${e.error}`).join('') || '';
-        alert(`Failed to upload files:${errorDetails}\n\nPlease check your file sizes and try again.`);
+        const errorDetails = err.uploadErrors?.map(e => `\n• ${e.fileName}: ${e.error}`).join('') || '';
+        setDashboardError(`Couldn’t upload your files:${errorDetails}\n\nCheck file sizes and try again.`);
         return;
       }
 
       if (err?.code === 'PROJECT_CREATE_FAILED' || err?.code === 'PROJECT_UPDATE_FAILED') {
         const errorMsg = err.originalError?.message || err.message || 'Unknown error';
-        alert(`Failed to save project: ${errorMsg}\n\nPlease check your connection and try again.`);
+        setDashboardError(`Couldn’t save the project: ${errorMsg}. Check your connection and try again.`);
         return;
       }
 
       // Generic error message with more details if available
       const errorMsg = err.message || err.toString() || 'Unknown error';
-      alert(`There was an error creating the project: ${errorMsg}\n\nPlease try again or check the console for more details.`);
+      setDashboardError(`Couldn’t create the project: ${errorMsg}. Try again or check the console for details.`);
+    } finally {
+      setUploadInFlight(false);
     }
   };
 
@@ -9541,24 +9551,73 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   /* Home redesign: render the new Survey Hub instead of the legacy grid/table.
      Every prop maps to data/handlers that already exist in Dashboard/App. */
   return (
-    <SurveyHub
-      documents={documents}
-      projects={projects}
-      templates={templates}
-      members={[]}
-      user={user ? { id: user.id, name: user.user_metadata?.full_name || user.name || user.email, email: user.email } : null}
-      isPro={!!features?.advancedSurvey}
-      onOpenDocument={hubOpenDocument}
-      onUpload={handleUploadClick}
-      onCreateProject={handleCreateProjectClick}
-      onCreateTemplate={openTemplateModal}
-      onSaveTemplates={hubSaveTemplates}
-      onDuplicateDocuments={hubDuplicateDocuments}
-      onDeleteDocuments={hubDeleteDocuments}
-      onMoveCopyDocuments={hubMoveCopyDocuments}
-      onSettings={() => setShowAccountSettings(true)}
-      onSignOut={signOut}
-    />
+    <>
+      <SurveyHub
+        documents={documents}
+        projects={projects}
+        templates={templates}
+        members={[]}
+        user={user ? { id: user.id, name: user.user_metadata?.full_name || user.name || user.email, email: user.email } : null}
+        isPro={!!features?.advancedSurvey}
+        onOpenDocument={hubOpenDocument}
+        onUpload={handleUploadClick}
+        onCreateProject={handleCreateProjectClick}
+        onCreateTemplate={openTemplateModal}
+        onSaveTemplates={hubSaveTemplates}
+        onDuplicateDocuments={hubDuplicateDocuments}
+        onDeleteDocuments={hubDeleteDocuments}
+        onMoveCopyDocuments={hubMoveCopyDocuments}
+        onSettings={() => setShowAccountSettings(true)}
+        onSignOut={signOut}
+      />
+      {/* KAL-23: inline error toast for upload/create/save failures. Replaces
+          browser alerts so async failure surfaces without interrupting flow. */}
+      {dashboardError && (
+        <div
+          role="alert"
+          style={{
+            position: 'fixed',
+            bottom: 24,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            maxWidth: 520,
+            background: '#1f1f1f',
+            color: '#fff',
+            border: '1px solid rgba(249, 115, 115, 0.65)',
+            borderRadius: 8,
+            padding: '12px 14px 12px 16px',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 12,
+            boxShadow: '0 10px 30px rgba(0,0,0,0.45)',
+            zIndex: 2000,
+            fontFamily: FONT_FAMILY,
+            fontSize: 13,
+            lineHeight: 1.45,
+            whiteSpace: 'pre-line',
+          }}
+        >
+          <span style={{ flex: 1 }}>{dashboardError}</span>
+          <button
+            type="button"
+            onClick={() => setDashboardError('')}
+            aria-label="Dismiss error"
+            style={{
+              flex: 'none',
+              background: 'transparent',
+              color: '#bbb',
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: 16,
+              lineHeight: 1,
+              padding: 0,
+              width: 22,
+              height: 22,
+            }}
+          >×</button>
+        </div>
+      )}
+    </>
   );
 });
 
@@ -9887,7 +9946,7 @@ function BottomToolbar(props) {
 }
 
 // PDF Viewer Component with improved typography
-function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
+function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, isActive, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
   // phase35Diag logger can prefix every gate decision with the file under test.
   // Production-stripped via import.meta.env.MODE check; tree-shakes from prod.
@@ -10169,6 +10228,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
   const [printPanelOpen, setPrintPanelOpen] = useState(false);
   const [printPanelPrinters, setPrintPanelPrinters] = useState([]);
   const [isLoadingPDF, setIsLoadingPDF] = useState(true);
+  // KAL-21: in-app PDF load failure state — replaces browser alerts when the
+  // pdf-lib rewrite/retry path or Syncfusion render path can't recover.
+  const [pdfLoadError, setPdfLoadError] = useState(null);
+  const [loadRetryToken, setLoadRetryToken] = useState(0);
   const syncfusionPageContainersStateRef = useRef({});
   const syncfusionCommittedPageScalesRef = useRef({});
   const syncfusionInteractionActiveRef = useRef(false);
@@ -14885,6 +14948,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
     setSyncfusionCommittedPageScales({});
     finishSyncfusionInteractionWindow();
     pendingRendererRestoreRef.current = null;
+    // KAL-21: surface unrecoverable Syncfusion render failures in the in-app
+    // failure panel. SyncfusionPDFContainer already performs one sanitize/retry
+    // before calling this handler, so by here the document truly can't render.
+    setIsLoadingPDF(false);
+    setPdfLoadError({
+      kind: 'syncfusion',
+      message: detail?.message || 'The PDF rendered as unreadable.',
+    });
   }, [finishSyncfusionInteractionWindow]);
 
   const readSyncfusionPageVisitState = useCallback((pageNumber) => {
@@ -27124,15 +27195,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, tabId, isActive, onTopToolbar
         console.error('Error loading PDF:', error);
         console.error('Error stack:', error.stack);
         setIsLoadingPDF(false);
-        alert('Error loading PDF: ' + error.message + '. Please try uploading the file again.');
+        setPdfLoadError({
+          kind: 'parse',
+          message: error?.message || 'The PDF could not be opened.',
+        });
       }
     };
 
+    setPdfLoadError(null);
     loadPDF();
     return () => {
       isCancelled = true;
     };
-  }, [pdfFile]);
+  }, [pdfFile, loadRetryToken]);
 
   // Memoized render page function with caching
   // NOTE: Rendering is now handled by PDFPageCanvas. This function is kept for compatibility
@@ -33604,6 +33679,116 @@ ${pageBlocks}
     user,
     handleLeftRailToggleCollapse
   ]);
+
+  // KAL-21: in-app failure state — replaces the old browser alerts when the
+  // PDF parse path or Syncfusion render path cannot recover. Pre-empts the
+  // loading/spinner branch so we never leave the viewer blank.
+  if (pdfLoadError) {
+    const docName = pdfFile?.name || 'this document';
+    return (
+      <div style={{
+        height: '100vh',
+        display: 'flex',
+        flexDirection: 'row',
+        background: '#2b2b2b',
+        color: '#ddd',
+        fontFamily: FONT_FAMILY
+      }}>
+        <div style={{
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '24px'
+        }}>
+          <div style={{
+            maxWidth: '480px',
+            background: '#1f1f1f',
+            border: '1px solid #3a3a3a',
+            borderRadius: '8px',
+            padding: '32px',
+            textAlign: 'center',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
+          }}>
+            <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'center' }}>
+              <Icon name="document" size={48} />
+            </div>
+            <div style={{ fontSize: '18px', color: '#eee', marginBottom: '8px', fontWeight: 500 }}>
+              Couldn’t open this PDF
+            </div>
+            <div style={{ fontSize: '13px', color: '#a8a8a8', marginBottom: '8px' }}>
+              {docName}
+            </div>
+            <div style={{ fontSize: '13px', color: '#9a9a9a', marginBottom: '24px', lineHeight: 1.5 }}>
+              {pdfLoadError.kind === 'syncfusion'
+                ? 'The viewer couldn’t render this file. It may be corrupted or use an unsupported PDF feature.'
+                : 'The file couldn’t be parsed. It may be corrupted, encrypted, or not a valid PDF.'}
+            </div>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setPdfLoadError(null);
+                  setIsLoadingPDF(true);
+                  setSyncfusionPageContainers({});
+                  setSyncfusionCommittedPageScales({});
+                  setLoadRetryToken((t) => t + 1);
+                }}
+                style={{
+                  background: '#3b82f6',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '10px 18px',
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  fontFamily: FONT_FAMILY
+                }}
+              >
+                Try again
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  // KAL-46: a failed parse leaves the current pdfFile in a
+                  // transient state — either mutated into a rewritten Blob
+                  // (__rewrittenForParse: true) or simply the original failed
+                  // file. Either way, re-mounting this viewer later with the
+                  // same reference will NOT re-fire the PDF load effect and
+                  // the viewer hangs on the loading spinner. Closing this
+                  // failed tab on Back is the cleanest reset: a subsequent
+                  // open of the same document creates a fresh tab with a
+                  // freshly-picked File reference, and the load effect runs
+                  // cleanly. Falls back to onBack() if a close-on-failure
+                  // handler wasn't provided.
+                  setPdfLoadError(null);
+                  if (typeof onCloseAfterFailure === 'function') {
+                    onCloseAfterFailure(tabId);
+                  } else if (typeof onBack === 'function') {
+                    onBack();
+                  }
+                }}
+                style={{
+                  background: 'transparent',
+                  color: '#ddd',
+                  border: '1px solid #4a4a4a',
+                  borderRadius: '6px',
+                  padding: '10px 18px',
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  fontFamily: FONT_FAMILY
+                }}
+              >
+                Back to dashboard
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Show loading state when PDF is not loaded yet
   if (!pdfDoc || isLoadingPDF) {
@@ -44679,11 +44864,27 @@ export default function App() {
     if (existingTab) {
       // Clear the opening flag in case it was set (shouldn't happen, but just in case)
       openingPdfsRef.current.delete(pdfKey);
-      // Switch to existing tab
-      setActiveTabId(existingTab.id);
-      if (selectedPDF !== existingTab.file) {
-        setSelectedPDF(existingTab.file);
+      // KAL-46: when the user re-selects a document via the upload flow, a
+      // previous failed parse can leave the tab's file in a stuck transient
+      // state (mutated to a rewritten Blob carrying __rewrittenForParse: true,
+      // or simply the original failed reference). Re-mounting the viewer
+      // with that stale reference will NOT re-fire the PDF load effect and
+      // the viewer hangs on the loading spinner. To make same-document
+      // reopen deterministic in those cases, replace the tab's file with the
+      // freshly-selected reference. For healthy already-loaded tabs we keep
+      // the existing reference to preserve scroll position / in-flight work.
+      const previousFile = existingTab.file;
+      const previousLoadFailed = previousFile?.__rewrittenForParse === true
+        || previousFile?.__pdfLoadFailed === true;
+      if (previousLoadFailed) {
+        setTabs(prev => prev.map(tab =>
+          tab.id === existingTab.id ? { ...tab, file: file, filePath: filePath ?? tab.filePath } : tab
+        ));
+        setSelectedPDF(file);
+      } else if (selectedPDF !== previousFile) {
+        setSelectedPDF(previousFile);
       }
+      setActiveTabId(existingTab.id);
       setCurrentView('viewer');
       return;
     }
@@ -45405,6 +45606,7 @@ export default function App() {
                       onLeftRailApiChange={setLeftRailApi}
                       onPageDrop={handlePageDrop}
                       onUpdatePDFFile={handleUpdatePDFFile}
+                      onCloseAfterFailure={handleTabClose}
                       onUnsavedAnnotationsChange={handleUnsavedAnnotationsChange}
                       onAnnotationsExistChange={handleAnnotationsExistChange}
                       onRequestCreateTemplate={handleCreateTemplateRequest}

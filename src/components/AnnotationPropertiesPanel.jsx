@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { createPortal } from 'react-dom';
 import CompactColorPicker from './CompactColorPicker';
 import { resolvePropertiesPanelShape, computeBorderStylePatch } from './propertiesPanelShape';
+import { ARROWHEAD_STYLES, ARROWHEAD_STYLE_LABELS } from './Callout/types';
 
 // UX: right-click → context menu → Properties opens this panel in place of
 // the context menu. Replaces the deprecated floating mini-toolbar that used
@@ -212,6 +213,13 @@ const AnnotationPropertiesPanel = ({
   // cloud branch stays active even after the user picks solid / dashed.
   const handleBorderStyleChange = (nextStyle) => {
     onUpdate(computeBorderStylePatch(annotation, nextStyle));
+  };
+  // KAL-33: arrowhead style writes to annotation.data.arrowheadStyle — the
+  // canonical key honored by lineRenderHelpers (explicit override) and the
+  // SVG renderer (SVGAnnotationLayer + svgAnnotationRenderers). Preserve any
+  // other data.* fields so we don't strip midpoint / pdfAnnotationId / etc.
+  const handleArrowheadStyleChange = (nextStyle) => {
+    onUpdate({ data: { ...(annotation?.data ?? {}), arrowheadStyle: nextStyle } });
   };
   // UX 2026-04-21: bump size stepper for cloud shapes. Clamps to 1..4 to
   // match the renderer's bump-count heuristic (see buildCloudPathCommands).
@@ -487,7 +495,7 @@ const AnnotationPropertiesPanel = ({
           {/* UX 2026-04-21: open shapes (line / arrow / polyline) get the
               two-option picker only. Cloud style is reserved for closed
               boundary shapes (rect / polygon) per PDF /BE semantics. */}
-          <section style={{ marginBottom: 4 }}>
+          <section style={{ marginBottom: targetKind === 'arrow' ? 14 : 4 }}>
             {renderLabel('Border Style')}
             {renderDropdownRow(
               [
@@ -498,6 +506,27 @@ const AnnotationPropertiesPanel = ({
               handleBorderStyleChange,
             )}
           </section>
+          {/* KAL-33: arrowhead style picker for arrows. Six styles match the
+              renderer dispatch in lineRenderHelpers / svgAnnotationRenderers.
+              Lines and polylines keep their tail-only rendering and do not
+              expose an arrowhead control. */}
+          {targetKind === 'arrow' && (
+            <section style={{ marginBottom: 4 }}>
+              {renderLabel('Arrowhead')}
+              {renderDropdownRow(
+                [
+                  { value: ARROWHEAD_STYLES.SOLID_TRIANGLE, label: ARROWHEAD_STYLE_LABELS[ARROWHEAD_STYLES.SOLID_TRIANGLE] },
+                  { value: ARROWHEAD_STYLES.OPEN_TRIANGLE, label: ARROWHEAD_STYLE_LABELS[ARROWHEAD_STYLES.OPEN_TRIANGLE] },
+                  { value: ARROWHEAD_STYLES.V_SHAPE, label: ARROWHEAD_STYLE_LABELS[ARROWHEAD_STYLES.V_SHAPE] },
+                  { value: ARROWHEAD_STYLES.OPEN_CIRCLE, label: ARROWHEAD_STYLE_LABELS[ARROWHEAD_STYLES.OPEN_CIRCLE] },
+                  { value: ARROWHEAD_STYLES.HORIZONTAL_LINE, label: ARROWHEAD_STYLE_LABELS[ARROWHEAD_STYLES.HORIZONTAL_LINE] },
+                  { value: ARROWHEAD_STYLES.NONE, label: ARROWHEAD_STYLE_LABELS[ARROWHEAD_STYLES.NONE] },
+                ],
+                annotation?.data?.arrowheadStyle ?? ARROWHEAD_STYLES.SOLID_TRIANGLE,
+                handleArrowheadStyleChange,
+              )}
+            </section>
+          )}
         </>
       );
     }
@@ -527,6 +556,34 @@ const AnnotationPropertiesPanel = ({
     }
 
     if (targetKind === 'text') {
+      // KAL-34: text styling controls. Font family options are single-name
+      // only — Fabric.js measures characters at CACHE_FONT_SIZE=400px and
+      // scales down, so any CSS fallback stack would cause cursor drift when
+      // the browser resolves a different fallback at 400 vs the real size.
+      // CLAUDE.md 2026-04-08 documents this in detail.
+      const currentFontFamily = annotation?.fontFamily ?? 'Helvetica';
+      const currentTextAlign = annotation?.textAlign ?? 'left';
+      const isBold = annotation?.fontWeight === 'bold' || annotation?.fontWeight === 700;
+      const isItalic = annotation?.fontStyle === 'italic';
+      const isUnderline = annotation?.underline === true;
+      const isStrikethrough = annotation?.linethrough === true;
+      const renderToggleButton = (label, active, onToggle, fontStyle = {}) => (
+        <button
+          type="button"
+          onClick={onToggle}
+          style={{
+            flex: 1,
+            height: 28,
+            borderRadius: 4,
+            border: '1px solid #d1d5db',
+            background: active ? '#1e293b' : '#fff',
+            color: active ? '#fff' : '#374151',
+            fontSize: 13,
+            cursor: 'pointer',
+            ...fontStyle,
+          }}
+        >{label}</button>
+      );
       return (
         <>
           <section style={{ marginBottom: 14 }}>
@@ -538,12 +595,68 @@ const AnnotationPropertiesPanel = ({
               () => setShowFillPicker((v) => !v),
             )}
           </section>
-          <section style={{ marginBottom: 4 }}>
+          <section style={{ marginBottom: 14 }}>
+            {renderLabel('Font')}
+            {renderDropdownRow(
+              [
+                { value: 'Helvetica', label: 'Helvetica' },
+                { value: 'Arial', label: 'Arial' },
+                { value: 'Times New Roman', label: 'Times New Roman' },
+                { value: 'Courier New', label: 'Courier New' },
+                { value: 'Georgia', label: 'Georgia' },
+              ],
+              currentFontFamily,
+              (next) => onUpdate({ fontFamily: next }),
+            )}
+          </section>
+          <section style={{ marginBottom: 14 }}>
             {renderLabel('Font Size')}
             {renderStepperRow(
               `${annotation?.fontSize ?? 14}px`,
               () => onUpdate({ fontSize: Math.max(6, (annotation?.fontSize ?? 14) - 1) }),
               () => onUpdate({ fontSize: Math.min(96, (annotation?.fontSize ?? 14) + 1) }),
+            )}
+          </section>
+          <section style={{ marginBottom: 14 }}>
+            {renderLabel('Style')}
+            <div style={{ display: 'flex', gap: 6 }}>
+              {renderToggleButton(
+                'B',
+                isBold,
+                () => onUpdate({ fontWeight: isBold ? 'normal' : 'bold' }),
+                { fontWeight: 700 },
+              )}
+              {renderToggleButton(
+                'I',
+                isItalic,
+                () => onUpdate({ fontStyle: isItalic ? 'normal' : 'italic' }),
+                { fontStyle: 'italic' },
+              )}
+              {renderToggleButton(
+                'U',
+                isUnderline,
+                () => onUpdate({ underline: !isUnderline }),
+                { textDecoration: 'underline' },
+              )}
+              {renderToggleButton(
+                'S',
+                isStrikethrough,
+                () => onUpdate({ linethrough: !isStrikethrough }),
+                { textDecoration: 'line-through' },
+              )}
+            </div>
+          </section>
+          <section style={{ marginBottom: 4 }}>
+            {renderLabel('Align')}
+            {renderDropdownRow(
+              [
+                { value: 'left', label: 'Left' },
+                { value: 'center', label: 'Center' },
+                { value: 'right', label: 'Right' },
+                { value: 'justify', label: 'Justify' },
+              ],
+              currentTextAlign,
+              (next) => onUpdate({ textAlign: next }),
             )}
           </section>
         </>
