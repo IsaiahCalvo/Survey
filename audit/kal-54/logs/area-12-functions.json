@@ -1,0 +1,13 @@
+{
+  "options": {
+    "status": 200
+  },
+  "empty_post": {
+    "status": 400,
+    "body": "{\"error\":\"Missing required fields: to, subject, template\"}"
+  },
+  "missing_fields_post": {
+    "status": 400,
+    "body": "{\"error\":\"Missing required fields: to, subject, template\"}"
+  }
+}
