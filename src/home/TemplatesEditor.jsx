@@ -43,6 +43,12 @@ import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom';
 import { HubShell, Icon, Search } from './HubShell';
 import CompactColorPicker from '../components/CompactColorPicker';
+import {
+  archiveChecklistItem,
+  isActiveChecklistItem,
+  isArchivedChecklistItem,
+  archivedItemLabel,
+} from '../services/checklistOrphanCleanup';
 
 /* ============================================================
    Inline scoped stylesheet — the prototype's `.ed-scope` editorial
@@ -217,7 +223,28 @@ const buildRich = (templates) => templates.map((t, i) => {
     categories: categoriesOf(m).map((c, ci) => ({
       id: c?.id ?? newId('c'),
       name: c?.name || `Category ${ci + 1}`,
-      items: checklistOf(c).map((it) => ({ id: newId('i'), text: itemText(it) })),
+      items: checklistOf(c).map((it) => {
+        /* Preserve stable item ids when the persisted row already has one —
+           archived items rely on the same id the marker's checklist_responses
+           key was written against. Only mint a new id for legacy rows that
+           never had one. Also carry archive metadata through round-trip so
+           "saved-then-reopened" archives keep their flag + label. */
+        const text = itemText(it);
+        const base = {
+          id: (it && typeof it.id === 'string' && it.id) ? it.id : newId('i'),
+          text,
+        };
+        if (it && typeof it === 'object') {
+          if (it.archived === true) base.archived = true;
+          if (typeof it.archivedAt === 'string') base.archivedAt = it.archivedAt;
+          if (typeof it.lastKnownLabel === 'string') {
+            base.lastKnownLabel = it.lastKnownLabel;
+          } else if (it.archived === true && text) {
+            base.lastKnownLabel = text;
+          }
+        }
+        return base;
+      }),
     })),
   }));
   const roster = entitiesOf(t).map((e, ei) => ({
@@ -432,6 +459,13 @@ export default function TemplatesEditor({
   onCreateTemplate,
   onSaveTemplates,
   onShare,
+  /* KAL-44 — host-provided usage count for a checklist item. Returns the
+     number of survey markers that have a response keyed under itemId. When
+     > 0, deleting that item shows the archive confirmation modal instead of
+     hard-deleting. Optional — when omitted, falls back to zero (hard-delete
+     path), preserving pre-KAL-44 behavior for any caller that hasn't wired
+     it up yet. */
+  getChecklistItemUsageCount = null,
 }) {
   /* ---- mutable working data ----
      Seeded from the `templates` prop, then owned locally so every editor
@@ -748,9 +782,58 @@ export default function TemplatesEditor({
   const renameItem = (ci, itemId, text) => mutateCategory(ci, (c) => ({
     ...c, items: c.items.map((it) => (it.id === itemId ? { ...it, text } : it)),
   }));
-  const deleteItem = (ci, itemId) => mutateCategory(ci, (c) => ({
+
+  /* KAL-44 archive flow state. When the user clicks the "×" delete button on
+     a checklist item that has marker responses, we open this confirmation
+     modal instead of stripping the item — confirming archives the item so
+     historical responses survive. The modal carries `categoryIndex`,
+     `itemId`, label snapshot, and the marker count for the copy. */
+  const [archiveConfirm, setArchiveConfirm] = useState(null);
+
+  /* Hard-delete an item from the rich tree. Used when the item has zero
+     marker references, or as the resolved action from the archive modal's
+     "Permanently delete" path (currently unused — the modal only offers
+     Cancel / Archive). */
+  const hardDeleteItem = (ci, itemId) => mutateCategory(ci, (c) => ({
     ...c, items: c.items.filter((it) => it.id !== itemId),
   }));
+
+  /* Mark an item as archived in the rich tree. The marker UI keeps showing
+     its responses under an "Archived" section using lastKnownLabel. */
+  const archiveItem = (ci, itemId) => mutateCategory(ci, (c) => ({
+    ...c,
+    items: c.items.map((it) => (it.id === itemId ? archiveChecklistItem(it) : it)),
+  }));
+
+  const deleteItem = async (ci, itemId) => {
+    const cat = (orderedMods[openMod]?.categories || [])[ci];
+    const item = cat?.items?.find((x) => x.id === itemId);
+    if (!item) return;
+    /* If the item is already archived, "×" just removes it permanently —
+       responses keyed under it become true orphans, but the user explicitly
+       asked. We still respect the host's reported usage count to be safe. */
+    let usage = 0;
+    if (typeof getChecklistItemUsageCount === 'function') {
+      try {
+        const result = getChecklistItemUsageCount(itemId);
+        const resolved = (result && typeof result.then === 'function') ? await result : result;
+        usage = Number(resolved) || 0;
+      } catch (err) {
+        console.warn('[ChecklistArchive] usage probe failed:', err);
+        usage = 0;
+      }
+    }
+    if (usage > 0 && !item.archived) {
+      setArchiveConfirm({
+        categoryIndex: ci,
+        itemId,
+        label: item.text || item.lastKnownLabel || 'this item',
+        usage,
+      });
+      return;
+    }
+    hardDeleteItem(ci, itemId);
+  };
 
   /* --- entity-level --- */
   const addEntity = () => {
@@ -822,7 +905,21 @@ export default function TemplatesEditor({
       categories: m.categories.map((c) => ({
         id: c.id,
         name: c.name,
-        checklist: c.items.map((it) => ({ id: it.id, text: it.text })),
+        checklist: c.items.map((it) => {
+          /* Persist archived metadata so KAL-44 archive survives save/reload.
+             Active items round-trip the simple shape unchanged. */
+          const out = { id: it.id, text: it.text };
+          if (it.archived === true) {
+            out.archived = true;
+            if (typeof it.archivedAt === 'string') out.archivedAt = it.archivedAt;
+            if (typeof it.lastKnownLabel === 'string' && it.lastKnownLabel) {
+              out.lastKnownLabel = it.lastKnownLabel;
+            } else if (it.text) {
+              out.lastKnownLabel = it.text;
+            }
+          }
+          return out;
+        }),
       })),
     }));
     return {
@@ -1136,7 +1233,14 @@ export default function TemplatesEditor({
                   <div className="meta" style={{ padding: '16px 4px', fontSize: 11.5 }}>This module has no categories yet.</div>
                 )}
                 {visibleCats.map((c, i) => {
-                  const items = c.items || [];
+                  const allItems = c.items || [];
+                  /* KAL-44 — active vs archived split. Editor surfaces the
+                     active items in the normal list and a collapsed
+                     "Archived" tail. Archived items can still be permanently
+                     deleted via the × button (which calls deleteItem; the
+                     hard-delete branch fires because item.archived is true). */
+                  const items = allItems.filter(isActiveChecklistItem);
+                  const archivedItems = allItems.filter(isArchivedChecklistItem);
                   const open = openCat === i;
                   const isSel = selCats.has(c.id);
                   return (
@@ -1173,7 +1277,9 @@ export default function TemplatesEditor({
                           onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { e.currentTarget.value = c.name; e.currentTarget.blur(); } }}
                           style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.2, width: 'max-content', maxWidth: '100%', minWidth: 40 }}
                         />
-                        <span className="mono" style={{ fontSize: 9.5, color: 'var(--ink-quiet)', lineHeight: 1.2, whiteSpace: 'nowrap' }}>{items.length} items</span>
+                        <span className="mono" style={{ fontSize: 9.5, color: 'var(--ink-quiet)', lineHeight: 1.2, whiteSpace: 'nowrap' }}>
+                          {items.length} items{archivedItems.length > 0 ? ` (+${archivedItems.length} archived)` : ''}
+                        </span>
                         {catEdit && (
                           <span
                             onClick={(e) => { e.stopPropagation(); toggleCatSel(c.id); }}
@@ -1229,6 +1335,50 @@ export default function TemplatesEditor({
                             >
                               <span style={{ fontSize: 13 }}>+</span> Add Checklist Item
                             </button>
+
+                            {/* KAL-44 — Archived items live in the template
+                                structure so historical responses survive
+                                reload, but they're not editable as active
+                                prompts. Surface them in a quiet section so
+                                template authors can see what's been retired
+                                without restoring it. */}
+                            {archivedItems.length > 0 && (
+                              <div
+                                data-testid={`archived-items-${c.id}`}
+                                style={{ marginTop: 14, paddingTop: 10, borderTop: '1px dashed var(--rule)' }}
+                              >
+                                <div className="meta" style={{ fontSize: 10.5, marginBottom: 6, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--ink-quiet)' }}>
+                                  Archived ({archivedItems.length})
+                                </div>
+                                {archivedItems.map((it, j) => (
+                                  <div
+                                    key={it.id}
+                                    data-archived-item-id={it.id}
+                                    style={{
+                                      display: 'grid', gridTemplateColumns: '14px 1fr 16px',
+                                      alignItems: 'center', gap: 6, padding: '3px 0',
+                                      borderBottom: j === archivedItems.length - 1 ? 0 : '1px dashed var(--rule)',
+                                      opacity: 0.65,
+                                    }}
+                                  >
+                                    <span style={{ color: 'var(--ink-quiet)', fontSize: 11 }}>—</span>
+                                    <span
+                                      title={`Archived${it.archivedAt ? ` ${new Date(it.archivedAt).toLocaleString()}` : ''} — historical responses preserved`}
+                                      style={{ fontSize: 12, color: 'var(--ink-muted)', fontStyle: 'italic', textDecoration: 'line-through' }}
+                                    >
+                                      {archivedItemLabel(it)}
+                                    </span>
+                                    <button
+                                      title="Permanently delete (orphans historical responses)"
+                                      onClick={(e) => { e.stopPropagation(); hardDeleteItem(i, it.id); }}
+                                      onMouseEnter={(e) => { e.currentTarget.style.color = '#cf6f6f'; }}
+                                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--ink-quiet)'; }}
+                                      style={{ background: 'transparent', border: 0, color: 'var(--ink-quiet)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0, width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit' }}
+                                    >×</button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         </div>
                       )}
@@ -1481,6 +1631,65 @@ export default function TemplatesEditor({
         />
       );
     })()}
+
+    {/* KAL-44 — Archive checklist item confirmation modal.
+        Opened when the user tries to delete an active item that has
+        survey-marker responses. Cancel leaves the item untouched. Archive
+        marks it `archived: true` with a label snapshot so old marker
+        responses still render under the marker UI's "Archived" section. */}
+    {archiveConfirm && createPortal(
+      <div
+        data-testid="archive-confirm-modal"
+        onClick={() => setArchiveConfirm(null)}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(13, 15, 20, 0.55)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5100 }}
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            width: 440, maxWidth: 'calc(100vw - 32px)',
+            background: '#181c24', border: '1px solid #2a3140', borderRadius: 10,
+            padding: '18px 20px 14px', boxShadow: '0 18px 60px rgba(0,0,0,0.55)',
+            fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif', color: '#f4f1ea',
+          }}
+        >
+          <h3 style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 700, letterSpacing: '-0.02em', color: '#f4f1ea' }}>
+            Archive checklist item?
+          </h3>
+          <p style={{ margin: '0 0 6px', fontSize: 12.5, lineHeight: 1.55, color: '#c7cdda' }}>
+            <strong style={{ color: '#f4f1ea' }}>{archiveConfirm.usage}</strong>
+            {' '}
+            {archiveConfirm.usage === 1 ? 'survey marker has' : 'survey markers have'}
+            {' '}responses for <em style={{ color: '#f4f1ea' }}>{archiveConfirm.label || 'this item'}</em>.
+          </p>
+          <p style={{ margin: '0 0 16px', fontSize: 12.5, lineHeight: 1.55, color: '#8d96a6' }}>
+            Archiving keeps those responses as historical data, but the item won't appear for new markers. You can permanently delete the archived item later from the Archived section.
+          </p>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button
+              type="button"
+              data-testid="archive-confirm-cancel"
+              onClick={() => setArchiveConfirm(null)}
+              style={{ background: 'transparent', border: '1px solid #3a4252', color: '#c7cdda', borderRadius: 6, padding: '7px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              data-testid="archive-confirm-archive"
+              onClick={() => {
+                const { categoryIndex, itemId } = archiveConfirm;
+                archiveItem(categoryIndex, itemId);
+                setArchiveConfirm(null);
+              }}
+              style={{ background: '#d8a84e', border: '1px solid #b8893a', color: '#0d0f14', borderRadius: 6, padding: '7px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+              Archive
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body,
+    )}
 
     {/* Edit modules modal */}
     {modEdit && tpl && (() => {

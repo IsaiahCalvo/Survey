@@ -200,6 +200,69 @@ export async function upsertAnnotations(annotations) {
 }
 
 /**
+ * KAL-44 — Count cross-document survey markers that reference a given
+ * checklist item id. Used by the Survey Hub templates editor to decide
+ * whether deleting a checklist item should hard-delete (count === 0) or
+ * trigger the archive confirmation flow (count > 0).
+ *
+ * Uses the Postgres jsonb `?` (key-exists) operator on the
+ * `annotation_data->'checklistResponses'` path. We only count rows where
+ * the key is actually present — markers that never recorded a response
+ * for that item won't show up.
+ *
+ * Returns 0 on error (fail-open to hard-delete confirm path keeps the UI
+ * usable when Supabase is unreachable). Non-fatal — callers should treat
+ * a 0 count as "safe to hard-delete without confirm".
+ *
+ * @param {string} itemId
+ * @returns {Promise<number>}
+ */
+export async function countSurveyMarkersReferencingChecklistItem(itemId) {
+  if (!itemId || typeof itemId !== 'string') return 0;
+  try {
+    const { count, error } = await supabase
+      .from('document_annotations')
+      .select('annotation_id', { count: 'exact', head: true })
+      .in('annotation_type', SURVEY_MARKER_TYPE_VALUES)
+      .not('annotation_data->checklistResponses', 'is', null)
+      .filter('annotation_data->checklistResponses', 'cs', JSON.stringify({ [itemId]: {} }));
+    if (error) {
+      // The `cs` (contains) operator with an empty-object stub may be over-strict
+      // against rows where the response has extra fields — fall back to a fetch +
+      // count-in-memory pass that's accurate but more bytes over the wire.
+      console.warn('[ChecklistArchive] count via cs filter failed, falling back:', error);
+      return await countSurveyMarkersReferencingChecklistItemFallback(itemId);
+    }
+    return typeof count === 'number' ? count : 0;
+  } catch (err) {
+    console.warn('[ChecklistArchive] count threw, falling back:', err);
+    return await countSurveyMarkersReferencingChecklistItemFallback(itemId);
+  }
+}
+
+async function countSurveyMarkersReferencingChecklistItemFallback(itemId) {
+  try {
+    const { data, error } = await supabase
+      .from('document_annotations')
+      .select('annotation_data')
+      .in('annotation_type', SURVEY_MARKER_TYPE_VALUES)
+      .not('annotation_data', 'is', null)
+      .limit(5000);
+    if (error || !Array.isArray(data)) return 0;
+    let n = 0;
+    for (const row of data) {
+      const resp = row?.annotation_data?.checklistResponses;
+      if (resp && typeof resp === 'object' && Object.prototype.hasOwnProperty.call(resp, itemId)) {
+        n += 1;
+      }
+    }
+    return n;
+  } catch {
+    return 0;
+  }
+}
+
+/**
  * Delete an annotation by annotation_id
  */
 export async function deleteAnnotation(documentId, annotationId) {
