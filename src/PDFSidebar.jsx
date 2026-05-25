@@ -117,8 +117,11 @@ const PDFSidebar = React.forwardRef(({
   }, [isCollapsed]);
 
   const toggleCollapse = useCallback(() => {
+    if (!isCollapsed && activeTab === 'history') {
+      setActiveTab('pages');
+    }
     setIsCollapsed(prev => !prev);
-  }, []);
+  }, [activeTab, isCollapsed]);
 
   useImperativeHandle(ref, () => ({
     openSearchPanel: ({ focus = true, select = true } = {}) => {
@@ -146,7 +149,7 @@ const PDFSidebar = React.forwardRef(({
     setActiveTab('history');
   }, []);
 
-  const HistoryButton = ({ compact }) => {
+  const HistoryButton = () => {
     const isActive = activeTab === 'history';
     return (
       <button
@@ -155,26 +158,24 @@ const PDFSidebar = React.forwardRef(({
         aria-label="Version History"
         onClick={openHistoryPanel}
         style={{
-          width: compact ? '28px' : '100%',
-          height: compact ? '28px' : '30px',
+          width: '28px',
+          height: '28px',
           display: 'inline-flex',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: compact ? 0 : '8px',
-          background: isActive ? '#2f3b4f' : 'rgba(255,255,255,0.04)',
-          border: `1px solid ${isActive ? '#4A90E2' : 'rgba(255,255,255,0.08)'}`,
-          color: isActive ? '#7ab7ff' : '#ddd',
-          borderRadius: compact ? '6px' : '999px',
+          background: 'transparent',
+          border: 0,
+          color: isActive ? '#4A90E2' : '#ddd',
+          borderRadius: '6px',
           cursor: 'pointer',
           fontSize: '12px',
           fontFamily: FONT_FAMILY,
           fontWeight: 500,
-          padding: compact ? 0 : '0 10px',
+          padding: 0,
           whiteSpace: 'nowrap'
         }}
       >
-        <Icon name="history" size={compact ? 17 : 14} color="currentColor" />
-        {!compact && <span>History</span>}
+        <Icon name="history" size={17} color="currentColor" />
       </button>
     );
   };
@@ -552,7 +553,7 @@ const PDFSidebar = React.forwardRef(({
             compact={isCollapsed}
             onRetry={cloudSyncOnRetry}
           />
-          {documentId && <HistoryButton compact={isCollapsed} />}
+          {documentId && <HistoryButton />}
           <PresenceAvatars
             presence={presence}
             currentUserId={currentUserId}
