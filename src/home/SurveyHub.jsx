@@ -38,6 +38,7 @@ export default function SurveyHub({
   onUpload,
   onCreateProject,
   onCreateTemplate,
+  onDeleteProjects,
   onSaveTemplates,
   /* KAL-44 — host (App.jsx) supplies this so TemplatesEditor can decide
      whether deleting a checklist item should hard-delete or trigger the
@@ -46,6 +47,7 @@ export default function SurveyHub({
   onDuplicateDocuments,
   onDeleteDocuments,
   onMoveCopyDocuments,
+  onLockDocument,
   onSettings,
   onSignOut,
 }) {
@@ -104,6 +106,7 @@ export default function SurveyHub({
           onDuplicate={onDuplicateDocuments}
           onDelete={onDeleteDocuments}
           onMoveCopy={onMoveCopyDocuments}
+          onLockDocument={onLockDocument}
         />
       )}
       {tab === 'projects' && (
@@ -115,8 +118,11 @@ export default function SurveyHub({
           onOpenDocument={onOpenDocument}
           onCreateProject={onCreateProject}
           onUpload={onUpload}
+          onDeleteProjects={onDeleteProjects}
           onDeleteDocuments={onDeleteDocuments}
+          onLockDocument={onLockDocument}
           onShare={shareProject}
+          onShareDocument={shareDocuments}
         />
       )}
       {tab === 'templates' && (

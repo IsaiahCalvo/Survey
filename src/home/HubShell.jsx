@@ -28,9 +28,9 @@ export const HubChromeContext = createContext({});
 export const Icon = ({ name, size = 14, color = 'currentColor' }) => {
   const s = { width: size, height: size, fill: 'none', stroke: color, strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' };
   switch (name) {
-    case 'doc': return <svg viewBox="0 0 24 24" style={s}><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>;
+    case 'doc': return <svg viewBox="0 0 24 24" style={s}><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M8 12h8"/><path d="M8 15h8"/><path d="M8 18h5"/></svg>;
     case 'folder': return <svg viewBox="0 0 24 24" style={s}><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>;
-    case 'grid': return <svg viewBox="0 0 24 24" style={s}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>;
+    case 'template': return <svg viewBox="0 0 24 24" style={s}><rect x="5" y="4" width="14" height="16" rx="1"/><path d="M9 4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2H9V4z"/><path d="M7 10h10"/><path d="M7 13h10"/><path d="M7 16h8"/></svg>;
     case 'search': return <svg viewBox="0 0 24 24" style={s}><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>;
     case 'plus': return <svg viewBox="0 0 24 24" style={s}><path d="M12 5v14M5 12h14"/></svg>;
     case 'upload': return <svg viewBox="0 0 24 24" style={s}><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg>;
@@ -186,7 +186,7 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
           <nav className="nav">
             {navBtn('documents', 'doc', 'Documents')}
             {navBtn('projects', 'folder', 'Projects')}
-            {navBtn('templates', 'grid', 'Templates', templatesLocked)}
+            {navBtn('templates', 'template', 'Templates', templatesLocked)}
           </nav>
           <ProfileMenu userName={userName} userMeta={userMeta} />
         </aside>

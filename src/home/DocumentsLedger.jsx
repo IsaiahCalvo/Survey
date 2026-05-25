@@ -8,7 +8,8 @@
    store yet (page count, revision, per-event activity) fall back gracefully
    without changing the layout.
 */
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { HubShell, Icon, Avatar, PdfThumb, Search } from './HubShell';
 import { MoveCopyModal, ConfirmModal } from './BulkModals';
 import PdfPageThumb from './PdfPageThumb';
@@ -24,6 +25,84 @@ const ledgerHeader = {
 };
 
 const RIBBON = ['#d8a84e', '#7ab7e6', '#a6e07a', '#c293e6', '#e69a7a', '#9aa3b2'];
+const MENU_HEX = {
+  card: '#181c24',
+  rule: '#2a3140',
+  ink: '#f4f1ea',
+  muted: '#8d96a6',
+  danger: '#cf6f6f',
+};
+
+function DocumentActionMenu({ anchorRect, items, onClose, minWidth = 168 }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    const t = setTimeout(() => {
+      document.addEventListener('mousedown', onDown, true);
+      document.addEventListener('keydown', onKey, true);
+    }, 0);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener('mousedown', onDown, true);
+      document.removeEventListener('keydown', onKey, true);
+    };
+  }, [onClose]);
+
+  if (!anchorRect) return null;
+
+  const estHeight = items.length * 34 + 8;
+  let top = anchorRect.bottom + 4;
+  if (top + estHeight > window.innerHeight - 8) top = Math.max(8, anchorRect.top - estHeight - 4);
+  const left = Math.max(8, Math.min(anchorRect.right - minWidth, window.innerWidth - minWidth - 8));
+
+  return createPortal(
+    <div
+      ref={ref}
+      role="menu"
+      style={{
+        position: 'fixed',
+        top,
+        left,
+        zIndex: 4000,
+        background: MENU_HEX.card,
+        border: `1px solid ${MENU_HEX.rule}`,
+        borderRadius: 8,
+        padding: 4,
+        minWidth,
+        boxShadow: '0 12px 30px rgba(0,0,0,0.45)',
+      }}
+    >
+      {items.map((it) => (
+        <button
+          key={it.label}
+          role="menuitem"
+          disabled={it.disabled}
+          onClick={() => { if (it.disabled) return; onClose(); it.onClick && it.onClick(); }}
+          style={{
+            display: 'block',
+            width: '100%',
+            textAlign: 'left',
+            background: 'transparent',
+            border: 0,
+            color: it.disabled ? MENU_HEX.muted : (it.danger ? MENU_HEX.danger : MENU_HEX.ink),
+            padding: '7px 10px',
+            fontSize: 12,
+            borderRadius: 4,
+            cursor: it.disabled ? 'not-allowed' : 'pointer',
+            fontFamily: 'inherit',
+          }}
+          onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = MENU_HEX.rule; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+        >
+          {it.label}
+        </button>
+      ))}
+    </div>,
+    document.body,
+  );
+}
 
 /* Two-letter initials from a display name — for the Team avatar glyph. */
 const initialsOf = (name) => (name || '')
@@ -56,6 +135,7 @@ export default function DocumentsLedger({
   onDuplicate,
   onDelete,
   onMoveCopy,
+  onLockDocument,
 }) {
   const [selId, setSelId] = useState(null);
   const [previewOpen, setPreviewOpen] = useState(true);
@@ -66,6 +146,8 @@ export default function DocumentsLedger({
   const [search, setSearch] = useState('');
   const [moveOpen, setMoveOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [docMenu, setDocMenu] = useState(null);
+  const [clipboardDoc, setClipboardDoc] = useState(null);
 
   /* Supabase storage helpers — let PdfPageThumb fetch a document's bytes to
      render its real first page (download first, public URL as a fallback). */
@@ -127,7 +209,6 @@ export default function DocumentsLedger({
   const grid = previewOpen
     ? '32px 54px minmax(150px,1fr) 124px 124px 72px'
     : '32px 54px 2fr 1fr 1fr 1fr';
-  const isShared = (d) => !!(d && d.shared);
   const stickyCell = (selected) => ({
     position: 'sticky', left: 0, zIndex: 2,
     background: selected ? 'var(--ink-600)' : 'var(--ink-700)',
@@ -220,7 +301,16 @@ export default function DocumentsLedger({
                           {isChecked && <span style={{ color: '#15110a', fontSize: 10, lineHeight: 1 }}>✓</span>}
                         </span>
                       ) : (
-                        isShared(d) && <Icon name="users" size={13} color="var(--ink-200)" />
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setDocMenu((cur) => (cur && cur.id === d.id ? null : { id: d.id, rect }));
+                          }}
+                          style={{ background: 'transparent', border: 0, color: 'var(--ink-200)', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '2px 6px', borderRadius: 4 }}
+                          title="More"
+                        >⋯</button>
                       )}
                     </div>
                     {/* Thumbnail column — its own cell, centred so every
@@ -343,6 +433,29 @@ export default function DocumentsLedger({
       danger
       onConfirm={() => { onDelete && onDelete(selectedRaw()); clearSel(); }}
     />
+    {docMenu && (() => {
+      const doc = docs.find((d) => d.id === docMenu.id);
+      if (!doc) return null;
+      const locked = doc.raw?.locked_at != null;
+      const canLock = user?.id && doc.raw?.user_id === user.id;
+      return (
+        <DocumentActionMenu
+          anchorRect={docMenu.rect}
+          onClose={() => setDocMenu(null)}
+          items={[
+            { label: 'Copy', onClick: () => setClipboardDoc(doc.raw) },
+            { label: 'Paste', disabled: !clipboardDoc, onClick: () => clipboardDoc && onDuplicate && onDuplicate([clipboardDoc]) },
+            { label: 'Delete', danger: true, onClick: () => onDelete && onDelete([doc.raw]) },
+            { label: 'Share', onClick: () => onShare && onShare([doc.raw]) },
+            {
+              label: locked ? 'Unlock Document' : 'Lock Document',
+              disabled: !canLock,
+              onClick: () => onLockDocument && onLockDocument(doc.raw),
+            },
+          ]}
+        />
+      );
+    })()}
     </>
   );
 }

@@ -154,8 +154,11 @@ export default function ProjectsFolderTree({
   onOpenDocument,
   onCreateProject,
   onUpload,
+  onDeleteProjects,
   onDeleteDocuments,
+  onLockDocument,
   onShare,
+  onShareDocument,
 }) {
   const [search, setSearch] = useState('');
 
@@ -348,12 +351,17 @@ export default function ProjectsFolderTree({
     });
   }, []);
 
-  const deleteProjects = useCallback((ids) => {
+  const deleteProjects = useCallback(async (ids) => {
     const set = new Set(ids);
+    const selectedProjects = localProjects.filter((p) => set.has(p.id));
+    if (onDeleteProjects && selectedProjects.length > 0) {
+      const didDelete = await onDeleteProjects(selectedProjects);
+      if (!didDelete) return;
+    }
     setLocalProjects((prev) => prev.filter((p) => !set.has(p.id)));
     setLocalDocs((prev) => prev.filter((d) => !set.has(d.project_id)));
     setSelProj(new Set());
-  }, []);
+  }, [localProjects, onDeleteProjects]);
 
   const renameProject = useCallback((id, name) => {
     setLocalProjects((prev) => prev.map((p) => (
@@ -554,10 +562,10 @@ export default function ProjectsFolderTree({
                     style={{ background: 'transparent', border: '1px solid var(--ink-500)', color: selCount ? 'var(--bone-100)' : 'var(--ink-300)', borderRadius: 2, padding: '2px 5px', fontSize: 10, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }}
                     title="Share"
                   ><Icon name="share" size={11} /></button>
-                  {/* Delete — removes each selected project (and its files) locally. */}
+                  {/* Delete — removes each selected project and lets the host persist it when wired. */}
                   <button
                     disabled={!selCount}
-                    onClick={() => deleteProjects([...selProj])}
+                    onClick={() => { void deleteProjects([...selProj]); }}
                     style={{ background: 'transparent', border: '1px solid var(--ink-500)', color: selCount ? '#cf6f6f' : 'var(--ink-300)', borderRadius: 2, padding: '2px 5px', fontSize: 10, cursor: selCount ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }}
                     title="Delete"
                   ><Icon name="trash" size={11} /></button>
@@ -916,16 +924,23 @@ export default function ProjectsFolderTree({
       {fileMenu && (() => {
         const f = openFiles[fileMenu.idx];
         if (!f) return null;
+        const locked = f.locked_at != null;
+        const canLock = user?.id && f.user_id === user.id;
         return (
           <PopupMenu
             anchorRect={fileMenu.rect}
             onClose={() => setFileMenu(null)}
-            minWidth={150}
+            minWidth={168}
             items={[
               { label: 'Copy', onClick: () => copyFile(f) },
               { label: 'Paste', disabled: !clipboard, onClick: () => pasteFile() },
-              { label: 'Share', onClick: () => onShare && onShare(open) },
-              { label: 'Details', onClick: () => onOpenDocument && onOpenDocument(f) },
+              { label: 'Delete', danger: true, onClick: () => deleteFiles([fileMenu.idx]) },
+              { label: 'Share', onClick: () => onShareDocument ? onShareDocument([f]) : onShare && onShare(open) },
+              {
+                label: locked ? 'Unlock Document' : 'Lock Document',
+                disabled: !canLock,
+                onClick: () => onLockDocument && onLockDocument(f),
+              },
             ]}
           />
         );
