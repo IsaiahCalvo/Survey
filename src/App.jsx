@@ -130,8 +130,12 @@ import {
   buildFieldSettings as buildFormFieldSettings
 } from './components/formDesignerTools';
 import YDocProvider from './components/collab/YDocProvider.jsx';
-import RevisionsPanel from './components/revisions/RevisionsPanel.jsx';
 import DocumentLockBanner from './components/DocumentLockBanner.jsx';
+import { lockDocument, unlockDocument } from './services/documentLockService.js';
+import {
+  buildHistoryEventRowFromDebugEvent,
+  recordDocumentHistoryEvent,
+} from './services/documentHistoryService.js';
 // Phase 29 — per-user Y.UndoManager hook + user-action wrappers. handleUndo and
 // handleRedo bodies route through these so trackedOrigins reference equality
 // (Pitfall 7) holds across the bridge and the keyboard handler call sites.
@@ -656,6 +660,124 @@ const getHistoryAnnotationType = (annotation) => (
   || null
 );
 
+const getHistoryPathVisualBounds = (path) => {
+  if (!Array.isArray(path)) return null;
+  const points = [];
+  path.forEach((command) => {
+    if (!Array.isArray(command)) return;
+    for (let i = 1; i < command.length - 1; i += 2) {
+      const x = Number(command[i]);
+      const y = Number(command[i + 1]);
+      if (Number.isFinite(x) && Number.isFinite(y)) points.push({ x, y });
+    }
+  });
+  if (points.length === 0) return null;
+  const xs = points.map((point) => point.x);
+  const ys = points.map((point) => point.y);
+  const minX = Math.min(...xs);
+  const minY = Math.min(...ys);
+  const maxX = Math.max(...xs);
+  const maxY = Math.max(...ys);
+  return {
+    left: minX,
+    top: minY,
+    width: Math.max(0, maxX - minX),
+    height: Math.max(0, maxY - minY),
+  };
+};
+
+const cloneHistoryPayloadValue = (value) => {
+  if (value == null) return value;
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch (_err) {
+    return null;
+  }
+};
+
+const getHistoryAnnotationVisualBounds = (annotation) => {
+  if (!annotation || typeof annotation !== 'object') return null;
+  const strokeWidth = Number(annotation.strokeWidth) || 1;
+  const scaleX = Number.isFinite(Number(annotation.scaleX)) ? Number(annotation.scaleX) : 1;
+  const scaleY = Number.isFinite(Number(annotation.scaleY)) ? Number(annotation.scaleY) : 1;
+  let left = Number(annotation.left);
+  let top = Number(annotation.top);
+  let width = Math.abs((Number(annotation.width) || 0) * scaleX);
+  let height = Math.abs((Number(annotation.height) || 0) * scaleY);
+
+  if (
+    Number.isFinite(Number(annotation.x1))
+    && Number.isFinite(Number(annotation.y1))
+    && Number.isFinite(Number(annotation.x2))
+    && Number.isFinite(Number(annotation.y2))
+  ) {
+    const x1 = Number(annotation.x1);
+    const y1 = Number(annotation.y1);
+    const x2 = Number(annotation.x2);
+    const y2 = Number(annotation.y2);
+    left = Number.isFinite(left) ? left + Math.min(x1, x2) : Math.min(x1, x2);
+    top = Number.isFinite(top) ? top + Math.min(y1, y2) : Math.min(y1, y2);
+    width = Math.max(width, Math.abs(x2 - x1));
+    height = Math.max(height, Math.abs(y2 - y1));
+  }
+
+  const pathBounds = getHistoryPathVisualBounds(annotation.path);
+  if (pathBounds && (pathBounds.width > width || pathBounds.height > height || left === 0 || top === 0)) {
+    left = pathBounds.left;
+    top = pathBounds.top;
+    width = Math.max(width, pathBounds.width);
+    height = Math.max(height, pathBounds.height);
+  }
+
+  if (!Number.isFinite(left) || !Number.isFinite(top)) return null;
+  const padding = Math.max(6, strokeWidth + 4);
+  return {
+    coordinateSpace: 'page-fabric',
+    left: roundHistoryDebugNumber(left - padding),
+    top: roundHistoryDebugNumber(top - padding),
+    width: roundHistoryDebugNumber(Math.max(8, width + padding * 2)),
+    height: roundHistoryDebugNumber(Math.max(8, height + padding * 2)),
+    angle: roundHistoryDebugNumber(annotation.angle),
+  };
+};
+
+const buildHistoryRestoreAction = (action) => {
+  if (!action || typeof action !== 'object') return null;
+  if (action.type === 'fabric:delete' && action.annotation) {
+    const annotation = cloneHistoryPayloadValue(action.annotation);
+    if (!annotation) return null;
+    return {
+      type: 'fabric:create',
+      pageNumber: action.pageNumber,
+      annotationId: action.annotationId || getHistoryAnnotationId(annotation),
+      annotation,
+      index: Number.isInteger(action.index) ? action.index : null,
+    };
+  }
+  if (action.type === 'fabric:batch' && Array.isArray(action.deleted) && action.deleted.length > 0) {
+    const created = action.deleted
+      .map((entry) => {
+        const annotation = cloneHistoryPayloadValue(entry?.annotation);
+        if (!annotation) return null;
+        return {
+          id: entry.id || getHistoryAnnotationId(annotation),
+          annotation,
+          index: Number.isInteger(entry.index) ? entry.index : null,
+        };
+      })
+      .filter((entry) => entry?.id && entry.annotation);
+    if (created.length === 0) return null;
+    return {
+      type: 'fabric:batch',
+      pageNumber: action.pageNumber,
+      created,
+      deleted: [],
+      updated: [],
+    };
+  }
+  return null;
+};
+
 const normalizeHistoryLaneLabel = (source) => {
   const text = String(source || '').toLowerCase();
   if (text.includes('local')) return 'local annotation history';
@@ -707,6 +829,11 @@ const summarizeHistoryActionForLog = (action) => {
   const batchDeleted = Array.isArray(action.deleted) ? action.deleted : [];
   const batchUpdated = Array.isArray(action.updated) ? action.updated : [];
   const batchFirst = batchCreated[0]?.annotation || batchDeleted[0]?.annotation || batchUpdated[0]?.after || batchUpdated[0]?.before || null;
+  const previewAnnotation = action.type === 'fabric:delete'
+    ? action.annotation
+    : action.type === 'fabric:update'
+      ? action.after
+      : firstAnnotation || batchFirst;
   const ids = [
     action.annotationId,
     ...batchCreated.map((entry) => entry?.id),
@@ -725,6 +852,9 @@ const summarizeHistoryActionForLog = (action) => {
     pageNumber: action.pageNumber ?? null,
     itemCount: ids.length || (action.type ? 1 : 0),
     historySource: 'local annotation history',
+    visualBounds: getHistoryAnnotationVisualBounds(previewAnnotation),
+    previewAnnotation: cloneHistoryPayloadValue(previewAnnotation),
+    restoreAction: buildHistoryRestoreAction(action),
   };
 };
 
@@ -6656,6 +6786,31 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     }
   };
 
+  const hubDeleteProjects = async (items) => {
+    const list = Array.isArray(items) ? items.filter(Boolean) : [];
+    if (list.length === 0) return false;
+    if (!user) { alert('Please sign in to delete projects'); return false; }
+    if (!confirm(`Delete ${list.length === 1 ? 'this project and its documents' : `these ${list.length} projects and their documents`}? This action cannot be undone.`)) return false;
+
+    const ids = list.map((project) => project.id).filter(Boolean);
+    setDocuments((prev) => prev.filter((doc) => !ids.includes(doc.project_id || doc.projectId)));
+    try {
+      for (const projectId of ids) {
+        await deleteSupabaseProject(projectId);
+      }
+      await refetchProjects();
+      await refetchDocuments();
+      await refetchAllDocuments();
+      return true;
+    } catch (err) {
+      console.error('[ProjectDelete] survey-hub:error', serializeError(err));
+      alert('Failed to delete projects: ' + (err.message || 'Unknown error'));
+      await refetchProjects();
+      await refetchDocuments();
+      return false;
+    }
+  };
+
   // Duplicate the given documents — optimistic local copies, same shape as
   // the legacy handleBulkCopy documents branch.
   const hubDuplicateDocuments = (docs) => {
@@ -6706,6 +6861,51 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     } catch (err) {
       console.error('[DocumentMoveCopy] survey-hub:error', serializeError(err));
       alert('Failed to move documents: ' + (err.message || 'Unknown error'));
+      await refetchDocuments();
+    }
+  };
+
+  const hubToggleDocumentLock = async (doc) => {
+    if (!doc?.id) return;
+    if (!user) { alert('Please sign in to lock documents'); return; }
+    if (doc.user_id && doc.user_id !== user.id) {
+      alert('Only the document owner can lock or unlock this document.');
+      return;
+    }
+
+    const isLocked = doc.locked_at != null;
+    try {
+      let result;
+      if (isLocked) {
+        const ok = confirm('Unlock for editing? This re-enables changes from everyone with edit access.');
+        if (!ok) return;
+        result = await unlockDocument(doc.id);
+      } else {
+        const raw = prompt(
+          'Lock this document? It becomes read-only for everyone.\n\nOptional label (e.g. "Final v1"):',
+          '',
+        );
+        if (raw == null) return;
+        result = await lockDocument(doc.id, raw.trim() ? raw.trim() : null);
+      }
+
+      if (result.error) throw result.error;
+      if (result.data) {
+        setDocuments((prev) => prev.map((d) => (
+          d.id === doc.id
+            ? {
+                ...d,
+                locked_at: result.data.locked_at ?? null,
+                locked_by: result.data.locked_by ?? null,
+                locked_label: result.data.locked_label ?? null,
+              }
+            : d
+        )));
+      }
+      await refetchDocuments();
+    } catch (err) {
+      console.error('[DocumentLock] survey-hub:error', serializeError(err));
+      alert(`Failed to ${isLocked ? 'unlock' : 'lock'} document: ${err.message || 'Unknown error'}`);
       await refetchDocuments();
     }
   };
@@ -8953,20 +9153,40 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
               textAlign: 'center',
               color: '#9A9A9A'
             }}>
-              <div style={{ display: 'block', marginBottom: '24px', opacity: 0.6 }}>
+              <div style={{ display: 'block', marginBottom: '18px', color: '#d8a84e', opacity: 0.85 }}>
                 <Icon name="document" size={64} />
               </div>
               <h3 style={{
-                fontSize: '20px',
+                fontSize: '17px',
                 fontWeight: '600',
                 margin: '0 0 8px 0',
                 color: '#FFFFFF'
               }}>
                 No documents yet
               </h3>
-              <p style={{ fontSize: '14px', color: '#9A9A9A', margin: 0 }}>
-                Upload your first PDF to get started
+              <p style={{ fontSize: '13px', color: '#A8B0BF', lineHeight: 1.5, margin: '0 0 20px' }}>
+                Upload your first PDF to start surveying.
               </p>
+              <button
+                onClick={handleUploadClick}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '9px 18px',
+                  background: '#d8a84e',
+                  color: '#1a1a1a',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontFamily: FONT_FAMILY
+                }}
+              >
+                <Icon name="plus" size={14} />
+                Upload PDF
+              </button>
             </div>
           ) : activeSection === 'projects' && !selectedProjectId && sortedProjects.length === 0 ? (
             <div style={{
@@ -8976,20 +9196,40 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
               textAlign: 'center',
               color: '#9A9A9A'
             }}>
-              <div style={{ display: 'block', marginBottom: '24px', opacity: 0.6 }}>
+              <div style={{ display: 'block', marginBottom: '18px', color: '#d8a84e', opacity: 0.85 }}>
                 <Icon name="folder" size={64} />
               </div>
               <h3 style={{
-                fontSize: '20px',
+                fontSize: '17px',
                 fontWeight: '600',
                 margin: '0 0 8px 0',
                 color: '#FFFFFF'
               }}>
                 No projects yet
               </h3>
-              <p style={{ fontSize: '14px', color: '#9A9A9A', margin: 0 }}>
-                Create your first project to organize PDFs
+              <p style={{ fontSize: '13px', color: '#A8B0BF', lineHeight: 1.5, margin: '0 0 20px' }}>
+                Create a project to group related documents together.
               </p>
+              <button
+                onClick={handleCreateProjectClick}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '9px 18px',
+                  background: '#d8a84e',
+                  color: '#1a1a1a',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontFamily: FONT_FAMILY
+                }}
+              >
+                <Icon name="plus" size={14} />
+                New project
+              </button>
             </div>
           ) : activeSection === 'projects' && selectedProjectId && (!supabaseDocuments || supabaseDocuments.length === 0) ? (
             <div style={{
@@ -9011,20 +9251,40 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
               textAlign: 'center',
               color: '#9A9A9A'
             }}>
-              <div style={{ display: 'block', marginBottom: '24px', opacity: 0.6 }}>
+              <div style={{ display: 'block', marginBottom: '18px', color: '#d8a84e', opacity: 0.85 }}>
                 <Icon name="template" size={64} />
               </div>
               <h3 style={{
-                fontSize: '20px',
+                fontSize: '17px',
                 fontWeight: '600',
                 margin: '0 0 8px 0',
                 color: '#FFFFFF'
               }}>
                 No templates yet
               </h3>
-              <p style={{ fontSize: '14px', color: '#9A9A9A', margin: 0 }}>
-                Create a template to reuse annotations and layouts
+              <p style={{ fontSize: '13px', color: '#A8B0BF', lineHeight: 1.5, margin: '0 0 20px' }}>
+                Create a template to define your survey structure once.
               </p>
+              <button
+                onClick={openTemplateModal}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '9px 18px',
+                  background: '#d8a84e',
+                  color: '#1a1a1a',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontFamily: FONT_FAMILY
+                }}
+              >
+                <Icon name="plus" size={14} />
+                New template
+              </button>
             </div>
           ) : activeSection === 'templates' && selectedTemplateId && (templates.find(t => t.id === selectedTemplateId)?.pdfs || []).length === 0 ? (
             <div style={{
@@ -9649,11 +9909,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         onUpload={handleUploadClick}
         onCreateProject={handleCreateProjectClick}
         onCreateTemplate={openTemplateModal}
+        onDeleteProjects={hubDeleteProjects}
         onSaveTemplates={hubSaveTemplates}
         getChecklistItemUsageCount={hubGetChecklistItemUsageCount}
         onDuplicateDocuments={hubDuplicateDocuments}
         onDeleteDocuments={hubDeleteDocuments}
         onMoveCopyDocuments={hubMoveCopyDocuments}
+        onLockDocument={hubToggleDocumentLock}
         onSettings={() => setShowAccountSettings(true)}
         onSignOut={signOut}
       />
@@ -18440,8 +18702,28 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
 	      }
 	    }
 
+    if (pdfFile?.id && user?.id) {
+      const historyRow = buildHistoryEventRowFromDebugEvent(event, {
+        documentId: pdfFile.id,
+        user,
+      });
+      if (historyRow) {
+        try {
+          window.dispatchEvent(new CustomEvent('document-history:event-recorded', {
+            detail: {
+              documentId: pdfFile.id,
+              row: historyRow,
+            },
+          }));
+        } catch (_err) {
+          // History refresh is best-effort; persistence still runs below.
+        }
+        void recordDocumentHistoryEvent(historyRow);
+      }
+    }
+
 	    return event;
-	  }, []);
+	  }, [pdfFile?.id, user]);
 
   const getHistoryDebugRows = useCallback((events) => (
     events.map((event) => {
@@ -29838,6 +30120,30 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     yjsUndoManager
   ]);
 
+  const handleRestoreHistoryActivity = useCallback((event) => {
+    const restoreAction = event?.payload?.restoreAction;
+    if (!restoreAction || !restoreAction.type || !restoreAction.pageNumber) {
+      return { ok: false, reason: 'restore-unavailable' };
+    }
+    const current = annotationsByPageRef.current || {};
+    const nextByPage = applyAnnotationHistoryAction(current, restoreAction);
+    if (nextByPage === current) {
+      return { ok: false, reason: 'restore-noop' };
+    }
+    const pageNumber = Number(restoreAction.pageNumber);
+    const nextPage = nextByPage[String(pageNumber)] || nextByPage[pageNumber];
+    if (!nextPage) {
+      return { ok: false, reason: 'restore-missing-page' };
+    }
+    handleSaveAnnotations(pageNumber, nextPage, {
+      source: 'history:restore-deleted-annotation',
+      action: 'restore',
+      checkpointPolicy: 'default',
+      restoredFromHistoryEventId: event?.client_event_id || event?.id || null,
+    });
+    return { ok: true, pageNumber };
+  }, [handleSaveAnnotations]);
+
   useEffect(() => {
     if (!import.meta.env.DEV || typeof window === 'undefined') return undefined;
 
@@ -33701,6 +34007,8 @@ ${pageBlocks}
     }
   }, [applyLayoutDrivenZoom]);
 
+  const currentDocumentId = pdfFile?.id || null;
+
   // UX 2026-05-13: Publish left rail state to the App shell when this tab is
   // active. Placed immediately before the loading/full render branches so every
   // sidebar prop and handler in the API has already been declared.
@@ -33777,7 +34085,10 @@ ${pageBlocks}
       currentUserId: user?.id || null,
       currentUserEmail: user?.email || null,
       currentUserDisplayName: user?.user_metadata?.full_name || null,
-      onToggleCollapse: handleLeftRailToggleCollapse
+      onToggleCollapse: handleLeftRailToggleCollapse,
+      documentId: currentDocumentId,
+      user,
+      onRestoreHistoryActivity: handleRestoreHistoryActivity
     };
     onLeftRailApiChange((prev) => {
       if (prev) {
@@ -33865,8 +34176,10 @@ ${pageBlocks}
     cloudSyncEnabled,
     cloudSyncForceFlush,
     documentPresenceList,
+    currentDocumentId,
     user,
-    handleLeftRailToggleCollapse
+    handleLeftRailToggleCollapse,
+    handleRestoreHistoryActivity
   ]);
 
   // KAL-21: in-app failure state — replaces the old browser alerts when the
@@ -45991,7 +46304,6 @@ export default function App() {
                         keys on the same documentId). */}
                     <DocumentLockBanner
                       documentId={tab.file?.id || null}
-                      documentOwnerId={tab.file?.user_id || null}
                       viewerUserId={user?.id || null}
                     />
                     <PDFViewer
@@ -46024,8 +46336,6 @@ export default function App() {
                       entities={entities}
                       setEntities={setEntities}
                     />
-                    {/* KAL-48 — revisions drawer (own portal-style positioning). */}
-                    <RevisionsPanel documentId={tab.file?.id} user={user} />
                   </YDocProvider>
                 </div>
               );

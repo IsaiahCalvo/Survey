@@ -6,6 +6,7 @@ import BookmarksPanel from './sidebar/BookmarksPanel';
 import SpacesPanel from './sidebar/SpacesPanel';
 import SyncStatusChip from './components/SyncStatusChip';
 import PresenceAvatars from './components/PresenceAvatars';
+import RevisionsPanel from './components/revisions/RevisionsPanel';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -85,7 +86,10 @@ const PDFSidebar = React.forwardRef(({
   presence = [],
   currentUserId = null,
   currentUserEmail = null,
-  currentUserDisplayName = null
+  currentUserDisplayName = null,
+  documentId = null,
+  user = null,
+  onRestoreHistoryActivity = null
 }, ref) => {
   const [isCollapsed, setIsCollapsed] = useState(true);
   // 2026-04-29: publish the live sidebar width as a CSS variable so the
@@ -96,7 +100,7 @@ const PDFSidebar = React.forwardRef(({
     if (typeof document === 'undefined' || !document.documentElement) return;
     document.documentElement.style.setProperty('--app-sidebar-width', isCollapsed ? '48px' : '272px');
   }, [isCollapsed]);
-  const [activeTab, setActiveTab] = useState('pages'); // 'pages' | 'search' | 'bookmarks' | 'spaces'
+  const [activeTab, setActiveTab] = useState('pages'); // 'pages' | 'search' | 'bookmarks' | 'spaces' | 'history'
   const [hoveredTabId, setHoveredTabId] = useState(null);
   const [searchFocusRequestToken, setSearchFocusRequestToken] = useState(0);
   const [searchSelectOnFocus, setSearchSelectOnFocus] = useState(true);
@@ -136,6 +140,44 @@ const PDFSidebar = React.forwardRef(({
     { id: 'bookmarks', label: 'Bookmarks', icon: 'bookmark' },
     { id: 'spaces', label: 'Spaces', icon: 'folder' }
   ];
+
+  const openHistoryPanel = useCallback(() => {
+    setIsCollapsed(false);
+    setActiveTab('history');
+  }, []);
+
+  const HistoryButton = ({ compact }) => {
+    const isActive = activeTab === 'history';
+    return (
+      <button
+        type="button"
+        title="Version History"
+        aria-label="Version History"
+        onClick={openHistoryPanel}
+        style={{
+          width: compact ? '28px' : '100%',
+          height: compact ? '28px' : '30px',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: compact ? 0 : '8px',
+          background: isActive ? '#2f3b4f' : 'rgba(255,255,255,0.04)',
+          border: `1px solid ${isActive ? '#4A90E2' : 'rgba(255,255,255,0.08)'}`,
+          color: isActive ? '#7ab7ff' : '#ddd',
+          borderRadius: compact ? '6px' : '999px',
+          cursor: 'pointer',
+          fontSize: '12px',
+          fontFamily: FONT_FAMILY,
+          fontWeight: 500,
+          padding: compact ? 0 : '0 10px',
+          whiteSpace: 'nowrap'
+        }}
+      >
+        <Icon name="history" size={compact ? 17 : 14} color="currentColor" />
+        {!compact && <span>History</span>}
+      </button>
+    );
+  };
 
   return (
     <div style={{
@@ -370,6 +412,17 @@ const PDFSidebar = React.forwardRef(({
                 selectedModuleId={selectedModuleId}
               />
             </div>
+
+            {/* Version History Panel */}
+            <div style={{ display: activeTab === 'history' ? 'flex' : 'none', flex: 1, flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+              <RevisionsPanel
+                documentId={documentId}
+                user={user}
+                embedded
+                onNavigateToPage={onNavigateToPage}
+                onRestoreHistoryActivity={onRestoreHistoryActivity}
+              />
+            </div>
           </div>
         </>
       )}
@@ -499,6 +552,7 @@ const PDFSidebar = React.forwardRef(({
             compact={isCollapsed}
             onRetry={cloudSyncOnRetry}
           />
+          {documentId && <HistoryButton compact={isCollapsed} />}
           <PresenceAvatars
             presence={presence}
             currentUserId={currentUserId}
