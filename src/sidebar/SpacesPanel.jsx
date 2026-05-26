@@ -1,33 +1,19 @@
-import React, { useState, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import Icon from '../Icons';
 import { parsePageRangeInput, formatPageList } from '../utils/pageRangeParser';
+import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
+import { SortableRearrangeList, SortableRearrangeRow } from '../reorder/SortableRearrangeList';
 import {
   getPageVisibilityControlMode,
   PAGE_VISIBILITY_CONTROL_MODE
 } from '../utils/annotationVisibilityRules';
-import {
-  DndContext,
-  PointerSensor,
-  closestCenter,
-  useSensor,
-  useSensors
-} from '@dnd-kit/core';
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-  useSortable
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
-const restrictSortableToVerticalAxis = ({ transform }) => ({
-  ...transform,
-  x: 0,
-});
-
 const SpaceSortableCard = React.memo(function SpaceSortableCard({
   space,
+  dragHandleProps,
+  isDragging = false,
   isActive,
   isSelected,
   isExpanded,
@@ -149,30 +135,12 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
     // Note: Rename mode should NOT automatically select the space
   }, [space.id]);
 
-
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging
-  } = useSortable({ id: space.id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition: transition || 'transform 180ms cubic-bezier(0.2, 0, 0.2, 1)',
-    marginBottom: '8px',
-    position: 'relative',
-    zIndex: isDragging ? 1 : 'auto'
-  };
-
   const isHighlighted = isSelected || isActive;
   const headerBackground = isHighlighted ? '#3a3a3a' : 'transparent';
   const headerHoverBackground = isHighlighted ? '#3a3a3a' : '#2b2b2b';
 
   return (
-    <div ref={setNodeRef} style={style}>
+    <div>
       <div
         style={{
           background: '#2b2b2b',
@@ -208,30 +176,17 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
             }
           }}
         >
-          <div
-            {...attributes}
-            {...listeners}
+          <DragRearrangeHandle
+            {...dragHandleProps}
             data-space-drag-handle
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
+            isDragging={isDragging}
+            title="Drag to rearrange"
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
               width: '20px',
               height: '20px',
-              borderRadius: '6px',
               color: '#666',
-              fontSize: '16px',
-              cursor: isDragging ? 'grabbing' : 'grab',
-              userSelect: 'none',
-              touchAction: 'none',
-              background: isDragging ? '#3a3a3a' : 'transparent'
             }}
-            title="Drag to reorder"
-          >
-            ☰
-          </div>
+          />
 
           {!isEditing && (
             <button
@@ -1052,16 +1007,7 @@ const SpacesPanel = ({
   }, [selectedSpaceId, externalSelectedSpaceId]);
   const [pageInputs, setPageInputs] = useState({});
   const [pageErrors, setPageErrors] = useState({});
-  const [activeDragSpaceId, setActiveDragSpaceId] = useState(null);
   const previousSpaceIdsRef = useRef(new Set(spaces.map(space => space.id)));
-
-  const spaceSensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 6
-      }
-    })
-  );
 
   const handleCreateSpace = useCallback(() => {
     const name = newSpaceName.trim() || `Space ${spaces.length + 1}`;
@@ -1228,23 +1174,14 @@ const SpacesPanel = ({
     onSpaceRemovePage(spaceId, pageId);
   }, [onSpaceRemovePage]);
 
-  const handleSpaceDragStart = useCallback(({ active }) => {
-    setActiveDragSpaceId(active.id);
-  }, []);
-
-  const handleSpaceDragEnd = useCallback(({ active, over }) => {
-    setActiveDragSpaceId(null);
-    if (!over || active.id === over.id) return;
+  const handleSpaceReorder = useCallback((activeId, overId) => {
+    if (activeId === overId) return;
     if (!onReorderSpaces) return;
-    const fromIndex = spaces.findIndex(space => space.id === active.id);
-    const toIndex = spaces.findIndex(space => space.id === over.id);
+    const fromIndex = spaces.findIndex(space => space.id === activeId);
+    const toIndex = spaces.findIndex(space => space.id === overId);
     if (fromIndex === -1 || toIndex === -1) return;
     onReorderSpaces(fromIndex, toIndex);
   }, [onReorderSpaces, spaces]);
-
-  const handleSpaceDragCancel = useCallback(() => {
-    setActiveDragSpaceId(null);
-  }, []);
 
   return (
     <div style={{
@@ -1357,73 +1294,70 @@ const SpacesPanel = ({
             No spaces yet. Create a space to filter pages by visibility.
           </div>
         ) : (
-          <DndContext
-            sensors={spaceSensors}
-            collisionDetection={closestCenter}
-            modifiers={[restrictSortableToVerticalAxis]}
-            onDragStart={handleSpaceDragStart}
-            onDragEnd={handleSpaceDragEnd}
-            onDragCancel={handleSpaceDragCancel}
-          >
-            <SortableContext
-              items={spaces.map(space => space.id)}
-              strategy={verticalListSortingStrategy}
-            >
-              {spaces.map((space) => {
-                const isActive = activeSpaceId === space.id;
-                const isSelected = selectedSpaceId === space.id;
-                const isExpanded = expandedSpaces.has(space.id);
-                const pageCount = space.assignedPages?.length || 0;
-                const regionCount = space.assignedPages?.reduce((sum, p) => sum + (p.regions?.length || 0), 0) || 0;
-                return (
-                  <SpaceSortableCard
-                    key={space.id}
-                    space={space}
-                    isActive={isActive}
-                    isSelected={isSelected}
-                    isExpanded={isExpanded}
-                    isEditing={editingSpace === space.id}
-                    editingName={editingName}
-                    pageSummary={renderPageSummary(space.assignedPages)}
-                    pageCount={pageCount}
-                    regionCount={regionCount}
-                    pageInputValue={pageInputs[space.id] || ''}
-                    pageError={pageErrors[space.id]}
-                    onToggleExpand={handleToggleExpand}
-                    onSpaceClick={handleSpaceClick}
-                    onRenameClick={handleRename}
-                    onEditingNameChange={handleEditingNameChange}
-                    onSaveRename={saveRename}
-                    onCancelRename={handleRenameCancel}
-                    onDelete={handleDelete}
-                    onExitSpace={handleExitSpace}
-                    onToggleSpace={handleToggleSpace}
-                    onExportSpaceCSV={(spaceId) => onExportSpaceCSV?.(spaceId)}
-                    onExportSpacePDF={(spaceId) => onExportSpacePDF?.(spaceId)}
-                    onPageInputChange={handlePageInputChange}
-                    onAssignPages={handleAssignPages}
-                    onRenameRegion={onSpaceRenamePage}
-                    onRequestRegionEdit={(spaceId, pageId) => onRequestRegionEdit?.(spaceId, pageId)}
-                    onCancelRegionEdit={(spaceId, pageId) => onCancelRegionEdit?.(spaceId, pageId)}
-                    onRemovePage={handleRemovePage}
-                    isRegionSelectionActive={isRegionSelectionActive}
-                    regionSelectionPage={regionSelectionPage}
-                    features={features}
-                    getCanvasAnnotationVisibilityState={getCanvasAnnotationVisibilityState}
-                    onToggleCanvasAnnotations={onToggleCanvasAnnotations}
-                    getSurveyAnnotationVisibilityState={getSurveyAnnotationVisibilityState}
-                    onToggleSurveyAnnotations={onToggleSurveyAnnotations}
-                    activeSpaceId={activeSpaceId}
-                    onToggleRegionOverlay={onToggleRegionOverlay}
-                    getRegionOverlayEnabled={getRegionOverlayEnabled}
-                    isRegionOverlayToggleEnabled={isRegionOverlayToggleEnabled}
-                    showSurveyPanel={showSurveyPanel}
-                    selectedModuleId={selectedModuleId}
-                  />
-                );
-              })}
-            </SortableContext>
-          </DndContext>
+          <SortableRearrangeList ids={spaces.map(space => space.id)} onReorder={handleSpaceReorder} gap={8}>
+            {spaces.map((space) => {
+              const isActive = activeSpaceId === space.id;
+              const isSelected = selectedSpaceId === space.id;
+              const isExpanded = expandedSpaces.has(space.id);
+              const pageCount = space.assignedPages?.length || 0;
+              const regionCount = space.assignedPages?.reduce((sum, p) => sum + (p.regions?.length || 0), 0) || 0;
+              return (
+                <SortableRearrangeRow
+                  key={space.id}
+                  id={space.id}
+                  disabled={!onReorderSpaces}
+                >
+                  {({ attributes, listeners, isDragging }) => (
+                    <SpaceSortableCard
+                      space={space}
+                      dragHandleProps={{ ...attributes, ...listeners }}
+                      isDragging={isDragging}
+                      isActive={isActive}
+                      isSelected={isSelected}
+                      isExpanded={isExpanded}
+                      isEditing={editingSpace === space.id}
+                      editingName={editingName}
+                      pageSummary={renderPageSummary(space.assignedPages)}
+                      pageCount={pageCount}
+                      regionCount={regionCount}
+                      pageInputValue={pageInputs[space.id] || ''}
+                      pageError={pageErrors[space.id]}
+                      onToggleExpand={handleToggleExpand}
+                      onSpaceClick={handleSpaceClick}
+                      onRenameClick={handleRename}
+                      onEditingNameChange={handleEditingNameChange}
+                      onSaveRename={saveRename}
+                      onCancelRename={handleRenameCancel}
+                      onDelete={handleDelete}
+                      onExitSpace={handleExitSpace}
+                      onToggleSpace={handleToggleSpace}
+                      onExportSpaceCSV={(spaceId) => onExportSpaceCSV?.(spaceId)}
+                      onExportSpacePDF={(spaceId) => onExportSpacePDF?.(spaceId)}
+                      onPageInputChange={handlePageInputChange}
+                      onAssignPages={handleAssignPages}
+                      onRenameRegion={onSpaceRenamePage}
+                      onRequestRegionEdit={(spaceId, pageId) => onRequestRegionEdit?.(spaceId, pageId)}
+                      onCancelRegionEdit={(spaceId, pageId) => onCancelRegionEdit?.(spaceId, pageId)}
+                      onRemovePage={handleRemovePage}
+                      isRegionSelectionActive={isRegionSelectionActive}
+                      regionSelectionPage={regionSelectionPage}
+                      features={features}
+                      getCanvasAnnotationVisibilityState={getCanvasAnnotationVisibilityState}
+                      onToggleCanvasAnnotations={onToggleCanvasAnnotations}
+                      getSurveyAnnotationVisibilityState={getSurveyAnnotationVisibilityState}
+                      onToggleSurveyAnnotations={onToggleSurveyAnnotations}
+                      activeSpaceId={activeSpaceId}
+                      onToggleRegionOverlay={onToggleRegionOverlay}
+                      getRegionOverlayEnabled={getRegionOverlayEnabled}
+                      isRegionOverlayToggleEnabled={isRegionOverlayToggleEnabled}
+                      showSurveyPanel={showSurveyPanel}
+                      selectedModuleId={selectedModuleId}
+                    />
+                  )}
+                </SortableRearrangeRow>
+              );
+            })}
+          </SortableRearrangeList>
         )}
       </div>
     </div>
