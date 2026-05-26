@@ -20,6 +20,26 @@ const restrictToVerticalAxis = ({ transform }) => ({
   x: 0,
 });
 
+const restrictToScrollableListBounds = ({
+  activeNodeRect,
+  scrollableAncestorRects,
+  transform,
+}) => {
+  const boundaryRect = scrollableAncestorRects[0];
+
+  if (!activeNodeRect || !boundaryRect) {
+    return transform;
+  }
+
+  return {
+    ...transform,
+    y: Math.min(
+      Math.max(transform.y, boundaryRect.top - activeNodeRect.top),
+      boundaryRect.bottom - activeNodeRect.bottom
+    ),
+  };
+};
+
 export function SortableRearrangeList({
   ids,
   onReorder,
@@ -53,7 +73,7 @@ export function SortableRearrangeList({
       id={dndContextId}
       sensors={sensors}
       collisionDetection={closestCenter}
-      modifiers={[restrictToVerticalAxis]}
+      modifiers={[restrictToVerticalAxis, restrictToScrollableListBounds]}
       onDragStart={({ active }) => setActiveId(active.id)}
       onDragEnd={handleDragEnd}
       onDragCancel={() => setActiveId(null)}
