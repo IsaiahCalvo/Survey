@@ -215,7 +215,6 @@ export default function ProjectsFolderTree({
   const pendingPickProject = useRef(null);
 
   // Drag-reorder bookkeeping.
-  const dragFileIdx = useRef(null);
   const [draggingProjectId, setDraggingProjectId] = useState(null);
   const [dragOverProjectId, setDragOverProjectId] = useState(null);
   const [draggingFileId, setDraggingFileId] = useState(null);
@@ -453,15 +452,17 @@ export default function ProjectsFolderTree({
     setSelFiles(new Set());
   }, [openFiles, onDeleteDocuments]);
 
-  const reorderFiles = useCallback((from, to) => {
-    if (from == null || to == null || from === to || !open) return;
+  const reorderFiles = useCallback((fromId, toId) => {
+    if (fromId == null || toId == null || fromId === toId || !open) return;
     setLocalDocs((prev) => {
       // Split docs into this project's slice (in display order) and the rest,
       // reorder the slice, then stitch back together.
       const slice = [];
       const rest = [];
       prev.forEach((d) => { (d.project_id === open.id ? slice : rest).push(d); });
-      if (from >= slice.length || to >= slice.length) return prev;
+      const from = slice.findIndex((d) => d.id === fromId);
+      const to = slice.findIndex((d) => d.id === toId);
+      if (from < 0 || to < 0) return prev;
       const [moved] = slice.splice(from, 1);
       slice.splice(to, 0, moved);
       return [...rest, ...slice];
@@ -806,30 +807,16 @@ export default function ProjectsFolderTree({
                         return (
                           <div
                             key={f.id}
-                            draggable={fileSelect}
-                            onDragStart={() => {
-                              if (fileSelect) {
-                                dragFileIdx.current = i;
-                                setDraggingFileId(f.id);
-                              }
-                            }}
                             onDragOver={(e) => {
-                              if (fileSelect) {
-                                e.preventDefault();
-                                setDragOverFileId(f.id);
-                              }
+                              if (!draggingFileId || draggingFileId === f.id) return;
+                              e.preventDefault();
+                              setDragOverFileId(f.id);
                             }}
                             onDragLeave={() => setDragOverFileId((current) => current === f.id ? null : current)}
                             onDrop={(e) => {
-                              if (!fileSelect) return;
+                              if (!draggingFileId) return;
                               e.preventDefault();
-                              reorderFiles(dragFileIdx.current, i);
-                              dragFileIdx.current = null;
-                              setDraggingFileId(null);
-                              setDragOverFileId(null);
-                            }}
-                            onDragEnd={() => {
-                              dragFileIdx.current = null;
+                              reorderFiles(draggingFileId, f.id);
                               setDraggingFileId(null);
                               setDragOverFileId(null);
                             }}
@@ -847,7 +834,22 @@ export default function ProjectsFolderTree({
                               transition: draggingFileId === f.id ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                             }}
                           >
-                            <span title="Drag to reorder" style={{ color: 'var(--ink-200)', fontSize: 11, cursor: 'grab', userSelect: 'none', lineHeight: 1, textAlign: 'center' }}>⋮⋮</span>
+                            <span
+                              draggable
+                              onClick={(e) => e.stopPropagation()}
+                              onDragStart={(e) => {
+                                e.stopPropagation();
+                                e.dataTransfer.effectAllowed = 'move';
+                                e.dataTransfer.setData('text/plain', f.id);
+                                setDraggingFileId(f.id);
+                              }}
+                              onDragEnd={() => {
+                                setDraggingFileId(null);
+                                setDragOverFileId(null);
+                              }}
+                              title="Drag to reorder"
+                              style={{ color: 'var(--ink-200)', fontSize: 11, cursor: draggingFileId === f.id ? 'grabbing' : 'grab', userSelect: 'none', lineHeight: 1, textAlign: 'center' }}
+                            >⋮⋮</span>
                             <div style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
                             {/* "Last edited by" — file's owner resolved against
                                 the member directory: avatar + first name. */}
