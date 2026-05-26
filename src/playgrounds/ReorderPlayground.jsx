@@ -20,6 +20,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import Icon from '../Icons';
+import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
 import '../styles.css';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
@@ -113,38 +114,12 @@ const BallInCourtSortableRow = React.memo(function BallInCourtSortableRow({
           transition: 'border 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease',
         }}
       >
-        <div
+        <DragRearrangeHandle
           {...attributes}
           {...listeners}
-          data-ball-drag-handle
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: '28px',
-            height: '28px',
-            borderRadius: '6px',
-            background: '#1f1f1f',
-            border: '1px solid #2d2d2d',
-            cursor: isDragging ? 'grabbing' : 'grab',
-            color: '#777',
-            flexShrink: 0,
-            transition: 'background 0.15s ease, color 0.15s ease, border 0.15s ease',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.color = '#bbb';
-            e.currentTarget.style.background = '#262626';
-            e.currentTarget.style.border = '1px solid #3a3a3a';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.color = '#777';
-            e.currentTarget.style.background = '#1f1f1f';
-            e.currentTarget.style.border = '1px solid #2d2d2d';
-          }}
-          title="Drag to reorder"
-        >
-          <Icon name="grip" size={11} />
-        </div>
+          data-flat-reorder-drag-handle
+          isDragging={isDragging}
+        />
         <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', flex: 1 }}>
           <div data-color-picker-area style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
@@ -201,7 +176,7 @@ const BallInCourtSortableRow = React.memo(function BallInCourtSortableRow({
           />
         </div>
         <button
-          data-ball-delete
+          data-flat-reorder-delete
           onClick={onDelete}
           title="Delete"
           className="btn btn-danger btn-icon-only btn-sm"
@@ -237,12 +212,12 @@ function BallInCourtReorderPanel() {
 
   useEffect(() => {
     if (isAnyBallEntityDragging) {
-      document.body.classList.add('ball-in-court-dragging');
+      document.body.classList.add('drag-rearrange-dragging');
     } else {
-      document.body.classList.remove('ball-in-court-dragging');
+      document.body.classList.remove('drag-rearrange-dragging');
     }
     return () => {
-      document.body.classList.remove('ball-in-court-dragging');
+      document.body.classList.remove('drag-rearrange-dragging');
     };
   }, [isAnyBallEntityDragging]);
 
@@ -303,12 +278,12 @@ function BallInCourtReorderPanel() {
       style={{ marginTop: '16px', width: 'min(720px, 100%)', padding: '12px', background: '#141414', border: '1px solid #2a2a2a', borderRadius: '8px' }}
     >
       <style>{`
-        body.ball-in-court-dragging [data-ball-delete] {
+        body.drag-rearrange-dragging [data-flat-reorder-delete] {
           display: none !important;
         }
       `}</style>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <div style={{ fontSize: 13, fontWeight: 600 }}>Ball in Court</div>
+        <div style={{ fontSize: 13, fontWeight: 600 }}>Drag to Rearrange</div>
         <button
           onClick={addBallInCourtEntity}
           className="btn btn-secondary btn-sm"
@@ -342,7 +317,7 @@ function BallInCourtReorderPanel() {
             ))}
             {ballInCourtEntities.length === 0 && (
               <div style={{ color: '#888', fontSize: '13px', fontStyle: 'italic', padding: '12px' }}>
-                No entities defined. Add at least one entity for Ball in Court tracking.
+                No entities defined. Add at least one entity for responsibility tracking.
               </div>
             )}
           </div>
@@ -634,7 +609,7 @@ function BookmarkTreeRow({
       >
         <div
           {...handleProps}
-          title="Drag to reorder"
+          title="Drag to rearrange"
           style={{
             width: 24,
             height: 24,
@@ -1286,7 +1261,7 @@ function ReorderPlayground() {
       <div style={{ maxWidth: 920, margin: '0 auto' }}>
         <div style={{ display: 'flex', gap: 6, borderBottom: '1px solid #262626', marginBottom: 28 }}>
           {[
-            ['entities', 'Ball in Court'],
+            ['entities', 'Drag to Rearrange'],
             ['bookmarks', 'PDF Bookmarks'],
           ].map(([id, label]) => (
             <button

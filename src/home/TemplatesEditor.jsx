@@ -43,6 +43,7 @@ import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom';
 import { HubShell, Icon, Search } from './HubShell';
 import CompactColorPicker from '../components/CompactColorPicker';
+import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
 import {
   archiveChecklistItem,
   isActiveChecklistItem,
@@ -1094,7 +1095,7 @@ export default function TemplatesEditor({
                       onClick={() => { if (tplEdit) toggleTplSel(t.id); else { setSelected(t.id); setOpenCat(-1); setOpenMod(0); } }}
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: '14px 1fr auto',
+                        gridTemplateColumns: '28px 1fr auto',
                         gap: 8, alignItems: 'center',
                         padding: '8px 8px', borderRadius: 6,
                         height: 50, boxSizing: 'border-box',
@@ -1107,11 +1108,9 @@ export default function TemplatesEditor({
                         transition: dragTpl === t.id ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                       }}
                     >
-                      <span
-                        draggable
-                        onClick={(e) => e.stopPropagation()}
+                      <DragRearrangeHandle
+                        isDragging={dragTpl === t.id}
                         onDragStart={(e) => {
-                          e.stopPropagation();
                           e.dataTransfer.effectAllowed = 'move';
                           e.dataTransfer.setData('text/plain', t.id);
                           setDragTpl(t.id);
@@ -1120,9 +1119,7 @@ export default function TemplatesEditor({
                           setDragTpl(null);
                           setDragOverTpl(null);
                         }}
-                        title="Drag to reorder"
-                        style={{ color: 'var(--ink-200)', fontSize: 11, cursor: dragTpl === t.id ? 'grabbing' : 'grab', userSelect: 'none', lineHeight: 1, textAlign: 'center' }}
-                      >⋮⋮</span>
+                      />
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{t.name}</div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
@@ -1356,17 +1353,15 @@ export default function TemplatesEditor({
                       <div
                         onClick={() => { if (catEdit) toggleCatSel(c.id); }}
                         style={{
-                          width: '100%', display: 'grid', gridTemplateColumns: catEdit ? '14px 20px 1fr auto 16px' : '14px 20px 1fr auto', gap: 8,
+                          width: '100%', display: 'grid', gridTemplateColumns: catEdit ? '24px 20px 1fr auto 16px' : '24px 20px 1fr auto', gap: 8,
                           alignItems: 'center', padding: '3px 10px',
                           cursor: catEdit ? 'pointer' : 'default',
                           background: catEdit && isSel ? 'rgba(216,168,78,0.08)' : 'transparent',
                         }}
                       >
-                        <span
-                          draggable
-                          onClick={(e) => e.stopPropagation()}
+                        <DragRearrangeHandle
+                          isDragging={dragCat === c.id}
                           onDragStart={(e) => {
-                            e.stopPropagation();
                             e.dataTransfer.effectAllowed = 'move';
                             e.dataTransfer.setData('text/plain', c.id);
                             setDragCat(c.id);
@@ -1375,9 +1370,8 @@ export default function TemplatesEditor({
                             setDragCat(null);
                             setDragOverCat(null);
                           }}
-                          title="Drag to reorder"
-                          style={{ color: 'var(--ink-muted)', fontSize: 11, cursor: dragCat === c.id ? 'grabbing' : 'grab', userSelect: 'none', lineHeight: 1, textAlign: 'center' }}
-                        >⋮⋮</span>
+                          style={{ width: 24, height: 24 }}
+                        />
                         <button
                           onClick={(e) => { e.stopPropagation(); setOpenCat(open ? -1 : i); }}
                           title={open ? 'Collapse' : 'Expand'}
@@ -1596,18 +1590,16 @@ export default function TemplatesEditor({
                       }}
                     >
                       <div className="card-line" style={{
-                        display: 'grid', gridTemplateColumns: '14px 18px 1fr 16px', gap: 10,
+                        display: 'grid', gridTemplateColumns: '24px 18px 1fr 16px', gap: 10,
                         padding: '8px 10px', alignItems: 'center',
                         height: 38, boxSizing: 'border-box',
                         opacity: dragEntity === r.id ? 0.72 : 1,
                         background: dragOverEntity === r.id && dragEntity !== r.id ? 'rgba(216,168,78,0.10)' : undefined,
                         transition: dragEntity === r.id ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                       }}>
-                        <span
-                          draggable
-                          onClick={(e) => e.stopPropagation()}
+                        <DragRearrangeHandle
+                          isDragging={dragEntity === r.id}
                           onDragStart={(e) => {
-                            e.stopPropagation();
                             e.dataTransfer.effectAllowed = 'move';
                             e.dataTransfer.setData('text/plain', r.id);
                             setDragEntity(r.id);
@@ -1616,9 +1608,8 @@ export default function TemplatesEditor({
                             setDragEntity(null);
                             setDragOverEntity(null);
                           }}
-                          title="Drag to reorder"
-                          style={{ color: 'var(--ink-muted)', fontSize: 12, cursor: dragEntity === r.id ? 'grabbing' : 'grab', userSelect: 'none', lineHeight: 1 }}
-                        >⋮⋮</span>
+                          style={{ width: 24, height: 24 }}
+                        />
                         <button
                           onClick={() => setOpenColor(isOpen ? null : r.id)}
                           title="Edit color"

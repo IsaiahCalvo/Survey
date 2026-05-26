@@ -27,6 +27,7 @@ import { createPortal } from 'react-dom';
 import { HubShell, Icon, Avatar, AvatarStack, Search } from './HubShell';
 import ManageTeamModal from './ManageTeamModal';
 import { MoveCopyModal } from './BulkModals';
+import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
 
 /* Literal palette — used by the portal popups, which render outside the
    `.survey-hub` root and therefore cannot inherit its CSS variables. */
@@ -607,7 +608,7 @@ export default function ProjectsFolderTree({
                     onClick={() => { if (jobsEdit) toggleProjSel(p.id); else setOpenId(p.id); }}
                     style={{
                       display: 'grid',
-                      gridTemplateColumns: '14px 1fr auto',
+                      gridTemplateColumns: '28px 1fr auto',
                       gap: 8, alignItems: 'center',
                       padding: '8px 8px', borderRadius: 6,
                       background: dragOverProjectId === p.id && draggingProjectId !== p.id
@@ -629,11 +630,9 @@ export default function ProjectsFolderTree({
                         <PinIcon size={12} color="var(--gold)" />
                       </span>
                     ) : (
-                      <span
-                        draggable
-                        onClick={(e) => e.stopPropagation()}
+                      <DragRearrangeHandle
+                        isDragging={draggingProjectId === p.id}
                         onDragStart={(e) => {
-                          e.stopPropagation();
                           e.dataTransfer.effectAllowed = 'move';
                           e.dataTransfer.setData('text/plain', p.id);
                           setDraggingProjectId(p.id);
@@ -642,9 +641,7 @@ export default function ProjectsFolderTree({
                           setDraggingProjectId(null);
                           setDragOverProjectId(null);
                         }}
-                        title="Drag to reorder"
-                        style={{ color: 'var(--ink-200)', fontSize: 11, cursor: draggingProjectId === p.id ? 'grabbing' : 'grab', userSelect: 'none', lineHeight: 1, textAlign: 'center' }}
-                      >⋮⋮</span>
+                      />
                     )}
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{p.name}</div>
@@ -788,7 +785,7 @@ export default function ProjectsFolderTree({
                       </button>
                     </div>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '16px 1fr 90px 90px 28px', gap: 12, padding: '0 10px 6px', fontSize: 10, color: 'var(--ink-200)', letterSpacing: 0.06, textTransform: 'uppercase' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr 90px 90px 28px', gap: 12, padding: '0 10px 6px', fontSize: 10, color: 'var(--ink-200)', letterSpacing: 0.06, textTransform: 'uppercase' }}>
                     <span></span><span>Name</span><span>Last edited by</span><span>Edited</span><span></span>
                   </div>
                   {openFiles.length === 0 ? (
@@ -826,19 +823,17 @@ export default function ProjectsFolderTree({
                                 ? 'rgba(216,168,78,0.10)'
                                 : fileSelect && isChecked ? 'rgba(216,168,78,0.10)' : (i % 2 ? 'transparent' : 'rgba(255,255,255,0.02)'),
                               borderRadius: 6,
-                              display: 'grid', gridTemplateColumns: '16px 1fr 90px 90px 28px',
+                              display: 'grid', gridTemplateColumns: '24px 1fr 90px 90px 28px',
                               gap: 12, alignItems: 'center', padding: '8px 10px', fontSize: 12,
-                              height: 36, boxSizing: 'border-box',
+                              height: 42, boxSizing: 'border-box',
                               cursor: draggingFileId === f.id ? 'grabbing' : 'pointer',
                               opacity: draggingFileId === f.id ? 0.82 : 1,
                               transition: draggingFileId === f.id ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                             }}
                           >
-                            <span
-                              draggable
-                              onClick={(e) => e.stopPropagation()}
+                            <DragRearrangeHandle
+                              isDragging={draggingFileId === f.id}
                               onDragStart={(e) => {
-                                e.stopPropagation();
                                 e.dataTransfer.effectAllowed = 'move';
                                 e.dataTransfer.setData('text/plain', f.id);
                                 setDraggingFileId(f.id);
@@ -847,9 +842,8 @@ export default function ProjectsFolderTree({
                                 setDraggingFileId(null);
                                 setDragOverFileId(null);
                               }}
-                              title="Drag to reorder"
-                              style={{ color: 'var(--ink-200)', fontSize: 11, cursor: draggingFileId === f.id ? 'grabbing' : 'grab', userSelect: 'none', lineHeight: 1, textAlign: 'center' }}
-                            >⋮⋮</span>
+                              style={{ width: 24, height: 24 }}
+                            />
                             <div style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
                             {/* "Last edited by" — file's owner resolved against
                                 the member directory: avatar + first name. */}

@@ -47,7 +47,7 @@ Use these when touching annotations, callouts, imported annotations, region or s
 
 ## Drag-To-Rearrange Checks
 
-Use these when touching bookmarks, templates, projects, spaces, pages, Ball in Court entities, or shared sortable list behavior.
+Use these when touching bookmarks, templates, projects, spaces, pages, entities, or shared sortable list behavior.
 
 - Test the target production surface, not only a helper function.
 - Test the matching playground fixture listed below.
@@ -60,9 +60,9 @@ Use these when touching bookmarks, templates, projects, spaces, pages, Ball in C
 
 These files are intentional regression fixtures. They are not dead code.
 
-- `src/playgrounds/ReorderPlayground.jsx`: canonical React fixture for the current reorder behavior. It covers Ball in Court flat reorder behavior and PDF bookmark tree reorder behavior, including projection, nesting, collapse/expand, auto-expand/recollapse, drag overlays, and real-row movement.
+- `src/playgrounds/ReorderPlayground.jsx`: canonical React fixture for the current reorder behavior. It covers flat drag-to-rearrange behavior and PDF bookmark tree reorder behavior, including projection, nesting, collapse/expand, auto-expand/recollapse, drag overlays, and real-row movement.
 - `reorder-playground.html`: route/entry wrapper used to open the React reorder playground directly.
-- `ball-in-court-reorder-playground.html`: legacy standalone fixture for the earlier flat-list reorder prototype. Keep it until the React fixture or automated tests fully replace its coverage.
+- `ball-in-court-reorder-playground.html`: legacy standalone fixture for the earlier flat-list reorder prototype. Keep the file name for fixture continuity until the React fixture or automated tests fully replace its coverage; do not use that term in new UI.
 
 Do not delete or move these playgrounds during cleanup unless the replacement regression coverage is documented and the cleanup issue explicitly calls out the deletion.
 

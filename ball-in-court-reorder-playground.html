@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Ball in Court Reorder Playground</title>
+  <title>Drag to Rearrange Playground</title>
   <style>
     :root {
       color-scheme: dark;
@@ -514,7 +514,7 @@
       background: var(--danger);
     }
 
-    body.ball-in-court-dragging .delete-btn {
+    body.drag-rearrange-dragging .delete-btn {
       display: none !important;
     }
 
@@ -718,14 +718,14 @@
     <main class="stage">
       <section class="preview-wrap">
         <div class="preview-tabs">
-          <button class="tab-btn active" data-playground-tab="ball">Ball in Court</button>
+          <button class="tab-btn active" data-playground-tab="ball">Drag to Rearrange</button>
           <button class="tab-btn" data-playground-tab="bookmarks">PDF Bookmarks</button>
         </div>
 
         <div id="ballPanel" class="playground-panel active">
           <div class="template-panel">
             <div class="panel-header">
-              <div class="title">Ball in Court</div>
+              <div class="title">Drag to Rearrange</div>
               <button id="addEntity" class="add-btn">+ Add Entity</button>
             </div>
             <div class="hint">Define entities and their highlight colors for responsibility tracking</div>
@@ -830,7 +830,7 @@
       if (!state.entities.length) {
         const empty = document.createElement('div');
         empty.className = 'empty';
-        empty.textContent = 'No entities defined. Add at least one entity for Ball in Court tracking.';
+        empty.textContent = 'No entities defined. Add at least one entity for responsibility tracking.';
         list.appendChild(empty);
         return;
       }
@@ -846,7 +846,7 @@
 
         const handle = document.createElement('div');
         handle.className = 'drag-handle';
-        handle.title = 'Drag to reorder';
+        handle.title = 'Drag to rearrange';
         handle.innerHTML = gripIcon();
         handle.addEventListener('pointerdown', (event) => startDrag(event, entity.id));
 
@@ -1085,7 +1085,7 @@
     function createBookmarkDragHandle(id) {
       const handle = document.createElement('div');
       handle.className = 'bookmark-drag-handle';
-      handle.title = 'Drag to reorder';
+      handle.title = 'Drag to rearrange';
       handle.textContent = '☰';
       handle.addEventListener('pointerdown', (event) => startBookmarkDrag(event, id));
       return handle;
@@ -1239,7 +1239,7 @@
         ghost: null
       };
 
-      if (state.hideDelete) document.body.classList.add('ball-in-court-dragging');
+      if (state.hideDelete) document.body.classList.add('drag-rearrange-dragging');
       row.classList.add('is-dragging');
       shell.style.opacity = '0.65';
       shell.style.zIndex = '2';
@@ -1308,7 +1308,7 @@
       if (!state.drag) return;
       if (state.drag.ghost) state.drag.ghost.remove();
       state.drag = null;
-      document.body.classList.remove('ball-in-court-dragging');
+      document.body.classList.remove('drag-rearrange-dragging');
       updateAll();
       window.removeEventListener('pointermove', onDragMove);
     }
@@ -1353,7 +1353,7 @@
       }
 
       const order = state.entities.map((entity) => entity.name || 'Untitled').join(', ');
-      const prefix = 'Update the Ball in Court reorder feature in template edit mode.';
+      const prefix = 'Update the drag-to-rearrange feature in template edit mode.';
       const body = notes.length
         ? ` Keep the current archived behavior, but change: ${notes.join('; ')}.`
         : ' Keep the archived behavior exactly: grip-only drag handle, blue drag outline, floating overlay, hidden delete buttons during drag, vertical list sorting, and editable entity names/colors.';

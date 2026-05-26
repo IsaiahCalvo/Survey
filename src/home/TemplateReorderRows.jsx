@@ -2,6 +2,7 @@ import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import Icon from '../Icons';
+import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -93,7 +94,7 @@ export const TemplateModuleSortableRow = React.memo(function TemplateModuleSorta
             alignItems: 'center',
             touchAction: 'none'
           }}
-          aria-label="Drag to reorder module"
+          aria-label="Drag to rearrange module"
         >
           ☰
         </div>
@@ -183,7 +184,7 @@ export const TemplateCategorySortableRow = React.memo(function TemplateCategoryS
             alignItems: 'center',
             touchAction: 'none'
           }}
-          aria-label="Drag to reorder category"
+          aria-label="Drag to rearrange category"
         >
           ☰
         </div>
@@ -263,38 +264,12 @@ export const EntitySortableRow = React.memo(function EntitySortableRow({
           transition: 'border 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease'
         }}
       >
-        <div
+        <DragRearrangeHandle
           {...attributes}
           {...listeners}
           data-entity-drag-handle
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: '28px',
-            height: '28px',
-            borderRadius: '6px',
-            background: '#1f1f1f',
-            border: '1px solid #2d2d2d',
-            cursor: isDragging ? 'grabbing' : 'grab',
-            color: '#777',
-            flexShrink: 0,
-            transition: 'background 0.15s ease, color 0.15s ease, border 0.15s ease'
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.color = '#bbb';
-            e.currentTarget.style.background = '#262626';
-            e.currentTarget.style.border = '1px solid #3a3a3a';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.color = '#777';
-            e.currentTarget.style.background = '#1f1f1f';
-            e.currentTarget.style.border = '1px solid #2d2d2d';
-          }}
-          title="Drag to reorder"
-        >
-          <Icon name="grip" size={11} />
-        </div>
+          isDragging={isDragging}
+        />
         <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', flex: 1 }}>
           <div data-color-picker-area style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
