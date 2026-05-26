@@ -93,8 +93,7 @@ import {
   PointerSensor,
   closestCenter,
   useSensor,
-  useSensors,
-  DragOverlay
+  useSensors
 } from '@dnd-kit/core';
 import {
   SortableContext,
@@ -1855,27 +1854,10 @@ const ZOOM_MODE_OPTIONS = [
 
 const MANUAL_ZOOM_SESSION_KEY = 'pdfViewerManualZoomScale';
 
-const TemplateDragOverlayItem = ({ label }) => (
-  <div
-    style={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: '8px',
-      padding: '8px 12px',
-      borderRadius: '8px',
-      border: '2px solid #4A90E2',
-      background: 'rgba(43, 43, 43, 0.92)',
-      color: '#eaeaea',
-      fontSize: '13px',
-      fontWeight: 500,
-      boxShadow: '0 10px 26px rgba(0, 0, 0, 0.45)',
-      backdropFilter: 'blur(2px)'
-    }}
-  >
-    <span style={{ fontSize: '16px', color: '#4A90E2' }}>☰</span>
-    <span style={{ whiteSpace: 'nowrap' }}>{label}</span>
-  </div>
-);
+const restrictSortableToVerticalAxis = ({ transform }) => ({
+  ...transform,
+  x: 0,
+});
 
 const TemplateModuleSortableRow = React.memo(function TemplateModuleSortableRow({
   module,
@@ -1901,7 +1883,10 @@ const TemplateModuleSortableRow = React.memo(function TemplateModuleSortableRow(
   const style = {
     transform: CSS.Transform.toString(transform),
     transition: transition || 'transform 180ms cubic-bezier(0.2, 0, 0.2, 1)',
-    width: '100%'
+    width: '100%',
+    position: 'relative',
+    zIndex: isDragging ? 1 : 'auto',
+    opacity: isDragging ? 0.82 : 1
   };
 
   return (
@@ -1913,7 +1898,7 @@ const TemplateModuleSortableRow = React.memo(function TemplateModuleSortableRow(
           alignItems: 'center',
           padding: '4px 6px',
           borderRadius: '8px',
-          background: isDragging ? 'rgba(58, 58, 58, 0.25)' : 'transparent',
+          background: isDragging ? 'rgba(58, 58, 58, 0.55)' : 'transparent',
           border: isSelected ? '1px solid rgba(74, 144, 226, 0.45)' : '1px solid transparent',
           transition: 'background 0.18s ease, border-color 0.18s ease'
         }}
@@ -1989,7 +1974,9 @@ const EntitySortableRow = React.memo(function EntitySortableRow({
   const style = {
     transform: CSS.Transform.toString(transform),
     transition: transition || 'transform 180ms cubic-bezier(0.2, 0, 0.2, 1)',
-    width: '100%'
+    width: '100%',
+    position: 'relative',
+    zIndex: isDragging ? 1 : 'auto'
   };
 
   const isColorPickerSelected = selectedColorPickerId === entity.id;
@@ -2127,57 +2114,6 @@ const EntitySortableRow = React.memo(function EntitySortableRow({
   );
 });
 
-const EntityDragOverlayItem = ({ entity }) => {
-  if (!entity) return null;
-  const currentHex = getHexFromEntityColor(entity.color);
-  const currentOpacity = getOpacityFromEntityColor(entity.color);
-  return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        padding: '8px 12px',
-        borderRadius: '8px',
-        border: '2px solid #4A90E2',
-        background: 'rgba(43, 43, 43, 0.92)',
-        color: '#eaeaea',
-        fontSize: '13px',
-        fontWeight: 500,
-        boxShadow: '0 10px 26px rgba(0, 0, 0, 0.45)',
-        backdropFilter: 'blur(2px)'
-      }}
-    >
-      <span
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          width: '28px',
-          height: '28px',
-          borderRadius: '6px',
-          background: '#1f1f1f',
-          border: '1px solid #2d2d2d',
-          color: '#bbb'
-        }}
-      >
-        <Icon name="grip" size={11} />
-      </span>
-      <span
-        style={{
-          width: '32px',
-          height: '20px',
-          borderRadius: '5px',
-          background: currentHex || '#E3D1FB',
-          opacity: currentOpacity / 100,
-          border: '1px solid rgba(255, 255, 255, 0.12)'
-        }}
-      />
-      <span style={{ whiteSpace: 'nowrap' }}>{entity.name || 'Entity'}</span>
-    </div>
-  );
-};
-
 const TemplateCategorySortableRow = React.memo(function TemplateCategorySortableRow({
   category,
   isSelected,
@@ -2202,7 +2138,10 @@ const TemplateCategorySortableRow = React.memo(function TemplateCategorySortable
   const style = {
     transform: CSS.Transform.toString(transform),
     transition: transition || 'transform 180ms cubic-bezier(0.2, 0, 0.2, 1)',
-    width: '100%'
+    width: '100%',
+    position: 'relative',
+    zIndex: isDragging ? 1 : 'auto',
+    opacity: isDragging ? 0.82 : 1
   };
 
   return (
@@ -2214,7 +2153,7 @@ const TemplateCategorySortableRow = React.memo(function TemplateCategorySortable
           alignItems: 'center',
           padding: '4px 6px',
           borderRadius: '8px',
-          background: isDragging ? 'rgba(58, 58, 58, 0.25)' : 'transparent',
+          background: isDragging ? 'rgba(58, 58, 58, 0.55)' : 'transparent',
           border: isSelected ? '1px solid rgba(74, 144, 226, 0.45)' : '1px solid transparent',
           transition: 'background 0.18s ease, border-color 0.18s ease'
         }}
@@ -3278,10 +3217,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   }, [showUserDropdown]);
 
   const [activeEntityId, setActiveEntityId] = useState(null);
-  const activeEntity = useMemo(
-    () => entities.find((entity) => entity.id === activeEntityId) || null,
-    [activeEntityId, entities]
-  );
   const handleEntityDragStart = useCallback(({ active }) => {
     setActiveEntityId(active.id);
   }, []);
@@ -5333,19 +5268,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     })
   );
 
-  const [activeModuleId, setActiveModuleId] = useState(null);
-
-  const activeModule = useMemo(
-    () => modules.find((module) => module.id === activeModuleId) || null,
-    [activeModuleId, modules]
-  );
-
-  const handleModuleDragStart = useCallback(({ active }) => {
-    setActiveModuleId(active.id);
-  }, []);
-
   const handleModuleDragEnd = useCallback(({ active, over }) => {
-    setActiveModuleId(null);
     if (!over || active.id === over.id) {
       return;
     }
@@ -5360,10 +5283,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
       return arrayMove(prevModules, oldIndex, newIndex);
     });
-  }, []);
-
-  const handleModuleDragCancel = useCallback(() => {
-    setActiveModuleId(null);
   }, []);
 
   const handleModuleInputKeyDown = useCallback((moduleId, event) => {
@@ -5615,20 +5534,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     })
   );
 
-  const [activeCategoryId, setActiveCategoryId] = useState(null);
-
-  const activeCategory = useMemo(() => {
-    const categories = selectedModuleForCategories?.categories || [];
-    return categories.find((cat) => cat.id === activeCategoryId) || null;
-  }, [activeCategoryId, selectedModuleForCategories]);
-
-  const handleCategoryDragStart = useCallback(({ active }) => {
-    setActiveCategoryId(active.id);
-  }, []);
-
   const handleCategoryDragEnd = useCallback(({ active, over }) => {
-    setActiveCategoryId(null);
-
     if (!over || active.id === over.id || !selectedModuleId) {
       return;
     }
@@ -5654,10 +5560,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       })
     );
   }, [selectedModuleId]);
-
-  const handleCategoryDragCancel = useCallback(() => {
-    setActiveCategoryId(null);
-  }, []);
 
   const handleCategoryInputKeyDown = useCallback((categoryId, event) => {
     if (event.key === 'Enter') {
@@ -8002,9 +7904,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                           <DndContext
                             sensors={moduleSensors}
                             collisionDetection={closestCenter}
-                            onDragStart={handleModuleDragStart}
+                            modifiers={[restrictSortableToVerticalAxis]}
                             onDragEnd={handleModuleDragEnd}
-                            onDragCancel={handleModuleDragCancel}
                           >
                             <SortableContext
                               items={modules.map((module) => module.id)}
@@ -8029,9 +7930,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                                 ))}
                               </div>
                             </SortableContext>
-                            <DragOverlay>
-                              {activeModule && <TemplateDragOverlayItem label={activeModule.name} />}
-                            </DragOverlay>
                           </DndContext>
                           <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
                             <button
@@ -8209,9 +8107,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                                 <DndContext
                                   sensors={categorySensors}
                                   collisionDetection={closestCenter}
-                                  onDragStart={handleCategoryDragStart}
+                                  modifiers={[restrictSortableToVerticalAxis]}
                                   onDragEnd={handleCategoryDragEnd}
-                                  onDragCancel={handleCategoryDragCancel}
                                 >
                                   <SortableContext
                                     items={(selectedModule.categories || []).map((cat) => cat.id)}
@@ -8236,9 +8133,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                                       ))}
                                     </div>
                                   </SortableContext>
-                                  <DragOverlay>
-                                    {activeCategory && <TemplateDragOverlayItem label={activeCategory.name} />}
-                                  </DragOverlay>
                                 </DndContext>
                                 <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
                                   <button
@@ -8437,6 +8331,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                   <DndContext
                     sensors={entitySensors}
                     collisionDetection={closestCenter}
+                    modifiers={[restrictSortableToVerticalAxis]}
                     onDragStart={handleEntityDragStart}
                     onDragEnd={handleEntityDragEnd}
                     onDragCancel={handleEntityDragCancel}
@@ -8464,9 +8359,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                         )}
                       </div>
                     </SortableContext>
-                    <DragOverlay>
-                      {activeEntity && <EntityDragOverlayItem entity={activeEntity} />}
-                    </DragOverlay>
                   </DndContext>
                 </div>
 
@@ -12487,10 +12379,150 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
   const [fillColor, setFillColor] = useState('#ff0000');
   const [fillOpacity, setFillOpacity] = useState(100);
   const [strokeWidth, setStrokeWidth] = useState(3);
+  // 2026-05-25: Cloud "bump" intensity for rectangle's cloud border style.
+  // 2 matches the PDF importer's default (svgAnnotationRenderers reads this
+  // off data.pdfCloudIntensity when rendering). Toolbar Bump input drives it.
+  const [cloudIntensity, setCloudIntensity] = useState(2);
+  // 2026-05-25: Selected annotation surfaced from SVGAnnotationLayer so the
+  // top toolbar can bind its controls to the shape the user just clicked.
+  // Shape: { pageNumber, annotationIndex, annotation } | null. Only one
+  // selection is tracked globally — clicking a shape on another page
+  // replaces the previous selection.
+  const [selectedToolbarAnnotation, setSelectedToolbarAnnotation] = useState(null);
+  const handleSelectionForToolbar = useCallback((payload) => {
+    if (!payload) {
+      setSelectedToolbarAnnotation(null);
+      return;
+    }
+    const { pageNumber, annotationIndex, annotation } = payload;
+    setSelectedToolbarAnnotation((prev) => {
+      if (annotationIndex == null) {
+        // Per-page null report — only clear when it matches the current
+        // global selection so deselects on other pages don't blow away the
+        // active one.
+        if (prev && prev.pageNumber === pageNumber) return null;
+        return prev;
+      }
+      if (prev
+        && prev.pageNumber === pageNumber
+        && prev.annotationIndex === annotationIndex
+        && prev.annotation === annotation) {
+        return prev;
+      }
+      return { pageNumber, annotationIndex, annotation };
+    });
+  }, []);
+  // 2026-05-25: Toolbar → selected annotation write path. Toolbar handlers
+  // call this with a partial patch (e.g. { strokeWidth: 5 } or
+  // { strokeDashArray: [6, 4] }). We look up the current page snapshot,
+  // patch the object at the selected index, and ship the updated JSON
+  // through the same save path the SVG layer uses.
+  const selectedToolbarAnnotationRef = useRef(selectedToolbarAnnotation);
+  useEffect(() => { selectedToolbarAnnotationRef.current = selectedToolbarAnnotation; }, [selectedToolbarAnnotation]);
+  const handlePatchSelectedAnnotation = useCallback((patch) => {
+    const sel = selectedToolbarAnnotationRef.current;
+    if (!sel || sel.annotationIndex == null) return;
+    const pageJSON = annotationsByPageRef.current?.[sel.pageNumber];
+    if (!pageJSON || !Array.isArray(pageJSON.objects)) return;
+    const current = pageJSON.objects[sel.annotationIndex];
+    if (!current) return;
+    const nextObj = {
+      ...current,
+      ...patch,
+      data: patch.data
+        ? { ...(current.data || {}), ...patch.data }
+        : current.data,
+    };
+    const nextPage = {
+      ...pageJSON,
+      objects: pageJSON.objects.map((o, i) => (i === sel.annotationIndex ? nextObj : o)),
+    };
+    handleSaveAnnotations(sel.pageNumber, nextPage, {
+      source: 'toolbar:selected-edit',
+      tool: 'select',
+    });
+    setSelectedToolbarAnnotation((prev) => (prev
+      ? { ...prev, annotation: nextObj }
+      : prev));
+  }, []);
+  // 2026-05-25: Pull the selected shape's properties into the toolbar state
+  // so the swatch, width, style, and bump inputs all reflect what the user
+  // clicked. First pass only handles rect — pen, ellipse, callout, text
+  // follow in later slices. Reading only happens when the selection truly
+  // changes (annotation reference equality); subsequent toolbar edits write
+  // back via handlePatchSelectedAnnotation, which produces a new annotation
+  // reference and triggers this effect once more (the values match so it
+  // becomes a no-op re-render).
+  useEffect(() => {
+    const sel = selectedToolbarAnnotation;
+    if (!sel || !sel.annotation) return;
+    const type = String(sel.annotation.type || '').toLowerCase();
+    const annot = sel.annotation;
+    const isCounter = type === 'circle' && annot?.data?.type === 'counter';
+    if (type !== 'rect' && type !== 'ellipse' && type !== 'path'
+      && type !== 'line' && type !== 'textbox'
+      && type !== 'polygon' && type !== 'polyline'
+      && !isCounter) return;
+    // 2026-05-25: Polygons behave like rectangles (fill, border, cloud);
+    // polylines behave like lines (stroke + dashed/dotted only).
+    const isFillable = type === 'rect' || type === 'ellipse' || type === 'textbox'
+      || type === 'polygon' || isCounter;
+    // For text boxes the "fill" lives on backgroundColor (the box behind the
+    // glyphs), not on the textbox's `fill` (which is the glyph colour).
+    // For counters the "border" picker drives data.numberColor (the digit),
+    // not the stroke ring around the pin.
+    const fillSource = type === 'textbox' ? annot.backgroundColor : annot.fill;
+    const strokeSource = isCounter ? annot.data?.numberColor : annot.stroke;
+    const strokeHex = strokeSource ? getHexFromColor(strokeSource) : null;
+    const strokeOp = strokeSource ? getOpacityFromEntityColor(strokeSource) : 100;
+    const fillHex = fillSource && fillSource !== 'transparent' ? getHexFromColor(fillSource) : null;
+    const fillOp = fillSource && fillSource !== 'transparent' ? getOpacityFromEntityColor(fillSource) : 0;
+    if (strokeHex) {
+      setStrokeColor(strokeHex);
+      setStrokeOpacity(strokeOp);
+    }
+    if (isFillable) {
+      if (fillHex) {
+        setFillColor(fillHex);
+        setFillOpacity(fillOp);
+      } else if (fillSource === 'transparent' || !fillSource) {
+        setFillOpacity(0);
+      }
+    }
+    // Counter maps the size input to annotation.radius. Other shapes use
+    // strokeWidth as drawn.
+    const sizeValue = isCounter
+      ? Number(annot.radius)
+      : Number(annot.strokeWidth);
+    if (Number.isFinite(sizeValue) && sizeValue > 0) {
+      setStrokeWidth(sizeValue);
+      setStrokeWidthInputValue(String(Math.round(sizeValue)));
+    }
+    const dash = Array.isArray(annot.strokeDashArray) ? annot.strokeDashArray : null;
+    if ((type === 'rect' || type === 'polygon') && annot.data?.pdfCloudIntensity != null) {
+      setLineBorderStyle('cloud');
+      setCloudIntensity(Number(annot.data.pdfCloudIntensity) || 2);
+    } else if (dash && dash.length >= 2) {
+      if (dash[0] === 6) setLineBorderStyle('dashed');
+      else if (dash[0] === 2) setLineBorderStyle('dotted');
+      else setLineBorderStyle('solid');
+    } else {
+      setLineBorderStyle('solid');
+    }
+    // Arrow-only: sync the arrowhead picker to the selected arrow's tag.
+    if (type === 'line' && annot.data?.arrowheadStyle) {
+      setArrowheadStyle(annot.data.arrowheadStyle);
+    }
+  }, [selectedToolbarAnnotation]);
   const [zoomGeneration, setZoomGeneration] = useState(0);
   // Edit mode state: tracks which annotation is being edited via double-click
   // { pageNumber, index, type, editType ('text'|'shape'|'callout'), data }
   const [editingAnnotation, setEditingAnnotation] = useState(null);
+  // 2026-05-25: Rich-text editor bridge published from FabricEditCanvas while
+  // a text box or callout is in edit mode. Non-null = strip swaps to B / I /
+  // U / S toggle mode bound to the active Fabric Textbox. Shape: { api, state }
+  // — see FabricEditCanvas's publishRichTextEditor for the contract.
+  const [richTextEditor, setRichTextEditor] = useState(null);
   // UX: Phase 15 UAT-2 — live page-space bounds of the callout textbox during
   // edit. Updated on every FabricEditCanvas onLiveTextGrow fire (Fabric Textbox
   // 'changed' event). Null when no callout is being edited. SVGAnnotationLayer
@@ -12652,6 +12684,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
   // legacy (no-seriesId) counter pins wiped. Wipe runs once per doc per
   // session — on second-load of the same doc, do nothing.
   const legacyCountersWipedDocsRef = useRef(new Set());
+  const lastInitializedPdfKeyRef = useRef(Symbol('uninitialized-pdf'));
 
   // [COUNTER MULTI-LIST] Caret popup open state. Toggled by clicking
   // the chevron next to the counter tool button. Closed via click-outside,
@@ -12737,6 +12770,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
 
   // newTextPlacement removed — text tool creates text-only callouts via CalloutCanvas
   const [arrowheadStyle, setArrowheadStyle] = useState(ARROWHEAD_STYLES.SOLID_TRIANGLE);
+  // 2026-05-25: Default border style for newly-drawn lines and arrows.
+  // 'solid' | 'dashed' | 'dotted'. Applied as strokeDashArray on commit.
+  const [lineBorderStyle, setLineBorderStyle] = useState('solid');
 
   // Callout overlay state
   const [callouts, setCallouts] = useState([]);
@@ -12750,6 +12786,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       return next;
     });
   }, []);
+  // 2026-05-25: Receives style patches from the rich-text bridge while a
+  // callout is being edited. Maps each patch onto the callout's style fields
+  // so the SVG callout repaints live and the new style survives commit.
+  const handleCalloutTextStyleChange = useCallback((calloutId, stylePatch) => {
+    if (!calloutId || !stylePatch) return;
+    setCalloutsIfPersistedChanged((prev) => prev.map((c) => {
+      if (!c || c.id !== calloutId) return c;
+      return { ...c, style: { ...(c.style || {}), ...stylePatch } };
+    }));
+  }, [setCalloutsIfPersistedChanged]);
   const [selectedCalloutId, setSelectedCalloutId] = useState(null);
   // UX: Phase 14 CALL-10 — selectedCalloutIds is a Set<string> parallel to
   // selectedIds Set<number> for annotations. Clicking a callout sets this Set
@@ -12842,6 +12888,77 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
   useEffect(() => {
     lightweightCalloutCountByPageRef.current = lightweightCalloutCountByPage || {};
   }, [lightweightCalloutCountByPage]);
+
+  // 2026-05-25: Selection-driven toolbar — callout half. selectedToolbarCallout
+  // is the single-callout analogue of selectedToolbarAnnotation. We derive it
+  // from selectedCalloutIds (Set<string>) — when exactly one callout is
+  // selected we resolve it to its object so the toolbar can read its
+  // style + write back. The existing shape selection uses Fabric.js field
+  // names; callouts use the style.* shape from defaultCalloutStyle, so the
+  // read/write paths are kept separate.
+  const selectedToolbarCallout = useMemo(() => {
+    if (!(selectedCalloutIds instanceof Set) || selectedCalloutIds.size !== 1) return null;
+    const id = Array.from(selectedCalloutIds)[0];
+    const callout = (callouts || []).find((c) => c && c.id === id);
+    if (!callout) return null;
+    return { id, pageNumber: callout.pageNumber, callout };
+  }, [selectedCalloutIds, callouts]);
+  const selectedToolbarCalloutRef = useRef(selectedToolbarCallout);
+  useEffect(() => { selectedToolbarCalloutRef.current = selectedToolbarCallout; }, [selectedToolbarCallout]);
+
+  // 2026-05-25: Toolbar → selected callout write path. Mirrors
+  // handlePatchSelectedAnnotation but routes through setCalloutsIfPersistedChanged
+  // and writes to the callout's `style` sub-object instead of Fabric.js fields.
+  // Accepts a partial style patch (e.g. { borderColor: '#xx', borderOpacity: 0.5 }).
+  const handlePatchSelectedCallout = useCallback((stylePatch) => {
+    const sel = selectedToolbarCalloutRef.current;
+    if (!sel || !sel.id) return;
+    setCalloutsIfPersistedChanged((prev) => prev.map((c) => {
+      if (!c || c.id !== sel.id) return c;
+      return { ...c, style: { ...(c.style || {}), ...stylePatch } };
+    }));
+  }, [setCalloutsIfPersistedChanged]);
+
+  // 2026-05-25: Read-sync — when a callout is selected, pull its style fields
+  // into the toolbar's stroke / fill / width / arrowhead state so the top
+  // strip shows what was committed. Conversions:
+  //   borderOpacity (0-1)  -> strokeOpacity (0-100)
+  //   fillOpacity (0-1)    -> fillOpacity   (0-100)
+  //   lineThickness        -> strokeWidth
+  //   arrowheadStyle       -> arrowheadStyle
+  // fillColor === 'transparent' or undefined zeroes fillOpacity.
+  useEffect(() => {
+    const sel = selectedToolbarCallout;
+    if (!sel || !sel.callout) return;
+    const style = sel.callout.style || {};
+    const border = style.borderColor || style.lineColor;
+    if (border) {
+      const borderHex = getHexFromColor(border);
+      if (borderHex) setStrokeColor(borderHex);
+    }
+    if (Number.isFinite(Number(style.borderOpacity))) {
+      setStrokeOpacity(Math.round(Math.max(0, Math.min(1, Number(style.borderOpacity))) * 100));
+    } else {
+      setStrokeOpacity(100);
+    }
+    if (style.fillColor && style.fillColor !== 'transparent') {
+      const fillHex = getHexFromColor(style.fillColor);
+      if (fillHex) setFillColor(fillHex);
+      const fo = Number(style.fillOpacity);
+      if (Number.isFinite(fo)) setFillOpacity(Math.round(Math.max(0, Math.min(1, fo)) * 100));
+      else setFillOpacity(100);
+    } else {
+      setFillOpacity(0);
+    }
+    const thickness = Number(style.lineThickness);
+    if (Number.isFinite(thickness) && thickness > 0) {
+      setStrokeWidth(thickness);
+      setStrokeWidthInputValue(String(Math.round(thickness)));
+    }
+    if (style.arrowheadStyle) {
+      setArrowheadStyle(style.arrowheadStyle);
+    }
+  }, [selectedToolbarCallout]);
 
   // Clipboard handlers for callouts
   const handleCutCallout = useCallback((calloutId) => {
@@ -15808,6 +15925,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
   // Sync tool properties when activeTool or pdfId changes (load per-tool preferences)
   useEffect(() => {
     if (!pdfId) return;
+    // 2026-05-25: The select tool is meta — it doesn't have its own drawing
+    // defaults. Reading prefs for 'select' would clobber whatever the
+    // selection-driven read-sync just pushed into the toolbar from the
+    // clicked shape. Skip the sync entirely while in select mode.
+    if (activeTool === 'select') return;
     const toolPrefs = getToolPreference(activeTool);
     if (toolPrefs.strokeColor !== undefined) setStrokeColor(toolPrefs.strokeColor);
     if (toolPrefs.strokeOpacity !== undefined) setStrokeOpacity(toolPrefs.strokeOpacity);
@@ -15836,30 +15958,200 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
   }, [eraserSize, isEraserSizeFocused]);
 
   // Handlers to update both local state AND persist to tool preferences
+  // 2026-05-25: Refs mirror live colour + opacity state so the selection-
+  // patch handlers below can compose rgba() values without taking the colour
+  // and the opacity as separate arguments. Each opacity handler reads the
+  // peer-colour ref (and vice versa) when stamping the patch.
+  const strokeColorStateRef = useRef(strokeColor);
+  const strokeOpacityStateRef = useRef(strokeOpacity);
+  const fillColorStateRef = useRef(fillColor);
+  const fillOpacityStateRef = useRef(fillOpacity);
+  useEffect(() => { strokeColorStateRef.current = strokeColor; }, [strokeColor]);
+  useEffect(() => { strokeOpacityStateRef.current = strokeOpacity; }, [strokeOpacity]);
+  useEffect(() => { fillColorStateRef.current = fillColor; }, [fillColor]);
+  useEffect(() => { fillOpacityStateRef.current = fillOpacity; }, [fillOpacity]);
+  // Compose rgba from a hex + 0–100 opacity for patches stamped onto the
+  // selected shape. Falls back to 'transparent' for the literal keyword.
+  const composeColorForPatch = useCallback((hex, opacityPct) => {
+    if (!hex || hex === 'transparent') return 'transparent';
+    const alpha = Math.max(0, Math.min(1, (opacityPct ?? 100) / 100));
+    if (/^#[0-9a-fA-F]{6}$/.test(hex)) {
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+    return hex;
+  }, []);
+  // 2026-05-25: Type helpers for the selection-driven toolbar. Each shape
+  // type maps its own "fill" and "border" to a different annotation field.
+  // Rectangles + ellipses + counters use `fill`; text boxes use
+  // `backgroundColor`; pen / line / arrow have no fill. The "border" picker
+  // patches `stroke` for everything except counter, which routes through
+  // `data.numberColor` instead because counter's second tab is labelled
+  // "Number" (the digit colour), not a real outline.
+  const getSelectedShapeMeta = () => {
+    const sel = selectedToolbarAnnotationRef.current;
+    const annotation = sel?.annotation;
+    if (!annotation) return { type: null, isCounter: false };
+    const type = String(annotation.type || '').toLowerCase();
+    const isCounter = type === 'circle' && annotation.data?.type === 'counter';
+    return { type, isCounter, annotation };
+  };
+  const isFillableShapeSelected = () => {
+    const { type, isCounter } = getSelectedShapeMeta();
+    return type === 'rect' || type === 'ellipse' || type === 'textbox'
+      || type === 'polygon' || isCounter;
+  };
+  const isRectSelected = () => {
+    const { type, isCounter } = getSelectedShapeMeta();
+    if (type === 'rect' || type === 'ellipse' || type === 'path'
+      || type === 'line' || type === 'textbox'
+      || type === 'polygon' || type === 'polyline') return true;
+    return isCounter;
+  };
+  // 2026-05-25: True when a single callout is currently selected. The
+  // toolbar strip handlers branch on this so their write path patches
+  // callout.style.* via setCalloutsIfPersistedChanged instead of the
+  // Fabric-side handleSaveAnnotations path used for plain shapes.
+  const isCalloutSelected = () => !!selectedToolbarCalloutRef.current;
+  const patchSelectedFill = (rgba) => {
+    const { type } = getSelectedShapeMeta();
+    if (type === 'textbox') {
+      handlePatchSelectedAnnotation({ backgroundColor: rgba });
+    } else {
+      handlePatchSelectedAnnotation({ fill: rgba });
+    }
+  };
+  const patchSelectedStroke = (rgba) => {
+    const { isCounter } = getSelectedShapeMeta();
+    if (isCounter) {
+      handlePatchSelectedAnnotation({ data: { numberColor: rgba } });
+    } else {
+      handlePatchSelectedAnnotation({ stroke: rgba });
+    }
+  };
+
   const handleStrokeColorChange = useCallback((color) => {
+    // 2026-05-25: Mirror to the ref synchronously so a follow-up
+    // opacity-change in the same event batch composes the new colour, not
+    // the previous render's colour. Without this, picking colour + opacity
+    // in one click overwrote the colour change with the opacity change.
+    strokeColorStateRef.current = color;
     setStrokeColor(color);
-    if (pdfId) updateToolPreference(activeTool, { strokeColor: color });
-  }, [activeTool, pdfId, updateToolPreference]);
+    if (pdfId && activeTool !== 'select') updateToolPreference(activeTool, { strokeColor: color });
+    if (isCalloutSelected()) {
+      handlePatchSelectedCallout({ borderColor: color });
+    } else if (isRectSelected()) {
+      patchSelectedStroke(composeColorForPatch(color, strokeOpacityStateRef.current));
+    }
+  }, [activeTool, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
 
   const handleStrokeOpacityChange = useCallback((opacity) => {
+    strokeOpacityStateRef.current = opacity;
     setStrokeOpacity(opacity);
-    if (pdfId) updateToolPreference(activeTool, { strokeOpacity: opacity });
-  }, [activeTool, pdfId, updateToolPreference]);
+    if (pdfId && activeTool !== 'select') updateToolPreference(activeTool, { strokeOpacity: opacity });
+    if (isCalloutSelected()) {
+      handlePatchSelectedCallout({ borderOpacity: Math.max(0, Math.min(1, (Number(opacity) || 0) / 100)) });
+    } else if (isRectSelected()) {
+      patchSelectedStroke(composeColorForPatch(strokeColorStateRef.current, opacity));
+    }
+  }, [activeTool, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
 
   const handleFillColorChange = useCallback((color) => {
+    fillColorStateRef.current = color;
     setFillColor(color);
-    if (pdfId) updateToolPreference(activeTool, { fillColor: color });
-  }, [activeTool, pdfId, updateToolPreference]);
+    if (pdfId && activeTool !== 'select') updateToolPreference(activeTool, { fillColor: color });
+    if (isCalloutSelected()) {
+      // UX: writing a real hex always clears the 'transparent' sentinel so
+      // the opacity slider stays the source of truth for visibility.
+      handlePatchSelectedCallout({ fillColor: color });
+    } else if (isFillableShapeSelected()) {
+      patchSelectedFill(composeColorForPatch(color, fillOpacityStateRef.current));
+    }
+  }, [activeTool, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
 
   const handleFillOpacityChange = useCallback((opacity) => {
+    fillOpacityStateRef.current = opacity;
     setFillOpacity(opacity);
-    if (pdfId) updateToolPreference(activeTool, { fillOpacity: opacity });
-  }, [activeTool, pdfId, updateToolPreference]);
+    if (pdfId && activeTool !== 'select') updateToolPreference(activeTool, { fillOpacity: opacity });
+    if (isCalloutSelected()) {
+      handlePatchSelectedCallout({ fillOpacity: Math.max(0, Math.min(1, (Number(opacity) || 0) / 100)) });
+    } else if (isFillableShapeSelected()) {
+      patchSelectedFill(composeColorForPatch(fillColorStateRef.current, opacity));
+    }
+  }, [activeTool, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
 
   const handleStrokeWidthChange = useCallback((width) => {
     setStrokeWidth(width);
-    if (pdfId) updateToolPreference(activeTool, { strokeWidth: width });
-  }, [activeTool, pdfId, updateToolPreference]);
+    if (pdfId && activeTool !== 'select') updateToolPreference(activeTool, { strokeWidth: width });
+    if (isCalloutSelected()) {
+      handlePatchSelectedCallout({ lineThickness: Math.max(1, Number(width) || 2) });
+      return;
+    }
+    if (!isRectSelected()) return;
+    const { isCounter, annotation } = getSelectedShapeMeta();
+    if (isCounter && annotation) {
+      // Resize around the pin centre so the dot stays put while the radius
+      // changes. left/top are pinned at (center - radius); shifting them by
+      // the radius delta keeps the centre fixed.
+      const newRadius = Math.max(4, Number(width) || 14);
+      const oldRadius = Number(annotation.radius) || newRadius;
+      const delta = oldRadius - newRadius;
+      handlePatchSelectedAnnotation({
+        radius: newRadius,
+        left: (Number(annotation.left) || 0) + delta,
+        top: (Number(annotation.top) || 0) + delta,
+      });
+    } else {
+      handlePatchSelectedAnnotation({ strokeWidth: width });
+    }
+  }, [activeTool, pdfId, updateToolPreference, handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
+
+  // 2026-05-25: Wrappers so the border-style + cloud-bump toolbar inputs
+  // patch the selected rectangle alongside updating their own state. The
+  // bottomToolbarApi swaps in these handlers instead of the bare setters.
+  const handleLineBorderStyleChange = useCallback((next) => {
+    setLineBorderStyle(next);
+    if (!isRectSelected()) return;
+    if (next === 'cloud') {
+      handlePatchSelectedAnnotation({
+        strokeDashArray: null,
+        data: { pdfCloudIntensity: Math.max(1, Number(cloudIntensity) || 2) },
+      });
+    } else if (next === 'dashed') {
+      handlePatchSelectedAnnotation({ strokeDashArray: [6, 4], data: { pdfCloudIntensity: null } });
+    } else if (next === 'dotted') {
+      handlePatchSelectedAnnotation({ strokeDashArray: [2, 4], data: { pdfCloudIntensity: null } });
+    } else {
+      handlePatchSelectedAnnotation({ strokeDashArray: null, data: { pdfCloudIntensity: null } });
+    }
+  }, [cloudIntensity, handlePatchSelectedAnnotation]);
+
+  const handleCloudIntensityChange = useCallback((next) => {
+    setCloudIntensity(next);
+    if (!isRectSelected()) return;
+    handlePatchSelectedAnnotation({ data: { pdfCloudIntensity: Math.max(1, Number(next) || 2) } });
+  }, [handlePatchSelectedAnnotation]);
+
+  // 2026-05-25: Wrap the arrowhead-style setter so picking a new head shape
+  // on a selected arrow patches the arrow's data.arrowheadStyle tag in
+  // place. For the plain arrow tool with no selection it still only updates
+  // the toolbar default.
+  const handleArrowheadStyleChange = useCallback((next) => {
+    setArrowheadStyle(next);
+    if (isCalloutSelected()) {
+      handlePatchSelectedCallout({ arrowheadStyle: next });
+      return;
+    }
+    const sel = selectedToolbarAnnotationRef.current;
+    const type = String(sel?.annotation?.type || '').toLowerCase();
+    const isArrow = type === 'line' && (sel?.annotation?.tool === 'arrow'
+      || sel?.annotation?.data?.tool === 'arrow'
+      || sel?.annotation?.data?.arrowheadStyle != null);
+    if (!isArrow) return;
+    handlePatchSelectedAnnotation({ data: { arrowheadStyle: next } });
+  }, [handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
 
   // Handle width input changes (allows empty string while typing)
   const handleStrokeWidthInputChange = useCallback((e) => {
@@ -19256,8 +19548,31 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
   // machine on mouseup. The new callout is already fully constructed by the
   // creation state machine; App.jsx just commits it to setCallouts and
   // captures an undo checkpoint.
-  const handleCreateCallout = useCallback((newCallout) => {
-    if (!newCallout || !newCallout.id) return;
+  const handleCreateCallout = useCallback((rawCallout) => {
+    if (!rawCallout || !rawCallout.id) return;
+    /* 2026-05-25: Honour the toolbar's current fill + border picks on the
+       freshly-drawn callout. Without this, every new callout used the
+       hard-coded defaultCalloutStyle (slate border, transparent fill) so
+       the toolbar swatch was decorative — the user could choose any colors
+       but only the border ever appeared changed (and even that came from
+       a different code path). We bake stroke/fill state into the new
+       callout's style here. Opacities are stored as 0–1 floats to match
+       the defaultCalloutStyle convention. */
+    const newCallout = {
+      ...rawCallout,
+      style: {
+        ...rawCallout.style,
+        borderColor: strokeColor,
+        borderOpacity: (strokeOpacity ?? 100) / 100,
+        fillColor: fillColor,
+        fillOpacity: (fillOpacity ?? 100) / 100,
+        // 2026-05-25: Toolbar width input drives the callout's leader line +
+        // arrow thickness AND the textbox border (renderCallout multiplies
+        // by 0.7 for the box edge). Falls back to the previous default of 2
+        // when the toolbar hasn't published a width yet.
+        lineThickness: Math.max(1, Number(strokeWidth) || 2),
+      },
+    };
     addHistoryCheckpoint('callouts:create', {
       calloutId: newCallout.id,
       pageNumber: newCallout.pageNumber,
@@ -19274,7 +19589,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     };
     newlyCreatedCalloutIdsRef.current.add(newCallout.id);
     setCallouts((prev) => [...prev, newCallout]);
-  }, [addHistoryCheckpoint]);
+  }, [addHistoryCheckpoint, strokeColor, strokeOpacity, fillColor, fillOpacity, strokeWidth]);
 
   // UX: Phase 14 CALL-10 (drag MVP) — commit checkpoint for a callout drag.
   // Called from useSVGInteraction's 'callout-part' drag mode on pointerup
@@ -19442,6 +19757,32 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     pendingAutoEditCalloutRef.current = null;
     handleRequestCalloutEditMode(pending.calloutId, pending.pageNumber);
   }, [callouts, handleRequestCalloutEditMode]);
+
+  // 2026-05-25: Strip's "Aa" button — drops the user straight into text edit
+  // mode for the selected text box or callout. Mirrors the double-click path
+  // (setEditingAnnotation for text boxes, handleRequestCalloutEditMode for
+  // callouts). No-op when nothing editable is selected so the button can
+  // render in a disabled state without guarding the call site. Declared
+  // after handleRequestCalloutEditMode to avoid a TDZ on first render.
+  const handleEnterTextEditFromStrip = useCallback(() => {
+    const calloutSel = selectedToolbarCalloutRef.current;
+    if (calloutSel?.id) {
+      handleRequestCalloutEditMode(calloutSel.id, calloutSel.pageNumber);
+      return;
+    }
+    const sel = selectedToolbarAnnotationRef.current;
+    const annot = sel?.annotation;
+    if (!sel || sel.annotationIndex == null || !annot) return;
+    const type = String(annot.type || '').toLowerCase();
+    if (type !== 'textbox') return;
+    setEditingAnnotation({
+      pageNumber: sel.pageNumber,
+      index: sel.annotationIndex,
+      type: annot.type,
+      editType: 'text',
+      data: annot,
+    });
+  }, [handleRequestCalloutEditMode]);
 
   const applyLocalAnnotationHistoryAction = useCallback((action) => {
     if (!action) return false;
@@ -26324,6 +26665,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
 
   // Set PDF ID and load items/annotations when PDF changes
   useEffect(() => {
+    const nextPdfId = pdfFile ? getPDFId(pdfFile) : null;
+    const nextPdfKey = pdfFile
+      ? `${pdfFile.id || 'local'}:${nextPdfId}`
+      : null;
+    if (lastInitializedPdfKeyRef.current === nextPdfKey) {
+      return;
+    }
+    lastInitializedPdfKeyRef.current = nextPdfKey;
+
     // Reset to regular mode whenever the active PDF changes
     // Clear all PDF-specific state first to ensure clean transition
     const previouslyVisibleAnnotationsByPage = annotationsByPageRef.current || {};
@@ -26406,7 +26756,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       return;
     }
 
-    const id = getPDFId(pdfFile);
+    const id = nextPdfId;
     setPdfId(id);
     const data = loadPDFData(id);
     setItems(data.items);
@@ -29189,12 +29539,52 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
   // temporal-dead-zone crashes during PDFViewer's first render.
   useEffect(() => {
     if (!isActive || typeof onBottomToolbarApiChange !== 'function') return;
+    // 2026-05-25: contextTool drives which control strip the toolbar shows.
+    // When the user has the Select tool active and has clicked a shape, the
+    // strip swaps to that shape's controls (read + write) without changing
+    // the icon highlight. First slice handles rect; other types still fall
+    // through to plain activeTool.
+    const selectedAnnot = selectedToolbarAnnotation?.annotation;
+    const selectedType = String(selectedAnnot?.type || '').toLowerCase();
+    // 2026-05-25: Map annotation types to the toolbar context that should
+    // render. Lines split into 'arrow' or 'line' depending on the tool tag
+    // stamped at commit (or whether arrowhead data is present); paths map
+    // to 'pen'. Callout selection (parallel selectedToolbarCallout) takes
+    // precedence over shape selection — the two sources are mutually
+    // exclusive at the SVG layer, but the explicit branch keeps the
+    // toolbar predictable if both ever populate.
+    let selectionMappedTool = null;
+    if (selectedToolbarCallout) {
+      selectionMappedTool = 'callout';
+    } else if (selectedType === 'rect') selectionMappedTool = 'rect';
+    else if (selectedType === 'ellipse') selectionMappedTool = 'ellipse';
+    else if (selectedType === 'path') selectionMappedTool = 'pen';
+    else if (selectedType === 'textbox') selectionMappedTool = 'text';
+    // 2026-05-25: PDF-imported polygons + polylines reuse the rect / line
+    // strips. Polygon supports fill, border, dashed/dotted/cloud, and bump
+    // the same way rect does. Polyline supports stroke + dashed/dotted only,
+    // matching the plain line.
+    else if (selectedType === 'polygon') selectionMappedTool = 'rect';
+    else if (selectedType === 'polyline') selectionMappedTool = 'line';
+    else if (selectedType === 'circle' && selectedAnnot?.data?.type === 'counter') {
+      selectionMappedTool = 'counter';
+    }
+    else if (selectedType === 'line') {
+      const isArrow = selectedAnnot?.tool === 'arrow'
+        || selectedAnnot?.data?.tool === 'arrow'
+        || selectedAnnot?.data?.arrowheadStyle != null;
+      selectionMappedTool = isArrow ? 'arrow' : 'line';
+    }
+    const contextTool = (activeTool === 'select' && selectionMappedTool)
+      ? selectionMappedTool
+      : activeTool;
     onBottomToolbarApiChange({
       bottomToolbarRef,
       zoomInputRef,
       zoomMenuRef,
       pageInputRef,
       activeTool,
+      contextTool,
       activeCategoryDropdown,
       lastDrawTool,
       lastShapeTool,
@@ -29205,6 +29595,23 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       strokeOpacity,
       strokeWidthInputValue,
       eraserSizeInputValue,
+      arrowheadStyle,
+      setArrowheadStyle: handleArrowheadStyleChange,
+      onEnterTextEdit: handleEnterTextEditFromStrip,
+      canEnterTextEdit: !!(selectedToolbarCallout
+        || (selectedToolbarAnnotation
+          && String(selectedToolbarAnnotation.annotation?.type || '').toLowerCase() === 'textbox')),
+      // 2026-05-25: Rich-text edit bridge — non-null while a text box or
+      // callout is in edit mode. Drives the strip's B / I / U / S toggle row.
+      richTextEditor,
+      lineBorderStyle,
+      setLineBorderStyle: handleLineBorderStyleChange,
+      cloudIntensity,
+      setCloudIntensity: handleCloudIntensityChange,
+      fillColor,
+      fillOpacity,
+      handleFillColorChange,
+      handleFillOpacityChange,
       zoomInputValue,
       isZoomMenuOpen,
       zoomDropdownLabel,
@@ -29247,6 +29654,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     zoomMenuRef,
     pageInputRef,
     activeTool,
+    selectedToolbarAnnotation,
+    selectedToolbarCallout,
     activeCategoryDropdown,
     lastDrawTool,
     lastShapeTool,
@@ -29257,6 +29666,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     strokeOpacity,
     strokeWidthInputValue,
     eraserSizeInputValue,
+    arrowheadStyle,
+    handleArrowheadStyleChange,
+    handleEnterTextEditFromStrip,
+    richTextEditor,
+    lineBorderStyle,
+    handleLineBorderStyleChange,
+    cloudIntensity,
+    handleCloudIntensityChange,
+    fillColor,
+    fillOpacity,
+    handleFillColorChange,
+    handleFillOpacityChange,
     zoomInputValue,
     isZoomMenuOpen,
     zoomDropdownLabel,
@@ -34419,14 +34840,10 @@ ${pageBlocks}
             item('Copy', 'copy', () => ctx.calloutId && handleCopyCallout(ctx.calloutId)),
             item('Paste', 'paste', () => handlePasteCallout(ctx.pageNumber)),
             item('Delete', 'delete'),
-            sep(),
-            item('Properties', 'properties', doOpenProperties),
           ];
         } else if (ctx.kind === 'counter') {
           items = [
             item('Continue Pin', 'continuePin'),
-            sep(),
-            item('Properties', 'properties', doOpenProperties),
           ];
         } else if (ctx.kind === 'annotation') {
           items = [
@@ -34534,11 +34951,10 @@ ${pageBlocks}
             item('Send to Back', 'sendToBack', () => {
               handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, 'back');
             }),
-            sep(),
             // UX: 2026-04-21 — Group / Ungroup items intentionally omitted
             // from the right-click menu. The feature is hidden app-wide
             // until the matrix-per-shape rewrite ships.
-            item('Properties', 'properties', doOpenProperties),
+            // UX: 2026-05-26 — Properties item removed for first release.
           ];
         } else if (ctx.kind === 'group' && Array.isArray(ctx.groupIndices) && ctx.groupIndices.length >= 2) {
           // UX: Phase 19 follow-up — right-click inside the outer dashed
@@ -34645,11 +35061,10 @@ ${pageBlocks}
                 handleReorderAnnotation(ctx.pageNumber, idx, 'back');
               }
             }),
-            sep(),
             // UX: 2026-04-21 — Group / Ungroup items intentionally omitted
             // from the multi-selection right-click menu. The feature is
             // hidden app-wide until the matrix-per-shape rewrite ships.
-            item('Properties', 'properties', doOpenProperties),
+            // UX: 2026-05-26 — Properties item removed for first release.
           ];
         } else {
           // Empty canvas / page — only Paste lives here (for annotation paste).
@@ -35878,6 +36293,7 @@ ${pageBlocks}
                                   // pendingSvgSelection state at ~line 11046 for details.
                                   pendingSelection={pendingSvgSelection}
                                   selectionClearToken={annotationSelectionClearToken}
+                                  onSelectionChange={handleSelectionForToolbar}
                                   // UX: pan-mode hover glow broadcast — see pendingSvgHover state.
                                   pendingHover={pendingSvgHover}
                                   // Phase 35 Plan 03 — per-user delete authority. viewerId
@@ -35903,8 +36319,14 @@ ${pageBlocks}
                                   pageHeight={resolvedPageSize.height}
                                   activeTool={activeTool}
                                   strokeColor={strokeColor}
+                                  strokeOpacity={strokeOpacity}
+                                  fillColor={fillColor}
+                                  fillOpacity={fillOpacity}
                                   highlightColor="rgba(255, 193, 7, 0.3)"
                                   strokeWidth={strokeWidth}
+                                  arrowheadStyle={arrowheadStyle}
+                                  lineBorderStyle={lineBorderStyle}
+                                  cloudIntensity={cloudIntensity}
                                   annotations={pageAnnotations}
                                   onStrokeCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'path:created', tool: activeTool })}
                                   onSurveyMarkerCreated={(bounds) => handleSurveyMarkerCreated(pageNumber, bounds)}
@@ -36130,7 +36552,7 @@ ${pageBlocks}
                                     let seriesColor = activeCounterSeriesColorRef.current;
                                     let seriesAutoCreated = false;
                                     if (!seriesId) {
-                                      seriesColor = strokeColor || '#ef4444';
+                                      seriesColor = fillColor || strokeColor || '#ef4444';
                                       seriesId = `series-${Date.now()}`;
                                       activeCounterSeriesIdRef.current = seriesId;
                                       activeCounterSeriesColorRef.current = seriesColor;
@@ -36170,7 +36592,7 @@ ${pageBlocks}
                                       }
                                     }
 
-                                    const color = seriesColor || strokeColor || '#ef4444';
+                                    const color = seriesColor || fillColor || strokeColor || '#ef4444';
                                     const displayNumber = seriesStart + existingSeriesCounterCount;
                                     const counter = {
                                       type: 'circle',
@@ -36192,7 +36614,7 @@ ${pageBlocks}
                                         displayNumber,
                                         seriesId,
                                         seriesStart,
-                                        ...(inheritedNumberColor ? { numberColor: inheritedNumberColor } : {}),
+                                        numberColor: inheritedNumberColor || strokeColor || '#ffffff',
                                       },
                                     };
                                     // Phase 31 - ID-at-creation stamping (assignment form). Post-cutover
@@ -36218,7 +36640,7 @@ ${pageBlocks}
                                       radius: COUNTER_RADIUS,
                                       tipDistance,
                                       color,
-                                      numberColor: inheritedNumberColor || '#ffffff',
+                                      numberColor: inheritedNumberColor || strokeColor || '#ffffff',
                                       displayNumber,
                                       dragCreatedAt,
                                       shiftActive: false,
@@ -36310,6 +36732,8 @@ ${pageBlocks}
                                   onLiveTextGrow={editingAnnotation?.reactCalloutId
                                     ? setLiveCalloutEditBounds
                                     : setLiveTextEditBounds}
+                                  onRichTextEditorChange={setRichTextEditor}
+                                  onCalloutTextStyleChange={handleCalloutTextStyleChange}
                                   onEditCommit={(updatedJSON) => {
                                     // UX: Phase 15 UAT-1 restructure — reactCalloutId
                                     // routes callout commit through fromFabricGroup.
@@ -36432,6 +36856,10 @@ ${pageBlocks}
                                     handleSaveAnnotations(pageNumber, json, { source: 'edit:live', action: 'shape-preview', checkpointPolicy: 'skip' });
                                   }}
                                   strokeColor={strokeColor}
+                                  strokeOpacity={strokeOpacity}
+                                  fillColor={fillColor}
+                                  fillOpacity={fillOpacity}
+                                  strokeWidth={strokeWidth}
                                   zoomGeneration={zoomGeneration}
                                   viewerScale={scale}
                                   onGroupUpdate={handleCounterGroupUpdate}
@@ -36735,6 +37163,7 @@ ${pageBlocks}
                                       // UX: pan-mode quick-click selection — see first mount site.
                                       pendingSelection={pendingSvgSelection}
                                       selectionClearToken={annotationSelectionClearToken}
+                                      onSelectionChange={handleSelectionForToolbar}
                                       // UX: pan-mode hover glow — see first mount site.
                                       pendingHover={pendingSvgHover}
                                       // Phase 35 Plan 03 — per-user delete authority.
@@ -36754,8 +37183,14 @@ ${pageBlocks}
                                         pageHeight={pageSizes[pageNumber].height}
                                         activeTool={activeTool}
                                         strokeColor={strokeColor}
+                                        strokeOpacity={strokeOpacity}
+                                        fillColor={fillColor}
+                                        fillOpacity={fillOpacity}
                                         highlightColor="rgba(255, 193, 7, 0.3)"
                                         strokeWidth={strokeWidth}
+                                        arrowheadStyle={arrowheadStyle}
+                                        lineBorderStyle={lineBorderStyle}
+                                        cloudIntensity={cloudIntensity}
                                         annotations={pageAnnotationsCS}
                                         onStrokeCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'path:created', tool: activeTool })}
                                         onSurveyMarkerCreated={(bounds) => handleSurveyMarkerCreated(pageNumber, bounds)}
@@ -36919,6 +37354,8 @@ ${pageBlocks}
                                         onLiveTextGrow={editingAnnotation?.reactCalloutId
                                           ? setLiveCalloutEditBounds
                                           : setLiveTextEditBounds}
+                                        onRichTextEditorChange={setRichTextEditor}
+                                  onCalloutTextStyleChange={handleCalloutTextStyleChange}
                                         onEditCommit={(updatedJSON) => {
                                           // UX: Phase 15 UAT-1 restructure — see mount
                                           // site 1 for the synthesis rationale.
@@ -37000,6 +37437,10 @@ ${pageBlocks}
                                           handleSaveAnnotations(pageNumber, json, { source: 'edit:live', action: 'shape-preview', checkpointPolicy: 'skip' });
                                         }}
                                         strokeColor={strokeColor}
+                                        strokeOpacity={strokeOpacity}
+                                        fillColor={fillColor}
+                                        fillOpacity={fillOpacity}
+                                        strokeWidth={strokeWidth}
                                         zoomGeneration={zoomGeneration}
                                         viewerScale={scale}
                                         onGroupUpdate={handleCounterGroupUpdate}
@@ -37358,6 +37799,7 @@ ${pageBlocks}
                                       // UX: pan-mode quick-click selection — see first mount site.
                                       pendingSelection={pendingSvgSelection}
                                       selectionClearToken={annotationSelectionClearToken}
+                                      onSelectionChange={handleSelectionForToolbar}
                                       // UX: pan-mode hover glow — see first mount site.
                                       pendingHover={pendingSvgHover}
                                       // Phase 35 Plan 03 — per-user delete authority.
@@ -37376,8 +37818,14 @@ ${pageBlocks}
                                       pageHeight={pageSizes[pageNum].height}
                                       activeTool={activeTool}
                                       strokeColor={strokeColor}
+                                      strokeOpacity={strokeOpacity}
+                                      fillColor={fillColor}
+                                      fillOpacity={fillOpacity}
                                       highlightColor="rgba(255, 193, 7, 0.3)"
                                       strokeWidth={strokeWidth}
+                                      arrowheadStyle={arrowheadStyle}
+                                      lineBorderStyle={lineBorderStyle}
+                                      cloudIntensity={cloudIntensity}
                                       annotations={pageAnnotations}
                                       onStrokeCommit={(updatedJSON) => handleSaveAnnotations(pageNum, updatedJSON, { source: 'path:created', tool: activeTool })}
                                       onSurveyMarkerCreated={(bounds) => handleSurveyMarkerCreated(pageNum, bounds)}
@@ -37577,7 +38025,7 @@ ${pageBlocks}
                                         let seriesColor = activeCounterSeriesColorRef.current;
                                         let seriesAutoCreated = false;
                                         if (!seriesId) {
-                                          seriesColor = strokeColor || '#ef4444';
+                                          seriesColor = fillColor || strokeColor || '#ef4444';
                                           seriesId = `series-${Date.now()}`;
                                           activeCounterSeriesIdRef.current = seriesId;
                                           activeCounterSeriesColorRef.current = seriesColor;
@@ -37613,7 +38061,7 @@ ${pageBlocks}
                                           }
                                         }
 
-                                        const color = seriesColor || strokeColor || '#ef4444';
+                                        const color = seriesColor || fillColor || strokeColor || '#ef4444';
                                         const displayNumber = seriesStart + existingSeriesCounterCount;
                                         const counter = {
                                           type: 'circle',
@@ -37635,7 +38083,7 @@ ${pageBlocks}
                                             displayNumber,
                                             seriesId,
                                             seriesStart,
-                                            ...(inheritedNumberColor ? { numberColor: inheritedNumberColor } : {}),
+                                            numberColor: inheritedNumberColor || strokeColor || '#ffffff',
                                           },
                                         };
                                         // Phase 31 - ID-at-creation stamping (assignment form). Mirror
@@ -37658,7 +38106,7 @@ ${pageBlocks}
                                           radius: COUNTER_RADIUS,
                                           tipDistance,
                                           color,
-                                          numberColor: inheritedNumberColor || '#ffffff',
+                                          numberColor: inheritedNumberColor || strokeColor || '#ffffff',
                                           displayNumber,
                                           dragCreatedAt,
                                           shiftActive: false,
@@ -37734,6 +38182,8 @@ ${pageBlocks}
                                       onLiveTextGrow={editingAnnotation?.reactCalloutId
                                         ? setLiveCalloutEditBounds
                                         : setLiveTextEditBounds}
+                                      onRichTextEditorChange={setRichTextEditor}
+                                  onCalloutTextStyleChange={handleCalloutTextStyleChange}
                                       onEditCommit={(updatedJSON) => {
                                         // UX: Phase 15 UAT-1 restructure — see mount
                                         // site 1 for the synthesis rationale.
@@ -37815,6 +38265,10 @@ ${pageBlocks}
                                         handleSaveAnnotations(pageNum, json, { source: 'edit:live', action: 'shape-preview', checkpointPolicy: 'skip' });
                                       }}
                                       strokeColor={strokeColor}
+                                      strokeOpacity={strokeOpacity}
+                                      fillColor={fillColor}
+                                      fillOpacity={fillOpacity}
+                                      strokeWidth={strokeWidth}
                                       zoomGeneration={zoomGeneration}
                                       viewerScale={scale}
                                       onGroupUpdate={handleCounterGroupUpdate}
@@ -37928,7 +38382,7 @@ ${pageBlocks}
             The host element sits between the rails and above the actual
             viewer body so the strip aligns exactly between the two rails
             with no extra positioning math. */}
-        {isActive && pdfFile && activeCategoryDropdown && typeof document !== 'undefined' && document.getElementById('chrome-sub-toolbar-host') && createPortal(
+        {isActive && pdfFile && activeCategoryDropdown && !richTextEditor && typeof document !== 'undefined' && document.getElementById('chrome-sub-toolbar-host') && createPortal(
           <div
             data-chrome-strip="true"
             style={{
@@ -45440,6 +45894,102 @@ export default function App() {
    */
   const [leftRailApi, setLeftRailApi] = useState(null);
 
+  // 2026-05-25: Arrowhead picker — opens below the trigger and shows every
+  // option at once (no native select scroll). Closed on outside click.
+  const [showArrowheadMenu, setShowArrowheadMenu] = useState(false);
+  useEffect(() => {
+    if (!showArrowheadMenu) return;
+    const onDown = (e) => {
+      if (e.target.closest && e.target.closest('[data-arrowhead-menu]')) return;
+      setShowArrowheadMenu(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [showArrowheadMenu]);
+
+  // 2026-05-25: Color picker active tab for shapes (rectangle / ellipse).
+  // 'fill' swaps the picker to read/write fillColor; 'border' swaps to strokeColor.
+  const [colorPickerTab, setColorPickerTab] = useState('fill');
+
+  // 2026-05-25: Rich-text alignment popover — small 3x3 grid that picks
+  // both horizontal and vertical anchor at once. Closes on outside click.
+  // 2026-05-26: capture phase so we still close when sibling rich-text
+  // buttons stopPropagation on mousedown. Only bail on the alignment
+  // container itself — clicking elsewhere inside the strip should close.
+  const [showAlignGrid, setShowAlignGrid] = useState(false);
+  useEffect(() => {
+    if (!showAlignGrid) return;
+    const onDown = (e) => {
+      if (e.target.closest && e.target.closest('[data-align-grid]')) return;
+      setShowAlignGrid(false);
+    };
+    document.addEventListener('mousedown', onDown, true);
+    return () => document.removeEventListener('mousedown', onDown, true);
+  }, [showAlignGrid]);
+
+  // 2026-05-25: Rich-text font color picker — toggled by the swatch in the
+  // edit-mode strip. Re-uses the same CompactColorPicker the stroke/fill
+  // tools use, so the visual + interaction stay identical app-wide.
+  // 2026-05-26: capture phase + bail only on the swatch+picker container.
+  const [showFontColorPicker, setShowFontColorPicker] = useState(false);
+  useEffect(() => {
+    if (!showFontColorPicker) return;
+    const onDown = (e) => {
+      if (e.target.closest && e.target.closest('[data-font-color-picker]')) return;
+      setShowFontColorPicker(false);
+    };
+    document.addEventListener('mousedown', onDown, true);
+    return () => document.removeEventListener('mousedown', onDown, true);
+  }, [showFontColorPicker]);
+
+  // 2026-05-26: Rich-text font family + size dropdowns. Custom (not native
+  // select) so they expand strictly downward, matching the rest of the
+  // chrome. Closed on outside click.
+  const [showFontFamilyMenu, setShowFontFamilyMenu] = useState(false);
+  useEffect(() => {
+    if (!showFontFamilyMenu) return;
+    const onDown = (e) => {
+      if (e.target.closest && e.target.closest('[data-font-family-menu]')) return;
+      setShowFontFamilyMenu(false);
+    };
+    document.addEventListener('mousedown', onDown, true);
+    return () => document.removeEventListener('mousedown', onDown, true);
+  }, [showFontFamilyMenu]);
+
+  const [showFontSizeMenu, setShowFontSizeMenu] = useState(false);
+  useEffect(() => {
+    if (!showFontSizeMenu) return;
+    const onDown = (e) => {
+      if (e.target.closest && e.target.closest('[data-font-size-menu]')) return;
+      setShowFontSizeMenu(false);
+    };
+    document.addEventListener('mousedown', onDown, true);
+    return () => document.removeEventListener('mousedown', onDown, true);
+  }, [showFontSizeMenu]);
+
+  // 2026-05-26: reset rich-text popovers when leaving text edit so stale
+  // state doesn't auto-show next time the user enters edit mode.
+  useEffect(() => {
+    if (!bottomToolbarApi?.richTextEditor) {
+      setShowFontColorPicker(false);
+      setShowAlignGrid(false);
+      setShowFontFamilyMenu(false);
+      setShowFontSizeMenu(false);
+    }
+  }, [bottomToolbarApi?.richTextEditor]);
+
+  // 2026-05-25: Border-style picker for lines and arrows.
+  const [showStyleMenu, setShowStyleMenu] = useState(false);
+  useEffect(() => {
+    if (!showStyleMenu) return;
+    const onDown = (e) => {
+      if (e.target.closest && e.target.closest('[data-style-menu]')) return;
+      setShowStyleMenu(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [showStyleMenu]);
+
   // Tab management state
   const HOME_TAB_ID = 'home-tab';
   const [tabs, setTabs] = useState([{ id: HOME_TAB_ID, name: 'Home', file: null, isHome: true }]); // Array of { id, name, file, isHome? }
@@ -45945,8 +46495,23 @@ export default function App() {
               tool cluster sits centered while Undo/Redo float on the
               left edge. */}
           {bottomToolbarApi && (
-            <>
-              {/* Pan + Select (top-level tools) */}
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {/* 2026-05-26: Pan + Select sit in their own absolute block to
+                  the LEFT of the centered annotation cluster. This mirrors
+                  the right-side tool properties block so the annotation
+                  icons stay centered on the screen — only the side blocks
+                  shift as their contents change. */}
+              <div style={{
+                position: 'absolute',
+                right: '100%',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                paddingRight: '8px',
+                whiteSpace: 'nowrap'
+              }}>
               {[
                 { id: 'pan', label: 'Pan', iconName: 'pan' },
                 { id: 'select', label: 'Select', iconName: 'cursor' }
@@ -45975,6 +46540,7 @@ export default function App() {
               ))}
 
               <div style={{ width: '1px', height: '20px', background: '#555', margin: '0 4px' }} />
+              </div>
 
               {/* Draw category */}
               <button
@@ -46068,7 +46634,11 @@ export default function App() {
                   activeTool through the FORM_TOOL_IDS set. We do not
                   enable Syncfusion's built-in form-designer toolbar — the
                   subtoolbar is wired directly to the FormDesigner API
-                  through the syncfusionViewerRef. */}
+                  through the syncfusionViewerRef.
+                  2026-05-26: Hidden for first release — feature not yet
+                  ready for users. Code stays intact; flip false back to
+                  true to re-enable. */}
+              {false && (
               <button
                 data-testid="forms-category-button"
                 onClick={() => {
@@ -46102,6 +46672,7 @@ export default function App() {
               >
                 <Icon name="edit" size={18} />
               </button>
+              )}
 
               {/* Survey toggle lives in the former survey-tool slot so users
                   enter/exit survey mode from the same top toolbar cluster as
@@ -46145,54 +46716,667 @@ export default function App() {
                 </button>
               )}
 
+              {/* 2026-05-26: Tool properties (divider + color swatch + width +
+                  any tool-specific extras like the arrowhead dropdown + Aa)
+                  are absolutely positioned to the right edge of the icon
+                  cluster so they grow outward to the right / shrink back to
+                  the left without nudging the pan-select or annotation icons.
+                  User priority is icon stability over visual centering. */}
+              <div style={{
+                position: 'absolute',
+                left: '100%',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                paddingLeft: '8px',
+                whiteSpace: 'nowrap'
+              }}>
               <div style={{ width: '1px', height: '20px', background: '#555', margin: '0 4px' }} />
 
               {/* Color swatch + Width input. Color picker now flips DOWN
                   (top: 100%) since the swatch lives at the top of the
                   viewport instead of the bottom — popping up would shoot
-                  off-screen. */}
+                  off-screen.
+                  2026-05-25: Pen + highlighter render the swatch as a flat
+                  solid-disc circle (no fill/border ring) per the new
+                  context-aware strip contract — visual reference is
+                  prototype-context-toolbar.html. Other tools keep the
+                  rectangle swatch until they migrate. */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }}>
-                <button
-                  onClick={() => bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker)}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  className="btn btn-default"
-                  style={{
-                    width: '28px',
-                    height: '20px',
-                    padding: 0,
-                    borderRadius: '4px',
-                    border: '1px solid transparent',
-                    background: bottomToolbarApi.strokeColor,
-                    opacity: bottomToolbarApi.strokeOpacity / 100,
-                    position: 'relative',
-                    overflow: 'visible',
-                    boxSizing: 'content-box'
-                  }}
-                  title="Color"
-                />
-
-                {bottomToolbarApi.showAnnotationColorPicker && (
-                  <div style={{
-                    position: 'absolute',
-                    top: '100%',
-                    left: '50%',
-                    marginTop: '10px',
-                    transform: 'translate(-50%, 0)',
-                    zIndex: 2000
-                  }}>
-                    <CompactColorPicker
-                      color={bottomToolbarApi.strokeColor}
-                      opacity={bottomToolbarApi.strokeOpacity / 100}
-                      marginRight="53px"
-                      onChange={(hex, alpha) => {
-                        bottomToolbarApi.handleStrokeColorChange(hex);
-                        bottomToolbarApi.handleStrokeOpacityChange(Math.round(alpha * 100));
+                {bottomToolbarApi.richTextEditor && typeof document !== 'undefined' && document.getElementById('chrome-sub-toolbar-host') && createPortal(
+                  /* 2026-05-26: Rich-text edit mode — the formatting controls
+                     drop into the sub-row beneath the top strip (mirrors the
+                     Draw / Shape category sub-rows). The inline strip's swatch,
+                     width input, and Aa button stay put — only the rich-text
+                     controls relocate, so the user keeps the usual chrome.
+                     The strip-wide PDFViewer portal suppresses itself when
+                     richTextEditor is non-null so the two sub-rows can't stack.
+                     2026-05-25: Bridge contract — state comes from the
+                     bridge's `state` field (per-selection aware); writes route
+                     through the bridge's `api`. The data-rich-text-toolbar
+                     attribute opts these buttons out of FabricEditCanvas's
+                     document-level click-outside handler so clicks don't
+                     commit-and-close the editor. */
+                  <div data-rich-text-toolbar style={{ width: '100%', height: '34px', background: '#2b2b2b', borderBottom: '1px solid #3a3a3a', borderTop: 'none', cursor: 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', zIndex: 10, boxSizing: 'border-box' }}>
+                    {/* 2026-05-26: Order — font color, font size, B / I / U / S,
+                        alignment. Matches the user's requested left-to-right
+                        sequence so the chrome reads as one cohesive row. Font
+                        family was removed from the strip in this pass per the
+                        same request. */}
+                    {/* Font color — reuses the shared color picker, just like
+                        the stroke/fill swatches above. The picker drops DOWN
+                        below the swatch via an absolute wrapper (top:100%) so
+                        it lines up with the other top-bar pickers. */}
+                    <div data-font-color-picker style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                      <button
+                        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                        onClick={() => setShowFontColorPicker((v) => !v)}
+                        className="ctx-color-swatch"
+                        style={{
+                          width: '24px',
+                          height: '24px',
+                          padding: 0,
+                          borderRadius: '50%',
+                          border: 'none',
+                          position: 'relative',
+                          overflow: 'hidden',
+                          boxSizing: 'border-box',
+                          cursor: 'pointer',
+                        }}
+                        title="Font color"
+                        aria-label="Font color"
+                      >
+                        <span
+                          className="ctx-color-fill"
+                          style={{ background: bottomToolbarApi.richTextEditor?.state?.fontColor || '#1e293b' }}
+                        />
+                      </button>
+                      {showFontColorPicker && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: '50%',
+                          marginTop: '10px',
+                          transform: 'translate(-50%, 0)',
+                          zIndex: 2000,
+                        }}>
+                          <CompactColorPicker
+                            color={bottomToolbarApi.richTextEditor?.state?.fontColor || '#1e293b'}
+                            opacity={1}
+                            marginRight="0"
+                            onChange={(hex) => {
+                              bottomToolbarApi.richTextEditor?.api?.setFontColor?.(hex);
+                            }}
+                            onClose={() => setShowFontColorPicker(false)}
+                            firstPreset="transparent"
+                          />
+                        </div>
+                      )}
+                    </div>
+                    {/* Font family — custom dropdown so it opens strictly
+                        downward and styling matches the rest of the chrome.
+                        Single-name fonts only per the Fabric cursor-drift
+                        gotcha (2026-04-08). */}
+                    {(() => {
+                      const FONT_FAMILIES = ['Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana'];
+                      const currentFamily = bottomToolbarApi.richTextEditor?.state?.fontFamily || 'Arial';
+                      return (
+                        <div data-font-family-menu style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                          <button
+                            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                            onClick={() => setShowFontFamilyMenu((v) => !v)}
+                            style={{
+                              height: '24px',
+                              padding: '0 8px',
+                              minWidth: '110px',
+                              background: '#444',
+                              color: '#ddd',
+                              border: '1px solid transparent',
+                              borderRadius: '5px',
+                              fontSize: '12px',
+                              fontFamily: FONT_FAMILY,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: '6px',
+                            }}
+                            title="Font"
+                            aria-label="Font"
+                          >
+                            <span style={{ fontFamily: currentFamily, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{currentFamily}</span>
+                            <span style={{ color: '#888', fontSize: '9px' }}>▼</span>
+                          </button>
+                          {showFontFamilyMenu && (
+                            <div style={{
+                              position: 'absolute',
+                              top: 'calc(100% + 6px)',
+                              left: 0,
+                              zIndex: 5600,
+                              background: '#1e2026',
+                              border: '1px solid #383d46',
+                              borderRadius: '6px',
+                              padding: '4px',
+                              boxShadow: '0 12px 36px rgba(0,0,0,0.5)',
+                              minWidth: '160px',
+                              maxHeight: '280px',
+                              overflowY: 'auto',
+                            }}>
+                              {FONT_FAMILIES.map((f) => {
+                                const on = f === currentFamily;
+                                return (
+                                  <button
+                                    key={f}
+                                    onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                    onClick={() => {
+                                      bottomToolbarApi.richTextEditor?.api?.setFontFamily?.(f);
+                                      setShowFontFamilyMenu(false);
+                                    }}
+                                    style={{
+                                      display: 'block',
+                                      width: '100%',
+                                      textAlign: 'left',
+                                      padding: '6px 10px',
+                                      background: on ? 'rgba(216,168,78,0.12)' : 'transparent',
+                                      color: on ? '#d8a84e' : '#ddd',
+                                      border: 'none',
+                                      borderRadius: '4px',
+                                      cursor: 'pointer',
+                                      fontFamily: f,
+                                      fontSize: '13px',
+                                    }}
+                                  >
+                                    {f}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                    {/* Font size — custom dropdown of standard increments.
+                        Opens strictly downward (native select can flip up
+                        when many options don't fit below). If the active
+                        size isn't in the preset list, it's prepended so the
+                        trigger label still matches the live value. */}
+                    {(() => {
+                      const FONT_SIZE_PRESETS = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 56, 64, 72];
+                      const currentSize = bottomToolbarApi.richTextEditor?.state?.fontSize ?? 16;
+                      const sizes = FONT_SIZE_PRESETS.includes(currentSize)
+                        ? FONT_SIZE_PRESETS
+                        : [currentSize, ...FONT_SIZE_PRESETS];
+                      return (
+                        <div data-font-size-menu style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                          <button
+                            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                            onClick={() => setShowFontSizeMenu((v) => !v)}
+                            style={{
+                              height: '24px',
+                              padding: '0 8px',
+                              minWidth: '58px',
+                              background: '#444',
+                              color: '#ddd',
+                              border: '1px solid transparent',
+                              borderRadius: '5px',
+                              fontSize: '12px',
+                              fontFamily: FONT_FAMILY,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: '6px',
+                            }}
+                            title="Font size"
+                            aria-label="Font size"
+                          >
+                            <span>{currentSize}</span>
+                            <span style={{ color: '#888', fontSize: '9px' }}>▼</span>
+                          </button>
+                          {showFontSizeMenu && (
+                            <div style={{
+                              position: 'absolute',
+                              top: 'calc(100% + 6px)',
+                              left: 0,
+                              zIndex: 5600,
+                              background: '#1e2026',
+                              border: '1px solid #383d46',
+                              borderRadius: '6px',
+                              padding: '4px',
+                              boxShadow: '0 12px 36px rgba(0,0,0,0.5)',
+                              minWidth: '72px',
+                              maxHeight: '280px',
+                              overflowY: 'auto',
+                            }}>
+                              {sizes.map((s) => {
+                                const on = s === currentSize;
+                                return (
+                                  <button
+                                    key={s}
+                                    onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                    onClick={() => {
+                                      bottomToolbarApi.richTextEditor?.api?.setFontSize?.(s);
+                                      setShowFontSizeMenu(false);
+                                    }}
+                                    style={{
+                                      display: 'block',
+                                      width: '100%',
+                                      textAlign: 'left',
+                                      padding: '6px 10px',
+                                      background: on ? 'rgba(216,168,78,0.12)' : 'transparent',
+                                      color: on ? '#d8a84e' : '#ddd',
+                                      border: 'none',
+                                      borderRadius: '4px',
+                                      cursor: 'pointer',
+                                      fontFamily: FONT_FAMILY,
+                                      fontSize: '13px',
+                                    }}
+                                  >
+                                    {s}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                    {/* Bold / Italic / Underline / Strikethrough toggles. */}
+                    {[
+                      ['B', 'bold', 'toggleBold', { fontWeight: 700 }],
+                      ['I', 'italic', 'toggleItalic', { fontStyle: 'italic' }],
+                      ['U', 'underline', 'toggleUnderline', { textDecoration: 'underline' }],
+                      ['S', 'strike', 'toggleStrike', { textDecoration: 'line-through' }],
+                    ].map(([label, stateKey, apiKey, fontStyleOverride]) => {
+                      const isOn = !!bottomToolbarApi.richTextEditor?.state?.[stateKey];
+                      return (
+                        <button
+                          key={stateKey}
+                          onMouseDown={(e) => {
+                            // Prevent the textbox from losing its selection
+                            // when the user clicks the toggle — without this
+                            // the Fabric Textbox blurs and the toggle would
+                            // apply to an empty range.
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                          onClick={() => bottomToolbarApi.richTextEditor?.api?.[apiKey]?.()}
+                          style={{
+                            width: '28px',
+                            height: '24px',
+                            padding: 0,
+                            background: isOn ? 'rgba(216,168,78,0.18)' : '#444',
+                            color: isOn ? '#d8a84e' : '#ddd',
+                            border: '1px solid transparent',
+                            borderRadius: '5px',
+                            fontSize: '13px',
+                            fontFamily: FONT_FAMILY,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            ...fontStyleOverride,
+                          }}
+                          title={label === 'B' ? 'Bold' : label === 'I' ? 'Italic' : label === 'U' ? 'Underline' : 'Strikethrough'}
+                          aria-label={label === 'B' ? 'Bold' : label === 'I' ? 'Italic' : label === 'U' ? 'Underline' : 'Strikethrough'}
+                          aria-pressed={isOn}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                    {/* Alignment — 28x26 trigger with 3x3 mini-grid, opens a
+                        "Text alignment" popover that picks horizontal +
+                        vertical anchor at once. */}
+                    {(() => {
+                      const hAlign = bottomToolbarApi.richTextEditor?.state?.textAlign || 'left';
+                      const vAlign = bottomToolbarApi.richTextEditor?.state?.verticalAlign || 'top';
+                      const labelFor = (v, h) => `${v}-${h === 'center' ? 'center' : h}`;
+                      const isCellActive = (v, h) => v === vAlign && h === hAlign;
+                      return (
+                        <div data-align-grid style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{
+                            fontSize: '10.5px',
+                            letterSpacing: '0.04em',
+                            textTransform: 'uppercase',
+                            color: '#9ca3af',
+                            fontFamily: FONT_FAMILY,
+                          }}>Align</span>
+                          <button
+                            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                            onClick={() => setShowAlignGrid((v) => !v)}
+                            style={{
+                              width: '28px',
+                              height: '26px',
+                              padding: 0,
+                              background: '#2a2e36',
+                              border: '1px solid #383d46',
+                              borderRadius: '5px',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                            title="Text alignment"
+                            aria-label="Text alignment"
+                          >
+                            <span style={{
+                              display: 'grid',
+                              gridTemplateColumns: 'repeat(3, 4px)',
+                              gridTemplateRows: 'repeat(3, 4px)',
+                              gap: '2px',
+                            }}>
+                              {['top', 'middle', 'bottom'].flatMap((v) => ['left', 'center', 'right'].map((h) => {
+                                const on = isCellActive(v, h);
+                                return (
+                                  <span key={labelFor(v, h)} style={{
+                                    width: '4px',
+                                    height: '4px',
+                                    borderRadius: '1px',
+                                    background: on ? '#d8a84e' : 'rgba(168,176,191,0.4)',
+                                    boxShadow: on ? '0 0 0 1px rgba(216,168,78,0.25)' : 'none',
+                                  }} />
+                                );
+                              }))}
+                            </span>
+                          </button>
+                          {showAlignGrid && (
+                            <div style={{
+                              position: 'absolute',
+                              top: 'calc(100% + 6px)',
+                              right: 0,
+                              zIndex: 5600,
+                              background: '#1e2026',
+                              border: '1px solid #383d46',
+                              borderRadius: '8px',
+                              padding: '10px',
+                              boxShadow: '0 12px 36px rgba(0,0,0,0.5)',
+                            }}>
+                              <div style={{
+                                fontSize: '10.5px',
+                                letterSpacing: '0.04em',
+                                textTransform: 'uppercase',
+                                color: '#9ca3af',
+                                marginBottom: '8px',
+                                fontFamily: FONT_FAMILY,
+                              }}>Text alignment</div>
+                              <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(3, 26px)',
+                                gap: '4px',
+                              }}>
+                                {['top', 'middle', 'bottom'].flatMap((v) => ['left', 'center', 'right'].map((h) => {
+                                  const on = isCellActive(v, h);
+                                  return (
+                                    <button
+                                      key={labelFor(v, h)}
+                                      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                      onClick={() => {
+                                        bottomToolbarApi.richTextEditor?.api?.setTextAlign?.(h);
+                                        bottomToolbarApi.richTextEditor?.api?.setVerticalAlign?.(v);
+                                        setShowAlignGrid(false);
+                                      }}
+                                      style={{
+                                        appearance: 'none',
+                                        width: '26px',
+                                        height: '26px',
+                                        background: on ? 'rgba(216,168,78,0.10)' : '#14171c',
+                                        border: on ? '1px solid #d8a84e' : '1px solid #2a2e36',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        padding: 0,
+                                      }}
+                                      title={`${v} ${h}`}
+                                      aria-label={`${v} ${h}`}
+                                    >
+                                      <span style={{
+                                        width: '6px',
+                                        height: '6px',
+                                        borderRadius: '50%',
+                                        background: on ? '#d8a84e' : '#5a606a',
+                                      }} />
+                                    </button>
+                                  );
+                                }))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>,
+                  document.getElementById('chrome-sub-toolbar-host')
+                )}
+                <>
+                {/* 2026-05-25: Eraser hides the color swatch entirely — only
+                    the diameter input below remains visible for that tool. */}
+                {bottomToolbarApi.activeTool !== 'eraser' && (
+                  <>
+                {!bottomToolbarApi.richTextEditor && (bottomToolbarApi.contextTool === 'pen' || bottomToolbarApi.contextTool === 'highlighter' || bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'line') ? (
+                  /* 2026-05-25: Stroke-only swatch (pen, highlighter, arrow,
+                     line). Checker pattern shows through low-opacity strokes
+                     and a faint hairline ring lifts pure black off the dark
+                     toolbar — both behaviours come from .ctx-color-swatch. */
+                  <button
+                    onClick={() => bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker)}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    className="ctx-color-swatch"
+                    style={{
+                      width: '24px',
+                      height: '24px',
+                      padding: 0,
+                      borderRadius: '50%',
+                      border: 'none',
+                      position: 'relative',
+                      overflow: 'hidden',
+                      boxSizing: 'border-box',
+                      cursor: 'pointer'
+                    }}
+                    title="Color"
+                    aria-label="Color"
+                  >
+                    <span
+                      className="ctx-color-fill"
+                      style={{
+                        background: ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#000000', (bottomToolbarApi.strokeOpacity ?? 100) / 100)
                       }}
-                      onClose={() => bottomToolbarApi.setShowAnnotationColorPicker(false)}
                     />
-                  </div>
+                  </button>
+                ) : bottomToolbarApi.contextTool === 'counter' && bottomToolbarApi.handleFillColorChange ? (
+                  /* 2026-05-25: Counter swatch — a literal preview of the pin.
+                     Background disc = fill colour (pin colour), the centred
+                     "1" = stroke colour (number colour). Updates live as the
+                     user picks colours so they always see what the next pin
+                     will look like, instead of an abstract ring + disc. */
+                  <button
+                    onClick={() => {
+                      bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker);
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    className="ctx-color-swatch"
+                    style={{
+                      width: '24px',
+                      height: '24px',
+                      padding: 0,
+                      borderRadius: '50%',
+                      border: 'none',
+                      boxSizing: 'border-box',
+                      position: 'relative',
+                      overflow: 'hidden',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                    title="Counter colors"
+                    aria-label="Counter colors"
+                  >
+                    <span
+                      className="ctx-color-fill"
+                      style={{
+                        background: ensureRgbaOpacity(bottomToolbarApi.fillColor || '#ef4444', (bottomToolbarApi.fillOpacity ?? 100) / 100)
+                      }}
+                    />
+                    <span style={{
+                      position: 'relative',
+                      zIndex: 2,
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      lineHeight: 1,
+                      color: ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#ffffff', (bottomToolbarApi.strokeOpacity ?? 100) / 100),
+                      fontFamily: FONT_FAMILY,
+                      pointerEvents: 'none'
+                    }}>1</span>
+                  </button>
+                ) : (bottomToolbarApi.contextTool === 'rect' || bottomToolbarApi.contextTool === 'ellipse' || bottomToolbarApi.contextTool === 'text' || bottomToolbarApi.contextTool === 'callout' || !!bottomToolbarApi.richTextEditor) && bottomToolbarApi.handleFillColorChange ? (
+                  /* 2026-05-25: Fill + border swatch. Checker shows through
+                     low-opacity fills, faint hairline lifts black borders. */
+                  <button
+                    onClick={() => {
+                      bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker);
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    className="ctx-color-swatch"
+                    style={{
+                      width: '24px',
+                      height: '24px',
+                      padding: 0,
+                      borderRadius: '50%',
+                      border: `2px solid ${ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#000000', (bottomToolbarApi.strokeOpacity ?? 100) / 100)}`,
+                      boxSizing: 'border-box',
+                      position: 'relative',
+                      overflow: 'hidden',
+                      cursor: 'pointer'
+                    }}
+                    title="Color"
+                    aria-label="Color"
+                  >
+                    <span
+                      className="ctx-color-fill"
+                      style={{
+                        background: ensureRgbaOpacity(bottomToolbarApi.fillColor || '#ffffff', (bottomToolbarApi.fillOpacity ?? 100) / 100)
+                      }}
+                    />
+                  </button>
+                ) : null}
+
+                {bottomToolbarApi.showAnnotationColorPicker && (() => {
+                  const isShape = (bottomToolbarApi.contextTool === 'rect' || bottomToolbarApi.contextTool === 'ellipse' || bottomToolbarApi.contextTool === 'text' || bottomToolbarApi.contextTool === 'callout' || bottomToolbarApi.contextTool === 'counter')
+                    && bottomToolbarApi.handleFillColorChange;
+                  const isCounter = bottomToolbarApi.contextTool === 'counter';
+                  const secondTabLabel = isCounter ? 'Number' : 'Border';
+                  const onFillTab = isShape && colorPickerTab === 'fill';
+                  // 2026-05-25: Shapes (rectangle + ellipse) follow one rule —
+                  // at least one side must stay visible. Either the fill or
+                  // the border can be transparent, but never both at the same
+                  // time. When the user takes the side they're editing to 0
+                  // while the other side is already at 0, the other side gets
+                  // bumped to fully opaque so the shape stays visible. Text
+                  // and Callout opt out (their borders + fills are optional).
+                  const shapeOneVisibleRule = bottomToolbarApi.contextTool === 'rect'
+                    || bottomToolbarApi.contextTool === 'ellipse';
+                  const currentColor = onFillTab ? (bottomToolbarApi.fillColor || '#ff0000') : bottomToolbarApi.strokeColor;
+                  const currentOpacity = onFillTab ? ((bottomToolbarApi.fillOpacity ?? 100) / 100) : (bottomToolbarApi.strokeOpacity / 100);
+                  const applyChange = (hex, alpha) => {
+                    if (onFillTab) {
+                      const otherAlpha = (bottomToolbarApi.strokeOpacity ?? 100) / 100;
+                      if (shapeOneVisibleRule && alpha <= 0 && otherAlpha <= 0) {
+                        bottomToolbarApi.handleStrokeOpacityChange(100);
+                      }
+                      bottomToolbarApi.handleFillColorChange(hex);
+                      bottomToolbarApi.handleFillOpacityChange(Math.round(alpha * 100));
+                    } else {
+                      const otherAlpha = (bottomToolbarApi.fillOpacity ?? 100) / 100;
+                      if (shapeOneVisibleRule && alpha <= 0 && otherAlpha <= 0) {
+                        bottomToolbarApi.handleFillOpacityChange(100);
+                      }
+                      bottomToolbarApi.handleStrokeColorChange(hex);
+                      bottomToolbarApi.handleStrokeOpacityChange(Math.round(alpha * 100));
+                    }
+                  };
+                  return (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: '50%',
+                      marginTop: '10px',
+                      transform: 'translate(-50%, 0)',
+                      zIndex: 2000
+                    }}>
+                      {isShape && (
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: '1fr 1fr',
+                          background: '#1e1e1e',
+                          border: '1px solid #333',
+                          borderBottom: 'none',
+                          borderRadius: '8px 8px 0 0',
+                          overflow: 'hidden',
+                          width: '260px',
+                          marginRight: '53px'
+                        }}>
+                          {[['fill', 'Fill'], ['border', secondTabLabel]].map(([k, label], i) => {
+                            const on = colorPickerTab === k;
+                            return (
+                              <button
+                                key={k}
+                                onClick={() => setColorPickerTab(k)}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                style={{
+                                  background: on ? 'rgba(216,168,78,0.08)' : 'transparent',
+                                  color: on ? '#eee' : '#888',
+                                  fontWeight: 600,
+                                  fontSize: 12,
+                                  padding: '8px 0',
+                                  border: 0,
+                                  borderRight: i === 0 ? '1px solid #333' : 0,
+                                  cursor: 'pointer',
+                                  position: 'relative'
+                                }}
+                              >
+                                {label}
+                                {on && (
+                                  <span style={{
+                                    position: 'absolute', left: 0, right: 0, bottom: 0,
+                                    height: 2, background: '#d8a84e'
+                                  }} />
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <CompactColorPicker
+                        color={currentColor}
+                        opacity={currentOpacity}
+                        marginRight="53px"
+                        onChange={applyChange}
+                        onClose={() => bottomToolbarApi.setShowAnnotationColorPicker(false)}
+                        firstPreset={(shapeOneVisibleRule && !onFillTab)
+                          ? { kind: 'match', color: bottomToolbarApi.fillColor || '#ffffff', opacity: (bottomToolbarApi.fillOpacity ?? 100) / 100 }
+                          : 'transparent'}
+                      />
+                    </div>
+                  );
+                })()}
+                  </>
                 )}
 
+                {(bottomToolbarApi.contextTool === 'pen'
+                  || bottomToolbarApi.contextTool === 'highlighter'
+                  || bottomToolbarApi.contextTool === 'arrow'
+                  || bottomToolbarApi.contextTool === 'line'
+                  || bottomToolbarApi.contextTool === 'rect'
+                  || bottomToolbarApi.contextTool === 'ellipse'
+                  || bottomToolbarApi.contextTool === 'text'
+                  || bottomToolbarApi.contextTool === 'callout'
+                  || bottomToolbarApi.contextTool === 'counter'
+                  || bottomToolbarApi.activeTool === 'eraser') && (
                 <input
                   type="text"
                   inputMode="numeric"
@@ -46221,8 +47405,248 @@ export default function App() {
                   }}
                   title="Width"
                 />
+                )}
+                {/* 2026-05-25: Style picker — solid/dashed/dotted for line + arrow;
+                    solid/dashed/dotted/cloud for rectangle; solid/dashed/dotted
+                    for ellipse (no cloud option). Always opens downward. */}
+                {(bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'line' || bottomToolbarApi.contextTool === 'rect' || bottomToolbarApi.contextTool === 'ellipse' || bottomToolbarApi.contextTool === 'text' || bottomToolbarApi.contextTool === 'callout') && bottomToolbarApi.setLineBorderStyle && (
+                  <div data-style-menu style={{ position: 'relative' }}>
+                    <button
+                      onClick={() => setShowStyleMenu(!showStyleMenu)}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      style={{
+                        height: '24px',
+                        padding: '0 22px 0 8px',
+                        background: '#444',
+                        color: '#ddd',
+                        border: '1px solid transparent',
+                        borderRadius: '5px',
+                        fontSize: '12px',
+                        fontFamily: FONT_FAMILY,
+                        cursor: 'pointer',
+                        backgroundImage:
+                          'linear-gradient(45deg, transparent 50%, #aaa 50%), linear-gradient(135deg, #aaa 50%, transparent 50%)',
+                        backgroundPosition: 'calc(100% - 11px) 10px, calc(100% - 7px) 10px',
+                        backgroundSize: '4px 4px, 4px 4px',
+                        backgroundRepeat: 'no-repeat'
+                      }}
+                      title="Style"
+                      aria-label="Style"
+                    >
+                      {{ solid: 'Solid', dashed: 'Dashed', dotted: 'Dotted', cloud: 'Cloud' }[bottomToolbarApi.lineBorderStyle] || 'Solid'}
+                    </button>
+                    {showStyleMenu && (
+                      <div style={{
+                        position: 'absolute',
+                        top: 'calc(100% + 4px)',
+                        left: 0,
+                        background: '#1e1e1e',
+                        border: '1px solid #444',
+                        borderRadius: '6px',
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
+                        padding: '4px',
+                        zIndex: 5600,
+                        minWidth: '120px',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        {[
+                          ['solid','Solid'],
+                          ['dashed','Dashed'],
+                          ['dotted','Dotted'],
+                          ...(bottomToolbarApi.contextTool === 'rect' ? [['cloud','Cloud']] : [])
+                        ].map(([val, label]) => {
+                          const isOn = bottomToolbarApi.lineBorderStyle === val;
+                          return (
+                            <button
+                              key={val}
+                              onClick={() => {
+                                bottomToolbarApi.setLineBorderStyle(val);
+                                setShowStyleMenu(false);
+                              }}
+                              style={{
+                                display: 'block',
+                                width: '100%',
+                                padding: '6px 10px',
+                                background: isOn ? 'rgba(216,168,78,0.12)' : 'transparent',
+                                color: isOn ? '#d8a84e' : '#ddd',
+                                border: 'none',
+                                borderRadius: '4px',
+                                fontSize: '12px',
+                                fontFamily: FONT_FAMILY,
+                                textAlign: 'left',
+                                cursor: 'pointer'
+                              }}
+                              onMouseEnter={(e) => { if (!isOn) e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
+                              onMouseLeave={(e) => { if (!isOn) e.currentTarget.style.background = 'transparent'; }}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {/* 2026-05-25: Bump number input — only shows for rectangle when
+                    the border style is Cloud. Drives how big the cloud's wave
+                    bumps render. Mirrors the width input visual. */}
+                {bottomToolbarApi.contextTool === 'rect' && bottomToolbarApi.lineBorderStyle === 'cloud' && bottomToolbarApi.setCloudIntensity && (
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#bbb', fontSize: '11px', fontFamily: FONT_FAMILY }}>
+                    Bump
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      className="no-spin-buttons"
+                      value={bottomToolbarApi.cloudIntensity ?? 2}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw === '' || /^\d+$/.test(raw)) {
+                          const next = raw === '' ? 1 : Math.max(1, Math.min(20, parseInt(raw, 10)));
+                          bottomToolbarApi.setCloudIntensity(next);
+                        }
+                      }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                      style={{
+                        width: '36px',
+                        height: '20px',
+                        padding: '4px 4px',
+                        background: '#444',
+                        color: '#ddd',
+                        border: '1px solid transparent',
+                        borderRadius: '5px',
+                        fontSize: '12px',
+                        fontFamily: FONT_FAMILY,
+                        textAlign: 'center'
+                      }}
+                      title="Cloud bump size"
+                    />
+                  </label>
+                )}
+                {/* 2026-05-25: Arrow tool (or selected callout) — custom
+                    arrowhead menu that always opens downward and shows every
+                    option at once (native select scrolls / picks its own
+                    direction). Callouts have their own arrowhead end so the
+                    same picker drives both. */}
+                {(bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'callout') && bottomToolbarApi.setArrowheadStyle && (
+                  <div data-arrowhead-menu style={{ position: 'relative' }}>
+                    <button
+                      onClick={() => setShowArrowheadMenu(!showArrowheadMenu)}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      style={{
+                        height: '24px',
+                        padding: '0 22px 0 8px',
+                        background: '#444',
+                        color: '#ddd',
+                        border: '1px solid transparent',
+                        borderRadius: '5px',
+                        fontSize: '12px',
+                        fontFamily: FONT_FAMILY,
+                        cursor: 'pointer',
+                        backgroundImage:
+                          'linear-gradient(45deg, transparent 50%, #aaa 50%), linear-gradient(135deg, #aaa 50%, transparent 50%)',
+                        backgroundPosition: 'calc(100% - 11px) 10px, calc(100% - 7px) 10px',
+                        backgroundSize: '4px 4px, 4px 4px',
+                        backgroundRepeat: 'no-repeat'
+                      }}
+                      title="Arrowhead"
+                      aria-label="Arrowhead"
+                    >
+                      {ARROWHEAD_STYLE_LABELS[bottomToolbarApi.arrowheadStyle] || 'Solid Triangle'}
+                    </button>
+                    {showArrowheadMenu && (
+                      <div style={{
+                        position: 'absolute',
+                        top: 'calc(100% + 4px)',
+                        left: 0,
+                        background: '#1e1e1e',
+                        border: '1px solid #444',
+                        borderRadius: '6px',
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
+                        padding: '4px',
+                        zIndex: 5600,
+                        minWidth: '160px',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        {Object.entries(ARROWHEAD_STYLE_LABELS).map(([val, label]) => {
+                          const isOn = bottomToolbarApi.arrowheadStyle === val;
+                          return (
+                            <button
+                              key={val}
+                              onClick={() => {
+                                bottomToolbarApi.setArrowheadStyle(val);
+                                setShowArrowheadMenu(false);
+                              }}
+                              style={{
+                                display: 'block',
+                                width: '100%',
+                                padding: '6px 10px',
+                                background: isOn ? 'rgba(216,168,78,0.12)' : 'transparent',
+                                color: isOn ? '#d8a84e' : '#ddd',
+                                border: 'none',
+                                borderRadius: '4px',
+                                fontSize: '12px',
+                                fontFamily: FONT_FAMILY,
+                                textAlign: 'left',
+                                cursor: 'pointer'
+                              }}
+                              onMouseEnter={(e) => {
+                                if (!isOn) e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                              }}
+                              onMouseLeave={(e) => {
+                                if (!isOn) e.currentTarget.style.background = 'transparent';
+                              }}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {/* 2026-05-25: Rich-text edit entry button. Only renders when
+                    the user is on the text box / callout tool or has one of
+                    those selected. Disabled when nothing editable is picked.
+                    Clicking drops the user into text edit mode on the
+                    selected item — same path as double-clicking the text. */}
+                {bottomToolbarApi.onEnterTextEdit
+                  && (bottomToolbarApi.contextTool === 'text'
+                      || bottomToolbarApi.contextTool === 'callout'
+                      || !!bottomToolbarApi.richTextEditor) && (
+                  <button
+                    onClick={() => bottomToolbarApi.onEnterTextEdit()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    disabled={!bottomToolbarApi.canEnterTextEdit}
+                    style={{
+                      height: '24px',
+                      padding: '0 8px',
+                      background: bottomToolbarApi.richTextEditor ? 'rgba(216,168,78,0.18)' : '#444',
+                      color: bottomToolbarApi.richTextEditor
+                        ? '#d8a84e'
+                        : bottomToolbarApi.canEnterTextEdit ? '#ddd' : '#666',
+                      border: '1px solid transparent',
+                      borderRadius: '5px',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      fontFamily: FONT_FAMILY,
+                      cursor: bottomToolbarApi.canEnterTextEdit ? 'pointer' : 'not-allowed',
+                      opacity: bottomToolbarApi.canEnterTextEdit ? 1 : 0.5,
+                      lineHeight: 1,
+                    }}
+                    title={bottomToolbarApi.canEnterTextEdit
+                      ? 'Edit text'
+                      : 'Select a text box or callout to edit its text'}
+                    aria-label="Edit text"
+                    aria-pressed={!!bottomToolbarApi.richTextEditor}
+                  >
+                    Aa
+                  </button>
+                )}
+                </>
               </div>
-            </>
+              </div>
+            </div>
           )}
           {/* UX 2026-05-14: Survey toggle button moved to the new chrome-right-host
               rail (top slot). Reuses the same topToolbarApi.onSurveyToggle

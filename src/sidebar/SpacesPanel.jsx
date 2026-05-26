@@ -10,8 +10,7 @@ import {
   PointerSensor,
   closestCenter,
   useSensor,
-  useSensors,
-  DragOverlay
+  useSensors
 } from '@dnd-kit/core';
 import {
   SortableContext,
@@ -22,33 +21,9 @@ import { CSS } from '@dnd-kit/utilities';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
-const SpaceDragOverlay = React.memo(function SpaceDragOverlay({
-  space
-}) {
-  if (!space) return null;
-
-  return (
-    <div
-      style={{
-        background: '#2b2b2b',
-        borderRadius: '8px',
-        border: '1px solid rgba(74, 144, 226, 0.6)',
-        padding: '10px 12px',
-        minWidth: '220px',
-        maxWidth: '260px',
-        boxShadow: '0 12px 36px rgba(0, 0, 0, 0.45)',
-        opacity: 0.9,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '4px',
-        fontFamily: FONT_FAMILY
-      }}
-    >
-      <div style={{ fontSize: '13px', fontWeight: 600, color: '#e6e6e6' }}>
-        {space.name}
-      </div>
-    </div>
-  );
+const restrictSortableToVerticalAxis = ({ transform }) => ({
+  ...transform,
+  x: 0,
 });
 
 const SpaceSortableCard = React.memo(function SpaceSortableCard({
@@ -187,7 +162,9 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   const style = {
     transform: CSS.Transform.toString(transform),
     transition: transition || 'transform 180ms cubic-bezier(0.2, 0, 0.2, 1)',
-    marginBottom: '8px'
+    marginBottom: '8px',
+    position: 'relative',
+    zIndex: isDragging ? 1 : 'auto'
   };
 
   const isHighlighted = isSelected || isActive;
@@ -206,8 +183,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
             ? '0 4px 16px rgba(0, 0, 0, 0.18)'
             : '0 1px 2px rgba(0, 0, 0, 0.05)',
           opacity: isDragging ? 0.75 : 1,
-          transform: isDragging ? 'scale(0.98)' : 'none',
-          transition: 'opacity 0.18s ease, transform 0.18s ease'
+          transition: 'opacity 0.18s ease'
         }}
       >
         <div
@@ -1087,11 +1063,6 @@ const SpacesPanel = ({
     })
   );
 
-  const activeDragSpace = useMemo(
-    () => spaces.find(space => space.id === activeDragSpaceId) || null,
-    [activeDragSpaceId, spaces]
-  );
-
   const handleCreateSpace = useCallback(() => {
     const name = newSpaceName.trim() || `Space ${spaces.length + 1}`;
     if (onSpaceCreate) {
@@ -1389,6 +1360,7 @@ const SpacesPanel = ({
           <DndContext
             sensors={spaceSensors}
             collisionDetection={closestCenter}
+            modifiers={[restrictSortableToVerticalAxis]}
             onDragStart={handleSpaceDragStart}
             onDragEnd={handleSpaceDragEnd}
             onDragCancel={handleSpaceDragCancel}
@@ -1451,13 +1423,6 @@ const SpacesPanel = ({
                 );
               })}
             </SortableContext>
-            <DragOverlay>
-              {activeDragSpace && (
-                <SpaceDragOverlay
-                  space={activeDragSpace}
-                />
-              )}
-            </DragOverlay>
           </DndContext>
         )}
       </div>

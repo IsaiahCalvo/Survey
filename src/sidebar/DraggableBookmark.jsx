@@ -18,7 +18,8 @@ const DraggableBookmark = ({
   numPages,
   isSelected,
   onSelect,
-  recentlyDropped = false
+  recentlyDropped = false,
+  rowDragFeel = false
 }) => {
   const { active } = useDndContext();
   const isDraggingAny = !!active;
@@ -150,15 +151,19 @@ const DraggableBookmark = ({
 
   const style = {
     transform: CSS.Transform.toString(transform),
-    transition: isDragging
-      ? 'transform 0ms linear, opacity 60ms ease-out'
-      : `${resolvedTransition}, opacity 160ms ease-out`,
-    opacity: isDragging ? 0 : 1,
+    transition: rowDragFeel
+      ? transition
+      : isDragging
+        ? 'transform 0ms linear, opacity 60ms ease-out'
+        : `${resolvedTransition}, opacity 160ms ease-out`,
+    opacity: isDragging ? (rowDragFeel ? 0.8 : 0) : 1,
+    zIndex: isDragging && rowDragFeel ? 1 : undefined,
+    position: rowDragFeel ? 'relative' : undefined,
     willChange: 'transform, opacity',
-    width: isDragging && dimensionsRef.current ? `${dimensionsRef.current.width}px` : 'auto',
-    minWidth: isDragging && dimensionsRef.current ? `${dimensionsRef.current.width}px` : undefined,
-    height: isDragging && dimensionsRef.current ? `${dimensionsRef.current.height}px` : 'auto',
-    minHeight: isDragging && dimensionsRef.current ? `${dimensionsRef.current.height}px` : undefined,
+    width: !rowDragFeel && isDragging && dimensionsRef.current ? `${dimensionsRef.current.width}px` : 'auto',
+    minWidth: !rowDragFeel && isDragging && dimensionsRef.current ? `${dimensionsRef.current.width}px` : undefined,
+    height: !rowDragFeel && isDragging && dimensionsRef.current ? `${dimensionsRef.current.height}px` : 'auto',
+    minHeight: !rowDragFeel && isDragging && dimensionsRef.current ? `${dimensionsRef.current.height}px` : undefined,
     paddingLeft: isNested ? '16px' : '0',
     marginBottom: '1px',
   };

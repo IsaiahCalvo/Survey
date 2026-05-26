@@ -300,6 +300,11 @@ export const renderRect = (obj, index) => {
           stroke={obj.stroke || 'transparent'}
           strokeWidth={obj.strokeWidth || 0}
           strokeLinejoin="round"
+          /* 2026-05-25: Match non-cloud rectangles — when strokeUniform is on
+             the cloud path stays the picked width regardless of page zoom.
+             Without this the toolbar's width input looked like it did nothing
+             on clouds because the visible stroke scaled with the viewBox. */
+          vectorEffect={obj.strokeUniform ? 'non-scaling-stroke' : undefined}
           opacity={obj.opacity ?? 1}
           data-shape-id={shapeId}
           data-shape-kind="cloud-rect"
@@ -873,6 +878,12 @@ export const renderEllipse = (obj, index) => {
   const inset = !isHighlight && shouldInsetStroke(obj);
   const clipId = inset ? `clip-${shapeId}` : undefined;
 
+  // 2026-05-25: Honor strokeDashArray for ellipses (Border Style picker:
+  // dashed/dotted). Matches the rect renderer's pattern at line ~320.
+  const ellipseDashArrayAttr = Array.isArray(obj.strokeDashArray) && obj.strokeDashArray.length > 0
+    ? obj.strokeDashArray.join(' ')
+    : undefined;
+
   const ellEl = (
     <ellipse
       cx={cx}
@@ -883,6 +894,7 @@ export const renderEllipse = (obj, index) => {
       fill={obj.fill || 'transparent'}
       stroke={obj.stroke || 'transparent'}
       strokeWidth={obj.strokeWidth || 0}
+      strokeDasharray={ellipseDashArrayAttr}
       opacity={obj.opacity ?? 1}
       style={isHighlight ? { mixBlendMode: 'multiply' } : undefined}
       data-shape-id={shapeId}
@@ -916,6 +928,7 @@ export const renderEllipse = (obj, index) => {
       fill={obj.fill || 'transparent'}
       stroke={obj.stroke || 'transparent'}
       strokeWidth={sw}
+      strokeDasharray={ellipseDashArrayAttr}
       opacity={obj.opacity ?? 1}
       data-shape-id={shapeId}
       data-shape-kind="ellipse"
@@ -971,8 +984,13 @@ export const renderText = (obj, index, liveBounds = null, hideText = false) => {
     : (obj.text || '');
 
   const key = `text-${obj.id || index}`;
-  // Add buffer for descenders (j,p,g,q,y) + bottom breathing room
-  const fontSize = obj.fontSize || 16;
+  // Add buffer for descenders (j,p,g,q,y) + bottom breathing room.
+  // 2026-05-25: live edits (size input in the rich-text strip) write
+  // fontSize on liveBounds — prefer it so the rendered glyph height
+  // matches the toolbar value without waiting for commit.
+  const fontSize = (liveBounds && Number.isFinite(Number(liveBounds.fontSize)) && Number(liveBounds.fontSize) > 0)
+    ? Number(liveBounds.fontSize)
+    : (obj.fontSize || 16);
   const descenderBuffer = fontSize * 0.35;
   const displayHeight = effectiveHeight + descenderBuffer;
   // UX (Plan 15-04 Issue 4, 2026-04-17): gutter between the border and text
@@ -996,6 +1014,20 @@ export const renderText = (obj, index, liveBounds = null, hideText = false) => {
 
   return (
     <g key={key} opacity={obj.opacity ?? 1} transform={rotateTransform}>
+      {/* 2026-05-25: Background fill rect — painted only when the textbox
+          carries a non-empty backgroundColor (the toolbar Fill picker writes
+          this on new text boxes). Empty / 'transparent' stays transparent so
+          legacy text annotations look identical. Sits behind the border rect
+          and the glyph foreignObject. */}
+      {obj.backgroundColor && obj.backgroundColor !== 'transparent' ? (
+        <rect
+          x={left}
+          y={top}
+          width={effectiveWidth}
+          height={effectiveHeight}
+          fill={obj.backgroundColor}
+        />
+      ) : null}
       {/* Border rect: drawn only when the textbox carries a positive strokeWidth.
           PDF-imported FreeText annotations with BS.W>0 (see
           pdfAnnotationImporter.convertFreeTextToFabricTextbox) and user-created
@@ -1051,17 +1083,31 @@ export const renderText = (obj, index, liveBounds = null, hideText = false) => {
             width: innerWidth,
             height: innerDisplayHeight,
             fontSize: `${fontSize}px`,
-            fontFamily: obj.fontFamily || 'sans-serif',
-            fontWeight: obj.fontWeight || 'normal',
-            fontStyle: obj.fontStyle || 'normal',
-            color: obj.fill || '#000',
-            textAlign: obj.textAlign || 'left',
+            fontFamily: (liveBounds && liveBounds.fontFamily) || obj.fontFamily || 'sans-serif',
+            // 2026-05-25: liveBounds rich-text fields win during edit so the
+            // SVG (the visible truth) mirrors the live Fabric Textbox as the
+            // user toggles Bold / Italic / Underline / Strike. Outside edit
+            // the stored annotation fields drive paint, same as before.
+            fontWeight: (liveBounds && liveBounds.fontWeight) || obj.fontWeight || 'normal',
+            fontStyle: (liveBounds && liveBounds.fontStyle) || obj.fontStyle || 'normal',
+            color: (liveBounds && liveBounds.fill) || obj.fill || '#000',
+            textAlign: (liveBounds && liveBounds.textAlign) || obj.textAlign || 'left',
+            // 2026-05-25: vertical anchor — flex column with justifyContent
+            // drives top / middle / bottom placement of the text inside the
+            // textbox border. Default 'top' matches the existing visual
+            // (text hugs the top of the box).
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: (() => {
+              const v = (liveBounds && liveBounds.verticalAlign) || obj.verticalAlign || 'top';
+              return v === 'middle' ? 'center' : v === 'bottom' ? 'flex-end' : 'flex-start';
+            })(),
             // KAL-34: text decoration honors underline + linethrough flags set
             // via AnnotationPropertiesPanel. Both can stack ("underline line-
             // through") to match Fabric.js text-decoration semantics.
             textDecoration: [
-              obj.underline ? 'underline' : null,
-              obj.linethrough ? 'line-through' : null,
+              ((liveBounds && liveBounds.underline != null) ? liveBounds.underline : obj.underline) ? 'underline' : null,
+              ((liveBounds && liveBounds.linethrough != null) ? liveBounds.linethrough : obj.linethrough) ? 'line-through' : null,
             ].filter(Boolean).join(' ') || 'none',
             // UX: Fabric 5.x textbox per-line pixel step =
             // `fontSize × lineHeight × _fontSizeMult` where `_fontSizeMult` is
@@ -1434,7 +1480,14 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
                 // center` only uses free space).
                 display: 'flex',
                 flexDirection: 'column',
-                justifyContent: 'center',
+                // 2026-05-25: vertical anchor reads callout.style.verticalAlign
+                // — default 'middle' so legacy callouts (no field set) keep
+                // their long-standing centered look. Top / bottom land via
+                // the new 3x3 alignment grid in the rich-text strip.
+                justifyContent: (() => {
+                  const v = callout.style?.verticalAlign || 'middle';
+                  return v === 'top' ? 'flex-start' : v === 'bottom' ? 'flex-end' : 'center';
+                })(),
                 textAlign: callout.style?.textAlign || 'left',
                 fontKerning: 'none',
                 textRendering: 'geometricPrecision',
@@ -1442,6 +1495,15 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
                 fontSize: `${callout.style?.fontSize || 12}px`,
                 fontFamily: safeFontFamily,
                 color: callout.style?.fontColor || callout.style?.textColor || '#000',
+                // 2026-05-25: rich-text style flags from the callout schema
+                // so the SVG view honors bold / italic / underline /
+                // strikethrough toggled from the top strip during edit.
+                fontWeight: callout.style?.bold ? 'bold' : 'normal',
+                fontStyle: callout.style?.italic ? 'italic' : 'normal',
+                textDecoration: [
+                  callout.style?.underline ? 'underline' : null,
+                  callout.style?.strikethrough ? 'line-through' : null,
+                ].filter(Boolean).join(' ') || 'none',
                 // UX 2026-04-19 — hidden on the inner div as well so tight
                 // boxes clip cleanly at the border.
                 overflow: 'hidden',

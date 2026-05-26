@@ -97,6 +97,31 @@ export function toFabricGroup(reactCallout, pageSize) {
   const stroke = style.borderColor || style.lineColor || '#1e293b';
   const strokeWidth = style.lineThickness || 2;
 
+  // 2026-05-25: Resolve the textbox fill so edit mode matches view mode.
+  // Previously hard-coded to '' (transparent) per a 2026-04-17 decision that
+  // pre-dated the context-aware toolbar's fill picker. Now that the toolbar
+  // can set style.fillColor + style.fillOpacity on a new callout, edit mode
+  // must honour it — otherwise the user picks a fill, draws the callout,
+  // and only the border ever shows because edit mode mounts immediately on
+  // creation and never paints the chosen fill. Legacy callouts with no
+  // fillColor or with the literal 'transparent' keyword still render empty.
+  const fillColorRaw = style.fillColor;
+  const fillOpacityRaw = style.fillOpacity;
+  let fillBg = '';
+  if (fillColorRaw && fillColorRaw !== 'transparent') {
+    const opacity = Math.max(0, Math.min(1, fillOpacityRaw ?? 1));
+    if (opacity > 0) {
+      if (/^#[0-9a-fA-F]{6}$/.test(fillColorRaw)) {
+        const r = parseInt(fillColorRaw.slice(1, 3), 16);
+        const g = parseInt(fillColorRaw.slice(3, 5), 16);
+        const b = parseInt(fillColorRaw.slice(5, 7), 16);
+        fillBg = `rgba(${r}, ${g}, ${b}, ${opacity})`;
+      } else {
+        fillBg = fillColorRaw;
+      }
+    }
+  }
+
   // Plain JSON Fabric object shapes. `fabric.util.enlivenObjects` in
   // loadCalloutAnnotation will materialize these into live instances with
   // `type: 'line' | 'rect' | 'circle' | 'textbox'` as the discriminator.
@@ -186,7 +211,7 @@ export function toFabricGroup(reactCallout, pageSize) {
     cursorColor: '#007AFF',
     editingBorderColor: 'transparent',
     borderColor: 'transparent',
-    backgroundColor: '',
+    backgroundColor: fillBg,
     textBackgroundColor: '',
     hasBorders: false,
     hasControls: false,

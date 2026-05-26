@@ -2,27 +2,525 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import {
   DndContext,
   DragOverlay,
+  KeyboardSensor,
+  MeasuringStrategy,
   PointerSensor,
-  pointerWithin,
-  rectIntersection,
+  closestCenter,
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import Icon from '../Icons';
-import DraggableBookmark from './DraggableBookmark';
-import DraggableBookmarkFolder from './DraggableBookmarkFolder';
-import DropSlot from './DropSlot';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
-const EXPAND_DELAY_MS = 320;
-const COLLAPSE_DELAY_MS = 360;
+const BOOKMARK_INDENTATION_WIDTH = 34;
+const BOOKMARK_TREE_CONTENT_WIDTH = 404;
+const GROUP_AUTO_EXPAND_DELAY_MS = 420;
+const GROUP_AUTO_EXPAND_OFFSET_PX = 24;
+const GROUP_COLLAPSE_ANIMATION_MS = 240;
+const GROUP_DRAG_SETTLE_COLLAPSE_DELAY_MS = 70;
+const GROUP_POST_COLLAPSE_LAYOUT_LOCK_MS = 260;
+const bookmarkTreeMeasuring = {
+  droppable: {
+    strategy: MeasuringStrategy.Always,
+  },
+};
 
 // Helper to generate unique IDs
 const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-const createSlotId = (parentId, index) =>
-  parentId ? `${parentId}::slot::${index}` : `root::slot::${index}`;
+const restrictToVerticalAxis = ({ transform }) => ({
+  ...transform,
+  x: 0,
+});
+
+const getDragDepth = (offset, indentationWidth) => Math.round(offset / indentationWidth);
+
+const flattenBookmarkTreeForSort = (items, parentId = null, depth = 0) => (
+  items.reduce((acc, item, index) => [
+    ...acc,
+    { ...item, parentId, depth, index },
+    ...flattenBookmarkTreeForSort(item.children || [], item.id, depth + 1),
+  ], [])
+);
+
+const removeChildrenOf = (items, ids) => {
+  const excludedParentIds = [...ids];
+  return items.filter((item) => {
+    if (item.parentId && excludedParentIds.includes(item.parentId)) {
+      if (item.children?.length) {
+        excludedParentIds.push(item.id);
+      }
+      return false;
+    }
+    return true;
+  });
+};
+
+const buildSortableBookmarkTree = (flattenedItems) => {
+  const root = { id: 'root', children: [] };
+  const nodes = { root };
+  const items = flattenedItems.map(({ depth, index, parentId, ...item }) => ({
+    ...item,
+    parentId,
+    children: [],
+  }));
+
+  for (const item of items) {
+    const parentId = item.parentId ?? 'root';
+    const parent = nodes[parentId] ?? items.find((candidate) => candidate.id === parentId) ?? root;
+    delete item.parentId;
+    nodes[item.id] = item;
+    parent.children.push(item);
+  }
+
+  return root.children.map((item) => ({
+    ...item,
+    children: item.children || [],
+  }));
+};
+
+const getBookmarkProjection = (items, activeId, overId, dragOffset, indentationWidth) => {
+  const overItemIndex = items.findIndex(({ id }) => id === overId);
+  const activeItemIndex = items.findIndex(({ id }) => id === activeId);
+  if (overItemIndex === -1 || activeItemIndex === -1) return null;
+
+  const activeItem = items[activeItemIndex];
+  const newItems = arrayMove(items, activeItemIndex, overItemIndex);
+  const previousItem = newItems[overItemIndex - 1];
+  const nextItem = newItems[overItemIndex + 1];
+  const canNestUnderPrevious = previousItem?.type === 'folder';
+  const maxDepth = previousItem ? previousItem.depth + (canNestUnderPrevious ? 1 : 0) : 0;
+  const minDepth = nextItem ? nextItem.depth : 0;
+  const dragDepth = getDragDepth(dragOffset, indentationWidth);
+  const projectedDepth = activeItem.depth + dragDepth;
+  const depth = Math.max(minDepth, Math.min(projectedDepth, maxDepth));
+
+  const getParentId = () => {
+    if (depth === 0 || !previousItem) return null;
+    if (depth === previousItem.depth) return previousItem.parentId;
+    if (depth > previousItem.depth) {
+      return previousItem.type === 'folder' ? previousItem.id : previousItem.parentId;
+    }
+
+    return newItems
+      .slice(0, overItemIndex)
+      .reverse()
+      .find((item) => item.depth === depth)?.parentId ?? null;
+  };
+
+  return { depth, maxDepth, minDepth, parentId: getParentId() };
+};
+
+const getAutoExpandTargetFolder = (items, activeId, overId, dragOffset) => {
+  if (dragOffset < GROUP_AUTO_EXPAND_OFFSET_PX) return null;
+
+  const overItemIndex = items.findIndex(({ id }) => id === overId);
+  const activeItemIndex = items.findIndex(({ id }) => id === activeId);
+  if (overItemIndex === -1 || activeItemIndex === -1) return null;
+
+  const reorderedItems = arrayMove(items, activeItemIndex, overItemIndex);
+  const reorderedOverIndex = reorderedItems.findIndex(({ id }) => id === overId);
+  const candidates = [
+    items[overItemIndex],
+    items[overItemIndex - 1],
+    items[overItemIndex + 1],
+    reorderedItems[reorderedOverIndex],
+    reorderedItems[reorderedOverIndex - 1],
+    reorderedItems[reorderedOverIndex + 1],
+  ].filter((item, index, list) => item && list.findIndex((candidate) => candidate?.id === item.id) === index);
+
+  return candidates.find((item) => (
+    item?.type === 'folder' &&
+    item.id !== activeId &&
+    item.collapsed &&
+    item.children?.length > 0
+  )) ?? null;
+};
+
+const BookmarkTreeRow = ({
+  item,
+  depth,
+  projectedDepth,
+  activeDepth,
+  isEditMode,
+  isClone = false,
+  isDraggingAny = false,
+  isVisuallyCollapsed = false,
+  groupAnimationState = null,
+  isGroupAnimationActive = false,
+  childCount = 0,
+  isSelected = false,
+  numPages,
+  onToggle,
+  onNavigate,
+  onSelect,
+  onRename,
+  onPageChange,
+  onAddChild,
+  onDelete,
+}) => {
+  const {
+    attributes,
+    listeners,
+    setDraggableNodeRef,
+    setDroppableNodeRef,
+    transform,
+    transition,
+    isDragging,
+    isSorting,
+  } = useSortable({
+    id: item.id,
+    animateLayoutChanges: ({ isSorting, wasDragging }) => (
+      isSorting || wasDragging || groupAnimationState || isGroupAnimationActive ? false : true
+    ),
+  });
+
+  const [editName, setEditName] = React.useState(item.name || '');
+  const [editPage, setEditPage] = React.useState(item.pageIds?.[0]?.toString() ?? '');
+
+  React.useEffect(() => {
+    setEditName(item.name || '');
+  }, [item.name]);
+
+  React.useEffect(() => {
+    setEditPage(item.pageIds?.[0]?.toString() ?? '');
+  }, [item.pageIds]);
+
+  const rowDepth = projectedDepth ?? depth;
+  const isFolder = item.type === 'folder';
+  const isCollapsed = isFolder && item.collapsed && item.children?.length;
+  const handleProps = isClone ? {} : { ...attributes, ...listeners };
+  const rowInset = rowDepth * BOOKMARK_INDENTATION_WIDTH;
+  const cloneBaseInset = isClone ? (activeDepth ?? depth) * BOOKMARK_INDENTATION_WIDTH : 0;
+  const cloneRelativeInset = isClone ? (rowDepth - (activeDepth ?? depth)) * BOOKMARK_INDENTATION_WIDTH : 0;
+  const cloneWidth = BOOKMARK_TREE_CONTENT_WIDTH - cloneBaseInset;
+  const dragTranslateY = transform?.y ?? 0;
+  const isActiveRow = isDragging && !isClone;
+  const sortableTransform = isActiveRow
+    ? CSS.Translate.toString({ x: 0, y: dragTranslateY, scaleX: 1, scaleY: 1 })
+    : isGroupAnimationActive
+      ? undefined
+      : CSS.Translate.toString(transform);
+  const fixedRightInset = isActiveRow
+    ? Math.max(0, (rowDepth - (activeDepth ?? depth)) * BOOKMARK_INDENTATION_WIDTH)
+    : 0;
+
+  const commitName = () => {
+    const nextName = editName.trim();
+    if (nextName && nextName !== item.name) {
+      onRename?.(item.id, nextName);
+    } else {
+      setEditName(item.name || '');
+    }
+  };
+
+  const handlePageInputChange = (value) => {
+    const sanitized = value.replace(/[^\d]/g, '');
+    if (!sanitized) {
+      setEditPage('');
+      return;
+    }
+    const numericValue = parseInt(sanitized, 10);
+    if (Number.isNaN(numericValue) || numericValue < 1) {
+      setEditPage('');
+      return;
+    }
+    setEditPage(numPages && numericValue > numPages ? numPages.toString() : numericValue.toString());
+  };
+
+  const commitPage = () => {
+    const originalPage = item.pageIds?.[0]?.toString() ?? '';
+    const trimmedValue = editPage.trim();
+    if (!trimmedValue) {
+      setEditPage(originalPage);
+      return;
+    }
+
+    const pageNumber = parseInt(trimmedValue, 10);
+    if (Number.isNaN(pageNumber) || pageNumber < 1 || (numPages && pageNumber > numPages)) {
+      alert(numPages ? `Please enter a page number between 1 and ${numPages}.` : 'Please enter a valid page number.');
+      setEditPage(originalPage);
+      return;
+    }
+
+    if (item.pageIds?.[0] !== pageNumber) {
+      onPageChange?.(item.id, pageNumber);
+    }
+  };
+
+  return (
+    <div
+      ref={isClone ? undefined : setDroppableNodeRef}
+      data-bookmark-row-id={isClone ? undefined : item.id}
+      style={{
+        listStyle: 'none',
+        margin: 0,
+        padding: '2px 0',
+        opacity: isDragging && !isClone ? 0.32 : 1,
+        position: 'relative',
+        width: isClone ? `${cloneWidth}px` : isActiveRow ? `${BOOKMARK_TREE_CONTENT_WIDTH}px` : 'auto',
+        boxSizing: 'border-box',
+        marginLeft: (isClone || isActiveRow) ? undefined : `${rowInset}px`,
+        paddingLeft: 0,
+        overflow: groupAnimationState ? 'hidden' : undefined,
+        transition: isClone ? 'padding-left 120ms ease-out' : undefined,
+        transformOrigin: 'top center',
+        animation: groupAnimationState === 'expanding'
+          ? `bookmarkGroupExpand ${GROUP_COLLAPSE_ANIMATION_MS}ms ease-out both`
+          : groupAnimationState === 'collapsing'
+            ? `bookmarkGroupCollapse ${GROUP_COLLAPSE_ANIMATION_MS}ms ease-in both`
+            : undefined,
+      }}
+    >
+      <div
+        ref={isClone ? undefined : setDraggableNodeRef}
+        onClick={() => {
+          if (isClone || isEditMode) return;
+          onSelect?.(item.id);
+          if (!isFolder) onNavigate?.(item);
+        }}
+        style={{
+          transform: isClone ? undefined : sortableTransform,
+          transition: groupAnimationState || isGroupAnimationActive ? undefined : transition,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          height: 34,
+          padding: '4px 6px',
+          borderRadius: 6,
+          background: isClone ? '#2b2b2b' : isSelected ? '#30343a' : '#252525',
+          border: '1px solid #333',
+          color: '#ddd',
+          boxShadow: isClone ? '0 12px 24px rgba(0,0,0,0.32)' : 'none',
+          cursor: isEditMode ? 'default' : 'pointer',
+          pointerEvents: isSorting ? 'none' : undefined,
+          marginLeft: isClone ? `${cloneRelativeInset}px` : isActiveRow ? `${rowInset}px` : undefined,
+          width: isClone
+            ? `calc(100% - ${cloneRelativeInset}px)`
+            : isActiveRow
+              ? `calc(100% - ${rowInset + fixedRightInset}px)`
+              : '100%',
+          boxSizing: 'border-box',
+        }}
+        onMouseEnter={(event) => {
+          if (!isSelected && !isClone) event.currentTarget.style.background = '#2b2b2b';
+        }}
+        onMouseLeave={(event) => {
+          if (!isSelected && !isClone) event.currentTarget.style.background = '#252525';
+        }}
+      >
+        <div
+          {...handleProps}
+          title="Drag to reorder"
+          style={{
+            width: 24,
+            height: 24,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#888',
+            cursor: isDraggingAny ? 'grabbing' : 'grab',
+            userSelect: 'none',
+            touchAction: 'none',
+            flexShrink: 0,
+          }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          ☰
+        </div>
+        <button
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggle?.(item.id);
+          }}
+          disabled={!isFolder || !item.children?.length || isClone}
+          title={(isCollapsed || isVisuallyCollapsed) ? 'Expand group' : 'Collapse group'}
+          style={{
+            width: 20,
+            height: 20,
+            border: 0,
+            padding: 0,
+            background: 'transparent',
+            color: isFolder && item.children?.length ? '#aaa' : 'transparent',
+            cursor: isFolder && item.children?.length && !isClone ? 'pointer' : 'default',
+            transform: (isCollapsed || isVisuallyCollapsed) ? 'rotate(-90deg)' : 'rotate(0deg)',
+            transition: `transform ${GROUP_COLLAPSE_ANIMATION_MS}ms ease`,
+            flexShrink: 0,
+          }}
+        >
+          ▾
+        </button>
+        <Icon name={isFolder ? 'folder' : 'bookmark'} size={13} color={isFolder ? '#8fb7ff' : '#aaa'} />
+        {isEditMode && !isClone ? (
+          <input
+            value={editName}
+            onChange={(event) => setEditName(event.target.value)}
+            onBlur={commitName}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                commitName();
+                event.currentTarget.blur();
+              } else if (event.key === 'Escape') {
+                setEditName(item.name || '');
+                event.currentTarget.blur();
+              }
+            }}
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              background: '#1b1b1b',
+              border: '1px solid #3a3a3a',
+              color: '#ddd',
+              borderRadius: 5,
+              height: 24,
+              padding: '0 7px',
+              fontSize: 12,
+              outline: 'none',
+              fontFamily: FONT_FAMILY,
+            }}
+          />
+        ) : (
+          <span
+            style={{
+              flex: 1,
+              minWidth: 0,
+              color: '#ddd',
+              fontSize: 13,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              userSelect: 'none',
+            }}
+          >
+            {item.name}
+          </span>
+        )}
+        {!isFolder && (
+          isEditMode && !isClone ? (
+            <input
+              value={editPage}
+              onChange={(event) => handlePageInputChange(event.target.value)}
+              onBlur={commitPage}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  commitPage();
+                  event.currentTarget.blur();
+                } else if (event.key === 'Escape') {
+                  setEditPage(item.pageIds?.[0]?.toString() ?? '');
+                  event.currentTarget.blur();
+                }
+              }}
+              onClick={(event) => event.stopPropagation()}
+              inputMode="numeric"
+              pattern="[0-9]*"
+              style={{
+                width: 38,
+                background: '#1b1b1b',
+                border: '1px solid #3a3a3a',
+                color: '#ddd',
+                borderRadius: 5,
+                height: 24,
+                padding: '0 6px',
+                fontSize: 12,
+                textAlign: 'center',
+                outline: 'none',
+                fontFamily: FONT_FAMILY,
+              }}
+            />
+          ) : (
+            item.pageIds?.[0] ? (
+              <span style={{ width: 56, color: '#aaa', fontSize: 12, textAlign: 'right', flexShrink: 0, userSelect: 'none' }}>
+                Page {item.pageIds[0]}
+              </span>
+            ) : null
+          )
+        )}
+        {isFolder && !isClone && (
+          <button
+            onClick={(event) => {
+              event.stopPropagation();
+              onAddChild?.(item.id);
+            }}
+            title="Add bookmark to group"
+            style={{
+              width: 34,
+              height: 24,
+              background: '#1b1b1b',
+              border: '1px solid #3a3a3a',
+              color: '#8fb7ff',
+              borderRadius: 5,
+              padding: 0,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <Icon name="plus" size={12} color="#8fb7ff" />
+          </button>
+        )}
+        {isEditMode && !isClone && (
+          <button
+            onClick={(event) => {
+              event.stopPropagation();
+              if (window.confirm(`Delete ${isFolder ? 'group' : 'bookmark'} "${item.name}"?`)) {
+                onDelete?.(item.id);
+              }
+            }}
+            title="Delete"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              padding: '2px 4px',
+              cursor: 'pointer',
+              borderRadius: 4,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <Icon name="trash" size={12} color="#ff6b6b" />
+          </button>
+        )}
+        {isClone && childCount > 1 && (
+          <span style={{
+            minWidth: 20,
+            height: 20,
+            borderRadius: 999,
+            background: '#4A90E2',
+            color: '#fff',
+            fontSize: 11,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '0 6px',
+          }}>
+            {childCount}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const countTreeChildren = (items, id) => {
+  const find = (list) => {
+    for (const item of list) {
+      if (item.id === id) return item;
+      const child = find(item.children || []);
+      if (child) return child;
+    }
+    return null;
+  };
+  const count = (list) => list.reduce((sum, item) => sum + 1 + count(item.children || []), 0);
+  const item = find(items);
+  return item ? count(item.children || []) : 0;
+};
 
 const BookmarksPanel = ({
   bookmarks,
@@ -31,12 +529,15 @@ const BookmarksPanel = ({
   onBookmarkDelete,
   onNavigateToPage,
   pageNum,
-  numPages
+  numPages,
+  initialEditMode = false,
+  initialExpandedFolders = [],
+  rowDragFeel = false
 }) => {
-  const [expandedFolders, setExpandedFolders] = useState(new Set());
+  const [expandedFolders, setExpandedFolders] = useState(() => new Set(initialExpandedFolders));
   const [selectedBookmarkId, setSelectedBookmarkId] = useState(null);
   const [showCreateMenu, setShowCreateMenu] = useState(false);
-  const [isEditMode, setIsEditMode] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(initialEditMode);
   const [newBookmarkName, setNewBookmarkName] = useState('');
   const [newBookmarkPages, setNewBookmarkPages] = useState('');
   const [showBookmarkGroupModal, setShowBookmarkGroupModal] = useState(false);
@@ -50,23 +551,22 @@ const BookmarksPanel = ({
   // Drag-and-drop state
   const [activeId, setActiveId] = useState(null);
   const [overId, setOverId] = useState(null);
-  const [recentlyDroppedId, setRecentlyDroppedId] = useState(null);
-  const [draggedItemInfo, setDraggedItemInfo] = useState(null);
-  const [pendingDropTarget, setPendingDropTarget] = useState(null);
+  const [offsetLeft, setOffsetLeft] = useState(0);
+  const [dragMotionTick, setDragMotionTick] = useState(0);
+  const [collapsingFolderIds, setCollapsingFolderIds] = useState([]);
+  const [expandingFolderIds, setExpandingFolderIds] = useState([]);
+  const [collapseLayoutLock, setCollapseLayoutLock] = useState(false);
 
-  const expansionTimersRef = useRef(new Map());
-  const collapseTimersRef = useRef(new Map());
+  const collapseTimeoutsRef = useRef(new Map());
+  const expandTimeoutsRef = useRef(new Map());
+  const collapseLayoutLockTimeoutRef = useRef(null);
   const autoExpandedFoldersRef = useRef(new Set());
-  const lastHoverFolderRef = useRef(null);
-  const lastCollisionRef = useRef([]);
+  const autoExpandTimerRef = useRef(null);
+  const autoExpandFolderRef = useRef(null);
+  const pointerPositionRef = useRef(null);
+  const pointerMoveListenerRef = useRef(null);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 12,
-      },
-    }),
-  );
+  const sensors = useSensors(useSensor(PointerSensor, {}), useSensor(KeyboardSensor, {}));
 
   // Build hierarchical tree from flat bookmarks array
   const buildTree = useCallback((items) => {
@@ -113,18 +613,31 @@ const BookmarksPanel = ({
     return rootItems;
   }, []);
 
-  const bookmarkTree = useMemo(() => buildTree(bookmarks || []), [bookmarks, buildTree]);
+  const bookmarkTree = useMemo(() => {
+    const applyCollapseState = (items) => items.map((item) => {
+      const children = applyCollapseState(item.children || []);
+      return {
+        ...item,
+        children,
+        collapsed: item.type === 'folder' && children.length ? !expandedFolders.has(item.id) : undefined,
+      };
+    });
+    return applyCollapseState(buildTree(bookmarks || []));
+  }, [bookmarks, buildTree, expandedFolders]);
 
-  // Get all item IDs for SortableContext
-  const getAllItemIds = useMemo(() => {
-    const collect = (list) =>
-      list.flatMap((item) =>
-        item.type === 'folder' && item.children?.length
-          ? [item.id, ...collect(item.children)]
-          : [item.id]
-      );
-    return collect(bookmarkTree);
-  }, [bookmarkTree]);
+  const flattenedItems = useMemo(() => {
+    const flattenedTree = flattenBookmarkTreeForSort(bookmarkTree);
+    const collapsedItems = flattenedTree.reduce((acc, { children, collapsed, id }) => (
+      collapsed && children?.length ? [...acc, id] : acc
+    ), []);
+    return removeChildrenOf(flattenedTree, activeId ? [activeId, ...collapsedItems] : collapsedItems);
+  }, [activeId, bookmarkTree]);
+
+  const projected = activeId && overId
+    ? getBookmarkProjection(flattenedItems, activeId, overId, offsetLeft, BOOKMARK_INDENTATION_WIDTH)
+    : null;
+  const sortedIds = useMemo(() => flattenedItems.map(({ id }) => id), [flattenedItems]);
+  const activeSortableItem = activeId ? flattenedItems.find(({ id }) => id === activeId) : null;
 
   // Find item in tree
   const findItem = useCallback((id, list, parent = null) => {
@@ -141,423 +654,244 @@ const BookmarksPanel = ({
     return null;
   }, []);
 
-  const getActiveItem = useCallback((id) => {
-    const lookup = (list) => {
-      for (const entry of list) {
-        if (entry.id === id) return entry;
-        if (entry.type === 'folder' && entry.children) {
-          const nested = lookup(entry.children);
-          if (nested) return nested;
-        }
-      }
-    };
-    return lookup(bookmarkTree);
-  }, [bookmarkTree]);
-
-  const expandFolder = useCallback((folderId, options = {}) => {
-    const { trackAuto = false } = options;
-    let added = false;
-    setExpandedFolders((prev) => {
-      if (prev.has(folderId)) return prev;
-      const next = new Set(prev);
-      next.add(folderId);
-      added = true;
-      return next;
-    });
-    if (trackAuto && added) {
-      autoExpandedFoldersRef.current.add(folderId);
+  const clearAutoExpandTimer = useCallback(() => {
+    if (autoExpandTimerRef.current) {
+      clearTimeout(autoExpandTimerRef.current);
+      autoExpandTimerRef.current = null;
     }
+    autoExpandFolderRef.current = null;
   }, []);
 
-  const collapseFolders = useCallback((folderIds) => {
-    const ids = Array.from(folderIds);
-    if (!ids.length) return;
-    setExpandedFolders((prev) => {
-      let changed = false;
-      const next = new Set(prev);
-      ids.forEach((id) => {
-        if (next.delete(id)) {
-          changed = true;
-        }
-      });
-      return changed ? next : prev;
-    });
-    ids.forEach((id) => autoExpandedFoldersRef.current.delete(id));
-  }, []);
-
-  const collapseAutoExpandedFolders = useCallback((keepId = null) => {
-    const ids = Array.from(autoExpandedFoldersRef.current);
-    autoExpandedFoldersRef.current.clear();
-    const toCollapse = keepId ? ids.filter((id) => id !== keepId) : ids;
-    if (toCollapse.length) {
-      collapseFolders(toCollapse);
+  const getGroupAnimationState = useCallback((item) => {
+    let currentParentId = item.parentId;
+    while (currentParentId) {
+      if (collapsingFolderIds.includes(currentParentId)) return 'collapsing';
+      if (expandingFolderIds.includes(currentParentId)) return 'expanding';
+      currentParentId = flattenedItems.find((candidate) => candidate.id === currentParentId)?.parentId;
     }
-  }, [collapseFolders]);
+    return null;
+  }, [collapsingFolderIds, expandingFolderIds, flattenedItems]);
 
-  const cancelExpansionTimer = useCallback((folderId) => {
-    const timer = expansionTimersRef.current.get(folderId);
-    if (timer) {
-      clearTimeout(timer);
-      expansionTimersRef.current.delete(folderId);
-    }
-  }, []);
+  const animateCollapseFolders = useCallback((folderIds) => {
+    const uniqueFolderIds = [...new Set(folderIds.filter(Boolean))];
+    if (!uniqueFolderIds.length) return;
 
-  const cancelCollapseTimer = useCallback((folderId) => {
-    const timer = collapseTimersRef.current.get(folderId);
-    if (timer) {
-      clearTimeout(timer);
-      collapseTimersRef.current.delete(folderId);
-    }
-  }, []);
+    setExpandingFolderIds((ids) => ids.filter((folderId) => !uniqueFolderIds.includes(folderId)));
+    setCollapsingFolderIds((ids) => [...new Set([...ids, ...uniqueFolderIds])]);
 
-  const scheduleExpansion = useCallback((folderId) => {
-    if (expansionTimersRef.current.has(folderId)) return;
+    uniqueFolderIds.forEach((folderId) => {
+      const pendingCollapse = collapseTimeoutsRef.current.get(folderId);
+      if (pendingCollapse) clearTimeout(pendingCollapse);
 
-    const timer = setTimeout(() => {
-      expansionTimersRef.current.delete(folderId);
-      expandFolder(folderId, { trackAuto: true });
-      cancelCollapseTimer(folderId);
-    }, EXPAND_DELAY_MS);
-
-    expansionTimersRef.current.set(folderId, timer);
-  }, [expandFolder, cancelCollapseTimer]);
-
-  const scheduleCollapse = useCallback((folderId) => {
-    if (collapseTimersRef.current.has(folderId)) return;
-
-    const timer = setTimeout(() => {
-      collapseTimersRef.current.delete(folderId);
-      collapseFolders([folderId]);
-    }, COLLAPSE_DELAY_MS);
-
-    collapseTimersRef.current.set(folderId, timer);
-  }, [collapseFolders]);
-
-  const clearAllTimers = useCallback(() => {
-    expansionTimersRef.current.forEach((timer) => clearTimeout(timer));
-    collapseTimersRef.current.forEach((timer) => clearTimeout(timer));
-    expansionTimersRef.current.clear();
-    collapseTimersRef.current.clear();
-  }, []);
-
-  const handleDragStart = useCallback((event) => {
-    const activeKey = event.active.id;
-    setActiveId(activeKey);
-    setRecentlyDroppedId(null);
-    autoExpandedFoldersRef.current.clear();
-    lastCollisionRef.current = [];
-
-    const activeLocation = findItem(activeKey, bookmarkTree);
-    const rect = event.active.rect.current;
-    const height = rect?.initial?.height ?? 0;
-
-    setDraggedItemInfo({
-      id: activeKey,
-      parentId: activeLocation?.parent?.id ?? null,
-      height,
-    });
-    setPendingDropTarget(null);
-  }, [findItem, bookmarkTree]);
-
-  const handleDragOver = useCallback((event) => {
-    const over = event.over;
-    setOverId((over?.id) ?? null);
-
-    const overData = over?.data.current;
-    const draggingRect = event.draggingRect?.current;
-    const overRect = over?.rect?.current;
-    let hoveredFolderId = null;
-
-    if (overData?.type === 'bookmark' || overData?.type === 'slot') {
-      hoveredFolderId = overData.parentId;
-      if (hoveredFolderId) {
-        expandFolder(hoveredFolderId, { trackAuto: true });
-        cancelCollapseTimer(hoveredFolderId);
-      }
-      setPendingDropTarget({
-        parentId: overData.parentId ?? null,
-      });
-    } else if (overData?.type === 'folder') {
-      hoveredFolderId = over.id;
-      cancelCollapseTimer(hoveredFolderId);
-
-      const folderIndex = bookmarkTree.findIndex((item) => item.id === hoveredFolderId);
-      const isTopFolder = folderIndex === 0;
-      const isBottomFolder = folderIndex === bookmarkTree.length - 1;
-
-      let allowExpansion = true;
-      if (draggingRect && overRect) {
-        const midpoint = overRect.top + overRect.height / 2;
-        const dragCenter = draggingRect.top + draggingRect.height / 2;
-        if (isTopFolder && dragCenter < midpoint) {
-          allowExpansion = false;
-        } else if (isBottomFolder && dragCenter > midpoint) {
-          allowExpansion = false;
-        }
-      }
-
-      if (allowExpansion) {
-        scheduleExpansion(hoveredFolderId);
-      } else {
-        cancelExpansionTimer(hoveredFolderId);
-      }
-      setPendingDropTarget(null);
-    }
-
-    const previousHover = lastHoverFolderRef.current;
-    if (previousHover && previousHover !== hoveredFolderId) {
-      cancelExpansionTimer(previousHover);
-      scheduleCollapse(previousHover);
-    }
-
-    if (!hoveredFolderId && overData?.type !== 'folder') {
-      expandedFolders.forEach((folderId) => scheduleCollapse(folderId));
-    }
-
-    lastHoverFolderRef.current = hoveredFolderId;
-  }, [bookmarkTree, expandFolder, cancelCollapseTimer, cancelExpansionTimer, scheduleExpansion, scheduleCollapse, expandedFolders]);
-
-  const handleDragEnd = useCallback((event) => {
-    const { active, over } = event;
-    clearAllTimers();
-    lastHoverFolderRef.current = null;
-    lastCollisionRef.current = [];
-
-    setActiveId(null);
-    setOverId(null);
-    setDraggedItemInfo(null);
-    setPendingDropTarget(null);
-
-    if (!over) {
-      collapseAutoExpandedFolders();
-      return;
-    }
-
-    const activeKey = active.id;
-    const overKey = over.id;
-    if (activeKey === overKey) return;
-
-    const overData = over.data.current;
-    const activeLocation = findItem(activeKey, bookmarkTree);
-    if (!activeLocation) return;
-
-    const draggingRect = event.draggingRect?.current;
-    const overRect = over.rect?.current;
-
-    const computeDestination = () => {
-      if (!overData) return null;
-
-      if (overData.type === 'slot') {
-        return { parentId: overData.parentId ?? null, index: overData.index };
-      }
-
-      if (overData.type === 'bookmark') {
-        const overLocation = findItem(overKey, bookmarkTree);
-        if (!overLocation) return null;
-
-        const parentId = overData.parentId ?? null;
-        let index = overLocation.index;
-
-        if (draggingRect && overRect) {
-          const midpoint = overRect.top + overRect.height / 2;
-          const dragCenter = draggingRect.top + draggingRect.height / 2;
-          if (dragCenter > midpoint) {
-            index += 1;
-          }
-        } else if (
-          parentId === activeLocation.parent?.id &&
-          activeLocation.index < overLocation.index
-        ) {
-          index += 1;
-        }
-
-        return { parentId, index };
-      }
-
-      if (overData.type === 'folder') {
-        const folderIndex = bookmarkTree.findIndex((item) => item.id === overKey);
-        let index = folderIndex;
-
-        if (draggingRect && overRect) {
-          const midpoint = overRect.top + overRect.height / 2;
-          const dragCenter = draggingRect.top + draggingRect.height / 2;
-          if (dragCenter > midpoint) {
-            index = folderIndex + 1;
-          }
-
-          const isTopFolder = folderIndex === 0;
-          const isBottomFolder = bookmarkTree.length - 1;
-          if (isTopFolder && dragCenter < midpoint) {
-            index = folderIndex;
-          }
-          if (isBottomFolder && dragCenter > midpoint) {
-            index = folderIndex + 1;
-          }
-        } else if (
-          !activeLocation.parent &&
-          activeLocation.index < folderIndex
-        ) {
-          index = folderIndex;
-        } else {
-          index = folderIndex + 1;
-        }
-
-        return { parentId: null, index };
-      }
-
-      return null;
-    };
-
-    const destination = computeDestination();
-    if (!destination) {
-      collapseAutoExpandedFolders();
-      return;
-    }
-
-    // Update bookmark order and parentId
-    const draggedItem = bookmarks.find(b => b.id === activeKey);
-    if (!draggedItem) return;
-
-    // Get all items at the destination level
-    let destItems;
-    if (destination.parentId) {
-      destItems = bookmarks.filter(b => b.parentId === destination.parentId && b.id !== activeKey);
-    } else {
-      destItems = bookmarks.filter(b => !b.parentId && b.id !== activeKey);
-    }
-    destItems.sort((a, b) => (a.order || 0) - (b.order || 0));
-
-    // Insert dragged item at destination index
-    destItems.splice(destination.index, 0, draggedItem);
-
-    // Update order for all items at this level
-    destItems.forEach((item, idx) => {
-      if (onBookmarkUpdate) {
-        onBookmarkUpdate(item.id, {
-          order: idx,
-          parentId: destination.parentId
+      const timeout = setTimeout(() => {
+        if (collapseLayoutLockTimeoutRef.current) clearTimeout(collapseLayoutLockTimeoutRef.current);
+        setCollapseLayoutLock(true);
+        setExpandedFolders((prev) => {
+          if (!prev.has(folderId)) return prev;
+          const next = new Set(prev);
+          next.delete(folderId);
+          return next;
         });
-      }
+        setCollapsingFolderIds((ids) => ids.filter((id) => id !== folderId));
+        collapseTimeoutsRef.current.delete(folderId);
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            collapseLayoutLockTimeoutRef.current = setTimeout(() => {
+              setCollapseLayoutLock(false);
+              collapseLayoutLockTimeoutRef.current = null;
+            }, GROUP_POST_COLLAPSE_LAYOUT_LOCK_MS);
+          });
+        });
+      }, GROUP_COLLAPSE_ANIMATION_MS);
+
+      collapseTimeoutsRef.current.set(folderId, timeout);
     });
-
-    const targetFolderId = destination.parentId;
-    if (targetFolderId) {
-      setExpandedFolders((prevExpanded) => {
-        const next = new Set(prevExpanded);
-        next.add(targetFolderId);
-        return next;
-      });
-    }
-
-    setRecentlyDroppedId(activeKey);
-
-    collapseAutoExpandedFolders(destination.parentId ?? null);
-  }, [bookmarks, bookmarkTree, clearAllTimers, collapseAutoExpandedFolders, findItem, onBookmarkUpdate]);
-
-  const handleDragCancel = useCallback(() => {
-    clearAllTimers();
-    lastHoverFolderRef.current = null;
-    lastCollisionRef.current = [];
-    setActiveId(null);
-    setOverId(null);
-    setDraggedItemInfo(null);
-    setPendingDropTarget(null);
-    collapseAutoExpandedFolders();
-  }, [clearAllTimers, collapseAutoExpandedFolders]);
-
-  useEffect(() => {
-    return () => {
-      clearAllTimers();
-    };
-  }, [clearAllTimers]);
-
-  const collisionDetection = useCallback((args) => {
-    const pointerCollisions = pointerWithin(args);
-    let collisions = pointerCollisions.length > 0 ? pointerCollisions : rectIntersection(args);
-
-    if (!collisions || collisions.length === 0) {
-      return lastCollisionRef.current || [];
-    }
-
-    const activeId = args?.active?.id;
-    const activeInfo = activeId ? findItem(activeId, bookmarkTree) : null;
-    const activeParentId = activeInfo?.parent?.id ?? null;
-
-    const resolveContainerData = (collision) => {
-      if (collision?.data?.droppableContainer?.data?.current) {
-        return collision.data.droppableContainer.data.current;
-      }
-
-      const containers = args.droppableContainers;
-      if (containers) {
-        if (typeof containers.get === 'function') {
-          return containers.get(collision.id)?.data?.current ?? null;
-        }
-        if (Array.isArray(containers)) {
-          const match = containers.find((container) => container?.id === collision.id);
-          return match?.data?.current ?? null;
-        }
-        if (typeof containers === 'object') {
-          return containers[collision.id]?.data?.current ?? null;
-        }
-      }
-
-      return null;
-    };
-
-    const containerEntries = collisions
-      .map((collision) => {
-        const data = resolveContainerData(collision);
-        if (!data) return null;
-        return { collision, data };
-      })
-      .filter(Boolean);
-
-    const slotCollisions = containerEntries.filter(entry => entry.data.type === 'slot');
-    const prioritizedSlots = slotCollisions.length
-      ? [...slotCollisions].sort((a, b) => {
-          const aSameParent = a.data.parentId === activeParentId;
-          const bSameParent = b.data.parentId === activeParentId;
-          if (aSameParent === bSameParent) return 0;
-          return aSameParent ? -1 : 1;
-        })
-      : [];
-
-    const prioritizedEntries = prioritizedSlots.length
-      ? prioritizedSlots
-      : containerEntries;
-
-    if (prioritizedEntries.length === 0) {
-      lastCollisionRef.current = collisions;
-      return collisions;
-    }
-
-    const result = prioritizedEntries.map(entry => entry.collision);
-    lastCollisionRef.current = result;
-    return result;
-  }, [bookmarkTree, findItem]);
-
-  const activeItem = activeId ? getActiveItem(activeId) : null;
-
-  const getIncomingPlaceholderHeight = useCallback((folderId) => {
-    if (!draggedItemInfo || !pendingDropTarget) return 0;
-    if (pendingDropTarget.parentId !== folderId) return 0;
-    if (draggedItemInfo.parentId === pendingDropTarget.parentId) return 0;
-    if (draggedItemInfo.id === folderId) return 0;
-    return Math.max(0, draggedItemInfo.height);
-  }, [draggedItemInfo, pendingDropTarget]);
+  }, []);
 
   const toggleExpand = useCallback((folderId) => {
-    setExpandedFolders(prev => {
+    if (expandedFolders.has(folderId)) {
+      animateCollapseFolders([folderId]);
+      return;
+    }
+
+    const pendingCollapse = collapseTimeoutsRef.current.get(folderId);
+    if (pendingCollapse) {
+      clearTimeout(pendingCollapse);
+      collapseTimeoutsRef.current.delete(folderId);
+    }
+    setCollapsingFolderIds((ids) => ids.filter((id) => id !== folderId));
+    setExpandedFolders((prev) => {
       const next = new Set(prev);
-      if (next.has(folderId)) {
-        next.delete(folderId);
-      } else {
-        next.add(folderId);
-      }
+      next.add(folderId);
       return next;
     });
+    setExpandingFolderIds((ids) => [...new Set([...ids, folderId])]);
+    const timeout = setTimeout(() => {
+      setExpandingFolderIds((ids) => ids.filter((id) => id !== folderId));
+      expandTimeoutsRef.current.delete(folderId);
+    }, GROUP_COLLAPSE_ANIMATION_MS);
+    expandTimeoutsRef.current.set(folderId, timeout);
+  }, [animateCollapseFolders, expandedFolders]);
+
+  const getAutoExpandTargetFromPointer = useCallback(() => {
+    if (offsetLeft < GROUP_AUTO_EXPAND_OFFSET_PX || !pointerPositionRef.current) return null;
+
+    const { y } = pointerPositionRef.current;
+    const candidates = flattenedItems
+      .filter((item) => (
+        item.id !== activeId &&
+        item.type === 'folder' &&
+        item.collapsed &&
+        item.children?.length > 0
+      ))
+      .map((item) => {
+        const element = document.querySelector(`[data-bookmark-row-id="${item.id}"]`);
+        const rect = element?.getBoundingClientRect();
+        if (!rect) return null;
+        const topZone = rect.top - 14;
+        const bottomZone = rect.bottom + 30;
+        if (y < topZone || y > bottomZone) return null;
+        return { item, distance: Math.abs(y - (rect.top + rect.height / 2)) };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.distance - b.distance);
+
+    return candidates[0]?.item ?? null;
+  }, [activeId, flattenedItems, offsetLeft]);
+
+  const persistBookmarkTree = useCallback((nextTree) => {
+    if (!onBookmarkUpdate) return;
+    flattenBookmarkTreeForSort(nextTree).forEach((item) => {
+      onBookmarkUpdate(item.id, {
+        order: item.index,
+        parentId: item.parentId ?? null,
+      });
+    });
+  }, [onBookmarkUpdate]);
+
+  const handleDragStart = useCallback(({ active, activatorEvent }) => {
+    setActiveId(active.id);
+    setOverId(active.id);
+    setDragMotionTick(0);
+    autoExpandedFoldersRef.current.clear();
+    if (typeof activatorEvent?.clientX === 'number' && typeof activatorEvent?.clientY === 'number') {
+      pointerPositionRef.current = { x: activatorEvent.clientX, y: activatorEvent.clientY };
+    }
+    pointerMoveListenerRef.current = (event) => {
+      pointerPositionRef.current = { x: event.clientX, y: event.clientY };
+    };
+    window.addEventListener('pointermove', pointerMoveListenerRef.current, { passive: true });
+    window.addEventListener('mousemove', pointerMoveListenerRef.current, { passive: true });
+    document.body.style.setProperty('cursor', 'grabbing');
   }, []);
+
+  const handleDragMove = useCallback(({ delta }) => {
+    setOffsetLeft(delta.x);
+    setDragMotionTick((value) => value + 1);
+  }, []);
+
+  const handleDragOver = useCallback(({ over }) => {
+    setOverId(over?.id ?? null);
+  }, []);
+
+  const resetDragState = useCallback(() => {
+    clearAutoExpandTimer();
+    if (pointerMoveListenerRef.current) {
+      window.removeEventListener('pointermove', pointerMoveListenerRef.current);
+      window.removeEventListener('mousemove', pointerMoveListenerRef.current);
+      pointerMoveListenerRef.current = null;
+    }
+    pointerPositionRef.current = null;
+    autoExpandedFoldersRef.current.clear();
+    setActiveId(null);
+    setOverId(null);
+    setOffsetLeft(0);
+    setDragMotionTick(0);
+    document.body.style.setProperty('cursor', '');
+  }, [clearAutoExpandTimer]);
+
+  const handleDragEnd = useCallback(({ active, over }) => {
+    const autoExpandedFolderIds = Array.from(autoExpandedFoldersRef.current);
+    const finalParentId = projected?.parentId ?? null;
+    const foldersToRecollapse = autoExpandedFolderIds.filter((folderId) => folderId !== finalParentId);
+
+    if (projected && over) {
+      const { depth, parentId } = projected;
+      const clonedItems = JSON.parse(JSON.stringify(flattenBookmarkTreeForSort(bookmarkTree)));
+      const overIndex = clonedItems.findIndex(({ id }) => id === over.id);
+      const activeIndex = clonedItems.findIndex(({ id }) => id === active.id);
+      if (overIndex !== -1 && activeIndex !== -1) {
+        clonedItems[activeIndex] = { ...clonedItems[activeIndex], depth, parentId };
+        const nextTree = buildSortableBookmarkTree(arrayMove(clonedItems, activeIndex, overIndex));
+        persistBookmarkTree(nextTree);
+        if (parentId) {
+          setExpandedFolders((prev) => {
+            const next = new Set(prev);
+            next.add(parentId);
+            return next;
+          });
+        }
+      }
+    }
+
+    resetDragState();
+    if (foldersToRecollapse.length) {
+      setTimeout(() => {
+        animateCollapseFolders(foldersToRecollapse);
+      }, GROUP_DRAG_SETTLE_COLLAPSE_DELAY_MS);
+    }
+  }, [animateCollapseFolders, bookmarkTree, persistBookmarkTree, projected, resetDragState]);
+
+  const handleDragCancel = useCallback(() => {
+    const foldersToRecollapse = Array.from(autoExpandedFoldersRef.current);
+    resetDragState();
+    animateCollapseFolders(foldersToRecollapse);
+  }, [animateCollapseFolders, resetDragState]);
+
+  useEffect(() => () => {
+    clearAutoExpandTimer();
+    collapseTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
+    expandTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
+    if (collapseLayoutLockTimeoutRef.current) clearTimeout(collapseLayoutLockTimeoutRef.current);
+  }, [clearAutoExpandTimer]);
+
+  useEffect(() => {
+    if (!activeId) {
+      clearAutoExpandTimer();
+      return;
+    }
+
+    const autoExpandTarget = (
+      (overId && activeId !== overId
+        ? getAutoExpandTargetFolder(flattenedItems, activeId, overId, offsetLeft)
+        : null) ??
+      getAutoExpandTargetFromPointer()
+    );
+
+    if (!autoExpandTarget || autoExpandTarget.id === activeId) {
+      clearAutoExpandTimer();
+      return;
+    }
+
+    if (autoExpandFolderRef.current === autoExpandTarget.id) return;
+
+    clearAutoExpandTimer();
+    autoExpandFolderRef.current = autoExpandTarget.id;
+    autoExpandTimerRef.current = setTimeout(() => {
+      autoExpandedFoldersRef.current.add(autoExpandTarget.id);
+      setExpandedFolders((prev) => {
+        const next = new Set(prev);
+        next.add(autoExpandTarget.id);
+        return next;
+      });
+      setExpandingFolderIds((ids) => [...new Set([...ids, autoExpandTarget.id])]);
+      setTimeout(() => {
+        setExpandingFolderIds((ids) => ids.filter((id) => id !== autoExpandTarget.id));
+      }, GROUP_COLLAPSE_ANIMATION_MS);
+      autoExpandTimerRef.current = null;
+      autoExpandFolderRef.current = null;
+    }, GROUP_AUTO_EXPAND_DELAY_MS);
+  }, [activeId, clearAutoExpandTimer, dragMotionTick, flattenedItems, getAutoExpandTargetFromPointer, offsetLeft, overId]);
 
   const handleNavigate = useCallback((pageRef) => {
     const parseOneBasedPage = (value) => {
@@ -699,6 +1033,36 @@ const BookmarksPanel = ({
       onBookmarkUpdate(id, { name: newName });
     }
   }, [onBookmarkUpdate]);
+
+  const handlePageChange = useCallback((id, pageNumber) => {
+    if (onBookmarkUpdate) {
+      onBookmarkUpdate(id, { pageIds: [pageNumber] });
+    }
+  }, [onBookmarkUpdate]);
+
+  const handleAddChildBookmark = useCallback((folderId) => {
+    if (!onBookmarkCreate) return;
+    const parent = findItem(folderId, bookmarkTree)?.item;
+    const nextOrder = parent?.children?.length ?? 0;
+    const initialPage = pageNum && pageNum > 0
+      ? (numPages ? Math.min(pageNum, numPages) : pageNum)
+      : null;
+
+    setExpandedFolders((prev) => {
+      const next = new Set(prev);
+      next.add(folderId);
+      return next;
+    });
+
+    onBookmarkCreate({
+      id: generateId(),
+      name: 'New Bookmark',
+      type: 'bookmark',
+      pageIds: initialPage ? [initialPage] : [],
+      parentId: folderId,
+      order: nextOrder,
+    });
+  }, [bookmarkTree, findItem, numPages, onBookmarkCreate, pageNum]);
 
   const handleDelete = useCallback((id) => {
     if (onBookmarkDelete) {
@@ -1007,76 +1371,6 @@ const BookmarksPanel = ({
     }
   }, [showCreateMenu]);
 
-  const renderBookmarkNode = (item, parentId = null, depth = 0) => {
-    const isFolder = item.type === 'folder';
-    const isExpanded = expandedFolders.has(item.id);
-
-    if (!isFolder) {
-      return (
-        <DraggableBookmark
-          item={item}
-          isNested={depth > 0}
-          parentId={parentId}
-          isEditMode={isEditMode}
-          onNavigate={handleNavigate}
-          onRename={handleRename}
-          onDelete={handleDelete}
-          onUpdate={onBookmarkUpdate}
-          numPages={numPages}
-          isSelected={selectedBookmarkId === item.id}
-          onSelect={setSelectedBookmarkId}
-          recentlyDropped={recentlyDroppedId === item.id}
-        />
-      );
-    }
-
-    return (
-      <DraggableBookmarkFolder
-        item={item}
-        isExpanded={isExpanded}
-        onToggle={toggleExpand}
-        onNavigate={handleNavigate}
-        isEditMode={isEditMode}
-        onRename={handleRename}
-        onDelete={handleDelete}
-        onAddToGroup={handleOpenAddToGroup}
-        isSelected={selectedBookmarkId === item.id}
-        onSelect={setSelectedBookmarkId}
-        incomingPlaceholderHeight={getIncomingPlaceholderHeight(item.id)}
-      >
-        {item.children && item.children.length > 0 ? (
-          <>
-            <DropSlot
-              id={createSlotId(item.id, 0)}
-              parentId={item.id}
-              index={0}
-              isInsideFolder
-            />
-            {item.children.map((child, childIndex) => (
-              <div key={child.id}>
-                {renderBookmarkNode(child, item.id, depth + 1)}
-                <DropSlot
-                  id={createSlotId(item.id, childIndex + 1)}
-                  parentId={item.id}
-                  index={childIndex + 1}
-                  isInsideFolder
-                />
-              </div>
-            ))}
-          </>
-        ) : (
-          <DropSlot
-            id={createSlotId(item.id, 0)}
-            parentId={item.id}
-            index={0}
-            isInsideFolder
-            isEmptyState
-          />
-        )}
-      </DraggableBookmarkFolder>
-    );
-  };
-
   return (
     <div style={{
       display: 'flex',
@@ -1149,15 +1443,49 @@ const BookmarksPanel = ({
           position: 'relative'
         }}
       >
+        <style>{`
+          @keyframes bookmarkGroupExpand {
+            from {
+              opacity: 0;
+              max-height: 0;
+              padding-top: 0;
+              padding-bottom: 0;
+            }
+            to {
+              opacity: 1;
+              max-height: 40px;
+              padding-top: 2px;
+              padding-bottom: 2px;
+            }
+          }
+
+          @keyframes bookmarkGroupCollapse {
+            from {
+              opacity: 1;
+              max-height: 40px;
+              padding-top: 2px;
+              padding-bottom: 2px;
+            }
+            to {
+              opacity: 0;
+              max-height: 0;
+              padding-top: 0;
+              padding-bottom: 0;
+            }
+          }
+        `}</style>
         <DndContext
           sensors={sensors}
-          collisionDetection={collisionDetection}
+          collisionDetection={closestCenter}
+          modifiers={[restrictToVerticalAxis]}
+          measuring={bookmarkTreeMeasuring}
           onDragStart={handleDragStart}
+          onDragMove={handleDragMove}
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
           onDragCancel={handleDragCancel}
         >
-          <SortableContext items={getAllItemIds} strategy={verticalListSortingStrategy}>
+          <SortableContext items={sortedIds} strategy={verticalListSortingStrategy}>
             {bookmarkTree.length === 0 ? (
               <div style={{
                 textAlign: 'center',
@@ -1168,53 +1496,47 @@ const BookmarksPanel = ({
                 No bookmarks yet. Create one to get started.
               </div>
             ) : (
-              <>
-                {bookmarkTree.map((item, index) => (
-                  <div key={item.id} style={{ marginBottom: '0.5px' }}>
-                    <DropSlot
-                      id={createSlotId(null, index)}
-                      parentId={null}
-                      index={index}
-                    />
-                    {renderBookmarkNode(item, null, 0)}
-                  </div>
+              <div style={{ margin: 0, padding: 0 }}>
+                {flattenedItems.map((item) => (
+                  <BookmarkTreeRow
+                    key={item.id}
+                    item={item}
+                    depth={item.depth}
+                    projectedDepth={item.id === activeId && projected ? projected.depth : null}
+                    activeDepth={activeSortableItem?.depth}
+                    isEditMode={isEditMode}
+                    isDraggingAny={Boolean(activeId)}
+                    isVisuallyCollapsed={collapsingFolderIds.includes(item.id)}
+                    groupAnimationState={getGroupAnimationState(item)}
+                    isGroupAnimationActive={collapseLayoutLock || collapsingFolderIds.length > 0 || expandingFolderIds.length > 0}
+                    isSelected={selectedBookmarkId === item.id}
+                    numPages={numPages}
+                    onToggle={toggleExpand}
+                    onNavigate={handleNavigate}
+                    onSelect={setSelectedBookmarkId}
+                    onRename={handleRename}
+                    onPageChange={handlePageChange}
+                    onAddChild={handleAddChildBookmark}
+                    onDelete={handleDelete}
+                  />
                 ))}
-                <DropSlot
-                  id={createSlotId(null, bookmarkTree.length)}
-                  parentId={null}
-                  index={bookmarkTree.length}
-                />
-              </>
+              </div>
             )}
           </SortableContext>
 
-          {activeItem && (
-            <DragOverlay>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                borderRadius: '8px',
-                border: '2px solid #4A90E2',
-                background: 'rgba(43, 43, 43, 0.9)',
-                padding: '12px',
-                boxShadow: '0 12px 28px rgba(0, 0, 0, 0.4)',
-                backdropFilter: 'blur(4px)',
-                fontSize: '16px',
-                color: '#4A90E2',
-              }}>
-                ☰
-                {activeItem.type === 'folder' ? (
-                  <>
-                    <Icon name="folder" size={16} color="#999" />
-                    <span style={{ fontWeight: '600', color: '#ddd' }}>{activeItem.name}</span>
-                  </>
-                ) : (
-                  <span style={{ fontWeight: '500', color: '#ddd' }}>{activeItem.name}</span>
-                )}
-              </div>
-            </DragOverlay>
-          )}
+          <DragOverlay modifiers={[restrictToVerticalAxis]} dropAnimation={null}>
+            {activeSortableItem ? (
+              <BookmarkTreeRow
+                item={activeSortableItem}
+                depth={projected ? projected.depth : activeSortableItem.depth}
+                activeDepth={activeSortableItem.depth}
+                isEditMode={isEditMode}
+                isClone
+                isDraggingAny
+                childCount={countTreeChildren(bookmarkTree, activeSortableItem.id) + 1}
+              />
+            ) : null}
+          </DragOverlay>
         </DndContext>
       </div>
 

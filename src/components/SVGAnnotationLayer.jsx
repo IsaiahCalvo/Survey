@@ -297,6 +297,13 @@ const SVGAnnotationLayer = memo(({
   // visible annotation context changes so stale selection chrome disappears
   // without saving or deleting any annotation data.
   selectionClearToken = 0,
+  // 2026-05-25: Selection-driven toolbar. Fires whenever the per-page
+  // single-shape selection changes. Args: ({ pageNumber, annotationIndex,
+  // annotation }) on select, or ({ pageNumber, annotationIndex: null,
+  // annotation: null }) on deselect. App reads this to make the top toolbar
+  // reflect the selected shape's fill / border / width / style instead of
+  // its own default state.
+  onSelectionChange,
   // UX: pan-mode hover glow — App.jsx runs a document-level mousemove
   // listener in pan mode and, via resolveAnnotationAt, broadcasts
   // { pageNumber, annotationIndex } (or null) whenever the cursor enters
@@ -1126,6 +1133,21 @@ const SVGAnnotationLayer = memo(({
   const selectedAnnotationIndex = (selectedIds && selectedIds.size === 1)
     ? Array.from(selectedIds)[0]
     : null;
+
+  // 2026-05-25: Broadcast single-shape selection so the top toolbar can
+  // bind its controls to the selected shape. Fires on every change of the
+  // resolved index — including null when the user deselects or selects
+  // many. App owns the per-page diffing so the callback can be called
+  // unconditionally without spamming React re-renders.
+  useEffect(() => {
+    if (typeof onSelectionChange !== 'function') return;
+    if (selectedAnnotationIndex == null) {
+      onSelectionChange({ pageNumber, annotationIndex: null, annotation: null });
+      return;
+    }
+    const annotation = annotations?.objects?.[selectedAnnotationIndex] || null;
+    onSelectionChange({ pageNumber, annotationIndex: selectedAnnotationIndex, annotation });
+  }, [selectedAnnotationIndex, annotations, pageNumber, onSelectionChange]);
   // UX 2026-04-20: counter pill reads data.pointerAngle + 90 so 0°
   // corresponds to "nub pointing straight up" (matches the mental model
   // the user described). Non-counter shapes read obj.angle as before.

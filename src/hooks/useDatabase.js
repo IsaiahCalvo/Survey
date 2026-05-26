@@ -102,6 +102,7 @@ export const useProjects = () => {
         .from('projects')
         .select('*')
         .eq('user_id', user.id)
+        .eq('archived', false)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -155,10 +156,25 @@ export const useProjects = () => {
 
   const deleteProject = async (id) => {
     try {
-      const { error } = await supabase.from('projects').delete().eq('id', id);
+      const timestamp = new Date().toISOString();
+      await supabase
+        .from('documents')
+        .update({ archived: true, updated_at: timestamp })
+        .eq('project_id', id)
+        .eq('user_id', user.id);
+
+      const { data, error } = await supabase
+        .from('projects')
+        .update({ archived: true, updated_at: timestamp })
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .select('id, archived');
 
       if (error) throw error;
-      setProjects(projects.filter((p) => p.id !== id));
+      if (!Array.isArray(data) || data.length === 0 || data.some((row) => row.archived !== true)) {
+        throw new Error('Project delete did not archive the database row');
+      }
+      setProjects((prev) => prev.filter((p) => p.id !== id));
     } catch (err) {
       setError(err.message);
       throw err;
@@ -308,13 +324,18 @@ export const useDocuments = (projectId = null) => {
 
   const deleteDocument = async (id) => {
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('documents')
         .update({ archived: true, updated_at: new Date().toISOString() })
-        .eq('id', id);
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .select('id, archived');
 
       if (error && !isSupabaseNotFoundError(error)) throw error;
-      setDocuments(documents.filter((d) => d.id !== id));
+      if (Array.isArray(data) && data.length > 0 && data.some((row) => row.archived !== true)) {
+        throw new Error('Document delete did not archive the database row');
+      }
+      setDocuments((prev) => prev.filter((d) => d.id !== id));
     } catch (err) {
       setError(err.message);
       throw err;
@@ -420,10 +441,18 @@ export const useTemplates = () => {
 
   const deleteTemplate = async (id) => {
     try {
-      const { error } = await supabase.from('templates').delete().eq('id', id);
+      const { data, error } = await supabase
+        .from('templates')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .select('id');
 
       if (error) throw error;
-      setTemplates(templates.filter((t) => t.id !== id));
+      if (!Array.isArray(data) || data.length === 0) {
+        throw new Error('Template delete did not remove the database row');
+      }
+      setTemplates((prev) => prev.filter((t) => t.id !== id));
     } catch (err) {
       setError(err.message);
       throw err;

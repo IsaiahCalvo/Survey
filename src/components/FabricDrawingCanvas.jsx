@@ -181,8 +181,14 @@ const FabricDrawingCanvas = memo(({
   pageHeight,
   activeTool,
   strokeColor,
+  strokeOpacity,
+  fillColor,
+  fillOpacity,
   highlightColor,
   strokeWidth,
+  arrowheadStyle,
+  lineBorderStyle,
+  cloudIntensity,
   annotations,
   onStrokeCommit,
   onSurveyMarkerCreated,
@@ -205,6 +211,16 @@ const FabricDrawingCanvas = memo(({
 
   // Refs to avoid stale closures in event handlers
   const activeToolRef = useRef(activeTool);
+  const arrowheadStyleRef = useRef(arrowheadStyle);
+  const lineBorderStyleRef = useRef(lineBorderStyle);
+  // 2026-05-25: Stroke + fill opacity, and fill colour, drive the shape
+  // tools (rect, ellipse). The toolbar feeds them as 0–100 ints; we bake
+  // them into rgba at draw time so the live preview AND the committed
+  // shape both honour the picked opacity.
+  const strokeOpacityRef = useRef(strokeOpacity);
+  const fillColorRef = useRef(fillColor);
+  const fillOpacityRef = useRef(fillOpacity);
+  const cloudIntensityRef = useRef(cloudIntensity);
   const selectedModuleIdRef = useRef(selectedModuleId);
   const selectedSpaceIdRef = useRef(selectedSpaceId);
   const activeRegionIdRef = useRef(activeRegionId);
@@ -461,6 +477,37 @@ const FabricDrawingCanvas = memo(({
         shapeJSON.tool = tool;
       }
 
+      // 2026-05-25: Arrow tool — attach the current arrowheadStyle from the
+      // toolbar so the SVG renderer draws the chosen head shape. Without this
+      // tag the SVG layer falls back to SOLID_TRIANGLE for every new arrow.
+      if (tool === 'arrow') {
+        const headStyle = arrowheadStyleRef.current;
+        if (headStyle) {
+          shapeJSON.data = { ...(shapeJSON.data || {}), arrowheadStyle: headStyle };
+        }
+      }
+
+      // 2026-05-25: Arrow + Line + Rect + Ellipse — apply the current border-
+      // style choice from the toolbar. solid=null, dashed=[6,4], dotted=[2,4].
+      // Cloud only applies to rect: clears any dash array and stamps
+      // pdfCloudIntensity so the SVG renderer's existing cloud path takes
+      // over. The intensity (bump size) comes from cloudIntensityRef which
+      // mirrors the bottom-toolbar Bump input; defaults to 2 when unset.
+      if (tool === 'arrow' || tool === 'line' || tool === 'rect' || tool === 'ellipse') {
+        const bs = lineBorderStyleRef.current;
+        if (bs === 'cloud' && tool === 'rect') {
+          shapeJSON.strokeDashArray = null;
+          const intensity = Math.max(1, Number(cloudIntensityRef.current) || 2);
+          shapeJSON.data = { ...(shapeJSON.data || {}), pdfCloudIntensity: intensity };
+        } else if (bs === 'dashed') {
+          shapeJSON.strokeDashArray = [6, 4];
+        } else if (bs === 'dotted') {
+          shapeJSON.strokeDashArray = [2, 4];
+        } else {
+          shapeJSON.strokeDashArray = null;
+        }
+      }
+
       const serializedOuterBounds = geometryFromSerializedShape(shapeJSON);
       if (commitDiag && (tool === 'rect' || tool === 'ellipse')) {
         console.log('[ShapeCommitDiag] commit geometry', {
@@ -540,13 +587,29 @@ const FabricDrawingCanvas = memo(({
       state.lastPreviewGeometry = null;
 
       const tool = activeToolRef.current;
-      const color = strokeColor;
+      // 2026-05-25: Bake the toolbar's stroke + fill opacities into rgba so
+      // rectangle and ellipse honour the picked alpha at draw time. Hex
+      // inputs convert through hexToRgba; non-hex values (rgba already,
+      // 'transparent') pass through untouched.
+      const toRgba = (raw, op) => {
+        if (!raw || raw === 'transparent') return 'transparent';
+        const alpha = Math.max(0, Math.min(1, (op ?? 100) / 100));
+        if (/^#[0-9a-fA-F]{6}$/.test(raw)) {
+          const r = parseInt(raw.slice(1, 3), 16);
+          const g = parseInt(raw.slice(3, 5), 16);
+          const b = parseInt(raw.slice(5, 7), 16);
+          return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        }
+        return raw;
+      };
+      const color = toRgba(strokeColor, strokeOpacityRef.current);
+      const fill = toRgba(fillColorRef.current, fillOpacityRef.current);
       const sw = strokeWidth;
 
       if (tool === 'rect') {
         state.shape = new fabric.Rect({
           left: pointer.x, top: pointer.y, width: 0, height: 0,
-          fill: 'transparent', stroke: color, strokeWidth: sw, strokeUniform: true,
+          fill: fill || 'transparent', stroke: color, strokeWidth: sw, strokeUniform: true,
         });
       } else if (tool === 'survey-marker') {
         state.shape = new fabric.Rect({
@@ -562,7 +625,7 @@ const FabricDrawingCanvas = memo(({
       } else if (tool === 'ellipse') {
         state.shape = new fabric.Ellipse({
           left: pointer.x, top: pointer.y, rx: 0, ry: 0,
-          fill: 'transparent', stroke: color, strokeWidth: sw, strokeUniform: true,
+          fill: fill || 'transparent', stroke: color, strokeWidth: sw, strokeUniform: true,
         });
       } else if (tool === 'line' || tool === 'arrow') {
         state.shape = new fabric.Line([pointer.x, pointer.y, pointer.x, pointer.y], {
@@ -734,6 +797,19 @@ const FabricDrawingCanvas = memo(({
   useEffect(() => {
     activeToolRef.current = activeTool;
   }, [activeTool]);
+
+  useEffect(() => {
+    arrowheadStyleRef.current = arrowheadStyle;
+  }, [arrowheadStyle]);
+
+  useEffect(() => {
+    lineBorderStyleRef.current = lineBorderStyle;
+  }, [lineBorderStyle]);
+
+  useEffect(() => { strokeOpacityRef.current = strokeOpacity; }, [strokeOpacity]);
+  useEffect(() => { fillColorRef.current = fillColor; }, [fillColor]);
+  useEffect(() => { fillOpacityRef.current = fillOpacity; }, [fillOpacity]);
+  useEffect(() => { cloudIntensityRef.current = cloudIntensity; }, [cloudIntensity]);
 
   useEffect(() => {
     selectedModuleIdRef.current = selectedModuleId;

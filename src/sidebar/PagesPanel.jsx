@@ -793,8 +793,9 @@ const PagesPanel = ({
                 border: isSelected ? '1px solid #4A90E2' : (dragOverPage === pageNumber ? '1px solid #4A90E2' : '1px solid transparent'),
                 borderRadius: '4px',
                 cursor: draggedPage === pageNumber ? 'grabbing' : 'grab',
-                opacity: draggedPage === pageNumber ? 0.5 : 1,
-                transition: draggedPage === pageNumber ? 'none' : 'all 0.15s ease'
+                opacity: draggedPage === pageNumber ? 0.82 : 1,
+                zIndex: draggedPage === pageNumber ? 1 : 'auto',
+                transition: draggedPage === pageNumber ? 'none' : 'background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease'
               }}
               onMouseEnter={(e) => {
                 if (!isSelected) {

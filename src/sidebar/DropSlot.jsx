@@ -6,7 +6,8 @@ const DropSlot = ({
   parentId = null,
   index,
   isInsideFolder = false,
-  isEmptyState = false
+  isEmptyState = false,
+  rowDragFeel = false
 }) => {
   const { setNodeRef, isOver } = useDroppable({
     id,
@@ -28,10 +29,10 @@ const DropSlot = ({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        height: isEmptyState ? '32px' : (isInsideFolder ? '4px' : '6px'),
-        marginTop: isInsideFolder ? '1px' : '2px',
-        marginBottom: isInsideFolder ? '1px' : '2px',
-        transition: 'all 0.16s ease-out',
+        height: isEmptyState ? '32px' : rowDragFeel ? (isInsideFolder ? '12px' : '4px') : (isInsideFolder ? '4px' : '6px'),
+        marginTop: rowDragFeel ? '0px' : (isInsideFolder ? '1px' : '2px'),
+        marginBottom: rowDragFeel ? '0px' : (isInsideFolder ? '1px' : '2px'),
+        transition: rowDragFeel ? 'height 120ms ease-out' : 'all 0.16s ease-out',
       }}
     >
       <div
@@ -44,9 +45,9 @@ const DropSlot = ({
           right: 0,
           bottom: 0,
           borderRadius: '4px',
-          opacity: isOver ? 1 : 0,
-          boxShadow: isOver ? '0 0 0 2px rgba(74, 144, 226, 0.35)' : 'none',
-          background: isOver ? 'rgba(74, 144, 226, 0.1)' : 'transparent',
+          opacity: isOver && !rowDragFeel ? 1 : 0,
+          boxShadow: isOver && !rowDragFeel ? '0 0 0 2px rgba(74, 144, 226, 0.35)' : 'none',
+          background: isOver && !rowDragFeel ? 'rgba(74, 144, 226, 0.1)' : 'transparent',
           transition: 'opacity 0.2s ease-out, box-shadow 0.2s ease-out, background 0.2s ease-out',
         }}
       />

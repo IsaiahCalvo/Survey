@@ -217,6 +217,10 @@ export default function ProjectsFolderTree({
   // Drag-reorder bookkeeping (index of the row currently being dragged).
   const dragProjIdx = useRef(null);
   const dragFileIdx = useRef(null);
+  const [draggingProjectId, setDraggingProjectId] = useState(null);
+  const [dragOverProjectId, setDragOverProjectId] = useState(null);
+  const [draggingFileId, setDraggingFileId] = useState(null);
+  const [dragOverFileId, setDragOverFileId] = useState(null);
 
   const toggleFileSel = (i) => setSelFiles((prev) => {
     const n = new Set(prev);
@@ -589,13 +593,31 @@ export default function ProjectsFolderTree({
                   key={p.id}
                   style={{ position: 'relative' }}
                   draggable={jobsEdit}
-                  onDragStart={() => { if (jobsEdit) dragProjIdx.current = idx; }}
-                  onDragOver={(e) => { if (jobsEdit) e.preventDefault(); }}
+                  onDragStart={() => {
+                    if (jobsEdit) {
+                      dragProjIdx.current = idx;
+                      setDraggingProjectId(p.id);
+                    }
+                  }}
+                  onDragOver={(e) => {
+                    if (jobsEdit) {
+                      e.preventDefault();
+                      setDragOverProjectId(p.id);
+                    }
+                  }}
+                  onDragLeave={() => setDragOverProjectId((current) => current === p.id ? null : current)}
                   onDrop={(e) => {
                     if (!jobsEdit) return;
                     e.preventDefault();
                     reorderProjects(dragProjIdx.current, idx);
                     dragProjIdx.current = null;
+                    setDraggingProjectId(null);
+                    setDragOverProjectId(null);
+                  }}
+                  onDragEnd={() => {
+                    dragProjIdx.current = null;
+                    setDraggingProjectId(null);
+                    setDragOverProjectId(null);
                   }}
                 >
                   <div
@@ -605,10 +627,14 @@ export default function ProjectsFolderTree({
                       gridTemplateColumns: '14px 1fr auto',
                       gap: 8, alignItems: 'center',
                       padding: '8px 8px', borderRadius: 6,
-                      background: jobsEdit ? (isSel ? 'var(--ink-600)' : 'transparent') : (isOpen ? 'var(--ink-600)' : 'transparent'),
-                      cursor: 'pointer',
+                      background: dragOverProjectId === p.id && draggingProjectId !== p.id
+                        ? 'rgba(216,168,78,0.10)'
+                        : jobsEdit ? (isSel ? 'var(--ink-600)' : 'transparent') : (isOpen ? 'var(--ink-600)' : 'transparent'),
+                      cursor: draggingProjectId === p.id ? 'grabbing' : 'pointer',
                       borderLeft: !jobsEdit && isOpen ? '2px solid var(--gold)' : '2px solid transparent',
                       height: 50, boxSizing: 'border-box',
+                      opacity: draggingProjectId === p.id ? 0.82 : 1,
+                      transition: draggingProjectId === p.id ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                     }}
                   >
                     {/* Drag handle / pin marker — in Select mode this row is
@@ -786,22 +812,44 @@ export default function ProjectsFolderTree({
                           <div
                             key={f.id}
                             draggable={fileSelect}
-                            onDragStart={() => { if (fileSelect) dragFileIdx.current = i; }}
-                            onDragOver={(e) => { if (fileSelect) e.preventDefault(); }}
+                            onDragStart={() => {
+                              if (fileSelect) {
+                                dragFileIdx.current = i;
+                                setDraggingFileId(f.id);
+                              }
+                            }}
+                            onDragOver={(e) => {
+                              if (fileSelect) {
+                                e.preventDefault();
+                                setDragOverFileId(f.id);
+                              }
+                            }}
+                            onDragLeave={() => setDragOverFileId((current) => current === f.id ? null : current)}
                             onDrop={(e) => {
                               if (!fileSelect) return;
                               e.preventDefault();
                               reorderFiles(dragFileIdx.current, i);
                               dragFileIdx.current = null;
+                              setDraggingFileId(null);
+                              setDragOverFileId(null);
+                            }}
+                            onDragEnd={() => {
+                              dragFileIdx.current = null;
+                              setDraggingFileId(null);
+                              setDragOverFileId(null);
                             }}
                             onClick={() => { if (fileSelect) { toggleFileSel(i); return; } onOpenDocument && onOpenDocument(f); }}
                             style={{
-                              background: fileSelect && isChecked ? 'rgba(216,168,78,0.10)' : (i % 2 ? 'transparent' : 'rgba(255,255,255,0.02)'),
+                              background: dragOverFileId === f.id && draggingFileId !== f.id
+                                ? 'rgba(216,168,78,0.10)'
+                                : fileSelect && isChecked ? 'rgba(216,168,78,0.10)' : (i % 2 ? 'transparent' : 'rgba(255,255,255,0.02)'),
                               borderRadius: 6,
                               display: 'grid', gridTemplateColumns: '16px 1fr 90px 90px 28px',
                               gap: 12, alignItems: 'center', padding: '8px 10px', fontSize: 12,
                               height: 36, boxSizing: 'border-box',
-                              cursor: 'pointer',
+                              cursor: draggingFileId === f.id ? 'grabbing' : 'pointer',
+                              opacity: draggingFileId === f.id ? 0.82 : 1,
+                              transition: draggingFileId === f.id ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                             }}
                           >
                             <span title="Drag to reorder" style={{ color: 'var(--ink-200)', fontSize: 11, cursor: 'grab', userSelect: 'none', lineHeight: 1, textAlign: 'center' }}>⋮⋮</span>

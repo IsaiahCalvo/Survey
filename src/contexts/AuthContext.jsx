@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import { supabase, isSupabaseAvailable } from '../supabaseClient';
 
 export const AuthContext = createContext({});
+const DEV_AUTO_LOGIN_SUPPRESSED_KEY = 'survey.devAutoLoginSuppressed';
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -75,6 +76,15 @@ export const AuthProvider = ({ children }) => {
       // hook would re-sign them in. Now we also override when (a) the
       // cached session's user email doesn't match the dev creds, or
       // (b) `getUser()` rejects the cached token as expired/invalid.
+      const devAutoLoginSuppressed = (() => {
+        if (!import.meta.env.DEV || typeof window === 'undefined') return false;
+        try {
+          return window.localStorage?.getItem(DEV_AUTO_LOGIN_SUPPRESSED_KEY) === '1';
+        } catch {
+          return false;
+        }
+      })();
+
       const devOverride = (() => {
         if (!import.meta.env.DEV || typeof window === 'undefined') return {};
         try {
@@ -95,6 +105,7 @@ export const AuthProvider = ({ children }) => {
         devEmailHint: devEmail ? devEmail.slice(0, 4) + '***' : null,
         hasDevPassword: !!devPassword,
         hasCachedSession: !!session,
+        devAutoLoginSuppressed,
         cachedSessionEmail: session?.user?.email || null,
         cachedSessionExpiresAt: session?.expires_at || null
       }));
@@ -122,10 +133,13 @@ export const AuthProvider = ({ children }) => {
 
       console.log('[dev-auto-login] decision ' + JSON.stringify({
         needsAutoLogin,
-        willAttemptSignIn: needsAutoLogin && !!devEmail && !!devPassword
+        devAutoLoginSuppressed,
+        willAttemptSignIn: needsAutoLogin && !devAutoLoginSuppressed && !!devEmail && !!devPassword
       }));
       if (needsAutoLogin) {
-        if (devEmail && devPassword) {
+        if (devAutoLoginSuppressed) {
+          console.log('[dev-auto-login] skipped because explicit sign-out suppressed dev auto-login');
+        } else if (devEmail && devPassword) {
           try {
             const { data, error } = await supabase.auth.signInWithPassword({
               email: devEmail,
@@ -260,6 +274,12 @@ export const AuthProvider = ({ children }) => {
       throw new Error('Supabase is not configured');
     }
 
+    try {
+      window.localStorage?.removeItem(DEV_AUTO_LOGIN_SUPPRESSED_KEY);
+    } catch {
+      // Non-browser or blocked storage; sign-in can continue.
+    }
+
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -273,6 +293,12 @@ export const AuthProvider = ({ children }) => {
   const signInWithGoogle = async () => {
     if (!isSupabaseAvailable()) {
       throw new Error('Supabase is not configured');
+    }
+
+    try {
+      window.localStorage?.removeItem(DEV_AUTO_LOGIN_SUPPRESSED_KEY);
+    } catch {
+      // Non-browser or blocked storage; OAuth can continue.
     }
 
     // For Electron, use a proper redirect URL
@@ -291,6 +317,9 @@ export const AuthProvider = ({ children }) => {
         provider: 'google',
         options: {
           redirectTo: redirectTo,
+          queryParams: {
+            prompt: 'select_account',
+          },
           skipBrowserRedirect: false, // Let the browser/Electron handle the redirect
         },
       });
@@ -309,6 +338,12 @@ export const AuthProvider = ({ children }) => {
       throw new Error('Supabase is not configured');
     }
 
+    try {
+      window.localStorage?.removeItem(DEV_AUTO_LOGIN_SUPPRESSED_KEY);
+    } catch {
+      // Non-browser or blocked storage; SSO can continue.
+    }
+
     const { data, error } = await supabase.auth.signInWithSSO({
       domain,
     });
@@ -324,6 +359,9 @@ export const AuthProvider = ({ children }) => {
     }
 
     try {
+      if (import.meta.env.DEV && typeof window !== 'undefined') {
+        window.localStorage?.setItem(DEV_AUTO_LOGIN_SUPPRESSED_KEY, '1');
+      }
       // Try to sign out on the server
       await supabase.auth.signOut();
     } catch (error) {

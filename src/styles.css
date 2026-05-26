@@ -226,6 +226,61 @@
   border-color: transparent;
 }
 
+/* 2026-05-25: Suppress every layout-affecting hover/active effect inside the
+   top toolbar so icons do not appear to shift. We strip the 1px lift, the
+   blue border-color swap, and the surrounding box-shadow ring. Only the
+   text color transitions (driven by .btn-active vs base color), and the
+   transition is restricted to color alone to prevent sub-pixel animation
+   from other properties. */
+#chrome-top-host .btn,
+#chrome-top-host .btn:not(:disabled):hover,
+#chrome-top-host .btn:not(:disabled):active,
+#chrome-top-host .btn:focus,
+#chrome-top-host .btn:focus-visible {
+  transform: none !important;
+  box-shadow: none !important;
+  transition: color 0.15s ease, background-color 0.15s ease !important;
+  border-color: transparent !important;
+}
+#chrome-top-host .btn:not(.btn-active):not(:disabled):hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+#chrome-top-host .btn.btn-active:hover {
+  background-color: transparent;
+}
+
+/* 2026-05-25: Context toolbar colour swatch base — bright checker pattern
+   (white + light grey) so low-opacity fills blend toward white instead of
+   sinking into the dark toolbar. A 1px pale hairline ring lifts pure black
+   borders off the dark chrome. The visible fill / border colours are set
+   inline per-swatch on top of this base. */
+.ctx-color-swatch {
+  background-color: #ffffff;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.22);
+}
+.ctx-color-swatch::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-image:
+    linear-gradient(45deg, #cfcfcf 25%, transparent 25%),
+    linear-gradient(-45deg, #cfcfcf 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #cfcfcf 75%),
+    linear-gradient(-45deg, transparent 75%, #cfcfcf 75%);
+  background-size: 8px 8px;
+  background-position: 0 0, 0 4px, 4px -4px, -4px 0;
+  pointer-events: none;
+  z-index: 0;
+}
+.ctx-color-swatch > .ctx-color-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1;
+}
+
 /* Action Card Buttons */
 .btn-card {
   padding: 16px 24px;

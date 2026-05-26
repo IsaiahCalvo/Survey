@@ -486,6 +486,7 @@ export default function TemplatesEditor({
   const [tplMenu, setTplMenu] = useState(null);       // { id, rect }
   const [entityMenu, setEntityMenu] = useState(null); // { id, rect }
   const [dragMod, setDragMod] = useState(null);
+  const [dragOverMod, setDragOverMod] = useState(null);
   const [entityEdit, setEntityEdit] = useState(false);
   const [selEntities, setSelEntities] = useState(() => new Set());
   const toggleEntitySel = (id) => setSelEntities((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -649,8 +650,17 @@ export default function TemplatesEditor({
     setDirty(true);
   };
   const deleteTemplates = (ids) => {
-    setRich((prev) => prev.filter((t) => !ids.has(t.id)));
-    setDirty(true);
+    setRich((prev) => {
+      const next = prev.filter((t) => !ids.has(t.id));
+      if (onSaveTemplates) {
+        Promise.resolve(onSaveTemplates(next.map(richToTemplate))).catch((err) => {
+          console.error('Failed to delete templates', err);
+          setDirty(true);
+        });
+      }
+      return next;
+    });
+    setDirty(false);
   };
 
   /* --- module-level --- */
@@ -1138,16 +1148,21 @@ export default function TemplatesEditor({
                         key={mod.id}
                         draggable
                         onDragStart={() => setDragMod(mi)}
-                        onDragOver={(e) => { e.preventDefault(); }}
-                        onDrop={(e) => { e.preventDefault(); reorderMods(dragMod, mi); setDragMod(null); }}
-                        onDragEnd={() => setDragMod(null)}
+                        onDragOver={(e) => { e.preventDefault(); setDragOverMod(mi); }}
+                        onDragLeave={() => setDragOverMod((current) => current === mi ? null : current)}
+                        onDrop={(e) => { e.preventDefault(); reorderMods(dragMod, mi); setDragMod(null); setDragOverMod(null); }}
+                        onDragEnd={() => { setDragMod(null); setDragOverMod(null); }}
                         style={{
                           display: 'flex', alignItems: 'center', marginBottom: -1,
                           borderBottom: isOn ? '2px solid var(--ink)' : '2px solid transparent',
-                          opacity: dragMod === mi ? 0.4 : 1,
+                          opacity: dragMod === mi ? 0.82 : 1,
+                          background: dragOverMod === mi && dragMod !== mi ? 'rgba(216,168,78,0.08)' : 'transparent',
                           cursor: 'grab',
                           flex: '1 1 0', minWidth: 32, maxWidth: 140,
                           overflow: 'hidden',
+                          position: 'relative',
+                          zIndex: dragMod === mi ? 1 : 'auto',
+                          transition: dragMod === mi ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                         }}
                       >
                         {modRename === mi ? (

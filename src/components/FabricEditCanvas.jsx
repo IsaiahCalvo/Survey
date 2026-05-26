@@ -102,6 +102,10 @@ const CUSTOM_PROPS = [
   'data', 'name', 'annotationId', 'needsEntity',
   'globalCompositeOperation', 'layer',
   'isPdfImported', 'pdfAnnotationId', 'pdfAnnotationType', 'pdfInkRenderMode',
+  // 2026-05-25: rich-text vertical anchor for text boxes. Stored alongside
+  // textAlign so the 3x3 alignment grid in the rich-text strip drives both
+  // axes. Values: 'top' | 'middle' | 'bottom'.
+  'verticalAlign',
 ];
 
 function createAnnotationId(prefix = 'anno') {
@@ -1076,6 +1080,10 @@ const FabricEditCanvas = memo(({
   onEditCommit,        // (updatedAnnotationsJSON) => void
   onEditCancel,        // () => void
   strokeColor,         // current stroke color (for new text creation)
+  strokeOpacity,       // 2026-05-25: 0–100 ints from toolbar, baked into rgba
+  fillColor,           // 2026-05-25: textbox background fill (rgba inside)
+  fillOpacity,         // 2026-05-25: 0–100 ints from toolbar
+  strokeWidth,         // 2026-05-25: border thickness for new text boxes
   zoomGeneration,      // zoom signal from App.jsx
   viewerScale,         // syncfusionViewerScale
   isNewText,           // true when text tool click-to-place creates new annotation
@@ -1106,6 +1114,18 @@ const FabricEditCanvas = memo(({
   // callout edits (App.jsx checks editingAnnotation.reactCalloutId before
   // passing this prop). Optional — safe no-op for plain text edits.
   onLiveTextGrow,
+  // 2026-05-25: Rich-text editor bridge. Fires with { api, state } when the
+  // textbox enters edit mode and on every text / selection change. Fires with
+  // null on commit / cancel / unmount. App.jsx swaps the top strip to a
+  // rich-text mode (B / I / U / S toggles) when this is non-null.
+  onRichTextEditorChange,
+  // 2026-05-25: Callout text style sync. Fires when the rich-text bridge
+  // mutates the textbox child of a callout edit, with (calloutId, stylePatch)
+  // mapped to the callout's style schema (bold, italic, underline,
+  // strikethrough, textAlign, fontFamily, fontSize, fontColor). App.jsx
+  // applies the patch via setCalloutsIfPersistedChanged so the SVG view
+  // updates immediately and the commit carries the new style.
+  onCalloutTextStyleChange,
 }) => {
   // -------------------------------------------------------------------------
   // State
@@ -1233,6 +1253,15 @@ const FabricEditCanvas = memo(({
       // after the user finishes typing. Without this, committing a plain
       // text box leaves it borderless even if the import had a border.
       if (orig.strokeWidth !== undefined) json.strokeWidth = orig.strokeWidth;
+      // 2026-05-25: existing-text edit path resets backgroundColor to '' on
+      // load (line ~2013) so SVG is the visible truth during typing. Restore
+      // it from the pre-edit snapshot so the saved annotation keeps its fill.
+      // New-text path stashes only { fill, stroke } in originalAnnotationRef
+      // and leaves intendedBackground on the live Textbox, so json.backgroundColor
+      // is already correct there — the undefined guard skips it. Callouts go
+      // through fromFabricGroup which ignores textbox.backgroundColor entirely,
+      // so the restore is harmless for that path too.
+      if (orig.backgroundColor !== undefined) json.backgroundColor = orig.backgroundColor;
     }
     console.log(`[EditCanvas] COMMIT pre-convert — text="${(json.text||'').slice(0,20)}" fontSize=${json.fontSize} width=${json.width} height=${json.height} scaleX=${json.scaleX} scaleY=${json.scaleY} left=${json.left} top=${json.top} isNewText=${isNewText}`);
 
@@ -1462,6 +1491,193 @@ const FabricEditCanvas = memo(({
       uniformScaling: false,
     },
   });
+
+  // -------------------------------------------------------------------------
+  // 2026-05-25: Rich-text editor bridge.
+  // -------------------------------------------------------------------------
+  // Builds and publishes a tiny API up to App so the top strip can drive the
+  // active Fabric Textbox's bold / italic / underline / strike state. Each
+  // toggle reads the live activeObject on every call (via fabricRef), so the
+  // api object itself is stable across renders. Toggles apply to the current
+  // selection if one exists, else to the textbox default.
+  const onRichTextEditorChangeRef = useRef(onRichTextEditorChange);
+  useEffect(() => { onRichTextEditorChangeRef.current = onRichTextEditorChange; }, [onRichTextEditorChange]);
+  const onCalloutTextStyleChangeRef = useRef(onCalloutTextStyleChange);
+  useEffect(() => { onCalloutTextStyleChangeRef.current = onCalloutTextStyleChange; }, [onCalloutTextStyleChange]);
+  const reactCalloutIdRef = useRef(reactCalloutId);
+  useEffect(() => { reactCalloutIdRef.current = reactCalloutId; }, [reactCalloutId]);
+
+  // Map Fabric Textbox field changes onto the callout style schema. The
+  // callout schema stores booleans for italic / underline / strikethrough and
+  // a fontColor rather than fontWeight / fontStyle / linethrough / fill.
+  const calloutStylePatchFromFabricKey = (key, val) => {
+    switch (key) {
+      case 'fontWeight':   return { bold: val === 'bold' };
+      case 'fontStyle':    return { italic: val === 'italic' };
+      case 'underline':    return { underline: !!val };
+      case 'linethrough':  return { strikethrough: !!val };
+      case 'textAlign':    return { textAlign: val };
+      case 'verticalAlign':return { verticalAlign: val };
+      case 'fontFamily':   return { fontFamily: val };
+      case 'fontSize':     return { fontSize: Number(val) || 12 };
+      default: return null;
+    }
+  };
+
+  const readRichTextState = useCallback((obj) => {
+    if (!obj || obj.type !== 'textbox') {
+      return { bold: false, italic: false, underline: false, strike: false, fontSize: 16 };
+    }
+    // 2026-05-25: Text color during edit lives in originalAnnotationRef
+    // (the textbox's fill is forced transparent so SVG owns the visible
+    // truth). Read the intended color from there; fall back to a sensible
+    // default if the snapshot is empty (very first paint of a new textbox).
+    const intendedFontColor = (originalAnnotationRef.current && typeof originalAnnotationRef.current.fill === 'string')
+      ? originalAnnotationRef.current.fill
+      : (typeof obj.fill === 'string' && obj.fill !== 'rgba(0,0,0,0)' ? obj.fill : '#1e293b');
+    return {
+      bold: obj.fontWeight === 'bold',
+      italic: obj.fontStyle === 'italic',
+      underline: !!obj.underline,
+      strike: !!obj.linethrough,
+      fontSize: Math.round(Number(obj.fontSize) || 16),
+      textAlign: obj.textAlign || 'left',
+      verticalAlign: obj.verticalAlign || 'top',
+      fontFamily: obj.fontFamily || 'Arial',
+      fontColor: intendedFontColor,
+    };
+  }, []);
+
+  // 2026-05-25: Direct ref to the live Textbox so strip-button clicks (which
+  // may have already blurred the textbox out of editing/active state by the
+  // time onClick fires) still find their target. publishRichTextEditor seeds
+  // this with the active textbox on edit entry; the api reads from it.
+  const editingTextboxRef = useRef(null);
+  // Stash the last known selection range so a strip-button click can re-apply
+  // the same range even if the textarea blur cleared it.
+  const lastSelectionRangeRef = useRef(null);
+
+  const applyTextStyle = useCallback((key, val) => {
+    const canvas = fabricRef.current;
+    const obj = editingTextboxRef.current || canvas?.getActiveObject();
+    if (!obj || obj.type !== 'textbox') return;
+    // 2026-05-25: First-pass rich-text styling is TEXTBOX-LEVEL only — the
+    // SVG renderer paints text as a single flow and cannot honor per-character
+    // runs. Drop any per-character styles already on the textbox so the new
+    // textbox-level value isn't overridden by stray run styles.
+    obj.styles = {};
+    obj.set(key, val);
+    if (typeof obj.initDimensions === 'function') obj.initDimensions();
+    if (canvas && obj.canvas === canvas) {
+      canvas.setActiveObject(obj);
+    }
+    if (typeof obj.enterEditing === 'function' && !obj.isEditing) {
+      obj.enterEditing();
+    }
+    // Restore the stashed selection range so the user can keep typing inside
+    // the highlighted region after applying a style.
+    const stashed = lastSelectionRangeRef.current;
+    if (stashed && stashed.start !== stashed.end && typeof obj.setSelectionStart === 'function') {
+      obj.setSelectionStart(stashed.start);
+      obj.setSelectionEnd(stashed.end);
+    }
+    // 2026-05-25: callout edits also need to update callout.style so the
+    // SVG callout renderer (which reads from callout.style, not the live
+    // textbox) repaints the new style during edit AND keeps it on commit.
+    const cid = reactCalloutIdRef.current;
+    const cb = onCalloutTextStyleChangeRef.current;
+    if (cid && typeof cb === 'function') {
+      const patch = calloutStylePatchFromFabricKey(key, val);
+      if (patch) cb(cid, patch);
+    }
+    // Fire 'changed' so the existing live-bounds broadcast repaints the SVG
+    // with the new fontWeight / fontStyle / underline / linethrough. Without
+    // this the Fabric Textbox's style updates but the SVG (which is the
+    // visible truth during edit) stays stale.
+    if (typeof obj.fire === 'function') obj.fire('changed');
+    canvas?.requestRenderAll();
+    publishRichTextEditor();
+  // publishRichTextEditor is declared next; useCallback ordering is fine
+  // because both are created in the same render before any call site fires.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fabricRef]);
+
+  const richTextApiRef = useRef(null);
+  const publishRichTextEditor = useCallback(() => {
+    const cb = onRichTextEditorChangeRef.current;
+    if (typeof cb !== 'function') return;
+    const obj = fabricRef.current?.getActiveObject() || editingTextboxRef.current;
+    if (!obj || obj.type !== 'textbox') {
+      cb(null);
+      return;
+    }
+    editingTextboxRef.current = obj;
+    if (obj.selectionStart != null && obj.selectionEnd != null) {
+      lastSelectionRangeRef.current = { start: obj.selectionStart, end: obj.selectionEnd };
+    }
+    if (!richTextApiRef.current) {
+      const readLive = () => readRichTextState(editingTextboxRef.current);
+      richTextApiRef.current = {
+        toggleBold: () => applyTextStyle('fontWeight', readLive().bold ? 'normal' : 'bold'),
+        toggleItalic: () => applyTextStyle('fontStyle', readLive().italic ? 'normal' : 'italic'),
+        toggleUnderline: () => applyTextStyle('underline', !readLive().underline),
+        toggleStrike: () => applyTextStyle('linethrough', !readLive().strike),
+        setFontSize: (n) => {
+          const next = Math.max(6, Math.min(200, Math.round(Number(n) || 16)));
+          applyTextStyle('fontSize', next);
+        },
+        setTextAlign: (a) => {
+          const next = ['left', 'center', 'right', 'justify'].includes(a) ? a : 'left';
+          applyTextStyle('textAlign', next);
+        },
+        setVerticalAlign: (v) => {
+          const next = ['top', 'middle', 'bottom'].includes(v) ? v : 'top';
+          applyTextStyle('verticalAlign', next);
+        },
+        setFontFamily: (f) => {
+          // Single-name only per CLAUDE.md 2026-04-08 gotcha — Fabric Textbox
+          // measures characters at 400px and the browser may resolve different
+          // fonts in a fallback chain at that size, producing cursor drift.
+          const safe = typeof f === 'string' && f.length > 0 && !f.includes(',') ? f : 'Arial';
+          applyTextStyle('fontFamily', safe);
+        },
+        setFontColor: (c) => {
+          const hex = typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c) ? c : '#000000';
+          // Update the persisted-intent snapshot so the broadcast paints the
+          // SVG with the new color (the live Fabric Textbox fill stays
+          // transparent for the rasterizer-truth reason).
+          if (originalAnnotationRef.current) {
+            originalAnnotationRef.current.fill = hex;
+          } else {
+            originalAnnotationRef.current = { fill: hex };
+          }
+          // Callout edits route the color into callout.style.fontColor so
+          // the SVG callout renderer paints with it.
+          const cid = reactCalloutIdRef.current;
+          const cb = onCalloutTextStyleChangeRef.current;
+          if (cid && typeof cb === 'function') {
+            cb(cid, { fontColor: hex });
+          }
+          // Force the broadcast + state refresh without touching the live
+          // textbox fill (transparent on purpose during edit).
+          if (typeof editingTextboxRef.current?.fire === 'function') {
+            editingTextboxRef.current.fire('changed');
+          }
+          publishRichTextEditor();
+        },
+      };
+    }
+    cb({ api: richTextApiRef.current, state: readRichTextState(obj) });
+  }, [fabricRef, applyTextStyle, readRichTextState]);
+
+  // Clear the rich-text bridge on unmount so the strip swaps back when the
+  // user exits the editor (commit, cancel, route change, page swap).
+  useEffect(() => {
+    return () => {
+      const cb = onRichTextEditorChangeRef.current;
+      if (typeof cb === 'function') cb(null);
+    };
+  }, []);
 
   // -------------------------------------------------------------------------
   // Compute container style for bbox vs full-page mode
@@ -1732,8 +1948,29 @@ const FabricEditCanvas = memo(({
       // visibly "pop" into SVG form. Intended final colors stash in
       // originalAnnotationRef so commitAndClose (lines 978-983) restores them
       // onto the persisted annotation.
-      const intendedFill = strokeColor || '#007AFF';
-      const intendedStroke = '#000000';
+      // 2026-05-25: The toolbar's stroke colour is the textbox BORDER, not the
+      // glyph fill. Previously intendedFill = strokeColor, which painted the
+      // typed text in the picked border colour and left the actual border
+      // hard-coded black. Now the glyph stays a fixed slate (a font-color
+      // picker is a separate future control) and the border picks up the
+      // toolbar stroke colour + opacity. The textbox background also picks up
+      // the toolbar fill so text boxes mirror the rectangle/ellipse behaviour.
+      const toRgba = (raw, op) => {
+        if (!raw || raw === 'transparent') return 'transparent';
+        const alpha = Math.max(0, Math.min(1, (op ?? 100) / 100));
+        if (/^#[0-9a-fA-F]{6}$/.test(raw)) {
+          const r = parseInt(raw.slice(1, 3), 16);
+          const g = parseInt(raw.slice(3, 5), 16);
+          const b = parseInt(raw.slice(5, 7), 16);
+          return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        }
+        return raw;
+      };
+      const intendedFill = '#1e293b';
+      const intendedStroke = toRgba(strokeColor || '#000000', strokeOpacity);
+      const intendedBackground = (fillColor && fillColor !== 'transparent')
+        ? toRgba(fillColor, fillOpacity)
+        : '';
 
       // Plan 15-04 Issue 4 — visibleOuterW is what the user draws by drag.
       // Fabric's textObj.width stores the WRAP target (inner content width).
@@ -1761,7 +1998,10 @@ const FabricEditCanvas = memo(({
         // Plan 15-04 Issue 2 — stroke painted transparent during edit; the
         // SVG preview paints the real intendedStroke. Commit restores it.
         stroke: 'rgba(0,0,0,0)',
-        strokeWidth: 1,
+        // 2026-05-25: Border thickness driven by the toolbar's width input.
+        // Falls back to 1 (the prior hard-coded default) when the toolbar
+        // hasn't provided a value yet.
+        strokeWidth: Math.max(1, Number(strokeWidth) || 1),
         strokeUniform: true,
         editable: true,
         selectable: true,
@@ -1769,7 +2009,7 @@ const FabricEditCanvas = memo(({
         cursorColor: '#007AFF',
         editingBorderColor: 'transparent',
         borderColor: 'transparent',
-        backgroundColor: '',
+        backgroundColor: intendedBackground,
         textBackgroundColor: '',
         hasBorders: false,
         hasControls: false,
@@ -1816,6 +2056,14 @@ const FabricEditCanvas = memo(({
       if (textObj.hiddenTextarea) {
         textObj.hiddenTextarea.style.caretColor = 'transparent';
       }
+
+      // 2026-05-25: hook the rich-text bridge for new-text edits too — same
+      // contract as the existing-text path.
+      textObj.on('selection:changed', () => {
+        if (!mountedRef.current) return;
+        publishRichTextEditor();
+      });
+      publishRichTextEditor();
 
       // Reveal via rAF: wait one frame for the browser to finish compositing the
       // Fabric.js canvas layers (wrapper div, lower-canvas, upper-canvas) before
@@ -1886,6 +2134,7 @@ const FabricEditCanvas = memo(({
           fill: intendedFill,
           stroke: intendedStroke,
           strokeWidth: textObj.strokeWidth || 1,
+          backgroundColor: intendedBackground,
           isCreating: true,
         });
       }
@@ -1893,6 +2142,7 @@ const FabricEditCanvas = memo(({
       // Auto-resize height as text wraps (same as existing text path)
       textObj.on('changed', () => {
         if (!mountedRef.current || !containerRef.current) return;
+        publishRichTextEditor();
         const h = (textObj.calcTextHeight() + BBOX_PADDING * 2) * es + 8;
         const newH = Math.max(Math.round(30 * es), Math.ceil(h));
         canvas.setDimensions({ height: newH });
@@ -1927,6 +2177,7 @@ const FabricEditCanvas = memo(({
             fill: intendedFill,
             stroke: intendedStroke,
             strokeWidth: textObj.strokeWidth || 1,
+            backgroundColor: intendedBackground,
             isCreating: true,
           });
         }
@@ -2104,12 +2355,17 @@ const FabricEditCanvas = memo(({
           textObj.on('changed', () => {
             if (!mountedRef.current) return;
             dumpCursorParity('keystroke', source, resolvedId, textObj, findSvgDiv(), canvas, containerRef.current);
+            publishRichTextEditor();
           });
           textObj.on('selection:changed', () => {
             if (!mountedRef.current) return;
             dumpCursorParity('selection', source, resolvedId, textObj, findSvgDiv(), canvas, containerRef.current);
+            publishRichTextEditor();
           });
         }
+        // 2026-05-25: publish the rich-text editor api on edit entry so the
+        // top strip can swap to its B / I / U / S mode immediately.
+        publishRichTextEditor();
 
         // Reveal via rAF: wait one frame for browser to finish compositing Fabric canvas layers
         requestAnimationFrame(() => {
@@ -2219,6 +2475,24 @@ const FabricEditCanvas = memo(({
               textLines: lines,
               fontSize: textObj.fontSize,
               lineHeight: textObj.lineHeight,
+              // 2026-05-25: rich-text style fields so the SVG renderer can
+              // mirror the live Fabric Textbox during edit (B / I / U / S +
+              // alignment).
+              fontWeight: textObj.fontWeight,
+              fontStyle: textObj.fontStyle,
+              underline: !!textObj.underline,
+              linethrough: !!textObj.linethrough,
+              textAlign: textObj.textAlign,
+              verticalAlign: textObj.verticalAlign || 'top',
+              fontFamily: textObj.fontFamily,
+              // Intended glyph color lives in originalAnnotationRef during
+              // edit because the live Textbox fill is transparent (so Fabric's
+              // canvas doesn't double-paint over SVG). Falling back to a
+              // visible default if the snapshot's blank.
+              fill: (originalAnnotationRef.current && typeof originalAnnotationRef.current.fill === 'string'
+                && originalAnnotationRef.current.fill !== 'rgba(0,0,0,0)')
+                ? originalAnnotationRef.current.fill
+                : '#1e293b',
             };
             onLiveTextGrow(bounds);
           }
@@ -3140,6 +3414,17 @@ const FabricEditCanvas = memo(({
 
       // Check if click coordinates are inside the Canvas container
       if (isPointInRect(e.clientX, e.clientY, container)) return;
+
+      // 2026-05-25: top-strip rich-text toolbar (Bold / Italic / Underline /
+      // Strike) lives outside the canvas container but its clicks must NOT
+      // commit + close the editor. Bail out before the click-outside path
+      // when the target lands inside that toolbar.
+      const richTextToolbar = document.querySelector('[data-rich-text-toolbar]');
+      if (richTextToolbar
+        && (richTextToolbar.contains(e.target)
+          || isPointInRect(e.clientX, e.clientY, richTextToolbar))) {
+        return;
+      }
 
       // Check if click is inside the mini-toolbar or its descendants (e.g. color picker dropdown).
       // Two checks needed:
