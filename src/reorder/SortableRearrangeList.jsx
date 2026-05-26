@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useId, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import {
   DndContext,
   KeyboardSensor,
@@ -19,26 +19,6 @@ const restrictToVerticalAxis = ({ transform }) => ({
   ...transform,
   x: 0,
 });
-
-const restrictToScrollableListBounds = ({
-  activeNodeRect,
-  scrollableAncestorRects,
-  transform,
-}) => {
-  const boundaryRect = scrollableAncestorRects[0];
-
-  if (!activeNodeRect || !boundaryRect) {
-    return transform;
-  }
-
-  return {
-    ...transform,
-    y: Math.min(
-      Math.max(transform.y, boundaryRect.top - activeNodeRect.top),
-      boundaryRect.bottom - activeNodeRect.bottom
-    ),
-  };
-};
 
 export function SortableRearrangeList({
   ids,
@@ -62,6 +42,42 @@ export function SortableRearrangeList({
     return () => document.body.classList.remove('drag-rearrange-dragging');
   }, [activeId]);
 
+  const modifiers = useMemo(() => [
+    restrictToVerticalAxis,
+    ({ activeNodeRect, active, transform }) => {
+      const activeIdValue = String(active?.id ?? '');
+      const activeNode = Array.from(document.querySelectorAll('[data-sortable-rearrange-item]'))
+        .find((node) => node.dataset.sortableRearrangeItem === activeIdValue);
+      const listNode = activeNode?.closest?.('[data-sortable-rearrange-list]');
+
+      if (!activeNodeRect || !listNode) {
+        return transform;
+      }
+
+      const itemRects = Array.from(listNode.querySelectorAll('[data-sortable-rearrange-item]'))
+        .map((node) => ({
+          top: node.offsetTop,
+          bottom: node.offsetTop + node.offsetHeight,
+        }))
+        .filter((rect) => rect.bottom > rect.top);
+
+      if (!itemRects.length) {
+        return transform;
+      }
+
+      const top = Math.min(...itemRects.map((rect) => rect.top));
+      const bottom = Math.max(...itemRects.map((rect) => rect.bottom));
+
+      return {
+        ...transform,
+        y: Math.min(
+          Math.max(transform.y, top - activeNode.offsetTop),
+          bottom - (activeNode.offsetTop + activeNode.offsetHeight)
+        ),
+      };
+    },
+  ], []);
+
   const handleDragEnd = useCallback(({ active, over }) => {
     setActiveId(null);
     if (!over || active.id === over.id) return;
@@ -73,13 +89,19 @@ export function SortableRearrangeList({
       id={dndContextId}
       sensors={sensors}
       collisionDetection={closestCenter}
-      modifiers={[restrictToVerticalAxis, restrictToScrollableListBounds]}
-      onDragStart={({ active }) => setActiveId(active.id)}
+      modifiers={modifiers}
+      onDragStart={({ active }) => {
+        setActiveId(active.id);
+      }}
       onDragEnd={handleDragEnd}
-      onDragCancel={() => setActiveId(null)}
+      onDragCancel={() => {
+        setActiveId(null);
+      }}
     >
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+        <div data-sortable-rearrange-list={String(activeId ?? '')} style={{ minHeight: '100%' }}>
         {children}
+        </div>
       </SortableContext>
     </DndContext>
   );
@@ -109,7 +131,7 @@ export function SortableRearrangeRow({
   };
 
   return (
-    <div ref={setNodeRef} style={style}>
+    <div ref={setNodeRef} data-sortable-rearrange-item={String(id)} style={style}>
       {children({
         attributes,
         listeners,
