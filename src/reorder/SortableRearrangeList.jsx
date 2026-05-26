@@ -99,7 +99,10 @@ export function SortableRearrangeList({
       }}
     >
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-        <div data-sortable-rearrange-list={String(activeId ?? '')} style={{ minHeight: '100%' }}>
+        <div
+          data-sortable-rearrange-list={String(activeId ?? '')}
+          style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', gap: 'inherit' }}
+        >
         {children}
         </div>
       </SortableContext>
