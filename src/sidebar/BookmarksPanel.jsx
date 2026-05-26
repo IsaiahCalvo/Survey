@@ -538,11 +538,44 @@ const BookmarksPanel = ({
     : null;
   const sortedIds = useMemo(() => flattenedItems.map(({ id }) => id), [flattenedItems]);
   const activeSortableItem = activeId ? flattenedItems.find(({ id }) => id === activeId) : null;
-  const restrictPastRootLeft = useMemo(() => ({ transform }) => {
+  const restrictBookmarkTreeDrag = useMemo(() => ({ active, transform }) => {
     const minimumX = -((activeSortableItem?.depth ?? 0) * BOOKMARK_INDENTATION_WIDTH);
+    const activeRow = active?.id
+      ? document.querySelector(`[data-bookmark-row-id="${active.id}"]`)
+      : null;
+    const listNode = activeRow?.closest?.('[data-bookmark-tree-list]');
+
+    if (!activeRow || !listNode) {
+      return {
+        ...transform,
+        x: Math.max(transform.x, minimumX),
+      };
+    }
+
+    const rowRects = Array.from(listNode.querySelectorAll('[data-bookmark-row-id]'))
+      .map((row) => ({
+        top: row.offsetTop,
+        bottom: row.offsetTop + row.offsetHeight,
+      }))
+      .filter((rect) => rect.bottom > rect.top);
+
+    if (!rowRects.length) {
+      return {
+        ...transform,
+        x: Math.max(transform.x, minimumX),
+      };
+    }
+
+    const top = Math.min(...rowRects.map((rect) => rect.top));
+    const bottom = Math.max(...rowRects.map((rect) => rect.bottom));
+
     return {
       ...transform,
       x: Math.max(transform.x, minimumX),
+      y: Math.min(
+        Math.max(transform.y, top - activeRow.offsetTop),
+        bottom - (activeRow.offsetTop + activeRow.offsetHeight)
+      ),
     };
   }, [activeSortableItem?.depth]);
   const lockBookmarkTreeHorizontalVisual = useMemo(() => ({ transform }) => ({
@@ -1440,7 +1473,7 @@ const BookmarksPanel = ({
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
-          modifiers={[restrictPastRootLeft]}
+          modifiers={[restrictBookmarkTreeDrag]}
           measuring={bookmarkTreeMeasuring}
           onDragStart={handleDragStart}
           onDragMove={handleDragMove}
@@ -1459,7 +1492,7 @@ const BookmarksPanel = ({
                 No bookmarks yet. Create one to get started.
               </div>
             ) : (
-              <div style={{ margin: 0, padding: 0 }}>
+              <div data-bookmark-tree-list style={{ margin: 0, padding: 0 }}>
                 {flattenedItems.map((item) => (
                   <BookmarkTreeRow
                     key={item.id}
