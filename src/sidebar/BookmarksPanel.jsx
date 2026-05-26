@@ -9,15 +9,22 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
-import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import Icon from '../Icons';
+import {
+  BOOKMARK_INDENTATION_WIDTH,
+  GROUP_AUTO_EXPAND_OFFSET_PX,
+  applyBookmarkTreeProjection,
+  flattenBookmarkTreeForSort,
+  getAutoExpandTargetFolder,
+  getBookmarkProjection,
+  removeChildrenOf,
+} from './bookmarkReorderUtils.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
-const BOOKMARK_INDENTATION_WIDTH = 34;
-const BOOKMARK_TREE_CONTENT_WIDTH = 404;
+const BOOKMARK_TREE_CONTENT_WIDTH = 256;
 const GROUP_AUTO_EXPAND_DELAY_MS = 420;
-const GROUP_AUTO_EXPAND_OFFSET_PX = 24;
 const GROUP_COLLAPSE_ANIMATION_MS = 240;
 const GROUP_DRAG_SETTLE_COLLAPSE_DELAY_MS = 70;
 const GROUP_POST_COLLAPSE_LAYOUT_LOCK_MS = 260;
@@ -29,115 +36,6 @@ const bookmarkTreeMeasuring = {
 
 // Helper to generate unique IDs
 const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-const restrictToVerticalAxis = ({ transform }) => ({
-  ...transform,
-  x: 0,
-});
-
-const getDragDepth = (offset, indentationWidth) => Math.round(offset / indentationWidth);
-
-const flattenBookmarkTreeForSort = (items, parentId = null, depth = 0) => (
-  items.reduce((acc, item, index) => [
-    ...acc,
-    { ...item, parentId, depth, index },
-    ...flattenBookmarkTreeForSort(item.children || [], item.id, depth + 1),
-  ], [])
-);
-
-const removeChildrenOf = (items, ids) => {
-  const excludedParentIds = [...ids];
-  return items.filter((item) => {
-    if (item.parentId && excludedParentIds.includes(item.parentId)) {
-      if (item.children?.length) {
-        excludedParentIds.push(item.id);
-      }
-      return false;
-    }
-    return true;
-  });
-};
-
-const buildSortableBookmarkTree = (flattenedItems) => {
-  const root = { id: 'root', children: [] };
-  const nodes = { root };
-  const items = flattenedItems.map(({ depth, index, parentId, ...item }) => ({
-    ...item,
-    parentId,
-    children: [],
-  }));
-
-  for (const item of items) {
-    const parentId = item.parentId ?? 'root';
-    const parent = nodes[parentId] ?? items.find((candidate) => candidate.id === parentId) ?? root;
-    delete item.parentId;
-    nodes[item.id] = item;
-    parent.children.push(item);
-  }
-
-  return root.children.map((item) => ({
-    ...item,
-    children: item.children || [],
-  }));
-};
-
-const getBookmarkProjection = (items, activeId, overId, dragOffset, indentationWidth) => {
-  const overItemIndex = items.findIndex(({ id }) => id === overId);
-  const activeItemIndex = items.findIndex(({ id }) => id === activeId);
-  if (overItemIndex === -1 || activeItemIndex === -1) return null;
-
-  const activeItem = items[activeItemIndex];
-  const newItems = arrayMove(items, activeItemIndex, overItemIndex);
-  const previousItem = newItems[overItemIndex - 1];
-  const nextItem = newItems[overItemIndex + 1];
-  const canNestUnderPrevious = previousItem?.type === 'folder';
-  const maxDepth = previousItem ? previousItem.depth + (canNestUnderPrevious ? 1 : 0) : 0;
-  const minDepth = nextItem ? nextItem.depth : 0;
-  const dragDepth = getDragDepth(dragOffset, indentationWidth);
-  const projectedDepth = activeItem.depth + dragDepth;
-  const depth = Math.max(minDepth, Math.min(projectedDepth, maxDepth));
-
-  const getParentId = () => {
-    if (depth === 0 || !previousItem) return null;
-    if (depth === previousItem.depth) return previousItem.parentId;
-    if (depth > previousItem.depth) {
-      return previousItem.type === 'folder' ? previousItem.id : previousItem.parentId;
-    }
-
-    return newItems
-      .slice(0, overItemIndex)
-      .reverse()
-      .find((item) => item.depth === depth)?.parentId ?? null;
-  };
-
-  return { depth, maxDepth, minDepth, parentId: getParentId() };
-};
-
-const getAutoExpandTargetFolder = (items, activeId, overId, dragOffset) => {
-  if (dragOffset < GROUP_AUTO_EXPAND_OFFSET_PX) return null;
-
-  const overItemIndex = items.findIndex(({ id }) => id === overId);
-  const activeItemIndex = items.findIndex(({ id }) => id === activeId);
-  if (overItemIndex === -1 || activeItemIndex === -1) return null;
-
-  const reorderedItems = arrayMove(items, activeItemIndex, overItemIndex);
-  const reorderedOverIndex = reorderedItems.findIndex(({ id }) => id === overId);
-  const candidates = [
-    items[overItemIndex],
-    items[overItemIndex - 1],
-    items[overItemIndex + 1],
-    reorderedItems[reorderedOverIndex],
-    reorderedItems[reorderedOverIndex - 1],
-    reorderedItems[reorderedOverIndex + 1],
-  ].filter((item, index, list) => item && list.findIndex((candidate) => candidate?.id === item.id) === index);
-
-  return candidates.find((item) => (
-    item?.type === 'folder' &&
-    item.id !== activeId &&
-    item.collapsed &&
-    item.children?.length > 0
-  )) ?? null;
-};
 
 const BookmarkTreeRow = ({
   item,
@@ -286,9 +184,9 @@ const BookmarkTreeRow = ({
           transition: groupAnimationState || isGroupAnimationActive ? undefined : transition,
           display: 'flex',
           alignItems: 'center',
-          gap: 6,
+          gap: 4,
           height: 34,
-          padding: '4px 6px',
+          padding: '4px 5px',
           borderRadius: 6,
           background: isClone ? '#2b2b2b' : isSelected ? '#30343a' : '#252525',
           border: '1px solid #333',
@@ -315,7 +213,7 @@ const BookmarkTreeRow = ({
           {...handleProps}
           title="Drag to reorder"
           style={{
-            width: 24,
+            width: 20,
             height: 24,
             display: 'flex',
             alignItems: 'center',
@@ -338,7 +236,7 @@ const BookmarkTreeRow = ({
           disabled={!isFolder || !item.children?.length || isClone}
           title={(isCollapsed || isVisuallyCollapsed) ? 'Expand group' : 'Collapse group'}
           style={{
-            width: 20,
+            width: 18,
             height: 20,
             border: 0,
             padding: 0,
@@ -352,7 +250,7 @@ const BookmarkTreeRow = ({
         >
           ▾
         </button>
-        <Icon name={isFolder ? 'folder' : 'bookmark'} size={13} color={isFolder ? '#8fb7ff' : '#aaa'} />
+        <Icon name={isFolder ? 'folder' : 'bookmark'} size={12} color={isFolder ? '#8fb7ff' : '#aaa'} />
         {isEditMode && !isClone ? (
           <input
             value={editName}
@@ -432,8 +330,8 @@ const BookmarkTreeRow = ({
             />
           ) : (
             item.pageIds?.[0] ? (
-              <span style={{ width: 56, color: '#aaa', fontSize: 12, textAlign: 'right', flexShrink: 0, userSelect: 'none' }}>
-                Page {item.pageIds[0]}
+              <span style={{ width: 42, color: '#aaa', fontSize: 11, textAlign: 'right', flexShrink: 0, userSelect: 'none' }}>
+                P {item.pageIds[0]}
               </span>
             ) : null
           )
@@ -446,7 +344,7 @@ const BookmarkTreeRow = ({
             }}
             title="Add bookmark to group"
             style={{
-              width: 34,
+              width: 28,
               height: 24,
               background: '#1b1b1b',
               border: '1px solid #3a3a3a',
@@ -638,6 +536,17 @@ const BookmarksPanel = ({
     : null;
   const sortedIds = useMemo(() => flattenedItems.map(({ id }) => id), [flattenedItems]);
   const activeSortableItem = activeId ? flattenedItems.find(({ id }) => id === activeId) : null;
+  const restrictPastRootLeft = useMemo(() => ({ transform }) => {
+    const minimumX = -((activeSortableItem?.depth ?? 0) * BOOKMARK_INDENTATION_WIDTH);
+    return {
+      ...transform,
+      x: Math.max(transform.x, minimumX),
+    };
+  }, [activeSortableItem?.depth]);
+  const lockBookmarkTreeHorizontalVisual = useMemo(() => ({ transform }) => ({
+    ...transform,
+    x: 0,
+  }), []);
 
   // Find item in tree
   const findItem = useCallback((id, list, parent = null) => {
@@ -816,13 +725,9 @@ const BookmarksPanel = ({
     const foldersToRecollapse = autoExpandedFolderIds.filter((folderId) => folderId !== finalParentId);
 
     if (projected && over) {
-      const { depth, parentId } = projected;
-      const clonedItems = JSON.parse(JSON.stringify(flattenBookmarkTreeForSort(bookmarkTree)));
-      const overIndex = clonedItems.findIndex(({ id }) => id === over.id);
-      const activeIndex = clonedItems.findIndex(({ id }) => id === active.id);
-      if (overIndex !== -1 && activeIndex !== -1) {
-        clonedItems[activeIndex] = { ...clonedItems[activeIndex], depth, parentId };
-        const nextTree = buildSortableBookmarkTree(arrayMove(clonedItems, activeIndex, overIndex));
+      const { parentId } = projected;
+      const nextTree = applyBookmarkTreeProjection(bookmarkTree, active.id, over.id, projected);
+      if (nextTree !== bookmarkTree) {
         persistBookmarkTree(nextTree);
         if (parentId) {
           setExpandedFolders((prev) => {
@@ -1477,7 +1382,7 @@ const BookmarksPanel = ({
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
-          modifiers={[restrictToVerticalAxis]}
+          modifiers={[restrictPastRootLeft]}
           measuring={bookmarkTreeMeasuring}
           onDragStart={handleDragStart}
           onDragMove={handleDragMove}
@@ -1524,7 +1429,7 @@ const BookmarksPanel = ({
             )}
           </SortableContext>
 
-          <DragOverlay modifiers={[restrictToVerticalAxis]} dropAnimation={null}>
+          <DragOverlay modifiers={[lockBookmarkTreeHorizontalVisual]} dropAnimation={null}>
             {activeSortableItem ? (
               <BookmarkTreeRow
                 item={activeSortableItem}
