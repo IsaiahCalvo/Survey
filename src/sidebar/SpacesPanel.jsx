@@ -1342,6 +1342,7 @@ const SpacesPanel = ({
                   id={space.id}
                   disabled={!onReorderSpaces}
                   animateLayoutChanges={animateSpaceLayoutChanges}
+                  disableSettledTransition
                 >
                   {({ attributes, listeners, isDragging }) => (
                     <SpaceSortableCard
