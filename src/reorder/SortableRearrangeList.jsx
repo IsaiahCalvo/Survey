@@ -128,6 +128,7 @@ export function SortableRearrangeRow({
   id,
   children,
   disabled = false,
+  animateLayoutChanges,
 }) {
   const {
     attributes,
@@ -136,7 +137,7 @@ export function SortableRearrangeRow({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id, disabled });
+  } = useSortable({ id, disabled, animateLayoutChanges });
 
   const style = {
     transform: CSS.Transform.toString(transform),
