@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Save button — variants</title>
+<style>
+  :root {
+    --bg-page: #06080c;
+    --bg-card: #181c24;
+    --bg-input: #12151c;
+    --border: #2a2f3a;
+    --border-soft: rgba(243, 238, 225, 0.12);
+    --text: #f3eee1;
+    --muted: #a8b0bf;
+    --muted-2: #6b7280;
+    --accent: #d8a84e;
+    --accent-bright: #f0bc5a;
+    --accent-hover: #c89738;
+    --accent-ink: #1a1a1a;
+    --danger: #d97766;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg-page);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+    padding: 40px 24px 80px;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  h1 {
+    margin: 0 0 6px;
+    text-align: center;
+    font-size: 24px;
+    font-weight: 700;
+  }
+  .subtitle {
+    margin: 0 0 32px;
+    text-align: center;
+    color: #8b94a3;
+    font-size: 13.5px;
+  }
+  .row-label {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted-2);
+    margin: 28px 0 10px;
+    padding-left: 4px;
+    font-weight: 600;
+  }
+  .row-label:first-of-type { margin-top: 0; }
+  .row-label.dirty { color: var(--accent); }
+  .panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .panel-title {
+    font-size: 14px;
+    color: var(--text);
+    font-weight: 600;
+  }
+  .spacer { flex: 1; }
+
+  /* Base button */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 16px;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    background: var(--accent);
+    color: var(--accent-ink);
+    position: relative;
+  }
+  .btn:hover { background: var(--accent-hover); }
+  .btn svg { width: 14px; height: 14px; }
+
+  /* Clean (no-changes) save — slightly muted */
+  .btn-save-clean {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid rgba(216, 168, 78, 0.32);
+  }
+  .btn-save-clean:hover {
+    background: rgba(216, 168, 78, 0.06);
+    border-color: rgba(216, 168, 78, 0.5);
+  }
+
+  /* Option A: brighter gold + label change */
+  .btn-save-dirty-a {
+    background: var(--accent-bright);
+    color: var(--accent-ink);
+    box-shadow: 0 0 0 0 rgba(240, 188, 90, 0);
+    animation: pulseA 1.8s ease-in-out infinite;
+  }
+  @keyframes pulseA {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(240, 188, 90, 0); }
+    50% { box-shadow: 0 0 0 4px rgba(240, 188, 90, 0.18); }
+  }
+
+  /* Option B: small gold dot indicator next to steady Save */
+  .btn-save-dirty-b {
+    background: var(--accent);
+    color: var(--accent-ink);
+  }
+  .btn-save-dirty-b .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-ink);
+    box-shadow: 0 0 0 2px rgba(26, 26, 26, 0.2);
+  }
+  /* Actually a better dot: a small accent dot in the upper-right corner */
+  .btn-save-dirty-b::after {
+    content: '';
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--accent-bright);
+    border: 2px solid var(--bg-card);
+  }
+
+  /* Validation prototype */
+  .editor-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-top: 8px;
+  }
+  .editor-section-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--muted);
+    margin: 0 0 12px;
+    font-weight: 700;
+  }
+  .row-input {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(243, 238, 225, 0.04);
+  }
+  .row-input:last-child { border-bottom: none; }
+  .row-input .handle {
+    color: var(--muted-2);
+    cursor: grab;
+    font-size: 14px;
+    user-select: none;
+  }
+  .row-input input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid transparent;
+    color: var(--text);
+    font-size: 13px;
+    padding: 6px 0;
+    outline: none;
+    font-family: inherit;
+    transition: border-color 0.18s ease, color 0.18s ease;
+  }
+  .row-input input::placeholder {
+    color: var(--muted-2);
+    font-style: italic;
+  }
+  .row-input input:focus {
+    border-bottom-color: var(--accent);
+  }
+  .row-input input.invalid {
+    border-bottom-color: var(--danger);
+    animation: shake 0.32s ease-in-out;
+  }
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-3px); }
+    75% { transform: translateX(3px); }
+  }
+  .hint {
+    font-size: 11.5px;
+    color: var(--danger);
+    margin-left: 24px;
+    margin-top: -2px;
+    margin-bottom: 6px;
+    opacity: 0;
+    transform: translateY(-2px);
+    transition: opacity 0.18s ease, transform 0.18s ease;
+    pointer-events: none;
+  }
+  .hint.show {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .row-input .delete {
+    color: var(--muted-2);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 4px 6px;
+    border-radius: 4px;
+  }
+  .row-input .delete:hover { color: var(--danger); background: rgba(217, 119, 102, 0.08); }
+
+  .note {
+    margin-top: 18px;
+    padding: 14px 16px;
+    background: rgba(216, 168, 78, 0.06);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    font-size: 12.5px;
+    color: var(--muted);
+    line-height: 1.55;
+  }
+  .note b { color: var(--text); font-weight: 600; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Save button — variants vs Upload reference</h1>
+    <p class="subtitle">Top is the reference Upload button. Then Save in its quiet state, then the two dirty-state options.</p>
+
+    <div class="row-label">Reference — Upload button on the Documents tab</div>
+    <div class="panel">
+      <div class="panel-title">Documents</div>
+      <div class="spacer"></div>
+      <button class="btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Upload PDF
+      </button>
+    </div>
+
+    <div class="row-label">Templates — clean state (no unsaved changes)</div>
+    <div class="panel">
+      <div class="panel-title">Templates</div>
+      <div class="spacer"></div>
+      <button class="btn btn-save-clean">Saved</button>
+    </div>
+
+    <div class="row-label dirty">Option A — brighter gold, label changes to "Save changes", soft pulse</div>
+    <div class="panel">
+      <div class="panel-title">Templates</div>
+      <div class="spacer"></div>
+      <button class="btn btn-save-dirty-a">Save changes</button>
+    </div>
+
+    <div class="row-label dirty">Option B — steady gold "Save" with a small bright dot in the corner</div>
+    <div class="panel">
+      <div class="panel-title">Templates</div>
+      <div class="spacer"></div>
+      <button class="btn btn-save-dirty-b">Save</button>
+    </div>
+
+    <h1 style="margin-top:56px;">Blank-input fix — proposal</h1>
+    <p class="subtitle">Type something to add it. Try leaving one blank and pressing Enter or clicking out.</p>
+
+    <div class="editor-card">
+      <div class="editor-section-title">EXTERIOR</div>
+      <div class="row-input">
+        <span class="handle">⋮⋮</span>
+        <input type="text" value="Roof condition" />
+        <button class="delete">×</button>
+      </div>
+      <div class="row-input">
+        <span class="handle">⋮⋮</span>
+        <input type="text" value="Gutters clear" />
+        <button class="delete">×</button>
+      </div>
+      <div class="row-input">
+        <span class="handle">⋮⋮</span>
+        <input id="newItem" type="text" placeholder="Add checklist item" />
+      </div>
+      <div id="hintItem" class="hint">Can't be empty — type something or hit Esc to cancel.</div>
+
+      <div style="height: 20px;"></div>
+      <div class="editor-section-title">ENTITY</div>
+      <div class="row-input">
+        <span class="handle">⋮⋮</span>
+        <input id="newEntity" type="text" placeholder="Entity name" />
+      </div>
+      <div id="hintEntity" class="hint">Can't be empty — type a name or remove the row.</div>
+    </div>
+
+    <div class="note">
+      <b>How it works:</b> Each new row has greyed placeholder text so you know what to type. If you hit Enter or click away with the input still blank, the bottom edge of the input briefly flashes red and softly shakes once, and a small "Can't be empty" hint slides in under it. The row never commits until you've typed real text. For existing items, clearing the text and clicking away quietly reverts to the previous value — so you can't accidentally delete a row just by blanking it.
+    </div>
+  </div>
+
+<script>
+  function wire(inputId, hintId) {
+    const inp = document.getElementById(inputId);
+    const hint = document.getElementById(hintId);
+    const fail = () => {
+      inp.classList.remove('invalid');
+      void inp.offsetWidth; // restart animation
+      inp.classList.add('invalid');
+      hint.classList.add('show');
+      setTimeout(() => {
+        inp.classList.remove('invalid');
+        hint.classList.remove('show');
+      }, 2000);
+    };
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !inp.value.trim()) {
+        e.preventDefault();
+        fail();
+      }
+    });
+    inp.addEventListener('blur', () => {
+      if (!inp.value.trim()) fail();
+    });
+  }
+  wire('newItem', 'hintItem');
+  wire('newEntity', 'hintEntity');
+</script>
+</body>
+</html>

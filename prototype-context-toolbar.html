@@ -1,0 +1,1345 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Context-aware top toolbar — prototype (in real app chrome)</title>
+<style>
+  :root {
+    /* Real app neutrals — matched to the current viewer screenshot */
+    --tabs-bg: #1a1d22;
+    --tab-inactive: #1f2329;
+    --tab-active: #2e333c;
+    --app-bg: #2b2f37;
+    --toolbar-bg: #2e333c;
+    --rail-bg: #232730;
+    --rail-rule: #1a1d22;
+    --rule: #3a3f48;
+    --rule-soft: #2a2e36;
+    --icon: #c4c7cf;
+    --icon-hover: #ffffff;
+    --icon-muted: #8a8f99;
+    /* Locked design-system accents */
+    --gold: #d8a84e;
+    --gold-bright: #f0bc5a;
+    --red-warm: #d97766;
+    --red-cool: #d95a56;
+    --page: #f7f5ee;
+    --ink: #e8e8ec;
+    --ink-soft: #b8bcc4;
+    --ink-muted: #8a8f99;
+    --ink-dim: #5a606a;
+    --input-bg: #1f2329;
+    --status-green: #46c46e;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: #0d0f15;
+    color: var(--ink);
+    font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* ───────── Page header (outside the app frame) ───────── */
+  .pageWrap { max-width: 1280px; margin: 0 auto; padding: 24px 24px 64px; }
+  .pageTitle { font-size: 20px; font-weight: 600; margin: 0 0 4px; color: #f3eee1; }
+  .pageHint { font-size: 12.5px; color: #a8b0bf; margin: 0 0 16px; }
+
+  /* State switcher */
+  .stateSwitch {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    margin: 0 0 18px;
+    padding: 10px;
+    background: #181c24;
+    border: 1px solid #2a2f3a;
+    border-radius: 10px;
+  }
+  .stateSwitch .label {
+    font-size: 11px; letter-spacing: .04em; text-transform: uppercase;
+    color: #6b7280;
+    align-self: center;
+    margin: 0 6px 0 4px;
+  }
+  .stateSwitch button {
+    appearance: none;
+    background: transparent;
+    border: 1px solid #2a2f3a;
+    border-radius: 999px;
+    color: #c4c0b1;
+    font: inherit; font-size: 11.5px;
+    padding: 5px 11px;
+    cursor: pointer;
+    transition: background .12s ease, color .12s ease, border-color .12s ease;
+  }
+  .stateSwitch button:hover { color: #f3eee1; border-color: #3a4150; }
+  .stateSwitch button.is-active {
+    color: var(--gold);
+    border-color: rgba(216,168,78,.45);
+    background: rgba(216,168,78,.08);
+  }
+
+  /* ───────── App shell (mirrors the real screenshot) ───────── */
+  .app {
+    width: 100%;
+    height: 720px;
+    background: var(--app-bg);
+    border-radius: 12px;
+    border: 1px solid #14171c;
+    overflow: hidden;
+    display: grid;
+    grid-template-rows: 38px auto 1fr 28px;
+    grid-template-columns: 48px 1fr 48px;
+    grid-template-areas:
+      "tabs   tabs   tabs"
+      "topbar topbar topbar"
+      "lrail  body   rrail"
+      "status status status";
+    box-shadow: 0 14px 40px rgba(0,0,0,.55);
+  }
+
+  /* Tabs bar */
+  .tabs {
+    grid-area: tabs;
+    background: var(--tabs-bg);
+    display: flex; align-items: stretch;
+    border-bottom: 1px solid #0f1116;
+  }
+  .tabHome, .tabDoc {
+    display: flex; align-items: center; gap: 8px;
+    height: 100%;
+    padding: 0 16px;
+    color: var(--icon);
+    font-size: 12.5px;
+    border-right: 1px solid #0f1116;
+    cursor: pointer;
+  }
+  .tabHome {
+    width: 168px;
+    background: var(--tab-inactive);
+  }
+  .tabDoc {
+    width: 260px;
+    background: var(--tab-active);
+    color: #f4f5f7;
+  }
+  .tabDoc .grip {
+    display: inline-flex; gap: 2px;
+    color: var(--icon-muted);
+    margin-right: 4px;
+  }
+  .tabDoc .grip span { width: 2px; height: 12px; background: currentColor; border-radius: 1px; }
+  .tabDoc .close {
+    margin-left: auto; color: var(--icon-muted);
+    font-size: 16px; line-height: 1; cursor: pointer;
+  }
+  .tabDoc .close:hover { color: var(--icon-hover); }
+
+  /* Top toolbar — two rows */
+  .topbar {
+    grid-area: topbar;
+    background: var(--toolbar-bg);
+    border-bottom: 1px solid var(--rail-rule);
+    padding: 6px 12px 8px;
+    display: flex; flex-direction: column; gap: 4px;
+    position: relative;
+    z-index: 5;
+  }
+  .toolRow {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    min-height: 36px;
+    column-gap: 8px;
+  }
+  .toolRow .left   { display: flex; align-items: center; gap: 4px; justify-self: start; }
+  .toolRow .center {
+    display: flex; align-items: center; gap: 4px;
+    justify-self: center;
+    position: relative; /* anchor for the absolutely-positioned strip */
+  }
+  .toolRow .right  { display: flex; align-items: center; gap: 4px; justify-self: end; }
+  .toolRow.row2 { display: flex; justify-content: center; gap: 8px; padding-top: 2px; }
+  .iconBtn {
+    appearance: none;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--icon);
+    width: 32px; height: 32px;
+    border-radius: 6px;
+    display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: color .12s ease, background .12s ease;
+    position: relative;
+  }
+  .iconBtn:hover { color: var(--icon-hover); background: rgba(255,255,255,.04); }
+  /* Locked: active state is color-only — no fill, no border */
+  .iconBtn.is-active { color: var(--gold); }
+  .iconBtn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  .iconBtn svg { display: block; }
+
+  .vDivider { width: 1px; height: 20px; background: var(--rule); margin: 0 6px; }
+
+  /* The context-aware properties strip — anchored to the right edge of the
+     tool-icon cluster, but absolutely positioned so growing it never nudges
+     the icons before it. */
+  .propWrap {
+    position: absolute;
+    top: 50%;
+    left: 100%;
+    transform: translateY(-50%);
+    margin-left: 12px;
+    display: flex; align-items: center; gap: 8px;
+    white-space: nowrap;
+  }
+  .propStrip {
+    display: flex; align-items: center; gap: 8px;
+    min-height: 32px;
+  }
+  .propStrip.is-empty {
+    color: var(--icon-muted); font-size: 11.5px; font-style: italic;
+  }
+  .propGroup { display: flex; align-items: center; gap: 6px; }
+  .propLabel {
+    font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--icon-muted);
+  }
+  .stripDiv { width: 1px; height: 18px; background: var(--rule); }
+
+  /* Color trigger — circle with optional ring */
+  .colorTrigger {
+    appearance: none; background: transparent; border: 0;
+    cursor: pointer;
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  .colorTrigger:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  .colorTrigger .ring {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: var(--ring, #d97766);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.5);
+  }
+  .colorTrigger .fill {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--fill, #d97766);
+    box-shadow: 0 0 0 1px rgba(0,0,0,.45);
+  }
+  .colorTrigger.is-flat .fill { display: none; }
+
+  /* Number / select inputs */
+  .numInput, .selectInput {
+    background: var(--input-bg);
+    border: 1px solid var(--rule);
+    color: var(--ink);
+    border-radius: 5px;
+    height: 26px;
+    padding: 0 8px;
+    font: inherit; font-size: 12px;
+    outline: none;
+  }
+  .numInput { width: 50px; text-align: center; }
+  .numInput.long { width: 64px; }
+  .numInput:focus, .selectInput:focus { border-color: rgba(216,168,78,.5); }
+  .selectInput {
+    padding-right: 22px; appearance: none;
+    background-image:
+      linear-gradient(45deg, transparent 50%, var(--icon-muted) 50%),
+      linear-gradient(135deg, var(--icon-muted) 50%, transparent 50%);
+    background-position: calc(100% - 11px) 11px, calc(100% - 7px) 11px;
+    background-size: 4px 4px, 4px 4px;
+    background-repeat: no-repeat;
+  }
+  .selectInput.thin { height: 26px; min-width: 124px; }
+
+  /* Stroke preview */
+  .strokeSet { display: inline-flex; align-items: center; gap: 6px; }
+  .strokeSet .preview {
+    width: 24px; height: 20px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 5px; border: 1px solid var(--rule);
+    background: var(--input-bg);
+  }
+  .strokeSet .preview .ln {
+    background: var(--ink-soft); width: 70%; border-radius: 1px;
+  }
+
+  /* Aa text-style button */
+  .textFmtBtn {
+    appearance: none;
+    background: var(--input-bg);
+    border: 1px solid var(--rule);
+    border-radius: 5px;
+    height: 26px; padding: 0 10px;
+    color: var(--ink);
+    font: inherit; font-size: 12px; font-weight: 600;
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .textFmtBtn:hover { border-color: rgba(216,168,78,.4); color: var(--gold); }
+  .textFmtBtn .aa { font-family: Georgia, serif; font-size: 13px; }
+  .textFmtBtn .lbl { font-size: 11px; color: var(--icon-muted); font-weight: 500; }
+
+  /* Rich text inline group */
+  .rt {
+    display: inline-flex; align-items: center; gap: 2px;
+    background: var(--input-bg);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 2px;
+  }
+  .rt button {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    color: var(--ink-soft);
+    height: 22px; min-width: 24px;
+    padding: 0 5px;
+    border-radius: 4px;
+    font: inherit; font-size: 12px;
+    cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .rt button:hover { background: rgba(255,255,255,.05); color: var(--ink); }
+  .rt button.is-on { color: var(--gold); background: rgba(216,168,78,.10); }
+  .rt .b { font-weight: 700; }
+  .rt .i { font-style: italic; }
+  .rt .u { text-decoration: underline; }
+  .rt .s { text-decoration: line-through; }
+
+  /* Alignment anchor — 3x3 grid trigger + popover */
+  .anchorTrigger {
+    width: 28px; height: 26px;
+    border: 1px solid var(--rule);
+    background: var(--input-bg);
+    border-radius: 5px;
+    display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    padding: 0;
+    color: var(--ink-soft);
+  }
+  .anchorTrigger:hover { border-color: rgba(216,168,78,.4); }
+  .anchorTrigger .miniGrid {
+    display: grid;
+    grid-template-columns: repeat(3, 4px);
+    grid-template-rows: repeat(3, 4px);
+    gap: 2px;
+  }
+  .anchorTrigger .miniGrid span {
+    width: 4px; height: 4px; border-radius: 1px;
+    background: rgba(168,176,191,.4);
+  }
+  .anchorTrigger .miniGrid span.on {
+    background: var(--gold);
+    box-shadow: 0 0 0 1px rgba(216,168,78,.25);
+  }
+  .anchorPop {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 30;
+    background: #1e2026;
+    border: 1px solid #383d46;
+    border-radius: 8px;
+    padding: 10px;
+    box-shadow: 0 12px 36px rgba(0,0,0,.5);
+  }
+  .anchorPop .lbl {
+    font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--icon-muted);
+    margin-bottom: 8px;
+  }
+  .anchorGrid {
+    display: grid;
+    grid-template-columns: repeat(3, 26px);
+    gap: 4px;
+  }
+  .anchorGrid button {
+    appearance: none;
+    width: 26px; height: 26px;
+    background: #14171c;
+    border: 1px solid #2a2e36;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0;
+  }
+  .anchorGrid button:hover { border-color: rgba(216,168,78,.5); }
+  .anchorGrid button.is-on {
+    background: rgba(216,168,78,.10);
+    border-color: var(--gold);
+  }
+  .anchorGrid button .cellDot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #5a606a;
+  }
+  .anchorGrid button.is-on .cellDot { background: var(--gold); }
+
+  /* Color picker popover (the shared fill/border picker) */
+  .popLayer {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 30;
+    background: #1e2026;
+    border: 1px solid #383d46;
+    border-radius: 8px;
+    box-shadow: 0 12px 36px rgba(0,0,0,.5);
+    padding: 12px;
+    width: 260px;
+    user-select: none;
+  }
+  .popHead {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .popHead .title { font-size: 13px; font-weight: 600; color: var(--ink); }
+  .modeToggle {
+    display: flex; gap: 3px; background: #14171c; padding: 2px; border-radius: 4px;
+  }
+  .modeToggle button {
+    background: transparent; border: 0; color: var(--ink-soft);
+    padding: 4px; border-radius: 2px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .modeToggle button.is-on { background: #2e333c; color: var(--ink); }
+  .layerTabs {
+    display: grid; grid-template-columns: 1fr 1fr;
+    background: #14171c; border: 1px solid #2a2e36;
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 12px;
+  }
+  .layerTabs button {
+    background: transparent; border: 0;
+    color: var(--icon-muted);
+    font: inherit; font-size: 11.5px; font-weight: 600;
+    padding: 8px 0; cursor: pointer;
+    position: relative;
+  }
+  .layerTabs button + button { border-left: 1px solid #2a2e36; }
+  .layerTabs button.is-on { color: var(--ink); background: rgba(216,168,78,.06); }
+  .layerTabs button.is-on::after {
+    content:""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
+    background: var(--gold);
+  }
+  .matchRow {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11.5px; color: var(--ink);
+    margin-bottom: 10px;
+    cursor: pointer;
+  }
+  .matchRow input { accent-color: var(--gold); }
+  .matchRow .hint { margin-left: auto; font-size: 10px; color: var(--icon-muted); }
+  .swatchGrid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; margin-bottom: 12px; }
+  .swatchGrid button { aspect-ratio: 1; border-radius: 4px; border: 1px solid #2a2e36; cursor: pointer; padding: 0; }
+  .swatchGrid button.is-on { border: 2px solid #fff; }
+  .opacityRow { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .opacityRow .lbl { color: var(--icon-muted); font-size: 10px; width: 44px; letter-spacing: .04em; }
+  .opacityRow input[type=range] { flex: 1; accent-color: var(--gold); }
+  .opacityRow .num { color: var(--ink); font-size: 11px; width: 30px; text-align: right; }
+  .hexRow {
+    display: flex; gap: 8px; padding-top: 10px;
+    border-top: 1px solid #2a2e36;
+  }
+  .hexRow .swatchBig {
+    width: 30px; height: 30px; border-radius: 4px;
+    border: 1px solid #2a2e36;
+  }
+  .hexRow .hexField {
+    flex: 1; background: #14171c; border: 1px solid #2a2e36; border-radius: 4px;
+    display: flex; align-items: center; padding: 0 8px;
+  }
+  .hexRow .hexField span { color: var(--icon-muted); font-size: 12px; margin-right: 4px; }
+  .hexRow input {
+    background: transparent; border: 0; color: var(--ink);
+    font-family: monospace; font-size: 12px;
+    width: 100%; outline: none;
+  }
+
+  /* Snappy light-grey tooltip */
+  .tip {
+    position: absolute;
+    background: #e8e8e8;
+    color: #1a1a1a;
+    font-size: 11.5px;
+    padding: 4px 8px;
+    border-radius: 5px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.25);
+    pointer-events: none;
+    opacity: 0;
+    transform: translate(-50%, 6px);
+    left: 50%;
+    top: calc(100% + 4px);
+    white-space: nowrap;
+    transition: opacity .08s ease;
+    z-index: 50;
+  }
+  .iconBtn:hover .tip, .iconBtn:focus-visible .tip { opacity: 1; }
+
+  /* Left rail */
+  .lrail {
+    grid-area: lrail;
+    background: var(--rail-bg);
+    border-right: 1px solid var(--rail-rule);
+    display: flex; flex-direction: column; align-items: center;
+    padding: 8px 0;
+    gap: 4px;
+  }
+  .lrail .iconBtn { width: 32px; height: 32px; }
+
+  /* Right rail */
+  .rrail {
+    grid-area: rrail;
+    background: var(--rail-bg);
+    border-left: 1px solid var(--rail-rule);
+    display: flex; flex-direction: column; align-items: center;
+    padding: 8px 0 12px;
+    gap: 4px;
+    color: var(--icon);
+    font-size: 11px;
+  }
+  .rrail .pageStack {
+    display: flex; flex-direction: column; align-items: center;
+    margin: 4px 0; line-height: 1.2;
+  }
+  .rrail .pageStack .cur { color: var(--gold); font-weight: 600; }
+  .rrail .pageStack .sep { color: var(--icon-muted); }
+  .rrail .grow { flex: 1; }
+  .rrail .zoom { font-size: 11px; color: var(--ink); margin: 4px 0; }
+
+  /* Status bar (bottom) */
+  .status {
+    grid-area: status;
+    background: var(--rail-bg);
+    border-top: 1px solid var(--rail-rule);
+    display: flex; align-items: center; padding: 0 12px;
+    gap: 10px;
+    color: var(--icon-muted); font-size: 11.5px;
+  }
+  .statusDot {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--status-green);
+    box-shadow: 0 0 6px rgba(70,196,110,.6);
+  }
+  .avatar {
+    width: 20px; height: 20px; border-radius: 50%;
+    background: #2e4ec9;
+    color: #fff;
+    font-size: 10px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .statusFill { flex: 1; }
+  .statusInfo { color: var(--icon-muted); font-size: 11.5px; }
+  .statusInfo b { color: var(--ink); font-weight: 600; }
+
+  /* Body / fake PDF page */
+  .body {
+    grid-area: body;
+    background: var(--app-bg);
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: 24px 32px;
+    overflow: hidden;
+    position: relative;
+  }
+  .pdfPage {
+    width: min(680px, 100%);
+    background: var(--page);
+    box-shadow: 0 16px 50px rgba(0,0,0,.45);
+    border-radius: 3px;
+    padding: 28px 32px 36px;
+    color: #2a2e36;
+    position: relative;
+  }
+  .pdfHeader {
+    background: #2e4ec9;
+    color: #fff;
+    margin: -28px -32px 14px;
+    padding: 12px 32px;
+    font-size: 16px; font-weight: 600;
+    letter-spacing: .01em;
+  }
+  .pdfBody { font-size: 13px; line-height: 1.55; color: #2a2e36; }
+  .pdfBody p { margin: 0 0 14px; }
+  .drawBox {
+    position: relative;
+    margin: 12px 0 18px;
+    height: 280px;
+    border: 1px solid #cbcab8;
+    background:
+      repeating-linear-gradient(
+        to bottom,
+        #f7f5ee 0 30px,
+        #f0eee2 30px 31px
+      );
+    border-radius: 2px;
+  }
+  .drawBox .caption {
+    position: absolute; top: -16px; left: 0;
+    font-size: 10px; color: #7a7868;
+  }
+  .sampleSel {
+    position: absolute;
+    border: 1.5px dashed var(--gold);
+    border-radius: 4px;
+    pointer-events: none;
+    box-shadow: 0 0 0 1px rgba(216,168,78,.18);
+  }
+
+  /* Notes column */
+  .notes {
+    margin-top: 22px;
+    padding: 16px 18px;
+    background: #181c24;
+    border: 1px solid #2a2f3a;
+    border-radius: 10px;
+    color: #c4c0b1;
+    font-size: 12.5px;
+    line-height: 1.55;
+  }
+  .notes h3 { margin: 0 0 8px; font-size: 13px; color: #f3eee1; letter-spacing: .02em; }
+  .notes p { margin: 6px 0; }
+  .notes .small { color: #a8b0bf; font-size: 11.5px; }
+</style>
+</head>
+<body>
+<div class="pageWrap">
+  <h1 class="pageTitle">Context-aware top toolbar — inside the real app shell</h1>
+  <p class="pageHint">The frame below mirrors the actual viewer (tabs, two-row toolbar, left rail, right rail, status). Click any state pill to see the toolbar swap.</p>
+
+  <div class="stateSwitch" id="stateSwitch">
+    <span class="label">Selected / tool</span>
+    <button data-state="pen" class="is-active">Pen</button>
+    <button data-state="highlighter">Highlighter</button>
+    <button data-state="eraser">Eraser</button>
+    <button data-state="arrow">Arrow</button>
+    <button data-state="line">Line</button>
+    <button data-state="rect">Rectangle</button>
+    <button data-state="rect-cloud">Rectangle · cloud</button>
+    <button data-state="polygon">Polygon</button>
+    <button data-state="polygon-cloud">Polygon · cloud</button>
+    <button data-state="ellipse">Ellipse</button>
+    <button data-state="callout-sel">Callout · selected</button>
+    <button data-state="callout-edit">Callout · editing text</button>
+    <button data-state="textbox-sel">Text box · selected</button>
+    <button data-state="textbox-edit">Text box · editing text</button>
+    <button data-state="counter">Counter</button>
+    <button data-state="import">Imported (stamp/signature/sticky)</button>
+  </div>
+
+  <!-- ──────────── App shell ──────────── -->
+  <div class="app">
+    <!-- Tabs -->
+    <div class="tabs">
+      <div class="tabHome">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8l6-5 6 5"/><path d="M4 8v5h8V8"/></svg>
+        Home
+      </div>
+      <div class="tabDoc">
+        <span class="grip"><span></span><span></span></span>
+        test.pdf
+        <span class="close" aria-label="Close tab">×</span>
+      </div>
+    </div>
+
+    <!-- Top toolbar (two rows, like the real app) -->
+    <div class="topbar">
+      <div class="toolRow row1">
+        <!-- Far left: undo / redo -->
+        <div class="left">
+          <button class="iconBtn" aria-label="Undo">
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7L3 11l4 4"/><path d="M3 11h9a5 5 0 0 1 0 10H10"/></svg>
+            <span class="tip">Undo</span>
+          </button>
+          <button class="iconBtn" aria-label="Redo">
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13 7l4 4-4 4"/><path d="M17 11H8a5 5 0 0 0 0 10h2"/></svg>
+            <span class="tip">Redo</span>
+          </button>
+        </div>
+
+        <!-- Center cluster: pan/select, then annotation tools, then properties strip -->
+        <div class="center">
+          <button class="iconBtn" aria-label="Pan">
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v16M2 10h16M10 2l-2 2M10 2l2 2M10 18l-2-2M10 18l2-2M2 10l2-2M2 10l2 2M18 10l-2-2M18 10l-2 2"/></svg>
+            <span class="tip">Pan</span>
+          </button>
+          <button class="iconBtn" aria-label="Select">
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M4 3l12 6-5 1 3 6-2 1-3-6-3 4z" fill="currentColor"/></svg>
+            <span class="tip">Select</span>
+          </button>
+
+          <span class="vDivider"></span>
+
+          <button class="iconBtn" data-tool="pen" aria-label="Pen">
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 3.5l2 2L7 15l-3 1 1-3 9.5-9.5z"/></svg>
+            <span class="tip">Pen</span>
+          </button>
+          <button class="iconBtn" data-tool="highlighter" aria-label="Highlighter">
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17h14"/><path d="M5 13l4-9 7 3-4 9-7-3z"/></svg>
+            <span class="tip">Highlighter</span>
+          </button>
+          <button class="iconBtn" data-tool="rect" aria-label="Shapes">
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3.5" y="5" width="13" height="10" rx="1"/></svg>
+            <span class="tip">Shapes</span>
+          </button>
+          <button class="iconBtn" data-tool="textbox" aria-label="Text">
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M5 5h10M10 5v10"/></svg>
+            <span class="tip">Text</span>
+          </button>
+          <button class="iconBtn" data-tool="callout" aria-label="Callout">
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 4h11v8H8l-3 3v-3H3z"/></svg>
+            <span class="tip">Callout</span>
+          </button>
+          <button class="iconBtn" aria-label="Link">
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="7"/><path d="M3 10h14M10 3a11 11 0 0 1 0 14M10 3a11 11 0 0 0 0 14"/></svg>
+            <span class="tip">Web link</span>
+          </button>
+
+          <span class="vDivider"></span>
+
+          <button class="iconBtn" data-tool="eraser" aria-label="Eraser">
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M4 14l6-6 5 5-3 3H7z"/><path d="M2 18h12"/></svg>
+            <span class="tip">Eraser</span>
+          </button>
+
+          <!-- Properties strip is absolutely positioned to the right edge of
+               this .center container, so its width never affects the icons. -->
+          <div class="propWrap" aria-label="Annotation properties">
+            <span class="vDivider"></span>
+            <div class="propStrip" id="propStrip" style="position:relative"></div>
+          </div>
+        </div>
+
+        <!-- Right spacer (kept for future right-side controls) -->
+        <div class="right"></div>
+      </div>
+
+      <!-- Row 2: shape sub-tools, only meaningful when shape family is active -->
+      <div class="toolRow row2" id="shapeSubrow">
+        <button class="iconBtn" data-shape="rect" aria-label="Rectangle">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3.5" y="5" width="13" height="10" rx="1"/></svg>
+          <span class="tip">Rectangle</span>
+        </button>
+        <button class="iconBtn" data-shape="ellipse" aria-label="Ellipse">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><ellipse cx="10" cy="10" rx="7" ry="5"/></svg>
+          <span class="tip">Ellipse</span>
+        </button>
+        <button class="iconBtn" data-shape="line" aria-label="Line">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 16L16 4"/></svg>
+          <span class="tip">Line</span>
+        </button>
+        <button class="iconBtn" data-shape="arrow" aria-label="Arrow">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16L16 4"/><path d="M10 4h6v6"/></svg>
+          <span class="tip">Arrow</span>
+        </button>
+        <button class="iconBtn" data-shape="polygon" aria-label="Polygon">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M10 3l6 4-2 8H6L4 7z"/></svg>
+          <span class="tip">Polygon</span>
+        </button>
+        <button class="iconBtn" data-shape="counter" aria-label="Counter">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="6"/><text x="10" y="13" text-anchor="middle" font-size="7" stroke="none" fill="currentColor">1</text></svg>
+          <span class="tip">Counter</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Left rail -->
+    <div class="lrail">
+      <button class="iconBtn" aria-label="Expand"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg></button>
+      <span style="height:8px"></span>
+      <button class="iconBtn" aria-label="Outline"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="14" height="12" rx="1"/><path d="M3 10h14"/></svg></button>
+      <button class="iconBtn" aria-label="Search"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="9" cy="9" r="5"/><path d="M13 13l4 4" stroke-linecap="round"/></svg></button>
+      <button class="iconBtn" aria-label="Bookmarks"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M5 3h10v14l-5-3-5 3z"/></svg></button>
+      <button class="iconBtn" aria-label="Documents"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 6h5l2 2h7v8H3z"/></svg></button>
+    </div>
+
+    <!-- Body / fake PDF page -->
+    <div class="body">
+      <div class="pdfPage">
+        <div class="pdfHeader">Sync Test Fresh — Page 1</div>
+        <div class="pdfBody">
+          <p>Pen stroke here. Watch the other device.</p>
+          <div class="drawBox">
+            <span class="caption">Draw inside the box</span>
+            <div class="sampleSel" id="sampleSel" style="left:60px; top:60px; width:200px; height:90px;"></div>
+          </div>
+          <p style="color:#7a7868; font-size:11px;">Page 1 of 3</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right rail -->
+    <div class="rrail">
+      <button class="iconBtn" aria-label="Previous page"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4-4 4 4"/></svg></button>
+      <div class="pageStack">
+        <span class="cur">1</span>
+        <span class="sep">·</span>
+        <span>3</span>
+      </div>
+      <button class="iconBtn" aria-label="Next page"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg></button>
+      <span class="grow"></span>
+      <button class="iconBtn" aria-label="Zoom in"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg></button>
+      <span class="zoom">56%</span>
+      <button class="iconBtn" aria-label="Zoom out"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 8h10"/></svg></button>
+      <button class="iconBtn" aria-label="Thumbnails"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="10" height="3"/><rect x="3" y="8" width="10" height="3"/></svg></button>
+    </div>
+
+    <!-- Status bar -->
+    <div class="status">
+      <span class="statusDot" aria-label="Online"></span>
+      <span class="avatar">IS</span>
+      <span class="statusFill"></span>
+      <span class="statusInfo" id="statusInfo">Pen tool active — color and stroke width only.</span>
+    </div>
+  </div>
+
+  <div class="notes">
+    <h3>What changed from the previous mockup</h3>
+    <p>The chrome above now matches the real app — same dark grey toolbar, same tab bar, same left and right rails, same status corner. The only piece being redesigned is the right edge of the top toolbar row, where today there's a red color square and the number "2". That entire piece becomes the context-aware strip.</p>
+    <p>Pen and highlighter show a plain solid color circle, plus stroke width. Eraser shows only diameter. Selecting a shape brings up its fill color (with the new ring-around-disc trigger) plus border style and any extras. Editing text inside a callout or text box swaps the row to bold/italic/underline/strike, a 3-by-3 alignment grid, font, size, and font color.</p>
+    <p class="small">Active tool icons turn gold, no fill, no permanent outline — matching the locked design system. Tooltips are the snappy light-grey style. Color picker mirrors the entity picker from the template editor.</p>
+  </div>
+</div>
+
+<script>
+  const state = {
+    tool: 'pen',
+    fill: '#d97766',
+    fillOpacity: 1,
+    border: '#222831',
+    borderOpacity: 1,
+    matchBorder: false,
+    width: 2,
+    borderStyle: 'solid',
+    arrowhead: 'open',
+    bumpSize: 12,
+    fontSize: 14,
+    fontFamily: 'Helvetica',
+    fontColor: '#1a1a1a',
+    counterNumber: 1,
+    counterSize: 24,
+    eraserSize: 16,
+    pickerOpen: null,
+    pickerLayer: 'fill',
+    pickerMode: 'grid',
+    anchor: 'middle-center',
+    anchorOpen: false,
+  };
+
+  const PRESETS = [
+    '#FF0000','#FF0080','#FF00FF','#8000FF',
+    '#0000FF','#0080FF','#00FFFF','#00FF80',
+    '#00FF00','#80FF00','#FFFF00','#FF8000',
+    '#FFFFFF','#C0C0C0','#808080','#000000',
+  ];
+
+  // State pills
+  document.getElementById('stateSwitch').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-state]');
+    if (!btn) return;
+    document.querySelectorAll('#stateSwitch button').forEach(b => b.classList.remove('is-active'));
+    btn.classList.add('is-active');
+    state.tool = btn.dataset.state;
+    state.pickerOpen = null;
+    state.anchorOpen = false;
+    render();
+  });
+
+  function dividerHtml() { return '<span class="stripDiv"></span>'; }
+
+  function simpleColorTrigger(label, val, setKey, flat) {
+    return `
+      <div class="propGroup" style="position:relative">
+        <span class="propLabel">${label}</span>
+        <button class="colorTrigger ${flat ? 'is-flat' : ''}" data-color="simple" data-key="${setKey}"
+          style="--ring:${val}; --fill:${val};"
+          aria-label="${label}">
+          <span class="ring"><span class="fill"></span></span>
+        </button>
+      </div>
+    `;
+  }
+
+  function colorTriggerWithTabs() {
+    const fill = state.fill;
+    const ring = state.matchBorder ? state.fill : state.border;
+    return `
+      <div class="propGroup" style="position:relative">
+        <span class="propLabel">Color</span>
+        <button class="colorTrigger" data-color="fillborder"
+          style="--ring:${ring}; --fill:${fill};"
+          aria-label="Fill and border color">
+          <span class="ring"><span class="fill"></span></span>
+        </button>
+        ${state.pickerOpen === 'fillborder' ? renderPicker(true) : ''}
+      </div>
+    `;
+  }
+
+  function strokeWidthControl(label) {
+    return `
+      <div class="propGroup">
+        <span class="propLabel">${label || 'Width'}</span>
+        <span class="strokeSet">
+          <span class="preview" aria-hidden="true">
+            <span class="ln" style="height:${Math.max(1, Math.min(state.width, 8))}px"></span>
+          </span>
+          <input class="numInput" type="number" min="1" max="40" value="${state.width}" data-bind="width" />
+        </span>
+      </div>
+    `;
+  }
+
+  function borderStyleControl(includeCloud) {
+    const opts = ['solid','dashed','dotted'];
+    if (includeCloud) opts.push('cloud');
+    return `
+      <div class="propGroup">
+        <span class="propLabel">Style</span>
+        <select class="selectInput thin" data-bind="borderStyle">
+          ${opts.map(o => `<option value="${o}" ${state.borderStyle===o?'selected':''}>${o[0].toUpperCase()+o.slice(1)}</option>`).join('')}
+        </select>
+      </div>
+    `;
+  }
+
+  function arrowheadControl() {
+    const opts = ['open','closed','none','reverse'];
+    return `
+      <div class="propGroup">
+        <span class="propLabel">Arrowhead</span>
+        <select class="selectInput thin" data-bind="arrowhead">
+          ${opts.map(o => `<option value="${o}" ${state.arrowhead===o?'selected':''}>${o[0].toUpperCase()+o.slice(1)}</option>`).join('')}
+        </select>
+      </div>
+    `;
+  }
+
+  function bumpSizeControl() {
+    return `
+      <div class="propGroup">
+        <span class="propLabel">Bump</span>
+        <input class="numInput" type="number" min="2" max="48" value="${state.bumpSize}" data-bind="bumpSize" />
+      </div>
+    `;
+  }
+
+  function textFmtButton() {
+    return `
+      <button class="textFmtBtn">
+        <span class="aa">Aa</span>
+        <span class="lbl">Text style</span>
+      </button>
+    `;
+  }
+
+  function anchorControl() {
+    const cells = [
+      'top-left','top-center','top-right',
+      'middle-left','middle-center','middle-right',
+      'bottom-left','bottom-center','bottom-right',
+    ];
+    return `
+      <div class="propGroup" style="position:relative">
+        <span class="propLabel">Align</span>
+        <button class="anchorTrigger" id="anchorTrigger" aria-label="Text alignment ${state.anchor}">
+          <span class="miniGrid" aria-hidden="true">
+            ${cells.map(c => `<span class="${c===state.anchor?'on':''}"></span>`).join('')}
+          </span>
+        </button>
+        ${state.anchorOpen ? `
+          <div class="anchorPop" onclick="event.stopPropagation()">
+            <div class="lbl">Text alignment</div>
+            <div class="anchorGrid">
+              ${cells.map(c => `
+                <button data-anchor="${c}" class="${state.anchor===c?'is-on':''}" aria-label="${c.replace('-',' ')}">
+                  <span class="cellDot"></span>
+                </button>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }
+
+  function richTextStrip() {
+    return `
+      <div class="propGroup">
+        <span class="rt" role="toolbar" aria-label="Text formatting">
+          <button class="b" aria-label="Bold">B</button>
+          <button class="i" aria-label="Italic">I</button>
+          <button class="u" aria-label="Underline">U</button>
+          <button class="s" aria-label="Strike through">S</button>
+        </span>
+      </div>
+      ${anchorControl()}
+      <div class="propGroup">
+        <span class="propLabel">Font</span>
+        <select class="selectInput thin" data-bind="fontFamily">
+          ${['Helvetica','Arial','Times New Roman','Courier'].map(f => `<option ${state.fontFamily===f?'selected':''}>${f}</option>`).join('')}
+        </select>
+      </div>
+      <div class="propGroup">
+        <span class="propLabel">Size</span>
+        <input class="numInput" type="number" min="8" max="96" value="${state.fontSize}" data-bind="fontSize" />
+      </div>
+      ${simpleColorTrigger('Font color', state.fontColor, 'fontColor', true)}
+    `;
+  }
+
+  function renderPicker(showTabs) {
+    const layer = state.pickerLayer;
+    const current = layer === 'fill'
+      ? state.fill
+      : (state.matchBorder ? state.fill : state.border);
+    const op = layer === 'fill' ? state.fillOpacity : state.borderOpacity;
+    return `
+      <div class="popLayer" onclick="event.stopPropagation()">
+        <div class="popHead">
+          <span class="title">Color</span>
+          <span class="modeToggle">
+            <button data-mode="grid" class="${state.pickerMode==='grid'?'is-on':''}" aria-label="Swatch grid">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6"/><rect x="9" y="1" width="6" height="6"/><rect x="1" y="9" width="6" height="6"/><rect x="9" y="9" width="6" height="6"/></svg>
+            </button>
+            <button data-mode="spectrum" class="${state.pickerMode==='spectrum'?'is-on':''}" aria-label="Spectrum">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2L10 6L14 8L10 10L8 14L6 10L2 8L6 6Z"/></svg>
+            </button>
+          </span>
+        </div>
+
+        ${showTabs ? `
+          <div class="layerTabs">
+            <button data-layer="fill" class="${layer==='fill'?'is-on':''}">Fill</button>
+            <button data-layer="border" class="${layer==='border'?'is-on':''}">Border</button>
+          </div>
+        ` : ''}
+
+        ${showTabs && layer === 'border' ? `
+          <label class="matchRow">
+            <input type="checkbox" id="matchFill" ${state.matchBorder?'checked':''}/>
+            <span>Match Fill</span>
+            ${state.matchBorder ? `<span class="hint">using fill color &amp; opacity</span>` : ''}
+          </label>
+        ` : ''}
+
+        <div style="${state.matchBorder && layer==='border' ? 'opacity:.4; pointer-events:none;' : ''}">
+          ${state.pickerMode === 'grid' ? `
+            <div class="swatchGrid">
+              ${PRESETS.map(c => `
+                <button data-swatch="${c}" style="background:${c}"
+                  class="${current.toUpperCase()===c.toUpperCase()?'is-on':''}"></button>
+              `).join('')}
+            </div>
+          ` : `
+            <div style="height:130px; border-radius:4px; margin-bottom:12px;
+              background:
+                linear-gradient(to top, #000, transparent),
+                linear-gradient(to right, #fff, transparent),
+                hsl(0, 100%, 50%);
+              position:relative; cursor:crosshair;">
+              <div style="position:absolute; left:60%; top:30%; width:12px; height:12px;
+                border:2px solid #fff; border-radius:50%; transform:translate(-50%,-50%);
+                background:${current};"></div>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+              <span style="color:var(--icon-muted); font-size:10px; width:24px;">HUE</span>
+              <div style="flex:1; height:12px; border-radius:6px;
+                background: linear-gradient(to right, #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%);"></div>
+              <span style="color:var(--ink); font-size:11px; width:28px; text-align:right;">0°</span>
+            </div>
+          `}
+
+          <div class="opacityRow">
+            <span class="lbl">OPACITY</span>
+            <input type="range" min="0" max="100" value="${Math.round(op*100)}" data-opacity-layer="${layer}"/>
+            <span class="num">${Math.round(op*100)}%</span>
+          </div>
+        </div>
+
+        <div class="hexRow">
+          <div class="swatchBig" style="background:${current}; opacity:${op};"></div>
+          <div class="hexField">
+            <span>#</span>
+            <input type="text" value="${current.replace('#','').toUpperCase()}" data-hex-layer="${layer}"/>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function buildStrip() {
+    const s = state.tool;
+
+    if (s === 'pen' || s === 'highlighter') {
+      return simpleColorTrigger('Color', state.fill, 'fill', true)
+        + dividerHtml() + strokeWidthControl();
+    }
+    if (s === 'eraser') {
+      return `
+        <div class="propGroup">
+          <span class="propLabel">Diameter</span>
+          <span class="strokeSet">
+            <span class="preview" aria-hidden="true">
+              <span class="ln" style="height:${Math.max(1, Math.min(state.eraserSize/4, 8))}px"></span>
+            </span>
+            <input class="numInput" type="number" min="2" max="120" value="${state.eraserSize}" data-bind="eraserSize" />
+          </span>
+        </div>
+      `;
+    }
+    if (s === 'arrow') {
+      return simpleColorTrigger('Color', state.fill, 'fill', true)
+        + dividerHtml() + strokeWidthControl()
+        + dividerHtml() + borderStyleControl(false)
+        + dividerHtml() + arrowheadControl();
+    }
+    if (s === 'line') {
+      return simpleColorTrigger('Color', state.fill, 'fill', true)
+        + dividerHtml() + strokeWidthControl()
+        + dividerHtml() + borderStyleControl(false);
+    }
+    if (s === 'rect' || s === 'rect-cloud' || s === 'polygon' || s === 'polygon-cloud') {
+      const cloud = s.endsWith('-cloud');
+      if (cloud) state.borderStyle = 'cloud';
+      return colorTriggerWithTabs()
+        + dividerHtml() + strokeWidthControl()
+        + dividerHtml() + borderStyleControl(true)
+        + (cloud ? dividerHtml() + bumpSizeControl() : '');
+    }
+    if (s === 'ellipse') {
+      return colorTriggerWithTabs()
+        + dividerHtml() + strokeWidthControl()
+        + dividerHtml() + borderStyleControl(false);
+    }
+    if (s === 'callout-sel' || s === 'textbox-sel') {
+      return simpleColorTrigger('Color', state.fill, 'fill', true)
+        + dividerHtml() + strokeWidthControl()
+        + dividerHtml() + textFmtButton();
+    }
+    if (s === 'callout-edit' || s === 'textbox-edit') {
+      return richTextStrip();
+    }
+    if (s === 'counter') {
+      return simpleColorTrigger('Fill', state.fill, 'fill', true)
+        + dividerHtml() + simpleColorTrigger('Number', state.fontColor, 'fontColor', true)
+        + dividerHtml()
+        + `<div class="propGroup">
+             <span class="propLabel">Size</span>
+             <input class="numInput" type="number" min="10" max="80" value="${state.counterSize}" data-bind="counterSize" />
+           </div>`
+        + dividerHtml()
+        + `<div class="propGroup">
+             <span class="propLabel">Number</span>
+             <input class="numInput" type="number" min="0" max="9999" value="${state.counterNumber}" data-bind="counterNumber" />
+           </div>`;
+    }
+    return `<span style="font-size:11.5px; color:var(--icon-muted); font-style:italic;">Imported annotation — read only.</span>`;
+  }
+
+  function familyOf(s) {
+    if (s.startsWith('rect')) return 'rect';
+    if (s.startsWith('polygon')) return 'rect';
+    if (s === 'ellipse' || s === 'arrow' || s === 'line' || s === 'counter') return 'rect';
+    if (s.startsWith('callout')) return 'callout';
+    if (s.startsWith('textbox')) return 'textbox';
+    if (s === 'highlighter') return 'highlighter';
+    return s;
+  }
+
+  function activeShapeOf(s) {
+    if (s.startsWith('rect')) return 'rect';
+    if (s.startsWith('polygon')) return 'polygon';
+    if (['ellipse','line','arrow','counter'].includes(s)) return s;
+    return null;
+  }
+
+  function updateStatus() {
+    const text = document.getElementById('statusInfo');
+    const map = {
+      'pen': 'Pen tool active — color and stroke width only.',
+      'highlighter': 'Highlighter tool active — same controls as pen.',
+      'eraser': 'Eraser tool active — diameter only.',
+      'arrow': 'Arrow selected — color, width, border style, arrowhead.',
+      'line': 'Line selected — color, width, border style. No arrowhead.',
+      'rect': 'Rectangle selected — fill, border, width, style.',
+      'rect-cloud': 'Rectangle with cloud border — bump size appears.',
+      'polygon': 'Polygon selected — same controls as rectangle.',
+      'polygon-cloud': 'Polygon with cloud border — bump size appears.',
+      'ellipse': 'Ellipse selected — same as rectangle, but no cloud option.',
+      'callout-sel': 'Callout selected — color, stroke, "Aa" text-style button.',
+      'callout-edit': 'Editing callout text — rich text controls in toolbar.',
+      'textbox-sel': 'Text box selected — color, stroke, "Aa" text-style button.',
+      'textbox-edit': 'Editing text box — rich text controls in toolbar.',
+      'counter': 'Counter selected — fill, number color, size, number value.',
+      'import': 'Imported annotation — no edit controls available.',
+    };
+    text.textContent = map[state.tool] || '';
+  }
+
+  function updateSample() {
+    const sel = document.getElementById('sampleSel');
+    const hide = state.tool === 'pen' || state.tool === 'highlighter' || state.tool === 'eraser';
+    sel.style.display = hide ? 'none' : 'block';
+    sel.style.borderRadius = (state.tool.startsWith('callout') || state.tool.startsWith('textbox') || state.tool.startsWith('rect') || state.tool.startsWith('polygon')) ? '4px' : (state.tool === 'ellipse' ? '999px' : '4px');
+  }
+
+  function updateLeftToolbarActive() {
+    // Top row icons
+    document.querySelectorAll('.iconBtn[data-tool]').forEach(b => {
+      const t = b.dataset.tool;
+      let active = false;
+      if (t === 'pen' && state.tool === 'pen') active = true;
+      else if (t === 'highlighter' && state.tool === 'highlighter') active = true;
+      else if (t === 'eraser' && state.tool === 'eraser') active = true;
+      else if (t === 'rect' && ['rect','rect-cloud','polygon','polygon-cloud','ellipse','line','arrow','counter'].includes(state.tool)) active = true;
+      else if (t === 'callout' && state.tool.startsWith('callout')) active = true;
+      else if (t === 'textbox' && state.tool.startsWith('textbox')) active = true;
+      b.classList.toggle('is-active', active);
+    });
+    // Shape sub-row
+    const shapeRow = document.getElementById('shapeSubrow');
+    const showShapes = ['rect','rect-cloud','polygon','polygon-cloud','ellipse','line','arrow','counter'].includes(state.tool);
+    shapeRow.style.display = showShapes ? 'flex' : 'none';
+    document.querySelectorAll('#shapeSubrow .iconBtn').forEach(b => {
+      b.classList.toggle('is-active', b.dataset.shape === activeShapeOf(state.tool));
+    });
+  }
+
+  function wireStripEvents() {
+    const strip = document.getElementById('propStrip');
+
+    strip.querySelectorAll('[data-color]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const k = btn.dataset.color;
+        if (k === 'simple') {
+          const key = btn.dataset.key;
+          state.pickerOpen = state.pickerOpen === 'simpleFor_' + key ? null : 'simpleFor_' + key;
+          state.pickerLayer = 'fill';
+        } else {
+          state.pickerLayer = 'fill';
+          state.pickerOpen = state.pickerOpen === 'fillborder' ? null : 'fillborder';
+        }
+        state.anchorOpen = false;
+        render();
+      });
+    });
+
+    strip.querySelectorAll('[data-bind]').forEach(el => {
+      el.addEventListener('change', () => {
+        const k = el.dataset.bind;
+        state[k] = el.type === 'number' ? Number(el.value) : el.value;
+        render();
+      });
+      el.addEventListener('input', () => {
+        const k = el.dataset.bind;
+        if (el.type === 'number') {
+          state[k] = Number(el.value);
+        } else {
+          state[k] = el.value;
+        }
+        if (k === 'width') {
+          el.parentElement.querySelector('.ln').style.height = Math.max(1, Math.min(state.width, 8)) + 'px';
+        }
+      });
+    });
+
+    strip.querySelectorAll('[data-layer]').forEach(b => {
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        state.pickerLayer = b.dataset.layer;
+        render();
+      });
+    });
+    strip.querySelectorAll('[data-mode]').forEach(b => {
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        state.pickerMode = b.dataset.mode;
+        render();
+      });
+    });
+    strip.querySelectorAll('[data-swatch]').forEach(b => {
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const c = b.dataset.swatch;
+        const isSimple = (state.pickerOpen || '').startsWith('simpleFor_');
+        if (isSimple) {
+          const key = state.pickerOpen.replace('simpleFor_', '');
+          state[key] = c;
+        } else if (state.pickerLayer === 'fill') {
+          state.fill = c;
+        } else {
+          state.border = c;
+        }
+        render();
+      });
+    });
+    const match = strip.querySelector('#matchFill');
+    if (match) match.addEventListener('change', () => { state.matchBorder = match.checked; render(); });
+
+    strip.querySelectorAll('[data-opacity-layer]').forEach(slider => {
+      slider.addEventListener('input', () => {
+        const layer = slider.dataset.opacityLayer;
+        const val = Number(slider.value) / 100;
+        if (layer === 'fill') state.fillOpacity = val; else state.borderOpacity = val;
+        const num = slider.parentElement.querySelector('.num');
+        if (num) num.textContent = Math.round(val * 100) + '%';
+      });
+    });
+
+    strip.querySelectorAll('[data-hex-layer]').forEach(inp => {
+      inp.addEventListener('change', () => {
+        const v = '#' + inp.value.replace('#','').slice(0,6);
+        if (state.pickerLayer === 'fill') state.fill = v; else state.border = v;
+        render();
+      });
+    });
+
+    const anchorBtn = strip.querySelector('#anchorTrigger');
+    if (anchorBtn) {
+      anchorBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        state.anchorOpen = !state.anchorOpen;
+        state.pickerOpen = null;
+        render();
+      });
+    }
+    strip.querySelectorAll('[data-anchor]').forEach(b => {
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        state.anchor = b.dataset.anchor;
+        state.anchorOpen = false;
+        render();
+      });
+    });
+  }
+
+  function render() {
+    document.getElementById('propStrip').innerHTML = buildStrip();
+    updateStatus();
+    updateSample();
+    updateLeftToolbarActive();
+    wireStripEvents();
+  }
+
+  document.addEventListener('mousedown', (e) => {
+    let changed = false;
+    if (state.pickerOpen && !e.target.closest('.popLayer') && !e.target.closest('.colorTrigger')) {
+      state.pickerOpen = null; changed = true;
+    }
+    if (state.anchorOpen && !e.target.closest('.anchorPop') && !e.target.closest('.anchorTrigger')) {
+      state.anchorOpen = false; changed = true;
+    }
+    if (changed) render();
+  });
+
+  render();
+</script>
+</body>
+</html>

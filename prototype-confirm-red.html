@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Destructive red — three options</title>
+<style>
+  :root {
+    --bg-page: #06080c;
+    --bg-card: #181c24;
+    --border: #2a2f3a;
+    --border-soft: rgba(243, 238, 225, 0.10);
+    --text: #f3eee1;
+    --muted: #a8b0bf;
+    --muted-2: #6b7280;
+    --accent: #d8a84e;
+    --accent-ink: #1a1a1a;
+
+    --red-punchy: #DC3545;
+    --red-punchy-hover: #c12d3d;
+    --red-middle: #d95a56;
+    --red-middle-hover: #c84c49;
+    --red-warm:   #d97766;
+    --red-warm-hover: #c66555;
+    --red-dusty:  #cf6f6f;
+    --red-dusty-hover: #b85e5e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg-page);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+    padding: 40px 24px 80px;
+  }
+  .wrap { max-width: 1280px; margin: 0 auto; }
+  h1 {
+    margin: 0 0 6px;
+    text-align: center;
+    font-size: 24px;
+    font-weight: 700;
+  }
+  .subtitle {
+    margin: 0 0 32px;
+    text-align: center;
+    color: #8b94a3;
+    font-size: 13px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: minmax(280px, 420px);
+    justify-content: center;
+    gap: 20px;
+  }
+  .col-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 10px;
+    font-weight: 600;
+    padding-left: 4px;
+  }
+  .col-label.punchy { color: var(--red-punchy); }
+  .col-label.middle { color: var(--red-middle); }
+  .col-label.warm   { color: var(--red-warm); }
+  .col-label.dusty  { color: var(--red-dusty); }
+  .modal {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.45);
+  }
+  .modal h3 {
+    margin: 0 0 8px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .modal p {
+    margin: 0 0 22px;
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+  .footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .btn-cancel {
+    background: transparent;
+    color: var(--muted);
+    padding: 8px 14px;
+  }
+  .btn-cancel:hover { color: var(--text); background: rgba(243, 238, 225, 0.04); }
+  .btn-danger {
+    color: white;
+  }
+  .btn-danger.punchy { background: var(--red-punchy); }
+  .btn-danger.punchy:hover { background: var(--red-punchy-hover); }
+  .btn-danger.middle { background: var(--red-middle); }
+  .btn-danger.middle:hover { background: var(--red-middle-hover); }
+  .btn-danger.warm   { background: var(--red-warm); }
+  .btn-danger.warm:hover { background: var(--red-warm-hover); }
+  .btn-danger.dusty  { background: var(--red-dusty); }
+  .btn-danger.dusty:hover { background: var(--red-dusty-hover); }
+
+  /* Error/warning banner sample */
+  .banner {
+    margin-top: 14px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 12.5px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text);
+  }
+  .banner.punchy { background: rgba(220, 53, 69, 0.10); border-left: 3px solid var(--red-punchy); }
+  .banner.middle { background: rgba(217, 90, 86, 0.10); border-left: 3px solid var(--red-middle); }
+  .banner.warm   { background: rgba(217, 119, 102, 0.10); border-left: 3px solid var(--red-warm); }
+  .banner.dusty  { background: rgba(207, 111, 111, 0.10); border-left: 3px solid var(--red-dusty); }
+  .swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+  .swatch.punchy { background: var(--red-punchy); }
+  .swatch.middle { background: var(--red-middle); }
+  .swatch.warm   { background: var(--red-warm); }
+  .swatch.dusty  { background: var(--red-dusty); }
+
+  .note {
+    margin-top: 32px;
+    padding: 14px 16px;
+    background: rgba(216, 168, 78, 0.06);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    font-size: 12.5px;
+    color: var(--muted);
+    line-height: 1.55;
+  }
+  .note b { color: var(--text); font-weight: 600; }
+  @media (max-width: 980px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Destructive red — middle ground</h1>
+    <p class="subtitle">Balanced destructive red: serious without feeling harsh.</p>
+
+    <div class="grid">
+      <div style="display: none;">
+        <div class="col-label punchy">Option 1 — Punchy standard red</div>
+        <div class="modal">
+          <h3>Delete document?</h3>
+          <p>This will permanently remove "Site survey — 1224 Elm.pdf" and all its annotations. You can't undo this.</p>
+          <div class="footer">
+            <button class="btn btn-cancel">Cancel</button>
+            <button class="btn btn-danger punchy">Delete document</button>
+          </div>
+          <div class="banner punchy">
+            <div class="swatch punchy"></div>
+            Couldn't sign you in — check your password.
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="modal">
+          <h3>Delete document?</h3>
+          <p>This will permanently remove "Site survey — 1224 Elm.pdf" and all its annotations. You can't undo this.</p>
+          <div class="footer">
+            <button class="btn btn-cancel">Cancel</button>
+            <button class="btn btn-danger middle">Delete document</button>
+          </div>
+          <div class="banner middle">
+            <div class="swatch middle"></div>
+            Couldn't sign you in — check your password.
+          </div>
+        </div>
+      </div>
+
+      <div style="display: none;">
+        <div class="col-label warm">Option 2 — Warm-calibrated red (matches validation hint)</div>
+        <div class="modal">
+          <h3>Delete document?</h3>
+          <p>This will permanently remove "Site survey — 1224 Elm.pdf" and all its annotations. You can't undo this.</p>
+          <div class="footer">
+            <button class="btn btn-cancel">Cancel</button>
+            <button class="btn btn-danger warm">Delete document</button>
+          </div>
+          <div class="banner warm">
+            <div class="swatch warm"></div>
+            Couldn't sign you in — check your password.
+          </div>
+        </div>
+      </div>
+
+      <div style="display: none;">
+        <div class="col-label dusty">Option 3 — Dusty rose red</div>
+        <div class="modal">
+          <h3>Delete document?</h3>
+          <p>This will permanently remove "Site survey — 1224 Elm.pdf" and all its annotations. You can't undo this.</p>
+          <div class="footer">
+            <button class="btn btn-cancel">Cancel</button>
+            <button class="btn btn-danger dusty">Delete document</button>
+          </div>
+          <div class="banner dusty">
+            <div class="swatch dusty"></div>
+            Couldn't sign you in — check your password.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note" style="max-width: 720px; margin-left: auto; margin-right: auto;">
+      <b>Middle ground:</b> use <code>#d95a56</code>. It is noticeably more serious than the warm validation red, but less loud and Bootstrap-like than the standard punchy red.
+    </div>
+
+  </div>
+</body>
+</html>

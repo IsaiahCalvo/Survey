@@ -1,0 +1,1451 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ball in Court Reorder Playground</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #101010;
+      --panel: #141414;
+      --row: #1b1b1b;
+      --row-input: #141414;
+      --border: #2f2f2f;
+      --muted: #888;
+      --text: #eaeaea;
+      --accent: #4A90E2;
+      --danger: #7d2e2e;
+      --danger-border: #9a3939;
+      --radius: 8px;
+      --gap: 8px;
+      --row-pad-y: 8px;
+      --row-pad-x: 10px;
+      --font-size: 13px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #0b0b0b;
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13px;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      min-height: 100vh;
+    }
+
+    .controls {
+      border-right: 1px solid #262626;
+      background: #111;
+      padding: 18px;
+      overflow: auto;
+    }
+
+    .stage {
+      display: grid;
+      grid-template-rows: 1fr auto;
+      min-width: 0;
+      min-height: 100vh;
+    }
+
+    .preview-wrap {
+      display: block;
+      padding: 46px 24px;
+      overflow: auto;
+    }
+
+    .preview-tabs {
+      width: min(720px, 100%);
+      margin: 0 auto 16px;
+      display: flex;
+      gap: 6px;
+      border-bottom: 1px solid #262626;
+    }
+
+    .tab-btn {
+      border: 0;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      color: #999;
+      padding: 10px 12px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    .tab-btn.active {
+      color: #fff;
+      border-bottom-color: var(--accent);
+    }
+
+    .playground-panel {
+      display: none;
+      justify-content: center;
+    }
+
+    .playground-panel.active {
+      display: flex;
+    }
+
+    .template-panel {
+      width: min(720px, 100%);
+      margin-top: 24px;
+      padding: 12px;
+      background: var(--panel);
+      border: 1px solid #2a2a2a;
+      border-radius: var(--radius);
+    }
+
+    .bookmarks-panel {
+      width: 360px;
+      min-height: 560px;
+      background: #252525;
+      border: 1px solid #3a3a3a;
+      border-radius: 8px;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+    }
+
+    .bookmarks-header {
+      padding: 12px;
+      background: #252525;
+      border-bottom: 1px solid #3a3a3a;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .bookmarks-title {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 600;
+      color: #ddd;
+    }
+
+    .edit-btn {
+      background: #3a3a3a;
+      color: #fff;
+      border: 0;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    .edit-btn.active {
+      background: var(--accent);
+    }
+
+    .bookmarks-list {
+      padding: 8px;
+      position: relative;
+    }
+
+    .drop-slot {
+      position: relative;
+      height: 6px;
+      margin: 2px 0;
+      border-radius: 4px;
+      transition: background 0.2s ease-out, box-shadow 0.2s ease-out;
+    }
+
+    .drop-slot.inside {
+      height: 4px;
+      margin: 1px 0;
+    }
+
+    .drop-slot.over {
+      background: rgba(74, 144, 226, 0.1);
+      box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.35);
+    }
+
+    .bookmark-item,
+    .bookmark-folder {
+      display: flex;
+      align-items: center;
+      padding: 4px 7px;
+      border-radius: 6px;
+      cursor: pointer;
+      background: transparent;
+      border: 1px solid transparent;
+      transition: background 0.15s ease, border-color 0.2s ease, box-shadow 0.2s ease, opacity 160ms ease-out;
+      font-size: 13px;
+      color: #ddd;
+      gap: 0;
+      min-height: 31px;
+    }
+
+    .bookmark-folder {
+      padding: 5px 8px;
+      gap: 4px;
+    }
+
+    .bookmark-item:hover,
+    .bookmark-folder:hover {
+      background: #2b2b2b;
+    }
+
+    .bookmark-item.selected,
+    .bookmark-folder.selected {
+      background: #3a3a3a;
+    }
+
+    .bookmark-item.recently-dropped {
+      border: 2px solid rgba(74, 144, 226, 0.6);
+      box-shadow: 0 4px 16px rgba(59, 130, 246, 0.08);
+    }
+
+    .bookmark-item.dragging,
+    .bookmark-folder.dragging {
+      opacity: 0;
+    }
+
+    .bookmark-indent {
+      width: 27px;
+      flex-shrink: 0;
+    }
+
+    .bookmark-indent.nested {
+      width: 32px;
+    }
+
+    .folder-toggle {
+      background: none;
+      border: 0;
+      color: #999;
+      cursor: pointer;
+      padding: 2px;
+      margin-right: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      flex-shrink: 0;
+      width: 16px;
+    }
+
+    .folder-toggle:hover {
+      background: #333;
+    }
+
+    .bookmark-label {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      user-select: none;
+    }
+
+    .bookmark-page {
+      color: #999;
+      font-size: 11px;
+      flex-shrink: 0;
+      margin-left: 8px;
+    }
+
+    .bookmark-input {
+      flex: 1;
+      min-width: 0;
+      padding: 3px;
+      background: #2b2b2b;
+      color: #ddd;
+      border: 1px solid #3a3a3a;
+      border-radius: 4px;
+      font-size: 12px;
+      outline: none;
+    }
+
+    .bookmark-page-input {
+      width: 4ch;
+      padding: 3px 4px;
+      background: #2b2b2b;
+      color: #ddd;
+      border: 1px solid #3a3a3a;
+      border-radius: 4px;
+      font-size: 11px;
+      text-align: center;
+      outline: none;
+      flex-shrink: 0;
+      margin-left: 8px;
+    }
+
+    .bookmark-tool {
+      background: transparent;
+      border: 0;
+      padding: 2px 4px;
+      cursor: pointer;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      color: #ff6b6b;
+    }
+
+    .bookmark-tool:hover {
+      background: #3a1f1f;
+    }
+
+    .bookmark-drag-handle {
+      cursor: grab;
+      color: #888;
+      font-size: 16px;
+      user-select: none;
+      padding: 4px;
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
+      touch-action: none;
+    }
+
+    .bookmark-drag-handle:hover {
+      color: #aaa;
+    }
+
+    .folder-children {
+      margin-left: 16px;
+      margin-top: 2px;
+      border-left: 2px dashed rgba(74, 144, 226, 0.2);
+      border-radius: 4px;
+      padding-left: 8px;
+      padding-top: 4px;
+      padding-bottom: 4px;
+      background: rgba(0, 0, 0, 0.1);
+    }
+
+    .bookmark-ghost {
+      position: fixed;
+      z-index: 10000;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-radius: 8px;
+      border: 2px solid var(--accent);
+      background: rgba(43, 43, 43, 0.9);
+      padding: 12px;
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(4px);
+      font-size: 16px;
+      color: var(--accent);
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .title {
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 10px;
+    }
+
+    .list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--gap);
+      position: relative;
+    }
+
+    .row-shell {
+      width: 100%;
+      transition: transform 180ms cubic-bezier(0.2, 0, 0.2, 1);
+    }
+
+    .row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: var(--row-pad-y) var(--row-pad-x);
+      background: var(--row);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      transition: border 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+    }
+
+    .row.is-dragging {
+      border-color: rgba(74, 144, 226, 0.6);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+      opacity: 0.65;
+    }
+
+    .drag-handle {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      background: #1f1f1f;
+      border: 1px solid #2d2d2d;
+      color: #777;
+      cursor: grab;
+      flex-shrink: 0;
+      touch-action: none;
+      user-select: none;
+      transition: background 0.15s ease, color 0.15s ease, border 0.15s ease;
+    }
+
+    .drag-handle:hover {
+      color: #bbb;
+      background: #262626;
+      border-color: #3a3a3a;
+    }
+
+    .drag-handle:active {
+      cursor: grabbing;
+    }
+
+    .drag-handle svg {
+      width: 11px;
+      height: 11px;
+      display: block;
+    }
+
+    .row-main {
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .color-stack {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      flex-shrink: 0;
+    }
+
+    .color-chip {
+      width: 40px;
+      height: 28px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .color-chip.selected {
+      border: 2px solid var(--accent);
+    }
+
+    .color-fill {
+      position: absolute;
+      inset: 0;
+      border-radius: 5px;
+      mix-blend-mode: multiply;
+    }
+
+    .opacity-label {
+      font-size: 9px;
+      color: #666;
+      line-height: 1;
+      text-align: center;
+      opacity: 0.7;
+    }
+
+    .name-input {
+      flex: 1;
+      min-width: 0;
+      padding: 6px 8px;
+      background: var(--row-input);
+      color: #ddd;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      outline: none;
+      font-size: var(--font-size);
+      height: 28px;
+    }
+
+    .name-input:focus {
+      border-color: var(--accent);
+    }
+
+    .delete-btn,
+    .add-btn,
+    .copy-btn,
+    .preset-btn {
+      border: 1px solid #333;
+      background: #1f1f1f;
+      color: #ddd;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .delete-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px;
+      min-width: 28px;
+      min-height: 28px;
+      flex-shrink: 0;
+      border-color: var(--danger-border);
+      background: var(--danger);
+    }
+
+    body.ball-in-court-dragging .delete-btn {
+      display: none !important;
+    }
+
+    .add-btn {
+      padding: 6px 10px;
+      font-size: 12px;
+    }
+
+    .ghost {
+      position: fixed;
+      z-index: 10000;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: var(--radius);
+      border: 2px solid var(--accent);
+      background: rgba(43, 43, 43, 0.92);
+      color: #eaeaea;
+      font-size: 13px;
+      font-weight: 500;
+      box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(2px);
+      transform: scale(1.02);
+    }
+
+    .ghost-grip {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      background: #1f1f1f;
+      border: 1px solid #2d2d2d;
+      color: #bbb;
+    }
+
+    .ghost-chip {
+      width: 32px;
+      height: 20px;
+      border-radius: 5px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .empty {
+      color: var(--muted);
+      font-size: 13px;
+      font-style: italic;
+      padding: 12px;
+    }
+
+    .control-group {
+      margin-bottom: 18px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #232323;
+    }
+
+    .control-title {
+      font-size: 12px;
+      font-weight: 650;
+      color: #ddd;
+      margin-bottom: 10px;
+    }
+
+    .control-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 12px;
+      margin: 9px 0;
+      color: #aaa;
+      font-size: 12px;
+    }
+
+    .control-row input[type="range"] {
+      width: 130px;
+      accent-color: var(--accent);
+    }
+
+    .control-row input[type="checkbox"] {
+      accent-color: var(--accent);
+    }
+
+    .preset-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .preset-btn {
+      padding: 8px 9px;
+      text-align: left;
+      color: #ccc;
+    }
+
+    .preset-btn.active {
+      border-color: var(--accent);
+      background: rgba(74, 144, 226, 0.14);
+      color: #fff;
+    }
+
+    .prompt-panel {
+      border-top: 1px solid #262626;
+      background: #111;
+      padding: 16px 18px;
+    }
+
+    .prompt-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .prompt-title {
+      font-size: 12px;
+      font-weight: 650;
+      color: #ddd;
+    }
+
+    .copy-btn {
+      padding: 6px 10px;
+      font-size: 12px;
+    }
+
+    #prompt {
+      margin: 0;
+      min-height: 54px;
+      color: #bdbdbd;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+
+    @media (max-width: 820px) {
+      .app {
+        grid-template-columns: 1fr;
+      }
+
+      .controls {
+        border-right: 0;
+        border-bottom: 1px solid #262626;
+      }
+
+      .stage {
+        min-height: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="controls">
+      <div class="control-group">
+        <div class="control-title">Presets</div>
+        <div class="preset-grid">
+          <button class="preset-btn active" data-preset="exact">Archived exact</button>
+          <button class="preset-btn" data-preset="compact">Compact</button>
+          <button class="preset-btn" data-preset="soft">Softer</button>
+          <button class="preset-btn" data-preset="dense">Dense editor</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <div class="control-title">Spacing</div>
+        <label class="control-row">
+          <span>Row gap</span>
+          <input id="gap" type="range" min="2" max="18" value="8">
+        </label>
+        <label class="control-row">
+          <span>Vertical padding</span>
+          <input id="padY" type="range" min="4" max="16" value="8">
+        </label>
+        <label class="control-row">
+          <span>Corner radius</span>
+          <input id="radius" type="range" min="0" max="16" value="8">
+        </label>
+      </div>
+
+      <div class="control-group">
+        <div class="control-title">Interaction</div>
+        <label class="control-row">
+          <span>Hide delete while dragging</span>
+          <input id="hideDelete" type="checkbox" checked>
+        </label>
+        <label class="control-row">
+          <span>Show drag overlay</span>
+          <input id="showOverlay" type="checkbox" checked>
+        </label>
+        <label class="control-row">
+          <span>Animate neighbors</span>
+          <input id="animate" type="checkbox" checked>
+        </label>
+      </div>
+    </aside>
+
+    <main class="stage">
+      <section class="preview-wrap">
+        <div class="preview-tabs">
+          <button class="tab-btn active" data-playground-tab="ball">Ball in Court</button>
+          <button class="tab-btn" data-playground-tab="bookmarks">PDF Bookmarks</button>
+        </div>
+
+        <div id="ballPanel" class="playground-panel active">
+          <div class="template-panel">
+            <div class="panel-header">
+              <div class="title">Ball in Court</div>
+              <button id="addEntity" class="add-btn">+ Add Entity</button>
+            </div>
+            <div class="hint">Define entities and their highlight colors for responsibility tracking</div>
+            <div id="list" class="list"></div>
+          </div>
+        </div>
+
+        <div id="bookmarksPanelWrap" class="playground-panel">
+          <div class="bookmarks-panel">
+            <div class="bookmarks-header">
+              <h3 class="bookmarks-title">Bookmarks</h3>
+              <button id="bookmarkEditMode" class="edit-btn active">Done</button>
+            </div>
+            <div id="bookmarksList" class="bookmarks-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="prompt-panel">
+        <div class="prompt-header">
+          <div class="prompt-title">Prompt for implementation notes</div>
+          <button id="copyPrompt" class="copy-btn">Copy Prompt</button>
+        </div>
+        <pre id="prompt"></pre>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const defaults = {
+      gap: 8,
+      padY: 8,
+      radius: 8,
+      hideDelete: true,
+      showOverlay: true,
+      animate: true
+    };
+
+    const presets = {
+      exact: { ...defaults },
+      compact: { ...defaults, gap: 6, padY: 6, radius: 6 },
+      soft: { ...defaults, gap: 10, padY: 10, radius: 12 },
+      dense: { ...defaults, gap: 4, padY: 5, radius: 4, showOverlay: false }
+    };
+
+    const state = {
+      ...defaults,
+      activePreset: 'exact',
+      activeTab: 'ball',
+      selectedColorId: null,
+      bookmarkEditMode: true,
+      expandedFolders: new Set(['folder-1']),
+      selectedBookmarkId: null,
+      recentlyDroppedBookmarkId: null,
+      entities: [
+        { id: 'entity-1', name: 'GC', color: '#E3D1FB', opacity: 20 },
+        { id: 'entity-2', name: 'Subcontractor', color: '#FFF5C3', opacity: 20 },
+        { id: 'entity-3', name: 'My Company', color: '#CBDCFF', opacity: 20 },
+        { id: 'entity-4', name: '100% Complete', color: '#B2FFB2', opacity: 20 },
+        { id: 'entity-5', name: 'Removed', color: '#BBBBBB', opacity: 20 }
+      ],
+      bookmarks: [
+        { id: 'bookmark-1', type: 'bookmark', name: 'Cover Sheet', page: 1, parentId: null, order: 0 },
+        { id: 'bookmark-2', type: 'bookmark', name: 'Electrical Notes', page: 4, parentId: null, order: 1 },
+        { id: 'bookmark-3', type: 'bookmark', name: 'Riser Diagram', page: 8, parentId: null, order: 2 },
+        { id: 'folder-1', type: 'folder', name: 'Installation Details', parentId: null, order: 3 },
+        { id: 'bookmark-4', type: 'bookmark', name: 'Panel Schedule', page: 12, parentId: 'folder-1', order: 0 },
+        { id: 'bookmark-5', type: 'bookmark', name: 'Lighting Controls', page: 18, parentId: 'folder-1', order: 1 },
+        { id: 'bookmark-6', type: 'bookmark', name: 'Device Legend', page: 24, parentId: 'folder-1', order: 2 }
+      ],
+      drag: null
+    };
+
+    const list = document.getElementById('list');
+    const bookmarksList = document.getElementById('bookmarksList');
+    const prompt = document.getElementById('prompt');
+
+    function gripIcon() {
+      return '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M5 3.5A1.5 1.5 0 1 1 2 3.5a1.5 1.5 0 0 1 3 0Zm0 4.5A1.5 1.5 0 1 1 2 8a1.5 1.5 0 0 1 3 0Zm0 4.5A1.5 1.5 0 1 1 2 12.5a1.5 1.5 0 0 1 3 0ZM14 3.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM14 8a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm0 4.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z"/></svg>';
+    }
+
+    function closeIcon() {
+      return '<svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M12.85 4.21 9.06 8l3.79 3.79-1.06 1.06L8 9.06l-3.79 3.79-1.06-1.06L6.94 8 3.15 4.21l1.06-1.06L8 6.94l3.79-3.79 1.06 1.06Z"/></svg>';
+    }
+
+    function trashIcon() {
+      return '<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M6 1h4l1 2h3v1.5H2V3h3l1-2Zm-2 5h1.4l.4 7h4.4l.4-7H12l-.45 8.5h-7.1L4 6Z"/></svg>';
+    }
+
+    function chevronIcon(isOpen) {
+      return isOpen
+        ? '<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="m4 6 4 4 4-4H4Z"/></svg>'
+        : '<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="m6 4 4 4-4 4V4Z"/></svg>';
+    }
+
+    function folderIcon() {
+      return '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M2 4.5A1.5 1.5 0 0 1 3.5 3h3l1.2 1.5h4.8A1.5 1.5 0 0 1 14 6v5.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5v-7Z"/></svg>';
+    }
+
+    function renderList() {
+      list.innerHTML = '';
+      if (!state.entities.length) {
+        const empty = document.createElement('div');
+        empty.className = 'empty';
+        empty.textContent = 'No entities defined. Add at least one entity for Ball in Court tracking.';
+        list.appendChild(empty);
+        return;
+      }
+
+      state.entities.forEach((entity) => {
+        const shell = document.createElement('div');
+        shell.className = 'row-shell';
+        shell.dataset.id = entity.id;
+
+        const row = document.createElement('div');
+        row.className = 'row';
+        if (state.drag && state.drag.id === entity.id) row.classList.add('is-dragging');
+
+        const handle = document.createElement('div');
+        handle.className = 'drag-handle';
+        handle.title = 'Drag to reorder';
+        handle.innerHTML = gripIcon();
+        handle.addEventListener('pointerdown', (event) => startDrag(event, entity.id));
+
+        const rowMain = document.createElement('div');
+        rowMain.className = 'row-main';
+
+        const colorStack = document.createElement('div');
+        colorStack.className = 'color-stack';
+        const chip = document.createElement('div');
+        chip.className = 'color-chip' + (state.selectedColorId === entity.id ? ' selected' : '');
+        chip.title = 'Click to cycle color';
+        chip.addEventListener('click', () => {
+          state.selectedColorId = entity.id;
+          cycleColor(entity.id);
+        });
+        const fill = document.createElement('div');
+        fill.className = 'color-fill';
+        fill.style.background = entity.color;
+        fill.style.opacity = entity.opacity / 100;
+        chip.appendChild(fill);
+        const opacity = document.createElement('div');
+        opacity.className = 'opacity-label';
+        opacity.textContent = entity.opacity + '%';
+        colorStack.append(chip, opacity);
+
+        const input = document.createElement('input');
+        input.className = 'name-input';
+        input.type = 'text';
+        input.value = entity.name;
+        input.placeholder = 'Entity name (e.g., GC, Subcontractor)';
+        input.addEventListener('input', (event) => {
+          entity.name = event.target.value;
+          updatePrompt();
+        });
+
+        rowMain.append(colorStack, input);
+
+        const deleteButton = document.createElement('button');
+        deleteButton.className = 'delete-btn';
+        deleteButton.title = 'Delete';
+        deleteButton.innerHTML = closeIcon();
+        deleteButton.addEventListener('click', () => {
+          state.entities = state.entities.filter((item) => item.id !== entity.id);
+          updateAll();
+        });
+
+        row.append(handle, rowMain, deleteButton);
+        shell.appendChild(row);
+        list.appendChild(shell);
+      });
+    }
+
+    function cycleColor(id) {
+      const colors = ['#E3D1FB', '#FFF5C3', '#CBDCFF', '#B2FFB2', '#BBBBBB', '#FFC9C9', '#C8F7E1'];
+      const entity = state.entities.find((item) => item.id === id);
+      if (!entity) return;
+      const nextIndex = (colors.indexOf(entity.color) + 1) % colors.length;
+      entity.color = colors[nextIndex];
+      updateAll();
+    }
+
+    function getBallRowRects() {
+      const rects = new Map();
+      list.querySelectorAll('.row-shell').forEach((shell) => {
+        rects.set(shell.dataset.id, shell.getBoundingClientRect());
+      });
+      return rects;
+    }
+
+    function animateBallRowsFrom(firstRects, draggedId) {
+      if (!state.animate) return;
+
+      list.querySelectorAll('.row-shell').forEach((shell) => {
+        if (shell.dataset.id === draggedId) return;
+
+        const first = firstRects.get(shell.dataset.id);
+        if (!first) return;
+
+        const last = shell.getBoundingClientRect();
+        const deltaY = first.top - last.top;
+        if (Math.abs(deltaY) < 1) return;
+
+        shell.style.transition = 'none';
+        shell.style.transform = `translateY(${deltaY}px)`;
+        shell.getBoundingClientRect();
+
+        requestAnimationFrame(() => {
+          shell.style.transition = 'transform 180ms cubic-bezier(0.2, 0, 0.2, 1)';
+          shell.style.transform = 'translateY(0)';
+        });
+      });
+    }
+
+    function sortedBookmarks(parentId) {
+      return state.bookmarks
+        .filter((item) => (item.parentId || null) === (parentId || null))
+        .sort((a, b) => (a.order || 0) - (b.order || 0));
+    }
+
+    function renderBookmarks() {
+      bookmarksList.innerHTML = '';
+      const rootItems = sortedBookmarks(null);
+      rootItems.forEach((item, index) => {
+        bookmarksList.appendChild(createDropSlot(null, index, false));
+        bookmarksList.appendChild(renderBookmarkNode(item, false));
+      });
+      bookmarksList.appendChild(createDropSlot(null, rootItems.length, false));
+    }
+
+    function renderBookmarkNode(item, isNested) {
+      if (item.type === 'folder') {
+        const wrap = document.createElement('div');
+        wrap.dataset.bookmarkNode = item.id;
+
+        const isExpanded = state.expandedFolders.has(item.id);
+        const row = document.createElement('div');
+        row.className = 'bookmark-folder' + (state.selectedBookmarkId === item.id ? ' selected' : '') + (state.drag?.bookmarkId === item.id ? ' dragging' : '');
+        row.dataset.bookmarkId = item.id;
+        row.addEventListener('click', () => {
+          state.selectedBookmarkId = item.id;
+          toggleFolder(item.id);
+        });
+
+        const toggle = document.createElement('button');
+        toggle.className = 'folder-toggle';
+        toggle.innerHTML = chevronIcon(isExpanded);
+        toggle.addEventListener('click', (event) => {
+          event.stopPropagation();
+          toggleFolder(item.id);
+        });
+
+        row.appendChild(toggle);
+
+        if (state.bookmarkEditMode) {
+          const input = document.createElement('input');
+          input.className = 'bookmark-input';
+          input.value = item.name;
+          input.addEventListener('click', (event) => event.stopPropagation());
+          input.addEventListener('input', (event) => {
+            item.name = event.target.value;
+            updatePrompt();
+          });
+          row.appendChild(input);
+        } else {
+          const label = document.createElement('span');
+          label.className = 'bookmark-label';
+          label.textContent = item.name;
+          row.appendChild(label);
+        }
+
+        if (state.bookmarkEditMode) {
+          row.appendChild(createBookmarkDeleteButton(item.id));
+          row.appendChild(createBookmarkDragHandle(item.id));
+        }
+
+        wrap.appendChild(row);
+
+        if (isExpanded) {
+          const children = document.createElement('div');
+          children.className = 'folder-children';
+          const childItems = sortedBookmarks(item.id);
+          childItems.forEach((child, childIndex) => {
+            children.appendChild(createDropSlot(item.id, childIndex, true));
+            children.appendChild(renderBookmarkNode(child, true));
+          });
+          children.appendChild(createDropSlot(item.id, childItems.length, true));
+          wrap.appendChild(children);
+        }
+
+        return wrap;
+      }
+
+      const row = document.createElement('div');
+      row.className = [
+        'bookmark-item',
+        state.selectedBookmarkId === item.id ? 'selected' : '',
+        state.recentlyDroppedBookmarkId === item.id ? 'recently-dropped' : '',
+        state.drag?.bookmarkId === item.id ? 'dragging' : ''
+      ].filter(Boolean).join(' ');
+      row.dataset.bookmarkId = item.id;
+      row.addEventListener('click', () => {
+        state.selectedBookmarkId = item.id;
+        updateAll();
+      });
+
+      const indent = document.createElement('div');
+      indent.className = 'bookmark-indent' + (isNested ? ' nested' : '');
+      row.appendChild(indent);
+
+      if (state.bookmarkEditMode) {
+        const input = document.createElement('input');
+        input.className = 'bookmark-input';
+        input.value = item.name;
+        input.addEventListener('click', (event) => event.stopPropagation());
+        input.addEventListener('input', (event) => {
+          item.name = event.target.value;
+          updatePrompt();
+        });
+        const pageInput = document.createElement('input');
+        pageInput.className = 'bookmark-page-input';
+        pageInput.value = item.page;
+        pageInput.inputMode = 'numeric';
+        pageInput.addEventListener('click', (event) => event.stopPropagation());
+        pageInput.addEventListener('input', (event) => {
+          const numeric = event.target.value.replace(/[^\d]/g, '');
+          item.page = numeric ? Number(numeric) : '';
+          event.target.value = item.page;
+          updatePrompt();
+        });
+        row.append(input, pageInput, createBookmarkDeleteButton(item.id), createBookmarkDragHandle(item.id));
+      } else {
+        const label = document.createElement('span');
+        label.className = 'bookmark-label';
+        label.textContent = item.name;
+        const page = document.createElement('span');
+        page.className = 'bookmark-page';
+        page.textContent = `Page ${item.page}`;
+        row.append(label, page);
+      }
+
+      return row;
+    }
+
+    function createBookmarkDeleteButton(id) {
+      const button = document.createElement('button');
+      button.className = 'bookmark-tool';
+      button.title = 'Delete';
+      button.innerHTML = trashIcon();
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        deleteBookmark(id);
+      });
+      return button;
+    }
+
+    function createBookmarkDragHandle(id) {
+      const handle = document.createElement('div');
+      handle.className = 'bookmark-drag-handle';
+      handle.title = 'Drag to reorder';
+      handle.textContent = '☰';
+      handle.addEventListener('pointerdown', (event) => startBookmarkDrag(event, id));
+      return handle;
+    }
+
+    function createDropSlot(parentId, index, inside) {
+      const slot = document.createElement('div');
+      slot.className = 'drop-slot' + (inside ? ' inside' : '');
+      slot.dataset.dropParent = parentId || 'root';
+      slot.dataset.dropIndex = String(index);
+      return slot;
+    }
+
+    function toggleFolder(id) {
+      if (state.expandedFolders.has(id)) state.expandedFolders.delete(id);
+      else state.expandedFolders.add(id);
+      updateAll();
+    }
+
+    function deleteBookmark(id) {
+      const idsToDelete = new Set([id]);
+      state.bookmarks.forEach((item) => {
+        if (item.parentId === id) idsToDelete.add(item.id);
+      });
+      state.bookmarks = state.bookmarks.filter((item) => !idsToDelete.has(item.id));
+      updateBookmarkOrders();
+      updateAll();
+    }
+
+    function startBookmarkDrag(event, id) {
+      if (event.button !== 0 || !state.bookmarkEditMode) return;
+      const item = state.bookmarks.find((entry) => entry.id === id);
+      const row = event.currentTarget.closest('.bookmark-item, .bookmark-folder');
+      const rect = row.getBoundingClientRect();
+      state.drag = {
+        type: 'bookmark',
+        bookmarkId: id,
+        originalParentId: item.parentId || null,
+        originalIndex: sortedBookmarks(item.parentId || null).findIndex((entry) => entry.id === id),
+        offsetY: event.clientY - rect.top,
+        ghost: createBookmarkGhost(item, rect),
+        dropTarget: null
+      };
+      document.body.appendChild(state.drag.ghost);
+      event.currentTarget.setPointerCapture(event.pointerId);
+      window.addEventListener('pointermove', onBookmarkDragMove);
+      window.addEventListener('pointerup', onBookmarkDragEnd, { once: true });
+      renderBookmarks();
+      event.preventDefault();
+    }
+
+    function createBookmarkGhost(item, rect) {
+      const ghost = document.createElement('div');
+      ghost.className = 'bookmark-ghost';
+      ghost.style.left = rect.left + 'px';
+      ghost.style.top = rect.top + 'px';
+      ghost.style.minWidth = rect.width + 'px';
+      ghost.innerHTML = item.type === 'folder'
+        ? `☰ <span style="color:#999">${folderIcon()}</span><span style="font-weight:600;color:#ddd">${escapeHtml(item.name)}</span>`
+        : `☰ <span style="font-weight:500;color:#ddd">${escapeHtml(item.name)}</span>`;
+      return ghost;
+    }
+
+    function onBookmarkDragMove(event) {
+      if (!state.drag || state.drag.type !== 'bookmark') return;
+      state.drag.ghost.style.top = (event.clientY - state.drag.offsetY) + 'px';
+      const slot = findNearestBookmarkSlot(event.clientX, event.clientY);
+      document.querySelectorAll('.drop-slot').forEach((entry) => entry.classList.remove('over'));
+      if (slot) {
+        slot.classList.add('over');
+        state.drag.dropTarget = {
+          parentId: slot.dataset.dropParent === 'root' ? null : slot.dataset.dropParent,
+          index: Number(slot.dataset.dropIndex)
+        };
+      }
+    }
+
+    function findNearestBookmarkSlot(x, y) {
+      const slots = [...document.querySelectorAll('.drop-slot')];
+      let best = null;
+      let bestDistance = Infinity;
+      slots.forEach((slot) => {
+        const rect = slot.getBoundingClientRect();
+        const withinX = x >= rect.left - 20 && x <= rect.right + 20;
+        if (!withinX) return;
+        const center = rect.top + rect.height / 2;
+        const distance = Math.abs(y - center);
+        if (distance < bestDistance && distance < 24) {
+          best = slot;
+          bestDistance = distance;
+        }
+      });
+      return best;
+    }
+
+    function onBookmarkDragEnd() {
+      if (!state.drag || state.drag.type !== 'bookmark') return;
+      const { bookmarkId, dropTarget, ghost, originalParentId, originalIndex } = state.drag;
+      if (ghost) ghost.remove();
+      document.querySelectorAll('.drop-slot').forEach((entry) => entry.classList.remove('over'));
+      state.drag = null;
+
+      if (dropTarget) {
+        const dragged = state.bookmarks.find((item) => item.id === bookmarkId);
+        if (dragged && dragged.id !== dropTarget.parentId && dragged.parentId !== dragged.id) {
+          const siblings = state.bookmarks
+            .filter((item) => (item.parentId || null) === (dropTarget.parentId || null) && item.id !== bookmarkId)
+            .sort((a, b) => (a.order || 0) - (b.order || 0));
+          let destinationIndex = dropTarget.index;
+          if ((originalParentId || null) === (dropTarget.parentId || null) && originalIndex < destinationIndex) {
+            destinationIndex -= 1;
+          }
+          siblings.splice(Math.max(0, destinationIndex), 0, dragged);
+          dragged.parentId = dropTarget.parentId;
+          siblings.forEach((item, index) => {
+            item.order = index;
+            item.parentId = dropTarget.parentId;
+          });
+          if (dropTarget.parentId) state.expandedFolders.add(dropTarget.parentId);
+          state.recentlyDroppedBookmarkId = dragged.id;
+        }
+      }
+
+      updateBookmarkOrders();
+      updateAll();
+      window.removeEventListener('pointermove', onBookmarkDragMove);
+    }
+
+    function updateBookmarkOrders() {
+      [null, ...state.bookmarks.filter((item) => item.type === 'folder').map((item) => item.id)].forEach((parentId) => {
+        sortedBookmarks(parentId).forEach((item, index) => {
+          item.order = index;
+        });
+      });
+    }
+
+    function startDrag(event, id) {
+      if (event.button !== 0) return;
+      const shell = event.currentTarget.closest('.row-shell');
+      const row = shell.querySelector('.row');
+      const rect = shell.getBoundingClientRect();
+      const listRect = list.getBoundingClientRect();
+      const entity = state.entities.find((item) => item.id === id);
+
+      state.drag = {
+        id,
+        startIndex: state.entities.findIndex((item) => item.id === id),
+        pointerOffsetY: event.clientY - rect.top,
+        rowHeight: rect.height,
+        listTop: listRect.top,
+        ghost: null
+      };
+
+      if (state.hideDelete) document.body.classList.add('ball-in-court-dragging');
+      row.classList.add('is-dragging');
+      shell.style.opacity = '0.65';
+      shell.style.zIndex = '2';
+      event.currentTarget.setPointerCapture(event.pointerId);
+
+      if (state.showOverlay) {
+        state.drag.ghost = createGhost(entity, rect);
+        document.body.appendChild(state.drag.ghost);
+      }
+
+      window.addEventListener('pointermove', onDragMove);
+      window.addEventListener('pointerup', onDragEnd, { once: true });
+      event.preventDefault();
+    }
+
+    function createGhost(entity, rect) {
+      const ghost = document.createElement('div');
+      ghost.className = 'ghost';
+      ghost.style.left = rect.left + 'px';
+      ghost.style.top = rect.top + 'px';
+      ghost.style.width = rect.width + 'px';
+      ghost.innerHTML = `
+        <span class="ghost-grip">${gripIcon()}</span>
+        <span class="ghost-chip" style="background:${entity.color};opacity:${entity.opacity / 100}"></span>
+        <span>${escapeHtml(entity.name || 'Entity')}</span>
+      `;
+      return ghost;
+    }
+
+    function onDragMove(event) {
+      if (!state.drag) return;
+      const drag = state.drag;
+      const shells = [...list.querySelectorAll('.row-shell')];
+      const draggedShell = shells.find((item) => item.dataset.id === drag.id);
+      if (!draggedShell) return;
+
+      if (drag.ghost) {
+        drag.ghost.style.top = (event.clientY - drag.pointerOffsetY) + 'px';
+      }
+
+      const draggedCenter = event.clientY - drag.listTop;
+      let targetIndex = state.entities.length - 1;
+      for (let index = 0; index < shells.length; index += 1) {
+        const shell = shells[index];
+        const rect = shell.getBoundingClientRect();
+        const midpoint = rect.top - drag.listTop + rect.height / 2;
+        if (draggedCenter < midpoint) {
+          targetIndex = index;
+          break;
+        }
+      }
+
+      const currentIndex = state.entities.findIndex((item) => item.id === drag.id);
+      if (targetIndex !== currentIndex && targetIndex >= 0) {
+        const firstRects = getBallRowRects();
+        const next = [...state.entities];
+        const [moved] = next.splice(currentIndex, 1);
+        next.splice(targetIndex, 0, moved);
+        state.entities = next;
+        renderList();
+        animateBallRowsFrom(firstRects, drag.id);
+      }
+    }
+
+    function onDragEnd() {
+      if (!state.drag) return;
+      if (state.drag.ghost) state.drag.ghost.remove();
+      state.drag = null;
+      document.body.classList.remove('ball-in-court-dragging');
+      updateAll();
+      window.removeEventListener('pointermove', onDragMove);
+    }
+
+    function applyStateToCss() {
+      document.documentElement.style.setProperty('--gap', state.gap + 'px');
+      document.documentElement.style.setProperty('--row-pad-y', state.padY + 'px');
+      document.documentElement.style.setProperty('--radius', state.radius + 'px');
+      document.getElementById('gap').value = state.gap;
+      document.getElementById('padY').value = state.padY;
+      document.getElementById('radius').value = state.radius;
+      document.getElementById('hideDelete').checked = state.hideDelete;
+      document.getElementById('showOverlay').checked = state.showOverlay;
+      document.getElementById('animate').checked = state.animate;
+      document.querySelectorAll('.preset-btn').forEach((button) => {
+        button.classList.toggle('active', button.dataset.preset === state.activePreset);
+      });
+      document.querySelectorAll('.tab-btn').forEach((button) => {
+        button.classList.toggle('active', button.dataset.playgroundTab === state.activeTab);
+      });
+      document.getElementById('ballPanel').classList.toggle('active', state.activeTab === 'ball');
+      document.getElementById('bookmarksPanelWrap').classList.toggle('active', state.activeTab === 'bookmarks');
+      document.getElementById('bookmarkEditMode').classList.toggle('active', state.bookmarkEditMode);
+      document.getElementById('bookmarkEditMode').textContent = state.bookmarkEditMode ? 'Done' : 'Edit';
+    }
+
+    function updatePrompt() {
+      const notes = [];
+      if (state.gap !== defaults.gap) notes.push(`row gap should be ${state.gap}px`);
+      if (state.padY !== defaults.padY) notes.push(`vertical row padding should be ${state.padY}px`);
+      if (state.radius !== defaults.radius) notes.push(`corner radius should be ${state.radius}px`);
+      if (!state.hideDelete) notes.push('keep the delete button visible while dragging');
+      if (!state.showOverlay) notes.push('remove the floating drag overlay');
+      if (!state.animate) notes.push('remove neighbor animation during drag');
+
+      if (state.activeTab === 'bookmarks') {
+        const rootOrder = sortedBookmarks(null).map((item) => item.name || 'Untitled').join(', ');
+        const folder = state.bookmarks.find((item) => item.type === 'folder');
+        const childOrder = folder ? sortedBookmarks(folder.id).map((item) => `${item.name || 'Untitled'} page ${item.page || ''}`).join(', ') : 'none';
+        prompt.textContent = `Update the PDF sidebar bookmark drag-to-rearrange feature. Keep the archived behavior as the baseline: edit mode exposes inputs, delete buttons, and ☰ drag handles; folders expand/collapse; root and nested drop slots show blue insertion targets; drag uses a floating overlay. Current root order is: ${rootOrder}. ${folder ? `The "${folder.name}" group contains: ${childOrder}.` : ''}`;
+        return;
+      }
+
+      const order = state.entities.map((entity) => entity.name || 'Untitled').join(', ');
+      const prefix = 'Update the Ball in Court reorder feature in template edit mode.';
+      const body = notes.length
+        ? ` Keep the current archived behavior, but change: ${notes.join('; ')}.`
+        : ' Keep the archived behavior exactly: grip-only drag handle, blue drag outline, floating overlay, hidden delete buttons during drag, vertical list sorting, and editable entity names/colors.';
+      prompt.textContent = `${prefix}${body} Current preferred order in the playground is: ${order}.`;
+    }
+
+    function updateAll() {
+      applyStateToCss();
+      renderList();
+      renderBookmarks();
+      updatePrompt();
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    function bindControls() {
+      document.getElementById('gap').addEventListener('input', (event) => {
+        state.gap = Number(event.target.value);
+        state.activePreset = 'custom';
+        updateAll();
+      });
+      document.getElementById('padY').addEventListener('input', (event) => {
+        state.padY = Number(event.target.value);
+        state.activePreset = 'custom';
+        updateAll();
+      });
+      document.getElementById('radius').addEventListener('input', (event) => {
+        state.radius = Number(event.target.value);
+        state.activePreset = 'custom';
+        updateAll();
+      });
+      document.getElementById('hideDelete').addEventListener('change', (event) => {
+        state.hideDelete = event.target.checked;
+        state.activePreset = 'custom';
+        updateAll();
+      });
+      document.getElementById('showOverlay').addEventListener('change', (event) => {
+        state.showOverlay = event.target.checked;
+        state.activePreset = 'custom';
+        updateAll();
+      });
+      document.getElementById('animate').addEventListener('change', (event) => {
+        state.animate = event.target.checked;
+        state.activePreset = 'custom';
+        updateAll();
+      });
+      document.querySelectorAll('.preset-btn').forEach((button) => {
+        button.addEventListener('click', () => {
+          Object.assign(state, presets[button.dataset.preset]);
+          state.activePreset = button.dataset.preset;
+          updateAll();
+        });
+      });
+      document.querySelectorAll('.tab-btn').forEach((button) => {
+        button.addEventListener('click', () => {
+          state.activeTab = button.dataset.playgroundTab;
+          updateAll();
+        });
+      });
+      document.getElementById('bookmarkEditMode').addEventListener('click', () => {
+        state.bookmarkEditMode = !state.bookmarkEditMode;
+        updateAll();
+      });
+      document.getElementById('addEntity').addEventListener('click', () => {
+        const next = state.entities.length + 1;
+        state.entities.push({
+          id: 'entity-' + Date.now(),
+          name: 'Entity ' + next,
+          color: '#E3D1FB',
+          opacity: 20
+        });
+        updateAll();
+      });
+      document.getElementById('copyPrompt').addEventListener('click', async (event) => {
+        await navigator.clipboard.writeText(prompt.textContent);
+        const old = event.currentTarget.textContent;
+        event.currentTarget.textContent = 'Copied!';
+        setTimeout(() => {
+          event.currentTarget.textContent = old;
+        }, 1100);
+      });
+    }
+
+    bindControls();
+    updateAll();
+  </script>
+</body>
+</html>

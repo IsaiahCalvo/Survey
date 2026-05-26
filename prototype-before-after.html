@@ -1,0 +1,576 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Survey — before vs after</title>
+<style>
+  :root {
+    /* Today (viewer) — cool palette */
+    --old-bg-page: #1a1a1a;
+    --old-bg-card: #1E1E1E;
+    --old-bg-input: #252525;
+    --old-border: #3a3a3a;
+    --old-text: #FFFFFF;
+    --old-muted: #bbb;
+    --old-accent: #4A90E2;
+
+    /* After — warm gold palette (from home dashboard) */
+    --new-bg-page: #0d0f15;
+    --new-bg-card: #181c24;
+    --new-bg-input: #12151c;
+    --new-border: #2a2f3a;
+    --new-border-hover: rgba(243, 238, 225, 0.18);
+    --new-text: #f3eee1;
+    --new-muted: #a8b0bf;
+    --new-accent: #d8a84e;
+    --new-accent-hover: #c89738;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: #06080c;
+    color: #e8e8e8;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    padding: 40px 24px 96px;
+  }
+  .wrap { max-width: 1320px; margin: 0 auto; }
+  h1.title {
+    font-size: 26px; font-weight: 700;
+    text-align: center; margin: 0 0 6px;
+    color: var(--new-text);
+  }
+  p.subtitle {
+    text-align: center; color: #8b94a3;
+    margin: 0 0 36px;
+    font-size: 14px;
+  }
+  .section {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 16px;
+    padding: 24px;
+    margin-bottom: 22px;
+  }
+  .section-title {
+    font-size: 18px; font-weight: 600;
+    margin: 0 0 6px;
+    color: #f0f0f0;
+  }
+  .section-blurb {
+    color: #8b94a3;
+    font-size: 13px;
+    margin: 0 0 20px;
+    line-height: 1.55;
+  }
+  .ba {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+  }
+  .panel {
+    border-radius: 12px;
+    padding: 18px;
+    min-height: 180px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .panel-before {
+    background: var(--old-bg-page);
+    border: 1px solid var(--old-border);
+    color: var(--old-text);
+  }
+  .panel-after {
+    background: var(--new-bg-page);
+    border: 1px solid var(--new-border);
+    color: var(--new-text);
+  }
+  .tag {
+    display: inline-block;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 4px;
+    margin-bottom: 12px;
+  }
+  .tag-before {
+    background: rgba(247, 115, 115, 0.12);
+    color: #f97373;
+  }
+  .tag-after {
+    background: rgba(216, 168, 78, 0.16);
+    color: var(--new-accent);
+  }
+  .demo-strip {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  /* Toolbar (before) */
+  .tb-before {
+    background: var(--old-bg-input);
+    border: 1px solid var(--old-border);
+    border-radius: 10px;
+    padding: 6px;
+    display: inline-flex; gap: 4px;
+    width: fit-content;
+  }
+  .tool-old {
+    width: 36px; height: 32px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 6px;
+    color: var(--old-muted);
+    background: transparent; border: 1px solid transparent;
+    cursor: pointer;
+  }
+  .tool-old:hover { color: var(--old-text); background: rgba(255,255,255,0.04); }
+  .tool-old.active { color: var(--old-accent); }
+  .tool-old svg { width: 18px; height: 18px; }
+
+  /* Toolbar (after) */
+  .tb-after {
+    background: var(--new-bg-input);
+    border: 1px solid var(--new-border);
+    border-radius: 10px;
+    padding: 6px;
+    display: inline-flex; gap: 4px;
+    width: fit-content;
+  }
+  .tool-new {
+    width: 36px; height: 32px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 6px;
+    color: var(--new-muted);
+    background: transparent; border: 1px solid transparent;
+    cursor: pointer;
+    transition: color 120ms, border-color 120ms, background 120ms;
+  }
+  .tool-new:hover { color: var(--new-text); border-color: var(--new-border-hover); background: rgba(243, 238, 225, 0.03); }
+  .tool-new.active { color: var(--new-accent); border-color: transparent; }
+  .tool-new.active:hover { color: var(--new-accent); border-color: var(--new-border-hover); background: rgba(243, 238, 225, 0.03); }
+  .tool-new svg { width: 18px; height: 18px; }
+
+  /* Buttons */
+  .btn-old {
+    padding: 10px 18px; border-radius: 6px;
+    font-size: 13px; font-weight: 600;
+    background: var(--old-accent); color: #fff;
+    border: 1px solid var(--old-accent);
+    cursor: pointer;
+  }
+  .btn-old:hover { background: #3d7fd0; border-color: #3d7fd0; }
+  .btn-old-ghost {
+    padding: 10px 18px; border-radius: 6px;
+    font-size: 13px; font-weight: 600;
+    background: transparent; color: var(--old-text);
+    border: 1px solid var(--old-border);
+    cursor: pointer;
+  }
+
+  .btn-new {
+    padding: 7px 14px; border-radius: 6px;
+    font-size: 12px; font-weight: 600;
+    background: var(--new-accent); color: #1a1a1a;
+    border: 1px solid var(--new-accent);
+    cursor: pointer;
+  }
+  .btn-new:hover { background: var(--new-accent-hover); border-color: var(--new-accent-hover); }
+  .btn-new-ghost {
+    padding: 7px 14px; border-radius: 6px;
+    font-size: 12px; font-weight: 600;
+    background: transparent; color: var(--new-text);
+    border: 1px solid var(--new-border);
+    cursor: pointer;
+  }
+
+  /* Page strip */
+  .strip-old, .strip-new {
+    display: inline-flex; align-items: center; gap: 18px;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+  }
+  .strip-old { background: var(--old-bg-input); border: 1px solid var(--old-border); }
+  .strip-old .lbl { color: var(--old-muted); font-size: 11px; }
+  .strip-old .num { color: var(--old-accent); font-weight: 600; }
+  .strip-old .num.dim { color: var(--old-muted); }
+
+  .strip-new { background: var(--new-bg-input); border: 1px solid var(--new-border); }
+  .strip-new .lbl { color: var(--new-muted); font-size: 11px; }
+  .strip-new .num { color: var(--new-accent); font-weight: 600; }
+  .strip-new .num.dim { color: var(--new-text); }
+
+  /* Module tabs */
+  .tabs { display: inline-flex; gap: 4px; }
+  .tab-old { padding: 8px 14px; border-radius: 6px; font-size: 13px; color: var(--old-muted); background: transparent; border: 1px solid transparent; cursor: pointer; }
+  .tab-old:hover { color: var(--old-text); background: rgba(255,255,255,0.04); }
+  .tab-old.active { color: var(--old-accent); }
+
+  .tab-new { padding: 8px 14px; border-radius: 8px; font-size: 13px; color: var(--new-muted); background: transparent; border: 1px solid transparent; cursor: pointer; transition: color 120ms, border-color 120ms; }
+  .tab-new:hover { color: var(--new-text); border-color: var(--new-border-hover); }
+  .tab-new.active { color: var(--new-accent); border-color: transparent; }
+
+  /* Document row */
+  .docrow-old, .docrow-new {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 12px; border-radius: 8px;
+    font-size: 13px; cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .docrow-old { color: var(--old-text); }
+  .docrow-old:hover { background: rgba(255,255,255,0.04); }
+  .docrow-old.active { background: rgba(74, 144, 226, 0.18); border-color: rgba(74, 144, 226, 0.4); color: var(--old-accent); }
+  .docrow-old .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--old-muted); }
+  .docrow-old.active .dot { background: var(--old-accent); }
+
+  .docrow-new { color: var(--new-text); transition: color 120ms, border-color 120ms; }
+  .docrow-new:hover { border-color: var(--new-border-hover); }
+  .docrow-new.active { color: var(--new-accent); border-color: transparent; }
+  .docrow-new .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--new-muted); }
+  .docrow-new.active .dot { background: var(--new-accent); }
+
+  /* Properties panel */
+  .props-old {
+    background: #ffffff; color: #374151;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    width: 240px;
+    padding: 0;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+  .props-old .head {
+    background: #f9fafb;
+    padding: 10px 14px;
+    border-bottom: 1px solid #d1d5db;
+    font-size: 12px; font-weight: 600;
+    color: #374151;
+  }
+  .props-old .row {
+    padding: 10px 14px;
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 12px;
+  }
+  .props-old .lbl { color: #6b7280; }
+  .props-old select {
+    border: 1px solid #d1d5db; border-radius: 4px; background: #fff; color: #374151;
+    padding: 4px 8px; font-size: 12px;
+  }
+  .props-old .step { display: inline-flex; gap: 4px; }
+  .props-old .step button {
+    width: 24px; height: 24px;
+    background: #fff; border: 1px solid #d1d5db; border-radius: 4px;
+    color: #374151; cursor: pointer;
+  }
+
+  .props-new {
+    background: var(--new-bg-card); color: var(--new-text);
+    border: 1px solid var(--new-border);
+    border-radius: 10px;
+    width: 240px;
+    padding: 0;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+  }
+  .props-new .head {
+    background: var(--new-bg-input);
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--new-border);
+    font-size: 12px; font-weight: 600;
+    color: var(--new-text);
+  }
+  .props-new .row {
+    padding: 10px 14px;
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 12px;
+  }
+  .props-new .lbl { color: var(--new-muted); }
+  .props-new .select {
+    border: 1px solid var(--new-border); border-radius: 6px; background: var(--new-bg-input); color: var(--new-text);
+    padding: 4px 10px; font-size: 12px;
+    cursor: pointer;
+  }
+  .props-new .step { display: inline-flex; gap: 4px; }
+  .props-new .step button {
+    width: 24px; height: 24px;
+    background: var(--new-bg-input); border: 1px solid var(--new-border); border-radius: 4px;
+    color: var(--new-text); cursor: pointer;
+  }
+
+  /* OS-style alert vs themed toast */
+  .alert-stage {
+    position: relative;
+    background: #f4f4f6;
+    border-radius: 8px;
+    height: 220px;
+    display: flex; align-items: center; justify-content: center;
+    color: #555;
+    font-size: 13px;
+  }
+  .alert-stage::before {
+    content: "(your browser/OS draws the box like this)";
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    font-size: 11px; color: #888;
+  }
+  .alert-box {
+    width: 280px;
+    background: #fff;
+    border-radius: 6px;
+    box-shadow: 0 12px 36px rgba(0,0,0,0.25);
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  .alert-box .body { padding: 16px; color: #1a1a1a; font-size: 13px; }
+  .alert-box .footer { padding: 10px 12px; background: #f7f7f7; text-align: right; }
+  .alert-box .footer button { padding: 5px 14px; border-radius: 4px; background: #007aff; color: #fff; border: 1px solid #006fe0; font-size: 12px; cursor: pointer; }
+
+  .toast-stage {
+    position: relative;
+    background: var(--new-bg-page);
+    border-radius: 8px;
+    height: 220px;
+    overflow: hidden;
+  }
+  .toast {
+    position: absolute;
+    right: 16px;
+    bottom: 16px;
+    min-width: 280px;
+    background: var(--new-bg-card);
+    border: 1px solid var(--new-border);
+    border-left: 3px solid #4ade80;
+    border-radius: 8px;
+    box-shadow: 0 12px 36px rgba(0,0,0,0.5);
+    padding: 12px 14px;
+    color: var(--new-text);
+    font-size: 13px;
+    display: flex; align-items: flex-start; gap: 10px;
+    transform: translateY(120%);
+    opacity: 0;
+    transition: transform 320ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 200ms;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast .icon { width: 18px; height: 18px; flex: 0 0 18px; margin-top: 1px; }
+  .toast.error { border-left-color: #f97373; }
+  .toast.info { border-left-color: var(--new-accent); }
+  .trigger-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .trigger-row button {
+    padding: 8px 14px; border-radius: 6px; font-size: 12px;
+    background: var(--new-bg-card); color: var(--new-text);
+    border: 1px solid var(--new-border); cursor: pointer;
+  }
+  .trigger-row button:hover { border-color: var(--new-border-hover); }
+
+  .footnote {
+    text-align: center; color: #6b7280; font-size: 12px; margin-top: 30px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 class="title">Survey — what you see today versus what you'd see</h1>
+  <p class="subtitle">Each row shows the same surface twice: today's look on the left, the proposed look on the right.</p>
+
+  <!-- 1. Top toolbar -->
+  <div class="section">
+    <p class="section-title">1. The toolbar at the top of the document</p>
+    <p class="section-blurb">Today: cool gray strip, pen icon glows blue when you pick it. After: warm dark strip, pen icon glows gold when you pick it. Same shape, same buttons, just the warmer color story.</p>
+    <div class="ba">
+      <div class="panel panel-before">
+        <span class="tag tag-before">Today</span>
+        <div class="tb-before">
+          <button class="tool-old"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 12l7-7v4h11v6H10v4z"/></svg></button>
+          <button class="tool-old active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 21l3-1 12-12-2-2L4 18z"/></svg></button>
+          <button class="tool-old"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="8" height="8"/><circle cx="17" cy="17" r="4"/></svg></button>
+          <button class="tool-old"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h16M12 6v14"/></svg></button>
+        </div>
+      </div>
+      <div class="panel panel-after">
+        <span class="tag tag-after">After</span>
+        <div class="tb-after">
+          <button class="tool-new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 12l7-7v4h11v6H10v4z"/></svg></button>
+          <button class="tool-new active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 21l3-1 12-12-2-2L4 18z"/></svg></button>
+          <button class="tool-new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="8" height="8"/><circle cx="17" cy="17" r="4"/></svg></button>
+          <button class="tool-new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h16M12 6v14"/></svg></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Primary buttons -->
+  <div class="section">
+    <p class="section-title">2. The Save and Send buttons in modals</p>
+    <p class="section-blurb">Today: bright blue button with white text. After: gold button with dark text — matches the buttons you already see on the home dashboard. The cancel button stays the same neutral on both sides.</p>
+    <div class="ba">
+      <div class="panel panel-before">
+        <span class="tag tag-before">Today</span>
+        <div class="demo-strip">
+          <button class="btn-old-ghost">Cancel</button>
+          <button class="btn-old">Save changes</button>
+          <button class="btn-old">Send invite</button>
+        </div>
+      </div>
+      <div class="panel panel-after">
+        <span class="tag tag-after">After</span>
+        <div class="demo-strip">
+          <button class="btn-new-ghost">Cancel</button>
+          <button class="btn-new">Save changes</button>
+          <button class="btn-new">Send invite</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Page number / zoom strip -->
+  <div class="section">
+    <p class="section-title">3. The page number and zoom percent</p>
+    <p class="section-blurb">Today: the page number is blue, the zoom percent is gray — same control, two colors. After: page number turns gold, zoom percent is plain cream.</p>
+    <div class="ba">
+      <div class="panel panel-before">
+        <span class="tag tag-before">Today</span>
+        <span class="strip-old">
+          <span><span class="lbl">Page</span> <span class="num">4</span> <span class="lbl">of 12</span></span>
+          <span><span class="lbl">Zoom</span> <span class="num dim">125%</span></span>
+        </span>
+      </div>
+      <div class="panel panel-after">
+        <span class="tag tag-after">After</span>
+        <span class="strip-new">
+          <span><span class="lbl">Page</span> <span class="num">4</span> <span class="lbl">of 12</span></span>
+          <span><span class="lbl">Zoom</span> <span class="num dim">125%</span></span>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. Survey panel tabs -->
+  <div class="section">
+    <p class="section-title">4. The module tabs inside the Survey panel</p>
+    <p class="section-blurb">Today: the selected module shows blue text. After: the selected module shows gold text — no fill, just the color change.</p>
+    <div class="ba">
+      <div class="panel panel-before">
+        <span class="tag tag-before">Today</span>
+        <div class="tabs">
+          <button class="tab-old">Module A</button>
+          <button class="tab-old active">Module B</button>
+          <button class="tab-old">Module C</button>
+        </div>
+      </div>
+      <div class="panel panel-after">
+        <span class="tag tag-after">After</span>
+        <div class="tabs">
+          <button class="tab-new">Module A</button>
+          <button class="tab-new active">Module B</button>
+          <button class="tab-new">Module C</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. Document row selected -->
+  <div class="section">
+    <p class="section-title">5. The selected document row on the home dashboard</p>
+    <p class="section-blurb">Today: blue translucent fill behind the row plus a blue border plus blue text — three signals stacked. After: just the text and the colored dot turn gold, no fill, no border — one clean signal.</p>
+    <div class="ba">
+      <div class="panel panel-before">
+        <span class="tag tag-before">Today</span>
+        <div style="width: 100%; max-width: 320px;">
+          <div class="docrow-old"><span class="dot"></span> Roof inspection</div>
+          <div class="docrow-old active"><span class="dot"></span> Window panes</div>
+          <div class="docrow-old"><span class="dot"></span> Insulation</div>
+        </div>
+      </div>
+      <div class="panel panel-after">
+        <span class="tag tag-after">After</span>
+        <div style="width: 100%; max-width: 320px;">
+          <div class="docrow-new"><span class="dot"></span> Roof inspection</div>
+          <div class="docrow-new active"><span class="dot"></span> Window panes</div>
+          <div class="docrow-new"><span class="dot"></span> Insulation</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. Annotation properties panel -->
+  <div class="section">
+    <p class="section-title">6. The Properties panel that pops up when you right-click an annotation</p>
+    <p class="section-blurb">Today: a bright white box floating over the dark document — feels like a stranger. After: a warm dark panel that belongs to the same room as everything else.</p>
+    <div class="ba">
+      <div class="panel panel-before">
+        <span class="tag tag-before">Today</span>
+        <div style="display:flex; justify-content:center;">
+          <div class="props-old">
+            <div class="head">Properties · Rectangle</div>
+            <div class="row"><span class="lbl">Stroke</span> <span class="step"><button>−</button><button>+</button></span></div>
+            <div class="row"><span class="lbl">Fill</span> <select><option>None</option><option>Solid</option></select></div>
+            <div class="row"><span class="lbl">Opacity</span> <span class="step"><button>−</button><button>+</button></span></div>
+          </div>
+        </div>
+      </div>
+      <div class="panel panel-after">
+        <span class="tag tag-after">After</span>
+        <div style="display:flex; justify-content:center;">
+          <div class="props-new">
+            <div class="head">Properties · Rectangle</div>
+            <div class="row"><span class="lbl">Stroke</span> <span class="step"><button>−</button><button>+</button></span></div>
+            <div class="row"><span class="lbl">Fill</span> <span class="select">None ▾</span></div>
+            <div class="row"><span class="lbl">Opacity</span> <span class="step"><button>−</button><button>+</button></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 7. Alert vs toast -->
+  <div class="section">
+    <p class="section-title">7. Success and error messages</p>
+    <p class="section-blurb">Today: the browser opens a system pop-up box you have to click OK on — it freezes the app and looks nothing like the rest of the design. After: a small card slides in from the bottom corner, lingers a few seconds, then fades away on its own. Try the buttons under the right side.</p>
+    <div class="ba">
+      <div class="panel panel-before" style="padding: 8px;">
+        <span class="tag tag-before" style="margin: 8px 8px 0;">Today</span>
+        <div class="alert-stage">
+          <div class="alert-box">
+            <div class="body">Sync to Excel successful!</div>
+            <div class="footer"><button>OK</button></div>
+          </div>
+        </div>
+      </div>
+      <div class="panel panel-after" style="padding: 8px;">
+        <span class="tag tag-after" style="margin: 8px 8px 0;">After</span>
+        <div class="toast-stage" id="toastStage">
+          <div class="toast" id="t-success">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2"><path d="M5 12l5 5L20 7"/></svg>
+            <div><div style="font-weight:600;">Synced to Excel</div><div style="color:#a8b0bf;">All rows up to date.</div></div>
+          </div>
+          <div class="toast error" id="t-error">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="#f97373" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+            <div><div style="font-weight:600;">Excel file is locked</div><div style="color:#a8b0bf;">Close it in Excel and try again.</div></div>
+          </div>
+          <div class="toast info" id="t-info">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="#d8a84e" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><circle cx="12" cy="17" r="0.5" fill="#d8a84e"/></svg>
+            <div><div style="font-weight:600;">Template saved</div><div style="color:#a8b0bf;">Changes will sync to all documents.</div></div>
+          </div>
+        </div>
+        <div class="trigger-row">
+          <button onclick="showToast('t-success')">Show success</button>
+          <button onclick="showToast('t-error')">Show error</button>
+          <button onclick="showToast('t-info')">Show info</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="footnote">Anything that doesn't feel right? Tell me which row and how you'd change it.</p>
+</div>
+
+<script>
+  function showToast(id) {
+    ['t-success','t-error','t-info'].forEach(x => document.getElementById(x).classList.remove('show'));
+    var el = document.getElementById(id);
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 4500);
+  }
+</script>
+</body>
+</html>
