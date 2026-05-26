@@ -42,6 +42,7 @@ const BookmarkTreeRow = ({
   depth,
   projectedDepth,
   activeDepth,
+  cloneWidthOverride = null,
   isEditMode,
   isClone = false,
   isDraggingAny = false,
@@ -93,7 +94,7 @@ const BookmarkTreeRow = ({
   const rowInset = rowDepth * BOOKMARK_INDENTATION_WIDTH;
   const cloneBaseInset = isClone ? (activeDepth ?? depth) * BOOKMARK_INDENTATION_WIDTH : 0;
   const cloneRelativeInset = isClone ? (rowDepth - (activeDepth ?? depth)) * BOOKMARK_INDENTATION_WIDTH : 0;
-  const cloneWidth = BOOKMARK_TREE_CONTENT_WIDTH - cloneBaseInset;
+  const cloneWidth = cloneWidthOverride ?? (BOOKMARK_TREE_CONTENT_WIDTH - cloneBaseInset);
   const dragTranslateY = transform?.y ?? 0;
   const isActiveRow = isDragging && !isClone;
   const sortableTransform = isActiveRow
@@ -451,6 +452,7 @@ const BookmarksPanel = ({
   const [overId, setOverId] = useState(null);
   const [offsetLeft, setOffsetLeft] = useState(0);
   const [dragMotionTick, setDragMotionTick] = useState(0);
+  const [activeDragRowWidth, setActiveDragRowWidth] = useState(null);
   const [collapsingFolderIds, setCollapsingFolderIds] = useState([]);
   const [expandingFolderIds, setExpandingFolderIds] = useState([]);
   const [collapseLayoutLock, setCollapseLayoutLock] = useState(false);
@@ -744,6 +746,9 @@ const BookmarksPanel = ({
 
   const handleDragStart = useCallback(({ active, activatorEvent }) => {
     const activeItem = flattenedItems.find((item) => item.id === active.id);
+    const activeElement = document.querySelector(`[data-bookmark-row-id="${active.id}"]`);
+    const activeRect = activeElement?.getBoundingClientRect();
+    setActiveDragRowWidth(activeRect?.width ?? null);
     if (
       activeItem?.type === 'folder' &&
       activeItem.children?.length > 0 &&
@@ -796,6 +801,7 @@ const BookmarksPanel = ({
     setOverId(null);
     setOffsetLeft(0);
     setDragMotionTick(0);
+    setActiveDragRowWidth(null);
     document.body.style.setProperty('cursor', '');
   }, [clearAutoExpandTimer]);
 
@@ -1526,6 +1532,7 @@ const BookmarksPanel = ({
                 item={activeSortableItem}
                 depth={projected ? projected.depth : activeSortableItem.depth}
                 activeDepth={activeSortableItem.depth}
+                cloneWidthOverride={activeDragRowWidth}
                 isEditMode={isEditMode}
                 isClone
                 isDraggingAny
