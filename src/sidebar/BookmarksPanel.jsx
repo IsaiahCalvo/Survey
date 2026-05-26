@@ -564,6 +564,39 @@ const BookmarksPanel = ({
     return null;
   }, []);
 
+  const getDescendantFolderIds = useCallback((folderId, sourceTree = bookmarkTree) => {
+    const rootItem = findItem(folderId, sourceTree)?.item;
+    const descendantIds = [];
+
+    const collect = (items = []) => {
+      items.forEach((item) => {
+        if (item.type === 'folder') {
+          descendantIds.push(item.id);
+        }
+        if (item.children?.length) {
+          collect(item.children);
+        }
+      });
+    };
+
+    collect(rootItem?.children || []);
+    return descendantIds;
+  }, [bookmarkTree, findItem]);
+
+  const expandFolderOnly = useCallback((folderId, sourceTree = bookmarkTree) => {
+    if (!folderId) return;
+    const descendantFolderIds = getDescendantFolderIds(folderId, sourceTree);
+
+    setExpandedFolders((prev) => {
+      const next = new Set(prev);
+      descendantFolderIds.forEach((descendantId) => next.delete(descendantId));
+      next.add(folderId);
+      return next;
+    });
+    setExpandingFolderIds((ids) => ids.filter((id) => !descendantFolderIds.includes(id)));
+    setCollapsingFolderIds((ids) => ids.filter((id) => !descendantFolderIds.includes(id)));
+  }, [bookmarkTree, getDescendantFolderIds]);
+
   const clearAutoExpandTimer = useCallback(() => {
     if (autoExpandTimerRef.current) {
       clearTimeout(autoExpandTimerRef.current);
@@ -630,18 +663,14 @@ const BookmarksPanel = ({
       collapseTimeoutsRef.current.delete(folderId);
     }
     setCollapsingFolderIds((ids) => ids.filter((id) => id !== folderId));
-    setExpandedFolders((prev) => {
-      const next = new Set(prev);
-      next.add(folderId);
-      return next;
-    });
+    expandFolderOnly(folderId);
     setExpandingFolderIds((ids) => [...new Set([...ids, folderId])]);
     const timeout = setTimeout(() => {
       setExpandingFolderIds((ids) => ids.filter((id) => id !== folderId));
       expandTimeoutsRef.current.delete(folderId);
     }, GROUP_COLLAPSE_ANIMATION_MS);
     expandTimeoutsRef.current.set(folderId, timeout);
-  }, [animateCollapseFolders, expandedFolders]);
+  }, [animateCollapseFolders, expandedFolders, expandFolderOnly]);
 
   const getAutoExpandTargetFromPointer = useCallback(() => {
     if (offsetLeft < GROUP_AUTO_EXPAND_OFFSET_PX || !pointerPositionRef.current) return null;
@@ -732,11 +761,7 @@ const BookmarksPanel = ({
         setOptimisticBookmarkTree(nextTree);
         persistBookmarkTree(nextTree);
         if (parentId) {
-          setExpandedFolders((prev) => {
-            const next = new Set(prev);
-            next.add(parentId);
-            return next;
-          });
+          expandFolderOnly(parentId, nextTree);
         }
       }
     }
@@ -747,7 +772,7 @@ const BookmarksPanel = ({
         animateCollapseFolders(foldersToRecollapse);
       }, GROUP_DRAG_SETTLE_COLLAPSE_DELAY_MS);
     }
-  }, [animateCollapseFolders, bookmarkTree, persistBookmarkTree, projected, resetDragState]);
+  }, [animateCollapseFolders, bookmarkTree, expandFolderOnly, persistBookmarkTree, projected, resetDragState]);
 
   const handleDragCancel = useCallback(() => {
     const foldersToRecollapse = Array.from(autoExpandedFoldersRef.current);
@@ -796,11 +821,7 @@ const BookmarksPanel = ({
     autoExpandFolderRef.current = autoExpandTarget.id;
     autoExpandTimerRef.current = setTimeout(() => {
       autoExpandedFoldersRef.current.add(autoExpandTarget.id);
-      setExpandedFolders((prev) => {
-        const next = new Set(prev);
-        next.add(autoExpandTarget.id);
-        return next;
-      });
+      expandFolderOnly(autoExpandTarget.id);
       setExpandingFolderIds((ids) => [...new Set([...ids, autoExpandTarget.id])]);
       setTimeout(() => {
         setExpandingFolderIds((ids) => ids.filter((id) => id !== autoExpandTarget.id));
@@ -808,7 +829,7 @@ const BookmarksPanel = ({
       autoExpandTimerRef.current = null;
       autoExpandFolderRef.current = null;
     }, GROUP_AUTO_EXPAND_DELAY_MS);
-  }, [activeId, clearAutoExpandTimer, dragMotionTick, flattenedItems, getAutoExpandTargetFromPointer, offsetLeft, overId]);
+  }, [activeId, clearAutoExpandTimer, dragMotionTick, expandFolderOnly, flattenedItems, getAutoExpandTargetFromPointer, offsetLeft, overId]);
 
   const handleNavigate = useCallback((pageRef) => {
     const parseOneBasedPage = (value) => {
@@ -965,11 +986,7 @@ const BookmarksPanel = ({
       ? (numPages ? Math.min(pageNum, numPages) : pageNum)
       : null;
 
-    setExpandedFolders((prev) => {
-      const next = new Set(prev);
-      next.add(folderId);
-      return next;
-    });
+    expandFolderOnly(folderId);
 
     onBookmarkCreate({
       id: generateId(),
@@ -979,7 +996,7 @@ const BookmarksPanel = ({
       parentId: folderId,
       order: nextOrder,
     });
-  }, [bookmarkTree, findItem, numPages, onBookmarkCreate, pageNum]);
+  }, [bookmarkTree, expandFolderOnly, findItem, numPages, onBookmarkCreate, pageNum]);
 
   const handleDelete = useCallback((id) => {
     if (onBookmarkDelete) {
