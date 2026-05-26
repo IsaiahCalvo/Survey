@@ -593,18 +593,21 @@ export default function ProjectsFolderTree({
                   onDragOver={(e) => {
                     if (!draggingProjectId || draggingProjectId === p.id) return;
                     e.preventDefault();
+                    if (dragOverProjectId !== p.id) {
+                      reorderProjects(draggingProjectId, p.id);
+                    }
                     setDragOverProjectId(p.id);
                   }}
                   onDragLeave={() => setDragOverProjectId((current) => current === p.id ? null : current)}
                   onDrop={(e) => {
                     if (!draggingProjectId) return;
                     e.preventDefault();
-                    reorderProjects(draggingProjectId, p.id);
                     setDraggingProjectId(null);
                     setDragOverProjectId(null);
                   }}
                 >
                   <div
+                    data-drag-rearrange-row
                     onClick={() => { if (jobsEdit) toggleProjSel(p.id); else setOpenId(p.id); }}
                     style={{
                       display: 'grid',
@@ -804,17 +807,20 @@ export default function ProjectsFolderTree({
                         const ownerFirst = owner?.name?.split(' ')[0] || '—';
                         return (
                           <div
+                            data-drag-rearrange-row
                             key={f.id}
                             onDragOver={(e) => {
                               if (!draggingFileId || draggingFileId === f.id) return;
                               e.preventDefault();
+                              if (dragOverFileId !== f.id) {
+                                reorderFiles(draggingFileId, f.id);
+                              }
                               setDragOverFileId(f.id);
                             }}
                             onDragLeave={() => setDragOverFileId((current) => current === f.id ? null : current)}
                             onDrop={(e) => {
                               if (!draggingFileId) return;
                               e.preventDefault();
-                              reorderFiles(draggingFileId, f.id);
                               setDraggingFileId(null);
                               setDragOverFileId(null);
                             }}

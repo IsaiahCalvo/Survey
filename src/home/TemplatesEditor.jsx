@@ -1080,18 +1080,21 @@ export default function TemplatesEditor({
                     onDragOver={(e) => {
                       if (!dragTpl || dragTpl === t.id) return;
                       e.preventDefault();
+                      if (dragOverTpl !== t.id) {
+                        reorderTemplates(dragTpl, t.id);
+                      }
                       setDragOverTpl(t.id);
                     }}
                     onDragLeave={() => setDragOverTpl((current) => (current === t.id ? null : current))}
                     onDrop={(e) => {
                       if (!dragTpl) return;
                       e.preventDefault();
-                      reorderTemplates(dragTpl, t.id);
                       setDragTpl(null);
                       setDragOverTpl(null);
                     }}
                   >
                     <div
+                      data-drag-rearrange-row
                       onClick={() => { if (tplEdit) toggleTplSel(t.id); else { setSelected(t.id); setOpenCat(-1); setOpenMod(0); } }}
                       style={{
                         display: 'grid',
@@ -1332,13 +1335,15 @@ export default function TemplatesEditor({
                       onDragOver={(e) => {
                         if (!dragCat || dragCat === c.id) return;
                         e.preventDefault();
+                        if (dragOverCat !== c.id) {
+                          reorderCategories(dragCat, c.id);
+                        }
                         setDragOverCat(c.id);
                       }}
                       onDragLeave={() => setDragOverCat((current) => (current === c.id ? null : current))}
                       onDrop={(e) => {
                         if (!dragCat) return;
                         e.preventDefault();
-                        reorderCategories(dragCat, c.id);
                         setDragCat(null);
                         setDragOverCat(null);
                       }}
@@ -1352,6 +1357,7 @@ export default function TemplatesEditor({
                     >
                       {/* Row header */}
                       <div
+                        data-drag-rearrange-row
                         onClick={() => { if (catEdit) toggleCatSel(c.id); }}
                         style={{
                           width: '100%', display: 'grid', gridTemplateColumns: catEdit ? '24px 20px 1fr auto 16px' : '24px 20px 1fr auto', gap: 8,
@@ -1580,18 +1586,20 @@ export default function TemplatesEditor({
                       onDragOver={(e) => {
                         if (!dragEntity || dragEntity === r.id) return;
                         e.preventDefault();
+                        if (dragOverEntity !== r.id) {
+                          reorderEntities(dragEntity, r.id);
+                        }
                         setDragOverEntity(r.id);
                       }}
                       onDragLeave={() => setDragOverEntity((current) => (current === r.id ? null : current))}
                       onDrop={(e) => {
                         if (!dragEntity) return;
                         e.preventDefault();
-                        reorderEntities(dragEntity, r.id);
                         setDragEntity(null);
                         setDragOverEntity(null);
                       }}
                     >
-                      <div className="card-line" style={{
+                      <div data-drag-rearrange-row className="card-line" style={{
                         display: 'grid', gridTemplateColumns: '24px 18px 1fr 16px', gap: 10,
                         padding: '8px 10px', alignItems: 'center',
                         height: 38, boxSizing: 'border-box',

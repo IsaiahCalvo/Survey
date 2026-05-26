@@ -38,6 +38,17 @@ export default function DragRearrangeHandle({
       }}
       onDragStart={(event) => {
         event.stopPropagation();
+        if (nativeDraggable && event.dataTransfer) {
+          const row = event.currentTarget.closest('[data-drag-rearrange-row]') || event.currentTarget.parentElement;
+          if (row) {
+            const rect = row.getBoundingClientRect();
+            event.dataTransfer.setDragImage(
+              row,
+              Math.max(0, event.clientX - rect.left),
+              Math.max(0, event.clientY - rect.top)
+            );
+          }
+        }
         onDragStart?.(event);
       }}
       onDragEnd={onDragEnd}
