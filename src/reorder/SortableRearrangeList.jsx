@@ -134,6 +134,7 @@ export function SortableRearrangeRow({
   animateLayoutChanges,
   disableSettledTransition = false,
   draggingOpacity = 0.8,
+  forceDraggingVisual = false,
   transition: transitionOption,
 }) {
   const {
@@ -149,8 +150,8 @@ export function SortableRearrangeRow({
   const style = {
     transform: CSS.Transform.toString(transform),
     transition: disableSettledTransition && !isSorting ? undefined : transition,
-    opacity: isDragging ? draggingOpacity : 1,
-    zIndex: isDragging ? 1 : 0,
+    opacity: isDragging || forceDraggingVisual ? draggingOpacity : 1,
+    zIndex: isDragging || forceDraggingVisual ? 1 : 0,
     position: 'relative',
     width: '100%',
     flexShrink: 0,
@@ -161,7 +162,7 @@ export function SortableRearrangeRow({
       {children({
         attributes,
         listeners,
-        isDragging,
+        isDragging: isDragging || forceDraggingVisual,
         isSorting,
       })}
     </div>

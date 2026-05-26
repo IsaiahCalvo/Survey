@@ -10,6 +10,7 @@ import {
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const SPACE_DRAG_REEXPAND_DELAY_MS = 180;
+const SPACE_DROP_VISUAL_SETTLE_MS = 140;
 const animateSpaceLayoutChanges = () => false;
 
 const SpaceSortableCard = React.memo(function SpaceSortableCard({
@@ -144,6 +145,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   return (
     <div>
       <div
+        data-drag-rearrange-row
         style={{
           background: '#2b2b2b',
           border: isHighlighted ? '1px solid transparent' : '1px solid #3a3a3a',
@@ -160,17 +162,19 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
             padding: '10px 10px 10px 6px',
             cursor: 'default',
             background: headerBackground,
-            transition: 'background 0.15s ease',
+            transition: isDragging ? 'none' : 'background 0.15s ease',
             display: 'flex',
             alignItems: 'center',
             gap: '6px'
           }}
           onMouseEnter={(e) => {
+            if (isDragging) return;
             if (!isSelected && !isActive) {
               e.currentTarget.style.background = headerHoverBackground;
             }
           }}
           onMouseLeave={(e) => {
+            if (isDragging) return;
             if (!isSelected && !isActive) {
               e.currentTarget.style.background = 'transparent';
             }
@@ -985,6 +989,7 @@ const SpacesPanel = ({
   const [editingName, setEditingName] = useState('');
   const [expandedSpaces, setExpandedSpaces] = useState(new Set());
   const [selectedSpaceId, setSelectedSpaceId] = useState(null);
+  const [draggingSpaceVisualId, setDraggingSpaceVisualId] = useState(null);
 
   // Sync external selectedSpaceId prop with internal state
   React.useEffect(() => {
@@ -1185,6 +1190,7 @@ const SpacesPanel = ({
   }, [onReorderSpaces, spaces]);
 
   const handleSpaceDragStart = useCallback(({ activeId }) => {
+    setDraggingSpaceVisualId(activeId);
     if (!expandedSpaces.has(activeId)) return;
     collapsedSpaceDragIdRef.current = activeId;
     setExpandedSpaces((prev) => {
@@ -1196,6 +1202,10 @@ const SpacesPanel = ({
   }, [expandedSpaces]);
 
   const restoreCollapsedSpaceAfterDrag = useCallback(() => {
+    setTimeout(() => {
+      setDraggingSpaceVisualId(null);
+    }, SPACE_DROP_VISUAL_SETTLE_MS);
+
     const restoreId = collapsedSpaceDragIdRef.current;
     if (!restoreId) return;
     collapsedSpaceDragIdRef.current = null;
@@ -1340,7 +1350,8 @@ const SpacesPanel = ({
                   id={space.id}
                   disabled={!onReorderSpaces}
                   animateLayoutChanges={animateSpaceLayoutChanges}
-                  draggingOpacity={1}
+                  draggingOpacity={0.82}
+                  forceDraggingVisual={draggingSpaceVisualId === space.id}
                 >
                   {({ attributes, listeners, isDragging }) => (
                     <SpaceSortableCard
