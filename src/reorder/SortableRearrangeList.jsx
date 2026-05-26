@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { flushSync } from 'react-dom';
 import {
   DndContext,
   KeyboardSensor,
@@ -83,11 +84,13 @@ export function SortableRearrangeList({
   ], []);
 
   const handleDragEnd = useCallback(({ active, over }) => {
-    setActiveId(null);
     const didReorder = Boolean(over && active.id !== over.id);
     if (didReorder) {
-      onReorder(active.id, over.id);
+      flushSync(() => {
+        onReorder(active.id, over.id);
+      });
     }
+    setActiveId(null);
     onDragEnd?.({
       activeId: active.id,
       overId: over?.id ?? null,
