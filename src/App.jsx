@@ -84,7 +84,6 @@ import PDFPageCanvas from './components/PDFPageCanvas';
 import { pdfWorkerManager } from './utils/PDFWorkerManager';
 import Icon from './Icons';
 import CompactColorPicker from './components/CompactColorPicker';
-import PDFSidebar from './PDFSidebar';
 import RegionSelectionTool from './RegionSelectionTool';
 import SpaceRegionOverlay from './SpaceRegionOverlay';
 import TabBar from './TabBar';
@@ -129,6 +128,7 @@ import TemplateOverwriteWarningModal from './components/TemplateOverwriteWarning
 import ExcelSyncConfirmModal from './components/ExcelSyncConfirmModal';
 import SyncfusionPDFContainer from './components/SyncfusionPDFContainer';
 import FormFieldPropertiesPanel from './components/FormFieldPropertiesPanel';
+import PDFLeftRailChrome from './components/PDFLeftRailChrome';
 import { PDFRightRailChrome, PDFTopToolbarChrome } from './components/PDFViewerChrome';
 import {
   FORM_TOOLS as FORM_DESIGNER_TOOLS,
@@ -210,6 +210,7 @@ import { useZoomState } from './hooks/useZoomState';
 // .planning/phases/21-cloud-sync-all-annotations/CONTEXT.md
 import { useAnnotationCloudSync } from './hooks/useAnnotationCloudSync.js';
 import { useDocumentPresenceList } from './hooks/useDocumentPresenceList.js';
+import { usePdfLeftRailApiPublisher } from './hooks/usePdfLeftRailApiPublisher';
 import { debugMark } from './utils/debugBridge';
 import {
   computeExcelSyncFingerprint,
@@ -33729,104 +33730,7 @@ ${pageBlocks}
 
   const currentDocumentId = pdfFile?.id || null;
 
-  // UX 2026-05-13: Publish left rail state to the App shell when this tab is
-  // active. Placed immediately before the loading/full render branches so every
-  // sidebar prop and handler in the API has already been declared.
-  useEffect(() => {
-    if (!isActive || typeof onLeftRailApiChange !== 'function') return;
-    const nextLeftRailApi = {
-      ref: pdfSidebarRef,
-      features,
-      pdfDoc,
-      pdfDocumentKey: pdfSearchDocumentKey,
-      numPages,
-      pageNum,
-      onNavigateToPage: goToPage,
-      onNavigateToMatch: navigateToMatch,
-      onFindTextMatches: handleFindTextMatches,
-      onClearTextSearch: handleClearTextSearch,
-      searchResults,
-      currentMatchIndex,
-      onSearchResultsChange: handleSearchResultsChange,
-      onCurrentMatchIndexChange: handleCurrentMatchIndexChange,
-      onDuplicatePage: handleDuplicatePage,
-      onDeletePage: handleDeletePage,
-      onCutPage: handleCutPage,
-      onCopyPage: handleCopyPage,
-      onPastePage: handlePastePage,
-      clipboardPage,
-      clipboardType,
-      onRotatePage: handleRotatePage,
-      onMirrorPage: handleMirrorPage,
-      onResetPage: handleResetPage,
-      onReorderPages: handleReorderPages,
-      pageTransformations,
-      getThumbnail: printPanelGetThumbnail,
-      bookmarks,
-      onBookmarkCreate: handleBookmarkCreate,
-      onBookmarkUpdate: handleBookmarkUpdate,
-      onBookmarkDelete: handleBookmarkDelete,
-      spaces,
-      onSpaceCreate: handleSpaceCreate,
-      onSpaceUpdate: handleSpaceUpdate,
-      onSpaceDelete: handleSpaceDelete,
-      activeSpaceId,
-      onSetActiveSpace: handleSetActiveSpace,
-      onExitSpaceMode: handleExitSpaceMode,
-      onRequestRegionEdit: handleRequestRegionEdit,
-      onCancelRegionEdit: handleCancelRegionEdit,
-      onSpaceAssignPages: handleSpaceAssignPages,
-      onSpaceRenamePage: handleSpaceRenamePage,
-      onSpaceRemovePage: handleSpaceRemovePage,
-      onReorderSpaces: handleReorderSpaces,
-      onExportSpaceCSV: handleExportSpaceToCSV,
-      onExportSpacePDF: handleExportSpaceToPDF,
-      isRegionSelectionActive: showRegionSelection,
-      shouldShowPage,
-      activeSpacePages,
-      scale,
-      tabId,
-      onPageDrop,
-      getCanvasAnnotationVisibilityState,
-      onToggleCanvasAnnotations: handleToggleCanvasAnnotations,
-      getSurveyAnnotationVisibilityState,
-      onToggleSurveyAnnotations: handleToggleSurveyAnnotations,
-      selectedSpaceId,
-      onToggleRegionOverlay: handleToggleRegionOverlay,
-      getRegionOverlayEnabled: isRegionOverlayEnabled,
-      isRegionOverlayToggleEnabled,
-      showSurveyPanel,
-      selectedModuleId,
-      cloudSyncStatus,
-      cloudSyncQueueSize,
-      cloudSyncEnabled,
-      cloudSyncOnRetry: cloudSyncForceFlush,
-      presence: documentPresenceList,
-      currentUserId: user?.id || null,
-      currentUserEmail: user?.email || null,
-      currentUserDisplayName: user?.user_metadata?.full_name || null,
-      onToggleCollapse: handleLeftRailToggleCollapse,
-      documentId: currentDocumentId,
-      user,
-      onRestoreHistoryActivity: handleRestoreHistoryActivity
-    };
-    onLeftRailApiChange((prev) => {
-      if (prev) {
-        const keys = Object.keys(nextLeftRailApi);
-        if (keys.length === Object.keys(prev).length && keys.every((key) => {
-          const previousValue = prev[key];
-          const nextValue = nextLeftRailApi[key];
-          if (typeof previousValue === 'function' && typeof nextValue === 'function') {
-            return true;
-          }
-          return previousValue === nextValue;
-        })) {
-          return prev;
-        }
-      }
-      return nextLeftRailApi;
-    });
-  }, [
+  usePdfLeftRailApiPublisher({
     isActive,
     onLeftRailApiChange,
     pdfSidebarRef,
@@ -33900,7 +33804,7 @@ ${pageBlocks}
     user,
     handleLeftRailToggleCollapse,
     handleRestoreHistoryActivity
-  ]);
+  });
 
   // KAL-21: in-app failure state — replaces the old browser alerts when the
   // PDF parse path or Syncfusion render path cannot recover. Pre-empts the
@@ -45159,38 +45063,6 @@ export default function App() {
   // wiring step.
   const [bottomToolbarApi, setBottomToolbarApi] = useState(null);
 
-  /*
-   * LeftRail/PDFSidebar API audit (UX 2026-05-13 chrome lift)
-   *
-   * Ref:
-   * - pdfSidebarRef
-   *
-   * Props currently passed to PDFSidebar:
-   * - features, pdfDoc, numPages, pageNum
-   * - onNavigateToPage, onNavigateToMatch
-   * - searchResults, currentMatchIndex, onSearchResultsChange, onCurrentMatchIndexChange
-   * - onDuplicatePage, onDeletePage, onCutPage, onCopyPage, onPastePage
-   * - clipboardPage, clipboardType
-   * - onRotatePage, onMirrorPage, onResetPage, onReorderPages, pageTransformations, getThumbnail
-   * - bookmarks, onBookmarkCreate, onBookmarkUpdate, onBookmarkDelete
-   * - spaces, onSpaceCreate, onSpaceUpdate, onSpaceDelete
-   * - activeSpaceId, onSetActiveSpace, onExitSpaceMode
-   * - onRequestRegionEdit, onCancelRegionEdit
-   * - onSpaceAssignPages, onSpaceRenamePage, onSpaceRemovePage, onReorderSpaces
-   * - onExportSpaceCSV, onExportSpacePDF
-   * - isRegionSelectionActive, shouldShowPage, activeSpacePages
-   * - scale, tabId, onPageDrop
-   * - getCanvasAnnotationVisibilityState, onToggleCanvasAnnotations
-   * - getSurveyAnnotationVisibilityState, onToggleSurveyAnnotations
-   * - selectedSpaceId, onToggleRegionOverlay, getRegionOverlayEnabled, isRegionOverlayToggleEnabled
-   * - showSurveyPanel, selectedModuleId
-   * - cloudSyncStatus, cloudSyncQueueSize, cloudSyncEnabled, cloudSyncOnRetry
-   * - presence, currentUserId, currentUserEmail, currentUserDisplayName
-   * - onToggleCollapse
-   *
-   * Loading-state sidebar currently passes inert defaults for the subset needed
-   * to keep the rail, sync chip, and presence row visible before the PDF loads.
-   */
   const [leftRailApi, setLeftRailApi] = useState(null);
 
   // 2026-05-25: Arrowhead picker — opens below the trigger and shows every
@@ -45739,20 +45611,7 @@ export default function App() {
               handler, Pro gate, and active styling — JSX is rendered inside
               the right rail block further down. */}
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative', display: 'flex' }}>
-          <div
-            id="chrome-left-host"
-            style={{
-              display: isViewerVisible ? 'flex' : 'none',
-              flexShrink: 0,
-              minWidth: '48px',
-              alignSelf: 'stretch',
-              background: '#252525',
-              color: '#ddd',
-              fontFamily: FONT_FAMILY
-            }}
-          >
-            {leftRailApi && <PDFSidebar {...leftRailApi} />}
-          </div>
+          <PDFLeftRailChrome isViewerVisible={isViewerVisible} leftRailApi={leftRailApi} />
           <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column' }}>
             {/* UX 2026-05-14: chrome-sub-toolbar-host — App-level mount point
                 for the category sub-row (Draw / Shapes / Text expansion).
