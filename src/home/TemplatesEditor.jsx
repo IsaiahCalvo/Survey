@@ -44,6 +44,7 @@ import { createPortal } from 'react-dom';
 import { HubShell, Icon, Search } from './HubShell';
 import CompactColorPicker from '../components/CompactColorPicker';
 import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
+import { SortableRearrangeList, SortableRearrangeRow } from '../reorder/SortableRearrangeList';
 import {
   archiveChecklistItem,
   isActiveChecklistItem,
@@ -1070,29 +1071,16 @@ export default function TemplatesEditor({
               {rich.length === 0 && (
                 <div className="meta" style={{ padding: '20px 8px', fontSize: 11.5 }}>No templates yet — create one to get started.</div>
               )}
+              <SortableRearrangeList ids={rich.map((t) => t.id)} onReorder={reorderTemplates}>
               {rich.map((t) => {
                 const active = t.id === selectedId;
                 const isSel = selTpls.has(t.id);
                 return (
-                  <div
+                  <SortableRearrangeRow
                     key={t.id}
-                    style={{ position: 'relative' }}
-                    onDragOver={(e) => {
-                      if (!dragTpl || dragTpl === t.id) return;
-                      e.preventDefault();
-                      if (dragOverTpl !== t.id) {
-                        reorderTemplates(dragTpl, t.id);
-                      }
-                      setDragOverTpl(t.id);
-                    }}
-                    onDragLeave={() => setDragOverTpl((current) => (current === t.id ? null : current))}
-                    onDrop={(e) => {
-                      if (!dragTpl) return;
-                      e.preventDefault();
-                      setDragTpl(null);
-                      setDragOverTpl(null);
-                    }}
+                    id={t.id}
                   >
+                    {({ attributes, listeners, isDragging }) => (
                     <div
                       data-drag-rearrange-row
                       onClick={() => { if (tplEdit) toggleTplSel(t.id); else { setSelected(t.id); setOpenCat(-1); setOpenMod(0); } }}
@@ -1105,24 +1093,16 @@ export default function TemplatesEditor({
                         background: dragOverTpl === t.id && dragTpl !== t.id
                           ? 'rgba(216,168,78,0.10)'
                           : tplEdit ? (isSel ? 'var(--ink-600)' : 'transparent') : (active ? 'var(--ink-600)' : 'transparent'),
-                        opacity: dragTpl === t.id ? 0.72 : 1,
+                        opacity: isDragging ? 0.72 : 1,
                         cursor: 'pointer',
                         borderLeft: !tplEdit && active ? '2px solid var(--accent)' : '2px solid transparent',
-                        transition: dragTpl === t.id ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
+                        transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                       }}
                     >
                       <DragRearrangeHandle
-                        isDragging={dragTpl === t.id}
-                        nativeDraggable
-                        onDragStart={(e) => {
-                          e.dataTransfer.effectAllowed = 'move';
-                          e.dataTransfer.setData('text/plain', t.id);
-                          setDragTpl(t.id);
-                        }}
-                        onDragEnd={() => {
-                          setDragTpl(null);
-                          setDragOverTpl(null);
-                        }}
+                        {...attributes}
+                        {...listeners}
+                        isDragging={isDragging}
                       />
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{t.name}</div>
@@ -1162,9 +1142,11 @@ export default function TemplatesEditor({
                         >⋯</button>
                       )}
                     </div>
-                  </div>
+                    )}
+                  </SortableRearrangeRow>
                 );
               })}
+              </SortableRearrangeList>
             </div>
           </aside>
 
@@ -1317,6 +1299,7 @@ export default function TemplatesEditor({
                 {visibleCats.length === 0 && (
                   <div className="meta" style={{ padding: '16px 4px', fontSize: 11.5 }}>This module has no categories yet.</div>
                 )}
+                <SortableRearrangeList ids={visibleCats.map((c) => c.id)} onReorder={reorderCategories}>
                 {visibleCats.map((c, i) => {
                   const allItems = c.items || [];
                   /* KAL-44 — active vs archived split. Editor surfaces the
@@ -1329,30 +1312,18 @@ export default function TemplatesEditor({
                   const open = openCat === i;
                   const isSel = selCats.has(c.id);
                   return (
-                    <div
+                    <SortableRearrangeRow
                       key={c.id}
+                      id={c.id}
+                    >
+                      {({ attributes, listeners, isDragging }) => (
+                    <div
                       className="card-line"
-                      onDragOver={(e) => {
-                        if (!dragCat || dragCat === c.id) return;
-                        e.preventDefault();
-                        if (dragOverCat !== c.id) {
-                          reorderCategories(dragCat, c.id);
-                        }
-                        setDragOverCat(c.id);
-                      }}
-                      onDragLeave={() => setDragOverCat((current) => (current === c.id ? null : current))}
-                      onDrop={(e) => {
-                        if (!dragCat) return;
-                        e.preventDefault();
-                        setDragCat(null);
-                        setDragOverCat(null);
-                      }}
                       style={{
                         overflow: 'hidden',
                         flexShrink: 0,
-                        opacity: dragCat === c.id ? 0.72 : 1,
-                        background: dragOverCat === c.id && dragCat !== c.id ? 'rgba(216,168,78,0.10)' : undefined,
-                        transition: dragCat === c.id ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
+                        opacity: isDragging ? 0.72 : 1,
+                        transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                       }}
                     >
                       {/* Row header */}
@@ -1367,17 +1338,9 @@ export default function TemplatesEditor({
                         }}
                       >
                         <DragRearrangeHandle
-                          isDragging={dragCat === c.id}
-                          nativeDraggable
-                          onDragStart={(e) => {
-                            e.dataTransfer.effectAllowed = 'move';
-                            e.dataTransfer.setData('text/plain', c.id);
-                            setDragCat(c.id);
-                          }}
-                          onDragEnd={() => {
-                            setDragCat(null);
-                            setDragOverCat(null);
-                          }}
+                          {...attributes}
+                          {...listeners}
+                          isDragging={isDragging}
                           style={{ width: 24, height: 24 }}
                         />
                         <button
@@ -1507,8 +1470,11 @@ export default function TemplatesEditor({
                         </div>
                       )}
                     </div>
+                      )}
+                    </SortableRearrangeRow>
                   );
                 })}
+                </SortableRearrangeList>
               </div>
             </div>
             </>
@@ -1569,7 +1535,9 @@ export default function TemplatesEditor({
                 {(!tpl || tpl.roster.length === 0) && (
                   <div className="meta" style={{ fontSize: 11.5, padding: '12px 2px' }}>No entities on this template yet.</div>
                 )}
-                {tpl && tpl.roster.map((r) => {
+                {tpl && (
+                <SortableRearrangeList ids={tpl.roster.map((r) => r.id)} onReorder={reorderEntities}>
+                {tpl.roster.map((r) => {
                   const c = roleColors[r.id]?.color || r.color || '#8c8c8a';
                   const op = roleColors[r.id]?.opacity ?? 0.35;
                   /* Glyph border colour: when "Match Fill" is on the border equals the
@@ -1581,44 +1549,23 @@ export default function TemplatesEditor({
                   const isOpen = openColor === r.id;
                   const isSel = selEntities.has(r.id);
                   return (
-                    <div
+                    <SortableRearrangeRow
                       key={r.id}
-                      onDragOver={(e) => {
-                        if (!dragEntity || dragEntity === r.id) return;
-                        e.preventDefault();
-                        if (dragOverEntity !== r.id) {
-                          reorderEntities(dragEntity, r.id);
-                        }
-                        setDragOverEntity(r.id);
-                      }}
-                      onDragLeave={() => setDragOverEntity((current) => (current === r.id ? null : current))}
-                      onDrop={(e) => {
-                        if (!dragEntity) return;
-                        e.preventDefault();
-                        setDragEntity(null);
-                        setDragOverEntity(null);
-                      }}
+                      id={r.id}
                     >
+                      {({ attributes, listeners, isDragging }) => (
+                      <>
                       <div data-drag-rearrange-row className="card-line" style={{
                         display: 'grid', gridTemplateColumns: '24px 18px 1fr 16px', gap: 10,
                         padding: '8px 10px', alignItems: 'center',
                         height: 38, boxSizing: 'border-box',
-                        opacity: dragEntity === r.id ? 0.72 : 1,
-                        background: dragOverEntity === r.id && dragEntity !== r.id ? 'rgba(216,168,78,0.10)' : undefined,
-                        transition: dragEntity === r.id ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
+                        opacity: isDragging ? 0.72 : 1,
+                        transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                       }}>
                         <DragRearrangeHandle
-                          isDragging={dragEntity === r.id}
-                          nativeDraggable
-                          onDragStart={(e) => {
-                            e.dataTransfer.effectAllowed = 'move';
-                            e.dataTransfer.setData('text/plain', r.id);
-                            setDragEntity(r.id);
-                          }}
-                          onDragEnd={() => {
-                            setDragEntity(null);
-                            setDragOverEntity(null);
-                          }}
+                          {...attributes}
+                          {...listeners}
+                          isDragging={isDragging}
                           style={{ width: 24, height: 24 }}
                         />
                         <button
@@ -1742,9 +1689,13 @@ export default function TemplatesEditor({
                           </div>
                         );
                       })()}
-                    </div>
+                      </>
+                      )}
+                    </SortableRearrangeRow>
                   );
                 })}
+                </SortableRearrangeList>
+                )}
               </div>
             </div>
           </aside>

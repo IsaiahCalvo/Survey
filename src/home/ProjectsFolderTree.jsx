@@ -28,6 +28,7 @@ import { HubShell, Icon, Avatar, AvatarStack, Search } from './HubShell';
 import ManageTeamModal from './ManageTeamModal';
 import { MoveCopyModal } from './BulkModals';
 import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
+import { SortableRearrangeList, SortableRearrangeRow } from '../reorder/SortableRearrangeList';
 
 /* Literal palette — used by the portal popups, which render outside the
    `.survey-hub` root and therefore cannot inherit its CSS variables. */
@@ -581,31 +582,18 @@ export default function ProjectsFolderTree({
                 {localProjects.length === 0 ? 'No projects yet — create one to group your documents.' : 'No projects match your search.'}
               </div>
             )}
+            <SortableRearrangeList ids={filtered.map((p) => p.id)} onReorder={reorderProjects}>
             {filtered.map((p) => {
               const isOpen = open && p.id === open.id;
               const isSel = selProj.has(p.id);
               const isPinned = pinnedIds.has(p.id);
               const projMembers = projectTeam(p);
               return (
-                <div
+                <SortableRearrangeRow
                   key={p.id}
-                  style={{ position: 'relative' }}
-                  onDragOver={(e) => {
-                    if (!draggingProjectId || draggingProjectId === p.id) return;
-                    e.preventDefault();
-                    if (dragOverProjectId !== p.id) {
-                      reorderProjects(draggingProjectId, p.id);
-                    }
-                    setDragOverProjectId(p.id);
-                  }}
-                  onDragLeave={() => setDragOverProjectId((current) => current === p.id ? null : current)}
-                  onDrop={(e) => {
-                    if (!draggingProjectId) return;
-                    e.preventDefault();
-                    setDraggingProjectId(null);
-                    setDragOverProjectId(null);
-                  }}
+                  id={p.id}
                 >
+                  {({ attributes, listeners, isDragging }) => (
                   <div
                     data-drag-rearrange-row
                     onClick={() => { if (jobsEdit) toggleProjSel(p.id); else setOpenId(p.id); }}
@@ -617,11 +605,11 @@ export default function ProjectsFolderTree({
                       background: dragOverProjectId === p.id && draggingProjectId !== p.id
                         ? 'rgba(216,168,78,0.10)'
                         : jobsEdit ? (isSel ? 'var(--ink-600)' : 'transparent') : (isOpen ? 'var(--ink-600)' : 'transparent'),
-                      cursor: draggingProjectId === p.id ? 'grabbing' : 'pointer',
+                      cursor: isDragging ? 'grabbing' : 'pointer',
                       borderLeft: !jobsEdit && isOpen ? '2px solid var(--gold)' : '2px solid transparent',
                       height: 50, boxSizing: 'border-box',
-                      opacity: draggingProjectId === p.id ? 0.82 : 1,
-                      transition: draggingProjectId === p.id ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
+                      opacity: isDragging ? 0.82 : 1,
+                      transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                     }}
                   >
                     {/* Drag handle / pin marker. Only the handle starts
@@ -634,17 +622,9 @@ export default function ProjectsFolderTree({
                       </span>
                     ) : (
                       <DragRearrangeHandle
-                        isDragging={draggingProjectId === p.id}
-                        nativeDraggable
-                        onDragStart={(e) => {
-                          e.dataTransfer.effectAllowed = 'move';
-                          e.dataTransfer.setData('text/plain', p.id);
-                          setDraggingProjectId(p.id);
-                        }}
-                        onDragEnd={() => {
-                          setDraggingProjectId(null);
-                          setDragOverProjectId(null);
-                        }}
+                        {...attributes}
+                        {...listeners}
+                        isDragging={isDragging}
                       />
                     )}
                     <div style={{ minWidth: 0 }}>
@@ -682,9 +662,11 @@ export default function ProjectsFolderTree({
                       >⋯</button>
                     )}
                   </div>
-                </div>
+                  )}
+                </SortableRearrangeRow>
               );
             })}
+            </SortableRearrangeList>
           </div>
         </div>
 
@@ -795,6 +777,7 @@ export default function ProjectsFolderTree({
                   {openFiles.length === 0 ? (
                     <div className="meta" style={{ fontSize: 11.5, padding: '12px 10px' }}>No files in this project yet.</div>
                   ) : (
+                    <SortableRearrangeList ids={openFiles.map((f) => f.id)} onReorder={reorderFiles}>
                     <div style={{ display: 'grid', gap: 1 }}>
                       {openFiles.map((f, i) => {
                         const isChecked = selFiles.has(i);
@@ -806,24 +789,13 @@ export default function ProjectsFolderTree({
                         const ownerInitials = owner ? initialsOf(owner.name) : '—';
                         const ownerFirst = owner?.name?.split(' ')[0] || '—';
                         return (
+                          <SortableRearrangeRow
+                            key={f.id}
+                            id={f.id}
+                          >
+                            {({ attributes, listeners, isDragging }) => (
                           <div
                             data-drag-rearrange-row
-                            key={f.id}
-                            onDragOver={(e) => {
-                              if (!draggingFileId || draggingFileId === f.id) return;
-                              e.preventDefault();
-                              if (dragOverFileId !== f.id) {
-                                reorderFiles(draggingFileId, f.id);
-                              }
-                              setDragOverFileId(f.id);
-                            }}
-                            onDragLeave={() => setDragOverFileId((current) => current === f.id ? null : current)}
-                            onDrop={(e) => {
-                              if (!draggingFileId) return;
-                              e.preventDefault();
-                              setDraggingFileId(null);
-                              setDragOverFileId(null);
-                            }}
                             onClick={() => { if (fileSelect) { toggleFileSel(i); return; } onOpenDocument && onOpenDocument(f); }}
                             style={{
                               background: dragOverFileId === f.id && draggingFileId !== f.id
@@ -833,23 +805,15 @@ export default function ProjectsFolderTree({
                               display: 'grid', gridTemplateColumns: '24px 1fr 90px 90px 28px',
                               gap: 12, alignItems: 'center', padding: '8px 10px', fontSize: 12,
                               height: 42, boxSizing: 'border-box',
-                              cursor: draggingFileId === f.id ? 'grabbing' : 'pointer',
-                              opacity: draggingFileId === f.id ? 0.82 : 1,
-                              transition: draggingFileId === f.id ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
+                              cursor: isDragging ? 'grabbing' : 'pointer',
+                              opacity: isDragging ? 0.82 : 1,
+                              transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                             }}
                           >
                             <DragRearrangeHandle
-                              isDragging={draggingFileId === f.id}
-                              nativeDraggable
-                              onDragStart={(e) => {
-                                e.dataTransfer.effectAllowed = 'move';
-                                e.dataTransfer.setData('text/plain', f.id);
-                                setDraggingFileId(f.id);
-                              }}
-                              onDragEnd={() => {
-                                setDraggingFileId(null);
-                                setDragOverFileId(null);
-                              }}
+                              {...attributes}
+                              {...listeners}
+                              isDragging={isDragging}
                               style={{ width: 24, height: 24 }}
                             />
                             <div style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
@@ -882,9 +846,12 @@ export default function ProjectsFolderTree({
                               >⋯</button>
                             )}
                           </div>
+                            )}
+                          </SortableRearrangeRow>
                         );
                       })}
                     </div>
+                    </SortableRearrangeList>
                   )}
                 </div>
 
