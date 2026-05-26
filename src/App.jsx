@@ -39808,8 +39808,8 @@ ${pageBlocks}
                 right: '48px',
                 height: `${middleAreaBounds.height - (activeCategoryDropdown ? 35 : 0)}px`,
                 width: isSurveyPanelCollapsed ? '48px' : '320px',
-                background: '#2b2b2b',
-                borderLeft: '1px solid #444',
+                background: '#181c24',
+                borderLeft: 'none',
                 zIndex: 9999,
                 display: 'flex',
                 flexDirection: 'column',
@@ -39826,7 +39826,7 @@ ${pageBlocks}
                     borderBottom: '1px solid #3a3a3a',
                     display: 'flex',
                     justifyContent: 'flex-start',
-                    background: '#252525'
+                    background: '#181c24'
                   }}
                 >
                   <button
@@ -39836,6 +39836,7 @@ ${pageBlocks}
                         applyLayoutDrivenZoom();
                       });
                     }}
+                    aria-label="Expand Survey panel"
                     style={{
                       background: 'rgb(51, 51, 51)',
                       border: 'none',
@@ -39861,7 +39862,7 @@ ${pageBlocks}
                   {/* Panel Header */}
                   <div
                     style={{
-                      padding: categorySelectModeActive ? '10px 8px' : '12px 8px',
+                      padding: '12px 8px',
                       borderBottom: '1px solid #444',
                       display: 'flex',
                       alignItems: 'center',
@@ -39876,6 +39877,7 @@ ${pageBlocks}
                           applyLayoutDrivenZoom();
                         });
                       }}
+                      aria-label="Collapse Survey panel"
                       style={{
                         background: 'rgb(51, 51, 51)',
                         border: 'none',
@@ -39901,7 +39903,7 @@ ${pageBlocks}
                       <h2
                         style={{
                           margin: 0,
-                          fontSize: categorySelectModeActive ? '20px' : '18px',
+                          fontSize: '18px',
                           fontWeight: '600',
                           color: '#fff',
                           fontFamily: FONT_FAMILY,
@@ -40065,18 +40067,13 @@ ${pageBlocks}
                             >
                               <button
                                 onClick={() => setCategorySelectModeActive(true)}
-                                className="btn btn-sm"
+                                className="btn btn-sm btn-secondary"
                                 style={{
-                                  background: '#3a3a3a',
-                                  color: '#ddd',
-                                  border: '1px solid #444',
                                   whiteSpace: 'nowrap',
-                                  flexShrink: 0,
-                                  padding: '6px 12px',
-                                  borderRadius: '6px'
+                                  flexShrink: 0
                                 }}
                               >
-                                Select Catagory
+                                Select Category
                               </button>
                               <button
                                 onClick={() => {
@@ -40091,23 +40088,10 @@ ${pageBlocks}
                                     startAddingCategory: true
                                   });
                                 }}
-                                className="btn btn-sm"
+                                className="btn btn-sm btn-primary"
                                 style={{
-                                  background: '#4A90E2',
-                                  color: '#fff',
-                                  border: '1px solid #4A90E2',
                                   whiteSpace: 'nowrap',
-                                  flexShrink: 0,
-                                  padding: '6px 14px',
-                                  borderRadius: '6px'
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.background = '#5AA0F2';
-                                  e.currentTarget.style.borderColor = '#5AA0F2';
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.background = '#4A90E2';
-                                  e.currentTarget.style.borderColor = '#4A90E2';
+                                  flexShrink: 0
                                 }}
                               >
                                 Create Category
@@ -41315,7 +41299,7 @@ ${pageBlocks}
                                                       }}
                                                       onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
                                                       onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
-                                                      title="Rename surveyMarker"
+                                                      title="Rename Survey Marker"
                                                     >
                                                       ✎
                                                     </button>
@@ -41355,7 +41339,19 @@ ${pageBlocks}
                                                     onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
                                                     title={surveyMarkers[annotationId]?.note?.text ? "Edit item notes" : "Add item notes"}
                                                   >
-                                                    Notes {surveyMarkers[annotationId]?.note?.text ? '✓' : ''}
+                                                    Notes
+                                                    <span
+                                                      aria-hidden="true"
+                                                      style={{
+                                                        display: 'inline-block',
+                                                        width: '14px',
+                                                        marginLeft: '4px',
+                                                        textAlign: 'center',
+                                                        visibility: surveyMarkers[annotationId]?.note?.text ? 'visible' : 'hidden'
+                                                      }}
+                                                    >
+                                                      ✓
+                                                    </span>
                                                   </button>
 
                                                   {/* Locate Button (Magnifying Glass) */}
@@ -41389,7 +41385,7 @@ ${pageBlocks}
                                                     onMouseLeave={(e) => {
                                                       e.currentTarget.style.background = 'transparent';
                                                     }}
-                                                    title={surveyMarker.bounds && surveyMarker.pageNumber ? "Locate on PDF" : "Click to set location on PDF"}
+                                                    title={surveyMarker.bounds && surveyMarker.pageNumber ? "Jump to this marker" : "Set location on PDF"}
                                                   >
                                                     <Icon name="search" size={14} />
                                                   </div>
@@ -46353,7 +46349,7 @@ export default function App() {
               flexShrink: 0,
               width: '48px',
               alignSelf: 'stretch',
-              background: '#252525',
+              background: '#181c24',
               color: '#ddd',
               fontFamily: FONT_FAMILY,
               flexDirection: 'column',
