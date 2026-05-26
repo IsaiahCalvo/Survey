@@ -134,6 +134,7 @@ export function SortableRearrangeRow({
   animateLayoutChanges,
   disableSettledTransition = false,
   draggingOpacity = 0.8,
+  lockedHeight = null,
 }) {
   const {
     attributes,
@@ -153,6 +154,8 @@ export function SortableRearrangeRow({
     position: 'relative',
     width: '100%',
     flexShrink: 0,
+    height: lockedHeight == null ? undefined : `${lockedHeight}px`,
+    overflow: lockedHeight == null ? undefined : 'hidden',
   };
 
   return (

@@ -1008,6 +1008,14 @@ const SpacesPanel = ({
   const [pageErrors, setPageErrors] = useState({});
   const previousSpaceIdsRef = useRef(new Set(spaces.map(space => space.id)));
   const collapsedSpaceDragIdRef = useRef(null);
+  const clearLockedSpaceRowHeightsRef = useRef(null);
+  const [lockedSpaceRowHeights, setLockedSpaceRowHeights] = useState(null);
+
+  React.useEffect(() => () => {
+    if (clearLockedSpaceRowHeightsRef.current) {
+      clearTimeout(clearLockedSpaceRowHeightsRef.current);
+    }
+  }, []);
 
   const handleCreateSpace = useCallback(() => {
     const name = newSpaceName.trim() || `Space ${spaces.length + 1}`;
@@ -1184,6 +1192,25 @@ const SpacesPanel = ({
   }, [onReorderSpaces, spaces]);
 
   const handleSpaceDragStart = useCallback(({ activeId }) => {
+    if (clearLockedSpaceRowHeightsRef.current) {
+      clearTimeout(clearLockedSpaceRowHeightsRef.current);
+      clearLockedSpaceRowHeightsRef.current = null;
+    }
+
+    const activeNode = document.querySelector(`[data-sortable-rearrange-item="${activeId}"]`);
+    const listNode = activeNode?.closest?.('[data-sortable-rearrange-list]');
+    if (listNode) {
+      const heights = {};
+      listNode.querySelectorAll('[data-sortable-rearrange-item]').forEach((node) => {
+        const id = node.dataset.sortableRearrangeItem;
+        const height = node.getBoundingClientRect().height;
+        if (id && height > 0) {
+          heights[id] = height;
+        }
+      });
+      setLockedSpaceRowHeights(heights);
+    }
+
     if (!expandedSpaces.has(activeId)) return;
     collapsedSpaceDragIdRef.current = activeId;
     setExpandedSpaces((prev) => {
@@ -1194,7 +1221,18 @@ const SpacesPanel = ({
     });
   }, [expandedSpaces]);
 
+  const releaseLockedSpaceRowHeights = useCallback(() => {
+    if (clearLockedSpaceRowHeightsRef.current) {
+      clearTimeout(clearLockedSpaceRowHeightsRef.current);
+    }
+    clearLockedSpaceRowHeightsRef.current = setTimeout(() => {
+      setLockedSpaceRowHeights(null);
+      clearLockedSpaceRowHeightsRef.current = null;
+    }, 90);
+  }, []);
+
   const restoreCollapsedSpaceAfterDrag = useCallback(() => {
+    releaseLockedSpaceRowHeights();
     const restoreId = collapsedSpaceDragIdRef.current;
     if (!restoreId) return;
     collapsedSpaceDragIdRef.current = null;
@@ -1206,7 +1244,7 @@ const SpacesPanel = ({
         return next;
       });
     }, SPACE_DRAG_REEXPAND_DELAY_MS);
-  }, []);
+  }, [releaseLockedSpaceRowHeights]);
 
   return (
     <div style={{
@@ -1339,6 +1377,7 @@ const SpacesPanel = ({
                   id={space.id}
                   disabled={!onReorderSpaces}
                   draggingOpacity={1}
+                  lockedHeight={lockedSpaceRowHeights?.[space.id] ?? null}
                 >
                   {({ attributes, listeners, isDragging }) => (
                     <SpaceSortableCard
