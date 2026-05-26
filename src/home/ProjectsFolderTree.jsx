@@ -632,6 +632,7 @@ export default function ProjectsFolderTree({
                     ) : (
                       <DragRearrangeHandle
                         isDragging={draggingProjectId === p.id}
+                        nativeDraggable
                         onDragStart={(e) => {
                           e.dataTransfer.effectAllowed = 'move';
                           e.dataTransfer.setData('text/plain', p.id);
@@ -833,6 +834,7 @@ export default function ProjectsFolderTree({
                           >
                             <DragRearrangeHandle
                               isDragging={draggingFileId === f.id}
+                              nativeDraggable
                               onDragStart={(e) => {
                                 e.dataTransfer.effectAllowed = 'move';
                                 e.dataTransfer.setData('text/plain', f.id);

@@ -1110,6 +1110,7 @@ export default function TemplatesEditor({
                     >
                       <DragRearrangeHandle
                         isDragging={dragTpl === t.id}
+                        nativeDraggable
                         onDragStart={(e) => {
                           e.dataTransfer.effectAllowed = 'move';
                           e.dataTransfer.setData('text/plain', t.id);
@@ -1361,6 +1362,7 @@ export default function TemplatesEditor({
                       >
                         <DragRearrangeHandle
                           isDragging={dragCat === c.id}
+                          nativeDraggable
                           onDragStart={(e) => {
                             e.dataTransfer.effectAllowed = 'move';
                             e.dataTransfer.setData('text/plain', c.id);
@@ -1599,6 +1601,7 @@ export default function TemplatesEditor({
                       }}>
                         <DragRearrangeHandle
                           isDragging={dragEntity === r.id}
+                          nativeDraggable
                           onDragStart={(e) => {
                             e.dataTransfer.effectAllowed = 'move';
                             e.dataTransfer.setData('text/plain', r.id);
