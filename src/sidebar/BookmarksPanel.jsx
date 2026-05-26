@@ -158,7 +158,7 @@ const BookmarkTreeRow = ({
         padding: '1px 0',
         opacity: isDragging && !isClone ? 0.32 : 1,
         position: 'relative',
-        width: isClone ? `${cloneWidth}px` : isActiveRow ? `${BOOKMARK_TREE_CONTENT_WIDTH}px` : 'auto',
+        width: isClone ? `${cloneWidth}px` : 'auto',
         boxSizing: 'border-box',
         marginLeft: (isClone || isActiveRow) ? undefined : `${rowInset}px`,
         paddingLeft: 0,
