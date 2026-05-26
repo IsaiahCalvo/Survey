@@ -29,7 +29,7 @@
    interactive control actually mutates state: New Module / New Category /
    New Entity, the Select/edit bulk actions (Duplicate / Delete), inline
    rename of templates, modules, categories, entities and checklist items,
-   drag-reorder of module tabs, the per-entity colour picker, and the per-row
+   drag-reorder of templates, module tabs, categories, and entities, the per-entity colour picker, and the per-row
    "more" menus. None of this is persisted to a backend in this pass — exactly
    as the prototype intended. "New Template" still calls the onCreateTemplate
    prop (template creation is owned by the host).
@@ -49,6 +49,7 @@ import {
   isArchivedChecklistItem,
   archivedItemLabel,
 } from '../services/checklistOrphanCleanup';
+import { moveItemById } from '../reorder/flatReorderUtils.js';
 
 /* ============================================================
    Inline scoped stylesheet — the prototype's `.ed-scope` editorial
@@ -485,8 +486,14 @@ export default function TemplatesEditor({
   const tplSelCount = selTpls.size;
   const [tplMenu, setTplMenu] = useState(null);       // { id, rect }
   const [entityMenu, setEntityMenu] = useState(null); // { id, rect }
+  const [dragTpl, setDragTpl] = useState(null);
+  const [dragOverTpl, setDragOverTpl] = useState(null);
   const [dragMod, setDragMod] = useState(null);
   const [dragOverMod, setDragOverMod] = useState(null);
+  const [dragCat, setDragCat] = useState(null);
+  const [dragOverCat, setDragOverCat] = useState(null);
+  const [dragEntity, setDragEntity] = useState(null);
+  const [dragOverEntity, setDragOverEntity] = useState(null);
   const [entityEdit, setEntityEdit] = useState(false);
   const [selEntities, setSelEntities] = useState(() => new Set());
   const toggleEntitySel = (id) => setSelEntities((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -649,6 +656,14 @@ export default function TemplatesEditor({
     });
     setDirty(true);
   };
+  const reorderTemplates = (activeId, overId) => {
+    if (!activeId || !overId || activeId === overId) return;
+    setRich((prev) => {
+      const next = moveItemById(prev, activeId, overId);
+      return next === prev ? prev : next;
+    });
+    setDirty(true);
+  };
   const deleteTemplates = (ids) => {
     setRich((prev) => {
       const next = prev.filter((t) => !ids.has(t.id));
@@ -778,6 +793,21 @@ export default function TemplatesEditor({
     });
     setSelCats(new Set());
   };
+  const reorderCategories = (activeId, overId) => {
+    if (!activeId || !overId || activeId === overId) return;
+    const categories = orderedMods[openMod]?.categories || [];
+    const from = categories.findIndex((category) => category.id === activeId);
+    const to = categories.findIndex((category) => category.id === overId);
+
+    mutateOpenModule((module) => {
+      const nextCategories = moveItemById(module.categories || [], activeId, overId);
+      return nextCategories === module.categories ? module : { ...module, categories: nextCategories };
+    });
+
+    if (openCat === from) setOpenCat(to);
+    else if (from < openCat && to >= openCat) setOpenCat(openCat - 1);
+    else if (from > openCat && to <= openCat) setOpenCat(openCat + 1);
+  };
 
   /* --- checklist-item-level (scoped to a category in the open module) --- */
   const mutateCategory = (ci, fn) => {
@@ -886,6 +916,13 @@ export default function TemplatesEditor({
       return { ...t, roster: out };
     });
     setSelEntities(new Set());
+  };
+  const reorderEntities = (activeId, overId) => {
+    if (!activeId || !overId || activeId === overId || !tpl) return;
+    mutateTpl(tpl.id, (t) => {
+      const nextRoster = moveItemById(t.roster || [], activeId, overId);
+      return nextRoster === t.roster ? t : { ...t, roster: nextRoster };
+    });
   };
 
   /* Resolve an entity's fill + border for its identifier swatch (left template
@@ -1036,7 +1073,23 @@ export default function TemplatesEditor({
                 const active = t.id === selectedId;
                 const isSel = selTpls.has(t.id);
                 return (
-                  <div key={t.id} style={{ position: 'relative' }} draggable={tplEdit}>
+                  <div
+                    key={t.id}
+                    style={{ position: 'relative' }}
+                    onDragOver={(e) => {
+                      if (!dragTpl || dragTpl === t.id) return;
+                      e.preventDefault();
+                      setDragOverTpl(t.id);
+                    }}
+                    onDragLeave={() => setDragOverTpl((current) => (current === t.id ? null : current))}
+                    onDrop={(e) => {
+                      if (!dragTpl) return;
+                      e.preventDefault();
+                      reorderTemplates(dragTpl, t.id);
+                      setDragTpl(null);
+                      setDragOverTpl(null);
+                    }}
+                  >
                     <div
                       onClick={() => { if (tplEdit) toggleTplSel(t.id); else { setSelected(t.id); setOpenCat(-1); setOpenMod(0); } }}
                       style={{
@@ -1045,14 +1098,30 @@ export default function TemplatesEditor({
                         gap: 8, alignItems: 'center',
                         padding: '8px 8px', borderRadius: 6,
                         height: 50, boxSizing: 'border-box',
-                        background: tplEdit ? (isSel ? 'var(--ink-600)' : 'transparent') : (active ? 'var(--ink-600)' : 'transparent'),
+                        background: dragOverTpl === t.id && dragTpl !== t.id
+                          ? 'rgba(216,168,78,0.10)'
+                          : tplEdit ? (isSel ? 'var(--ink-600)' : 'transparent') : (active ? 'var(--ink-600)' : 'transparent'),
+                        opacity: dragTpl === t.id ? 0.72 : 1,
                         cursor: 'pointer',
                         borderLeft: !tplEdit && active ? '2px solid var(--accent)' : '2px solid transparent',
+                        transition: dragTpl === t.id ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                       }}
                     >
                       <span
-                        title={tplEdit ? 'Drag to reorder' : undefined}
-                        style={{ color: 'var(--ink-200)', fontSize: 11, cursor: tplEdit ? 'grab' : 'default', userSelect: 'none', lineHeight: 1, textAlign: 'center' }}
+                        draggable
+                        onClick={(e) => e.stopPropagation()}
+                        onDragStart={(e) => {
+                          e.stopPropagation();
+                          e.dataTransfer.effectAllowed = 'move';
+                          e.dataTransfer.setData('text/plain', t.id);
+                          setDragTpl(t.id);
+                        }}
+                        onDragEnd={() => {
+                          setDragTpl(null);
+                          setDragOverTpl(null);
+                        }}
+                        title="Drag to reorder"
+                        style={{ color: 'var(--ink-200)', fontSize: 11, cursor: dragTpl === t.id ? 'grabbing' : 'grab', userSelect: 'none', lineHeight: 1, textAlign: 'center' }}
                       >⋮⋮</span>
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{t.name}</div>
@@ -1259,7 +1328,30 @@ export default function TemplatesEditor({
                   const open = openCat === i;
                   const isSel = selCats.has(c.id);
                   return (
-                    <div key={c.id} className="card-line" style={{ overflow: 'hidden', flexShrink: 0 }}>
+                    <div
+                      key={c.id}
+                      className="card-line"
+                      onDragOver={(e) => {
+                        if (!dragCat || dragCat === c.id) return;
+                        e.preventDefault();
+                        setDragOverCat(c.id);
+                      }}
+                      onDragLeave={() => setDragOverCat((current) => (current === c.id ? null : current))}
+                      onDrop={(e) => {
+                        if (!dragCat) return;
+                        e.preventDefault();
+                        reorderCategories(dragCat, c.id);
+                        setDragCat(null);
+                        setDragOverCat(null);
+                      }}
+                      style={{
+                        overflow: 'hidden',
+                        flexShrink: 0,
+                        opacity: dragCat === c.id ? 0.72 : 1,
+                        background: dragOverCat === c.id && dragCat !== c.id ? 'rgba(216,168,78,0.10)' : undefined,
+                        transition: dragCat === c.id ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
+                      }}
+                    >
                       {/* Row header */}
                       <div
                         onClick={() => { if (catEdit) toggleCatSel(c.id); }}
@@ -1270,7 +1362,22 @@ export default function TemplatesEditor({
                           background: catEdit && isSel ? 'rgba(216,168,78,0.08)' : 'transparent',
                         }}
                       >
-                        <span title="Drag to reorder" style={{ color: 'var(--ink-muted)', fontSize: 11, cursor: 'grab', userSelect: 'none', lineHeight: 1, textAlign: 'center' }}>⋮⋮</span>
+                        <span
+                          draggable
+                          onClick={(e) => e.stopPropagation()}
+                          onDragStart={(e) => {
+                            e.stopPropagation();
+                            e.dataTransfer.effectAllowed = 'move';
+                            e.dataTransfer.setData('text/plain', c.id);
+                            setDragCat(c.id);
+                          }}
+                          onDragEnd={() => {
+                            setDragCat(null);
+                            setDragOverCat(null);
+                          }}
+                          title="Drag to reorder"
+                          style={{ color: 'var(--ink-muted)', fontSize: 11, cursor: dragCat === c.id ? 'grabbing' : 'grab', userSelect: 'none', lineHeight: 1, textAlign: 'center' }}
+                        >⋮⋮</span>
                         <button
                           onClick={(e) => { e.stopPropagation(); setOpenCat(open ? -1 : i); }}
                           title={open ? 'Collapse' : 'Expand'}
@@ -1472,13 +1579,46 @@ export default function TemplatesEditor({
                   const isOpen = openColor === r.id;
                   const isSel = selEntities.has(r.id);
                   return (
-                    <div key={r.id}>
+                    <div
+                      key={r.id}
+                      onDragOver={(e) => {
+                        if (!dragEntity || dragEntity === r.id) return;
+                        e.preventDefault();
+                        setDragOverEntity(r.id);
+                      }}
+                      onDragLeave={() => setDragOverEntity((current) => (current === r.id ? null : current))}
+                      onDrop={(e) => {
+                        if (!dragEntity) return;
+                        e.preventDefault();
+                        reorderEntities(dragEntity, r.id);
+                        setDragEntity(null);
+                        setDragOverEntity(null);
+                      }}
+                    >
                       <div className="card-line" style={{
                         display: 'grid', gridTemplateColumns: '14px 18px 1fr 16px', gap: 10,
                         padding: '8px 10px', alignItems: 'center',
                         height: 38, boxSizing: 'border-box',
+                        opacity: dragEntity === r.id ? 0.72 : 1,
+                        background: dragOverEntity === r.id && dragEntity !== r.id ? 'rgba(216,168,78,0.10)' : undefined,
+                        transition: dragEntity === r.id ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                       }}>
-                        <span style={{ color: 'var(--ink-muted)', fontSize: 12, cursor: 'grab', userSelect: 'none', lineHeight: 1 }}>⋮⋮</span>
+                        <span
+                          draggable
+                          onClick={(e) => e.stopPropagation()}
+                          onDragStart={(e) => {
+                            e.stopPropagation();
+                            e.dataTransfer.effectAllowed = 'move';
+                            e.dataTransfer.setData('text/plain', r.id);
+                            setDragEntity(r.id);
+                          }}
+                          onDragEnd={() => {
+                            setDragEntity(null);
+                            setDragOverEntity(null);
+                          }}
+                          title="Drag to reorder"
+                          style={{ color: 'var(--ink-muted)', fontSize: 12, cursor: dragEntity === r.id ? 'grabbing' : 'grab', userSelect: 'none', lineHeight: 1 }}
+                        >⋮⋮</span>
                         <button
                           onClick={() => setOpenColor(isOpen ? null : r.id)}
                           title="Edit color"
