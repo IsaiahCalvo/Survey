@@ -214,8 +214,7 @@ export default function ProjectsFolderTree({
   const fileInputRef = useRef(null);
   const pendingPickProject = useRef(null);
 
-  // Drag-reorder bookkeeping (index of the row currently being dragged).
-  const dragProjIdx = useRef(null);
+  // Drag-reorder bookkeeping.
   const dragFileIdx = useRef(null);
   const [draggingProjectId, setDraggingProjectId] = useState(null);
   const [dragOverProjectId, setDragOverProjectId] = useState(null);
@@ -373,13 +372,10 @@ export default function ProjectsFolderTree({
     )));
   }, []);
 
-  const reorderProjects = useCallback((from, to) => {
-    if (from == null || to == null || from === to) return;
+  const reorderProjects = useCallback((fromId, toId) => {
+    if (fromId == null || toId == null || fromId === toId) return;
     setLocalProjects((prev) => {
       // `filtered` may be a search subset — reorder by the actual project ids.
-      const fromId = filtered[from]?.id;
-      const toId = filtered[to]?.id;
-      if (fromId == null || toId == null) return prev;
       const out = [...prev];
       const fi = out.findIndex((p) => p.id === fromId);
       const ti = out.findIndex((p) => p.id === toId);
@@ -388,7 +384,7 @@ export default function ProjectsFolderTree({
       out.splice(ti, 0, moved);
       return out;
     });
-  }, [filtered]);
+  }, []);
 
   /* ---- Document mutations (local state) -------------------------------- */
 
@@ -583,7 +579,7 @@ export default function ProjectsFolderTree({
                 {localProjects.length === 0 ? 'No projects yet — create one to group your documents.' : 'No projects match your search.'}
               </div>
             )}
-            {filtered.map((p, idx) => {
+            {filtered.map((p) => {
               const isOpen = open && p.id === open.id;
               const isSel = selProj.has(p.id);
               const isPinned = pinnedIds.has(p.id);
@@ -592,30 +588,16 @@ export default function ProjectsFolderTree({
                 <div
                   key={p.id}
                   style={{ position: 'relative' }}
-                  draggable={jobsEdit}
-                  onDragStart={() => {
-                    if (jobsEdit) {
-                      dragProjIdx.current = idx;
-                      setDraggingProjectId(p.id);
-                    }
-                  }}
                   onDragOver={(e) => {
-                    if (jobsEdit) {
-                      e.preventDefault();
-                      setDragOverProjectId(p.id);
-                    }
+                    if (!draggingProjectId || draggingProjectId === p.id) return;
+                    e.preventDefault();
+                    setDragOverProjectId(p.id);
                   }}
                   onDragLeave={() => setDragOverProjectId((current) => current === p.id ? null : current)}
                   onDrop={(e) => {
-                    if (!jobsEdit) return;
+                    if (!draggingProjectId) return;
                     e.preventDefault();
-                    reorderProjects(dragProjIdx.current, idx);
-                    dragProjIdx.current = null;
-                    setDraggingProjectId(null);
-                    setDragOverProjectId(null);
-                  }}
-                  onDragEnd={() => {
-                    dragProjIdx.current = null;
+                    reorderProjects(draggingProjectId, p.id);
                     setDraggingProjectId(null);
                     setDragOverProjectId(null);
                   }}
@@ -637,18 +619,31 @@ export default function ProjectsFolderTree({
                       transition: draggingProjectId === p.id ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                     }}
                   >
-                    {/* Drag handle / pin marker — in Select mode this row is
-                        draggable to reorder. When the project is pinned the
-                        "⋮⋮" grabber is replaced by a gold pin icon to mark
-                        its pinned-to-top status. */}
+                    {/* Drag handle / pin marker. Only the handle starts
+                        reorder, leaving the rest of the row free for opening
+                        or select-mode selection. When the project is pinned,
+                        the grabber is replaced by a gold pin icon. */}
                     {isPinned ? (
                       <span title="Pinned" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
                         <PinIcon size={12} color="var(--gold)" />
                       </span>
-                    ) : jobsEdit ? (
-                      <span title="Drag to reorder" style={{ color: 'var(--ink-200)', fontSize: 11, cursor: 'grab', userSelect: 'none', lineHeight: 1, textAlign: 'center' }}>⋮⋮</span>
                     ) : (
-                      <span style={{ color: 'var(--ink-200)', fontSize: 11, userSelect: 'none', lineHeight: 1, textAlign: 'center' }}>⋮⋮</span>
+                      <span
+                        draggable
+                        onClick={(e) => e.stopPropagation()}
+                        onDragStart={(e) => {
+                          e.stopPropagation();
+                          e.dataTransfer.effectAllowed = 'move';
+                          e.dataTransfer.setData('text/plain', p.id);
+                          setDraggingProjectId(p.id);
+                        }}
+                        onDragEnd={() => {
+                          setDraggingProjectId(null);
+                          setDragOverProjectId(null);
+                        }}
+                        title="Drag to reorder"
+                        style={{ color: 'var(--ink-200)', fontSize: 11, cursor: draggingProjectId === p.id ? 'grabbing' : 'grab', userSelect: 'none', lineHeight: 1, textAlign: 'center' }}
+                      >⋮⋮</span>
                     )}
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{p.name}</div>
