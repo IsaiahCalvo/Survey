@@ -23,7 +23,7 @@ import {
 } from './bookmarkReorderUtils.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
-const BOOKMARK_TREE_CONTENT_WIDTH = 256;
+const BOOKMARK_TREE_CONTENT_WIDTH = 252;
 const GROUP_AUTO_EXPAND_DELAY_MS = 420;
 const GROUP_COLLAPSE_ANIMATION_MS = 240;
 const GROUP_DRAG_SETTLE_COLLAPSE_DELAY_MS = 70;
@@ -155,7 +155,7 @@ const BookmarkTreeRow = ({
       style={{
         listStyle: 'none',
         margin: 0,
-        padding: '2px 0',
+        padding: '1px 0',
         opacity: isDragging && !isClone ? 0.32 : 1,
         position: 'relative',
         width: isClone ? `${cloneWidth}px` : isActiveRow ? `${BOOKMARK_TREE_CONTENT_WIDTH}px` : 'auto',
@@ -184,10 +184,10 @@ const BookmarkTreeRow = ({
           transition: groupAnimationState || isGroupAnimationActive ? undefined : transition,
           display: 'flex',
           alignItems: 'center',
-          gap: 4,
-          height: 34,
-          padding: '4px 5px',
-          borderRadius: 6,
+          gap: 3,
+          height: 31,
+          padding: '3px 4px',
+          borderRadius: 5,
           background: isClone ? '#2b2b2b' : isSelected ? '#30343a' : '#252525',
           border: '1px solid #333',
           color: '#ddd',
@@ -213,8 +213,8 @@ const BookmarkTreeRow = ({
           {...handleProps}
           title="Drag to reorder"
           style={{
-            width: 20,
-            height: 24,
+            width: 18,
+            height: 22,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -236,8 +236,8 @@ const BookmarkTreeRow = ({
           disabled={!isFolder || !item.children?.length || isClone}
           title={(isCollapsed || isVisuallyCollapsed) ? 'Expand group' : 'Collapse group'}
           style={{
-            width: 18,
-            height: 20,
+            width: 16,
+            height: 18,
             border: 0,
             padding: 0,
             background: 'transparent',
@@ -250,7 +250,7 @@ const BookmarkTreeRow = ({
         >
           ▾
         </button>
-        <Icon name={isFolder ? 'folder' : 'bookmark'} size={12} color={isFolder ? '#8fb7ff' : '#aaa'} />
+        <Icon name={isFolder ? 'folder' : 'bookmark'} size={11} color={isFolder ? '#8fb7ff' : '#aaa'} />
         {isEditMode && !isClone ? (
           <input
             value={editName}
@@ -273,9 +273,9 @@ const BookmarkTreeRow = ({
               border: '1px solid #3a3a3a',
               color: '#ddd',
               borderRadius: 5,
-              height: 24,
-              padding: '0 7px',
-              fontSize: 12,
+              height: 22,
+              padding: '0 6px',
+              fontSize: 11,
               outline: 'none',
               fontFamily: FONT_FAMILY,
             }}
@@ -286,7 +286,7 @@ const BookmarkTreeRow = ({
               flex: 1,
               minWidth: 0,
               color: '#ddd',
-              fontSize: 13,
+              fontSize: 12,
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
@@ -315,14 +315,14 @@ const BookmarkTreeRow = ({
               inputMode="numeric"
               pattern="[0-9]*"
               style={{
-                width: 38,
+                width: 34,
                 background: '#1b1b1b',
                 border: '1px solid #3a3a3a',
                 color: '#ddd',
                 borderRadius: 5,
-                height: 24,
-                padding: '0 6px',
-                fontSize: 12,
+                height: 22,
+                padding: '0 5px',
+                fontSize: 11,
                 textAlign: 'center',
                 outline: 'none',
                 fontFamily: FONT_FAMILY,
@@ -330,7 +330,7 @@ const BookmarkTreeRow = ({
             />
           ) : (
             item.pageIds?.[0] ? (
-              <span style={{ width: 42, color: '#aaa', fontSize: 11, textAlign: 'right', flexShrink: 0, userSelect: 'none' }}>
+              <span style={{ width: 36, color: '#aaa', fontSize: 10, textAlign: 'right', flexShrink: 0, userSelect: 'none' }}>
                 P {item.pageIds[0]}
               </span>
             ) : null
@@ -344,8 +344,8 @@ const BookmarkTreeRow = ({
             }}
             title="Add bookmark to group"
             style={{
-              width: 28,
-              height: 24,
+              width: 24,
+              height: 22,
               background: '#1b1b1b',
               border: '1px solid #3a3a3a',
               color: '#8fb7ff',
@@ -358,7 +358,7 @@ const BookmarkTreeRow = ({
               flexShrink: 0,
             }}
           >
-            <Icon name="plus" size={12} color="#8fb7ff" />
+            <Icon name="plus" size={11} color="#8fb7ff" />
           </button>
         )}
         {isEditMode && !isClone && (
@@ -454,6 +454,7 @@ const BookmarksPanel = ({
   const [collapsingFolderIds, setCollapsingFolderIds] = useState([]);
   const [expandingFolderIds, setExpandingFolderIds] = useState([]);
   const [collapseLayoutLock, setCollapseLayoutLock] = useState(false);
+  const [optimisticBookmarkTree, setOptimisticBookmarkTree] = useState(null);
 
   const collapseTimeoutsRef = useRef(new Map());
   const expandTimeoutsRef = useRef(new Map());
@@ -520,8 +521,8 @@ const BookmarksPanel = ({
         collapsed: item.type === 'folder' && children.length ? !expandedFolders.has(item.id) : undefined,
       };
     });
-    return applyCollapseState(buildTree(bookmarks || []));
-  }, [bookmarks, buildTree, expandedFolders]);
+    return applyCollapseState(optimisticBookmarkTree ?? buildTree(bookmarks || []));
+  }, [bookmarks, buildTree, expandedFolders, optimisticBookmarkTree]);
 
   const flattenedItems = useMemo(() => {
     const flattenedTree = flattenBookmarkTreeForSort(bookmarkTree);
@@ -728,6 +729,7 @@ const BookmarksPanel = ({
       const { parentId } = projected;
       const nextTree = applyBookmarkTreeProjection(bookmarkTree, active.id, over.id, projected);
       if (nextTree !== bookmarkTree) {
+        setOptimisticBookmarkTree(nextTree);
         persistBookmarkTree(nextTree);
         if (parentId) {
           setExpandedFolders((prev) => {
@@ -759,6 +761,16 @@ const BookmarksPanel = ({
     expandTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
     if (collapseLayoutLockTimeoutRef.current) clearTimeout(collapseLayoutLockTimeoutRef.current);
   }, [clearAutoExpandTimer]);
+
+  useEffect(() => {
+    if (!optimisticBookmarkTree || activeId) return undefined;
+
+    const timeout = setTimeout(() => {
+      setOptimisticBookmarkTree(null);
+    }, 220);
+
+    return () => clearTimeout(timeout);
+  }, [activeId, bookmarks, optimisticBookmarkTree]);
 
   useEffect(() => {
     if (!activeId) {
@@ -1344,7 +1356,7 @@ const BookmarksPanel = ({
         style={{
           flex: 1,
           overflowY: 'auto',
-          padding: '8px',
+          padding: '6px',
           position: 'relative'
         }}
       >
@@ -1358,18 +1370,18 @@ const BookmarksPanel = ({
             }
             to {
               opacity: 1;
-              max-height: 40px;
-              padding-top: 2px;
-              padding-bottom: 2px;
+              max-height: 33px;
+              padding-top: 1px;
+              padding-bottom: 1px;
             }
           }
 
           @keyframes bookmarkGroupCollapse {
             from {
               opacity: 1;
-              max-height: 40px;
-              padding-top: 2px;
-              padding-bottom: 2px;
+              max-height: 33px;
+              padding-top: 1px;
+              padding-bottom: 1px;
             }
             to {
               opacity: 0;
