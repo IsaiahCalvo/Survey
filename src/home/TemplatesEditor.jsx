@@ -1536,7 +1536,7 @@ export default function TemplatesEditor({
                   <div className="meta" style={{ fontSize: 11.5, padding: '12px 2px' }}>No entities on this template yet.</div>
                 )}
                 {tpl && (
-                <SortableRearrangeList ids={tpl.roster.map((r) => r.id)} onReorder={reorderEntities}>
+                <SortableRearrangeList ids={tpl.roster.map((r) => r.id)} onReorder={reorderEntities} gap={4}>
                 {tpl.roster.map((r) => {
                   const c = roleColors[r.id]?.color || r.color || '#8c8c8a';
                   const op = roleColors[r.id]?.opacity ?? 0.35;
