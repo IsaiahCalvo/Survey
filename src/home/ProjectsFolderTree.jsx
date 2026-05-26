@@ -576,7 +576,7 @@ export default function ProjectsFolderTree({
               )}
             </div>
           </div>
-          <div className="slim-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 2, overflow: 'auto', paddingRight: 4 }}>
+          <div className="slim-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
             {filtered.length === 0 && (
               <div className="meta" style={{ fontSize: 11.5, padding: '14px 8px' }}>
                 {localProjects.length === 0 ? 'No projects yet — create one to group your documents.' : 'No projects match your search.'}
