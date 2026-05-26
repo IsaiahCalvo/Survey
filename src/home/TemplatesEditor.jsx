@@ -824,6 +824,15 @@ export default function TemplatesEditor({
   const renameItem = (ci, itemId, text) => mutateCategory(ci, (c) => ({
     ...c, items: c.items.map((it) => (it.id === itemId ? { ...it, text } : it)),
   }));
+  const reorderItems = (ci, activeId, overId) => {
+    if (!activeId || !overId || activeId === overId) return;
+    mutateCategory(ci, (c) => {
+      const activeItems = (c.items || []).filter(isActiveChecklistItem);
+      const archivedItems = (c.items || []).filter(isArchivedChecklistItem);
+      const nextActiveItems = moveItemById(activeItems, activeId, overId);
+      return nextActiveItems === activeItems ? c : { ...c, items: [...nextActiveItems, ...archivedItems] };
+    });
+  };
 
   /* KAL-44 archive flow state. When the user clicks the "×" delete button on
      a checklist item that has marker responses, we open this confirmation
@@ -1384,16 +1393,28 @@ export default function TemplatesEditor({
                             {items.length === 0 && (
                               <div className="meta" style={{ fontSize: 11, padding: '3px 0' }}>No checklist items yet.</div>
                             )}
+                            <SortableRearrangeList ids={items.map((it) => it.id)} onReorder={(activeId, overId) => reorderItems(i, activeId, overId)} gap={0}>
                             {items.map((it, j) => (
-                              <div
+                              <SortableRearrangeRow
                                 key={it.id}
+                                id={it.id}
+                              >
+                                {({ attributes, listeners, isDragging }) => (
+                              <div
+                                data-drag-rearrange-row
                                 style={{
-                                  display: 'grid', gridTemplateColumns: '14px 1fr 16px',
+                                  display: 'grid', gridTemplateColumns: '24px 1fr 16px',
                                   alignItems: 'center', gap: 6, padding: '3px 0',
                                   borderBottom: j === items.length - 1 ? 0 : '1px dashed var(--rule)',
+                                  opacity: isDragging ? 0.8 : 1,
                                 }}
                               >
-                                <span style={{ color: 'var(--ink-muted)', fontSize: 11, cursor: 'grab' }}>⋮⋮</span>
+                                <DragRearrangeHandle
+                                  {...attributes}
+                                  {...listeners}
+                                  isDragging={isDragging}
+                                  style={{ width: 18, height: 18 }}
+                                />
                                 <input
                                   className="inline-edit"
                                   defaultValue={it.text}
@@ -1409,7 +1430,10 @@ export default function TemplatesEditor({
                                   style={{ background: 'transparent', border: 0, color: 'var(--ink-quiet)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0, width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit' }}
                                 >×</button>
                               </div>
+                                )}
+                              </SortableRearrangeRow>
                             ))}
+                            </SortableRearrangeList>
                             <button
                               onClick={() => addItem(i)}
                               style={{
