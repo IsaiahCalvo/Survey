@@ -1008,6 +1008,7 @@ const SpacesPanel = ({
   const [pageInputs, setPageInputs] = useState({});
   const [pageErrors, setPageErrors] = useState({});
   const previousSpaceIdsRef = useRef(new Set(spaces.map(space => space.id)));
+  const collapsedSpaceDragIdRef = useRef(null);
 
   const handleCreateSpace = useCallback(() => {
     const name = newSpaceName.trim() || `Space ${spaces.length + 1}`;
@@ -1183,6 +1184,31 @@ const SpacesPanel = ({
     onReorderSpaces(fromIndex, toIndex);
   }, [onReorderSpaces, spaces]);
 
+  const handleSpaceDragStart = useCallback(({ activeId }) => {
+    if (!expandedSpaces.has(activeId)) return;
+    collapsedSpaceDragIdRef.current = activeId;
+    setExpandedSpaces((prev) => {
+      if (!prev.has(activeId)) return prev;
+      const next = new Set(prev);
+      next.delete(activeId);
+      return next;
+    });
+  }, [expandedSpaces]);
+
+  const restoreCollapsedSpaceAfterDrag = useCallback(() => {
+    const restoreId = collapsedSpaceDragIdRef.current;
+    if (!restoreId) return;
+    collapsedSpaceDragIdRef.current = null;
+
+    setTimeout(() => {
+      setExpandedSpaces((prev) => {
+        const next = new Set(prev);
+        next.add(restoreId);
+        return next;
+      });
+    }, 0);
+  }, []);
+
   return (
     <div style={{
       display: 'flex',
@@ -1294,7 +1320,14 @@ const SpacesPanel = ({
             No spaces yet. Create a space to filter pages by visibility.
           </div>
         ) : (
-          <SortableRearrangeList ids={spaces.map(space => space.id)} onReorder={handleSpaceReorder} gap={8}>
+          <SortableRearrangeList
+            ids={spaces.map(space => space.id)}
+            onReorder={handleSpaceReorder}
+            onDragStart={handleSpaceDragStart}
+            onDragEnd={restoreCollapsedSpaceAfterDrag}
+            onDragCancel={restoreCollapsedSpaceAfterDrag}
+            gap={8}
+          >
             {spaces.map((space) => {
               const isActive = activeSpaceId === space.id;
               const isSelected = selectedSpaceId === space.id;

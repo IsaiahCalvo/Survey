@@ -464,6 +464,7 @@ const BookmarksPanel = ({
   const autoExpandFolderRef = useRef(null);
   const pointerPositionRef = useRef(null);
   const pointerMoveListenerRef = useRef(null);
+  const collapsedDragFolderIdRef = useRef(null);
 
   const sensors = useSensors(useSensor(PointerSensor, {}), useSensor(KeyboardSensor, {}));
 
@@ -709,6 +710,22 @@ const BookmarksPanel = ({
   }, [onBookmarkUpdate]);
 
   const handleDragStart = useCallback(({ active, activatorEvent }) => {
+    const activeItem = flattenedItems.find((item) => item.id === active.id);
+    if (
+      activeItem?.type === 'folder' &&
+      activeItem.children?.length > 0 &&
+      expandedFolders.has(active.id)
+    ) {
+      collapsedDragFolderIdRef.current = active.id;
+      setExpandedFolders((prev) => {
+        if (!prev.has(active.id)) return prev;
+        const next = new Set(prev);
+        next.delete(active.id);
+        return next;
+      });
+      setCollapsingFolderIds((ids) => ids.filter((id) => id !== active.id));
+      setExpandingFolderIds((ids) => ids.filter((id) => id !== active.id));
+    }
     setActiveId(active.id);
     setOverId(active.id);
     setDragMotionTick(0);
@@ -722,7 +739,7 @@ const BookmarksPanel = ({
     window.addEventListener('pointermove', pointerMoveListenerRef.current, { passive: true });
     window.addEventListener('mousemove', pointerMoveListenerRef.current, { passive: true });
     document.body.style.setProperty('cursor', 'grabbing');
-  }, []);
+  }, [expandedFolders, flattenedItems]);
 
   const handleDragMove = useCallback(({ delta }) => {
     setOffsetLeft(delta.x);
@@ -751,6 +768,8 @@ const BookmarksPanel = ({
 
   const handleDragEnd = useCallback(({ active, over }) => {
     const autoExpandedFolderIds = Array.from(autoExpandedFoldersRef.current);
+    const draggedCollapsedFolderId = collapsedDragFolderIdRef.current;
+    collapsedDragFolderIdRef.current = null;
     const finalParentId = projected?.parentId ?? null;
     const foldersToRecollapse = autoExpandedFolderIds.filter((folderId) => folderId !== finalParentId);
 
@@ -767,6 +786,11 @@ const BookmarksPanel = ({
     }
 
     resetDragState();
+    if (draggedCollapsedFolderId) {
+      setTimeout(() => {
+        expandFolderOnly(draggedCollapsedFolderId);
+      }, GROUP_DRAG_SETTLE_COLLAPSE_DELAY_MS);
+    }
     if (foldersToRecollapse.length) {
       setTimeout(() => {
         animateCollapseFolders(foldersToRecollapse);
@@ -776,9 +800,14 @@ const BookmarksPanel = ({
 
   const handleDragCancel = useCallback(() => {
     const foldersToRecollapse = Array.from(autoExpandedFoldersRef.current);
+    const draggedCollapsedFolderId = collapsedDragFolderIdRef.current;
+    collapsedDragFolderIdRef.current = null;
     resetDragState();
+    if (draggedCollapsedFolderId) {
+      expandFolderOnly(draggedCollapsedFolderId);
+    }
     animateCollapseFolders(foldersToRecollapse);
-  }, [animateCollapseFolders, resetDragState]);
+  }, [animateCollapseFolders, expandFolderOnly, resetDragState]);
 
   useEffect(() => () => {
     clearAutoExpandTimer();

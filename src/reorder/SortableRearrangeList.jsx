@@ -23,6 +23,9 @@ const restrictToVerticalAxis = ({ transform }) => ({
 export function SortableRearrangeList({
   ids,
   onReorder,
+  onDragStart,
+  onDragEnd,
+  onDragCancel,
   children,
   gap = 'inherit',
 }) {
@@ -81,9 +84,16 @@ export function SortableRearrangeList({
 
   const handleDragEnd = useCallback(({ active, over }) => {
     setActiveId(null);
-    if (!over || active.id === over.id) return;
-    onReorder(active.id, over.id);
-  }, [onReorder]);
+    const didReorder = Boolean(over && active.id !== over.id);
+    if (didReorder) {
+      onReorder(active.id, over.id);
+    }
+    onDragEnd?.({
+      activeId: active.id,
+      overId: over?.id ?? null,
+      didReorder,
+    });
+  }, [onDragEnd, onReorder]);
 
   return (
     <DndContext
@@ -93,10 +103,13 @@ export function SortableRearrangeList({
       modifiers={modifiers}
       onDragStart={({ active }) => {
         setActiveId(active.id);
+        onDragStart?.({ activeId: active.id });
       }}
       onDragEnd={handleDragEnd}
-      onDragCancel={() => {
+      onDragCancel={({ active }) => {
+        const cancelledActiveId = active?.id ?? activeId;
         setActiveId(null);
+        onDragCancel?.({ activeId: cancelledActiveId });
       }}
     >
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>

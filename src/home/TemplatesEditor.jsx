@@ -506,6 +506,8 @@ export default function TemplatesEditor({
   const [modRename, setModRename] = useState(null);   // module index in rename mode
   const [selMods, setSelMods] = useState(() => new Set());
   const toggleModSel = (mi) => setSelMods((prev) => { const n = new Set(prev); n.has(mi) ? n.delete(mi) : n.add(mi); return n; });
+  const collapsedCategoryDragIdRef = useRef(null);
+  const categoryRestoreIndexAfterDragRef = useRef(null);
   const [catEdit, setCatEdit] = useState(false);
   const [selCats, setSelCats] = useState(() => new Set());
   const toggleCatSel = (id) => setSelCats((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -800,16 +802,54 @@ export default function TemplatesEditor({
     const categories = orderedMods[openMod]?.categories || [];
     const from = categories.findIndex((category) => category.id === activeId);
     const to = categories.findIndex((category) => category.id === overId);
+    const shouldRestoreDraggedCategory = collapsedCategoryDragIdRef.current === activeId;
 
     mutateOpenModule((module) => {
       const nextCategories = moveItemById(module.categories || [], activeId, overId);
       return nextCategories === module.categories ? module : { ...module, categories: nextCategories };
     });
 
+    if (shouldRestoreDraggedCategory) {
+      categoryRestoreIndexAfterDragRef.current = to;
+      return;
+    }
+
     if (openCat === from) setOpenCat(to);
     else if (from < openCat && to >= openCat) setOpenCat(openCat - 1);
     else if (from > openCat && to <= openCat) setOpenCat(openCat + 1);
   };
+
+  const handleCategoryDragStart = useCallback(({ activeId }) => {
+    const categories = orderedMods[openMod]?.categories || [];
+    const activeIndex = categories.findIndex((category) => category.id === activeId);
+    if (activeIndex !== openCat) return;
+
+    collapsedCategoryDragIdRef.current = activeId;
+    categoryRestoreIndexAfterDragRef.current = activeIndex;
+    setOpenCat(-1);
+  }, [openCat, openMod, orderedMods]);
+
+  const restoreCollapsedCategoryAfterDrag = useCallback(() => {
+    const restoreId = collapsedCategoryDragIdRef.current;
+    if (!restoreId) return;
+
+    const restoreIndex = categoryRestoreIndexAfterDragRef.current;
+    collapsedCategoryDragIdRef.current = null;
+    categoryRestoreIndexAfterDragRef.current = null;
+
+    setTimeout(() => {
+      if (Number.isInteger(restoreIndex) && restoreIndex >= 0) {
+        setOpenCat(restoreIndex);
+        return;
+      }
+
+      const categories = orderedMods[openMod]?.categories || [];
+      const fallbackIndex = categories.findIndex((category) => category.id === restoreId);
+      if (fallbackIndex !== -1) {
+        setOpenCat(fallbackIndex);
+      }
+    }, 0);
+  }, [openMod, orderedMods]);
 
   /* --- checklist-item-level (scoped to a category in the open module) --- */
   const mutateCategory = (ci, fn) => {
@@ -1308,7 +1348,14 @@ export default function TemplatesEditor({
                 {visibleCats.length === 0 && (
                   <div className="meta" style={{ padding: '16px 4px', fontSize: 11.5 }}>This module has no categories yet.</div>
                 )}
-                <SortableRearrangeList ids={visibleCats.map((c) => c.id)} onReorder={reorderCategories} gap={6}>
+                <SortableRearrangeList
+                  ids={visibleCats.map((c) => c.id)}
+                  onReorder={reorderCategories}
+                  onDragStart={handleCategoryDragStart}
+                  onDragEnd={restoreCollapsedCategoryAfterDrag}
+                  onDragCancel={restoreCollapsedCategoryAfterDrag}
+                  gap={6}
+                >
                 {visibleCats.map((c, i) => {
                   const allItems = c.items || [];
                   /* KAL-44 — active vs archived split. Editor surfaces the
