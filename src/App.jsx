@@ -3426,6 +3426,48 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     setIsProjectModalOpen(true);
   };
 
+  const handleCreateHubProject = async () => {
+    if (!user) {
+      setDashboardError('Please sign in to create projects.');
+      onShowAuthModal?.();
+      return false;
+    }
+
+    const projectCheck = canCreateProject();
+    if (!projectCheck.allowed) {
+      setDashboardError(projectCheck.reason);
+      return false;
+    }
+
+    let latestProjects = supabaseProjects || [];
+    try {
+      const refetched = await refetchProjects();
+      latestProjects = refetched || latestProjects;
+    } catch (err) {
+      console.error('Error refetching projects before create:', err);
+    }
+
+    let nextName = 'Untitled Project';
+    let suffix = 2;
+    while (hasNameConflict(latestProjects, nextName, { getName: (project) => project?.name })) {
+      nextName = `Untitled Project ${suffix}`;
+      suffix += 1;
+    }
+
+    try {
+      const createdProject = await createSupabaseProject({ name: nextName });
+      await refetchProjects();
+      await refetchUsage();
+      setDashboardError('');
+      return createdProject || true;
+    } catch (err) {
+      console.error('Error creating project from Survey Hub:', err);
+      const errorMsg = err.message || 'Unknown error';
+      setDashboardError(`Couldn’t create the project: ${errorMsg}. Check your connection and try again.`);
+      return false;
+    }
+  };
+
   const handleProjectFilesSelected = (event) => {
     const files = Array.from(event.target.files || []);
     event.target.value = '';
@@ -9425,7 +9467,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         isPro={!!features?.advancedSurvey}
         onOpenDocument={hubOpenDocument}
         onUpload={handleUploadClick}
-        onCreateProject={handleCreateProjectClick}
+        onCreateProject={handleCreateHubProject}
         onCreateTemplate={openTemplateModal}
         onDeleteProjects={hubDeleteProjects}
         onSaveTemplates={hubSaveTemplates}
