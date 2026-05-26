@@ -133,6 +133,7 @@ export function SortableRearrangeRow({
   disabled = false,
   animateLayoutChanges,
   disableSettledTransition = false,
+  draggingOpacity = 0.8,
 }) {
   const {
     attributes,
@@ -147,7 +148,7 @@ export function SortableRearrangeRow({
   const style = {
     transform: CSS.Transform.toString(transform),
     transition: disableSettledTransition && !isSorting ? undefined : transition,
-    opacity: isDragging ? 0.8 : 1,
+    opacity: isDragging ? draggingOpacity : 1,
     zIndex: isDragging ? 1 : 0,
     position: 'relative',
     width: '100%',

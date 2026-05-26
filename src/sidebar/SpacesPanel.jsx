@@ -10,7 +10,6 @@ import {
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const SPACE_DRAG_REEXPAND_DELAY_MS = 180;
-const animateSpaceLayoutChanges = ({ isSorting }) => isSorting;
 
 const SpaceSortableCard = React.memo(function SpaceSortableCard({
   space,
@@ -152,8 +151,6 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
           boxShadow: isHighlighted
             ? '0 4px 16px rgba(0, 0, 0, 0.18)'
             : '0 1px 2px rgba(0, 0, 0, 0.05)',
-          opacity: isDragging ? 0.75 : 1,
-          transition: isDragging ? 'none' : 'opacity 0.18s ease'
         }}
       >
         <div
@@ -1341,8 +1338,7 @@ const SpacesPanel = ({
                   key={space.id}
                   id={space.id}
                   disabled={!onReorderSpaces}
-                  animateLayoutChanges={animateSpaceLayoutChanges}
-                  disableSettledTransition
+                  draggingOpacity={1}
                 >
                   {({ attributes, listeners, isDragging }) => (
                     <SpaceSortableCard
