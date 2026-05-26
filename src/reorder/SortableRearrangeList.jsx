@@ -152,6 +152,7 @@ export function SortableRearrangeRow({
     zIndex: isDragging ? 1 : 0,
     position: 'relative',
     width: '100%',
+    flexShrink: 0,
   };
 
   return (
