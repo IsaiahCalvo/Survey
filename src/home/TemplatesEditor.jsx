@@ -1299,7 +1299,7 @@ export default function TemplatesEditor({
                 {visibleCats.length === 0 && (
                   <div className="meta" style={{ padding: '16px 4px', fontSize: 11.5 }}>This module has no categories yet.</div>
                 )}
-                <SortableRearrangeList ids={visibleCats.map((c) => c.id)} onReorder={reorderCategories}>
+                <SortableRearrangeList ids={visibleCats.map((c) => c.id)} onReorder={reorderCategories} gap={6}>
                 {visibleCats.map((c, i) => {
                   const allItems = c.items || [];
                   /* KAL-44 — active vs archived split. Editor surfaces the
