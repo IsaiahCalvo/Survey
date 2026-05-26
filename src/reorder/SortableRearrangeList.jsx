@@ -134,7 +134,7 @@ export function SortableRearrangeRow({
   animateLayoutChanges,
   disableSettledTransition = false,
   draggingOpacity = 0.8,
-  lockedHeight = null,
+  transition: transitionOption,
 }) {
   const {
     attributes,
@@ -144,7 +144,7 @@ export function SortableRearrangeRow({
     transition,
     isDragging,
     isSorting,
-  } = useSortable({ id, disabled, animateLayoutChanges });
+  } = useSortable({ id, disabled, animateLayoutChanges, transition: transitionOption });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -154,8 +154,6 @@ export function SortableRearrangeRow({
     position: 'relative',
     width: '100%',
     flexShrink: 0,
-    height: lockedHeight == null ? undefined : `${lockedHeight}px`,
-    overflow: lockedHeight == null ? undefined : 'hidden',
   };
 
   return (
