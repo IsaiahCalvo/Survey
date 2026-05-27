@@ -1044,7 +1044,6 @@ export const renderText = (obj, index, liveBounds = null, hideText = false) => {
           fill="none"
           stroke={obj.stroke}
           strokeWidth={obj.strokeWidth}
-          vectorEffect={obj.strokeUniform ? 'non-scaling-stroke' : undefined}
         />
       ) : null}
       {!hideText && (
@@ -1318,13 +1317,12 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
 
   const key = `callout-${callout.id || index}`;
 
-  // Shared stroke attributes for both connector line segments. vectorEffect
-  // non-scaling-stroke keeps the line visually consistent across zoom levels.
+  // Shared stroke attributes for both connector line segments. Strokes stay
+  // in page units so zoom scales the callout like regular annotations.
   const lineStyle = {
     stroke: lineColor,
     strokeWidth: lineThickness,
     strokeLinecap: 'round',
-    vectorEffect: 'non-scaling-stroke',
   };
 
   // Reference the pure spec builder so any future inline-JSX drift against
@@ -1405,7 +1403,6 @@ export const renderCallout = (callout, index, pageSize, calculateConnection, hid
             strokeWidth={Math.max(1, lineThickness * 0.7)}
             rx={0}
             ry={0}
-            vectorEffect="non-scaling-stroke"
           />
           {!hideText && (
           <foreignObject

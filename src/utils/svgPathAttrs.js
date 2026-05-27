@@ -491,15 +491,6 @@ export function renderPathToSvgAttrs(obj) {
       ? Math.max(IMPORTED_PATH_MIN_STROKE_WIDTH, rawWidth)
     : rawWidth;
 
-  // vectorEffect:non-scaling-stroke means the stroke renders at a constant
-  // device-pixel width regardless of the viewBox transform / zoom. We turn
-  // it on for any imported path (so thin PDF strokes never go sub-pixel),
-  // and otherwise honor the legacy strokeUniform opt-in for internally
-  // drawn paths that explicitly want zoom-stable strokes.
-  const vectorEffect = (isImported || obj.strokeUniform)
-    ? 'non-scaling-stroke'
-    : undefined;
-
   return {
     stroke: obj.stroke ?? '#000',
     strokeWidth,
@@ -508,7 +499,7 @@ export function renderPathToSvgAttrs(obj) {
     smoothOpenStroke: isPdfInkLike && isVisiblePaint(obj?.stroke),
     strokeLinecap: obj.strokeLineCap ?? 'round',
     strokeLinejoin: obj.strokeLineJoin ?? 'round',
-    vectorEffect,
+    vectorEffect: undefined,
     opacity: obj.opacity ?? 1,
   };
 }

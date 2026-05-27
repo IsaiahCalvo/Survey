@@ -83,6 +83,19 @@ test('buildCalloutRenderSpec children carry data-callout-part values from the al
   }
 });
 
+test('buildCalloutRenderSpec callout strokes scale with the SVG page', () => {
+  const spec = buildCalloutRenderSpec(baseCallout, 0, { width: 1000, height: 800 }, stubConnection);
+  const strokedNodes = findAll(spec, (node) => node.attrs?.strokeWidth > 0);
+  assert.ok(strokedNodes.length > 0, 'expected stroked callout parts');
+  for (const node of strokedNodes) {
+    assert.equal(
+      node.attrs.vectorEffect,
+      undefined,
+      `${node.type}:${node.key || node.attrs?.['data-callout-part'] || 'unknown'} should not use non-scaling-stroke`
+    );
+  }
+});
+
 test('buildCalloutRenderSpec sanitizes fontFamily fallback stack to first token (data-callout-id coverage)', () => {
   const withStack = { ...baseCallout, style: { ...baseCallout.style, fontFamily: 'Inter, Arial, sans-serif' } };
   const spec = buildCalloutRenderSpec(withStack, 0, { width: 1000, height: 800 }, stubConnection);

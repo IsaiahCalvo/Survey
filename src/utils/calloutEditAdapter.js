@@ -440,13 +440,12 @@ export function buildCalloutRenderSpec(callout, index, pageSize, calculateConnec
 
   const key = `callout-${callout.id || index}`;
 
-  // Shared line style — non-scaling stroke + round line caps for feel parity
-  // with the rest of the annotation renderers.
+  // Shared line style. Strokes stay in page units so zoom scales the callout
+  // leader like the rest of the PDF annotation content.
   const lineStrokeAttrs = {
     stroke: lineColor,
     strokeWidth: lineThickness,
     strokeLinecap: 'round',
-    vectorEffect: 'non-scaling-stroke',
   };
 
   const children = [];
@@ -520,7 +519,6 @@ export function buildCalloutRenderSpec(callout, index, pageSize, calculateConnec
       strokeWidth: Math.max(1, lineThickness * 0.7),
       rx: 0,
       ry: 0,
-      vectorEffect: 'non-scaling-stroke',
     },
   });
 
