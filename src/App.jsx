@@ -2942,6 +2942,11 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
     // Get IDs of templates that exist in Supabase
     const supabaseIds = new Set(supabaseNormalized.map(t => t.id));
+    const externalById = new Map(
+      (externalTemplates || [])
+        .filter(t => t && t.id)
+        .map(t => [t.id, normalizeTemplateEntities(t)])
+    );
 
     // Find local-only templates (exist in externalTemplates but not yet in Supabase)
     // These are templates that were just created and haven't been synced yet
@@ -2949,8 +2954,21 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       t && t.id && !supabaseIds.has(t.id) && !t.supabaseId
     );
 
-    // Merge: local-only templates first (for immediate visibility), then Supabase templates
-    return [...localOnlyTemplates, ...supabaseNormalized].map(normalizeTemplateEntities);
+    const mergedSupabaseTemplates = supabaseNormalized.map((template) => {
+      const external = externalById.get(template.id);
+      if (!external) return template;
+
+      const externalTime = new Date(external.updatedAt || external.updated_at || external.createdAt || 0).getTime();
+      const supabaseTime = new Date(template.updatedAt || template.updated_at || template.createdAt || 0).getTime();
+
+      return externalTime >= supabaseTime ? { ...template, ...external, supabaseId: template.supabaseId } : template;
+    });
+
+    // Merge: local-only templates first (for immediate visibility), then Supabase templates.
+    // For existing rows, prefer a same-id optimistic external version until
+    // Supabase catches up. Otherwise Save briefly rehydrates stale rows and the
+    // template editor visibly flickers between old and new content.
+    return [...localOnlyTemplates.map(normalizeTemplateEntities), ...mergedSupabaseTemplates];
   }, [supabaseTemplates, externalTemplates]);
 
   // Track previous supabaseTemplates to detect actual Supabase changes
