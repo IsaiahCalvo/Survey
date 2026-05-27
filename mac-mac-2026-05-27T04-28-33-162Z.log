@@ -1,0 +1,14 @@
+===== SurveyApp Save Log =====
+version:   0.1.46
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1203x822
+locale:    en-US
+timestamp: 2026-05-27T04:28:33.159Z (5/27/2026, 12:28:33 AM)
+==============================
+[dev-auto-login] boot {"hasDevEmail":true,"devEmailHint":"isai***","hasDevPassword":true,"hasCachedSession":true,"devAutoLoginSuppressed":false,"cachedSessionEmail":"isaiahcalvo123@gmail.com","cachedSessionExpiresAt":1779859365}
+[dev-auto-login] cached session matches dev email, keeping it
+[dev-auto-login] decision {"needsAutoLogin":false,"devAutoLoginSuppressed":false,"willAttemptSignIn":false}
