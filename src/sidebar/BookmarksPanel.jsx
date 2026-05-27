@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
   DndContext,
-  DragOverlay,
   KeyboardSensor,
   MeasuringStrategy,
   PointerSensor,
@@ -102,9 +101,6 @@ const BookmarkTreeRow = ({
     : isGroupAnimationActive
       ? undefined
       : CSS.Translate.toString(transform);
-  const fixedRightInset = isActiveRow
-    ? Math.max(0, (rowDepth - (activeDepth ?? depth)) * BOOKMARK_INDENTATION_WIDTH)
-    : 0;
 
   const commitName = () => {
     const nextName = editName.trim();
@@ -157,7 +153,7 @@ const BookmarkTreeRow = ({
         listStyle: 'none',
         margin: 0,
         padding: '1px 0',
-        opacity: isDragging && !isClone ? 0.32 : 1,
+        opacity: isDragging && !isClone ? 0.92 : 1,
         position: 'relative',
         width: isClone ? `${cloneWidth}px` : 'auto',
         boxSizing: 'border-box',
@@ -199,7 +195,7 @@ const BookmarkTreeRow = ({
           width: isClone
             ? `calc(100% - ${cloneRelativeInset}px)`
             : isActiveRow
-              ? `calc(100% - ${rowInset + fixedRightInset}px)`
+              ? `calc(100% - ${rowInset}px)`
               : '100%',
           boxSizing: 'border-box',
         }}
@@ -407,20 +403,6 @@ const BookmarkTreeRow = ({
   );
 };
 
-const countTreeChildren = (items, id) => {
-  const find = (list) => {
-    for (const item of list) {
-      if (item.id === id) return item;
-      const child = find(item.children || []);
-      if (child) return child;
-    }
-    return null;
-  };
-  const count = (list) => list.reduce((sum, item) => sum + 1 + count(item.children || []), 0);
-  const item = find(items);
-  return item ? count(item.children || []) : 0;
-};
-
 const BookmarksPanel = ({
   bookmarks,
   onBookmarkCreate,
@@ -452,7 +434,6 @@ const BookmarksPanel = ({
   const [overId, setOverId] = useState(null);
   const [offsetLeft, setOffsetLeft] = useState(0);
   const [dragMotionTick, setDragMotionTick] = useState(0);
-  const [activeDragRowWidth, setActiveDragRowWidth] = useState(null);
   const [collapsingFolderIds, setCollapsingFolderIds] = useState([]);
   const [expandingFolderIds, setExpandingFolderIds] = useState([]);
   const [collapseLayoutLock, setCollapseLayoutLock] = useState(false);
@@ -580,11 +561,6 @@ const BookmarksPanel = ({
       ),
     };
   }, [activeSortableItem?.depth]);
-  const lockBookmarkTreeHorizontalVisual = useMemo(() => ({ transform }) => ({
-    ...transform,
-    x: 0,
-  }), []);
-
   // Find item in tree
   const findItem = useCallback((id, list, parent = null) => {
     for (let i = 0; i < list.length; i += 1) {
@@ -746,9 +722,6 @@ const BookmarksPanel = ({
 
   const handleDragStart = useCallback(({ active, activatorEvent }) => {
     const activeItem = flattenedItems.find((item) => item.id === active.id);
-    const activeElement = document.querySelector(`[data-bookmark-row-id="${active.id}"]`);
-    const activeRect = activeElement?.getBoundingClientRect();
-    setActiveDragRowWidth(activeRect?.width ?? null);
     if (
       activeItem?.type === 'folder' &&
       activeItem.children?.length > 0 &&
@@ -801,7 +774,6 @@ const BookmarksPanel = ({
     setOverId(null);
     setOffsetLeft(0);
     setDragMotionTick(0);
-    setActiveDragRowWidth(null);
     document.body.style.setProperty('cursor', '');
   }, [clearAutoExpandTimer]);
 
@@ -1525,21 +1497,6 @@ const BookmarksPanel = ({
               </div>
             )}
           </SortableContext>
-
-          <DragOverlay modifiers={[lockBookmarkTreeHorizontalVisual]} dropAnimation={null}>
-            {activeSortableItem ? (
-              <BookmarkTreeRow
-                item={activeSortableItem}
-                depth={projected ? projected.depth : activeSortableItem.depth}
-                activeDepth={activeSortableItem.depth}
-                cloneWidthOverride={activeDragRowWidth}
-                isEditMode={isEditMode}
-                isClone
-                isDraggingAny
-                childCount={countTreeChildren(bookmarkTree, activeSortableItem.id) + 1}
-              />
-            ) : null}
-          </DragOverlay>
         </DndContext>
       </div>
 

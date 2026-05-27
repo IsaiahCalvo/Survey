@@ -3,20 +3,20 @@ import Icon from '../Icons';
 import { parsePageRangeInput, formatPageList } from '../utils/pageRangeParser';
 import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
 import { SortableRearrangeList, SortableRearrangeRow } from '../reorder/SortableRearrangeList';
+import { moveItem } from '../reorder/flatReorderUtils.js';
 import {
   getPageVisibilityControlMode,
   PAGE_VISIBILITY_CONTROL_MODE
 } from '../utils/annotationVisibilityRules';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
-const SPACE_DRAG_REEXPAND_DELAY_MS = 180;
-const SPACE_DROP_VISUAL_SETTLE_MS = 140;
 const animateSpaceLayoutChanges = () => false;
 
 const SpaceSortableCard = React.memo(function SpaceSortableCard({
   space,
   dragHandleProps,
   isDragging = false,
+  isRearranging = false,
   isActive,
   isSelected,
   isExpanded,
@@ -143,7 +143,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   const headerHoverBackground = isHighlighted ? '#3a3a3a' : '#2b2b2b';
 
   return (
-    <div>
+    <div data-space-sortable-row-id={space.id}>
       <div
         data-drag-rearrange-row
         style={{
@@ -162,19 +162,19 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
             padding: '10px 10px 10px 6px',
             cursor: 'default',
             background: headerBackground,
-            transition: isDragging ? 'none' : 'background 0.15s ease',
+            transition: isDragging || isRearranging ? 'none' : 'background 0.15s ease',
             display: 'flex',
             alignItems: 'center',
             gap: '6px'
           }}
           onMouseEnter={(e) => {
-            if (isDragging) return;
+            if (isDragging || isRearranging) return;
             if (!isSelected && !isActive) {
               e.currentTarget.style.background = headerHoverBackground;
             }
           }}
           onMouseLeave={(e) => {
-            if (isDragging) return;
+            if (isDragging || isRearranging) return;
             if (!isSelected && !isActive) {
               e.currentTarget.style.background = 'transparent';
             }
@@ -363,7 +363,8 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
         </div>
 
         {isExpanded && (
-          <div style={{
+          <div
+            style={{
             padding: '10px 12px 16px 12px',
             background: '#2b2b2b',
             borderTop: '1px solid #3a3a3a',
@@ -989,7 +990,8 @@ const SpacesPanel = ({
   const [editingName, setEditingName] = useState('');
   const [expandedSpaces, setExpandedSpaces] = useState(new Set());
   const [selectedSpaceId, setSelectedSpaceId] = useState(null);
-  const [draggingSpaceVisualId, setDraggingSpaceVisualId] = useState(null);
+  const [isRearrangingSpaces, setIsRearrangingSpaces] = useState(false);
+  const [optimisticSpaceIds, setOptimisticSpaceIds] = useState(() => spaces.map(space => space.id));
 
   // Sync external selectedSpaceId prop with internal state
   React.useEffect(() => {
@@ -1013,7 +1015,203 @@ const SpacesPanel = ({
   const [pageInputs, setPageInputs] = useState({});
   const [pageErrors, setPageErrors] = useState({});
   const previousSpaceIdsRef = useRef(new Set(spaces.map(space => space.id)));
-  const collapsedSpaceDragIdRef = useRef(null);
+  const spacesReorderDebugSessionRef = useRef(null);
+  const spacesReorderMoveCountRef = useRef(0);
+  const spacesDropFrameCaptureRef = useRef(null);
+
+  const captureSpacesDropFrame = useCallback((label, details = {}) => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return null;
+
+    const sampleStyle = (node) => {
+      if (!node) return null;
+      const style = window.getComputedStyle(node);
+      const rect = node.getBoundingClientRect();
+      return {
+        x: Number(rect.x.toFixed(1)),
+        y: Number(rect.y.toFixed(1)),
+        width: Number(rect.width.toFixed(1)),
+        height: Number(rect.height.toFixed(1)),
+        opacity: style.opacity,
+        transform: style.transform,
+        transition: style.transition,
+        background: style.backgroundColor,
+        border: style.border,
+        boxShadow: style.boxShadow,
+        overflow: style.overflow,
+        visibility: style.visibility,
+        display: style.display,
+      };
+    };
+
+    const rows = Array.from(document.querySelectorAll('[data-space-sortable-row-id]')).map((node) => {
+      const wrapper = node.closest('[data-sortable-rearrange-item]');
+      const card = node.querySelector('[data-drag-rearrange-row]');
+      const header = card?.firstElementChild || null;
+      const expandButton = node.querySelector('button[title="Expand"], button[title="Collapse"]');
+
+      return {
+        id: node.getAttribute('data-space-sortable-row-id'),
+        text: (node.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 120),
+        expanded: expandButton?.getAttribute('title') === 'Collapse',
+        wrapper: sampleStyle(wrapper),
+        rowRoot: sampleStyle(node),
+        card: sampleStyle(card),
+        header: sampleStyle(header),
+      };
+    });
+
+    const frame = {
+      label,
+      time: Number(performance.now().toFixed(1)),
+      details,
+      rows,
+    };
+
+    const capture = spacesDropFrameCaptureRef.current;
+    if (capture) {
+      capture.frames.push(frame);
+    }
+
+    return frame;
+  }, []);
+
+  const summarizeSpacesDropCapture = useCallback((capture) => {
+    const frames = capture?.frames || [];
+    const firstFrame = frames[0];
+    const lastFrame = frames[frames.length - 1];
+    const beforeRows = new Map((firstFrame?.rows || []).map((row) => [row.id, row]));
+    const changedRows = (lastFrame?.rows || []).map((afterRow) => {
+      const beforeRow = beforeRows.get(afterRow.id);
+      if (!beforeRow) return null;
+      return {
+        id: afterRow.id,
+        text: afterRow.text,
+        expanded: afterRow.expanded,
+        wrapperYDelta: Number(((afterRow.wrapper?.y ?? 0) - (beforeRow.wrapper?.y ?? 0)).toFixed(1)),
+        cardYDelta: Number(((afterRow.card?.y ?? 0) - (beforeRow.card?.y ?? 0)).toFixed(1)),
+        wrapperTransform: {
+          before: beforeRow.wrapper?.transform,
+          after: afterRow.wrapper?.transform,
+        },
+        wrapperTransition: {
+          before: beforeRow.wrapper?.transition,
+          after: afterRow.wrapper?.transition,
+        },
+        cardBackground: {
+          before: beforeRow.card?.background,
+          after: afterRow.card?.background,
+        },
+        headerBackground: {
+          before: beforeRow.header?.background,
+          after: afterRow.header?.background,
+        },
+        boxShadow: {
+          before: beforeRow.card?.boxShadow,
+          after: afterRow.card?.boxShadow,
+        },
+      };
+    }).filter(Boolean).filter((row) => (
+      row.wrapperYDelta !== 0 ||
+      row.cardYDelta !== 0 ||
+      row.wrapperTransform.before !== row.wrapperTransform.after ||
+      row.wrapperTransition.before !== row.wrapperTransition.after ||
+      row.cardBackground.before !== row.cardBackground.after ||
+      row.headerBackground.before !== row.headerBackground.after ||
+      row.boxShadow.before !== row.boxShadow.after
+    ));
+
+    return {
+      startedAt: capture?.startedAt,
+      event: capture?.event,
+      frameCount: frames.length,
+      firstFrame: firstFrame?.label,
+      lastFrame: lastFrame?.label,
+      changedRows,
+    };
+  }, []);
+
+  const startSpacesDropFrameCapture = useCallback((event = {}) => {
+    if (typeof window === 'undefined') return;
+
+    const capture = {
+      startedAt: new Date().toISOString(),
+      event,
+      frames: [],
+    };
+    spacesDropFrameCaptureRef.current = capture;
+    captureSpacesDropFrame('before-drop-commit', event);
+
+    let frameCount = 0;
+    const captureNextFrame = () => {
+      frameCount += 1;
+      captureSpacesDropFrame(`raf-${frameCount}`, event);
+      if (frameCount < 10) {
+        window.requestAnimationFrame(captureNextFrame);
+        return;
+      }
+
+      window.setTimeout(() => {
+        captureSpacesDropFrame('after-120ms', event);
+        window.__spacesDropFrameCaptures = window.__spacesDropFrameCaptures || [];
+        window.__spacesDropFrameCaptures.push(capture);
+        window.__copySpacesDropFrames = () => JSON.stringify({
+          latest: window.__spacesDropFrameCaptures?.[window.__spacesDropFrameCaptures.length - 1] || null,
+          captures: window.__spacesDropFrameCaptures || [],
+        }, null, 2);
+        const summary = summarizeSpacesDropCapture(capture);
+        console.info('[SPACES_DROP_SUMMARY]', JSON.stringify(summary, null, 2));
+        console.info('[SPACES_DROP_FRAMES]', window.__copySpacesDropFrames());
+        spacesDropFrameCaptureRef.current = null;
+      }, 120);
+    };
+
+    window.requestAnimationFrame(captureNextFrame);
+  }, [captureSpacesDropFrame, summarizeSpacesDropCapture]);
+
+  const recordSpacesReorderDebug = useCallback((type, details = {}) => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+
+    const rows = Array.from(document.querySelectorAll('[data-space-sortable-row-id]')).map((node) => {
+      if (!node.closest('[data-sortable-rearrange-list]')) return null;
+      const item = node.querySelector('[data-sortable-rearrange-item]') || node;
+      const rect = item.getBoundingClientRect();
+      const outerRect = node.getBoundingClientRect();
+      const expandButton = node.querySelector('button[title="Expand"], button[title="Collapse"]');
+      const style = window.getComputedStyle(node);
+
+      return {
+        id: node.getAttribute('data-space-sortable-row-id'),
+        text: (item.innerText || node.innerText || '').replace(/\s+/g, ' ').trim(),
+        expanded: expandButton?.getAttribute('title') === 'Collapse',
+        y: Number(rect.y.toFixed(1)),
+        height: Number(rect.height.toFixed(1)),
+        outerY: Number(outerRect.y.toFixed(1)),
+        outerHeight: Number(outerRect.height.toFixed(1)),
+        transform: style.transform,
+        transition: style.transition,
+      };
+    }).filter(Boolean);
+
+    const session = spacesReorderDebugSessionRef.current || {
+      startedAt: new Date().toISOString(),
+      events: [],
+    };
+    session.events.push({
+      type,
+      time: Math.round(performance.now()),
+      details,
+      rows,
+      expandedSpaceIds: Array.from(expandedSpaces),
+    });
+    spacesReorderDebugSessionRef.current = session;
+
+    window.__spacesReorderDebugSessions = window.__spacesReorderDebugSessions || [];
+    window.__spacesReorderDebugSessions[window.__spacesReorderDebugSessions.length - 1] = session;
+    window.__copySpacesReorderDebug = () => JSON.stringify({
+      latest: window.__spacesReorderDebugSessions?.[window.__spacesReorderDebugSessions.length - 1] || null,
+      sessions: window.__spacesReorderDebugSessions || [],
+    }, null, 2);
+  }, [expandedSpaces]);
 
   const handleCreateSpace = useCallback(() => {
     const name = newSpaceName.trim() || `Space ${spaces.length + 1}`;
@@ -1168,6 +1366,31 @@ const SpacesPanel = ({
     previousSpaceIdsRef.current = currentIds;
   }, [spaces]);
 
+  React.useEffect(() => {
+    setOptimisticSpaceIds(spaces.map(space => space.id));
+  }, [spaces]);
+
+  const orderedSpaces = React.useMemo(() => {
+    const byId = new Map(spaces.map(space => [space.id, space]));
+    const seen = new Set();
+    const ordered = optimisticSpaceIds
+      .map((id) => byId.get(id))
+      .filter(Boolean)
+      .filter((space) => {
+        if (seen.has(space.id)) return false;
+        seen.add(space.id);
+        return true;
+      });
+
+    spaces.forEach((space) => {
+      if (!seen.has(space.id)) {
+        ordered.push(space);
+      }
+    });
+
+    return ordered;
+  }, [optimisticSpaceIds, spaces]);
+
   const renderPageSummary = useCallback((assignedPages = []) => {
     const ids = assignedPages
       .map(entry => entry?.pageId)
@@ -1186,38 +1409,57 @@ const SpacesPanel = ({
     const fromIndex = spaces.findIndex(space => space.id === activeId);
     const toIndex = spaces.findIndex(space => space.id === overId);
     if (fromIndex === -1 || toIndex === -1) return;
+    recordSpacesReorderDebug('reorder', { activeId, overId, fromIndex, toIndex });
+    setOptimisticSpaceIds((prevIds) => {
+      const currentIds = orderedSpaces.map(space => space.id);
+      const ids = prevIds.length === currentIds.length && currentIds.every((id) => prevIds.includes(id))
+        ? prevIds
+        : currentIds;
+      const optimisticFromIndex = ids.indexOf(activeId);
+      const optimisticToIndex = ids.indexOf(overId);
+      const nextIds = moveItem(ids, optimisticFromIndex, optimisticToIndex);
+      return nextIds === ids ? ids : nextIds;
+    });
     onReorderSpaces(fromIndex, toIndex);
-  }, [onReorderSpaces, spaces]);
+  }, [onReorderSpaces, orderedSpaces, recordSpacesReorderDebug, spaces]);
 
   const handleSpaceDragStart = useCallback(({ activeId }) => {
-    setDraggingSpaceVisualId(activeId);
-    if (!expandedSpaces.has(activeId)) return;
-    collapsedSpaceDragIdRef.current = activeId;
-    setExpandedSpaces((prev) => {
-      if (!prev.has(activeId)) return prev;
-      const next = new Set(prev);
-      next.delete(activeId);
-      return next;
-    });
-  }, [expandedSpaces]);
+    setIsRearrangingSpaces(true);
+    spacesReorderMoveCountRef.current = 0;
+    spacesReorderDebugSessionRef.current = {
+      startedAt: new Date().toISOString(),
+      events: [],
+    };
+    if (typeof window !== 'undefined') {
+      window.__spacesReorderDebugSessions = window.__spacesReorderDebugSessions || [];
+      window.__spacesReorderDebugSessions.push(spacesReorderDebugSessionRef.current);
+    }
+    recordSpacesReorderDebug('drag-start', { activeId, wasExpanded: expandedSpaces.has(activeId) });
+  }, [expandedSpaces, recordSpacesReorderDebug]);
 
-  const restoreCollapsedSpaceAfterDrag = useCallback(() => {
-    setTimeout(() => {
-      setDraggingSpaceVisualId(null);
-    }, SPACE_DROP_VISUAL_SETTLE_MS);
+  const handleSpaceDragMove = useCallback(({ activeId, overId, delta }) => {
+    spacesReorderMoveCountRef.current += 1;
+    if (spacesReorderMoveCountRef.current > 1 && spacesReorderMoveCountRef.current % 4 !== 0) return;
+    recordSpacesReorderDebug('drag-move', { activeId, overId, delta });
+  }, [recordSpacesReorderDebug]);
 
-    const restoreId = collapsedSpaceDragIdRef.current;
-    if (!restoreId) return;
-    collapsedSpaceDragIdRef.current = null;
+  const restoreCollapsedSpaceAfterDrag = useCallback((event = {}) => {
+    recordSpacesReorderDebug('drag-settle', event);
 
-    setTimeout(() => {
-      setExpandedSpaces((prev) => {
-        const next = new Set(prev);
-        next.add(restoreId);
-        return next;
-      });
-    }, SPACE_DRAG_REEXPAND_DELAY_MS);
-  }, []);
+    if (typeof window !== 'undefined') {
+      window.setTimeout(() => {
+        setIsRearrangingSpaces(false);
+      }, 180);
+      try {
+        window.localStorage.setItem('spacesReorderDebugLatest', window.__copySpacesReorderDebug?.() || '');
+        console.info('[SPACES_REORDER_DEBUG]', window.__copySpacesReorderDebug?.());
+      } catch {
+        // Best-effort debugging only.
+      }
+    } else {
+      setIsRearrangingSpaces(false);
+    }
+  }, [recordSpacesReorderDebug]);
 
   return (
     <div style={{
@@ -1331,14 +1573,17 @@ const SpacesPanel = ({
           </div>
         ) : (
           <SortableRearrangeList
-            ids={spaces.map(space => space.id)}
+            ids={orderedSpaces.map(space => space.id)}
             onReorder={handleSpaceReorder}
             onDragStart={handleSpaceDragStart}
+            onDragMove={handleSpaceDragMove}
+            onBeforeDragEnd={startSpacesDropFrameCapture}
             onDragEnd={restoreCollapsedSpaceAfterDrag}
             onDragCancel={restoreCollapsedSpaceAfterDrag}
+            variableHeight
             gap={8}
           >
-            {spaces.map((space) => {
+            {orderedSpaces.map((space) => {
               const isActive = activeSpaceId === space.id;
               const isSelected = selectedSpaceId === space.id;
               const isExpanded = expandedSpaces.has(space.id);
@@ -1350,14 +1595,15 @@ const SpacesPanel = ({
                   id={space.id}
                   disabled={!onReorderSpaces}
                   animateLayoutChanges={animateSpaceLayoutChanges}
-                  draggingOpacity={0.82}
-                  forceDraggingVisual={draggingSpaceVisualId === space.id}
+                  draggingOpacity={1}
+                  transition={null}
                 >
                   {({ attributes, listeners, isDragging }) => (
                     <SpaceSortableCard
                       space={space}
                       dragHandleProps={{ ...attributes, ...listeners }}
                       isDragging={isDragging}
+                      isRearranging={isRearrangingSpaces}
                       isActive={isActive}
                       isSelected={isSelected}
                       isExpanded={isExpanded}

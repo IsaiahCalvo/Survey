@@ -40,7 +40,23 @@
    scrollbars.
 */
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { createPortal } from 'react-dom';
+import { createPortal, flushSync } from 'react-dom';
+import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  horizontalListSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { HubShell, Icon, Search } from './HubShell';
 import CompactColorPicker from '../components/CompactColorPicker';
 import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
@@ -52,6 +68,47 @@ import {
   archivedItemLabel,
 } from '../services/checklistOrphanCleanup';
 import { moveItemById } from '../reorder/flatReorderUtils.js';
+
+const CATEGORY_COLLAPSE_TRANSITION = 'grid-template-rows 0.18s ease, opacity 0.16s ease';
+const TEMPLATE_ORDER_STORAGE_KEY = 'surveyHub.templateOrder';
+const animateCategoryLayoutChanges = undefined;
+
+const restrictSortableToHorizontalAxis = ({ transform }) => ({
+  ...transform,
+  y: 0,
+});
+
+const getModuleTabClampBounds = (activeId) => {
+  if (typeof document === 'undefined') return null;
+  const activeNode = Array.from(document.querySelectorAll('[data-module-tab-id]'))
+    .find((node) => node.getAttribute('data-module-tab-id') === String(activeId ?? ''));
+  const listNode = activeNode?.closest?.('[data-module-tab-list]');
+  if (!activeNode || !listNode) return null;
+
+  const listRect = listNode.getBoundingClientRect();
+  const activeRect = activeNode.getBoundingClientRect();
+  const tabRects = Array.from(listNode.querySelectorAll('[data-module-tab-id]'))
+    .map((node) => {
+      const rect = node.getBoundingClientRect();
+      return {
+        id: node.getAttribute('data-module-tab-id'),
+        left: rect.left - listRect.left,
+        width: rect.width,
+      };
+    })
+    .filter((rect) => rect.width > 0);
+
+  if (!tabRects.length) return null;
+
+  const activeLeft = activeRect.left - listRect.left;
+  const firstSlotLeft = Math.min(...tabRects.map((rect) => rect.left));
+  const lastSlotLeft = Math.max(...tabRects.map((rect) => rect.left));
+
+  return {
+    minX: firstSlotLeft - activeLeft,
+    maxX: lastSlotLeft - activeLeft,
+  };
+};
 
 /* ============================================================
    Inline scoped stylesheet — the prototype's `.ed-scope` editorial
@@ -270,6 +327,239 @@ const buildRich = (templates) => templates.map((t, i) => {
   };
 });
 
+const templateOrderKeyForUser = (user) => `${TEMPLATE_ORDER_STORAGE_KEY}:${user?.id || user?.email || 'local'}`;
+
+const loadTemplateOrderPreference = (user) => {
+  if (typeof localStorage === 'undefined') return [];
+  try {
+    const parsed = JSON.parse(localStorage.getItem(templateOrderKeyForUser(user)) || '[]');
+    return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveTemplateOrderPreference = (user, ids) => {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(templateOrderKeyForUser(user), JSON.stringify(ids.filter(Boolean)));
+  } catch {
+    /* Preference persistence is non-critical. */
+  }
+};
+
+const applyTemplateOrderPreference = (templates, user) => {
+  const order = loadTemplateOrderPreference(user);
+  if (!order.length) return templates;
+
+  const rank = new Map(order.map((id, index) => [id, index]));
+  return [...templates].sort((a, b) => {
+    const ai = rank.has(a?.id) ? rank.get(a.id) : Number.MAX_SAFE_INTEGER;
+    const bi = rank.has(b?.id) ? rank.get(b.id) : Number.MAX_SAFE_INTEGER;
+    if (ai !== bi) return ai - bi;
+    return 0;
+  });
+};
+
+function SortableModuleTab({
+  mod,
+  index,
+  isOn,
+  catCount,
+  isRenaming,
+  onOpen,
+  onStartRename,
+  onRename,
+  onCancelRename,
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+    isSorting,
+  } = useSortable({
+    id: mod.id,
+    disabled: isRenaming,
+  });
+
+  const activeInk = isOn ? 'var(--ink)' : 'var(--ink-muted)';
+  const tabTransition = [
+    isDragging ? null : transition,
+    'background 0.15s ease',
+    'box-shadow 0.15s ease',
+    'opacity 0.15s ease',
+  ].filter(Boolean).join(', ');
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...attributes}
+      {...(!isRenaming ? listeners : {})}
+      data-module-tab-id={mod.id}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition: tabTransition || undefined,
+        display: 'flex',
+        alignItems: 'center',
+        marginBottom: -1,
+        borderBottom: isOn ? '2px solid var(--ink)' : '2px solid transparent',
+        borderRadius: '5px 5px 0 0',
+        background: isDragging ? 'rgba(216,168,78,0.14)' : (isOn ? 'rgba(244,241,234,0.035)' : 'transparent'),
+        boxShadow: isDragging ? '0 12px 26px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(216,168,78,0.28)' : 'none',
+        cursor: isRenaming ? 'text' : (isDragging ? 'grabbing' : 'grab'),
+        flex: '1 1 0',
+        minWidth: 32,
+        maxWidth: 140,
+        overflow: 'hidden',
+        position: 'relative',
+        zIndex: isDragging ? 4 : (isOn ? 1 : 0),
+        opacity: isDragging ? 0.94 : 1,
+        touchAction: 'none',
+        userSelect: isDragging || isSorting ? 'none' : undefined,
+      }}
+    >
+      {isRenaming ? (
+        <input
+          className="inline-edit"
+          defaultValue={mod.name}
+          autoFocus
+          onFocus={(e) => e.currentTarget.select()}
+          onBlur={(e) => onRename(index, e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur();
+            else if (e.key === 'Escape') onCancelRename();
+          }}
+          style={{
+            background: 'transparent',
+            border: 0,
+            padding: '3px 6px',
+            fontSize: 12,
+            fontWeight: isOn ? 500 : 400,
+            color: activeInk,
+            width: '100%',
+            borderBottom: '1px solid var(--accent)',
+            outline: 'none',
+          }}
+        />
+      ) : (
+        <button
+          onClick={() => onOpen(index)}
+          onDoubleClick={() => onStartRename(index)}
+          title={`${mod.name} · drag to reorder · double-click to rename`}
+          style={{
+            background: 'transparent',
+            border: 0,
+            padding: '3px 6px',
+            fontFamily: 'inherit',
+            color: activeInk,
+            fontSize: 12,
+            fontWeight: isOn ? 500 : 400,
+            cursor: isDragging ? 'grabbing' : 'grab',
+            flex: 1,
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            textAlign: 'left',
+          }}
+        >
+          {mod.name}
+        </button>
+      )}
+      <span className="mono" style={{ fontSize: 9.5, color: 'var(--ink-quiet)', padding: '0 6px 0 2px', flex: 'none' }}>
+        {catCount}
+      </span>
+    </div>
+  );
+}
+
+function SortableModuleTabs({
+  modules,
+  openMod,
+  modRename,
+  onOpenModule,
+  onStartRename,
+  onRenameModule,
+  onCancelRename,
+  onReorderModules,
+  children,
+}) {
+  const [activeId, setActiveId] = useState(null);
+  const dragClampBoundsRef = useRef(null);
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 160, tolerance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const modifiers = useMemo(() => [
+    restrictSortableToHorizontalAxis,
+    ({ transform }) => {
+      const bounds = dragClampBoundsRef.current;
+      if (!bounds) return transform;
+      return {
+        ...transform,
+        x: Math.min(Math.max(transform.x, bounds.minX), bounds.maxX),
+      };
+    },
+  ], []);
+
+  const handleDragEnd = useCallback(({ active, over }) => {
+    setActiveId(null);
+    dragClampBoundsRef.current = null;
+    if (!over || active.id === over.id) return;
+    const fromIndex = modules.findIndex((mod) => mod.id === active.id);
+    const toIndex = modules.findIndex((mod) => mod.id === over.id);
+    if (fromIndex < 0 || toIndex < 0) return;
+    flushSync(() => {
+      onReorderModules(fromIndex, toIndex);
+    });
+  }, [modules, onReorderModules]);
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      modifiers={modifiers}
+      onDragStart={({ active }) => {
+        dragClampBoundsRef.current = getModuleTabClampBounds(active.id);
+        setActiveId(active.id);
+      }}
+      onDragEnd={handleDragEnd}
+      onDragCancel={() => {
+        dragClampBoundsRef.current = null;
+        setActiveId(null);
+      }}
+    >
+      <SortableContext items={modules.map((mod) => mod.id)} strategy={horizontalListSortingStrategy}>
+        <div
+          data-module-tab-list={String(activeId ?? '')}
+          style={{ display: 'flex', alignItems: 'stretch', gap: 0, borderBottom: '1px solid var(--rule)', minHeight: 26 }}
+        >
+          {modules.map((mod, mi) => (
+            <SortableModuleTab
+              key={mod.id}
+              mod={mod}
+              index={mi}
+              isOn={openMod === mi}
+              catCount={(mod.categories || []).length}
+              isRenaming={modRename === mi}
+              onOpen={onOpenModule}
+              onStartRename={onStartRename}
+              onRename={onRenameModule}
+              onCancelRename={onCancelRename}
+            />
+          ))}
+          {children}
+        </div>
+      </SortableContext>
+    </DndContext>
+  );
+}
+
 /* ============================================================
    Fixed-position "more" menu, portalled to document.body.
    `anchorRect` is the trigger's getBoundingClientRect(); the menu
@@ -474,7 +764,7 @@ export default function TemplatesEditor({
      Seeded from the `templates` prop, then owned locally so every editor
      action below actually mutates it. Re-seeded whenever the prop identity
      changes (e.g. the host adds a template via onCreateTemplate). */
-  const [rich, setRich] = useState(() => buildRich(templates));
+  const [rich, setRich] = useState(() => buildRich(applyTemplateOrderPreference(templates, user)));
   /* True once the user edits anything; drives the Save / Cancel bar. Reset
      whenever the editor reloads from props, or on Save / Cancel. */
   const [dirty, setDirty] = useState(false);
@@ -490,8 +780,6 @@ export default function TemplatesEditor({
   const [entityMenu, setEntityMenu] = useState(null); // { id, rect }
   const [dragTpl, setDragTpl] = useState(null);
   const [dragOverTpl, setDragOverTpl] = useState(null);
-  const [dragMod, setDragMod] = useState(null);
-  const [dragOverMod, setDragOverMod] = useState(null);
   const [dragCat, setDragCat] = useState(null);
   const [dragOverCat, setDragOverCat] = useState(null);
   const [dragEntity, setDragEntity] = useState(null);
@@ -506,8 +794,6 @@ export default function TemplatesEditor({
   const [modRename, setModRename] = useState(null);   // module index in rename mode
   const [selMods, setSelMods] = useState(() => new Set());
   const toggleModSel = (mi) => setSelMods((prev) => { const n = new Set(prev); n.has(mi) ? n.delete(mi) : n.add(mi); return n; });
-  const collapsedCategoryDragIdRef = useRef(null);
-  const categoryRestoreIndexAfterDragRef = useRef(null);
   const [catEdit, setCatEdit] = useState(false);
   const [selCats, setSelCats] = useState(() => new Set());
   const toggleCatSel = (id) => setSelCats((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -525,7 +811,7 @@ export default function TemplatesEditor({
      Seeds the maps from each entity's persisted refinements so saved colours
      round-trip, and clears the dirty flag since the copy now matches the host. */
   const reloadFromProps = useCallback(() => {
-    const next = buildRich(templates);
+    const next = buildRich(applyTemplateOrderPreference(templates, user));
     const rc = {}, bc = {}, mf = {};
     next.forEach((t) => t.roster.forEach((r) => {
       rc[r.id] = { color: r.color, opacity: r.opacity ?? 0.35 };
@@ -537,7 +823,7 @@ export default function TemplatesEditor({
     setBorderColors(bc);
     setMatchFill(mf);
     setDirty(false);
-  }, [templates]);
+  }, [templates, user?.id, user?.email]);
   /* Reload whenever the host swaps the templates prop (added a template, or a
      Save refetched fresh rows). */
   useEffect(() => { reloadFromProps(); }, [reloadFromProps]);
@@ -664,9 +950,9 @@ export default function TemplatesEditor({
     if (!activeId || !overId || activeId === overId) return;
     setRich((prev) => {
       const next = moveItemById(prev, activeId, overId);
+      if (next !== prev) saveTemplateOrderPreference(user, next.map((template) => template.id));
       return next === prev ? prev : next;
     });
-    setDirty(true);
   };
   const deleteTemplates = (ids) => {
     setRich((prev) => {
@@ -802,54 +1088,16 @@ export default function TemplatesEditor({
     const categories = orderedMods[openMod]?.categories || [];
     const from = categories.findIndex((category) => category.id === activeId);
     const to = categories.findIndex((category) => category.id === overId);
-    const shouldRestoreDraggedCategory = collapsedCategoryDragIdRef.current === activeId;
 
     mutateOpenModule((module) => {
       const nextCategories = moveItemById(module.categories || [], activeId, overId);
       return nextCategories === module.categories ? module : { ...module, categories: nextCategories };
     });
 
-    if (shouldRestoreDraggedCategory) {
-      categoryRestoreIndexAfterDragRef.current = to;
-      return;
-    }
-
     if (openCat === from) setOpenCat(to);
     else if (from < openCat && to >= openCat) setOpenCat(openCat - 1);
     else if (from > openCat && to <= openCat) setOpenCat(openCat + 1);
   };
-
-  const handleCategoryDragStart = useCallback(({ activeId }) => {
-    const categories = orderedMods[openMod]?.categories || [];
-    const activeIndex = categories.findIndex((category) => category.id === activeId);
-    if (activeIndex !== openCat) return;
-
-    collapsedCategoryDragIdRef.current = activeId;
-    categoryRestoreIndexAfterDragRef.current = activeIndex;
-    setOpenCat(-1);
-  }, [openCat, openMod, orderedMods]);
-
-  const restoreCollapsedCategoryAfterDrag = useCallback(() => {
-    const restoreId = collapsedCategoryDragIdRef.current;
-    if (!restoreId) return;
-
-    const restoreIndex = categoryRestoreIndexAfterDragRef.current;
-    collapsedCategoryDragIdRef.current = null;
-    categoryRestoreIndexAfterDragRef.current = null;
-
-    setTimeout(() => {
-      if (Number.isInteger(restoreIndex) && restoreIndex >= 0) {
-        setOpenCat(restoreIndex);
-        return;
-      }
-
-      const categories = orderedMods[openMod]?.categories || [];
-      const fallbackIndex = categories.findIndex((category) => category.id === restoreId);
-      if (fallbackIndex !== -1) {
-        setOpenCat(fallbackIndex);
-      }
-    }, 0);
-  }, [openMod, orderedMods]);
 
   /* --- checklist-item-level (scoped to a category in the open module) --- */
   const mutateCategory = (ci, fn) => {
@@ -1048,7 +1296,12 @@ export default function TemplatesEditor({
   };
 
   const handleSaveTemplates = () => {
-    if (onSaveTemplates) onSaveTemplates(rich.map(richToTemplate));
+    if (onSaveTemplates) {
+      Promise.resolve(onSaveTemplates(rich.map(richToTemplate))).catch((err) => {
+        console.error('Failed to save templates', err);
+        setDirty(true);
+      });
+    }
     setDirty(false);
   };
   const handleCancelEdits = () => { reloadFromProps(); };
@@ -1240,59 +1493,16 @@ export default function TemplatesEditor({
                     Select
                   </button>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'stretch', gap: 0, borderBottom: '1px solid var(--rule)', minHeight: 26 }}>
-                  {orderedMods.map((mod, mi) => {
-                    const isOn = openMod === mi;
-                    const catCount = (mod.categories || []).length;
-                    return (
-                      <div
-                        key={mod.id}
-                        draggable
-                        onDragStart={() => setDragMod(mi)}
-                        onDragOver={(e) => { e.preventDefault(); setDragOverMod(mi); }}
-                        onDragLeave={() => setDragOverMod((current) => current === mi ? null : current)}
-                        onDrop={(e) => { e.preventDefault(); reorderMods(dragMod, mi); setDragMod(null); setDragOverMod(null); }}
-                        onDragEnd={() => { setDragMod(null); setDragOverMod(null); }}
-                        style={{
-                          display: 'flex', alignItems: 'center', marginBottom: -1,
-                          borderBottom: isOn ? '2px solid var(--ink)' : '2px solid transparent',
-                          opacity: dragMod === mi ? 0.82 : 1,
-                          background: dragOverMod === mi && dragMod !== mi ? 'rgba(216,168,78,0.08)' : 'transparent',
-                          cursor: 'grab',
-                          flex: '1 1 0', minWidth: 32, maxWidth: 140,
-                          overflow: 'hidden',
-                          position: 'relative',
-                          zIndex: dragMod === mi ? 1 : 'auto',
-                          transition: dragMod === mi ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
-                        }}
-                      >
-                        {modRename === mi ? (
-                          <input
-                            className="inline-edit"
-                            defaultValue={mod.name}
-                            autoFocus
-                            onFocus={(e) => e.currentTarget.select()}
-                            onBlur={(e) => renameModule(mi, e.currentTarget.value)}
-                            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') setModRename(null); }}
-                            style={{ background: 'transparent', border: 0, padding: '3px 6px', fontSize: 12, fontWeight: isOn ? 500 : 400, color: isOn ? 'var(--ink)' : 'var(--ink-muted)', width: '100%', borderBottom: '1px solid var(--accent)', outline: 'none' }}
-                          />
-                        ) : (
-                          <button
-                            onClick={() => { setOpenMod(mi); setOpenCat(-1); }}
-                            onDoubleClick={() => setModRename(mi)}
-                            title={`${mod.name} · drag to reorder · double-click to rename`}
-                            style={{
-                              background: 'transparent', border: 0, padding: '3px 6px',
-                              fontFamily: 'inherit', color: isOn ? 'var(--ink)' : 'var(--ink-muted)',
-                              fontSize: 12, fontWeight: isOn ? 500 : 400, cursor: 'grab',
-                              flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left',
-                            }}
-                          >{mod.name}</button>
-                        )}
-                        <span className="mono" style={{ fontSize: 9.5, color: 'var(--ink-quiet)', padding: '0 6px 0 2px', flex: 'none' }}>{catCount}</span>
-                      </div>
-                    );
-                  })}
+                <SortableModuleTabs
+                  modules={orderedMods}
+                  openMod={openMod}
+                  modRename={modRename}
+                  onOpenModule={(mi) => { setOpenMod(mi); setOpenCat(-1); }}
+                  onStartRename={setModRename}
+                  onRenameModule={renameModule}
+                  onCancelRename={() => setModRename(null)}
+                  onReorderModules={reorderMods}
+                >
                   <button
                     onClick={addModule}
                     title="New module"
@@ -1308,7 +1518,7 @@ export default function TemplatesEditor({
                       flex: 'none', alignSelf: 'center',
                     }}
                   ><span style={{ display: 'block', lineHeight: 1, transform: 'translateY(-0.5px)' }}>+</span></button>
-                </div>
+                </SortableModuleTabs>
               </div>
 
               {/* Categories header */}
@@ -1351,9 +1561,7 @@ export default function TemplatesEditor({
                 <SortableRearrangeList
                   ids={visibleCats.map((c) => c.id)}
                   onReorder={reorderCategories}
-                  onDragStart={handleCategoryDragStart}
-                  onDragEnd={restoreCollapsedCategoryAfterDrag}
-                  onDragCancel={restoreCollapsedCategoryAfterDrag}
+                  variableHeight
                   gap={6}
                 >
                 {visibleCats.map((c, i) => {
@@ -1371,6 +1579,7 @@ export default function TemplatesEditor({
                     <SortableRearrangeRow
                       key={c.id}
                       id={c.id}
+                      animateLayoutChanges={animateCategoryLayoutChanges}
                     >
                       {({ attributes, listeners, isDragging }) => (
                     <div
@@ -1434,8 +1643,19 @@ export default function TemplatesEditor({
                       </div>
 
                       {/* Expanded body — checklist items */}
-                      {open && (
-                        <div style={{ padding: '4px 14px 12px 50px', borderTop: '1px solid var(--rule)', background: 'var(--paper-deep)' }}>
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateRows: open ? '1fr' : '0fr',
+                          opacity: open ? 1 : 0,
+                          visibility: open ? 'visible' : 'hidden',
+                          transition: `${CATEGORY_COLLAPSE_TRANSITION}, visibility 0s linear ${open ? '0s' : '0.18s'}`,
+                          borderTop: open ? '1px solid var(--rule)' : '1px solid transparent',
+                          minHeight: 0,
+                        }}
+                      >
+                        <div style={{ overflow: 'hidden', minHeight: 0 }}>
+                          <div style={{ padding: '4px 14px 12px 50px', background: 'var(--paper-deep)' }}>
                           <div style={{ display: 'grid', gap: 1, marginTop: 6 }}>
                             {items.length === 0 && (
                               <div className="meta" style={{ fontSize: 11, padding: '3px 0' }}>No checklist items yet.</div>
@@ -1538,8 +1758,9 @@ export default function TemplatesEditor({
                               </div>
                             )}
                           </div>
+                          </div>
                         </div>
-                      )}
+                      </div>
                     </div>
                       )}
                     </SortableRearrangeRow>

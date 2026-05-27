@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 
 import { createRoot } from 'react-dom/client';
 import {
   DndContext,
-  DragOverlay,
   KeyboardSensor,
   MeasuringStrategy,
   MouseSensor,
@@ -566,7 +565,7 @@ function BookmarkTreeRow({
         listStyle: 'none',
         margin: 0,
         padding: '2px 0',
-        opacity: isDragging && !isClone ? 0.32 : 1,
+        opacity: isDragging && !isClone ? 0.92 : 1,
         position: 'relative',
         width: isClone ? `${cloneWidth}px` : isActiveRow ? `${BOOKMARK_TREE_CONTENT_WIDTH}px` : 'auto',
         boxSizing: 'border-box',
@@ -804,20 +803,6 @@ function BookmarkTreeRow({
   return row;
 }
 
-const countTreeChildren = (items, id) => {
-  const find = (list) => {
-    for (const item of list) {
-      if (item.id === id) return item;
-      const child = find(item.children || []);
-      if (child) return child;
-    }
-    return null;
-  };
-  const count = (list) => list.reduce((sum, item) => sum + 1 + count(item.children || []), 0);
-  const item = find(items);
-  return item ? count(item.children || []) : 0;
-};
-
 function BookmarkReorderPanel() {
   const [bookmarks, setBookmarks] = useState(initialBookmarks);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -865,11 +850,6 @@ function BookmarkReorderPanel() {
       x: Math.max(transform.x, minimumX),
     };
   }, [activeItem?.depth]);
-  const lockBookmarkTreeHorizontalVisual = useMemo(() => ({ transform }) => ({
-    ...transform,
-    x: 0,
-  }), []);
-
   const visibleItemById = useMemo(() => (
     new Map(flattenedItems.map((item) => [item.id, item]))
   ), [flattenedItems]);
@@ -1235,19 +1215,6 @@ function BookmarkReorderPanel() {
               ))}
             </div>
           </SortableContext>
-          <DragOverlay modifiers={[lockBookmarkTreeHorizontalVisual]} dropAnimation={null}>
-            {activeItem ? (
-              <BookmarkTreeRow
-                item={activeItem}
-                depth={projected ? projected.depth : activeItem.depth}
-                activeDepth={activeItem.depth}
-                isEditMode={isEditMode}
-                isClone
-                isDraggingAny
-                childCount={countTreeChildren(bookmarks, activeItem.id) + 1}
-              />
-            ) : null}
-          </DragOverlay>
         </DndContext>
       </div>
     </div>
