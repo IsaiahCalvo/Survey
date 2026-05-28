@@ -36,6 +36,11 @@ import * as Y from 'yjs';
 import { applyFabricCreate } from './crdtAnnotationBridge.js';
 import { buildOrigin } from './originBuilder.js';
 
+const crdtBackfillDebug = (...args) => {
+  if (typeof window === 'undefined' || window.__CRDT_BACKFILL_DEBUG !== true) return;
+  try { console.debug(...args); } catch { /* ignore debug logging failures */ }
+};
+
 // Mirrors annotationCloudSync.js NON_HIGHLIGHT_TYPES (line 26). Backfill
 // excludes survey-marker rows entirely (both 'highlight' legacy and 'survey-marker'
 // new value) - Excel-sync carve-out, folded into v2.5.
@@ -194,7 +199,7 @@ export async function runBackfill(args) {
   // Phase 31 UAT (2026-05-03) — entrance log so the recovery walkthrough can
   // tell whether YDocProvider's backfill effect actually called us. Stripped
   // at Phase 31 close.
-  console.log('[Phase31 UAT] backfill:start ' + JSON.stringify({
+  crdtBackfillDebug('[Phase31 UAT] backfill:start ' + JSON.stringify({
     hasYdoc: !!ydoc,
     hasSupabase: !!supabase,
     documentId: documentId || null,
@@ -304,7 +309,7 @@ export async function runBackfill(args) {
         // imports; re-reading it can repaint jagged duplicate shapes over the
         // smoothed Y.Doc state and makes startup crawl through 20k+ rows.
         if (dedupeRan && dedupeAnchorOk && yMapSize >= 50) {
-          console.log('[Phase31 UAT] backfill:cutover-dedupe-anchor-skip ' + JSON.stringify({
+          crdtBackfillDebug('[Phase31 UAT] backfill:cutover-dedupe-anchor-skip ' + JSON.stringify({
             documentId, userId, yMapSize, lastGoodSize,
           }));
           return {
@@ -346,7 +351,7 @@ export async function runBackfill(args) {
             : dedupeRan
               ? dedupeAnchorOk
               : (probeOk && (yMapSize >= (legacyCount || 0) - tolerance));
-        console.log('[Phase31 UAT] backfill:degeneracy-probe ' + JSON.stringify({
+        crdtBackfillDebug('[Phase31 UAT] backfill:degeneracy-probe ' + JSON.stringify({
           documentId, userId, yMapSize, legacyCount, probeOk, tolerance, yMapLooksHealthy, dedupeRan, lastGoodSize, hardFloorBreached,
         }));
         if (yMapLooksHealthy) {
@@ -461,7 +466,7 @@ async function runBackfillUnlocked(args) {
   let rows = [];
   let queryError = null;
   let pagesFetched = 0;
-  console.log('[Phase31 UAT] backfill:select-loop start ' + JSON.stringify({
+  crdtBackfillDebug('[Phase31 UAT] backfill:select-loop start ' + JSON.stringify({
     documentId, userId, pageSize: BACKFILL_PAGE_SIZE,
   }));
   try {
@@ -478,7 +483,7 @@ async function runBackfillUnlocked(args) {
       const pageElapsedMs = Date.now() - pageStartedAt;
       if (result?.error) {
         queryError = result.error;
-        console.log('[Phase31 UAT] backfill:select-loop page ERROR ' + JSON.stringify({
+        console.warn('[Phase31 UAT] backfill:select-loop page ERROR ' + JSON.stringify({
           documentId, page: pagesFetched, range: [from, to], pageElapsedMs,
           errorCode: result.error?.code || null,
           errorMessage: result.error?.message || String(result.error),
@@ -488,7 +493,7 @@ async function runBackfillUnlocked(args) {
       const pageRows = result?.data || [];
       rows.push(...pageRows);
       pagesFetched++;
-      console.log('[Phase31 UAT] backfill:select-loop page ok ' + JSON.stringify({
+      crdtBackfillDebug('[Phase31 UAT] backfill:select-loop page ok ' + JSON.stringify({
         documentId, page: pagesFetched - 1, range: [from, to],
         pageRows: pageRows.length, totalSoFar: rows.length, pageElapsedMs,
       }));
@@ -496,13 +501,13 @@ async function runBackfillUnlocked(args) {
     }
   } catch (err) {
     queryError = err;
-    console.log('[Phase31 UAT] backfill:select-loop THREW ' + JSON.stringify({
+    console.warn('[Phase31 UAT] backfill:select-loop THREW ' + JSON.stringify({
       documentId, pagesFetched, message: err?.message || String(err),
     }));
   }
 
   if (queryError) {
-    console.log('[Phase31 UAT] backfill:done (failed at SELECT) ' + JSON.stringify({
+    console.warn('[Phase31 UAT] backfill:done (failed at SELECT) ' + JSON.stringify({
       ranAs: 'failed',
       documentId, userId, pagesFetched, rowsFetched: rows.length,
       errorCode: queryError?.code || null,
@@ -667,7 +672,7 @@ async function runBackfillUnlocked(args) {
   // through can confirm the loop finished and how the gate resolved without
   // needing to spelunk through individual save events. Stripped at Phase 31
   // close like the other UAT logs.
-  console.log('[Phase31 UAT] backfill:done ' + JSON.stringify({
+  crdtBackfillDebug('[Phase31 UAT] backfill:done ' + JSON.stringify({
     ranAs: 'leader',
     documentId,
     userId,

@@ -23,7 +23,8 @@
   top: var(--app-chrome-top, 96px);
   left: var(--app-sidebar-width, 48px);
   right: 0;
-  z-index: 1000;
+  z-index: 100020;
+  pointer-events: none;
 
   display: flex;
   align-items: flex-start;
@@ -96,6 +97,7 @@
      Matches Linear / Notion link convention. Reset native button chrome so
      it reads as a textual link rather than a button. */
   flex-shrink: 0;
+  pointer-events: auto;
   background: none;
   border: none;
   padding: 0;
@@ -124,6 +126,7 @@
      action link. Hover lifts color from text-muted to text-primary so the
      button reads as discoverable rather than disabled. */
   flex-shrink: 0;
+  pointer-events: auto;
   width: 24px;
   height: 24px;
   display: inline-flex;

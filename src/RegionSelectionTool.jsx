@@ -14,6 +14,11 @@ const REGION_HANDLE_FILL = HANDLE_FILL;
 const REGION_HISTORY_LIMIT = 100;
 const regionEditHistoryStore = new Map();
 
+const regionDebug = (...args) => {
+  if (typeof window === 'undefined' || window.__REGION_DEBUG !== true) return;
+  try { console.debug(...args); } catch { /* ignore debug logging failures */ }
+};
+
 const getRegionEditHistoryKey = (spaceId, pageId) => `${spaceId ?? 'unknown-space'}:${pageId ?? 'unknown-page'}`;
 
 const stopRegionKeyboardShortcut = (event) => {
@@ -306,7 +311,7 @@ const RegionSelectionTool = ({
         const queryDebugKey = `${selector}:0:${activeTool ?? 'none'}`;
         if (lastTargetQueryDebugRef.current !== queryDebugKey) {
           lastTargetQueryDebugRef.current = queryDebugKey;
-          console.warn(
+          regionDebug(
             `[RegionSelectionTool p${currentPageId ?? 'unknown'}] target query miss — ` +
             `selector=${selector}, candidates=0, tool=${activeTool ?? 'none'}`
           );
@@ -316,7 +321,7 @@ const RegionSelectionTool = ({
         const queryDebugKey = `${selector}:${renderer}`;
         if (lastTargetQueryDebugRef.current !== queryDebugKey) {
           lastTargetQueryDebugRef.current = queryDebugKey;
-          console.log(
+          regionDebug(
             `[RegionSelectionTool p${currentPageId ?? 'unknown'}] target query hit — ` +
             `selector=${selector}, renderer=${renderer}`
           );
@@ -351,7 +356,7 @@ const RegionSelectionTool = ({
     }
 
     lastTargetDebugKeyRef.current = nextKey;
-    console.log(
+    regionDebug(
       `[RegionSelectionTool p${currentPageId ?? 'unknown'}] target ${targetRect ? 'mounted' : 'missing'} — ` +
       `space=${currentSpaceId ?? 'none'}, tool=${activeTool ?? 'none'}, ` +
       `rect=${targetRect ? `${Math.round(targetRect.left)},${Math.round(targetRect.top)},${Math.round(targetRect.width)}x${Math.round(targetRect.height)}` : 'none'}`
@@ -390,7 +395,7 @@ const RegionSelectionTool = ({
         const debugKey = `${Math.round(nextRect.left)}:${Math.round(nextRect.top)}:${Math.round(nextRect.width)}:${Math.round(nextRect.height)}`;
         if (lastCanvasRectDebugRef.current !== debugKey) {
           lastCanvasRectDebugRef.current = debugKey;
-          console.log(
+          regionDebug(
             `[RegionSelectionTool p${currentPageId ?? 'unknown'}] canvasRect — ` +
             `left=${Math.round(nextRect.left)}, top=${Math.round(nextRect.top)}, ` +
             `width=${Math.round(nextRect.width)}, height=${Math.round(nextRect.height)}, ` +
@@ -986,7 +991,7 @@ const RegionSelectionTool = ({
 
   const handleMouseDown = useCallback((event) => {
     if (!active || !targetElement) {
-      console.log(
+      regionDebug(
         `[RegionSelectionTool p${currentPageId ?? 'unknown'}] mouseDown ignored — ` +
         `active=${active}, target=${!!targetElement}, tool=${activeTool ?? 'none'}`
       );
@@ -1000,7 +1005,7 @@ const RegionSelectionTool = ({
     // Allow pan to work: if pan tool is active (space is held), don't handle the event
     // This allows the event to bubble to the container's pan handler
     if (activeTool === 'pan') {
-      console.log(
+      regionDebug(
         `[RegionSelectionTool p${currentPageId ?? 'unknown'}] mouseDown passed through for pan — ` +
         `client=${Math.round(event.clientX)},${Math.round(event.clientY)}`
       );
@@ -1012,7 +1017,7 @@ const RegionSelectionTool = ({
     const rect = targetElement.getBoundingClientRect();
     const isWithinCanvas = isPointWithinTargetRect(event.clientX, event.clientY, rect);
 
-    console.log(
+    regionDebug(
       `[RegionSelectionTool p${currentPageId ?? 'unknown'}] mouseDown — ` +
       `tool=${effectiveToolType}, activeTool=${activeTool ?? 'none'}, within=${isWithinCanvas}, ` +
       `client=${Math.round(event.clientX)},${Math.round(event.clientY)}, ` +
@@ -1264,7 +1269,7 @@ const RegionSelectionTool = ({
 
     if (effectiveToolType === 'rectangular' && currentRect && currentRect.width > MIN_REGION_SIZE && currentRect.height > MIN_REGION_SIZE) {
       pushUndoSnapshot();
-      console.log(
+      regionDebug(
         `[RegionSelectionTool p${currentPageId ?? 'unknown'}] mouseUp commit rectangular — ` +
         `x=${currentRect.x.toFixed(2)}, y=${currentRect.y.toFixed(2)}, ` +
         `w=${currentRect.width.toFixed(2)}, h=${currentRect.height.toFixed(2)}, mode=${effectiveSelectionMode}`
@@ -1308,7 +1313,7 @@ const RegionSelectionTool = ({
       }
     } else if (effectiveToolType === 'freehand' && polygonPoints.length > 2) {
       pushUndoSnapshot();
-      console.log(
+      regionDebug(
         `[RegionSelectionTool p${currentPageId ?? 'unknown'}] mouseUp commit freehand — ` +
         `points=${polygonPoints.length}, mode=${effectiveSelectionMode}`
       );
@@ -1375,7 +1380,7 @@ const RegionSelectionTool = ({
       // Preserve originCenter if it exists
       originCenter: region.originCenter ? { ...region.originCenter } : undefined
     }));
-    console.log(
+    regionDebug(
       `[RegionSelectionTool p${currentPageId ?? 'unknown'}] confirm — ` +
       `input=${currentRegions.length}, payload=${payload.length}, ` +
       `valid=${payload.filter(region => Array.isArray(region.coordinates) && region.coordinates.length >= 6).length}`

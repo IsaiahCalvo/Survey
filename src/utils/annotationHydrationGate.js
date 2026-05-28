@@ -33,10 +33,9 @@ export function resolveFirstVisibleAnnotationPage({
 export function isInitialAnnotationHydrationReady({
   isCloudBackedDocument,
   normalHydration,
-  surveyHydration,
 } = {}) {
   if (!isCloudBackedDocument) return true;
-  return normalHydration?.ready === true && surveyHydration?.ready === true;
+  return normalHydration?.ready === true;
 }
 
 export function shouldGateFirstVisibleAnnotationPage({
@@ -46,8 +45,12 @@ export function shouldGateFirstVisibleAnnotationPage({
   normalHydration,
   surveyHydration,
 } = {}) {
-  if (!isCloudBackedDocument) return false;
+  // Cloud documents now follow the collaborative-editor rule: keep the last
+  // good annotation layer visible while fresh sync state hydrates in the
+  // background. Hiding the page during hydration caused repeated blank-screen
+  // failures even though Supabase/Y.Doc still had the annotations.
   if (Number(pageNumber) !== Number(firstVisiblePageNumber)) return false;
+  if (isCloudBackedDocument) return false;
   return !isInitialAnnotationHydrationReady({
     isCloudBackedDocument,
     normalHydration,

@@ -8,8 +8,8 @@
  * event path / elementsFromPoint for either our own `[data-pal-root="N"]` /
  * `[data-diag-svg-wrapper="N"]` attrs, or Syncfusion's `pageDiv_N` id suffix.
  *
- * Also retains the original capture/bubble/mousedown logging so we can
- * continue to debug coverage gaps. Logs go to window.__consoleLogBuffer.
+ * Diagnostic logging is opt-in so normal right-clicks do not flood the console.
+ * Enable with `window.__CTX_DIAG_CONSOLE = true` before reproducing.
  */
 
 import { lookup as lookupPalHandler, listRegistered } from './contextMenuBridge.js';
@@ -20,13 +20,12 @@ import { resolveAnnotationAt } from './annotationHitTest.js';
 // stamp in the install log will still match the stale build's value.
 const CTX_DIAG_BUILD = 'page-gated-v2-2026-04-25';
 
-// Mirror every diagnostic line through console.warn AS WELL as console.log.
-// DevTools sometimes filters .log out of the "Default" view but keeps .warn,
-// and the in-app save-log buffer captures both — so the entry survives no
-// matter which capture path the user is using to share logs.
 function diag(line) {
-  try { console.log(line); } catch { /* ignore */ }
-  try { console.warn(line); } catch { /* ignore */ }
+  const consoleEnabled =
+    typeof window !== 'undefined' && window.__CTX_DIAG_CONSOLE === true;
+  if (consoleEnabled) {
+    try { console.debug(line); } catch { /* ignore */ }
+  }
   try {
     if (typeof window !== 'undefined') {
       window.__rightClickDiag = window.__rightClickDiag || [];

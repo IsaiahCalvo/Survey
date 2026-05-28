@@ -30,6 +30,11 @@ import {
   getSpaceIdForRegionFromSpaces,
 } from './annotationVisibilityRules.js';
 
+const pdfExportDebug = (...args) => {
+  if (typeof window === 'undefined' || window.__PDF_EXPORT_DEBUG !== true) return;
+  try { console.debug(...args); } catch { /* ignore debug logging failures */ }
+};
+
 const EXPORTABLE_FABRIC_TYPES = new Set([
   'path',
   'rect',
@@ -1531,7 +1536,7 @@ export const savePDFWithAnnotationsPdfLib = async (pdfFile, annotationsByPage, p
 
     // Save the PDF
     const pdfBytes = await pdfDoc.save();
-    console.log('[PDFImportedEditExport] summary ' + JSON.stringify({
+    pdfExportDebug('[PDFImportedEditExport] summary ' + JSON.stringify({
       actionType,
       documentId,
       importedNativeCopiesSkipped: exportDiagnostics.importedNativeCopiesSkipped,

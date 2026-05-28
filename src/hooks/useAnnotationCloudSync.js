@@ -80,9 +80,16 @@ import {
   resolveFabricDeletedIds,
   shouldSuppressStaleCacheShrink,
 } from '../utils/annotationSyncDelta.js';
+import { shouldApplyDedupeResync } from '../utils/dedupeResyncSafety.js';
+import { resolveSafeSnapshot } from '../utils/safeSnapshot.js';
 
 const DEFAULT_DEBOUNCE_MS = 800; // mid-drag pushes are coalesced into one upsert
 const CALLOUT_WIPE_GRACE_MS = 2500;
+
+const cloudSyncHookDebug = (...args) => {
+  if (typeof window === 'undefined' || window.__CLOUD_SYNC_DEBUG !== true) return;
+  try { console.debug(...args); } catch { /* ignore debug logging failures */ }
+};
 
 // Phase 31 UAT instrumentation (2026-05-03). Returns a tally of what is in
 // `annotationsByPage` broken out by provenance so every save / delete / hydrate
@@ -380,7 +387,7 @@ export function useAnnotationCloudSync({
       error: nextStatus?.error?.message || null,
     };
     if (previousStage !== stage || nextStatus?.kind || nextStatus?.phase) {
-      console.log('[CloudSync][status] transition ' + JSON.stringify(transitionPayload));
+      cloudSyncHookDebug('[CloudSync][status] transition ' + JSON.stringify(transitionPayload));
     }
     statusRef.current = { ...(nextStatus || {}), stage };
     if (stage === 'pending' || stage === 'syncing') {
@@ -400,7 +407,7 @@ export function useAnnotationCloudSync({
           syncedStatusTimerRef.current = null;
           syncActivitySinceRef.current = null;
           statusRef.current = { ...(nextStatus || {}), stage: 'synced', visibleDelayMs: delayMs };
-          console.log('[CloudSync][status] transition-visible ' + JSON.stringify({
+          cloudSyncHookDebug('[CloudSync][status] transition-visible ' + JSON.stringify({
             from: previousStage,
             to: 'synced',
             kind: nextStatus?.kind || null,
@@ -487,6 +494,11 @@ export function useAnnotationCloudSync({
   // would interpret the shrink as a delete and cascade it to the cloud.
   const prevAnnotationsByPageObsRef = useRef(undefined);
   const prevCalloutsObsRef = useRef(undefined);
+  const latestAnnotationsByPageRef = useRef(annotationsByPage);
+
+  useEffect(() => {
+    latestAnnotationsByPageRef.current = annotationsByPage;
+  }, [annotationsByPage]);
 
   // (Removed 2026-04-25: skipNextFabricPushRef / skipNextCalloutPushRef
   // suppressed the first post-hydrate push to dodge a runaway-id bug.
@@ -502,7 +514,7 @@ export function useAnnotationCloudSync({
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     sessionIdRef.current = rnd;
-    console.log('[CloudSync][hook] session id minted ' + JSON.stringify({ sessionId: rnd }));
+    cloudSyncHookDebug('[CloudSync][hook] session id minted ' + JSON.stringify({ sessionId: rnd }));
   }
   const clientSessionId = sessionIdRef.current;
 
@@ -518,7 +530,7 @@ export function useAnnotationCloudSync({
       calloutCount: Number.isFinite(next?.calloutCount) ? next.calloutCount : null,
       firstPaintGate: true,
     };
-    console.log('[AnnotationHydrationGate][normal] ' + JSON.stringify(payload));
+    cloudSyncHookDebug('[AnnotationHydrationGate][normal] ' + JSON.stringify(payload));
     setInitialHydration(payload);
   };
 
@@ -610,7 +622,7 @@ export function useAnnotationCloudSync({
   // fan out to the dedicated Y.Doc callouts map only after durable success.
   const fanOutCrdtForAnnotationsByPage = async (annotationsByPageArg, opts) => {
     if (!isCRDTEnabled() || !phase30Ydoc) {
-      console.log('[Phase31 UAT] save:fan-out skipped ' + JSON.stringify({
+      cloudSyncHookDebug('[Phase31 UAT] save:fan-out skipped ' + JSON.stringify({
         reason: !isCRDTEnabled() ? 'crdt-disabled' : 'ydoc-null',
         documentId: opts?.documentId,
         pdfId,
@@ -621,7 +633,7 @@ export function useAnnotationCloudSync({
     try {
       yMapAnnotations = phase30Ydoc.getMap('annotations');
     } catch (e) {
-      console.log('[Phase31 UAT] save:fan-out getMap-threw ' + JSON.stringify({
+      cloudSyncHookDebug('[Phase31 UAT] save:fan-out getMap-threw ' + JSON.stringify({
         error: e?.message || String(e),
         documentId: opts?.documentId,
         pdfId,
@@ -685,7 +697,7 @@ export function useAnnotationCloudSync({
     }
     let __yMapSize = -1;
     try { __yMapSize = yMapAnnotations.size; } catch (_e) { /* fall through */ }
-    console.log('[Phase31 UAT] save:fan-out done ' + JSON.stringify({
+    cloudSyncHookDebug('[Phase31 UAT] save:fan-out done ' + JSON.stringify({
       documentId: opts?.documentId,
       pdfId,
       userId: opts?.userId,
@@ -705,7 +717,7 @@ export function useAnnotationCloudSync({
 
   const fanOutCrdtForDeletedIds = async (documentId, deletedIds, opts) => {
     if (!isCRDTEnabled() || !phase30Ydoc) {
-      console.log('[Phase31 UAT] delete:fan-out skipped ' + JSON.stringify({
+      cloudSyncHookDebug('[Phase31 UAT] delete:fan-out skipped ' + JSON.stringify({
         reason: !isCRDTEnabled() ? 'crdt-disabled' : 'ydoc-null',
         documentId,
         pdfId,
@@ -743,7 +755,7 @@ export function useAnnotationCloudSync({
     }
     let __yMapSize = -1;
     try { __yMapSize = yMapAnnotations.size; } catch (_e) { /* fall through */ }
-    console.log('[Phase31 UAT] delete:fan-out done ' + JSON.stringify({
+    cloudSyncHookDebug('[Phase31 UAT] delete:fan-out done ' + JSON.stringify({
       documentId,
       pdfId,
       userId: opts?.userId,
@@ -757,7 +769,7 @@ export function useAnnotationCloudSync({
 
   const fanOutCrdtForCallouts = async (currentCallouts, deletedCalloutIds, opts) => {
     if (!isCRDTEnabled() || !phase30Ydoc) {
-      console.log('[CloudSync][hook] callout Y.Doc fan-out skipped ' + JSON.stringify({
+      cloudSyncHookDebug('[CloudSync][hook] callout Y.Doc fan-out skipped ' + JSON.stringify({
         reason: !isCRDTEnabled() ? 'crdt-disabled' : 'ydoc-null',
         documentId: opts?.documentId,
         pdfId,
@@ -805,7 +817,7 @@ export function useAnnotationCloudSync({
         }));
       }
     }
-    console.log('[CloudSync][hook] callout Y.Doc fan-out done ' + JSON.stringify({
+    cloudSyncHookDebug('[CloudSync][hook] callout Y.Doc fan-out done ' + JSON.stringify({
       documentId: opts?.documentId,
       pdfId,
       userId: opts?.userId,
@@ -846,7 +858,7 @@ export function useAnnotationCloudSync({
     const prevCount = countFabricObjects(prev);
     const currentCount = countFabricObjects(annotationsByPage);
     if (prev === undefined) {
-      console.log('[CloudSync][hook][state-obs] annotationsByPage initial ' + JSON.stringify({
+      cloudSyncHookDebug('[CloudSync][hook][state-obs] annotationsByPage initial ' + JSON.stringify({
         currentCount,
         pages: Object.keys(annotationsByPage || {}).length,
         hydrated: hydratedRef.current
@@ -869,10 +881,10 @@ export function useAnnotationCloudSync({
       if (typeof window !== 'undefined' && window.__CLOUD_SYNC_STATE_OBS_DIAG === true) {
         console.warn(message);
       } else {
-        console.log(message);
+        cloudSyncHookDebug(message);
       }
     } else if (typeof window !== 'undefined' && window.__CLOUD_SYNC_STATE_OBS_DIAG === true) {
-      console.log('[CloudSync][hook][state-obs] change ' + JSON.stringify(baseRecord));
+      cloudSyncHookDebug('[CloudSync][hook][state-obs] change ' + JSON.stringify(baseRecord));
     }
   }, [annotationsByPage]);
 
@@ -882,7 +894,7 @@ export function useAnnotationCloudSync({
     const prevCount = calloutCountSafe(prev);
     const currentCount = calloutCountSafe(callouts);
     if (prev === undefined) {
-      console.log('[CloudSync][hook][state-obs] callouts initial ' + JSON.stringify({
+      cloudSyncHookDebug('[CloudSync][hook][state-obs] callouts initial ' + JSON.stringify({
         currentCount, hydrated: hydratedRef.current
       }));
       return;
@@ -914,23 +926,23 @@ export function useAnnotationCloudSync({
         stack,
       };
       if (classification.expected) {
-        console.log('[CloudSync][hook][state-obs] callout shrink explained ' + JSON.stringify(record));
+        cloudSyncHookDebug('[CloudSync][hook][state-obs] callout shrink explained ' + JSON.stringify(record));
       } else {
         console.warn('[CloudSync][hook][state-obs] callout SHRINK suspicious ' + JSON.stringify(record));
       }
     } else if (typeof window !== 'undefined' && window.__CLOUD_SYNC_STATE_OBS_DIAG === true) {
-      console.log('[CloudSync][hook][state-obs] callout change ' + JSON.stringify(baseRecord));
+      cloudSyncHookDebug('[CloudSync][hook][state-obs] callout change ' + JSON.stringify(baseRecord));
     }
   }, [callouts]);
 
   // ---- Hydrate + migrate on document open --------------------------------
 
   useEffect(() => {
-    console.log('[CloudSync][hook] hydrate effect fired ' + JSON.stringify({
+    cloudSyncHookDebug('[CloudSync][hook] hydrate effect fired ' + JSON.stringify({
       enabled, hydrateEnabled, documentId, userId, pdfId
     }));
     if (!hydrateEnabled || !documentId || !userId || !pdfId) {
-      console.log('[CloudSync][hook] hydrate skipped — missing prerequisite ' + JSON.stringify({
+      cloudSyncHookDebug('[CloudSync][hook] hydrate skipped — missing prerequisite ' + JSON.stringify({
         hydrateEnabled, hasDocumentId: !!documentId, hasUserId: !!userId, hasPdfId: !!pdfId
       }));
       markInitialHydration({
@@ -951,7 +963,7 @@ export function useAnnotationCloudSync({
       let cloud = null;
       try {
         setStatus({ stage: 'hydrating' });
-        console.log('[CloudSync][hook] stage=hydrating');
+        cloudSyncHookDebug('[CloudSync][hook] stage=hydrating');
 
         // Phase 31 Plan 04 — cutover-aware hydrate branch.
         //
@@ -1011,7 +1023,7 @@ export function useAnnotationCloudSync({
           // Fabric JSON by iterating fabricYMap.entries() and assembling the
           // object. setAnnotationsByPage takes { [pageNum]: { version, objects } }
           // so we group per pageNumber.
-          console.log('[CloudSync][hook] cutover-complete hydrate — reading from Y.Doc ' +
+          cloudSyncHookDebug('[CloudSync][hook] cutover-complete hydrate — reading from Y.Doc ' +
             JSON.stringify({ documentId, cutoverTs }));
           let yMap;
           try { yMap = phase30Ydoc.getMap('annotations'); } catch (_e) { yMap = null; }
@@ -1066,7 +1078,7 @@ export function useAnnotationCloudSync({
           const __ydocCount = __ydocBreakdown.total;
           const __ydocLooksDegenerate = __currentStateCount >= 10
             && __ydocCount < Math.floor(__currentStateCount * 0.8);
-          console.log('[Phase31 UAT] hydrate:cutover-sealed ' + JSON.stringify({
+          cloudSyncHookDebug('[Phase31 UAT] hydrate:cutover-sealed ' + JSON.stringify({
             documentId,
             pdfId,
             cutoverTs,
@@ -1093,7 +1105,7 @@ export function useAnnotationCloudSync({
           try {
             const __yMapDiag = __phase31UatYMapByType(yMap, userId);
             const __byPageDiag = __phase31UatByPageByType(byPage);
-            console.log('[Phase31 UAT] hydrate:cutover-sealed:by-type ' + JSON.stringify({
+            cloudSyncHookDebug('[Phase31 UAT] hydrate:cutover-sealed:by-type ' + JSON.stringify({
               documentId,
               pdfFile: pdfId,
               viewerUserId: userId,
@@ -1119,15 +1131,41 @@ export function useAnnotationCloudSync({
           });
           lastCloudRefreshAtRef.current = Date.now();
           if (cancelled) {
-            console.log('[CloudSync][source-of-truth] cutover source check cancelled mid-flight');
+            cloudSyncHookDebug('[CloudSync][source-of-truth] cutover source check cancelled mid-flight');
             return;
           }
           const durableByPage = durableCloud?.annotationsByPage || {};
           const durableCallouts = Array.isArray(durableCloud?.callouts) ? durableCloud.callouts : [];
-          const durableFabricCount = countFabricObjects(durableByPage);
-          const durableCalloutCount = durableCallouts.length;
+          const safeDurableByPage = resolveSafeSnapshot({
+            current: lastByPageRef.current || {},
+            incoming: durableByPage,
+            cloudBacked: true,
+            kind: 'annotation-pages',
+            context: 'cutover-durable-fabric',
+          });
+          const safeDurableCallouts = resolveSafeSnapshot({
+            current: lastCalloutsRef.current || [],
+            incoming: durableCallouts,
+            cloudBacked: true,
+            kind: 'array',
+            context: 'cutover-durable-callouts',
+          });
+          if (safeDurableByPage.preserved || safeDurableCallouts.preserved) {
+            console.warn('[SafeSnapshot] preserved cutover state instead of applying empty durable snapshot ' + JSON.stringify({
+              documentId,
+              pdfId,
+              fabricPreserved: safeDurableByPage.preserved,
+              calloutsPreserved: safeDurableCallouts.preserved,
+              currentFabricCount: safeDurableByPage.currentCount,
+              incomingFabricCount: safeDurableByPage.incomingCount,
+              currentCalloutCount: safeDurableCallouts.currentCount,
+              incomingCalloutCount: safeDurableCallouts.incomingCount,
+            }));
+          }
+          const durableFabricCount = countFabricObjects(safeDurableByPage.value);
+          const durableCalloutCount = safeDurableCallouts.value.length;
           if (!durableCloud?.error && !queuedLocalWrites.hasPending) {
-            console.log('[CloudSync][source-of-truth] cutover initial hydrate selected Supabase durable snapshot ' + JSON.stringify({
+            cloudSyncHookDebug('[CloudSync][source-of-truth] cutover initial hydrate selected Supabase durable snapshot ' + JSON.stringify({
               documentId,
               pdfId,
               cutoverTs,
@@ -1147,8 +1185,8 @@ export function useAnnotationCloudSync({
                   durableYMap.clear();
                   durableCalloutYMap.clear();
                 }, originPayload);
-                await fanOutCrdtForAnnotationsByPage(durableByPage, { documentId, userId });
-                await fanOutCrdtForCallouts(normalizeCalloutsForSync(durableCallouts), [], { documentId, userId, ctx });
+                await fanOutCrdtForAnnotationsByPage(safeDurableByPage.value, { documentId, userId });
+                await fanOutCrdtForCallouts(normalizeCalloutsForSync(safeDurableCallouts.value), [], { documentId, userId, ctx });
               }
             } catch (reshapeErr) {
               console.warn('[CloudSync][source-of-truth] Supabase snapshot applied to UI but Y.Doc reshape failed ' + JSON.stringify({
@@ -1157,13 +1195,13 @@ export function useAnnotationCloudSync({
               }));
             }
             setAnnotationsByPage(() => {
-              lastByPageRef.current = durableByPage;
-              return durableByPage;
+              lastByPageRef.current = safeDurableByPage.value;
+              return safeDurableByPage.value;
             });
             setCallouts(() => {
-              lastCalloutsRef.current = durableCallouts;
-              lastCalloutSyncFingerprintRef.current = getCalloutSyncFingerprint(durableCallouts);
-              return durableCallouts;
+              lastCalloutsRef.current = safeDurableCallouts.value;
+              lastCalloutSyncFingerprintRef.current = getCalloutSyncFingerprint(safeDurableCallouts.value);
+              return safeDurableCallouts.value;
             });
             hydratedRef.current = true;
             ydocAuthoritativeRef.current = true;
@@ -1265,18 +1303,44 @@ export function useAnnotationCloudSync({
                 (fallbackCloud.error?.message || String(fallbackCloud.error)));
             }
           }
+          const safeYDocByPage = resolveSafeSnapshot({
+            current: lastByPageRef.current || {},
+            incoming: byPage,
+            cloudBacked: true,
+            kind: 'annotation-pages',
+            context: 'ydoc-snapshot',
+          });
+          const safeYDocCallouts = resolveSafeSnapshot({
+            current: lastCalloutsRef.current || [],
+            incoming: calloutsFromYDoc,
+            cloudBacked: true,
+            kind: 'array',
+            context: 'ydoc-callouts',
+          });
+          if (safeYDocByPage.preserved || safeYDocCallouts.preserved) {
+            console.warn('[SafeSnapshot] preserved visible state instead of applying empty Y.Doc snapshot ' + JSON.stringify({
+              documentId,
+              pdfId,
+              fabricPreserved: safeYDocByPage.preserved,
+              calloutsPreserved: safeYDocCallouts.preserved,
+              currentFabricCount: safeYDocByPage.currentCount,
+              incomingFabricCount: safeYDocByPage.incomingCount,
+              currentCalloutCount: safeYDocCallouts.currentCount,
+              incomingCalloutCount: safeYDocCallouts.incomingCount,
+            }));
+          }
           setAnnotationsByPage(() => {
             // Update lastByPageRef.current synchronously inside the setter so
             // the push useEffect's identity check (state === lastRef) returns
             // true and we don't echo the Y.Doc snapshot right back out as if
             // it were a local change.
-            lastByPageRef.current = byPage;
-            return byPage;
+            lastByPageRef.current = safeYDocByPage.value;
+            return safeYDocByPage.value;
           });
           setCallouts(() => {
-            lastCalloutsRef.current = calloutsFromYDoc;
-            lastCalloutSyncFingerprintRef.current = getCalloutSyncFingerprint(calloutsFromYDoc);
-            return calloutsFromYDoc;
+            lastCalloutsRef.current = safeYDocCallouts.value;
+            lastCalloutSyncFingerprintRef.current = getCalloutSyncFingerprint(safeYDocCallouts.value);
+            return safeYDocCallouts.value;
           });
           hydratedRef.current = true;
           ydocAuthoritativeRef.current = true;
@@ -1301,7 +1365,7 @@ export function useAnnotationCloudSync({
           // of truth. But a cold refresh must not show a blank PDF while the
           // Y.Doc provider is mounting, so we paint the existing cloud rows as
           // a temporary view and let Y.Doc replace them when it becomes ready.
-          console.log('[Phase31 UAT] hydrate:awaiting-ydoc — probing cloud rows for immediate paint ' +
+          cloudSyncHookDebug('[Phase31 UAT] hydrate:awaiting-ydoc — probing cloud rows for immediate paint ' +
             JSON.stringify({ documentId, pdfId, cutoverTs }));
           const fallbackCloud = await loadCloudWithEmptyVerify(documentId, {
             localFabricCount: countFabricObjects(annotationsByPage),
@@ -1310,7 +1374,7 @@ export function useAnnotationCloudSync({
           });
           lastCloudRefreshAtRef.current = Date.now();
           if (cancelled) {
-            console.log('[CloudSync][hook] awaiting-ydoc fallback cancelled mid-flight');
+            cloudSyncHookDebug('[CloudSync][hook] awaiting-ydoc fallback cancelled mid-flight');
             return;
           }
           const fallbackCount = countFabricObjects(fallbackCloud?.annotationsByPage);
@@ -1362,7 +1426,7 @@ export function useAnnotationCloudSync({
         }
         // Cold-doc fallback (or kill-switch off / no Y.Doc mounted yet) —
         // flow into the existing legacy hydrate below verbatim.
-        console.log('[Phase31 UAT] hydrate:legacy-fallthrough ' + JSON.stringify({
+        cloudSyncHookDebug('[Phase31 UAT] hydrate:legacy-fallthrough ' + JSON.stringify({
           documentId,
           pdfId,
           cutoverTs,
@@ -1384,7 +1448,7 @@ export function useAnnotationCloudSync({
         });
         lastCloudRefreshAtRef.current = Date.now();
         if (cancelled) {
-          console.log('[CloudSync][hook] hydrate cancelled mid-flight');
+          cloudSyncHookDebug('[CloudSync][hook] hydrate cancelled mid-flight');
           return;
         }
         if (cloud.error) {
@@ -1425,7 +1489,7 @@ export function useAnnotationCloudSync({
           const replaceFabric = migrationDone || cloudFabricPages > 0;
           const replaceCallouts = migrationDone || cloudCalloutCount > 0;
           if (replaceFabric) {
-            console.log('[CloudSync][hook] replacing local fabric state with cloud (cloud is authoritative) ' + JSON.stringify({
+            cloudSyncHookDebug('[CloudSync][hook] replacing local fabric state with cloud (cloud is authoritative) ' + JSON.stringify({
               pages: cloudFabricPages, migrationDone
             }));
             setAnnotationsByPage(() => {
@@ -1433,17 +1497,51 @@ export function useAnnotationCloudSync({
               // so the push useEffect's identity check (state === lastRef)
               // returns true and we don't echo the cloud snapshot right back
               // up as if it were a local change.
-              const next = cloud.annotationsByPage || {};
+              const safeNext = resolveSafeSnapshot({
+                current: lastByPageRef.current || {},
+                incoming: cloud.annotationsByPage || {},
+                cloudBacked: true,
+                kind: 'annotation-pages',
+                confirmedEmpty: false,
+                context: 'initial-hydrate-fabric',
+              });
+              if (safeNext.preserved) {
+                console.warn('[SafeSnapshot] preserved fabric annotations instead of applying empty initial hydrate ' + JSON.stringify({
+                  documentId,
+                  pdfId,
+                  currentCount: safeNext.currentCount,
+                  incomingCount: safeNext.incomingCount,
+                  migrationDone,
+                }));
+              }
+              const next = safeNext.value;
               lastByPageRef.current = next;
               return next;
             });
           }
           if (replaceCallouts) {
-            console.log('[CloudSync][hook] replacing local callouts with cloud (cloud is authoritative) ' + JSON.stringify({
+            cloudSyncHookDebug('[CloudSync][hook] replacing local callouts with cloud (cloud is authoritative) ' + JSON.stringify({
               count: cloudCalloutCount, migrationDone
             }));
             setCallouts(() => {
-              const next = Array.isArray(cloud.callouts) ? cloud.callouts : [];
+              const safeNext = resolveSafeSnapshot({
+                current: lastCalloutsRef.current || [],
+                incoming: Array.isArray(cloud.callouts) ? cloud.callouts : [],
+                cloudBacked: true,
+                kind: 'array',
+                confirmedEmpty: false,
+                context: 'initial-hydrate-callouts',
+              });
+              if (safeNext.preserved) {
+                console.warn('[SafeSnapshot] preserved callouts instead of applying empty initial hydrate ' + JSON.stringify({
+                  documentId,
+                  pdfId,
+                  currentCount: safeNext.currentCount,
+                  incomingCount: safeNext.incomingCount,
+                  migrationDone,
+                }));
+              }
+              const next = safeNext.value;
               lastCalloutsRef.current = next;
               return next;
             });
@@ -1451,7 +1549,7 @@ export function useAnnotationCloudSync({
         }
 
         setStatus({ stage: 'migrating' });
-        console.log('[CloudSync][hook] stage=migrating (one-time local→cloud push)');
+        cloudSyncHookDebug('[CloudSync][hook] stage=migrating (one-time local→cloud push)');
         const migration = await migrateLocalAnnotationsToCloud({
           documentId,
           userId,
@@ -1459,7 +1557,7 @@ export function useAnnotationCloudSync({
           existingCloudResult: cloud,
           onStatus: (s) => {
             if (!cancelled) {
-              console.log('[CloudSync][hook] migration progress ' + JSON.stringify(s));
+              cloudSyncHookDebug('[CloudSync][hook] migration progress ' + JSON.stringify(s));
               setStatus({ stage: 'migrating', ...s });
             }
           }
@@ -1483,7 +1581,7 @@ export function useAnnotationCloudSync({
           // — without it, anything in localStorage that doesn't yet exist
           // in cloud never reaches the other devices. Let the normal
           // push effect fire so local catches up to cloud at open time.
-          console.log('[CloudSync][hook] hydrate+migrate complete — push gate OPEN ' + JSON.stringify({
+          cloudSyncHookDebug('[CloudSync][hook] hydrate+migrate complete — push gate OPEN ' + JSON.stringify({
             migrationPushed: migration.pushed
           }));
           markInitialHydration({
@@ -1512,7 +1610,7 @@ export function useAnnotationCloudSync({
   useEffect(() => {
     if (!enabled || !documentId || !userId) return;
     if (!hydratedRef.current) {
-      console.log('[CloudSync][hook] fabric push skipped — not hydrated yet');
+      cloudSyncHookDebug('[CloudSync][hook] fabric push skipped — not hydrated yet');
       return;
     }
     const deferredFabricPush = deferredFabricPushRef.current;
@@ -1568,7 +1666,7 @@ export function useAnnotationCloudSync({
       }));
     }
     if (!pointerDownRef.current || !deferredFabricPush) {
-      console.log('[CloudSync][hook] fabric state changed — debounce push scheduled ' + JSON.stringify({
+      cloudSyncHookDebug('[CloudSync][hook] fabric state changed — debounce push scheduled ' + JSON.stringify({
         pageCount,
         objectCount,
         priorObjectCount,
@@ -1597,7 +1695,7 @@ export function useAnnotationCloudSync({
         queuedAt: Date.now()
       };
       if (!deferredFabricPush) {
-        console.log('[CloudSync][hook] fabric push deferred — pointer is down ' + JSON.stringify({
+        cloudSyncHookDebug('[CloudSync][hook] fabric push deferred — pointer is down ' + JSON.stringify({
           pageCount,
           objectCount,
           priorObjectCount
@@ -1643,7 +1741,7 @@ export function useAnnotationCloudSync({
           objectCount,
           priorObjectCount,
         });
-        console.log('[CloudSync][hook] fabric push deferred at flush — pointer is down ' + JSON.stringify({
+        cloudSyncHookDebug('[CloudSync][hook] fabric push deferred at flush — pointer is down ' + JSON.stringify({
           pageCount,
           objectCount,
           priorObjectCount,
@@ -1666,7 +1764,7 @@ export function useAnnotationCloudSync({
         priorObjectCount,
       });
       const debounceElapsedMs = Date.now() - fabricScheduledAt;
-      console.log('[CloudSync][hook] fabric push debounce elapsed — pushing now ' + JSON.stringify({
+      cloudSyncHookDebug('[CloudSync][hook] fabric push debounce elapsed — pushing now ' + JSON.stringify({
         debounceMs,
         debounceElapsedMs,
         deferredQueuedMs: isFlushingDeferredFabricPush && deferredFabricPush?.queuedAt
@@ -1685,7 +1783,7 @@ export function useAnnotationCloudSync({
       const __ydocPresent = !!phase30Ydoc;
       const __breakdownNow = __phase31UatBreakdown(pushAnnotationsByPage, userId);
       const __breakdownPrior = __phase31UatBreakdown(priorByPage, userId);
-      console.log('[Phase31 UAT] save:start ' + JSON.stringify({
+      cloudSyncHookDebug('[Phase31 UAT] save:start ' + JSON.stringify({
         documentId,
         pdfId,
         userId,
@@ -1738,7 +1836,7 @@ export function useAnnotationCloudSync({
       let deletedIds = resolvedDeleted.deletedIds;
       const explicitDeleteIds = resolvedDeleted.explicit;
       if (explicitDeleteIds && deletedIds.length > 0) {
-        console.log('[CloudSync][hook] explicit fabric delete ids accepted ' + JSON.stringify({
+        cloudSyncHookDebug('[CloudSync][hook] explicit fabric delete ids accepted ' + JSON.stringify({
           source: resolvedDeleted.source,
           action: fabricAction?.action || fabricAction?.source || (preciseFabricCommit ? 'eraser:commit' : 'unknown'),
           count: deletedIds.length,
@@ -1808,7 +1906,7 @@ export function useAnnotationCloudSync({
               byPage[pageNumber].objects.push(fabricObj);
             });
             const __resyncCount = countFabricObjects(byPage);
-            console.log('[CloudSync][hook] re-hydrate after suppress — restoring state from Y.Map ' +
+            cloudSyncHookDebug('[CloudSync][hook] re-hydrate after suppress — restoring state from Y.Map ' +
               JSON.stringify({ resyncCount: __resyncCount }));
             setAnnotationsByPage(() => {
               lastByPageRef.current = byPage;
@@ -1841,7 +1939,7 @@ export function useAnnotationCloudSync({
           deletedIds: fabricSyncDelta.deletedIds,
         }));
       }
-      console.log('[CloudSync][delta] fabric prepared ' + JSON.stringify({
+      cloudSyncHookDebug('[CloudSync][delta] fabric prepared ' + JSON.stringify({
         actionType: fabricSyncDelta.actionType,
         changedIds: fabricSyncDelta.changedIds,
         deletedIds: fabricSyncDelta.deletedIds,
@@ -1862,7 +1960,7 @@ export function useAnnotationCloudSync({
 
       let deleteFailed = false;
       if (deletedIds.length > 0) {
-        console.log('[CloudSync][hook] eraser/delete detected — removing rows from cloud ' + JSON.stringify({
+        cloudSyncHookDebug('[CloudSync][hook] eraser/delete detected — removing rows from cloud ' + JSON.stringify({
           count: deletedIds.length,
           firstFew: deletedIds.slice(0, 5)
         }));
@@ -2001,7 +2099,7 @@ export function useAnnotationCloudSync({
         // happen at the call site (Pitfall 30-4 layer 1) and again inside the
         // helper (layer 2). skipLegacy: true (legacy bulk upsert just succeeded).
         await fanOutCrdtForAnnotationsByPage(changedAnnotationsByPage, { documentId, userId, actionType: fabricSyncDelta.actionType });
-        console.log('[CloudSync][hook] fabric push synced ' + JSON.stringify({
+        cloudSyncHookDebug('[CloudSync][hook] fabric push synced ' + JSON.stringify({
           count: result.data?.length || 0
         }));
         recordAnnotationSyncPush({
@@ -2030,7 +2128,7 @@ export function useAnnotationCloudSync({
   useEffect(() => {
     if (!enabled || !documentId || !userId) return;
     if (!hydratedRef.current) {
-      console.log('[CloudSync][hook] callout push skipped — not hydrated yet');
+      cloudSyncHookDebug('[CloudSync][hook] callout push skipped — not hydrated yet');
       return;
     }
     const deferredCalloutPush = deferredCalloutPushRef.current;
@@ -2057,7 +2155,7 @@ export function useAnnotationCloudSync({
     ) {
       lastCalloutsRef.current = callouts;
       lastCalloutSyncFingerprintRef.current = lastKnownCalloutFingerprint;
-      console.log('[CloudSync][hook] callout push skipped — persisted payload unchanged ' + JSON.stringify({
+      cloudSyncHookDebug('[CloudSync][hook] callout push skipped — persisted payload unchanged ' + JSON.stringify({
         count: calloutCountSafe(pushCallouts),
         pending: pushCalloutFingerprint === pendingCalloutSyncFingerprintRef.current,
         inFlight: pushCalloutFingerprint === inFlightCalloutFingerprint,
@@ -2090,13 +2188,13 @@ export function useAnnotationCloudSync({
         classification: calloutWipeClassification,
       };
       if (calloutWipeClassification.expected) {
-        console.log('[CloudSync][hook] callout wipe explained ' + JSON.stringify(wipeRecord));
+        cloudSyncHookDebug('[CloudSync][hook] callout wipe explained ' + JSON.stringify(wipeRecord));
       } else {
         console.warn('[CloudSync][hook][SUSPICIOUS] callout push scheduled with WIPE diff ' + JSON.stringify(wipeRecord));
       }
     }
     if (!pointerDownRef.current || !deferredCalloutPush) {
-      console.log('[CloudSync][hook] callout state changed — debounce push scheduled ' + JSON.stringify({
+      cloudSyncHookDebug('[CloudSync][hook] callout state changed — debounce push scheduled ' + JSON.stringify({
         count: currentCalloutCount,
         priorCount: priorCalloutCount,
         isCalloutWipePush,
@@ -2121,7 +2219,7 @@ export function useAnnotationCloudSync({
         queuedAt: Date.now()
       };
       if (!deferredCalloutPush) {
-        console.log('[CloudSync][hook] callout push deferred — pointer is down ' + JSON.stringify({
+        cloudSyncHookDebug('[CloudSync][hook] callout push deferred — pointer is down ' + JSON.stringify({
           count: currentCalloutCount,
           priorCount: priorCalloutCount
         }));
@@ -2159,7 +2257,7 @@ export function useAnnotationCloudSync({
         priorCalloutCount,
       });
       const calloutDebounceElapsedMs = Date.now() - calloutScheduledAt;
-      console.log('[CloudSync][hook] callout push debounce elapsed — pushing now ' + JSON.stringify({
+      cloudSyncHookDebug('[CloudSync][hook] callout push debounce elapsed — pushing now ' + JSON.stringify({
         debounceMs: isCalloutWipePush ? Math.max(debounceMs, CALLOUT_WIPE_GRACE_MS) : debounceMs,
         debounceElapsedMs: calloutDebounceElapsedMs,
         actionType: 'callout:delta',
@@ -2193,7 +2291,7 @@ export function useAnnotationCloudSync({
           deletedIds: calloutSyncDelta.deletedIds,
         }));
       }
-      console.log('[CloudSync][delta] callout prepared ' + JSON.stringify({
+      cloudSyncHookDebug('[CloudSync][delta] callout prepared ' + JSON.stringify({
         actionType: calloutSyncDelta.actionType,
         changedIds: calloutSyncDelta.changedIds,
         deletedIds: calloutSyncDelta.deletedIds,
@@ -2211,7 +2309,7 @@ export function useAnnotationCloudSync({
       // propagate unconditionally on diff detection.
       let calloutDeleteFailed = false;
       if (deletedCalloutIds.length > 0) {
-        console.log('[CloudSync][hook] callout Supabase delete start ' + JSON.stringify({
+        cloudSyncHookDebug('[CloudSync][hook] callout Supabase delete start ' + JSON.stringify({
           count: deletedCalloutIds.length,
           firstFew: deletedCalloutIds.slice(0, 5)
         }));
@@ -2227,7 +2325,7 @@ export function useAnnotationCloudSync({
               window.dispatchEvent(new CustomEvent('crdt:deletions-pending'));
             }
           } else {
-            console.log('[CloudSync][hook] callout Supabase delete ok ' + JSON.stringify({
+            cloudSyncHookDebug('[CloudSync][hook] callout Supabase delete ok ' + JSON.stringify({
               count: deletedCalloutIds.length,
               firstFew: deletedCalloutIds.slice(0, 5)
             }));
@@ -2250,7 +2348,7 @@ export function useAnnotationCloudSync({
         if (calloutDeleteFailed) {
           result = { error: new Error('Callout delete backup failed') };
         } else {
-          console.log('[CloudSync][hook] callout Supabase upsert start ' + JSON.stringify({
+          cloudSyncHookDebug('[CloudSync][hook] callout Supabase upsert start ' + JSON.stringify({
             count: calloutSyncDelta.changedCount,
             changedIds: calloutSyncDelta.changedIds,
             deletedCount: deletedCalloutIds.length
@@ -2285,18 +2383,18 @@ export function useAnnotationCloudSync({
         });
         setSyncStatus({ stage: 'queued', error: result.error, kind: 'callout' });
       } else {
-        console.log('[CloudSync][hook] callout Supabase upsert ok ' + JSON.stringify({
+        cloudSyncHookDebug('[CloudSync][hook] callout Supabase upsert ok ' + JSON.stringify({
           count: result.data?.length || 0
         }));
         try {
-          console.log('[CloudSync][hook] callout Y.Doc fan-out start after Supabase success ' + JSON.stringify({
+          cloudSyncHookDebug('[CloudSync][hook] callout Y.Doc fan-out start after Supabase success ' + JSON.stringify({
             count: calloutSyncDelta.changedCount,
             changedIds: calloutSyncDelta.changedIds,
             deletedCount: deletedCalloutIds.length
           }));
           await fanOutCrdtForCallouts(normalizeCalloutsForSync(calloutSyncDelta.upsertCallouts), deletedCalloutIds, { documentId, userId, actionType: calloutSyncDelta.actionType });
           lastCalloutSyncFingerprintRef.current = pushCalloutFingerprint;
-          console.log('[CloudSync][hook] callout push synced ' + JSON.stringify({
+          cloudSyncHookDebug('[CloudSync][hook] callout push synced ' + JSON.stringify({
             count: result.data?.length || 0
           }));
           recordAnnotationSyncPush({
@@ -2380,9 +2478,31 @@ export function useAnnotationCloudSync({
           byPage[pageNumber].objects.push(fabricObj);
         });
         const __resyncCount = countFabricObjects(byPage);
-        console.log('[CloudSync][hook] dedupe-resync — restoring state ' + JSON.stringify({
+        const __currentCount = countFabricObjects(latestAnnotationsByPageRef.current);
+        const __removedCount = Number(e?.detail?.removed) || 0;
+        const decision = shouldApplyDedupeResync({
+          currentCount: __currentCount,
+          resyncCount: __resyncCount,
+          removedCount: __removedCount,
+          startupSyncInFlight: startupSyncInFlightRef.current,
+          hydrated: hydratedRef.current,
+        });
+        if (!decision.apply) {
+          cloudSyncHookDebug('[CloudSync][hook] dedupe-resync skipped unsafe shrink ' + JSON.stringify({
+            documentId,
+            removed: __removedCount,
+            currentCount: __currentCount,
+            resyncCount: __resyncCount,
+            reason: decision.reason,
+            shrink: decision.shrink,
+            startupSyncInFlight: startupSyncInFlightRef.current,
+            hydrated: hydratedRef.current,
+          }));
+          return;
+        }
+        cloudSyncHookDebug('[CloudSync][hook] dedupe-resync — restoring state ' + JSON.stringify({
           documentId,
-          removed: e?.detail?.removed,
+          removed: __removedCount,
           resyncCount: __resyncCount,
         }));
         setAnnotationsByPage(() => {
@@ -2416,7 +2536,7 @@ export function useAnnotationCloudSync({
       const pendingFabric = pendingFabricFlushRef.current;
       const pendingCallout = pendingCalloutFlushRef.current;
       if (!pendingFabric && !pendingCallout) return;
-      console.log('[CloudSync][hook] beforeunload — flushing pending pushes ' + JSON.stringify({
+      cloudSyncHookDebug('[CloudSync][hook] beforeunload — flushing pending pushes ' + JSON.stringify({
         hasFabric: !!pendingFabric,
         hasCallout: !!pendingCallout
       }));
@@ -2441,6 +2561,119 @@ export function useAnnotationCloudSync({
 
   useEffect(() => {
     if (!enabled || !documentId) return;
+
+    const restoreCutoverSnapshotIfLocalEmpty = async (contextLabel) => {
+      if (!documentId || !(ydocAuthoritativeRef.current || cutoverTsRef.current)) return false;
+
+      const localFabricCount = countFabricObjects(lastByPageRef.current);
+      const localCalloutCount = calloutCountSafe(lastCalloutsRef.current);
+      if (localFabricCount > 0 || localCalloutCount > 0) {
+        cloudSyncHookDebug('[CloudSync][cutover-recovery] skipped — local view is not empty ' + JSON.stringify({
+          contextLabel,
+          documentId,
+          pdfId,
+          cutoverTs: cutoverTsRef.current,
+          localFabricCount,
+          localCalloutCount,
+        }));
+        return true;
+      }
+
+      const queuedLocalWrites = hasQueuedLocalAnnotationWrites(documentId, userId);
+      if (queuedLocalWrites.hasPending) {
+        cloudSyncHookDebug('[CloudSync][cutover-recovery] skipped — local writes are queued ' + JSON.stringify({
+          contextLabel,
+          documentId,
+          pdfId,
+          cutoverTs: cutoverTsRef.current,
+          legacyQueueSize: queuedLocalWrites.legacyQueueSize,
+          dualWriteQueueSize: queuedLocalWrites.dualWriteQueueSize,
+        }));
+        return true;
+      }
+
+      cloudSyncHookDebug('[CloudSync][cutover-recovery] local cutover view is empty — probing Supabase durable snapshot ' + JSON.stringify({
+        contextLabel,
+        documentId,
+        pdfId,
+        cutoverTs: cutoverTsRef.current,
+      }));
+
+      try {
+        setStatus({ stage: 'syncing', source: contextLabel });
+        const fresh = await loadCloudWithEmptyVerify(documentId, {
+          localFabricCount: 0,
+          localCalloutCount: 0,
+          contextLabel,
+        });
+        lastCloudRefreshAtRef.current = Date.now();
+        if (fresh.error) {
+          console.warn('[CloudSync][cutover-recovery] Supabase durable snapshot failed ' + JSON.stringify({
+            contextLabel,
+            documentId,
+            error: fresh.error?.message || String(fresh.error),
+          }));
+          setStatus({ stage: 'error', error: fresh.error, phase: contextLabel });
+          return true;
+        }
+
+        const nextByPage = fresh.annotationsByPage || {};
+        const nextCallouts = Array.isArray(fresh.callouts) ? fresh.callouts : [];
+        const cloudFabricCount = countFabricObjects(nextByPage);
+        const cloudCalloutCount = nextCallouts.length;
+        if (cloudFabricCount === 0 && cloudCalloutCount === 0) {
+          cloudSyncHookDebug('[CloudSync][cutover-recovery] Supabase durable snapshot is also empty ' + JSON.stringify({
+            contextLabel,
+            documentId,
+            pdfId,
+            cutoverTs: cutoverTsRef.current,
+          }));
+          setStatus({ stage: 'synced', count: 0, source: contextLabel, cutoverTs: cutoverTsRef.current });
+          return true;
+        }
+
+        cloudSyncHookDebug('[CloudSync][cutover-recovery] restored blank cutover view from Supabase durable snapshot ' + JSON.stringify({
+          contextLabel,
+          documentId,
+          pdfId,
+          cutoverTs: cutoverTsRef.current,
+          cloudFabricCount,
+          cloudCalloutCount,
+        }));
+        setAnnotationsByPage(() => {
+          lastByPageRef.current = nextByPage;
+          return nextByPage;
+        });
+        setCallouts(() => {
+          lastCalloutsRef.current = nextCallouts;
+          lastCalloutSyncFingerprintRef.current = getCalloutSyncFingerprint(nextCallouts);
+          return nextCallouts;
+        });
+        hydratedRef.current = true;
+        ydocAuthoritativeRef.current = true;
+        markInitialHydration({
+          ready: true,
+          source: 'cutover-durable-snapshot-recovery',
+          cutoverTs: cutoverTsRef.current,
+          count: cloudFabricCount,
+          calloutCount: cloudCalloutCount,
+        });
+        setStatus({
+          stage: 'synced',
+          count: cloudFabricCount + cloudCalloutCount,
+          source: 'cutover-durable-snapshot-recovery',
+          cutoverTs: cutoverTsRef.current,
+        });
+      } catch (err) {
+        console.warn('[CloudSync][cutover-recovery] threw ' + JSON.stringify({
+          contextLabel,
+          documentId,
+          error: err?.message || String(err),
+        }));
+        setStatus({ stage: 'error', error: err, phase: contextLabel });
+      }
+      return true;
+    };
 
     // 2026-04-25 (revised): the hook-side recently-pushed-id filter was
     // too aggressive — when both devices pushed full-state bulks, every
@@ -2513,7 +2746,7 @@ export function useAnnotationCloudSync({
         onDeleteFallback: () => {
           if (!documentId) return;
           if (ydocAuthoritativeRef.current || cutoverTsRef.current) {
-            console.log('[Phase31 UAT] delete-fallback refetch skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth ' +
+            cloudSyncHookDebug('[Phase31 UAT] delete-fallback refetch skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth ' +
               JSON.stringify({ documentId, pdfId, cutoverTs: cutoverTsRef.current, ydocAuthoritative: ydocAuthoritativeRef.current }));
             return;
           }
@@ -2526,17 +2759,47 @@ export function useAnnotationCloudSync({
               }
               const nextByPage = fresh.annotationsByPage || {};
               const nextCallouts = Array.isArray(fresh.callouts) ? fresh.callouts : [];
-              console.log('[CloudSync][hook] delete-fallback reconcile ' + JSON.stringify({
+              cloudSyncHookDebug('[CloudSync][hook] delete-fallback reconcile ' + JSON.stringify({
                 pages: Object.keys(nextByPage).length,
                 callouts: nextCallouts.length
               }));
               setAnnotationsByPage(() => {
-                lastByPageRef.current = nextByPage;
-                return nextByPage;
+                const safeNext = resolveSafeSnapshot({
+                  current: lastByPageRef.current || {},
+                  incoming: nextByPage,
+                  cloudBacked: true,
+                  kind: 'annotation-pages',
+                  context: 'delete-fallback-fabric',
+                });
+                if (safeNext.preserved) {
+                  console.warn('[SafeSnapshot] preserved fabric annotations instead of applying empty delete-fallback refetch ' + JSON.stringify({
+                    documentId,
+                    pdfId,
+                    currentCount: safeNext.currentCount,
+                    incomingCount: safeNext.incomingCount,
+                  }));
+                }
+                lastByPageRef.current = safeNext.value;
+                return safeNext.value;
               });
               setCallouts(() => {
-                lastCalloutsRef.current = nextCallouts;
-                return nextCallouts;
+                const safeNext = resolveSafeSnapshot({
+                  current: lastCalloutsRef.current || [],
+                  incoming: nextCallouts,
+                  cloudBacked: true,
+                  kind: 'array',
+                  context: 'delete-fallback-callouts',
+                });
+                if (safeNext.preserved) {
+                  console.warn('[SafeSnapshot] preserved callouts instead of applying empty delete-fallback refetch ' + JSON.stringify({
+                    documentId,
+                    pdfId,
+                    currentCount: safeNext.currentCount,
+                    incomingCount: safeNext.incomingCount,
+                  }));
+                }
+                lastCalloutsRef.current = safeNext.value;
+                return safeNext.value;
               });
             } catch (err) {
               console.warn('[CloudSync][hook] delete-fallback threw: ' + (err?.message || err));
@@ -2562,12 +2825,11 @@ export function useAnnotationCloudSync({
           // replaces the good 3644-entry Y.Doc view with the stale 3058-row
           // snapshot and the same Drawboard ink turns jagged/duplicated again.
           if (ydocAuthoritativeRef.current || cutoverTsRef.current) {
-            console.log('[Phase31 UAT] post-subscribe catch-up skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth ' +
-              JSON.stringify({ documentId, pdfId, cutoverTs: cutoverTsRef.current, ydocAuthoritative: ydocAuthoritativeRef.current }));
+            restoreCutoverSnapshotIfLocalEmpty('cutover-post-subscribe-empty-view-recovery');
             return;
           }
           if (startupSyncInFlightRef.current || !hydratedRef.current) {
-            console.log('[CloudSync][hook] post-subscribe catch-up skipped — startup sync already in flight');
+            cloudSyncHookDebug('[CloudSync][hook] post-subscribe catch-up skipped — startup sync already in flight');
             return;
           }
           // Cutover-sealed documents are CRDT/Y.Doc authoritative. The legacy
@@ -2576,12 +2838,12 @@ export function useAnnotationCloudSync({
           // replace the correct 3644-entry Y.Doc view with the stale 3058-row
           // snapshot and make Drawboard ink look jagged/duplicated again.
           if (cutoverTsRef.current && phase30Ydoc) {
-            console.log('[Phase31 UAT] post-subscribe catch-up skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth ' +
+            cloudSyncHookDebug('[Phase31 UAT] post-subscribe catch-up skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth ' +
               JSON.stringify({ documentId, pdfId, cutoverTs: cutoverTsRef.current }));
             return;
           }
           if (Date.now() - lastCloudRefreshAtRef.current < RECENT_CLOUD_REFRESH_SKIP_MS) {
-            console.log('[CloudSync][hook] post-subscribe catch-up skipped — cloud snapshot is fresh');
+            cloudSyncHookDebug('[CloudSync][hook] post-subscribe catch-up skipped — cloud snapshot is fresh');
             return;
           }
           (async () => {
@@ -2617,17 +2879,49 @@ export function useAnnotationCloudSync({
               const subFreshCallouts = Array.isArray(fresh.callouts) ? fresh.callouts : [];
               if (subMigrationDone || Object.keys(subFresh).length > 0) {
                 setAnnotationsByPage(() => {
-                  lastByPageRef.current = subFresh;
-                  return subFresh;
+                  const safeNext = resolveSafeSnapshot({
+                    current: lastByPageRef.current || {},
+                    incoming: subFresh,
+                    cloudBacked: true,
+                    kind: 'annotation-pages',
+                    context: 'post-subscribe-fabric',
+                  });
+                  if (safeNext.preserved) {
+                    console.warn('[SafeSnapshot] preserved fabric annotations instead of applying empty post-subscribe snapshot ' + JSON.stringify({
+                      documentId,
+                      pdfId,
+                      currentCount: safeNext.currentCount,
+                      incomingCount: safeNext.incomingCount,
+                      subMigrationDone,
+                    }));
+                  }
+                  lastByPageRef.current = safeNext.value;
+                  return safeNext.value;
                 });
               }
               if (subMigrationDone || subFreshCallouts.length > 0) {
                 setCallouts(() => {
-                  lastCalloutsRef.current = subFreshCallouts;
-                  return subFreshCallouts;
+                  const safeNext = resolveSafeSnapshot({
+                    current: lastCalloutsRef.current || [],
+                    incoming: subFreshCallouts,
+                    cloudBacked: true,
+                    kind: 'array',
+                    context: 'post-subscribe-callouts',
+                  });
+                  if (safeNext.preserved) {
+                    console.warn('[SafeSnapshot] preserved callouts instead of applying empty post-subscribe snapshot ' + JSON.stringify({
+                      documentId,
+                      pdfId,
+                      currentCount: safeNext.currentCount,
+                      incomingCount: safeNext.incomingCount,
+                      subMigrationDone,
+                    }));
+                  }
+                  lastCalloutsRef.current = safeNext.value;
+                  return safeNext.value;
                 });
               }
-              console.log('[CloudSync][hook] post-subscribe catch-up rehydrate complete ' + JSON.stringify({
+              cloudSyncHookDebug('[CloudSync][hook] post-subscribe catch-up rehydrate complete ' + JSON.stringify({
                 pagesFromCloud: fresh.annotationsByPage ? Object.keys(fresh.annotationsByPage).length : 0,
                 calloutsFromCloud: Array.isArray(fresh.callouts) ? fresh.callouts.length : 0
               }));
@@ -2656,7 +2950,7 @@ export function useAnnotationCloudSync({
     const onFocus = () => {
       if (!documentId) return;
       if (startupSyncInFlightRef.current || !hydratedRef.current) {
-        console.log('[CloudSync][hook] focus rehydrate skipped — startup sync already in flight');
+        cloudSyncHookDebug('[CloudSync][hook] focus rehydrate skipped — startup sync already in flight');
         return;
       }
       // Phase 31 hotfix (2026-05-03) — sealed-doc gate. After the cutover
@@ -2668,12 +2962,11 @@ export function useAnnotationCloudSync({
       // CRDT-only writes — exactly the regression captured in Logs/
       // 2026-05-03_15-20-12 where a placed counter pin was overwritten.
       if (ydocAuthoritativeRef.current || cutoverTsRef.current || (cutoverTsRef.current && phase30Ydoc)) {
-        console.log('[Phase31 UAT] focus rehydrate skipped — doc is cutover-sealed, Y.Doc + realtime is source of truth ' +
-          JSON.stringify({ documentId, pdfId, cutoverTs: cutoverTsRef.current, ydocAuthoritative: ydocAuthoritativeRef.current }));
+        restoreCutoverSnapshotIfLocalEmpty('cutover-focus-empty-view-recovery');
         return;
       }
       if (Date.now() - lastCloudRefreshAtRef.current < RECENT_CLOUD_REFRESH_SKIP_MS) {
-        console.log('[CloudSync][hook] focus rehydrate skipped — cloud snapshot is fresh');
+        cloudSyncHookDebug('[CloudSync][hook] focus rehydrate skipped — cloud snapshot is fresh');
         return;
       }
       (async () => {
@@ -2746,16 +3039,48 @@ export function useAnnotationCloudSync({
             // already reflects the user's local deletes — there's nothing to
             // strip. Apply the cloud snapshot directly.
             setAnnotationsByPage(() => {
-              lastByPageRef.current = focusFresh;
-              return focusFresh;
+              const safeNext = resolveSafeSnapshot({
+                current: lastByPageRef.current || {},
+                incoming: focusFresh,
+                cloudBacked: true,
+                kind: 'annotation-pages',
+                context: 'focus-rehydrate-fabric',
+              });
+              if (safeNext.preserved) {
+                console.warn('[SafeSnapshot] preserved fabric annotations instead of applying empty focus snapshot ' + JSON.stringify({
+                  documentId,
+                  pdfId,
+                  currentCount: safeNext.currentCount,
+                  incomingCount: safeNext.incomingCount,
+                  focusMigrationDone,
+                }));
+              }
+              lastByPageRef.current = safeNext.value;
+              return safeNext.value;
             });
           }
           if (!skipReplace && (focusMigrationDone || focusFreshCallouts.length > 0)) {
             // 2026-04-30 (Phase 35 Plan 05) — same retirement as the fabric
             // branch directly above. Apply cloud callout snapshot directly.
             setCallouts(() => {
-              lastCalloutsRef.current = focusFreshCallouts;
-              return focusFreshCallouts;
+              const safeNext = resolveSafeSnapshot({
+                current: lastCalloutsRef.current || [],
+                incoming: focusFreshCallouts,
+                cloudBacked: true,
+                kind: 'array',
+                context: 'focus-rehydrate-callouts',
+              });
+              if (safeNext.preserved) {
+                console.warn('[SafeSnapshot] preserved callouts instead of applying empty focus snapshot ' + JSON.stringify({
+                  documentId,
+                  pdfId,
+                  currentCount: safeNext.currentCount,
+                  incomingCount: safeNext.incomingCount,
+                  focusMigrationDone,
+                }));
+              }
+              lastCalloutsRef.current = safeNext.value;
+              return safeNext.value;
             });
           }
           // Focus catch-up done — back to a calm "synced" state.
@@ -2857,7 +3182,7 @@ export function useAnnotationCloudSync({
     const queueBefore = documentId ? getQueueSize(documentId) : 0;
     const fabricObjectCount = countFabricObjects(lastByPageRef.current);
     const calloutObjectCount = calloutCountSafe(lastCalloutsRef.current);
-    console.log('[CloudSync][forceFlush] start ' + JSON.stringify({
+    cloudSyncHookDebug('[CloudSync][forceFlush] start ' + JSON.stringify({
       documentId,
       pdfId,
       hasUserId: Boolean(userId),
@@ -2868,7 +3193,7 @@ export function useAnnotationCloudSync({
       queueBefore,
     }));
     if (!documentId || !userId) {
-      console.log('[CloudSync][forceFlush] skipped ' + JSON.stringify({
+      cloudSyncHookDebug('[CloudSync][forceFlush] skipped ' + JSON.stringify({
         hasDocumentId: Boolean(documentId),
         hasUserId: Boolean(userId),
       }));
@@ -2921,7 +3246,7 @@ export function useAnnotationCloudSync({
     try {
       if (pendingFabric) {
         consumedPendingFabric = true;
-        console.log('[CloudSync][forceFlush] consuming pending fabric flush');
+        cloudSyncHookDebug('[CloudSync][forceFlush] consuming pending fabric flush');
         await pendingFabric();
       } else if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
@@ -2930,7 +3255,7 @@ export function useAnnotationCloudSync({
 
       if (pendingCallout) {
         consumedPendingCallout = true;
-        console.log('[CloudSync][forceFlush] consuming pending callout flush');
+        cloudSyncHookDebug('[CloudSync][forceFlush] consuming pending callout flush');
         await pendingCallout();
       }
     } catch (err) {
@@ -2975,7 +3300,7 @@ export function useAnnotationCloudSync({
       && remainingAfterDrain === 0;
 
     if (noPendingDurableWork) {
-      console.log('[CloudSync][forceFlush] no pending work; preserving synced state');
+      cloudSyncHookDebug('[CloudSync][forceFlush] no pending work; preserving synced state');
     }
 
     if (!noPendingDurableWork && !consumedPendingFabric && lastByPageRef.current) {
@@ -3028,7 +3353,7 @@ export function useAnnotationCloudSync({
     }
 
     const flushedCount = directFabricRows + directCalloutRows;
-    console.log('[CloudSync][forceFlush] synced ' + JSON.stringify({
+    cloudSyncHookDebug('[CloudSync][forceFlush] synced ' + JSON.stringify({
       consumedPendingFabric,
       consumedPendingCallout,
       directFabricRows,
@@ -3091,7 +3416,7 @@ async function loadCloudWithEmptyVerify(documentId, opts = {}) {
   const firstEmpty = firstFabric === 0 && firstCallouts === 0;
   const localHasData = localFabricCount > 0 || localCalloutCount > 0;
 
-  console.log('[CloudSync][verify] first read summary ' + JSON.stringify({
+  cloudSyncHookDebug('[CloudSync][verify] first read summary ' + JSON.stringify({
     contextLabel,
     documentId,
     elapsedMs: Date.now() - t0,
@@ -3108,7 +3433,7 @@ async function loadCloudWithEmptyVerify(documentId, opts = {}) {
   if (!firstEmpty || !localHasData) return first;
 
   const auth = await getAuthSnapshot();
-  console.warn('[CloudSync][verify] empty cloud + non-empty device — verifying ' + JSON.stringify({
+  cloudSyncHookDebug('[CloudSync][verify] empty cloud + non-empty device — verifying ' + JSON.stringify({
     contextLabel,
     documentId,
     localFabricCount,
@@ -3134,7 +3459,7 @@ async function loadCloudWithEmptyVerify(documentId, opts = {}) {
   const secondEmpty = secondFabric === 0 && secondCallouts === 0;
   const authAfter = await getAuthSnapshot();
 
-  console.warn('[CloudSync][verify] verification result ' + JSON.stringify({
+  cloudSyncHookDebug('[CloudSync][verify] verification result ' + JSON.stringify({
     contextLabel,
     documentId,
     elapsedMs: Date.now() - t1,

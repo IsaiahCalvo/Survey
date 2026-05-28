@@ -44,6 +44,13 @@ const CUSTOM_PROPS = [
 
 const SHAPE_TOOLS = ['rect', 'ellipse', 'line', 'arrow', 'survey-marker'];
 
+export function configureCanvasForDrawingTool(canvas, activeTool) {
+  if (!canvas) return false;
+  const isShape = SHAPE_TOOLS.includes(activeTool);
+  canvas.isDrawingMode = !isShape;
+  return isShape;
+}
+
 function createAnnotationId(prefix = 'anno') {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
@@ -181,8 +188,14 @@ const FabricDrawingCanvas = memo(({
   pageHeight,
   activeTool,
   strokeColor,
+  strokeOpacity,
+  fillColor,
+  fillOpacity,
   highlightColor,
   strokeWidth,
+  arrowheadStyle,
+  lineBorderStyle,
+  cloudIntensity,
   annotations,
   onStrokeCommit,
   onSurveyMarkerCreated,
@@ -205,6 +218,12 @@ const FabricDrawingCanvas = memo(({
 
   // Refs to avoid stale closures in event handlers
   const activeToolRef = useRef(activeTool);
+  const arrowheadStyleRef = useRef(arrowheadStyle);
+  const lineBorderStyleRef = useRef(lineBorderStyle);
+  const strokeOpacityRef = useRef(strokeOpacity);
+  const fillColorRef = useRef(fillColor);
+  const fillOpacityRef = useRef(fillOpacity);
+  const cloudIntensityRef = useRef(cloudIntensity);
   const selectedModuleIdRef = useRef(selectedModuleId);
   const selectedSpaceIdRef = useRef(selectedSpaceId);
   const activeRegionIdRef = useRef(activeRegionId);
@@ -213,7 +232,6 @@ const FabricDrawingCanvas = memo(({
   const onStrokeCommitRef = useRef(onStrokeCommit);
   const onSurveyMarkerCreatedRef = useRef(onSurveyMarkerCreated);
   const initialZoomGenRef = useRef(zoomGeneration);
-  const isDisposingRef = useRef(false);
   const drawDiagGestureRef = useRef(null);
 
   const shouldAssignRegionId = () => {
@@ -241,13 +259,22 @@ const FabricDrawingCanvas = memo(({
     return true;
   };
 
+  const composeColor = (hex, opacityPct) => {
+    if (!hex || hex === 'transparent') return 'transparent';
+    const alpha = Math.max(0, Math.min(1, (opacityPct ?? 100) / 100));
+    if (/^#[0-9a-fA-F]{6}$/.test(hex)) {
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+    return hex;
+  };
+
   // Pre-dispose callback: flush in-progress stroke before canvas.off()/dispose()
   // so that the path:created handler is still bound when the flush fires it.
-  // isDisposingRef flag tells path:created to keep the path on canvas (visual bridge
-  // until React removes the DOM) instead of removing it.
   const onBeforeDisposeRef = useRef((canvas) => {
     if (canvas._isCurrentlyDrawing && canvas.freeDrawingBrush) {
-      isDisposingRef.current = true;
       try {
         canvas.freeDrawingBrush.onMouseUp({ e: new MouseEvent('mouseup') });
       } catch (err) {
@@ -308,6 +335,15 @@ const FabricDrawingCanvas = memo(({
     // path:created handler -- per-stroke commit
     canvas.on('path:created', (e) => {
       if (!e.path) return;
+      if (SHAPE_TOOLS.includes(activeToolRef.current)) {
+        canvas.remove(e.path);
+        canvas.renderAll();
+        console.warn('[DrawCanvas] ignored free-draw path while shape tool active', {
+          pageNumber,
+          activeTool: activeToolRef.current,
+        });
+        return;
+      }
 
       e.path.set({
         // strokeUniform deliberately NOT set for pen/highlighter paths.
@@ -350,12 +386,6 @@ const FabricDrawingCanvas = memo(({
       // Track session path for undo sync (count-based, object not needed on Canvas)
       sessionPathsRef.current.push(e.path);
 
-      // Remove committed path from Canvas — SVG layer is the display source.
-      // Without this, the Canvas path and SVG path overlap at initial zoom but
-      // diverge after zoom (Canvas doesn't resize, SVG viewBox auto-scales),
-      // causing visible stroke duplication.
-      canvas.remove(e.path);
-
       // Build updated annotations by appending new path
       const currentAnnotations = annotationsRef.current;
       const updated = {
@@ -367,14 +397,11 @@ const FabricDrawingCanvas = memo(({
         action: activeToolRef.current === 'highlighter' ? 'highlight-stroke' : 'pen-stroke',
       });
 
-      // During dispose: flushSync forces synchronous SVG re-render so the
-      // stroke is visible before Canvas DOM is removed (prevents 1-frame flicker).
-      // Dev-mode React warns about flushSync in lifecycle — harmless, no-op in prod.
-      if (isDisposingRef.current) {
-        flushSync(() => onStrokeCommitRef.current(updated));
-      } else {
-        onStrokeCommitRef.current(updated);
-      }
+      // Update React before removing Fabric's live preview path. If the path is
+      // removed first, the user sees a blank frame before SVG takes over.
+      flushSync(() => onStrokeCommitRef.current(updated));
+      canvas.remove(e.path);
+      canvas.renderAll();
     });
 
     const onFreeDrawMouseDown = () => {
@@ -419,9 +446,9 @@ const FabricDrawingCanvas = memo(({
     const canvas = fabricRef.current;
     if (!canvas) return;
 
-    const isShape = SHAPE_TOOLS.includes(activeToolRef.current);
-    canvas.isDrawingMode = !isShape;
-    console.log(`[DrawCanvas p${pageNumber}] shape effect — tool=${activeToolRef.current}, isShape=${isShape}, isDrawingMode=${canvas.isDrawingMode}`);
+    activeToolRef.current = activeTool;
+    const isShape = configureCanvasForDrawingTool(canvas, activeTool);
+    console.log(`[DrawCanvas p${pageNumber}] shape effect — tool=${activeTool}, isShape=${isShape}, isDrawingMode=${canvas.isDrawingMode}`);
     if (!isShape) return;
 
     const getPointer = (e) => canvas.getPointer(e.e);
@@ -459,6 +486,27 @@ const FabricDrawingCanvas = memo(({
       // Tag line/arrow with tool so SVG renderer can differentiate
       if (tool === 'line' || tool === 'arrow') {
         shapeJSON.tool = tool;
+        const headStyle = arrowheadStyleRef.current;
+        if (headStyle) {
+          shapeJSON.data = { ...(shapeJSON.data || {}), arrowheadStyle: headStyle };
+        }
+      }
+
+      if (tool === 'arrow' || tool === 'line' || tool === 'rect' || tool === 'ellipse') {
+        const borderStyle = lineBorderStyleRef.current;
+        if (borderStyle === 'cloud' && tool === 'rect') {
+          shapeJSON.strokeDashArray = null;
+          shapeJSON.data = {
+            ...(shapeJSON.data || {}),
+            pdfCloudIntensity: Math.max(1, Number(cloudIntensityRef.current) || 2),
+          };
+        } else if (borderStyle === 'dashed') {
+          shapeJSON.strokeDashArray = [6, 4];
+        } else if (borderStyle === 'dotted') {
+          shapeJSON.strokeDashArray = [2, 4];
+        } else {
+          shapeJSON.strokeDashArray = null;
+        }
       }
 
       const serializedOuterBounds = geometryFromSerializedShape(shapeJSON);
@@ -540,13 +588,14 @@ const FabricDrawingCanvas = memo(({
       state.lastPreviewGeometry = null;
 
       const tool = activeToolRef.current;
-      const color = strokeColor;
+      const color = composeColor(strokeColor, strokeOpacityRef.current);
+      const fill = composeColor(fillColorRef.current, fillOpacityRef.current);
       const sw = strokeWidth;
 
       if (tool === 'rect') {
         state.shape = new fabric.Rect({
           left: pointer.x, top: pointer.y, width: 0, height: 0,
-          fill: 'transparent', stroke: color, strokeWidth: sw, strokeUniform: true,
+          fill, stroke: color, strokeWidth: sw, strokeUniform: true,
         });
       } else if (tool === 'survey-marker') {
         state.shape = new fabric.Rect({
@@ -562,7 +611,7 @@ const FabricDrawingCanvas = memo(({
       } else if (tool === 'ellipse') {
         state.shape = new fabric.Ellipse({
           left: pointer.x, top: pointer.y, rx: 0, ry: 0,
-          fill: 'transparent', stroke: color, strokeWidth: sw, strokeUniform: true,
+          fill, stroke: color, strokeWidth: sw, strokeUniform: true,
         });
       } else if (tool === 'line' || tool === 'arrow') {
         state.shape = new fabric.Line([pointer.x, pointer.y, pointer.x, pointer.y], {
@@ -734,6 +783,13 @@ const FabricDrawingCanvas = memo(({
   useEffect(() => {
     activeToolRef.current = activeTool;
   }, [activeTool]);
+
+  useEffect(() => { arrowheadStyleRef.current = arrowheadStyle; }, [arrowheadStyle]);
+  useEffect(() => { lineBorderStyleRef.current = lineBorderStyle; }, [lineBorderStyle]);
+  useEffect(() => { strokeOpacityRef.current = strokeOpacity; }, [strokeOpacity]);
+  useEffect(() => { fillColorRef.current = fillColor; }, [fillColor]);
+  useEffect(() => { fillOpacityRef.current = fillOpacity; }, [fillOpacity]);
+  useEffect(() => { cloudIntensityRef.current = cloudIntensity; }, [cloudIntensity]);
 
   useEffect(() => {
     selectedModuleIdRef.current = selectedModuleId;

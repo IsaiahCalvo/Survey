@@ -18,6 +18,11 @@ import {
   parsePdfAppAnnotationMetadata,
 } from './pdfAppAnnotationMetadata.js';
 
+const pdfImportDebug = (...args) => {
+  if (typeof window === 'undefined' || window.__PDF_IMPORT_DEBUG !== true) return;
+  try { console.debug(...args); } catch { /* ignore debug logging failures */ }
+};
+
 /**
  * PDF Annotation Importer
  * Parses existing PDF annotations and converts them to Fabric.js objects
@@ -3286,7 +3291,7 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
     window.__nativePdfAnnotationLayerDiag = nativeLayerPolicyByPage;
   }
 
-  console.log('[PDFCounterImport] summary ' + JSON.stringify({
+  pdfImportDebug('[PDFCounterImport] summary ' + JSON.stringify({
     marker: PDF_COUNTER_SUBJECT,
     metadataKey: PDF_COUNTER_METADATA_KEY,
     counterAnnotationsImported,
@@ -3297,7 +3302,7 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
     appCalloutAnnotationsImported,
     appCalloutPiecesSkipped
   }));
-  console.log('[PDFAppLayerStateImport] summary ' + JSON.stringify({
+  pdfImportDebug('[PDFAppLayerStateImport] summary ' + JSON.stringify({
     found: Boolean(appLayerState),
     documentId: appLayerState?.documentId || null,
     exportId: appLayerState?.exportId || null,

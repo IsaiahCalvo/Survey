@@ -87,9 +87,9 @@ test(
 );
 
 // Test 3: token thunk freshness — verifies the wrapper passes a thunk (not a static token)
-// so Hocuspocus calls supabase.auth.getSession() on every reconnect (Pitfall 1 defense).
+// so Hocuspocus resolves the current Supabase session on every reconnect (Pitfall 1 defense).
 test(
-  'HocuspocusYjsProvider: passes a token thunk that calls supabase.auth.getSession() (fresh JWT every reconnect)',
+  'HocuspocusYjsProvider: passes a token thunk that resolves the current Supabase session (fresh JWT every reconnect)',
   { skip: targetMissingReason || packageMissingReason },
   async () => {
     const Y = await import('yjs');

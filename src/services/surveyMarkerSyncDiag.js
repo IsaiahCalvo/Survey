@@ -1,7 +1,7 @@
 // src/services/surveyMarkerSyncDiag.js
 //
 // Survey marker cross-device sync diagnostic logger. Production-stripped, dev-only.
-// Default: ON in dev mode. User can hard-disable with `window.__surveyMarkerSyncDiag = false`.
+// Default: OFF. Enable temporarily with `window.__surveyMarkerSyncDiag = true`.
 //
 // Per project feedback rules:
 //   - feedback_diagnostic_logs_must_identify_pdf — every line records the PDF
@@ -36,8 +36,7 @@ const isProd =
 function isEnabled() {
   if (isProd) return false;
   if (typeof window === 'undefined') return false;
-  if (window.__surveyMarkerSyncDiag === false) return false;
-  return true;
+  return window.__surveyMarkerSyncDiag === true;
 }
 
 function pdfName() {

@@ -78,6 +78,11 @@ const OVERLAY_OPEN_EVENT = 'survey:page-annotation-overlay-open';
 const OVERLAY_DISMISS_ANIMATION_MS = 100;
 const SELECT_DELETE_ONLY_PDF_MARKUP_TYPES = new Set(['Underline', 'StrikeOut', 'Squiggly']);
 
+const palDebug = (...args) => {
+  if (typeof window === 'undefined' || window.__PAL_DEBUG !== true) return;
+  try { console.debug(...args); } catch { /* ignore debug logging failures */ }
+};
+
 const getPdfAnnotationType = (obj) => obj?.pdfAnnotationType || obj?.data?.pdfAnnotationType || null;
 const isSelectDeleteOnlyPdfMarkupObject = (obj) => (
   Boolean(obj?.isPdfImported) && SELECT_DELETE_ONLY_PDF_MARKUP_TYPES.has(getPdfAnnotationType(obj))
@@ -3625,7 +3630,7 @@ const PageAnnotationLayer = memo(({
 
     debugLog('[ContextMenuDebug]', entry);
     try {
-      console.log('[ContextMenuDebugJSON]', JSON.stringify(entry));
+      palDebug('[ContextMenuDebugJSON]', JSON.stringify(entry));
     } catch (error) {
       debugWarn('[ContextMenuDebug] Failed to serialize entry', error);
     }
@@ -5213,7 +5218,7 @@ const PageAnnotationLayer = memo(({
           obj.setCoords();
         });
         if (importedConversionRows.length > 0) {
-          console.log(`[PAL-Imported p${pageNumber}] loadAnnotations — imported=${importedConversionRows.length}, scale=${scale}, isZooming=${isZoomingRef.current}, isInteracting=${isInteractingRef.current}, rows=${JSON.stringify(importedConversionRows.slice(0, 12))}`);
+          palDebug(`[PAL-Imported p${pageNumber}] loadAnnotations — imported=${importedConversionRows.length}, scale=${scale}, isZooming=${isZoomingRef.current}, isInteracting=${isInteractingRef.current}, rows=${JSON.stringify(importedConversionRows.slice(0, 12))}`);
         }
         debugMark('fabric_renderStart', { page: pageNumber, source: 'loadAnnotations' });
         canvas.renderAll();
@@ -5237,7 +5242,7 @@ const PageAnnotationLayer = memo(({
     const countChanged = previousDebug.objectCount !== nextObjectCount || previousDebug.importedCount !== nextImportedCount;
 
     if (signatureChanged || countChanged || isZoomingRef.current || isInteractingRef.current) {
-      console.log(
+      palDebug(
         `[PAL-Annotations p${pageNumber}] prop change — objects=${previousDebug.objectCount}->${nextObjectCount}, imported=${previousDebug.importedCount}->${nextImportedCount}, signatureChanged=${signatureChanged}, isZooming=${isZoomingRef.current}, isInteracting=${isInteractingRef.current}, activeSpaceId=${activeSpaceIdRef.current}, selectedSpaceId=${selectedSpaceIdRef.current}`
       );
     }
@@ -5399,7 +5404,7 @@ const PageAnnotationLayer = memo(({
         }
       }
     }
-    console.log(`[PAL-Debug p${pageNumber}] Canvas INIT — scale=${scale}, initScale=${initScale}, width=${width}, height=${height}, containerW=${initContainerEl?.offsetWidth}`);
+    palDebug(`[PAL-Debug p${pageNumber}] Canvas INIT — scale=${scale}, initScale=${initScale}, width=${width}, height=${height}, containerW=${initContainerEl?.offsetWidth}`);
 
     const canvas = new Canvas(canvasRef.current, {
       width: Math.floor(width * initScale),
@@ -5442,13 +5447,13 @@ const PageAnnotationLayer = memo(({
     fabricRef.current = canvas;
     setIsCanvasReady(true);
     debugMark('pal_mount', { page: pageNumber });
-    console.log(`[PAL-CTX register] page=${pageNumber} (from mount useEffect)`);
+    palDebug(`[PAL-CTX register] page=${pageNumber} (from mount useEffect)`);
     contextMenuBridge.register(pageNumber, (e, annotationIndex) => {
       let resolvedTarget = null;
       if (annotationIndex != null && fabricRef.current?._objects) {
         resolvedTarget = fabricRef.current._objects[annotationIndex] || null;
       }
-      console.log(`[PAL-CTX dispatch] page=${pageNumber} annoIdx=${annotationIndex} target=${resolvedTarget?.type || 'null'}`);
+      palDebug(`[PAL-CTX dispatch] page=${pageNumber} annoIdx=${annotationIndex} target=${resolvedTarget?.type || 'null'}`);
       handleContextMenu(e, resolvedTarget);
     });
     // Load initial annotations
@@ -6438,7 +6443,7 @@ const PageAnnotationLayer = memo(({
       const { x, y } = canvas.getPointer(opt.e);
       const pointer = { x, y }; // Ensure pointer object exists
       if (currentTool === 'counter') {
-        console.log(`[Counter p${pageNumber}] handleMouseDown ENTRY — currentTool=${currentTool}, x=${x}, y=${y}, isRightClick=${isRightClick}, target=${opt.target?.type || 'none'}`);
+        palDebug(`[Counter p${pageNumber}] handleMouseDown ENTRY — currentTool=${currentTool}, x=${x}, y=${y}, isRightClick=${isRightClick}, target=${opt.target?.type || 'none'}`);
       }
 
       if (!isRightClick && contextMenuVisibleRef.current) {
@@ -6600,7 +6605,7 @@ const PageAnnotationLayer = memo(({
       ds.isDrawingShape = false;
       let temp = null;
       if (currentTool === 'counter') {
-        console.log(`[Counter p${pageNumber}] REACHED shape tools dispatch section — currentTool=${currentTool}`);
+        palDebug(`[Counter p${pageNumber}] REACHED shape tools dispatch section — currentTool=${currentTool}`);
       }
       if (currentTool === 'survey-marker') {
         // SurveyMarker tool: create a clear selection rectangle (transparent fill, visible border)
@@ -6633,7 +6638,7 @@ const PageAnnotationLayer = memo(({
         canvas.add(temp);
         return;
       } else if (currentTool === 'counter') {
-        console.log(`[Counter p${pageNumber}] mouse:down fired — currentTool=counter, x=${x}, y=${y}, strokeColor=${currentStrokeColor}, canvasObjs=${canvas.getObjects().length}`);
+        palDebug(`[Counter p${pageNumber}] mouse:down fired — currentTool=counter, x=${x}, y=${y}, strokeColor=${currentStrokeColor}, canvasObjs=${canvas.getObjects().length}`);
         // Click-to-drop counter (Shottr-style): one click places one counter,
         // tool stays active for rapid drops. Number is derived at render time
         // from creation order via renumberCounters in App.jsx — never trust the
@@ -6672,10 +6677,10 @@ const PageAnnotationLayer = memo(({
         }
         canvas.add(counter);
         canvas.requestRenderAll();
-        console.log(`[Counter p${pageNumber}] counter ADDED to canvas — totalObjs=${canvas.getObjects().length}, counter.left=${counter.left}, counter.top=${counter.top}, counter.radius=${counter.radius}, counter.fill=${counter.fill}, counter.data=${JSON.stringify(counter.data)}`);
+        palDebug(`[Counter p${pageNumber}] counter ADDED to canvas — totalObjs=${canvas.getObjects().length}, counter.left=${counter.left}, counter.top=${counter.top}, counter.radius=${counter.radius}, counter.fill=${counter.fill}, counter.data=${JSON.stringify(counter.data)}`);
         // Don't activate it — keep tool active for rapid clicks (Shottr behavior).
         saveCanvas('counter:create', { tool: 'counter' });
-        console.log(`[Counter p${pageNumber}] saveCanvas('counter:create') called — done`);
+        palDebug(`[Counter p${pageNumber}] saveCanvas('counter:create') called — done`);
         return;
       } else if (currentTool === 'rect') {
         temp = new Rect({ left: x, top: y, width: 1, height: 1, fill: 'rgba(0,0,0,0)', stroke: currentStrokeColor, strokeWidth: currentStrokeWidth, strokeUniform: true, uniformScaling: false, lockUniScaling: false });
@@ -8039,7 +8044,7 @@ const PageAnnotationLayer = memo(({
 
 	    return () => {
 	      debugMark('pal_unmount', { page: pageNumber });
-	      console.log(`[PAL-CTX unregister] page=${pageNumber} (from mount useEffect cleanup)`);
+	      palDebug(`[PAL-CTX unregister] page=${pageNumber} (from mount useEffect cleanup)`);
 	      contextMenuBridge.unregister(pageNumber);
 	      window.removeEventListener('keydown', handleKeyDown);
 	      isInitializedRef.current = false;
@@ -8105,13 +8110,13 @@ const PageAnnotationLayer = memo(({
     }
 
     // [DEBUG] PAL scale useEffect entry
-    console.log(`[PAL-Debug p${pageNumber}] scale useEffect ENTRY — scale=${scale}, effectiveScale=${effectiveScale}, currentZoom=${currentZoom}, width=${width}, height=${height}, isZooming=${isZooming}, isInteracting=${isInteracting}, inZoomMode=${inZoomModeRef.current}, pendingScale=${pendingScaleRef.current}, canvasW=${canvas.getWidth()}, canvasH=${canvas.getHeight()}, containerW=${containerEl?.offsetWidth}, containerH=${containerEl?.offsetHeight}`);
+    palDebug(`[PAL-Debug p${pageNumber}] scale useEffect ENTRY — scale=${scale}, effectiveScale=${effectiveScale}, currentZoom=${currentZoom}, width=${width}, height=${height}, isZooming=${isZooming}, isInteracting=${isInteracting}, inZoomMode=${inZoomModeRef.current}, pendingScale=${pendingScaleRef.current}, canvasW=${canvas.getWidth()}, canvasH=${canvas.getHeight()}, containerW=${containerEl?.offsetWidth}, containerH=${containerEl?.offsetHeight}`);
 
     // During interactions (scroll, zoom, drag), defer expensive canvas operations.
     // App-level CSS transform on overlay content div handles visual scaling.
     if (isInteracting) {
       pendingScaleRef.current = scale;
-      console.log(`[PAL-Debug p${pageNumber}] DEFERRED — isInteracting=true`);
+      palDebug(`[PAL-Debug p${pageNumber}] DEFERRED — isInteracting=true`);
       return;
     }
 
@@ -8159,7 +8164,7 @@ const PageAnnotationLayer = memo(({
         // If zoom is still active (e.g. slow scroll-out with >300ms gaps),
         // defer the expensive resize — restart the timer instead.
         if (isZoomingRef.current) {
-          console.log(`[PAL-Debug p${pageNumber}] settle DEFERRED — isZooming still true`);
+          palDebug(`[PAL-Debug p${pageNumber}] settle DEFERRED — isZooming still true`);
           zoomSettleTimerRef.current = setTimeout(settleCallback, 300);
           return;
         }
@@ -8183,7 +8188,7 @@ const PageAnnotationLayer = memo(({
 
         const tw = Math.floor(width * finalScale);
         const th = Math.floor(height * finalScale);
-        console.log(`[PAL-Debug p${pageNumber}] settle FIRED — finalScale=${finalScale}, tw=${tw}, th=${th}, width=${width}, height=${height}, canvasW=${c.getWidth()}, canvasH=${c.getHeight()}, canvasZoom=${c.getZoom()}, containerW=${settleContainerEl?.offsetWidth}`);
+        palDebug(`[PAL-Debug p${pageNumber}] settle FIRED — finalScale=${finalScale}, tw=${tw}, th=${th}, width=${width}, height=${height}, canvasW=${c.getWidth()}, canvasH=${c.getHeight()}, canvasZoom=${c.getZoom()}, containerW=${settleContainerEl?.offsetWidth}`);
 
         // Clear zoom latch before enqueueing. If a new zoom starts before
         // the queued callback runs, it will re-latch inZoomModeRef.
@@ -8207,7 +8212,7 @@ const PageAnnotationLayer = memo(({
         }
 
         const shouldRenderVisibleImmediately = preferImmediateVisibleZoomRender && isVisible;
-        console.log(
+        palDebug(
           `[PAL-Debug p${pageNumber}] settle strategy — isVisible=${isVisible}, isCenterPage=${isCenterPage}, preferImmediateVisibleZoomRender=${preferImmediateVisibleZoomRender}, immediate=${isCenterPage || shouldRenderVisibleImmediately}`
         );
 
@@ -8231,7 +8236,7 @@ const PageAnnotationLayer = memo(({
             fc.wrapperEl.style.transform = '';
             fc.wrapperEl.style.transformOrigin = '';
           }
-          console.log(`[PAL-Debug p${pageNumber}] doFabricRender — setting W=${tw}, H=${th}, zoom=${finalScale}, wrapperEl=${!!fc.wrapperEl}, wrapperTransform=${fc.wrapperEl?.style?.transform || 'none'}`);
+          palDebug(`[PAL-Debug p${pageNumber}] doFabricRender — setting W=${tw}, H=${th}, zoom=${finalScale}, wrapperEl=${!!fc.wrapperEl}, wrapperTransform=${fc.wrapperEl?.style?.transform || 'none'}`);
 	          fc.setWidth(tw);
 	          fc.setHeight(th);
 	          fc.setZoom(finalScale);
@@ -8239,7 +8244,7 @@ const PageAnnotationLayer = memo(({
 	          debugMark('fabric_renderStart', { page: pageNumber, scale: finalScale });
 	          fc.renderAll();
 	          debugMark('fabric_renderEnd', { page: pageNumber, scale: finalScale });
-	          console.log(`[PAL-Debug p${pageNumber}] doFabricRender DONE — canvasW=${fc.getWidth()}, canvasH=${fc.getHeight()}, canvasZoom=${fc.getZoom()}, objects=${fc.getObjects().length}`);
+	          palDebug(`[PAL-Debug p${pageNumber}] doFabricRender DONE — canvasW=${fc.getWidth()}, canvasH=${fc.getHeight()}, canvasZoom=${fc.getZoom()}, objects=${fc.getObjects().length}`);
 	          schedulePointerRecovery();
 	          schedulePaintCommitted(finalScale);
 	        };
@@ -8301,7 +8306,7 @@ const PageAnnotationLayer = memo(({
       scaleUpdateFrameRef.current = null;
     }
 
-	    console.log(`[PAL-Debug p${pageNumber}] DIRECT resize path — scale=${scale}, effectiveScale=${effectiveScale}, width=${width}, height=${height}`);
+	    palDebug(`[PAL-Debug p${pageNumber}] DIRECT resize path — scale=${scale}, effectiveScale=${effectiveScale}, width=${width}, height=${height}`);
     scaleUpdateFrameRef.current = requestAnimationFrame(() => {
 	      const targetWidth = Math.floor(width * effectiveScale);
 	      const targetHeight = Math.floor(height * effectiveScale);
@@ -8309,7 +8314,7 @@ const PageAnnotationLayer = memo(({
       const needsResize = canvas.getWidth() !== targetWidth || canvas.getHeight() !== targetHeight;
       const needsZoom = Math.abs(canvasZoom - effectiveScale) > 0.0001;
 
-      console.log(`[PAL-Debug p${pageNumber}] DIRECT rAF — targetW=${targetWidth}, targetH=${targetHeight}, canvasW=${canvas.getWidth()}, canvasH=${canvas.getHeight()}, canvasZoom=${canvasZoom}, needsResize=${needsResize}, needsZoom=${needsZoom}, effectiveScale=${effectiveScale}`);
+      palDebug(`[PAL-Debug p${pageNumber}] DIRECT rAF — targetW=${targetWidth}, targetH=${targetHeight}, canvasW=${canvas.getWidth()}, canvasH=${canvas.getHeight()}, canvasZoom=${canvasZoom}, needsResize=${needsResize}, needsZoom=${needsZoom}, effectiveScale=${effectiveScale}`);
 
       if (canvas.wrapperEl) {
         canvas.wrapperEl.style.transform = '';
@@ -9168,18 +9173,18 @@ const PageAnnotationLayer = memo(({
   // would never see them. Ctrl+click on Mac is already a native contextmenu
   // trigger, so no separate modifier-click handler is needed.
   useEffect(() => {
-    console.log(`[PAL-CTX register] page=${pageNumber}`);
+    palDebug(`[PAL-CTX register] page=${pageNumber}`);
     const dispatch = (e, annotationIndex) => {
       let resolvedTarget = null;
       if (annotationIndex != null && fabricRef.current?._objects) {
         resolvedTarget = fabricRef.current._objects[annotationIndex] || null;
       }
-      console.log(`[PAL-CTX dispatch] page=${pageNumber} annoIdx=${annotationIndex} target=${resolvedTarget?.type || 'null'}`);
+      palDebug(`[PAL-CTX dispatch] page=${pageNumber} annoIdx=${annotationIndex} target=${resolvedTarget?.type || 'null'}`);
       handleContextMenu(e, resolvedTarget);
     };
     contextMenuBridge.register(pageNumber, dispatch);
     return () => {
-      console.log(`[PAL-CTX unregister] page=${pageNumber}`);
+      palDebug(`[PAL-CTX unregister] page=${pageNumber}`);
       contextMenuBridge.unregister(pageNumber);
     };
   }, [pageNumber, handleContextMenu]);

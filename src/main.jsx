@@ -90,6 +90,9 @@ import { sanitizeConsoleLogText, shouldCaptureConsoleLine } from './utils/consol
 
       let overlayPerformance = null;
       let overlayRecorderStatus = null;
+      let trackpadInteractionDebug = null;
+      let trackpadInteractionDebugDump = null;
+      let trackpadInteractionExtraFiles = [];
       try {
         if (typeof window !== 'undefined' && typeof window.pdfOverlayRecorder?.summary === 'function') {
           overlayPerformance = window.pdfOverlayRecorder.summary();
@@ -100,6 +103,52 @@ import { sanitizeConsoleLogText, shouldCaptureConsoleLine } from './utils/consol
       } catch (perfErr) {
         try { console.warn('[SaveLog] bulletproof: overlay performance snapshot failed', perfErr?.message || perfErr); } catch (_e) { /* swallow */ }
       }
+      try {
+        if (typeof window !== 'undefined' && typeof window.__trackpadZoomDebug?.dump === 'function') {
+          const dump = window.__trackpadZoomDebug.dump();
+          trackpadInteractionDebugDump = dump || null;
+          trackpadInteractionDebug = dump?.summary || null;
+          const lines = [];
+          lines.push(`# Trackpad Interaction Debug - ${dump?.metadata?.capturedAt || new Date().toISOString()}`);
+          lines.push(`events=${dump?.summary?.eventCount ?? 0}`);
+          lines.push(`sessions=${dump?.summary?.sessionCount ?? 0}`);
+          lines.push(`rawWheel=${dump?.summary?.totals?.rawWheel ?? 0}`);
+          lines.push(`rawZoomWheel=${dump?.summary?.totals?.rawZoomWheel ?? 0}`);
+          lines.push(`rawScrollWheel=${dump?.summary?.totals?.rawScrollWheel ?? 0}`);
+          lines.push(`processedZoom=${dump?.summary?.totals?.processedZoom ?? 0}`);
+          lines.push(`skippedZoom=${dump?.summary?.totals?.skippedZoom ?? 0}`);
+          lines.push(`processedScroll=${dump?.summary?.totals?.processedScroll ?? 0}`);
+          lines.push(`nativeScroll=${dump?.summary?.totals?.nativeScroll ?? 0}`);
+          lines.push(`pointerPanMoves=${dump?.summary?.totals?.pointerPanMoves ?? 0}`);
+          lines.push(`zoomAvgLatencyMs=${dump?.summary?.zoomAvgLatencyMs ?? 'n/a'}`);
+          lines.push(`zoomMaxLatencyMs=${dump?.summary?.zoomMaxLatencyMs ?? 'n/a'}`);
+          lines.push(`zoomAvgRequestedDeltaPct=${dump?.summary?.zoomAvgRequestedDeltaPct ?? 'n/a'}`);
+          lines.push(`zoomAvgActualDeltaPct=${dump?.summary?.zoomAvgActualDeltaPct ?? 'n/a'}`);
+          lines.push(`scrollAvgLatencyMs=${dump?.summary?.scrollAvgLatencyMs ?? 'n/a'}`);
+          lines.push(`scrollMaxLatencyMs=${dump?.summary?.scrollMaxLatencyMs ?? 'n/a'}`);
+          lines.push('');
+          lines.push('## Recent sessions');
+          (dump?.summary?.recentSessions || []).forEach((session) => {
+            lines.push(`- #${session.id} ${session.family}/${session.direction || 'unknown'} events=${session.eventCount} raw=${session.rawWheelCount} processed=${session.processedCount} ignored=${session.ignoredCount} zoomReq=${session.zoomRequestedAbs ?? 0} zoomActual=${session.zoomActualAbs ?? 0} maxLatency=${session.maxLatencyMs ?? 0}ms`);
+          });
+          trackpadInteractionExtraFiles = [
+            { name: 'trackpad-interaction-debug.json', content: JSON.stringify(dump, null, 2) },
+            { name: 'trackpad-interaction-summary.txt', content: lines.join('\n') },
+          ];
+        } else if (typeof document !== 'undefined') {
+          trackpadInteractionDebug = {
+            markerOnly: true,
+            enabled: document.documentElement?.dataset?.trackpadDebugEnabled || null,
+            eventCount: Number(document.documentElement?.dataset?.trackpadDebugEvents || 0),
+            sessionCount: Number(document.documentElement?.dataset?.trackpadDebugSessions || 0),
+            lastType: document.documentElement?.dataset?.trackpadDebugLastType || null,
+            lastFamily: document.documentElement?.dataset?.trackpadDebugLastFamily || null,
+          };
+          trackpadInteractionDebugDump = { summary: trackpadInteractionDebug };
+        }
+      } catch (trackpadErr) {
+        try { console.warn('[SaveLog] bulletproof: trackpad interaction snapshot failed', trackpadErr?.message || trackpadErr); } catch (_e) { /* swallow */ }
+      }
 
       // Local dated snapshot (Electron). The user can grab this folder
       // even if every other path fails.
@@ -109,6 +158,7 @@ import { sanitizeConsoleLogText, shouldCaptureConsoleLine } from './utils/consol
           api.saveLogSnapshot({
             consoleText,
             network: networkSnapshot,
+            extraFiles: trackpadInteractionExtraFiles,
             summary: {
               triggeredBy: 'cmd-shift-l-bulletproof',
               userAgent: (typeof navigator !== 'undefined' ? navigator.userAgent : null),
@@ -117,11 +167,25 @@ import { sanitizeConsoleLogText, shouldCaptureConsoleLine } from './utils/consol
               url: (typeof window !== 'undefined' && window.location) ? window.location.href : null,
               overlayPerformance,
               overlayRecorderStatus,
+              trackpadInteractionDebug,
+              trackpadInteractionDebugDump,
             },
           }).then((res) => {
             try {
-              if (res?.ok) console.log('[SaveLog] bulletproof local snapshot saved at ' + res.dir);
-              else console.warn('[SaveLog] bulletproof local snapshot failed: ' + (res?.error || 'unknown'));
+              if (res?.ok) {
+                if (typeof api.writeFile === 'function' && Array.isArray(trackpadInteractionExtraFiles)) {
+                  trackpadInteractionExtraFiles.forEach((file) => {
+                    if (!file || typeof file.name !== 'string') return;
+                    api.writeFile(`${res.dir}/${file.name}`, typeof file.content === 'string' ? file.content : JSON.stringify(file.content ?? null, null, 2))
+                      .catch((err) => {
+                        try { console.warn('[SaveLog] bulletproof extra file write failed: ' + file.name + ' ' + (err?.message || err)); } catch (_e) { /* swallow */ }
+                      });
+                  });
+                }
+                console.log('[SaveLog] bulletproof local snapshot saved at ' + res.dir);
+              } else {
+                console.warn('[SaveLog] bulletproof local snapshot failed: ' + (res?.error || 'unknown'));
+              }
             } catch (_e) { /* swallow */ }
           }).catch((err) => {
             try { console.warn('[SaveLog] bulletproof local snapshot threw: ' + (err?.message || err)); } catch (_e) { /* swallow */ }

@@ -275,6 +275,38 @@
   -moz-appearance: textfield;
 }
 
+/* 2026-05-25: Context toolbar colour swatch base — bright checker pattern
+   (white + light grey) so low-opacity fills blend toward white instead of
+   sinking into the dark toolbar. A 1px pale hairline ring lifts pure black
+   borders off the dark chrome. The visible fill / border colours are set
+   inline per-swatch on top of this base. */
+.ctx-color-swatch {
+  background-color: #ffffff;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.22);
+}
+.ctx-color-swatch::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-image:
+    linear-gradient(45deg, #cfcfcf 25%, transparent 25%),
+    linear-gradient(-45deg, #cfcfcf 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #cfcfcf 75%),
+    linear-gradient(-45deg, transparent 75%, #cfcfcf 75%);
+  background-size: 8px 8px;
+  background-position: 0 0, 0 4px, 4px -4px, -4px 0;
+  pointer-events: none;
+  z-index: 0;
+}
+.ctx-color-swatch > .ctx-color-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1;
+}
+
 /* Syncfusion renderer-only mode: keep rendering engine, remove built-in chrome. */
 .syncfusion-renderer-only .e-pv-toolbar,
 .syncfusion-renderer-only .e-pv-sidebar-toolbar,
@@ -316,4 +348,3 @@
 .syncfusion-renderer-only .e-pv-page-container.__cursor-off-page * {
   cursor: default !important;
 }
-

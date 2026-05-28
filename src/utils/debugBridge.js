@@ -260,9 +260,10 @@ function markPageAnnotationMounted(pageNumber) {
 export function debugMark(name, detail) {
   if (import.meta.env.DEV) {
     performance.mark(name, detail != null ? { detail } : undefined);
-    // Temporary: log to console with timestamps for zoom lifecycle timing
-    const t = performance.now().toFixed(1);
-    console.log(`[DebugBridge +${t}ms] ${name}`, detail ?? '');
+    if (typeof window !== 'undefined' && window.__DEBUG_BRIDGE_CONSOLE === true) {
+      const t = performance.now().toFixed(1);
+      console.debug(`[DebugBridge +${t}ms] ${name}`, detail ?? '');
+    }
 
     // Wire marks into readiness signals
     switch (name) {

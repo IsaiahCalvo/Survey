@@ -1,5 +1,10 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { supabase, isSupabaseAvailable } from '../supabaseClient';
+import {
+  supabase,
+  isSupabaseAvailable,
+  getSupabaseSession,
+  recoverSupabaseAuthSession,
+} from '../supabaseClient';
 
 export const AuthContext = createContext({});
 
@@ -11,12 +16,99 @@ export const useAuth = () => {
   return context;
 };
 
+const authDebug = (...args) => {
+  if (typeof window === 'undefined' || window.__AUTH_DEBUG !== true) return;
+  try { console.debug(...args); } catch { /* ignore debug logging failures */ }
+};
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [subscriptionTier, setSubscriptionTier] = useState('free');
   const [loadingTier, setLoadingTier] = useState(true);
+
+  const getDevAutoLoginCredentials = () => {
+    const devOverride = (() => {
+      if (!import.meta.env.DEV || typeof window === 'undefined') return {};
+      try {
+        const raw = window.localStorage?.getItem('__fix20AuthOverride');
+        const parsed = raw ? JSON.parse(raw) : null;
+        if (parsed?.email && parsed?.password) {
+          return { email: parsed.email, password: parsed.password };
+        }
+      } catch {
+        // Ignore malformed dev-only harness state.
+      }
+      return {};
+    })();
+    return {
+      email: devOverride.email || import.meta.env.VITE_DEV_AUTO_LOGIN_EMAIL,
+      password: devOverride.password || import.meta.env.VITE_DEV_AUTO_LOGIN_PASSWORD,
+    };
+  };
+
+  const runDevAutoLoginIfNeeded = async (session) => {
+    const { email: devEmail, password: devPassword } = getDevAutoLoginCredentials();
+    authDebug('[dev-auto-login] boot ' + JSON.stringify({
+      hasDevEmail: !!devEmail,
+      devEmailHint: devEmail ? devEmail.slice(0, 4) + '***' : null,
+      hasDevPassword: !!devPassword,
+      hasCachedSession: !!session,
+      cachedSessionEmail: session?.user?.email || null,
+      cachedSessionExpiresAt: session?.expires_at || null
+    }));
+
+    let needsAutoLogin = !session;
+    if (session && devEmail && devPassword) {
+      const cachedEmail = session?.user?.email;
+      if (cachedEmail && cachedEmail.toLowerCase() !== devEmail.toLowerCase()) {
+        authDebug('[dev-auto-login] cached session is for a different user, overriding ' + JSON.stringify({
+          cachedEmail, devEmail
+        }));
+        needsAutoLogin = true;
+        try { await supabase.auth.signOut({ scope: 'local' }); } catch { /* ignore */ }
+        session = null;
+      } else {
+        authDebug('[dev-auto-login] cached session matches dev email, keeping it');
+      }
+    }
+
+    authDebug('[dev-auto-login] decision ' + JSON.stringify({
+      needsAutoLogin,
+      willAttemptSignIn: needsAutoLogin && !!devEmail && !!devPassword
+    }));
+    if (!needsAutoLogin) return session;
+
+    if (devEmail && devPassword) {
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: devEmail,
+          password: devPassword
+        });
+        if (error) {
+          console.warn('[dev-auto-login] sign-in FAILED ' + JSON.stringify({
+            code: error.code || null,
+            status: error.status || null,
+            message: error.message || String(error)
+          }));
+        } else {
+          authDebug('[dev-auto-login] sign-in OK ' + JSON.stringify({
+            userId: data?.user?.id || null,
+            email: data?.user?.email || null
+          }));
+          session = data?.session ?? session;
+        }
+      } catch (err) {
+        console.warn('[dev-auto-login] sign-in THREW ' + JSON.stringify({
+          message: err?.message || String(err)
+        }));
+      }
+    } else {
+      console.warn('[dev-auto-login] needed sign-in but creds NOT loaded — skipped. Restart the dev server / Electron app to pick up .env.local.');
+    }
+    return session;
+  };
 
   // Fetch subscription tier from database
   const fetchSubscriptionTier = async (userId) => {
@@ -61,8 +153,7 @@ export const AuthProvider = ({ children }) => {
       return;
     }
 
-    // Get initial session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    const finishAuthBoot = async (session) => {
       // UX 2026-04-22 / updated 2026-04-25: Dev auto-login. Fires whenever
       // the local env vars are present (from gitignored .env.local). Runs
       // BEFORE we flip `loading` to false so the OptionalAuthPrompt doesn't
@@ -75,84 +166,7 @@ export const AuthProvider = ({ children }) => {
       // hook would re-sign them in. Now we also override when (a) the
       // cached session's user email doesn't match the dev creds, or
       // (b) `getUser()` rejects the cached token as expired/invalid.
-      const devOverride = (() => {
-        if (!import.meta.env.DEV || typeof window === 'undefined') return {};
-        try {
-          const raw = window.localStorage?.getItem('__fix20AuthOverride');
-          const parsed = raw ? JSON.parse(raw) : null;
-          if (parsed?.email && parsed?.password) {
-            return { email: parsed.email, password: parsed.password };
-          }
-        } catch {
-          // Ignore malformed dev-only harness state.
-        }
-        return {};
-      })();
-      const devEmail = devOverride.email || import.meta.env.VITE_DEV_AUTO_LOGIN_EMAIL;
-      const devPassword = devOverride.password || import.meta.env.VITE_DEV_AUTO_LOGIN_PASSWORD;
-      console.log('[dev-auto-login] boot ' + JSON.stringify({
-        hasDevEmail: !!devEmail,
-        devEmailHint: devEmail ? devEmail.slice(0, 4) + '***' : null,
-        hasDevPassword: !!devPassword,
-        hasCachedSession: !!session,
-        cachedSessionEmail: session?.user?.email || null,
-        cachedSessionExpiresAt: session?.expires_at || null
-      }));
-
-      let needsAutoLogin = !session;
-      // 2026-04-25 (revised): only override the cached session when we're
-      // certain it's wrong — i.e. it belongs to a different user than the
-      // dev creds. Previously this also overrode on getUser() failures,
-      // which could be triggered by transient network blips and ended up
-      // signing the user out then leaving them stuck if the sign-in retry
-      // also failed. Trust the cached session unless the email mismatches.
-      if (session && devEmail && devPassword) {
-        const cachedEmail = session?.user?.email;
-        if (cachedEmail && cachedEmail.toLowerCase() !== devEmail.toLowerCase()) {
-          console.log('[dev-auto-login] cached session is for a different user, overriding ' + JSON.stringify({
-            cachedEmail, devEmail
-          }));
-          needsAutoLogin = true;
-          try { await supabase.auth.signOut(); } catch { /* ignore */ }
-          session = null;
-        } else {
-          console.log('[dev-auto-login] cached session matches dev email, keeping it');
-        }
-      }
-
-      console.log('[dev-auto-login] decision ' + JSON.stringify({
-        needsAutoLogin,
-        willAttemptSignIn: needsAutoLogin && !!devEmail && !!devPassword
-      }));
-      if (needsAutoLogin) {
-        if (devEmail && devPassword) {
-          try {
-            const { data, error } = await supabase.auth.signInWithPassword({
-              email: devEmail,
-              password: devPassword
-            });
-            if (error) {
-              console.warn('[dev-auto-login] sign-in FAILED ' + JSON.stringify({
-                code: error.code || null,
-                status: error.status || null,
-                message: error.message || String(error)
-              }));
-            } else {
-              console.log('[dev-auto-login] sign-in OK ' + JSON.stringify({
-                userId: data?.user?.id || null,
-                email: data?.user?.email || null
-              }));
-              session = data?.session ?? session;
-            }
-          } catch (err) {
-            console.warn('[dev-auto-login] sign-in THREW ' + JSON.stringify({
-              message: err?.message || String(err)
-            }));
-          }
-        } else {
-          console.warn('[dev-auto-login] needed sign-in but creds NOT loaded — skipped. Restart the dev server / Electron app to pick up .env.local.');
-        }
-      }
+      session = await runDevAutoLoginIfNeeded(session);
 
       setSession(session);
       setUser(session?.user ?? null);
@@ -164,7 +178,23 @@ export const AuthProvider = ({ children }) => {
       } else {
         setLoadingTier(false);
       }
-    });
+    };
+
+    // Get initial session. If the cached refresh token is corrupted, clear it
+    // and continue boot instead of leaving the app stuck half-signed-out.
+    getSupabaseSession('AuthProvider.getSession')
+      .then(async (session) => {
+        await finishAuthBoot(session);
+      })
+      .catch(async (error) => {
+        const recovered = await recoverSupabaseAuthSession(error, 'AuthProvider.getSession');
+        if (!recovered) {
+          console.warn('[Auth] initial session read failed ' + JSON.stringify({
+            message: error?.message || String(error),
+          }));
+        }
+        await finishAuthBoot(null);
+      });
 
     // Listen for auth changes. Supabase fires an INITIAL_SESSION event
     // during boot which can briefly hand us a null session BEFORE the dev

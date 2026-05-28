@@ -241,9 +241,10 @@ export function dedupePdfImports(ydoc, options) {
     yMapMeta.set(DEDUPE_LAST_GOOD_SIZE_KEY, Math.max(priorAnchor, postFinalSize));
   }, originPayload);
 
-  // eslint-disable-next-line no-console
-  console.log('[crdtDedupePdfImports] removed ' + idsToRemove.length +
-    ' duplicate PDF-imported annotations across ' + groups.size + ' unique signatures');
+  if (typeof window !== 'undefined' && window.__CRDT_DEDUPE_DEBUG === true) {
+    console.debug('[crdtDedupePdfImports] removed ' + idsToRemove.length +
+      ' duplicate PDF-imported annotations across ' + groups.size + ' unique signatures');
+  }
 
   return { ranAs: 'leader', removed: idsToRemove.length, kept: groups.size };
 }

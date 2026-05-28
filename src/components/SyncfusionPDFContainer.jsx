@@ -2158,17 +2158,15 @@ const SyncfusionPDFContainer = forwardRef(({
       zoomValue: resolvedZoom
     });
 
-    // UX 2026-04-22 (hyperlink diag): After a doc loads, wait a tick and
-    // inspect the DOM for Syncfusion's hyperlink overlay layer. If it's
-    // empty, the LinkAnnotation service hasn't rendered any links — we log
-    // the state of the page container so triage can tell whether Syncfusion
-    // saw the /Link annotations at all.
+    // UX 2026-04-22 (hyperlink diag): opt-in DOM scan for Syncfusion link
+    // layers. Enable with `window.__HYPERLINK_DIAG = true`.
     setTimeout(() => {
       try {
+        if (typeof window === 'undefined' || window.__HYPERLINK_DIAG !== true) return;
         const host = viewer?.element;
-        if (!host) { console.log('[HyperlinkDiag] no viewer element'); return; }
+        if (!host) { console.debug('[HyperlinkDiag] no viewer element'); return; }
         const hyperlinks = host.querySelectorAll('[class*="hyperlink"], a[href], [href]');
-        console.log('[HyperlinkDiag] post-load scan', {
+        console.debug('[HyperlinkDiag] post-load scan', {
           hyperlinkCount: hyperlinks.length,
           samples: Array.from(hyperlinks).slice(0, 5).map((el) => ({
             tag: el.tagName,
@@ -2180,13 +2178,15 @@ const SyncfusionPDFContainer = forwardRef(({
         const pageDivs = host.querySelectorAll('.e-pv-page-div');
         pageDivs.forEach((pageDiv, i) => {
           const pageHyperlinks = pageDiv.querySelectorAll('[class*="hyperlink"], a[href]');
-          console.log(`[HyperlinkDiag] page ${i + 1} layers`, {
+          console.debug(`[HyperlinkDiag] page ${i + 1} layers`, {
             hyperlinkChildren: pageHyperlinks.length,
             layerClasses: Array.from(pageDiv.children).map((c) => c.className || c.tagName)
           });
         });
       } catch (err) {
-        console.log('[HyperlinkDiag] post-load scan threw', err?.message);
+        if (typeof window !== 'undefined' && window.__HYPERLINK_DIAG === true) {
+          console.debug('[HyperlinkDiag] post-load scan threw', err?.message);
+        }
       }
     }, 800);
   }, [
@@ -2690,10 +2690,12 @@ const SyncfusionPDFContainer = forwardRef(({
       enableHyperlink={true}
       hyperlinkOpenState="NewTab"
       hyperlinkClick={(args) => {
-        console.log('[HyperlinkDiag] hyperlinkClick FIRED', {
-          url: args?.hyperlink,
-          keys: args ? Object.keys(args) : null
-        });
+        if (typeof window !== 'undefined' && window.__HYPERLINK_DIAG === true) {
+          console.debug('[HyperlinkDiag] hyperlinkClick FIRED', {
+            url: args?.hyperlink,
+            keys: args ? Object.keys(args) : null
+          });
+        }
         const url = args?.hyperlink;
         if (!url || typeof url !== 'string') return;
         try { args.cancel = true; } catch {}
@@ -2707,10 +2709,12 @@ const SyncfusionPDFContainer = forwardRef(({
         }
       }}
       hyperlinkMouseOver={(args) => {
-        console.log('[HyperlinkDiag] hyperlinkMouseOver FIRED', {
-          url: args?.hyperlink,
-          hasElement: !!args?.element
-        });
+        if (typeof window !== 'undefined' && window.__HYPERLINK_DIAG === true) {
+          console.debug('[HyperlinkDiag] hyperlinkMouseOver FIRED', {
+            url: args?.hyperlink,
+            hasElement: !!args?.element
+          });
+        }
         const el = args?.element;
         if (el && el.style) el.style.cursor = 'pointer';
       }}

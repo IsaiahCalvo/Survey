@@ -175,7 +175,7 @@ import {
 import { COLORS, BORDERS, SHADOWS, TYPOGRAPHY } from './theme';
 import { useProjects, useDocuments, useTemplates, useStorage, useDocumentToolPreferences, DEFAULT_TOOL_PREFERENCES, TOOLS_WITH_STROKE_WIDTH, TOOLS_WITH_FILL } from './hooks/useDatabase';
 import { useSubscriptionLimits } from './hooks/useSubscriptionLimits';
-import { supabase } from './supabaseClient';
+import { supabase, getSupabaseSession } from './supabaseClient';
 import {
   syncAnnotationsToSupabase,
   loadAnnotationsFromSupabase,
@@ -219,11 +219,93 @@ import {
   resolveFirstVisibleAnnotationPage,
   shouldGateFirstVisibleAnnotationPage,
 } from './utils/annotationHydrationGate';
+import { shouldRunSurveyMarkerSync } from './utils/surveyMarkerSyncSafety';
+import { resolveSafeSnapshot } from './utils/safeSnapshot';
 import KeyboardShortcutsOverlay from './components/KeyboardShortcutsOverlay';
 
 const NATIVE_TEXT_MARKUP_TOOLS = new Set(['text-highlight', 'underline', 'strikeout', 'squiggly']);
 const SELECT_DELETE_ONLY_IMPORTED_TEXT_MARKUP_TYPES = new Set(['underline', 'strikeout', 'squiggly']);
 const REVIEW_TOOL_IDS = ['text', 'callout'];
+
+const appDebug = (...args) => {
+  if (typeof window === 'undefined' || window.__APP_DEBUG !== true) return;
+  try { console.debug(...args); } catch { /* ignore debug logging failures */ }
+};
+
+const getWindowTrackpadInteractionDebugSavePayload = () => {
+  if (typeof window === 'undefined') {
+    return { dump: null, extraFiles: [] };
+  }
+
+  try {
+    if (typeof window.__trackpadZoomDebug?.dump === 'function') {
+      const dump = window.__trackpadZoomDebug.dump();
+      const lines = [];
+      lines.push(`# Trackpad Interaction Debug - ${dump?.metadata?.capturedAt || new Date().toISOString()}`);
+      lines.push(`events=${dump?.summary?.eventCount ?? 0}`);
+      lines.push(`sessions=${dump?.summary?.sessionCount ?? 0}`);
+      lines.push(`rawWheel=${dump?.summary?.totals?.rawWheel ?? 0}`);
+      lines.push(`rawZoomWheel=${dump?.summary?.totals?.rawZoomWheel ?? 0}`);
+      lines.push(`rawScrollWheel=${dump?.summary?.totals?.rawScrollWheel ?? 0}`);
+      lines.push(`processedZoom=${dump?.summary?.totals?.processedZoom ?? 0}`);
+      lines.push(`skippedZoom=${dump?.summary?.totals?.skippedZoom ?? 0}`);
+      lines.push(`processedScroll=${dump?.summary?.totals?.processedScroll ?? 0}`);
+      lines.push(`nativeScroll=${dump?.summary?.totals?.nativeScroll ?? 0}`);
+      lines.push(`pointerPanMoves=${dump?.summary?.totals?.pointerPanMoves ?? 0}`);
+      lines.push(`zoomAvgLatencyMs=${dump?.summary?.zoomAvgLatencyMs ?? 'n/a'}`);
+      lines.push(`zoomMaxLatencyMs=${dump?.summary?.zoomMaxLatencyMs ?? 'n/a'}`);
+      lines.push(`zoomAvgRequestedDeltaPct=${dump?.summary?.zoomAvgRequestedDeltaPct ?? 'n/a'}`);
+      lines.push(`zoomAvgActualDeltaPct=${dump?.summary?.zoomAvgActualDeltaPct ?? 'n/a'}`);
+      lines.push(`scrollAvgLatencyMs=${dump?.summary?.scrollAvgLatencyMs ?? 'n/a'}`);
+      lines.push(`scrollMaxLatencyMs=${dump?.summary?.scrollMaxLatencyMs ?? 'n/a'}`);
+      lines.push('');
+      lines.push('## Recent sessions');
+      (dump?.summary?.recentSessions || []).forEach((session) => {
+        lines.push(`- #${session.id} ${session.family}/${session.direction || 'unknown'} events=${session.eventCount} raw=${session.rawWheelCount} processed=${session.processedCount} ignored=${session.ignoredCount} zoomReq=${session.zoomRequestedAbs ?? 0} zoomActual=${session.zoomActualAbs ?? 0} maxLatency=${session.maxLatencyMs ?? 0}ms`);
+      });
+      return {
+        dump,
+        extraFiles: [
+          { name: 'trackpad-interaction-debug.json', content: JSON.stringify(dump, null, 2) },
+          { name: 'trackpad-interaction-summary.txt', content: lines.join('\n') },
+        ],
+      };
+    }
+  } catch (error) {
+    return {
+      dump: { summary: { error: error?.message || String(error) } },
+      extraFiles: [],
+    };
+  }
+
+  const dataset = window.document?.documentElement?.dataset || {};
+  return {
+    dump: {
+      summary: {
+        markerOnly: true,
+        enabled: dataset.trackpadDebugEnabled || null,
+        eventCount: Number(dataset.trackpadDebugEvents || 0),
+        sessionCount: Number(dataset.trackpadDebugSessions || 0),
+        lastType: dataset.trackpadDebugLastType || null,
+        lastFamily: dataset.trackpadDebugLastFamily || null,
+      },
+    },
+    extraFiles: [],
+  };
+};
+
+const writeSaveLogExtraFiles = async (api, dir, extraFiles) => {
+  if (!api || typeof api.writeFile !== 'function' || !dir || !Array.isArray(extraFiles)) return;
+  await Promise.all(extraFiles.map((file) => {
+    if (!file || typeof file.name !== 'string') return Promise.resolve();
+    const content = typeof file.content === 'string'
+      ? file.content
+      : JSON.stringify(file.content ?? null, null, 2);
+    return api.writeFile(`${dir}/${file.name}`, content).catch((err) => {
+      console.warn('[SaveLog] extra file write failed', file.name, err?.message || err);
+    });
+  }));
+};
 
 const isSelectDeleteOnlyImportedTextMarkupType = (type) => (
   (() => {
@@ -495,9 +577,11 @@ const SYNCFUSION_SCROLL_FRAME_MAX_PX = 180;
 const SYNCFUSION_WHEEL_SCROLL_BATCH_MS = 24;
 // Trackpad pinch/wheel zoom sensitivity. Keep this centralized so both
 // Syncfusion wheel paths stay cursor-anchored and feel equally responsive.
-const SYNCFUSION_WHEEL_ZOOM_EXPONENT = 0.004;
+const SYNCFUSION_WHEEL_ZOOM_EXPONENT = 0.0044;
 const SYNCFUSION_WHEEL_ZOOM_MAX_STEP_PERCENT = 24;
-const SYNCFUSION_WHEEL_ZOOM_BATCH_MS = 16;
+const SYNCFUSION_WHEEL_ZOOM_BATCH_MS = 3;
+const SYNCFUSION_WHEEL_ZOOM_STALE_DROP_MS = 260;
+const SYNCFUSION_ZOOM_SNAPSHOT_VIEWPORT_MARGIN_PX = 420;
 const TOOLBAR_ZOOM_STEP_FACTOR = 1.25;
 const SYNCFUSION_INTERACTION_FORCE_PROXY_ALL_PAGES = true;
 const ZOOM_ONLY_INTERACTION_REASONS = new Set([
@@ -512,13 +596,17 @@ const SYNCFUSION_SCROLL_DELAY_MS = 8;
 const SYNCFUSION_INITIAL_RENDER_PAGES = 10;
 const SYNCFUSION_RESTRICT_ZOOM_REQUEST_DURING_INTERACTION = true;
 const SYNCFUSION_DUAL_LAYER_ENABLED_KEY = 'syncfusion_interaction_dual_layer_enabled';
-const OVERLAY_LAG_RECORDER_AUTO_KEY = 'syncfusion_overlay_lag_auto';
+const OVERLAY_LAG_RECORDER_AUTO_KEY = 'syncfusion_overlay_lag_auto_v2';
 const OVERLAY_LAG_RECORDER_AUTO_SAMPLE_PAGE_LIMIT = 6;
 const OVERLAY_LAG_RECORDER_AUTO_MAX_SAMPLES = 12000;
 const OVERLAY_LAG_RECORDER_AUTO_SAMPLE_INTERVAL_MS = 180;
 const OVERLAY_LAG_RECORDER_DEBUG_UI_INTERVAL_MS = 1000;
 const OVERLAY_LAG_RECORDER_PERF_ENTRY_LIMIT = 6000;
 const OVERLAY_LAG_RECORDER_EVENT_TIMING_THRESHOLD_MS = 24;
+const TRACKPAD_INTERACTION_DEBUG_MAX_EVENTS = 24000;
+const TRACKPAD_INTERACTION_DEBUG_MAX_SESSIONS = 1200;
+const TRACKPAD_INTERACTION_DEBUG_SESSION_GAP_MS = 220;
+const TRACKPAD_INTERACTION_CONSOLE_INTERVAL_MS = 180;
 const OVERLAY_LAG_RECORDER_WORK_CATEGORIES = [
   'annotationRestoration',
   'pageRenderCatchup',
@@ -1027,14 +1115,14 @@ const writeSyncfusionDualLayerEnabled = (enabled) => {
 };
 
 const readOverlayLagRecorderAutoEnabled = () => {
-  if (typeof window === 'undefined') return true;
+  if (typeof window === 'undefined') return false;
   try {
     const raw = window.localStorage.getItem(OVERLAY_LAG_RECORDER_AUTO_KEY);
-    if (raw === null || raw === undefined) return true;
+    if (raw === null || raw === undefined) return false;
     const normalized = String(raw).trim().toLowerCase();
-    return normalized !== '0' && normalized !== 'false' && normalized !== 'off';
+    return normalized === '1' || normalized === 'true' || normalized === 'on';
   } catch {
-    return true;
+    return false;
   }
 };
 
@@ -2545,7 +2633,7 @@ const markEditedImportedPdfAnnotationsOnPage = (incomingPage, previousPage, { so
   });
 
   if (editedCount === 0) return incomingPage;
-  console.log('[PDFImportedEditExport] edit marker stamped ' + JSON.stringify({
+  appDebug('[PDFImportedEditExport] edit marker stamped ' + JSON.stringify({
     pageNumber: pageNumber || incomingPage?.pageNumber || null,
     source: source || null,
     editedImportedCopies: editedCount,
@@ -5035,7 +5123,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     window.__kal49Harness = {
       async insertAnnotationProbe(documentId) {
         if (!documentId) throw new Error('kal49 probe requires documentId');
-        const session = (await supabase.auth.getSession()).data?.session || null;
+        const session = await getSupabaseSession('kal49Harness');
         const userId = session?.user?.id || null;
         if (!userId) return { error: { message: 'no session' } };
         const { data, error } = await supabase
@@ -10347,6 +10435,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
   const zoomOverlayTransformActiveRef = useRef(false);
   const zoomOverlayBaseScaleRef = useRef(1);
   const zoomOverlaySettleTimerRef = useRef(null);
+  const syncfusionZoomSnapshotLayerRef = useRef(null);
+  const syncfusionZoomSnapshotPagesRef = useRef({});
+  const syncfusionZoomSnapshotBaseScaleRef = useRef(1);
   // Fallback portal hosts: when Syncfusion destroys page containers during zoom,
   // these keep the React portal tree alive so Fabric canvases aren't destroyed.
   const syncfusionFallbackHostsRef = useRef({});
@@ -10356,6 +10447,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
   const syncfusionStablePortalHostsRef = useRef({});
   const syncfusionStablePortalLiveRootsRef = useRef({});
   const syncfusionStablePortalSnapshotHostsRef = useRef({});
+  const syncfusionAppOverlayRootRef = useRef(null);
   // Overlay divs: persistent direct-child divs inside Syncfusion page divs.
   // Phase 1: created and attached but inert (not used for rendering).
   // Phase 2+: zoom handler applies CSS transforms; render loop creates portals into these.
@@ -10393,6 +10485,31 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     samples: [],
     wheelEvents: [],
     summary: null
+  });
+  const trackpadInteractionDebugRef = useRef({
+    enabled: true,
+    startedAtIso: new Date().toISOString(),
+    startedAtMs: (typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now(),
+    seq: 0,
+    sessionSeq: 0,
+    currentSession: null,
+    lastInputAtMs: 0,
+    lastConsoleAtMs: 0,
+    lastScrollLeft: null,
+    lastScrollTop: null,
+    lastZoomPercent: null,
+    events: [],
+    sessions: [],
+    totals: {
+      rawWheel: 0,
+      rawZoomWheel: 0,
+      rawScrollWheel: 0,
+      processedZoom: 0,
+      skippedZoom: 0,
+      processedScroll: 0,
+      nativeScroll: 0,
+      pointerPanMoves: 0
+    }
   });
   const overlayLagRecorderDebugAtRef = useRef(0);
   const overlayLagRecorderAutoKeyRef = useRef(null);
@@ -10465,6 +10582,300 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     const countKey = `${category}Count`;
     totals[durationKey] = (Number(totals[durationKey]) || 0) + safeDuration;
     totals[countKey] = (Number(totals[countKey]) || 0) + safeCount;
+  }, []);
+
+  const readTrackpadDebugState = useCallback((viewerContainer = null) => {
+    const container = viewerContainer || containerRef.current || null;
+    const viewer = syncfusionViewerRef.current || null;
+    const rawZoom = Number(
+      viewer?.getZoomValue?.() ??
+      viewer?.zoomValue ??
+      ((scaleRef.current || scale || 1) * 100)
+    );
+    const zoomPercent = Number.isFinite(rawZoom)
+      ? rawZoom
+      : ((Number(scaleRef.current || scale) || 1) * 100);
+    const rect = container?.getBoundingClientRect?.() || null;
+    return {
+      zoomPercent: roundOverlayRecorderValue(zoomPercent, 3),
+      appScale: roundOverlayRecorderValue(scaleRef.current || scale || 1, 5),
+      scrollLeft: roundOverlayRecorderValue(container?.scrollLeft || 0, 3),
+      scrollTop: roundOverlayRecorderValue(container?.scrollTop || 0, 3),
+      scrollWidth: roundOverlayRecorderValue(container?.scrollWidth || 0, 3),
+      scrollHeight: roundOverlayRecorderValue(container?.scrollHeight || 0, 3),
+      clientWidth: roundOverlayRecorderValue(container?.clientWidth || 0, 3),
+      clientHeight: roundOverlayRecorderValue(container?.clientHeight || 0, 3),
+      containerRect: rect ? {
+        left: roundOverlayRecorderValue(rect.left, 3),
+        top: roundOverlayRecorderValue(rect.top, 3),
+        width: roundOverlayRecorderValue(rect.width, 3),
+        height: roundOverlayRecorderValue(rect.height, 3)
+      } : null,
+      page: pageNumRef.current,
+      zoomOverlayActive: zoomOverlayTransformActiveRef.current,
+      interactionActive: syncfusionInteractionActiveRef.current,
+      interactionPhase: syncfusionInteractionPhaseRef.current,
+      snapshotPages: typeof document !== 'undefined'
+        ? document.querySelectorAll('[data-syncfusion-zoom-snapshot-page]').length
+        : 0
+    };
+  }, []);
+
+  const recordTrackpadInteractionEvent = useCallback((type, payload = {}) => {
+    const debug = trackpadInteractionDebugRef.current;
+    if (!debug?.enabled) return null;
+    const nowMs = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+      ? performance.now()
+      : Date.now();
+    const tMs = roundOverlayRecorderValue(nowMs - (debug.startedAtMs || nowMs), 3);
+    const family = payload.family || (
+      type.includes('zoom') ? 'zoom' :
+        type.includes('scroll') ? 'scroll' :
+          type.includes('pointer') || type.includes('pan') ? 'pan' :
+            'other'
+    );
+    const direction = payload.direction || null;
+    const shouldStartSession =
+      !debug.currentSession ||
+      (nowMs - (debug.lastInputAtMs || 0)) > TRACKPAD_INTERACTION_DEBUG_SESSION_GAP_MS ||
+      debug.currentSession.family !== family;
+    if (shouldStartSession) {
+      const session = {
+        id: ++debug.sessionSeq,
+        family,
+        direction,
+        startedAtMs: tMs,
+        endedAtMs: tMs,
+        eventCount: 0,
+        rawWheelCount: 0,
+        processedCount: 0,
+        ignoredCount: 0,
+        rawAbsX: 0,
+        rawAbsY: 0,
+        actualScrollAbsX: 0,
+        actualScrollAbsY: 0,
+        zoomRequestedAbs: 0,
+        zoomActualAbs: 0,
+        maxLatencyMs: 0,
+        notes: []
+      };
+      debug.currentSession = session;
+      debug.sessions.push(session);
+      if (debug.sessions.length > TRACKPAD_INTERACTION_DEBUG_MAX_SESSIONS) {
+        debug.sessions.splice(0, debug.sessions.length - TRACKPAD_INTERACTION_DEBUG_MAX_SESSIONS);
+      }
+    }
+
+    const session = debug.currentSession;
+    session.endedAtMs = tMs;
+    session.eventCount += 1;
+    if (direction && !session.direction) session.direction = direction;
+    if (type === 'raw-wheel') session.rawWheelCount += 1;
+    if (payload.processed === true) session.processedCount += 1;
+    if (payload.ignored === true || payload.skipped === true) session.ignoredCount += 1;
+    session.rawAbsX += Math.abs(Number(payload.rawDeltaX ?? payload.deltaX ?? 0) || 0);
+    session.rawAbsY += Math.abs(Number(payload.rawDeltaY ?? payload.deltaY ?? 0) || 0);
+    session.actualScrollAbsX += Math.abs(Number(payload.actualX ?? payload.scrollDeltaX ?? 0) || 0);
+    session.actualScrollAbsY += Math.abs(Number(payload.actualY ?? payload.scrollDeltaY ?? 0) || 0);
+    session.zoomRequestedAbs += Math.abs(Number(payload.requestedZoomDelta ?? payload.requestedDeltaAbs ?? 0) || 0);
+    session.zoomActualAbs += Math.abs(Number(payload.actualZoomDelta ?? 0) || 0);
+    session.maxLatencyMs = Math.max(session.maxLatencyMs || 0, Number(payload.latencyMs) || 0);
+    if (payload.note && session.notes.length < 12) session.notes.push(payload.note);
+
+    const event = {
+      seq: ++debug.seq,
+      sessionId: session.id,
+      type,
+      family,
+      direction,
+      tMs,
+      iso: new Date().toISOString(),
+      ...payload
+    };
+    debug.events.push(event);
+    if (debug.events.length > TRACKPAD_INTERACTION_DEBUG_MAX_EVENTS) {
+      debug.events.splice(0, debug.events.length - TRACKPAD_INTERACTION_DEBUG_MAX_EVENTS);
+    }
+    debug.lastInputAtMs = nowMs;
+    if (typeof document !== 'undefined') {
+      try {
+        document.documentElement.dataset.trackpadDebugEnabled = debug.enabled ? 'true' : 'false';
+        document.documentElement.dataset.trackpadDebugEvents = String(debug.events.length);
+        document.documentElement.dataset.trackpadDebugSessions = String(debug.sessions.length);
+        document.documentElement.dataset.trackpadDebugLastType = type;
+        document.documentElement.dataset.trackpadDebugLastFamily = family;
+      } catch { /* ignore diagnostics DOM marker failure */ }
+    }
+    const consoleDebugEnabled = typeof window !== 'undefined'
+      ? window.__TRACKPAD_CONSOLE_DEBUG !== false
+      : false;
+    const shouldEcho =
+      consoleDebugEnabled &&
+      (type === 'zoom-processed' ||
+        type === 'scroll-processed' ||
+        type === 'pointer-pan-move' ||
+        (type === 'raw-wheel' && (nowMs - (debug.lastConsoleAtMs || 0)) >= TRACKPAD_INTERACTION_CONSOLE_INTERVAL_MS) ||
+        (nowMs - (debug.lastConsoleAtMs || 0)) >= 750);
+    if (shouldEcho) {
+      debug.lastConsoleAtMs = nowMs;
+      try {
+        console.info('[TrackpadLive]', JSON.stringify({
+          seq: event.seq,
+          session: event.sessionId,
+          type,
+          family,
+          direction,
+          raw: {
+            x: roundOverlayRecorderValue(payload.rawDeltaX ?? payload.deltaX ?? 0, 2),
+            y: roundOverlayRecorderValue(payload.rawDeltaY ?? payload.deltaY ?? 0, 2)
+          },
+          zoom: {
+            before: payload.beforeZoom ?? payload.zoomBefore ?? null,
+            after: payload.afterZoom ?? payload.zoomAfter ?? null,
+            requestedDelta: payload.requestedZoomDelta ?? null,
+            actualDelta: payload.actualZoomDelta ?? null
+          },
+          scroll: {
+            actualX: payload.actualX ?? payload.scrollDeltaX ?? null,
+            actualY: payload.actualY ?? payload.scrollDeltaY ?? null
+          },
+          latencyMs: payload.latencyMs ?? null,
+          totals: {
+            events: debug.events.length,
+            rawZoomWheel: debug.totals.rawZoomWheel,
+            rawScrollWheel: debug.totals.rawScrollWheel,
+            processedZoom: debug.totals.processedZoom,
+            processedScroll: debug.totals.processedScroll,
+            pointerPanMoves: debug.totals.pointerPanMoves
+          }
+        }));
+      } catch { /* live diagnostics only */ }
+    }
+    return event;
+  }, []);
+
+  const getTrackpadInteractionDebugDump = useCallback(() => {
+    const debug = trackpadInteractionDebugRef.current;
+    const events = debug.events || [];
+    const sessions = debug.sessions || [];
+    const zoomProcessed = events.filter((event) => event.type === 'zoom-processed');
+    const scrollProcessed = events.filter((event) => event.type === 'scroll-processed' || event.type === 'native-scroll');
+    const avg = (values) => {
+      const finite = values.filter((value) => Number.isFinite(value));
+      return finite.length ? finite.reduce((sum, value) => sum + value, 0) / finite.length : null;
+    };
+    const max = (values) => {
+      const finite = values.filter((value) => Number.isFinite(value));
+      return finite.length ? Math.max(...finite) : null;
+    };
+    return cloneOverlayRecorderPayload({
+      metadata: {
+        enabled: debug.enabled,
+        startedAt: debug.startedAtIso,
+        capturedAt: new Date().toISOString(),
+        maxEvents: TRACKPAD_INTERACTION_DEBUG_MAX_EVENTS,
+        maxSessions: TRACKPAD_INTERACTION_DEBUG_MAX_SESSIONS,
+        sessionGapMs: TRACKPAD_INTERACTION_DEBUG_SESSION_GAP_MS
+      },
+      summary: {
+        eventCount: events.length,
+        sessionCount: sessions.length,
+        totals: { ...(debug.totals || {}) },
+        zoomProcessedCount: zoomProcessed.length,
+        zoomAvgLatencyMs: roundOverlayRecorderValue(avg(zoomProcessed.map((event) => Number(event.latencyMs))), 3),
+        zoomMaxLatencyMs: roundOverlayRecorderValue(max(zoomProcessed.map((event) => Number(event.latencyMs))), 3),
+        zoomAvgRequestedDeltaPct: roundOverlayRecorderValue(avg(zoomProcessed.map((event) => Number(event.requestedZoomDelta))), 3),
+        zoomAvgActualDeltaPct: roundOverlayRecorderValue(avg(zoomProcessed.map((event) => Number(event.actualZoomDelta))), 3),
+        scrollProcessedCount: scrollProcessed.length,
+        scrollAvgLatencyMs: roundOverlayRecorderValue(avg(scrollProcessed.map((event) => Number(event.latencyMs))), 3),
+        scrollMaxLatencyMs: roundOverlayRecorderValue(max(scrollProcessed.map((event) => Number(event.latencyMs))), 3),
+        recentSessions: sessions.slice(-20)
+      },
+      sessions,
+      events
+    });
+  }, []);
+
+  const buildTrackpadInteractionDebugSummaryText = useCallback((trackpadDump) => {
+    const summaryLines = [];
+    summaryLines.push(`# Trackpad Interaction Debug - ${trackpadDump?.metadata?.capturedAt || new Date().toISOString()}`);
+    summaryLines.push(`events=${trackpadDump?.summary?.eventCount ?? 0}`);
+    summaryLines.push(`sessions=${trackpadDump?.summary?.sessionCount ?? 0}`);
+    summaryLines.push(`rawWheel=${trackpadDump?.summary?.totals?.rawWheel ?? 0}`);
+    summaryLines.push(`rawZoomWheel=${trackpadDump?.summary?.totals?.rawZoomWheel ?? 0}`);
+    summaryLines.push(`rawScrollWheel=${trackpadDump?.summary?.totals?.rawScrollWheel ?? 0}`);
+    summaryLines.push(`processedZoom=${trackpadDump?.summary?.totals?.processedZoom ?? 0}`);
+    summaryLines.push(`skippedZoom=${trackpadDump?.summary?.totals?.skippedZoom ?? 0}`);
+    summaryLines.push(`processedScroll=${trackpadDump?.summary?.totals?.processedScroll ?? 0}`);
+    summaryLines.push(`nativeScroll=${trackpadDump?.summary?.totals?.nativeScroll ?? 0}`);
+    summaryLines.push(`pointerPanMoves=${trackpadDump?.summary?.totals?.pointerPanMoves ?? 0}`);
+    summaryLines.push(`zoomAvgLatencyMs=${trackpadDump?.summary?.zoomAvgLatencyMs ?? 'n/a'}`);
+    summaryLines.push(`zoomMaxLatencyMs=${trackpadDump?.summary?.zoomMaxLatencyMs ?? 'n/a'}`);
+    summaryLines.push(`zoomAvgRequestedDeltaPct=${trackpadDump?.summary?.zoomAvgRequestedDeltaPct ?? 'n/a'}`);
+    summaryLines.push(`zoomAvgActualDeltaPct=${trackpadDump?.summary?.zoomAvgActualDeltaPct ?? 'n/a'}`);
+    summaryLines.push(`scrollAvgLatencyMs=${trackpadDump?.summary?.scrollAvgLatencyMs ?? 'n/a'}`);
+    summaryLines.push(`scrollMaxLatencyMs=${trackpadDump?.summary?.scrollMaxLatencyMs ?? 'n/a'}`);
+    summaryLines.push('');
+    summaryLines.push('## Recent sessions');
+    (trackpadDump?.summary?.recentSessions || []).forEach((session) => {
+      summaryLines.push(
+        `- #${session.id} ${session.family}/${session.direction || 'unknown'} ` +
+        `events=${session.eventCount} raw=${session.rawWheelCount} processed=${session.processedCount} ignored=${session.ignoredCount} ` +
+        `rawAbs=(${roundOverlayRecorderValue(session.rawAbsX, 2)},${roundOverlayRecorderValue(session.rawAbsY, 2)}) ` +
+        `scrollAbs=(${roundOverlayRecorderValue(session.actualScrollAbsX, 2)},${roundOverlayRecorderValue(session.actualScrollAbsY, 2)}) ` +
+        `zoomReq=${roundOverlayRecorderValue(session.zoomRequestedAbs, 3)} zoomActual=${roundOverlayRecorderValue(session.zoomActualAbs, 3)} ` +
+        `maxLatency=${roundOverlayRecorderValue(session.maxLatencyMs, 3)}ms`
+      );
+    });
+    return summaryLines.join('\n');
+  }, []);
+
+  const getTrackpadInteractionDebugSavePayload = useCallback(() => {
+    const dump = getTrackpadInteractionDebugDump();
+    return {
+      dump,
+      summaryText: buildTrackpadInteractionDebugSummaryText(dump),
+      extraFiles: [
+        { name: 'trackpad-interaction-debug.json', content: JSON.stringify(dump, null, 2) },
+        { name: 'trackpad-interaction-summary.txt', content: buildTrackpadInteractionDebugSummaryText(dump) }
+      ]
+    };
+  }, [buildTrackpadInteractionDebugSummaryText, getTrackpadInteractionDebugDump]);
+
+  const clearTrackpadInteractionDebug = useCallback(() => {
+    const debug = trackpadInteractionDebugRef.current;
+    debug.startedAtIso = new Date().toISOString();
+    debug.startedAtMs = (typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now();
+    debug.seq = 0;
+    debug.sessionSeq = 0;
+    debug.currentSession = null;
+    debug.lastInputAtMs = 0;
+    debug.lastConsoleAtMs = 0;
+    debug.lastScrollLeft = null;
+    debug.lastScrollTop = null;
+    debug.lastZoomPercent = null;
+    debug.events = [];
+    debug.sessions = [];
+    debug.totals = {
+      rawWheel: 0,
+      rawZoomWheel: 0,
+      rawScrollWheel: 0,
+      processedZoom: 0,
+      skippedZoom: 0,
+      processedScroll: 0,
+      nativeScroll: 0,
+      pointerPanMoves: 0
+    };
+    if (typeof document !== 'undefined') {
+      try {
+        document.documentElement.dataset.trackpadDebugEnabled = debug.enabled ? 'true' : 'false';
+        document.documentElement.dataset.trackpadDebugEvents = '0';
+        document.documentElement.dataset.trackpadDebugSessions = '0';
+        document.documentElement.dataset.trackpadDebugLastType = 'cleared';
+        document.documentElement.dataset.trackpadDebugLastFamily = 'none';
+      } catch { /* ignore diagnostics DOM marker failure */ }
+    }
+    return { cleared: true, startedAt: debug.startedAtIso };
   }, []);
 
   const renderTasksRef = useRef({});
@@ -10547,6 +10958,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
   const [syncfusionDualLayerEnabled, setSyncfusionDualLayerEnabled] = useState(() => readSyncfusionDualLayerEnabled());
   const [syncfusionInteractionActive, setSyncfusionInteractionActive] = useState(false);
   const [syncfusionInteractionPhase, setSyncfusionInteractionPhase] = useState('idle'); // idle | interacting | committing
+  const [syncfusionZoomPreviewActive, setSyncfusionZoomPreviewActive] = useState(false);
   const syncfusionInteractionUntilRef = useRef(0);
   const syncfusionInteractionTimerRef = useRef(null);
   const syncfusionInteractionReasonRef = useRef(null);
@@ -10610,6 +11022,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
   const syncfusionContainerMutationReasonCountsRef = useRef({});
   const lightweightCalloutCountByPageRef = useRef({});
   const calloutsRef = useRef([]);
+  const activePdfIdentityRef = useRef(null);
+  const activeCloudDocumentIdRef = useRef(null);
   const syncfusionAnnotationsByPageRef = useRef({});
   const syncfusionActiveSpaceIdRef = useRef(null);
   const syncfusionActiveSpacePagesRef = useRef([]);
@@ -11260,7 +11674,173 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       if (fb?.isConnected) fb.remove();
       delete fallbacks[pageKey];
     });
+    const zoomSnapshotLayer = syncfusionZoomSnapshotLayerRef.current;
+    if (zoomSnapshotLayer?.isConnected) {
+      zoomSnapshotLayer.remove();
+    }
+    syncfusionZoomSnapshotLayerRef.current = null;
+    syncfusionZoomSnapshotPagesRef.current = {};
   }, [resetSyncfusionZoomPresentationPages, syncScaleConfirmHiddenPages]);
+
+  const clearSyncfusionZoomSnapshots = useCallback(() => {
+    const layer = syncfusionZoomSnapshotLayerRef.current;
+    if (layer?.isConnected) {
+      layer.remove();
+    }
+    syncfusionZoomSnapshotLayerRef.current = null;
+    syncfusionZoomSnapshotPagesRef.current = {};
+  }, []);
+
+  const applySyncfusionZoomSnapshotClip = useCallback((layer) => {
+    if (!layer || typeof window === 'undefined' || typeof document === 'undefined') return;
+    const viewport =
+      document.getElementById(`${syncfusionViewerElementId}_viewerContainer`) ||
+      syncfusionWrapperRef.current ||
+      containerRef.current;
+    const rect = viewport?.getBoundingClientRect?.();
+    if (!(rect && rect.width > 0 && rect.height > 0)) {
+      layer.style.clipPath = '';
+      return;
+    }
+    const viewportWidth = window.innerWidth || document.documentElement?.clientWidth || 0;
+    const viewportHeight = window.innerHeight || document.documentElement?.clientHeight || 0;
+    const top = Math.max(0, rect.top);
+    const right = Math.max(0, viewportWidth - rect.right);
+    const bottom = Math.max(0, viewportHeight - rect.bottom);
+    const left = Math.max(0, rect.left);
+    layer.style.clipPath = `inset(${top}px ${right}px ${bottom}px ${left}px)`;
+  }, [syncfusionViewerElementId]);
+
+  const ensureSyncfusionZoomSnapshotLayer = useCallback(() => {
+    if (typeof document === 'undefined') return null;
+    let layer = syncfusionZoomSnapshotLayerRef.current;
+    if (!layer || !layer.isConnected) {
+      layer = document.createElement('div');
+      layer.setAttribute('data-syncfusion-zoom-snapshot-layer', 'true');
+      document.body.appendChild(layer);
+      syncfusionZoomSnapshotLayerRef.current = layer;
+    }
+    // The zoom snapshot is PDF content, not app chrome. Keep it above the
+    // Syncfusion page but below top/bottom toolbars and sync/storage banners.
+    // Re-apply every time so a hot-reloaded/stale snapshot node cannot keep an
+    // older high z-index and paint annotations over warnings.
+    Object.assign(layer.style, {
+      position: 'fixed',
+      inset: '0',
+      pointerEvents: 'none',
+      zIndex: '8000',
+      overflow: 'hidden',
+      contain: 'layout style paint',
+    });
+    applySyncfusionZoomSnapshotClip(layer);
+    return layer;
+  }, [applySyncfusionZoomSnapshotClip]);
+
+  const updateSyncfusionZoomSnapshots = useCallback((nextScale) => {
+    applySyncfusionZoomSnapshotClip(syncfusionZoomSnapshotLayerRef.current);
+    const baseScale = syncfusionZoomSnapshotBaseScaleRef.current || zoomOverlayBaseScaleRef.current || 1;
+    const pages = syncfusionZoomSnapshotPagesRef.current || {};
+    Object.entries(pages).forEach(([pageKey, entry]) => {
+      if (!entry?.host?.isConnected) return;
+      const pageNumber = Number(pageKey);
+      const livePage = Number.isFinite(pageNumber)
+        ? document.querySelector(`[id$="_pageDiv_${pageNumber - 1}"]`)
+        : null;
+      const liveRect = livePage?.getBoundingClientRect?.();
+      const hasLiveRect = liveRect && liveRect.width > 0 && liveRect.height > 0;
+      const ratio = hasLiveRect
+        ? liveRect.width / entry.rect.width
+        : (baseScale > 0 && Number.isFinite(nextScale) ? nextScale / baseScale : 1);
+      const left = hasLiveRect ? liveRect.left : entry.rect.left;
+      const top = hasLiveRect ? liveRect.top : entry.rect.top;
+      entry.host.style.transform = `translate3d(${left}px, ${top}px, 0) scale(${ratio})`;
+      entry.host.setAttribute('data-zoom-snapshot-ratio', String(Number(ratio.toFixed(5))));
+    });
+  }, [applySyncfusionZoomSnapshotClip]);
+
+  const captureSyncfusionZoomSnapshots = useCallback((baseScale) => {
+    if (typeof document === 'undefined') return;
+    clearSyncfusionZoomSnapshots();
+    const layer = ensureSyncfusionZoomSnapshotLayer();
+    if (!layer) return;
+    applySyncfusionZoomSnapshotClip(layer);
+    const viewport =
+      document.getElementById(`${syncfusionViewerElementId}_viewerContainer`) ||
+      syncfusionWrapperRef.current ||
+      containerRef.current;
+    const viewportRect = viewport?.getBoundingClientRect?.();
+    const captureRect = viewportRect && viewportRect.width > 0 && viewportRect.height > 0
+      ? {
+          left: viewportRect.left - SYNCFUSION_ZOOM_SNAPSHOT_VIEWPORT_MARGIN_PX,
+          top: viewportRect.top - SYNCFUSION_ZOOM_SNAPSHOT_VIEWPORT_MARGIN_PX,
+          right: viewportRect.right + SYNCFUSION_ZOOM_SNAPSHOT_VIEWPORT_MARGIN_PX,
+          bottom: viewportRect.bottom + SYNCFUSION_ZOOM_SNAPSHOT_VIEWPORT_MARGIN_PX,
+        }
+      : null;
+    const intersectsCaptureRect = (rect) => (
+      !captureRect ||
+      (
+        rect.right >= captureRect.left &&
+        rect.left <= captureRect.right &&
+        rect.bottom >= captureRect.top &&
+        rect.top <= captureRect.bottom
+      )
+    );
+    const surfaces = Array.from(document.querySelectorAll('[data-annotation-real-surface]'))
+      .filter((surface) => {
+        if (!surface?.isConnected || surface.getAttribute('data-annotation-hydration-gated') === 'true') return false;
+        const rect = surface.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 && intersectsCaptureRect(rect);
+      });
+    const pages = {};
+    surfaces.forEach((surface) => {
+      const pageNumber = Number(surface.getAttribute('data-annotation-real-surface'));
+      if (!Number.isFinite(pageNumber) || pageNumber <= 0) return;
+      const rect = surface.getBoundingClientRect();
+      if (!(rect.width > 0 && rect.height > 0)) return;
+      const clone = surface.cloneNode(true);
+      clone.setAttribute('data-annotation-real-surface-clone', String(pageNumber));
+      clone.querySelectorAll('[id]').forEach((node) => node.removeAttribute('id'));
+      Object.assign(clone.style, {
+        position: 'absolute',
+        top: '0',
+        left: '0',
+        width: `${rect.width}px`,
+        height: `${rect.height}px`,
+        transform: 'none',
+        pointerEvents: 'none',
+        visibility: 'visible',
+      });
+      const host = document.createElement('div');
+      host.setAttribute('data-syncfusion-zoom-snapshot-page', String(pageNumber));
+      Object.assign(host.style, {
+        position: 'fixed',
+        top: '0',
+        left: '0',
+        width: `${rect.width}px`,
+        height: `${rect.height}px`,
+        transformOrigin: 'top left',
+        transform: `translate3d(${rect.left}px, ${rect.top}px, 0) scale(1)`,
+        willChange: 'transform',
+        backfaceVisibility: 'hidden',
+        pointerEvents: 'none',
+        overflow: 'hidden',
+      });
+      host.appendChild(clone);
+      layer.appendChild(host);
+      pages[pageNumber] = {
+        host,
+        rect: {
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+          height: rect.height,
+        },
+      };
+    });
+    syncfusionZoomSnapshotBaseScaleRef.current = Number.isFinite(baseScale) && baseScale > 0 ? baseScale : 1;
+    syncfusionZoomSnapshotPagesRef.current = pages;
+  }, [applySyncfusionZoomSnapshotClip, clearSyncfusionZoomSnapshots, ensureSyncfusionZoomSnapshotLayer, syncfusionViewerElementId]);
 
   const commitSyncfusionOverlayScaleForPage = useCallback((pageNumber, appliedScale, source = 'unknown') => {
     const safePageNumber = Number(pageNumber);
@@ -11601,6 +12181,22 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     if (syncfusionInteractionPhaseRef.current !== 'interacting') {
       return;
     }
+    if (zoomOverlayTransformActiveRef.current) {
+      Object.entries(syncfusionOverlayContentRefs.current || {}).forEach(([pageKey, node]) => {
+        if (!node?.isConnected || !node.style) return;
+        if (node.style.transform || node.style.transformOrigin || node.style.willChange || node.style.backfaceVisibility) {
+          node.style.transform = '';
+          node.style.transformOrigin = '';
+          node.style.willChange = '';
+          node.style.backfaceVisibility = '';
+        }
+        syncfusionOverlayTransformRatioByPageRef.current = {
+          ...(syncfusionOverlayTransformRatioByPageRef.current || {}),
+          [pageKey]: 1
+        };
+      });
+      return;
+    }
 
     const viewerScale = getSyncfusionViewerScale();
     const pageContainers = syncfusionPageContainersStateRef.current || pageContainersRef.current || {};
@@ -11769,6 +12365,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     syncfusionInteractionIsZoomOnlyRef.current = false;
     syncfusionInteractionPhaseRef.current = 'idle';
     setSyncfusionInteractionPhase('idle');
+    if (!zoomOverlayTransformActiveRef.current) {
+      setSyncfusionZoomPreviewActive(false);
+    }
     setSyncfusionCommittingProxyPages(new Set());
     syncfusionCommittingProxyPagesRef.current = new Set();
     setSyncfusionProxyReadyPages(new Set());
@@ -12487,10 +13086,61 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
   const [fillColor, setFillColor] = useState('#ff0000');
   const [fillOpacity, setFillOpacity] = useState(100);
   const [strokeWidth, setStrokeWidth] = useState(3);
+  const [cloudIntensity, setCloudIntensity] = useState(2);
+  const [selectedToolbarAnnotation, setSelectedToolbarAnnotation] = useState(null);
+  const handleSelectionForToolbar = useCallback((payload) => {
+    if (!payload) {
+      setSelectedToolbarAnnotation(null);
+      return;
+    }
+    const { pageNumber, annotationIndex, annotation } = payload;
+    setSelectedToolbarAnnotation((prev) => {
+      if (annotationIndex == null) {
+        if (prev && prev.pageNumber === pageNumber) return null;
+        return prev;
+      }
+      if (prev
+        && prev.pageNumber === pageNumber
+        && prev.annotationIndex === annotationIndex
+        && prev.annotation === annotation) {
+        return prev;
+      }
+      return { pageNumber, annotationIndex, annotation };
+    });
+  }, []);
+  const selectedToolbarAnnotationRef = useRef(selectedToolbarAnnotation);
+  useEffect(() => { selectedToolbarAnnotationRef.current = selectedToolbarAnnotation; }, [selectedToolbarAnnotation]);
+  const handlePatchSelectedAnnotation = useCallback((patch) => {
+    const sel = selectedToolbarAnnotationRef.current;
+    if (!sel || sel.annotationIndex == null) return;
+    const pageJSON = annotationsByPageRef.current?.[sel.pageNumber];
+    if (!pageJSON || !Array.isArray(pageJSON.objects)) return;
+    const current = pageJSON.objects[sel.annotationIndex];
+    if (!current) return;
+    const nextObj = {
+      ...current,
+      ...patch,
+      data: patch.data
+        ? { ...(current.data || {}), ...patch.data }
+        : current.data,
+    };
+    const nextPage = {
+      ...pageJSON,
+      objects: pageJSON.objects.map((o, i) => (i === sel.annotationIndex ? nextObj : o)),
+    };
+    handleSaveAnnotations(sel.pageNumber, nextPage, {
+      source: 'toolbar:selected-edit',
+      tool: 'select',
+    });
+    setSelectedToolbarAnnotation((prev) => (prev
+      ? { ...prev, annotation: nextObj }
+      : prev));
+  }, []);
   const [zoomGeneration, setZoomGeneration] = useState(0);
   // Edit mode state: tracks which annotation is being edited via double-click
   // { pageNumber, index, type, editType ('text'|'shape'|'callout'), data }
   const [editingAnnotation, setEditingAnnotation] = useState(null);
+  const [richTextEditor, setRichTextEditor] = useState(null);
   // UX: Phase 15 UAT-2 — live page-space bounds of the callout textbox during
   // edit. Updated on every FabricEditCanvas onLiveTextGrow fire (Fabric Textbox
   // 'changed' event). Null when no callout is being edited. SVGAnnotationLayer
@@ -12737,9 +13387,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
 
   // newTextPlacement removed — text tool creates text-only callouts via CalloutCanvas
   const [arrowheadStyle, setArrowheadStyle] = useState(ARROWHEAD_STYLES.SOLID_TRIANGLE);
+  const [lineBorderStyle, setLineBorderStyle] = useState('solid');
 
   // Callout overlay state
   const [callouts, setCallouts] = useState([]);
+  const [annotationOverlayRecoveryTick, setAnnotationOverlayRecoveryTick] = useState(0);
   const lastSavedCalloutsFingerprintRef = useRef(null);
   const setCalloutsIfPersistedChanged = useCallback((updater) => {
     setCallouts((prev) => {
@@ -12750,6 +13402,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       return next;
     });
   }, []);
+  const handleCalloutTextStyleChange = useCallback((calloutId, stylePatch) => {
+    if (!calloutId || !stylePatch) return;
+    setCalloutsIfPersistedChanged((prev) => prev.map((c) => {
+      if (!c || c.id !== calloutId) return c;
+      return { ...c, style: { ...(c.style || {}), ...stylePatch } };
+    }));
+  }, [setCalloutsIfPersistedChanged]);
   const [selectedCalloutId, setSelectedCalloutId] = useState(null);
   // UX: Phase 14 CALL-10 — selectedCalloutIds is a Set<string> parallel to
   // selectedIds Set<number> for annotations. Clicking a callout sets this Set
@@ -12843,6 +13502,109 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     lightweightCalloutCountByPageRef.current = lightweightCalloutCountByPage || {};
   }, [lightweightCalloutCountByPage]);
 
+  const selectedToolbarCallout = useMemo(() => {
+    if (!(selectedCalloutIds instanceof Set) || selectedCalloutIds.size !== 1) return null;
+    const id = Array.from(selectedCalloutIds)[0];
+    const callout = (callouts || []).find((c) => c && c.id === id);
+    if (!callout) return null;
+    return { id, pageNumber: callout.pageNumber, callout };
+  }, [selectedCalloutIds, callouts]);
+  const selectedToolbarCalloutRef = useRef(selectedToolbarCallout);
+  useEffect(() => { selectedToolbarCalloutRef.current = selectedToolbarCallout; }, [selectedToolbarCallout]);
+
+  const handlePatchSelectedCallout = useCallback((stylePatch) => {
+    const sel = selectedToolbarCalloutRef.current;
+    if (!sel || !sel.id) return;
+    setCalloutsIfPersistedChanged((prev) => prev.map((c) => {
+      if (!c || c.id !== sel.id) return c;
+      return { ...c, style: { ...(c.style || {}), ...stylePatch } };
+    }));
+  }, [setCalloutsIfPersistedChanged]);
+
+  useEffect(() => {
+    const sel = selectedToolbarAnnotation;
+    if (!sel || !sel.annotation) return;
+    const type = String(sel.annotation.type || '').toLowerCase();
+    const annot = sel.annotation;
+    const isCounter = type === 'circle' && annot?.data?.type === 'counter';
+    if (type !== 'rect' && type !== 'ellipse' && type !== 'path'
+      && type !== 'line' && type !== 'textbox'
+      && type !== 'polygon' && type !== 'polyline'
+      && !isCounter) return;
+    const isFillable = type === 'rect' || type === 'ellipse' || type === 'textbox'
+      || type === 'polygon' || isCounter;
+    const fillSource = type === 'textbox' ? annot.backgroundColor : annot.fill;
+    const strokeSource = isCounter ? annot.data?.numberColor : annot.stroke;
+    const strokeHex = strokeSource ? getHexFromColor(strokeSource) : null;
+    const strokeOp = strokeSource ? getOpacityFromEntityColor(strokeSource) : 100;
+    const fillHex = fillSource && fillSource !== 'transparent' ? getHexFromColor(fillSource) : null;
+    const fillOp = fillSource && fillSource !== 'transparent' ? getOpacityFromEntityColor(fillSource) : 0;
+    if (strokeHex) {
+      setStrokeColor(strokeHex);
+      setStrokeOpacity(strokeOp);
+    }
+    if (isFillable) {
+      if (fillHex) {
+        setFillColor(fillHex);
+        setFillOpacity(fillOp);
+      } else if (fillSource === 'transparent' || !fillSource) {
+        setFillOpacity(0);
+      }
+    }
+    const sizeValue = isCounter ? Number(annot.radius) : Number(annot.strokeWidth);
+    if (Number.isFinite(sizeValue) && sizeValue > 0) {
+      setStrokeWidth(sizeValue);
+      setStrokeWidthInputValue(String(Math.round(sizeValue)));
+    }
+    const dash = Array.isArray(annot.strokeDashArray) ? annot.strokeDashArray : null;
+    if ((type === 'rect' || type === 'polygon') && annot.data?.pdfCloudIntensity != null) {
+      setLineBorderStyle('cloud');
+      setCloudIntensity(Number(annot.data.pdfCloudIntensity) || 2);
+    } else if (dash && dash.length >= 2) {
+      if (dash[0] === 6) setLineBorderStyle('dashed');
+      else if (dash[0] === 2) setLineBorderStyle('dotted');
+      else setLineBorderStyle('solid');
+    } else {
+      setLineBorderStyle('solid');
+    }
+    if (type === 'line' && annot.data?.arrowheadStyle) {
+      setArrowheadStyle(annot.data.arrowheadStyle);
+    }
+  }, [selectedToolbarAnnotation]);
+
+  useEffect(() => {
+    const sel = selectedToolbarCallout;
+    if (!sel || !sel.callout) return;
+    const style = sel.callout.style || {};
+    const border = style.borderColor || style.lineColor;
+    if (border) {
+      const borderHex = getHexFromColor(border);
+      if (borderHex) setStrokeColor(borderHex);
+    }
+    if (Number.isFinite(Number(style.borderOpacity))) {
+      setStrokeOpacity(Math.round(Math.max(0, Math.min(1, Number(style.borderOpacity))) * 100));
+    } else {
+      setStrokeOpacity(100);
+    }
+    if (style.fillColor && style.fillColor !== 'transparent') {
+      const fillHex = getHexFromColor(style.fillColor);
+      if (fillHex) setFillColor(fillHex);
+      const fo = Number(style.fillOpacity);
+      if (Number.isFinite(fo)) setFillOpacity(Math.round(Math.max(0, Math.min(1, fo)) * 100));
+      else setFillOpacity(100);
+    } else {
+      setFillOpacity(0);
+    }
+    const thickness = Number(style.lineThickness);
+    if (Number.isFinite(thickness) && thickness > 0) {
+      setStrokeWidth(thickness);
+      setStrokeWidthInputValue(String(Math.round(thickness)));
+    }
+    if (style.arrowheadStyle) {
+      setArrowheadStyle(style.arrowheadStyle);
+    }
+  }, [selectedToolbarCallout]);
+
   // Clipboard handlers for callouts
   const handleCutCallout = useCallback((calloutId) => {
     const callout = callouts.find(c => c.id === calloutId);
@@ -12904,11 +13666,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
   // — one listener, always on, covers every page without needing PAL to be mounted.
   useEffect(() => {
     window.__onAnnotationContextMenu = ({ pageNumber, annotationIndex, calloutId, kind, groupIndices, event }) => {
-      // 2026-04-25 — Always log when the menu is about to open. Mirrored
-      // through console.log AND console.warn so it can't be filtered
-      // out, plus a stack trace so we see WHO called this — if the
-      // dispatcher logs are absent this still tells us which module
-      // opened the menu.
+      // Opt-in diagnostic hook for right-click menu routing.
       const snapshot = {
         page: pageNumber,
         kind,
@@ -12919,8 +13677,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
         clientY: event?.clientY
       };
       const line = `[CTXDIAG menu-open] ${JSON.stringify(snapshot)}`;
-      try { console.log(line); } catch { /* ignore */ }
-      try { console.warn(line); } catch { /* ignore */ }
+      appDebug(line);
       try {
         if (typeof window !== 'undefined' && typeof window.__ctxDiagMenuOpenWatcher === 'function') {
           window.__ctxDiagMenuOpenWatcher(snapshot);
@@ -13172,7 +13929,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     setCounterCaretPopupOpen(false);
     setCounterCaretSubmenu(null);
     setCounterUITick((t) => t + 1);
-    console.log(`[CSeries new (popup)] handleNewCounterSeries — picked id=${nextId} color=${nextColor} existingColors=[${existingColors.join(', ')}] → setStrokeColor(${nextColor})`);
+    appDebug(`[CSeries new (popup)] handleNewCounterSeries — picked id=${nextId} color=${nextColor} existingColors=[${existingColors.join(', ')}] -> setStrokeColor(${nextColor})`);
   }, [counterSeriesList]);
 
   // [COUNTER MULTI-LIST] Make an existing series active. Triggered by
@@ -13192,13 +13949,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       // toggles via its own handler — letting this fire would race-close)
       const caret = document.querySelector('[data-counter-caret-button="true"]');
       if (caret && caret.contains(e.target)) return;
-      console.log('[CSeries popup] click-outside → close');
+      appDebug('[CSeries popup] click-outside -> close');
       setCounterCaretPopupOpen(false);
       setCounterCaretSubmenu(null);
     };
     const onKey = (e) => {
       if (e.key === 'Escape') {
-        console.log('[CSeries popup] ESC → close');
+        appDebug('[CSeries popup] ESC -> close');
         setCounterCaretPopupOpen(false);
         setCounterCaretSubmenu(null);
       }
@@ -13294,7 +14051,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
   const handleSwitchCounterSeries = useCallback((seriesId) => {
     const series = (counterSeriesList || []).find((s) => s.seriesId === seriesId);
     if (!series) {
-      console.log(`[CSeries switch] handleSwitchCounterSeries — seriesId=${seriesId} NOT FOUND in counterSeriesList (count=${counterSeriesList?.length || 0})`);
+      appDebug(`[CSeries switch] handleSwitchCounterSeries — seriesId=${seriesId} NOT FOUND in counterSeriesList (count=${counterSeriesList?.length || 0})`);
       return;
     }
     activeCounterSeriesIdRef.current = series.seriesId;
@@ -13307,7 +14064,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     setCounterCaretPopupOpen(false);
     setCounterCaretSubmenu(null);
     setCounterUITick((t) => t + 1);
-    console.log(`[CSeries switch] handleSwitchCounterSeries — id=${series.seriesId} color=${series.color} label="${series.label}" count=${series.count} → setStrokeColor(${series.color})`);
+    appDebug(`[CSeries switch] handleSwitchCounterSeries — id=${series.seriesId} color=${series.color} label="${series.label}" count=${series.count} -> setStrokeColor(${series.color})`);
   }, [counterSeriesList]);
 
   const [unsupportedAnnotationTypes, setUnsupportedAnnotationTypes] = useState([]); // PDF annotation types we can't edit
@@ -13414,11 +14171,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
   useEffect(() => {
     // Debug: log tool activation for line/arrow/callout
     if (activeTool === 'counter') {
-      console.log(`[Counter] TOOL ACTIVATED — activeTool=counter, lastShapeTool=${lastShapeTool}, ref will sync next render`);
+      appDebug(`[Counter] TOOL ACTIVATED — activeTool=counter, lastShapeTool=${lastShapeTool}, ref will sync next render`);
     }
     if (['line', 'arrow', 'callout'].includes(activeTool)) {
       const isDrawingTool = ['pen', 'highlighter', 'rect', 'ellipse', 'line', 'arrow'].includes(activeTool);
-      console.log(`[App] TOOL ACTIVATED: ${activeTool}`, {
+      appDebug(`[App] TOOL ACTIVATED: ${activeTool}`, {
         isDrawingTool,
         willMountDrawingCanvas: isDrawingTool,
         willMountCalloutUI: activeTool === 'callout',
@@ -13450,10 +14207,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
 
   // Close secondary toolbar when pan or select tools are active
   useEffect(() => {
-    if (activeTool === 'pan' || activeTool === 'select') {
+    if (
+      (activeTool === 'pan' || activeTool === 'select') &&
+      !(showSurveyPanel && activeCategoryDropdown === 'survey')
+    ) {
       setActiveCategoryDropdown(null);
     }
-  }, [activeTool]);
+  }, [activeTool, activeCategoryDropdown, showSurveyPanel]);
 
   // ---------------------------------------------------------------------------
   // TOOL-SWITCH DIAGNOSTICS (annotation render mismatch investigation)
@@ -13488,7 +14248,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     if (activeTool !== 'eraser' && activeTool !== 'select') return;
     const slot = activeTool;
     const t0 = performance.now();
-    console.log(`[Diag] tool-switch DETECTED → ${slot} (scheduling t+1000ms capture)`);
+    appDebug(`[Diag] tool-switch DETECTED -> ${slot} (scheduling t+1000ms capture)`);
     const timer = setTimeout(async () => {
       try {
         const state = diagLiveStateRef.current || {};
@@ -13856,14 +14616,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
               const screenshotPath = `/Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/TestLogs/testlog-screenshot-${slot}.png`;
               await window.electronAPI.writeFile(screenshotPath, pngBytes);
               const sizeBytes = pngBytes.byteLength || pngBytes.length || 0;
-              console.log(`[Diag ${slot}] screenshot saved (${Math.round(sizeBytes / 1024)} KB) → ${screenshotPath}`);
+              appDebug(`[Diag ${slot}] screenshot saved (${Math.round(sizeBytes / 1024)} KB) -> ${screenshotPath}`);
             }
           }
         } catch (shotErr) {
           console.warn(`[Diag ${slot}] screenshot capture failed:`, shotErr?.message || shotErr);
         }
 
-        console.log(
+        appDebug(
           `[Diag ${slot}] CAPTURED @ t+${snapshot.capturedAtMs}ms — ` +
           `annotations=${snapshot.counts.totalAnnotations} callouts=${snapshot.counts.totalPageCallouts} ` +
           `svgWrappers=${snapshot.domState.svgWrapperCount} ` +
@@ -14207,6 +14967,31 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
 
     event.preventDefault?.();
     event.stopPropagation?.();
+    const rawEventAtMs = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+      ? performance.now()
+      : Date.now();
+    const rawDeltaX = Number(event.deltaX) || 0;
+    const rawDeltaY = Number(event.deltaY) || 0;
+    const rawZoomState = readTrackpadDebugState(viewerContainer);
+    const rawZoomDirection = rawDeltaY < 0 ? 'zoom-in' : rawDeltaY > 0 ? 'zoom-out' : 'zoom-flat';
+    trackpadInteractionDebugRef.current.totals.rawWheel += 1;
+    trackpadInteractionDebugRef.current.totals.rawZoomWheel += 1;
+    recordTrackpadInteractionEvent('raw-wheel', {
+      family: 'zoom',
+      direction: rawZoomDirection,
+      reason,
+      rawDeltaX,
+      rawDeltaY,
+      deltaMode: event.deltaMode,
+      ctrlKey: !!event.ctrlKey,
+      metaKey: !!event.metaKey,
+      shiftKey: !!event.shiftKey,
+      altKey: !!event.altKey,
+      clientX: roundOverlayRecorderValue(event.clientX, 3),
+      clientY: roundOverlayRecorderValue(event.clientY, 3),
+      defaultPrevented: !!event.defaultPrevented,
+      before: rawZoomState
+    });
 
     const tool = activeToolRef.current;
     if (tool === 'pen' || tool === 'highlighter' || tool === 'eraser') {
@@ -14249,10 +15034,35 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       const workStartMs = (typeof performance !== 'undefined' && typeof performance.now === 'function')
         ? performance.now()
         : Date.now();
+      const queuedLatencyMs = workStartMs - rawEventAtMs;
       syncfusionWheelZoomRafRef.current = null;
       const delta = Number(syncfusionWheelZoomDeltaRef.current) || 0;
       syncfusionWheelZoomDeltaRef.current = 0;
-      if (Math.abs(delta) < 0.01) return;
+      if (queuedLatencyMs > SYNCFUSION_WHEEL_ZOOM_STALE_DROP_MS) {
+        trackpadInteractionDebugRef.current.totals.skippedZoom += 1;
+        recordTrackpadInteractionEvent('zoom-skipped', {
+          family: 'zoom',
+          direction: delta < 0 ? 'zoom-out' : delta > 0 ? 'zoom-in' : 'zoom-flat',
+          skipped: true,
+          note: 'dropped stale zoom batch after main-thread delay',
+          rawDeltaY: delta,
+          latencyMs: roundOverlayRecorderValue(queuedLatencyMs, 3),
+          before: readTrackpadDebugState(viewerContainer)
+        });
+        return;
+      }
+      if (Math.abs(delta) < 0.01) {
+        trackpadInteractionDebugRef.current.totals.skippedZoom += 1;
+        recordTrackpadInteractionEvent('zoom-skipped', {
+          family: 'zoom',
+          direction: delta < 0 ? 'zoom-out' : delta > 0 ? 'zoom-in' : 'zoom-flat',
+          skipped: true,
+          note: 'batched delta below threshold',
+          rawDeltaY: delta,
+          before: readTrackpadDebugState(viewerContainer)
+        });
+        return;
+      }
 
       const anchor = syncfusionWheelZoomAnchorRef.current;
       if (anchor) setAnchor(anchor);
@@ -14331,11 +15141,28 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
         correctedSuspiciousZoom
       });
 
-      if (Math.abs(nextZoom - currentZoom) < 0.05) return;
+      if (Math.abs(nextZoom - currentZoom) < 0.02) {
+        trackpadInteractionDebugRef.current.totals.skippedZoom += 1;
+        recordTrackpadInteractionEvent('zoom-skipped', {
+          family: 'zoom',
+          direction: delta > 0 ? 'zoom-in' : 'zoom-out',
+          skipped: true,
+          note: 'computed zoom delta below threshold',
+          rawDeltaY: delta,
+          currentZoom,
+          nextZoom,
+          requestedZoomDelta: nextZoom - currentZoom,
+          latencyMs: roundOverlayRecorderValue(workStartMs - rawEventAtMs, 3),
+          before: readTrackpadDebugState(viewerContainer)
+        });
+        return;
+      }
 
       if (!zoomOverlayTransformActiveRef.current) {
         zoomOverlayBaseScaleRef.current = currentZoom / 100;
+        captureSyncfusionZoomSnapshots(currentZoom / 100);
         zoomOverlayTransformActiveRef.current = true;
+        setSyncfusionZoomPreviewActive(true);
         debugMark('zoom_start', {
           scale: currentZoom / 100,
           source: 'overlay_wheel_zoom_pre',
@@ -14363,6 +15190,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       const scrollLeftAtEvent = (anchor && Number.isFinite(anchor.scrollLeftAtEvent)) ? anchor.scrollLeftAtEvent : viewerContainer.scrollLeft;
       const scrollTopAtEvent = (anchor && Number.isFinite(anchor.scrollTopAtEvent)) ? anchor.scrollTopAtEvent : viewerContainer.scrollTop;
       const ratio = nextZoom > 0 && currentZoom > 0 ? (nextZoom / currentZoom) : 1;
+      updateSyncfusionZoomSnapshots(nextZoom / 100);
       const targetScrollLeft = (scrollLeftAtEvent + cursorX) * ratio - cursorX;
       const targetScrollTop = (scrollTopAtEvent + cursorY) * ratio - cursorY;
 
@@ -14396,6 +15224,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
         }
         viewerContainer.scrollLeft = Math.min(Math.max(0, nextLeft), maxScrollLeft);
         viewerContainer.scrollTop = Math.min(Math.max(0, nextTop), maxScrollTop);
+        updateSyncfusionZoomSnapshots(nextZoom / 100);
       };
       applyAnchor();
       if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
@@ -14409,18 +15238,74 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       const workEndMs = (typeof performance !== 'undefined' && typeof performance.now === 'function')
         ? performance.now()
         : Date.now();
+      trackpadInteractionDebugRef.current.totals.processedZoom += 1;
+      const afterImmediate = readTrackpadDebugState(viewerContainer);
+      recordTrackpadInteractionEvent('zoom-processed', {
+        family: 'zoom',
+        direction: nextZoom > currentZoom ? 'zoom-in' : 'zoom-out',
+        processed: true,
+        reason,
+        rawDeltaY: delta,
+        currentZoom,
+        reportedZoom,
+        reportedCurrentZoom,
+        trustedReactZoom,
+        nextZoom,
+        requestedZoomDelta: roundOverlayRecorderValue(nextZoom - currentZoom, 3),
+        requestedDeltaAbs: roundOverlayRecorderValue(zoomRequestedDeltaAbs, 3),
+        reportedLagAbs: roundOverlayRecorderValue(zoomReportedLagAbs, 3),
+        actualZoomDelta: roundOverlayRecorderValue((afterImmediate.zoomPercent || 0) - currentZoom, 3),
+        latencyMs: roundOverlayRecorderValue(workEndMs - rawEventAtMs, 3),
+        workMs: roundOverlayRecorderValue(workEndMs - workStartMs, 3),
+        before: rawZoomState,
+        after: afterImmediate,
+        targetScrollLeft: roundOverlayRecorderValue(targetScrollLeft, 3),
+        targetScrollTop: roundOverlayRecorderValue(targetScrollTop, 3),
+        anchor: anchor || null
+      });
+      if (typeof window !== 'undefined') {
+        [120, 500].forEach((delayMs) => {
+          window.setTimeout(() => {
+            const observed = readTrackpadDebugState(viewerContainer);
+            recordTrackpadInteractionEvent('zoom-observed', {
+              family: 'zoom',
+              direction: nextZoom > currentZoom ? 'zoom-in' : 'zoom-out',
+              processed: true,
+              reason,
+              delayMs,
+              rawDeltaY: delta,
+              currentZoom,
+              nextZoom,
+              requestedZoomDelta: roundOverlayRecorderValue(nextZoom - currentZoom, 3),
+              actualZoomDelta: roundOverlayRecorderValue((observed.zoomPercent || 0) - currentZoom, 3),
+              responsivenessRatio: roundOverlayRecorderValue(
+                Math.abs(nextZoom - currentZoom) > 0.001
+                  ? (((observed.zoomPercent || 0) - currentZoom) / (nextZoom - currentZoom))
+                  : null,
+                4
+              ),
+              latencyMs: roundOverlayRecorderValue(((typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now()) - rawEventAtMs, 3),
+              after: observed
+            });
+          }, delayMs);
+        });
+      }
       recordSyncfusionIdleWork('syncfusionInternals', workEndMs - workStartMs);
     }, SYNCFUSION_WHEEL_ZOOM_BATCH_MS);
 
     return true;
   }, [
     bumpOverlayLagEventTotal,
+    captureSyncfusionZoomSnapshots,
     findSyncfusionPageAtClientPoint,
     markInteractionPerfActive,
     markSyncfusionInteractionActive,
+    readTrackpadDebugState,
     recordSyncfusionIdleWork,
+    recordTrackpadInteractionEvent,
     setAnchor,
     setActiveTool,
+    updateSyncfusionZoomSnapshots,
   ]);
 
   // Memoize document unload handler to prevent re-renders
@@ -14523,7 +15408,33 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     };
 
     const onScroll = () => {
+      const beforeLeft = Number(trackpadInteractionDebugRef.current.lastScrollLeft);
+      const beforeTop = Number(trackpadInteractionDebugRef.current.lastScrollTop);
+      const nextLeft = Number(viewerContainer.scrollLeft) || 0;
+      const nextTop = Number(viewerContainer.scrollTop) || 0;
+      const scrollDeltaX = Number.isFinite(beforeLeft) ? nextLeft - beforeLeft : 0;
+      const scrollDeltaY = Number.isFinite(beforeTop) ? nextTop - beforeTop : 0;
+      trackpadInteractionDebugRef.current.lastScrollLeft = nextLeft;
+      trackpadInteractionDebugRef.current.lastScrollTop = nextTop;
+      if (Math.abs(scrollDeltaX) > 0.01 || Math.abs(scrollDeltaY) > 0.01) {
+        trackpadInteractionDebugRef.current.totals.nativeScroll += 1;
+        recordTrackpadInteractionEvent('native-scroll', {
+          family: 'scroll',
+          direction: Math.abs(scrollDeltaX) > 0.5 && Math.abs(scrollDeltaY) > 0.5
+            ? 'diagonal'
+            : Math.abs(scrollDeltaX) > Math.abs(scrollDeltaY)
+              ? 'horizontal'
+              : 'vertical',
+          processed: true,
+          scrollDeltaX: roundOverlayRecorderValue(scrollDeltaX, 3),
+          scrollDeltaY: roundOverlayRecorderValue(scrollDeltaY, 3),
+          after: readTrackpadDebugState(viewerContainer)
+        });
+      }
       queueInteractionMark('scroll', 'syncfusion-scroll', INTERACTION_PERF_SCROLL_HOLD_MS);
+      if (zoomOverlayTransformActiveRef.current) {
+        updateSyncfusionZoomSnapshots(scaleRef.current || syncfusionPendingZoomScaleRef.current || zoomOverlayBaseScaleRef.current || 1);
+      }
     };
 
     const flushWheelScroll = () => {
@@ -14544,9 +15455,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
 
       viewerContainer.scrollLeft += appliedX;
       viewerContainer.scrollTop += appliedY;
+      if (zoomOverlayTransformActiveRef.current) {
+        updateSyncfusionZoomSnapshots(scaleRef.current || syncfusionPendingZoomScaleRef.current || zoomOverlayBaseScaleRef.current || 1);
+      }
 
       const actualX = viewerContainer.scrollLeft - beforeLeft;
       const actualY = viewerContainer.scrollTop - beforeTop;
+      trackpadInteractionDebugRef.current.lastScrollLeft = viewerContainer.scrollLeft;
+      trackpadInteractionDebugRef.current.lastScrollTop = viewerContainer.scrollTop;
       const wheelPerfTotals = syncfusionWheelPerfTotalsRef.current;
       wheelPerfTotals.scrollEvents += pending.eventCount;
       wheelPerfTotals.scrollRawAbsX += pending.rawAbsX;
@@ -14618,6 +15534,36 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       const workEndMs = (typeof performance !== 'undefined' && typeof performance.now === 'function')
         ? performance.now()
         : Date.now();
+      trackpadInteractionDebugRef.current.totals.processedScroll += pending.eventCount;
+      recordTrackpadInteractionEvent('scroll-processed', {
+        family: 'scroll',
+        direction: pending.diagonalEvents > 0
+          ? 'diagonal'
+          : Math.abs(pending.rawX) > Math.abs(pending.rawY)
+            ? 'horizontal'
+            : 'vertical',
+        processed: true,
+        eventCount: pending.eventCount,
+        rawDeltaX: roundOverlayRecorderValue(pending.rawX, 3),
+        rawDeltaY: roundOverlayRecorderValue(pending.rawY, 3),
+        rawAbsX: roundOverlayRecorderValue(pending.rawAbsX, 3),
+        rawAbsY: roundOverlayRecorderValue(pending.rawAbsY, 3),
+        clippedX: roundOverlayRecorderValue(pending.clippedX, 3),
+        clippedY: roundOverlayRecorderValue(pending.clippedY, 3),
+        requestedAppliedX: roundOverlayRecorderValue(pending.appliedX, 3),
+        requestedAppliedY: roundOverlayRecorderValue(pending.appliedY, 3),
+        actualX: roundOverlayRecorderValue(actualX, 3),
+        actualY: roundOverlayRecorderValue(actualY, 3),
+        sensitivity: roundOverlayRecorderValue(pending.lastSensitivity, 5),
+        currentZoomForScroll: roundOverlayRecorderValue(pending.currentZoomForScroll, 5),
+        preventedEvents: pending.preventedEvents,
+        clippedEvents: pending.clippedEvents,
+        diagonalEvents: pending.diagonalEvents,
+        latencyMs: roundOverlayRecorderValue(workEndMs - (pending.firstEventAtMs || workStartMs), 3),
+        workMs: roundOverlayRecorderValue(workEndMs - workStartMs, 3),
+        before: pending.beforeState || null,
+        after: readTrackpadDebugState(viewerContainer)
+      });
       recordSyncfusionIdleWork('syncfusionInternals', workEndMs - workStartMs, pending.eventCount);
     };
 
@@ -14627,6 +15573,27 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
         return;
       }
       const wheelDelta = getNormalizedWheelDeltas(event);
+      trackpadInteractionDebugRef.current.totals.rawWheel += 1;
+      trackpadInteractionDebugRef.current.totals.rawScrollWheel += 1;
+      recordTrackpadInteractionEvent('raw-wheel', {
+        family: 'scroll',
+        direction: Math.abs(wheelDelta.x) > 0.5 && Math.abs(wheelDelta.y) > 0.5
+          ? 'diagonal'
+          : Math.abs(wheelDelta.x) > Math.abs(wheelDelta.y)
+            ? 'horizontal'
+            : 'vertical',
+        rawDeltaX: roundOverlayRecorderValue(wheelDelta.x, 3),
+        rawDeltaY: roundOverlayRecorderValue(wheelDelta.y, 3),
+        deltaMode: event.deltaMode,
+        ctrlKey: !!event.ctrlKey,
+        metaKey: !!event.metaKey,
+        shiftKey: !!event.shiftKey,
+        altKey: !!event.altKey,
+        clientX: roundOverlayRecorderValue(event.clientX, 3),
+        clientY: roundOverlayRecorderValue(event.clientY, 3),
+        defaultPrevented: !!event.defaultPrevented,
+        before: readTrackpadDebugState(viewerContainer)
+      });
       const currentZoomForScroll = Math.max(1, Number(scaleRef.current) || 1);
       const maxScrollStep = Math.max(
         SYNCFUSION_SCROLL_MIN_STEP_PX,
@@ -14650,6 +15617,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
         const frameMaxY = Math.max(SYNCFUSION_SCROLL_MIN_STEP_PX, Math.abs(clippedY) * sensitivity);
         if (!pendingWheelScroll) {
           pendingWheelScroll = {
+            firstEventAtMs: (typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now(),
+            beforeState: readTrackpadDebugState(viewerContainer),
             eventCount: 0,
             rawAbsX: 0,
             rawAbsY: 0,
@@ -14697,6 +15666,21 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
 
     const onPointerDown = (event) => {
       pointerDown = true;
+      trackpadInteractionDebugRef.current.pointerPanStart = {
+        clientX: event.clientX,
+        clientY: event.clientY,
+        scrollLeft: viewerContainer.scrollLeft,
+        scrollTop: viewerContainer.scrollTop,
+        tMs: (typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now()
+      };
+      recordTrackpadInteractionEvent('pointer-down', {
+        family: 'pan',
+        direction: 'start',
+        button: event.button,
+        clientX: roundOverlayRecorderValue(event.clientX, 3),
+        clientY: roundOverlayRecorderValue(event.clientY, 3),
+        before: readTrackpadDebugState(viewerContainer)
+      });
       if (event.button === 0) {
         const holdMs = activeToolRef.current === 'pan'
           ? INTERACTION_PERF_SCROLL_HOLD_MS
@@ -14705,11 +15689,25 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       }
     };
 
-    const onPointerMove = () => {
+    const onPointerMove = (event) => {
       if (!pointerDown) return;
       const now = Date.now();
       if (now - lastDragEventAt < 96) return;
       lastDragEventAt = now;
+      const start = trackpadInteractionDebugRef.current.pointerPanStart || null;
+      trackpadInteractionDebugRef.current.totals.pointerPanMoves += 1;
+      recordTrackpadInteractionEvent('pointer-pan-move', {
+        family: 'pan',
+        direction: 'drag',
+        processed: true,
+        clientX: roundOverlayRecorderValue(event.clientX, 3),
+        clientY: roundOverlayRecorderValue(event.clientY, 3),
+        pointerDeltaX: roundOverlayRecorderValue(start ? event.clientX - start.clientX : 0, 3),
+        pointerDeltaY: roundOverlayRecorderValue(start ? event.clientY - start.clientY : 0, 3),
+        scrollDeltaX: roundOverlayRecorderValue(start ? viewerContainer.scrollLeft - start.scrollLeft : 0, 3),
+        scrollDeltaY: roundOverlayRecorderValue(start ? viewerContainer.scrollTop - start.scrollTop : 0, 3),
+        after: readTrackpadDebugState(viewerContainer)
+      });
       const holdMs = activeToolRef.current === 'pan'
         ? INTERACTION_PERF_SCROLL_HOLD_MS
         : INTERACTION_PERF_DRAW_HOLD_MS;
@@ -14718,6 +15716,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
 
     const onPointerEnd = () => {
       pointerDown = false;
+      recordTrackpadInteractionEvent('pointer-up', {
+        family: 'pan',
+        direction: 'end',
+        after: readTrackpadDebugState(viewerContainer)
+      });
+      trackpadInteractionDebugRef.current.pointerPanStart = null;
     };
 
     viewerContainer.addEventListener('scroll', onScroll, { passive: true });
@@ -14766,8 +15770,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     findSyncfusionPageAtClientPoint,
     markInteractionPerfActive,
     markSyncfusionInteractionActive,
+    readTrackpadDebugState,
     recordSyncfusionIdleWork,
-    setAnchor
+    recordTrackpadInteractionEvent,
+    setAnchor,
+    updateSyncfusionZoomSnapshots
   ]);
 
   useEffect(() => {
@@ -14937,7 +15944,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       return directCandidate;
     }
 
-    const viewerHost = viewer?.element;
+    const viewerHost = [
+      viewer?.element,
+      typeof document !== 'undefined' ? document.getElementById(syncfusionViewerElementId) : null,
+      typeof document !== 'undefined' ? document.querySelector?.('.survey-syncfusion-viewer.e-pdfviewer') : null
+    ].find((candidate) => candidate?.isConnected) || null;
     if (!viewerHost) {
       return null;
     }
@@ -14955,6 +15966,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       return byId;
     }
 
+    const globalById = typeof document !== 'undefined'
+      ? document.getElementById(`${syncfusionViewerElementId}_pageDiv_${safePageNumber - 1}`)
+      : null;
+    if (globalById?.isConnected) {
+      globalById.dataset.pageNumber = String(safePageNumber);
+      return globalById;
+    }
+
     return null;
   }, [syncfusionViewerElementId, useSyncfusionRenderer]);
 
@@ -14964,13 +15983,60 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       return null;
     }
 
-    // Create-once guard
+    const viewer = syncfusionViewerRef.current;
+    const pageDiv = resolveSyncfusionLivePageHost(
+      safePageNumber,
+      syncfusionPageContainersStateRef.current || pageContainersRef.current || {}
+    );
+    const pageLayer = [
+      viewer?.getPageLayerContainer?.(),
+      viewer?.viewerBase?.pageContainer,
+      viewer?.element?.querySelector?.('.e-pv-page-container'),
+      pageDiv?.parentElement,
+      contentRef.current,
+      typeof document !== 'undefined'
+        ? document.getElementById(syncfusionViewerElementId)?.querySelector?.('.e-pv-page-container')
+        : null,
+      typeof document !== 'undefined'
+        ? document.querySelector?.('.survey-syncfusion-viewer.e-pdfviewer .e-pv-page-container')
+        : null
+    ].find((candidate) => candidate?.isConnected) || null;
+
+    if (!pageDiv?.isConnected || !pageLayer?.isConnected) {
+      const existingOverlayDiv = overlayDivsRef.current[safePageNumber];
+      if (existingOverlayDiv) {
+        existingOverlayDiv.setAttribute('data-source-page-connected', 'false');
+        if (existingOverlayDiv.parentElement) {
+          existingOverlayDiv.parentElement.removeChild(existingOverlayDiv);
+        }
+      }
+      delete syncfusionStablePortalHostsRef.current[safePageNumber];
+      return null;
+    }
+
+    let overlayRoot = syncfusionAppOverlayRootRef.current;
+    if (!overlayRoot) {
+      overlayRoot = document.createElement('div');
+      overlayRoot.setAttribute('data-betasafe-app-owned-overlay-root', 'true');
+      overlayRoot.style.cssText =
+        'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:30;overflow:visible;';
+      syncfusionAppOverlayRootRef.current = overlayRoot;
+    }
+
+    const pageLayerStyle = window.getComputedStyle(pageLayer);
+    if (pageLayerStyle.position === 'static') {
+      pageLayer.style.position = 'relative';
+    }
+    if (overlayRoot.parentElement !== pageLayer) {
+      pageLayer.appendChild(overlayRoot);
+    }
+
     let overlayDiv = overlayDivsRef.current[safePageNumber];
     if (!overlayDiv) {
       overlayDiv = document.createElement('div');
       overlayDiv.setAttribute('data-overlay-page', String(safePageNumber));
       overlayDiv.style.cssText =
-        'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:20;';
+        'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:30;overflow:visible;';
       overlayDivsRef.current[safePageNumber] = overlayDiv;
 
       // Phase 2 debug: make overlay divs visible during testing
@@ -14982,23 +16048,51 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
 
     syncfusionStablePortalHostsRef.current[safePageNumber] = overlayDiv;
 
-    // Find the Syncfusion page div from state ref or fallback ref
-    const pageDiv =
-      syncfusionPageContainersStateRef.current?.[safePageNumber] ||
-      pageContainersRef.current?.[safePageNumber] ||
-      null;
+    const pageRect = pageDiv.getBoundingClientRect?.();
+    const rootRect = overlayRoot?.getBoundingClientRect?.();
+    const left = pageRect && rootRect
+      ? pageRect.left - rootRect.left
+      : (Number(pageDiv.offsetLeft) || 0);
+    const top = pageRect && rootRect
+      ? pageRect.top - rootRect.top
+      : (Number(pageDiv.offsetTop) || 0);
+    const width = Number(pageRect?.width) || Number(pageDiv.offsetWidth) || 0;
+    const height = Number(pageRect?.height) || Number(pageDiv.offsetHeight) || 0;
+    overlayDiv.style.left = `${left}px`;
+    overlayDiv.style.top = `${top}px`;
+    if (width > 0) overlayDiv.style.width = `${width}px`;
+    if (height > 0) overlayDiv.style.height = `${height}px`;
+    overlayDiv.setAttribute('data-source-page-connected', 'true');
 
-    if (!pageDiv?.isConnected) {
-      return overlayDiv; // Created but not attached (page not in DOM yet)
+    if (overlayRoot?.isConnected && overlayDiv.parentElement !== overlayRoot) {
+      overlayRoot.appendChild(overlayDiv);
     }
 
-    // Attach if not already a child of this page div
-    if (overlayDiv.parentElement !== pageDiv) {
-      pageDiv.appendChild(overlayDiv);
+    if (!zoomOverlayTransformActiveRef.current) {
+      const overlayContent = syncfusionOverlayContentRefs.current?.[safePageNumber];
+      if (overlayContent?.style) {
+        overlayContent.style.transform = '';
+        overlayContent.style.transformOrigin = '';
+        overlayContent.style.willChange = '';
+        overlayContent.style.backfaceVisibility = '';
+      }
+      const compensationContent = syncfusionOverlayLegacyCompensationRefs.current?.[safePageNumber];
+      if (compensationContent?.style) {
+        compensationContent.style.transform = '';
+        compensationContent.style.transformOrigin = '';
+        compensationContent.style.willChange = '';
+        compensationContent.style.backfaceVisibility = '';
+      }
+      if (syncfusionOverlayTransformRatioByPageRef.current?.[safePageNumber]) {
+        syncfusionOverlayTransformRatioByPageRef.current = {
+          ...(syncfusionOverlayTransformRatioByPageRef.current || {}),
+          [safePageNumber]: 1
+        };
+      }
     }
 
     return overlayDiv;
-  }, []);
+  }, [resolveSyncfusionLivePageHost]);
 
   // [Phase 11] Removed: applyOverlayZoomTransform, startOverlayZoomSettleTimer (old Phase 2 overlay div zoom — dead in SVG mode)
 
@@ -15564,7 +16658,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     // PAL unmount/remount churn from React re-renders.
     if (!zoomOverlayTransformActiveRef.current) {
       zoomOverlayBaseScaleRef.current = prevScale;
+      captureSyncfusionZoomSnapshots(prevScale);
       zoomOverlayTransformActiveRef.current = true;
+      setSyncfusionZoomPreviewActive(true);
       debugMark('zoom_start', { scale: prevScale, targetScale: nextScale, source: 'zoomChange' });
       // Cache page positions AND portal hosts for fallback containers during zoom.
       // When Syncfusion destroys page containers, we use these rects to
@@ -15616,23 +16712,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     markInteractionPerfActive('syncfusion-zoom-change', INTERACTION_PERF_SCROLL_HOLD_MS);
     markSyncfusionInteractionActive('syncfusion-zoom-change');
     queueSyncfusionOverlayTransformSync(true);
+    updateSyncfusionZoomSnapshots(nextScale);
 
-    // ── Lightweight synchronous CSS transform for overlay during zoom ──
-    const baseScale = zoomOverlayBaseScaleRef.current;
-    if (baseScale > 0) {
-      const ratio = nextScale / baseScale;
-      const overlayRefs = syncfusionOverlayContentRefs.current;
-      if (overlayRefs) {
-        const keys = Object.keys(overlayRefs);
-        for (let i = 0; i < keys.length; i++) {
-          const node = overlayRefs[keys[i]];
-          if (node && node.isConnected) {
-            node.style.transform = `scale(${ratio})`;
-            node.style.transformOrigin = 'top left';
-          }
-        }
-      }
-    }
+    // The real SVG annotation layer now lives inside Syncfusion's own zoom path.
+    // Do not add a second overlay scale here; Syncfusion has already resized the
+    // page host during zoom, so an extra transform double-scales annotations.
     // (Re)start safety settle timer — releases zoom overlay transform after the
     // short zoom-settle window.
     if (zoomOverlaySettleTimerRef.current) {
@@ -15643,6 +16727,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       // Zoom has settled. Release the layerScale freeze so the next render
       // passes the final scale, triggering Canvas resize via ResizeObserver.
       zoomOverlayTransformActiveRef.current = false;
+      setSyncfusionZoomPreviewActive(false);
+      clearSyncfusionZoomSnapshots();
+      resetSyncfusionOverlayTransformStyles();
       debugMark('zoom_end', { source: 'zoomChange_settle' });
       // Flush deferred scale so components rebuild at final zoom level.
       const pendingScale = syncfusionPendingZoomScaleRef.current;
@@ -15659,13 +16746,17 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
   }, [
     beginSyncfusionScaleConfirmPending,
     bumpOverlayLagEventTotal,
+    captureSyncfusionZoomSnapshots,
+    clearSyncfusionZoomSnapshots,
     markInteractionPerfActive,
     markSyncfusionInteractionActive,
     queueSyncfusionOverlayTransformSync,
+    resetSyncfusionOverlayTransformStyles,
     scheduleTextSearchHighlightRefresh,
     syncScaleConfirmHiddenPages,
     syncfusionDualLayerEnabled,
     syncfusionLiveStableOverlayEnabled,
+    updateSyncfusionZoomSnapshots,
     useSyncfusionRenderer
   ]);
 
@@ -15808,6 +16899,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
   // Sync tool properties when activeTool or pdfId changes (load per-tool preferences)
   useEffect(() => {
     if (!pdfId) return;
+    if (activeTool === 'select') return;
     const toolPrefs = getToolPreference(activeTool);
     if (toolPrefs.strokeColor !== undefined) setStrokeColor(toolPrefs.strokeColor);
     if (toolPrefs.strokeOpacity !== undefined) setStrokeOpacity(toolPrefs.strokeOpacity);
@@ -15836,30 +16928,167 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
   }, [eraserSize, isEraserSizeFocused]);
 
   // Handlers to update both local state AND persist to tool preferences
+  const strokeColorStateRef = useRef(strokeColor);
+  const strokeOpacityStateRef = useRef(strokeOpacity);
+  const fillColorStateRef = useRef(fillColor);
+  const fillOpacityStateRef = useRef(fillOpacity);
+  useEffect(() => { strokeColorStateRef.current = strokeColor; }, [strokeColor]);
+  useEffect(() => { strokeOpacityStateRef.current = strokeOpacity; }, [strokeOpacity]);
+  useEffect(() => { fillColorStateRef.current = fillColor; }, [fillColor]);
+  useEffect(() => { fillOpacityStateRef.current = fillOpacity; }, [fillOpacity]);
+  const composeColorForPatch = useCallback((hex, opacityPct) => {
+    if (!hex || hex === 'transparent') return 'transparent';
+    const alpha = Math.max(0, Math.min(1, (opacityPct ?? 100) / 100));
+    if (/^#[0-9a-fA-F]{6}$/.test(hex)) {
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+    return hex;
+  }, []);
+  const getSelectedShapeMeta = () => {
+    const sel = selectedToolbarAnnotationRef.current;
+    const annotation = sel?.annotation;
+    if (!annotation) return { type: null, isCounter: false };
+    const type = String(annotation.type || '').toLowerCase();
+    const isCounter = type === 'circle' && annotation.data?.type === 'counter';
+    return { type, isCounter, annotation };
+  };
+  const isFillableShapeSelected = () => {
+    const { type, isCounter } = getSelectedShapeMeta();
+    return type === 'rect' || type === 'ellipse' || type === 'textbox'
+      || type === 'polygon' || isCounter;
+  };
+  const isEditableShapeSelected = () => {
+    const { type, isCounter } = getSelectedShapeMeta();
+    if (type === 'rect' || type === 'ellipse' || type === 'path'
+      || type === 'line' || type === 'textbox'
+      || type === 'polygon' || type === 'polyline') return true;
+    return isCounter;
+  };
+  const isCalloutSelected = () => !!selectedToolbarCalloutRef.current;
+  const patchSelectedFill = (rgba) => {
+    const { type } = getSelectedShapeMeta();
+    if (type === 'textbox') {
+      handlePatchSelectedAnnotation({ backgroundColor: rgba });
+    } else {
+      handlePatchSelectedAnnotation({ fill: rgba });
+    }
+  };
+  const patchSelectedStroke = (rgba) => {
+    const { isCounter } = getSelectedShapeMeta();
+    if (isCounter) {
+      handlePatchSelectedAnnotation({ data: { numberColor: rgba } });
+    } else {
+      handlePatchSelectedAnnotation({ stroke: rgba });
+    }
+  };
+
   const handleStrokeColorChange = useCallback((color) => {
+    strokeColorStateRef.current = color;
     setStrokeColor(color);
-    if (pdfId) updateToolPreference(activeTool, { strokeColor: color });
-  }, [activeTool, pdfId, updateToolPreference]);
+    if (pdfId && activeTool !== 'select') updateToolPreference(activeTool, { strokeColor: color });
+    if (isCalloutSelected()) {
+      handlePatchSelectedCallout({ borderColor: color });
+    } else if (isEditableShapeSelected()) {
+      patchSelectedStroke(composeColorForPatch(color, strokeOpacityStateRef.current));
+    }
+  }, [activeTool, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
 
   const handleStrokeOpacityChange = useCallback((opacity) => {
+    strokeOpacityStateRef.current = opacity;
     setStrokeOpacity(opacity);
-    if (pdfId) updateToolPreference(activeTool, { strokeOpacity: opacity });
-  }, [activeTool, pdfId, updateToolPreference]);
+    if (pdfId && activeTool !== 'select') updateToolPreference(activeTool, { strokeOpacity: opacity });
+    if (isCalloutSelected()) {
+      handlePatchSelectedCallout({ borderOpacity: Math.max(0, Math.min(1, (Number(opacity) || 0) / 100)) });
+    } else if (isEditableShapeSelected()) {
+      patchSelectedStroke(composeColorForPatch(strokeColorStateRef.current, opacity));
+    }
+  }, [activeTool, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
 
   const handleFillColorChange = useCallback((color) => {
+    fillColorStateRef.current = color;
     setFillColor(color);
-    if (pdfId) updateToolPreference(activeTool, { fillColor: color });
-  }, [activeTool, pdfId, updateToolPreference]);
+    if (pdfId && activeTool !== 'select') updateToolPreference(activeTool, { fillColor: color });
+    if (isCalloutSelected()) {
+      handlePatchSelectedCallout({ fillColor: color });
+    } else if (isFillableShapeSelected()) {
+      patchSelectedFill(composeColorForPatch(color, fillOpacityStateRef.current));
+    }
+  }, [activeTool, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
 
   const handleFillOpacityChange = useCallback((opacity) => {
+    fillOpacityStateRef.current = opacity;
     setFillOpacity(opacity);
-    if (pdfId) updateToolPreference(activeTool, { fillOpacity: opacity });
-  }, [activeTool, pdfId, updateToolPreference]);
+    if (pdfId && activeTool !== 'select') updateToolPreference(activeTool, { fillOpacity: opacity });
+    if (isCalloutSelected()) {
+      handlePatchSelectedCallout({ fillOpacity: Math.max(0, Math.min(1, (Number(opacity) || 0) / 100)) });
+    } else if (isFillableShapeSelected()) {
+      patchSelectedFill(composeColorForPatch(fillColorStateRef.current, opacity));
+    }
+  }, [activeTool, pdfId, updateToolPreference, handlePatchSelectedAnnotation, composeColorForPatch, handlePatchSelectedCallout]);
 
   const handleStrokeWidthChange = useCallback((width) => {
     setStrokeWidth(width);
-    if (pdfId) updateToolPreference(activeTool, { strokeWidth: width });
-  }, [activeTool, pdfId, updateToolPreference]);
+    if (pdfId && activeTool !== 'select') updateToolPreference(activeTool, { strokeWidth: width });
+    if (isCalloutSelected()) {
+      handlePatchSelectedCallout({ lineThickness: Math.max(1, Number(width) || 2) });
+      return;
+    }
+    if (!isEditableShapeSelected()) return;
+    const { isCounter, annotation } = getSelectedShapeMeta();
+    if (isCounter && annotation) {
+      const newRadius = Math.max(4, Number(width) || 14);
+      const oldRadius = Number(annotation.radius) || newRadius;
+      const delta = oldRadius - newRadius;
+      handlePatchSelectedAnnotation({
+        radius: newRadius,
+        left: (Number(annotation.left) || 0) + delta,
+        top: (Number(annotation.top) || 0) + delta,
+      });
+    } else {
+      handlePatchSelectedAnnotation({ strokeWidth: width });
+    }
+  }, [activeTool, pdfId, updateToolPreference, handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
+
+  const handleLineBorderStyleChange = useCallback((next) => {
+    setLineBorderStyle(next);
+    if (!isEditableShapeSelected()) return;
+    if (next === 'cloud') {
+      handlePatchSelectedAnnotation({
+        strokeDashArray: null,
+        data: { pdfCloudIntensity: Math.max(1, Number(cloudIntensity) || 2) },
+      });
+    } else if (next === 'dashed') {
+      handlePatchSelectedAnnotation({ strokeDashArray: [6, 4], data: { pdfCloudIntensity: null } });
+    } else if (next === 'dotted') {
+      handlePatchSelectedAnnotation({ strokeDashArray: [2, 4], data: { pdfCloudIntensity: null } });
+    } else {
+      handlePatchSelectedAnnotation({ strokeDashArray: null, data: { pdfCloudIntensity: null } });
+    }
+  }, [cloudIntensity, handlePatchSelectedAnnotation]);
+
+  const handleCloudIntensityChange = useCallback((next) => {
+    setCloudIntensity(next);
+    if (!isEditableShapeSelected()) return;
+    handlePatchSelectedAnnotation({ data: { pdfCloudIntensity: Math.max(1, Number(next) || 2) } });
+  }, [handlePatchSelectedAnnotation]);
+
+  const handleArrowheadStyleChange = useCallback((next) => {
+    setArrowheadStyle(next);
+    if (isCalloutSelected()) {
+      handlePatchSelectedCallout({ arrowheadStyle: next });
+      return;
+    }
+    const sel = selectedToolbarAnnotationRef.current;
+    const type = String(sel?.annotation?.type || '').toLowerCase();
+    const isArrow = type === 'line' && (sel?.annotation?.tool === 'arrow'
+      || sel?.annotation?.data?.tool === 'arrow'
+      || sel?.annotation?.data?.arrowheadStyle != null);
+    if (!isArrow) return;
+    handlePatchSelectedAnnotation({ data: { arrowheadStyle: next } });
+  }, [handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
 
   // Handle width input changes (allows empty string while typing)
   const handleStrokeWidthInputChange = useCallback((e) => {
@@ -17515,7 +18744,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
 	      ? window.__buildSaveLogConsoleText(rawConsoleText)
 	      : rawConsoleText;
 	    const consoleText = sanitizeConsoleLogText(builtConsoleText, window);
-	    await writeSafe('console.log', consoleText);
+    await writeSafe('console.log', consoleText);
+    try {
+      const trackpadSave = getTrackpadInteractionDebugSavePayload();
+      const trackpadDump = trackpadSave.dump;
+      await writeSafe('trackpad-interaction-debug.json', JSON.stringify(trackpadDump, null, 2));
+      await writeSafe('trackpad-interaction-summary.txt', trackpadSave.summaryText);
+    } catch (trackpadErr) {
+      console.warn('[SaveLog] trackpad interaction dump failed:', trackpadErr?.message || trackpadErr);
+    }
 
     // UX: 2026-04-19 (updated) — OVERWRITE 1.log at the project root with the
     // current session's console dump. User explicitly asked to wipe each time
@@ -18099,7 +19336,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     if (typeof window === 'undefined') {
       return undefined;
     }
-    window.pdfOverlayRecorder = {
+    const debugApiOwner = {
+      tabId: tabId || null,
+      pdfId: pdfId || null,
+      createdAt: new Date().toISOString()
+    };
+    const overlayRecorderApi = {
       start: (options) => startOverlayLagRecorder(options || {}),
       stop: () => stopOverlayLagRecorder(),
       clear: () => clearOverlayLagRecorder(),
@@ -18127,16 +19369,113 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
         overlayTransformTotals: { ...(syncfusionOverlayTransformStatsRef.current || {}) }
       })
     };
+    const trackpadZoomDebugApi = {
+      dump: () => getTrackpadInteractionDebugDump(),
+      clear: () => clearTrackpadInteractionDebug(),
+      enable: () => {
+        trackpadInteractionDebugRef.current.enabled = true;
+        return { enabled: true };
+      },
+      disable: () => {
+        trackpadInteractionDebugRef.current.enabled = false;
+        return { enabled: false };
+      },
+      status: () => {
+        const debug = trackpadInteractionDebugRef.current;
+        return {
+          enabled: debug.enabled,
+          eventCount: debug.events.length,
+          sessionCount: debug.sessions.length,
+          totals: { ...(debug.totals || {}) },
+          recentSessions: debug.sessions.slice(-8)
+        };
+      }
+    };
+    const trackpadStressTestApi = {
+      async run(options = {}) {
+        const viewerContainer = containerRef.current || document.querySelector('.e-pv-viewer-container');
+        if (!viewerContainer) {
+          return { ok: false, error: 'viewer container not found' };
+        }
+        const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
+        const rect = viewerContainer.getBoundingClientRect();
+        const clientX = rect.left + Math.min(rect.width * 0.55, Math.max(20, rect.width - 40));
+        const clientY = rect.top + Math.min(rect.height * 0.45, Math.max(20, rect.height - 40));
+        const aggressive = options.aggressive !== false;
+        const fireWheel = (deltaX, deltaY, ctrlKey = false) => {
+          viewerContainer.dispatchEvent(new WheelEvent('wheel', {
+            bubbles: true,
+            cancelable: true,
+            deltaMode: 0,
+            deltaX,
+            deltaY,
+            ctrlKey,
+            metaKey: false,
+            clientX,
+            clientY
+          }));
+        };
+        const zoomBurst = async (direction, count, deltaY, pauseMs) => {
+          for (let index = 0; index < count; index += 1) {
+            fireWheel(0, direction === 'in' ? -deltaY : deltaY, true);
+            if (pauseMs > 0) await wait(pauseMs);
+          }
+          await wait(aggressive ? 180 : 260);
+        };
+        const scrollBurst = async (count, deltaX, deltaY, pauseMs) => {
+          for (let index = 0; index < count; index += 1) {
+            fireWheel(deltaX, deltaY, false);
+            if (pauseMs > 0) await wait(pauseMs);
+          }
+          await wait(aggressive ? 120 : 180);
+        };
+
+        clearTrackpadInteractionDebug();
+        await zoomBurst('in', aggressive ? 18 : 10, 42, aggressive ? 4 : 10);
+        await zoomBurst('out', aggressive ? 18 : 10, 46, aggressive ? 4 : 10);
+        await scrollBurst(aggressive ? 18 : 10, 38, 64, aggressive ? 3 : 8);
+        await zoomBurst('in', aggressive ? 14 : 8, 90, aggressive ? 0 : 8);
+        await zoomBurst('out', aggressive ? 14 : 8, 95, aggressive ? 0 : 8);
+        await scrollBurst(aggressive ? 24 : 12, -26, -70, aggressive ? 2 : 8);
+        await wait(1800);
+        const dump = getTrackpadInteractionDebugDump();
+        console.info('[TrackpadStress] complete', JSON.stringify(dump?.summary || null));
+        return { ok: true, summary: dump?.summary || null };
+      },
+      dump: () => getTrackpadInteractionDebugDump()
+    };
+    window.__pdfOverlayRecorderOwner = debugApiOwner;
+    window.pdfOverlayRecorder = overlayRecorderApi;
+    window.__trackpadZoomDebugOwner = debugApiOwner;
+    window.__trackpadZoomDebug = trackpadZoomDebugApi;
+    window.__trackpadStressTestOwner = debugApiOwner;
+    window.__trackpadStressTest = trackpadStressTestApi;
+    try {
+      document.documentElement.dataset.trackpadDebugEnabled = trackpadInteractionDebugRef.current.enabled ? 'true' : 'false';
+      document.documentElement.dataset.trackpadDebugEvents = String(trackpadInteractionDebugRef.current.events.length);
+      document.documentElement.dataset.trackpadDebugSessions = String(trackpadInteractionDebugRef.current.sessions.length);
+    } catch { /* ignore diagnostics DOM marker failure */ }
 
     return () => {
-      if (window.pdfOverlayRecorder) {
+      if (window.__pdfOverlayRecorderOwner === debugApiOwner && window.pdfOverlayRecorder === overlayRecorderApi) {
         delete window.pdfOverlayRecorder;
+        delete window.__pdfOverlayRecorderOwner;
+      }
+      if (window.__trackpadZoomDebugOwner === debugApiOwner && window.__trackpadZoomDebug === trackpadZoomDebugApi) {
+        delete window.__trackpadZoomDebug;
+        delete window.__trackpadZoomDebugOwner;
+      }
+      if (window.__trackpadStressTestOwner === debugApiOwner && window.__trackpadStressTest === trackpadStressTestApi) {
+        delete window.__trackpadStressTest;
+        delete window.__trackpadStressTestOwner;
       }
     };
   }, [
     clearOverlayLagRecorder,
+    clearTrackpadInteractionDebug,
     downloadOverlayLagRecorderDump,
     getOverlayLagRecorderDump,
+    getTrackpadInteractionDebugDump,
     startOverlayLagRecorder,
     stopOverlayLagRecorder
   ]);
@@ -18440,6 +19779,67 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     syncfusionAnnotationsByPageRef.current = annotationsByPage || {};
   }, [annotationsByPage]);
 
+  const annotationOverlayWatchdogRef = useRef({
+    consecutiveMismatch: 0,
+    lastRecoveryAt: 0,
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !useSyncfusionRenderer) {
+      return undefined;
+    }
+
+    const intervalId = window.setInterval(() => {
+      const pages = annotationsByPageRef.current || {};
+      const currentPageNumber = Number(pageNumRef.current) || Number(pageNum) || 1;
+      const currentPageObjects = pages[currentPageNumber]?.objects || [];
+      let pageNumber = currentPageObjects.length > 0 ? currentPageNumber : null;
+      if (!pageNumber) {
+        pageNumber = Number(Object.keys(pages).find((key) => {
+          const objects = pages[key]?.objects;
+          return Array.isArray(objects) && objects.length > 0;
+        })) || null;
+      }
+      if (!pageNumber) {
+        annotationOverlayWatchdogRef.current.consecutiveMismatch = 0;
+        return;
+      }
+
+      const expectedCount = pages[pageNumber]?.objects?.length || 0;
+      if (expectedCount <= 0) {
+        annotationOverlayWatchdogRef.current.consecutiveMismatch = 0;
+        return;
+      }
+
+      const overlay = attachOverlayToPageDiv(pageNumber);
+      const wrapper = document.querySelector(`[data-diag-svg-wrapper="${pageNumber}"]`);
+      const groupCount = wrapper?.querySelectorAll?.('[data-annotation-index]')?.length ?? 0;
+      const isGated = wrapper?.getAttribute?.('data-annotation-hydration-gated') === 'true';
+      const wrapperStyle = wrapper ? window.getComputedStyle(wrapper) : null;
+      const visibleWrapper = !!wrapper && wrapperStyle?.display !== 'none' && wrapperStyle?.visibility !== 'hidden';
+      const mismatch = !overlay?.isConnected || !wrapper || (!isGated && (!visibleWrapper || groupCount === 0));
+
+      if (!mismatch) {
+        annotationOverlayWatchdogRef.current.consecutiveMismatch = 0;
+        return;
+      }
+
+      const state = annotationOverlayWatchdogRef.current;
+      state.consecutiveMismatch += 1;
+      if (state.consecutiveMismatch < 2) return;
+
+      const now = Date.now();
+      if (now - state.lastRecoveryAt < 5000) return;
+      state.lastRecoveryAt = now;
+
+      attachOverlayToPageDiv(pageNumber);
+      setAnnotationOverlayRecoveryTick((tick) => tick + 1);
+      setZoomGeneration((tick) => tick + 1);
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [attachOverlayToPageDiv, pageNum, pdfFile, pdfId, useSyncfusionRenderer]);
+
   useEffect(() => {
     surveyMarkersRef.current = surveyMarkers;
   }, [surveyMarkers]);
@@ -18692,11 +20092,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     });
 
 	    if (historyDebugConsoleRef.current) {
-	      console.log(`[HistoryDebug #${event.seq}] ${type}`, event);
+	      appDebug(`[HistoryDebug #${event.seq}] ${type}`, event);
 	    }
 	    if (shouldEchoHistoryDebugEvent(event)) {
 	      try {
-	        console.log('[UndoDiag] ' + JSON.stringify(compactHistoryEventForLog(event)));
+	        appDebug('[UndoDiag] ' + JSON.stringify(compactHistoryEventForLog(event)));
 	      } catch (_err) {
 	        // Diagnostics only.
 	      }
@@ -18852,7 +20252,10 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
 	        ? `${base}\n${searchDiagSection}`
 	        : base;
 	      if (withSearchDiag.includes('===== Undo/Redo Chronology =====')) return withSearchDiag;
-	      return `${withSearchDiag}\n${api.buildSaveLogSection(HISTORY_SAVELOG_EVENT_LIMIT)}\n`;
+        if (window.__HISTORY_SAVELOG_DEBUG === true) {
+	        return `${withSearchDiag}\n${api.buildSaveLogSection(HISTORY_SAVELOG_EVENT_LIMIT)}\n`;
+        }
+        return withSearchDiag;
 	    };
 	    return () => {
 	      if (window.__pdfHistoryDebug === api) {
@@ -19256,8 +20659,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
   // machine on mouseup. The new callout is already fully constructed by the
   // creation state machine; App.jsx just commits it to setCallouts and
   // captures an undo checkpoint.
-  const handleCreateCallout = useCallback((newCallout) => {
-    if (!newCallout || !newCallout.id) return;
+  const handleCreateCallout = useCallback((rawCallout) => {
+    if (!rawCallout || !rawCallout.id) return;
+    const newCallout = {
+      ...rawCallout,
+      style: {
+        ...rawCallout.style,
+        borderColor: strokeColor,
+        borderOpacity: (strokeOpacity ?? 100) / 100,
+        fillColor,
+        fillOpacity: (fillOpacity ?? 100) / 100,
+        lineThickness: Math.max(1, Number(strokeWidth) || 2),
+      },
+    };
     addHistoryCheckpoint('callouts:create', {
       calloutId: newCallout.id,
       pageNumber: newCallout.pageNumber,
@@ -19274,7 +20688,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     };
     newlyCreatedCalloutIdsRef.current.add(newCallout.id);
     setCallouts((prev) => [...prev, newCallout]);
-  }, [addHistoryCheckpoint]);
+  }, [addHistoryCheckpoint, strokeColor, strokeOpacity, fillColor, fillOpacity, strokeWidth]);
 
   // UX: Phase 14 CALL-10 (drag MVP) — commit checkpoint for a callout drag.
   // Called from useSVGInteraction's 'callout-part' drag mode on pointerup
@@ -19406,7 +20820,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     try {
       const svgEl = document.querySelector(`[data-callout-id="${calloutId}"] [data-callout-part="text"]`);
       const svgRect = svgEl ? svgEl.getBoundingClientRect() : null;
-      console.log('[CalloutEditEntryDiag]', {
+      appDebug('[CalloutEditEntryDiag]', {
         calloutId,
         isPdfImported: !!reactCallout.isPdfImported,
         text: reactCallout.text,
@@ -19443,6 +20857,26 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     handleRequestCalloutEditMode(pending.calloutId, pending.pageNumber);
   }, [callouts, handleRequestCalloutEditMode]);
 
+  const handleEnterTextEditFromStrip = useCallback(() => {
+    const calloutSel = selectedToolbarCalloutRef.current;
+    if (calloutSel?.id) {
+      handleRequestCalloutEditMode(calloutSel.id, calloutSel.pageNumber);
+      return;
+    }
+    const sel = selectedToolbarAnnotationRef.current;
+    const annot = sel?.annotation;
+    if (!sel || sel.annotationIndex == null || !annot) return;
+    const type = String(annot.type || '').toLowerCase();
+    if (type !== 'textbox') return;
+    setEditingAnnotation({
+      pageNumber: sel.pageNumber,
+      index: sel.annotationIndex,
+      type: annot.type,
+      editType: 'text',
+      data: annot,
+    });
+  }, [handleRequestCalloutEditMode]);
+
   const applyLocalAnnotationHistoryAction = useCallback((action) => {
     if (!action) return false;
     const viewerId = yjsUndoCtx?.userId || user?.id || null;
@@ -19467,7 +20901,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       renumberCounters(nextAnnotationsByPage);
       const effect = summarizeCounterRenumberEffect(before, nextAnnotationsByPage);
       try {
-        console.log('[CounterRenumber] ran ' + JSON.stringify({
+        appDebug('[CounterRenumber] ran ' + JSON.stringify({
           pageNumber: scopedAction.pageNumber,
           source: scopedAction.type,
           action: scopedAction.type,
@@ -19478,7 +20912,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       } catch (_) {}
     } else {
       try {
-        console.log('[CounterRenumber] skipped ' + JSON.stringify({
+        appDebug('[CounterRenumber] skipped ' + JSON.stringify({
           pageNumber: scopedAction.pageNumber,
           source: scopedAction.type,
           action: scopedAction.type,
@@ -21073,7 +22507,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
         console.error('[SpaceCascadeDelete] cloud delete failed:', err);
       });
     }
-    console.log('[SpaceCascadeDelete] deleted scoped app state ' + JSON.stringify({
+    appDebug('[SpaceCascadeDelete] deleted scoped app state ' + JSON.stringify({
       reason,
       documentId: pdfFile?.id || null,
       spaceId,
@@ -24392,6 +25826,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
   const presenceCheckStartedRef = useRef(false); // Prevent duplicate presence checks (React Strict Mode)
   const presenceCheckDocumentIdRef = useRef(null); // Track which document already initialized presence check
   const documentSyncInitInFlightRef = useRef(false); // Prevent duplicate init work for same document
+  const surveyHydrationRequestSeqRef = useRef(0);
   const initialPresenceSucceededRef = useRef(false); // Only send page-presence updates after initial success
 
   const handlePresenceFailure = useCallback((presenceResult, context = 'presence') => {
@@ -24475,6 +25910,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     const documentId = pdfFile?.id;
     const hydrationPdfId = pdfFile ? getPDFId(pdfFile) : pdfId;
     if (!documentId || !user?.id) {
+      activeCloudDocumentIdRef.current = null;
       setDocumentSyncEnabled(false);
       presenceCheckDocumentIdRef.current = null;
       presenceCheckStartedRef.current = false;
@@ -24487,6 +25923,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       });
       return;
     }
+    activeCloudDocumentIdRef.current = documentId;
 
     if (syncStructuralAutoDisabledRef.current) {
       setDocumentSyncEnabled(false);
@@ -24518,14 +25955,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       source: 'supabase-highlight-starting',
       documentId,
       pdfId: hydrationPdfId,
+      preservedCount: Object.keys(surveyMarkersRef.current || {}).length,
     });
     documentSyncInitInFlightRef.current = true;
+    const hydrationRequestId = surveyHydrationRequestSeqRef.current + 1;
+    surveyHydrationRequestSeqRef.current = hydrationRequestId;
+    const hydrationStartedAt = Date.now();
     let deferredInitialPresenceTimer = null;
     let cancelled = false;
 
     loadAnnotationsFromSupabase(documentId)
       .then(async ({ surveyMarkers: remoteAnnotations, error }) => {
-        if (cancelled) return;
+        if (activeCloudDocumentIdRef.current !== documentId) {
+          return;
+        }
         if (error) {
           console.error('[DocumentSync] Error loading annotations:', error);
           setSurveyAnnotationHydration({
@@ -24534,24 +25977,36 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
             documentId,
             pdfId: hydrationPdfId,
             count: Object.keys(surveyMarkersRef.current || {}).length,
+            durationMs: Date.now() - hydrationStartedAt,
           });
           return;
         }
 
         const remoteCount = Object.keys(remoteAnnotations || {}).length;
-        console.log('[AnnotationHydrationGate][survey] supabase surveyMarkers complete ' + JSON.stringify({
-          documentId,
-          pdfId: hydrationPdfId,
-          count: remoteCount,
-        }));
-        setSurveyMarkers(remoteAnnotations || {});
-        lastSyncedAnnotationsRef.current = JSON.stringify(remoteAnnotations || {});
+        const safeSurveySnapshot = resolveSafeSnapshot({
+          current: surveyMarkersRef.current || {},
+          incoming: remoteAnnotations || {},
+          cloudBacked: true,
+          kind: 'object-map',
+          context: 'survey-marker-hydrate',
+        });
+        if (safeSurveySnapshot.preserved) {
+          console.warn('[SafeSnapshot] preserved survey markers instead of painting empty hydrate result ' + JSON.stringify({
+            documentId,
+            pdfId: hydrationPdfId,
+            currentCount: safeSurveySnapshot.currentCount,
+            incomingCount: safeSurveySnapshot.incomingCount,
+          }));
+        }
+        setSurveyMarkers(safeSurveySnapshot.value);
+        lastSyncedAnnotationsRef.current = JSON.stringify(safeSurveySnapshot.value || {});
         setSurveyAnnotationHydration({
           ready: true,
           source: 'supabase-highlight',
           documentId,
           pdfId: hydrationPdfId,
-          count: remoteCount,
+          count: Object.keys(safeSurveySnapshot.value || {}).length,
+          durationMs: Date.now() - hydrationStartedAt,
         });
 
         setDocumentSyncEnabled(false);
@@ -24625,8 +26080,20 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
           handlePresenceFailure(presenceResult, 'initial');
         }
       })
+      .catch((error) => {
+        if (activeCloudDocumentIdRef.current !== documentId) return;
+        console.error('[DocumentSync] Unexpected error loading survey markers:', error);
+        setSurveyAnnotationHydration({
+          ready: true,
+          source: 'supabase-highlight-error',
+          documentId,
+          pdfId: hydrationPdfId,
+          count: Object.keys(surveyMarkersRef.current || {}).length,
+          durationMs: Date.now() - hydrationStartedAt,
+        });
+      })
       .finally(() => {
-        if (cancelled) return;
+        if (activeCloudDocumentIdRef.current !== documentId) return;
         documentSyncInitInFlightRef.current = false;
         setIsLoadingRemoteAnnotations(false);
       });
@@ -24634,6 +26101,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     // Cleanup: remove presence when leaving document
     return () => {
       cancelled = true;
+      if (presenceCheckDocumentIdRef.current === documentId) {
+        documentSyncInitInFlightRef.current = false;
+      }
       if (deferredInitialPresenceTimer) {
         clearTimeout(deferredInitialPresenceTimer);
       }
@@ -24767,10 +26237,34 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       syncRLSErrorShownRef.current ||
       syncStructuralAutoDisabledRef.current
     ) return;
-    if (Object.keys(surveyMarkers).length === 0) {
-      const priorHadSurveyMarkers = lastSyncedAnnotationsRef.current
-        && lastSyncedAnnotationsRef.current !== '{}';
-      if (!priorHadSurveyMarkers) return;
+    const currentSurveyMarkerCount = Object.keys(surveyMarkers || {}).length;
+    let priorSurveyMarkerCount = 0;
+    if (lastSyncedAnnotationsRef.current) {
+      try {
+        priorSurveyMarkerCount = Object.keys(JSON.parse(lastSyncedAnnotationsRef.current) || {}).length;
+      } catch (_) {
+        priorSurveyMarkerCount = 0;
+      }
+    }
+    const surveySyncDecision = shouldRunSurveyMarkerSync({
+      documentSyncEnabled,
+      hasDocumentId: !!documentId,
+      hasUserId: !!user?.id,
+      syncBlocked: syncRLSErrorShownRef.current || syncStructuralAutoDisabledRef.current,
+      currentCount: currentSurveyMarkerCount,
+      priorCount: priorSurveyMarkerCount,
+      hydrationReady: surveyAnnotationHydration?.ready === true,
+    });
+    if (!surveySyncDecision.run) {
+      if (surveySyncDecision.reason === 'hydrate-empty-delete-guard') {
+        console.warn('[DocumentSync] survey-marker sync skipped unsafe hydrate-empty delete ' + JSON.stringify({
+          documentId,
+          priorCount: priorSurveyMarkerCount,
+          currentCount: currentSurveyMarkerCount,
+          hydrationSource: surveyAnnotationHydration?.source || null,
+        }));
+      }
+      return;
     }
 
     // Check if annotations actually changed (avoid syncing our own remote updates)
@@ -24929,7 +26423,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
             }
           }
           if (!syncStructuralAutoDisabledRef.current) {
-            console.log('[DocumentSync] unmount flush — pushing pending highlight sync');
+            appDebug('[DocumentSync] unmount flush — pushing pending highlight sync');
             Promise.resolve(
               syncAnnotationsToSupabase(documentId, user.id, surveyMarkers, {
                 priorSurveyMarkers,
@@ -24939,7 +26433,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
         } catch (_e) { /* defensive — never throw from cleanup */ }
       }
     };
-  }, [documentSyncEnabled, getInteractionPerfResumeDelay, surveyMarkers, isInteractionPerfWindowActive, pdfFile?.id, user?.id]);
+  }, [documentSyncEnabled, getInteractionPerfResumeDelay, surveyMarkers, surveyAnnotationHydration, isInteractionPerfWindowActive, pdfFile?.id, user?.id]);
 
   // 2026-04-30 — Audit hardening (finding #10): mirror the beforeunload flush
   // we added in src/hooks/useAnnotationCloudSync.js for the legacy surveyMarker
@@ -24952,7 +26446,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     const onBeforeUnload = () => {
       const pending = pendingSurveyMarkerSyncRef.current;
       if (!pending) return;
-      console.log('[DocumentSync] beforeunload — flushing pending highlight sync');
+      appDebug('[DocumentSync] beforeunload — flushing pending highlight sync');
       try {
         pending();
       } catch (_e) { /* defensive */ }
@@ -25614,7 +27108,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       normalHydration: normalAnnotationHydration,
       surveyHydration: surveyAnnotationHydration,
     });
-    console.log('[AnnotationHydrationGate][first-page] ' + JSON.stringify({
+    appDebug('[AnnotationHydrationGate][first-page] ' + JSON.stringify({
       documentId: pdfFile?.id || null,
       pdfId,
       pageNumber: firstVisibleAnnotationPage,
@@ -25623,7 +27117,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       normal: normalAnnotationHydration,
       survey: surveyAnnotationHydration,
     }));
-    console.log('[AnnotationHydrationGate][visual-cover] ' + JSON.stringify({
+    appDebug('[AnnotationHydrationGate][visual-cover] ' + JSON.stringify({
       documentId: pdfFile?.id || null,
       pdfId,
       pageNumber: firstVisibleAnnotationPage,
@@ -26265,7 +27759,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
         (region.shapeType === 'polygon' && coords.length >= 6);
     });
 
-    console.log('[App-RegionEdit] handleRegionComplete — saving regions', {
+    appDebug('[App-RegionEdit] handleRegionComplete — saving regions', {
       activeSpaceId,
       regionSelectionPage,
       incomingCount: Array.isArray(regions) ? regions.length : 0,
@@ -26326,6 +27820,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
   useEffect(() => {
     // Reset to regular mode whenever the active PDF changes
     // Clear all PDF-specific state first to ensure clean transition
+    const nextPdfIdentity = pdfFile ? (pdfFile.id || getPDFId(pdfFile)) : null;
+    const isSamePdfReload = activePdfIdentityRef.current === nextPdfIdentity;
+    const previousSurveyMarkersForSamePdf = surveyMarkersRef.current || {};
+    const previousCalloutsForSamePdf = calloutsRef.current || [];
+    const previousSpacesForSamePdf = spacesRef.current || [];
     const previouslyVisibleAnnotationsByPage = annotationsByPageRef.current || {};
     const previousUndoDepth = undoHistoryRef.current.length;
     const previousRedoDepth = redoHistoryRef.current.length;
@@ -26341,7 +27840,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     isUndoingRef.current = false;
     annotationsByPageRef.current = {};
     surveyMarkersRef.current = {};
-    spacesRef.current = [];
+    spacesRef.current = isSamePdfReload ? previousSpacesForSamePdf : [];
     setSyncfusionDocumentBytes(null);
     setSyncfusionPageContainers({});
     setSyncfusionCommittedPageScales({});
@@ -26354,7 +27853,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     setPdfBookmarks([]);
     setHasImportedPdfBookmarks(false);
     pdfjsBookmarkAttemptRef.current = null;
-    setSpaces([]);
+    setSpaces(isSamePdfReload ? previousSpacesForSamePdf : []);
     setPageNames({});
     setPageTransformations({});
     setShowSurveyPanel(false);
@@ -26398,6 +27897,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
 
 
     if (!pdfFile) {
+      activePdfIdentityRef.current = null;
+      activeCloudDocumentIdRef.current = null;
       setPdfId(null);
       setItems({});
       setAnnotations({});
@@ -26407,6 +27908,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     }
 
     const id = getPDFId(pdfFile);
+    activePdfIdentityRef.current = nextPdfIdentity;
+    activeCloudDocumentIdRef.current = pdfFile?.id || null;
     setPdfId(id);
     const data = loadPDFData(id);
     setItems(data.items);
@@ -26422,7 +27925,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     // localStorage snapshot first causes the same visible pop-in/out as
     // normal annotations, so keep them gated until the highlight SELECT
     // below returns.
-    const loadedSurveyMarkers = isCloudBackedDoc ? {} : loadSurveyMarkers(id);
+    const loadedSurveyMarkers = isCloudBackedDoc
+      ? (isSamePdfReload ? previousSurveyMarkersForSamePdf : {})
+      : loadSurveyMarkers(id);
     setSurveyMarkers(loadedSurveyMarkers);
     // Cloud-backed docs use the CRDT/Y.Doc snapshot as the annotation source.
     // Loading the older annotationsByPage_* localStorage cache here causes a
@@ -26445,12 +27950,12 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     const loadedAnnotationsByPage = cloudRenderCache
       || (shouldUseLocalAnnotationCache ? loadAnnotationsByPage(id) : {});
     if (isCloudBackedDoc && cloudRenderCache) {
-      console.log(`[Cloud render cache] doc=${id} painting verified cloud snapshot immediately — count=${countAnnotationPageObjects(cloudRenderCache)}.`);
+      appDebug(`[Cloud render cache] doc=${id} painting verified cloud snapshot immediately — count=${countAnnotationPageObjects(cloudRenderCache)}.`);
     } else if (isCloudBackedDoc && !shouldUseLocalAnnotationCache) {
-      console.log(`[Local annotation cache] doc=${id} skip annotationsByPage localStorage load — cloud/Y.Doc is authoritative.`);
+      appDebug(`[Local annotation cache] doc=${id} skip annotationsByPage localStorage load — cloud/Y.Doc is authoritative.`);
     } else if (isCloudBackedDoc) {
       const localCount = countAnnotationPageObjects(loadedAnnotationsByPage);
-      console.log(`[Local annotation cache] doc=${id} using local annotations immediately while first cloud migration settles — count=${localCount}.`);
+      appDebug(`[Local annotation cache] doc=${id} using local annotations immediately while first cloud migration settles — count=${localCount}.`);
     }
 
     // [COUNTER MULTI-LIST] Wipe legacy (no-seriesId) counter pins on first
@@ -26492,13 +27997,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
         } catch (err) {
           console.error('[CSeries wipe] failed to persist legacy wipe', err);
         }
-        console.log(`[CSeries wipe] doc=${id} totalCounters=${totalCounters} legacyRemoved=${legacyCount} (no seriesId) — fresh start. Persisted to localStorage.`);
+        appDebug(`[CSeries wipe] doc=${id} totalCounters=${totalCounters} legacyRemoved=${legacyCount} (no seriesId) — fresh start. Persisted to localStorage.`);
       } else {
-        console.log(`[CSeries wipe] doc=${id} totalCounters=${totalCounters} legacyRemoved=0 — nothing to wipe.`);
+        appDebug(`[CSeries wipe] doc=${id} totalCounters=${totalCounters} legacyRemoved=0 — nothing to wipe.`);
       }
       legacyCountersWipedDocsRef.current.add(id);
     } else {
-      console.log(`[CSeries wipe] doc=${id} skip — wipe already ran this session.`);
+      appDebug(`[CSeries wipe] doc=${id} skip — wipe already ran this session.`);
     }
 
     // Reset active series refs on doc switch — each doc starts with a
@@ -26514,12 +28019,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       // Cloud-backed PDFs can briefly have no local cache while Y.Doc/Supabase
       // hydrates. Do not paint a blank annotation layer during that handoff.
       initialAnnotationsByPage = previouslyVisibleAnnotationsByPage;
-      console.log(`[Local annotation cache] doc=${id} preserving ${currentAnnotationCount} visible annotations until cloud/Y.Doc replacement arrives.`);
+      appDebug(`[Local annotation cache] doc=${id} preserving ${currentAnnotationCount} visible annotations until cloud/Y.Doc replacement arrives.`);
     }
     setAnnotationsByPage(initialAnnotationsByPage);
     savedAnnotationsByPageRef.current = initialAnnotationsByPage; // Track as saved
     // Load callouts from localStorage
-    const loadedCallouts = isCloudBackedDoc ? [] : loadCallouts(id);
+    const loadedCallouts = isCloudBackedDoc
+      ? (isSamePdfReload ? previousCalloutsForSamePdf : [])
+      : loadCallouts(id);
     setCallouts(loadedCallouts);
     setHasUnsavedAnnotations(false); // Reset unsaved flag
   }, [clearExcelSyncCheckpoint, finishSyncfusionInteractionWindow, pdfFile, pushHistoryDebugEvent]);
@@ -26683,8 +28190,25 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
         // return; // Optional: decide whether to load anyway or warn
       }
 
-      // Restore state
-      if (data.annotations) setSurveyMarkers(data.annotations);
+      // Restore state. Supabase Storage is an older sidecar snapshot, so it
+      // must not blank the live cloud view if the sidecar is empty/stale.
+      if (data.annotations) {
+        const safeSurveySnapshot = resolveSafeSnapshot({
+          current: surveyMarkersRef.current || {},
+          incoming: data.annotations || {},
+          cloudBacked: !!doc.id,
+          kind: 'object-map',
+          context: 'supabase-storage-survey-markers',
+        });
+        if (safeSurveySnapshot.preserved) {
+          console.warn('[SafeSnapshot] preserved survey markers instead of applying empty storage sidecar ' + JSON.stringify({
+            documentId: doc.id || null,
+            currentCount: safeSurveySnapshot.currentCount,
+            incomingCount: safeSurveySnapshot.incomingCount,
+          }));
+        }
+        setSurveyMarkers(safeSurveySnapshot.value);
+      }
       // Cloud-sync documents source editable annotations from Y.Doc/Supabase
       // rows, not this older Supabase Storage survey-data JSON blob. That
       // blob can hold a pre-cutover annotationsByPage snapshot; restoring it
@@ -26694,21 +28218,29 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       if (data.annotationsByPage && shouldRestoreLegacyAnnotationBlob) {
         setAnnotationsByPage(data.annotationsByPage);
         savedAnnotationsByPageRef.current = data.annotationsByPage;
-      } else if (data.annotationsByPage) {
-        console.log('[SupabaseStorage] skipped legacy annotationsByPage restore — cloud/Y.Doc is authoritative ' + JSON.stringify({
-          documentId: doc.id || null,
-          pages: Object.keys(data.annotationsByPage || {}).length,
-        }));
       }
       if (data.callouts && shouldRestoreLegacyAnnotationBlob) {
         setCallouts(data.callouts);
-      } else if (data.callouts) {
-        console.log('[SupabaseStorage] skipped legacy callouts restore — cloud/Y.Doc is authoritative ' + JSON.stringify({
-          documentId: doc.id || null,
-          count: Array.isArray(data.callouts) ? data.callouts.length : 0,
-        }));
       }
-      if (data.spaces) setSpaces(data.spaces);
+      if (data.spaces) {
+        setSpaces((prev) => {
+          const safeSpacesSnapshot = resolveSafeSnapshot({
+            current: prev || [],
+            incoming: Array.isArray(data.spaces) ? data.spaces : [],
+            cloudBacked: !!doc.id,
+            kind: 'array',
+            context: 'supabase-storage-spaces',
+          });
+          if (safeSpacesSnapshot.preserved) {
+            console.warn('[SafeSnapshot] preserved spaces instead of applying empty storage sidecar ' + JSON.stringify({
+              documentId: doc.id || null,
+              currentCount: safeSpacesSnapshot.currentCount,
+              incomingCount: safeSpacesSnapshot.incomingCount,
+            }));
+          }
+          return safeSpacesSnapshot.value;
+        });
+      }
       if (data.entities) setEntities(data.entities);
 
       // Restore view state if available
@@ -27390,7 +28922,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
         perfLoad.mark(docName, 'Importing PDF annotations');
         const shouldSkipEmbeddedPdfAnnotationImport = !!pdfFile?.id;
         if (shouldSkipEmbeddedPdfAnnotationImport) {
-          console.log('[PDFImport] skipped embedded PDF annotation import — cloud/Y.Doc is authoritative ' + JSON.stringify({
+          appDebug('[PDFImport] skipped embedded PDF annotation import — cloud/Y.Doc is authoritative ' + JSON.stringify({
             documentId: pdfFile.id,
           }));
           try {
@@ -27399,7 +28931,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
               diagnosticsOnly: true
             });
             if (isCancelled) return;
-            console.log('[PDFImport] native layer policy ' + JSON.stringify({
+            appDebug('[PDFImport] native layer policy ' + JSON.stringify({
               documentId: pdfFile.id,
               cloudAuthoritative: true,
               reason: 'cloud/Y.Doc annotations are authoritative; native PDF annotation layer is hidden when all renderable native annotations are accounted for by importer diagnostics.',
@@ -27428,7 +28960,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
           });
           if (isCancelled) return;
           setPdfNativeAnnotationLayerPolicyByPage(nativeLayerPolicyByPage || {});
-          console.log('[PDFImport] native layer policy ' + JSON.stringify({
+          appDebug('[PDFImport] native layer policy ' + JSON.stringify({
             documentId: pdfFile?.id || null,
             pdfName: pdfFile?.name || null,
             cloudAuthoritative: false,
@@ -27532,7 +29064,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
           if (hiddenSpaces.length > 0) {
             setSpaces(hiddenSpaces);
           }
-          console.log('[PDFAppLayerStateImport] restored ' + JSON.stringify({
+          appDebug('[PDFAppLayerStateImport] restored ' + JSON.stringify({
             documentId: appLayerState?.documentId || null,
             exportId: appLayerState?.exportId || null,
             scopedAnnotationPages: Object.keys(appLayerState?.layers?.scopedAnnotationsByPage || {}).length,
@@ -27972,7 +29504,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       if (Math.abs(safeScale - previousScale) > 0.0005) {
         if (!zoomOverlayTransformActiveRef.current) {
           zoomOverlayBaseScaleRef.current = previousScale;
+          captureSyncfusionZoomSnapshots(previousScale);
           zoomOverlayTransformActiveRef.current = true;
+          setSyncfusionZoomPreviewActive(true);
           debugMark('zoom_start', { scale: previousScale, targetScale: safeScale, source: 'keyboard_toolbar' });
           // Cache page rects AND portal hosts before Syncfusion destroys DOM.
           // The portal hosts cache is cleared when interaction goes idle, so it
@@ -28002,9 +29536,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
         if (zoomOverlaySettleTimerRef.current) {
           clearTimeout(zoomOverlaySettleTimerRef.current);
         }
+        updateSyncfusionZoomSnapshots(safeScale);
         zoomOverlaySettleTimerRef.current = setTimeout(() => {
           zoomOverlaySettleTimerRef.current = null;
           zoomOverlayTransformActiveRef.current = false;
+          setSyncfusionZoomPreviewActive(false);
+          clearSyncfusionZoomSnapshots();
+          resetSyncfusionOverlayTransformStyles();
           debugMark('zoom_end', { source: 'keyboard_toolbar_settle' });
           const pendingScale = syncfusionPendingZoomScaleRef.current;
           if (pendingScale != null && Number.isFinite(pendingScale) && pendingScale > 0) {
@@ -28105,7 +29643,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       isZoomingRef.current = false;
       perfZoom.end(safeScale);
     });
-  }, [beginSyncfusionScaleConfirmPending, markSyncfusionInteractionActive, setScale, setAnchor, useSyncfusionRenderer]);
+  }, [beginSyncfusionScaleConfirmPending, captureSyncfusionZoomSnapshots, clearSyncfusionZoomSnapshots, markSyncfusionInteractionActive, resetSyncfusionOverlayTransformStyles, setScale, setAnchor, updateSyncfusionZoomSnapshots, useSyncfusionRenderer]);
 
   const resolvePageContentElement = useCallback((pageContainerNode) => {
     if (!pageContainerNode || typeof pageContainerNode.querySelector !== 'function') {
@@ -28813,7 +30351,9 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       const prevScale = scaleRef.current || 1.0;
       if (!zoomOverlayTransformActiveRef.current) {
         zoomOverlayBaseScaleRef.current = prevScale;
+        captureSyncfusionZoomSnapshots(prevScale);
         zoomOverlayTransformActiveRef.current = true;
+        setSyncfusionZoomPreviewActive(true);
         debugMark('zoom_start', { scale: prevScale, source: 'ctrl_key' });
         // Cache page rects and portal hosts before Syncfusion destroys DOM
         const pageContainersMap = syncfusionPageContainersStateRef.current || pageContainersRef.current || {};
@@ -28838,9 +30378,14 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       if (zoomOverlaySettleTimerRef.current) {
         clearTimeout(zoomOverlaySettleTimerRef.current);
       }
+      const nextScale = clampScale(prevScale * (isZoomIn ? TOOLBAR_ZOOM_STEP_FACTOR : (1 / TOOLBAR_ZOOM_STEP_FACTOR)));
+      updateSyncfusionZoomSnapshots(nextScale);
       zoomOverlaySettleTimerRef.current = setTimeout(() => {
         zoomOverlaySettleTimerRef.current = null;
         zoomOverlayTransformActiveRef.current = false;
+        setSyncfusionZoomPreviewActive(false);
+        clearSyncfusionZoomSnapshots();
+        resetSyncfusionOverlayTransformStyles();
         debugMark('zoom_end', { source: 'ctrl_key_settle' });
         const pendingScale = syncfusionPendingZoomScaleRef.current;
         if (pendingScale != null && Number.isFinite(pendingScale) && pendingScale > 0) {
@@ -28858,7 +30403,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     return () => {
       document.removeEventListener('keydown', handleZoomKeyDown, { capture: true });
     };
-  }, [beginSyncfusionScaleConfirmPending, useSyncfusionRenderer]);
+  }, [beginSyncfusionScaleConfirmPending, captureSyncfusionZoomSnapshots, clearSyncfusionZoomSnapshots, resetSyncfusionOverlayTransformStyles, updateSyncfusionZoomSnapshots, useSyncfusionRenderer]);
 
   // Optimized pan handling
   const handleMouseDown = useCallback((e) => {
@@ -29189,12 +30734,35 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
   // temporal-dead-zone crashes during PDFViewer's first render.
   useEffect(() => {
     if (!isActive || typeof onBottomToolbarApiChange !== 'function') return;
+    const selectedAnnot = selectedToolbarAnnotation?.annotation;
+    const selectedType = String(selectedAnnot?.type || '').toLowerCase();
+    let selectionMappedTool = null;
+    if (selectedToolbarCallout) {
+      selectionMappedTool = 'callout';
+    } else if (selectedType === 'rect') selectionMappedTool = 'rect';
+    else if (selectedType === 'ellipse') selectionMappedTool = 'ellipse';
+    else if (selectedType === 'path') selectionMappedTool = 'pen';
+    else if (selectedType === 'textbox') selectionMappedTool = 'text';
+    else if (selectedType === 'polygon') selectionMappedTool = 'rect';
+    else if (selectedType === 'polyline') selectionMappedTool = 'line';
+    else if (selectedType === 'circle' && selectedAnnot?.data?.type === 'counter') {
+      selectionMappedTool = 'counter';
+    } else if (selectedType === 'line') {
+      const isArrow = selectedAnnot?.tool === 'arrow'
+        || selectedAnnot?.data?.tool === 'arrow'
+        || selectedAnnot?.data?.arrowheadStyle != null;
+      selectionMappedTool = isArrow ? 'arrow' : 'line';
+    }
+    const contextTool = (activeTool === 'select' && selectionMappedTool)
+      ? selectionMappedTool
+      : activeTool;
     onBottomToolbarApiChange({
       bottomToolbarRef,
       zoomInputRef,
       zoomMenuRef,
       pageInputRef,
       activeTool,
+      contextTool,
       activeCategoryDropdown,
       lastDrawTool,
       lastShapeTool,
@@ -29205,6 +30773,21 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       strokeOpacity,
       strokeWidthInputValue,
       eraserSizeInputValue,
+      arrowheadStyle,
+      setArrowheadStyle: handleArrowheadStyleChange,
+      onEnterTextEdit: handleEnterTextEditFromStrip,
+      canEnterTextEdit: !!(selectedToolbarCallout
+        || (selectedToolbarAnnotation
+          && String(selectedToolbarAnnotation.annotation?.type || '').toLowerCase() === 'textbox')),
+      richTextEditor,
+      lineBorderStyle,
+      setLineBorderStyle: handleLineBorderStyleChange,
+      cloudIntensity,
+      setCloudIntensity: handleCloudIntensityChange,
+      fillColor,
+      fillOpacity,
+      handleFillColorChange,
+      handleFillOpacityChange,
       zoomInputValue,
       isZoomMenuOpen,
       zoomDropdownLabel,
@@ -29247,6 +30830,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     zoomMenuRef,
     pageInputRef,
     activeTool,
+    selectedToolbarAnnotation,
+    selectedToolbarCallout,
     activeCategoryDropdown,
     lastDrawTool,
     lastShapeTool,
@@ -29257,6 +30842,18 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     strokeOpacity,
     strokeWidthInputValue,
     eraserSizeInputValue,
+    arrowheadStyle,
+    handleArrowheadStyleChange,
+    handleEnterTextEditFromStrip,
+    richTextEditor,
+    lineBorderStyle,
+    handleLineBorderStyleChange,
+    cloudIntensity,
+    handleCloudIntensityChange,
+    fillColor,
+    fillOpacity,
+    handleFillColorChange,
+    handleFillOpacityChange,
     zoomInputValue,
     isZoomMenuOpen,
     zoomDropdownLabel,
@@ -29685,11 +31282,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     const prevCount_ = annotationsByPageRef.current?.[pageNumber]?.objects?.length ?? 0;
     const nextCount_ = json?.objects?.length ?? 0;
     if (source_.includes('text')) {
-      console.log(`[App p${pageNumber}] handleSaveAnnotations TEXT — source=${source_}, prevObjects=${prevCount_}, nextObjects=${nextCount_}, delta=${nextCount_ - prevCount_}`);
+      appDebug(`[App p${pageNumber}] handleSaveAnnotations TEXT — source=${source_}, prevObjects=${prevCount_}, nextObjects=${nextCount_}, delta=${nextCount_ - prevCount_}`);
     }
     if (source_.includes('counter')) {
       const counterObjs = (json?.objects || []).filter(o => o?.data?.type === 'counter');
-      console.log(`[Counter p${pageNumber}] handleSaveAnnotations ENTRY — source=${source_}, prevObjects=${prevCount_}, nextObjects=${nextCount_}, delta=${nextCount_ - prevCount_}, counterObjsInJson=${counterObjs.length}, firstCounter=${JSON.stringify(counterObjs[0]?.data || null)}`);
+      appDebug(`[Counter p${pageNumber}] handleSaveAnnotations ENTRY — source=${source_}, prevObjects=${prevCount_}, nextObjects=${nextCount_}, delta=${nextCount_ - prevCount_}, counterObjsInJson=${counterObjs.length}, firstCounter=${JSON.stringify(counterObjs[0]?.data || null)}`);
     }
     const currentPageAnnotations = annotationsByPageRef.current?.[pageNumber];
     const normalizedCurrentAnnotations = normalizeCanvasJsonForHistory(currentPageAnnotations);
@@ -29761,7 +31358,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
         saveContext: normalizedSaveContext
       });
       try {
-        console.log('[EraserSaveContract] noop ' + JSON.stringify({
+        appDebug('[EraserSaveContract] noop ' + JSON.stringify({
           pageNumber,
           deletedIds: eraserDeletedIds,
           changedIds: eraserChangedIds,
@@ -29870,7 +31467,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       );
     const logCounterRenumberSkip = () => {
       try {
-        console.log('[CounterRenumber] skipped ' + JSON.stringify({
+        appDebug('[CounterRenumber] skipped ' + JSON.stringify({
           pageNumber,
           source,
           action: normalizedSaveContext?.action || source,
@@ -29885,7 +31482,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       const result = renumberCounters(nextByPage);
       const effect = summarizeCounterRenumberEffect(before, result);
       try {
-        console.log('[CounterRenumber] ran ' + JSON.stringify({
+        appDebug('[CounterRenumber] ran ' + JSON.stringify({
           pageNumber,
           phase,
           source,
@@ -30018,7 +31615,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       };
       try {
         window.dispatchEvent(new CustomEvent('annotations:precise-fabric-commit', { detail }));
-        console.log('[EraserSaveContract] precise commit ' + JSON.stringify(detail));
+        appDebug('[EraserSaveContract] precise commit ' + JSON.stringify(detail));
       } catch (_) {}
     }
 
@@ -30057,7 +31654,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     setAnnotationsByPage(prev => {
       if (prev[pageNumber] === finalIncomingAnnotations) {
         if (source_.includes('text')) {
-          console.log(`[App p${pageNumber}] setAnnotationsByPage TEXT — NOOP (no change detected)`);
+          appDebug(`[App p${pageNumber}] setAnnotationsByPage TEXT — NOOP (no change detected)`);
         }
         return prev;
       }
@@ -30065,7 +31662,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       if (source_.includes('text')) {
         const prevC = prev[pageNumber]?.objects?.length ?? 0;
         const nextC = finalIncomingAnnotations?.objects?.length ?? 0;
-        console.log(`[App p${pageNumber}] setAnnotationsByPage TEXT — APPLYING state update: ${prevC} → ${nextC} objects`);
+        appDebug(`[App p${pageNumber}] setAnnotationsByPage TEXT — APPLYING state update: ${prevC} -> ${nextC} objects`);
       }
       const next = {
         ...prev,
@@ -30085,7 +31682,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
             }
           });
         }
-        console.log(`[Counter] setAnnotationsByPage reducer — after renumber, total counters in doc: ${allCounters.length}, list: ${JSON.stringify(allCounters)}`);
+        appDebug(`[Counter] setAnnotationsByPage reducer — after renumber, total counters in doc: ${allCounters.length}, list: ${JSON.stringify(allCounters)}`);
       }
       return next;
     });
@@ -30792,7 +32389,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       }
     }
     if (updates.length === 0) {
-      console.log(`[CSeries group-update] seriesId=${seriesId} patch=${JSON.stringify(patch)} → NO matching pins (no-op)`);
+      appDebug(`[CSeries group-update] seriesId=${seriesId} patch=${JSON.stringify(patch)} -> NO matching pins (no-op)`);
       return;
     }
     // Save all but the last with 'skip' so the undo history stays compact;
@@ -30820,7 +32417,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       activeCounterSeriesColorRef.current = patch.fill;
       setCounterUITick((t) => t + 1);
     }
-    console.log(`[CSeries group-update] seriesId=${seriesId} patch=${JSON.stringify(patch)} → updated ${updates.length} page(s)`);
+    appDebug(`[CSeries group-update] seriesId=${seriesId} patch=${JSON.stringify(patch)} -> updated ${updates.length} page(s)`);
   }, [handleSaveAnnotations]);
 
   // UX: shared paste-annotation routine used by both the right-click Paste
@@ -31452,6 +33049,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
 
     if (annotationId) {
       setActiveTool('select');
+      setActiveCategoryDropdown('survey');
       setPendingSurveyMarkerSelection({
         pageNumber,
         annotationId,
@@ -34388,14 +35986,6 @@ ${pageBlocks}
         // Keeps this render closure small.
         const doPasteAnnotation = () => pasteAnnotationAt(ctx.pageNumber, ctx.x, ctx.y);
 
-        // UX: right-click → Properties. Replaces the deprecated floating
-        // mini-toolbar that used to appear in edit mode. Opens
-        // AnnotationPropertiesPanel at the same anchor (x, y) as the
-        // context menu so the panel visually "takes over" the menu slot.
-        // ctx is snapshotted (not re-read) so the panel keeps working even
-        // after the context menu state resets on item click.
-        const doOpenProperties = () => setAnnotationPropertiesPanel({ ...ctx });
-
         let items;
         if (ctx.kind === 'textMarkup') {
           items = [
@@ -34419,14 +36009,10 @@ ${pageBlocks}
             item('Copy', 'copy', () => ctx.calloutId && handleCopyCallout(ctx.calloutId)),
             item('Paste', 'paste', () => handlePasteCallout(ctx.pageNumber)),
             item('Delete', 'delete'),
-            sep(),
-            item('Properties', 'properties', doOpenProperties),
           ];
         } else if (ctx.kind === 'counter') {
           items = [
             item('Continue Pin', 'continuePin'),
-            sep(),
-            item('Properties', 'properties', doOpenProperties),
           ];
         } else if (ctx.kind === 'annotation') {
           items = [
@@ -34534,11 +36120,9 @@ ${pageBlocks}
             item('Send to Back', 'sendToBack', () => {
               handleReorderAnnotation(ctx.pageNumber, ctx.annotationIndex, 'back');
             }),
-            sep(),
             // UX: 2026-04-21 — Group / Ungroup items intentionally omitted
             // from the right-click menu. The feature is hidden app-wide
             // until the matrix-per-shape rewrite ships.
-            item('Properties', 'properties', doOpenProperties),
           ];
         } else if (ctx.kind === 'group' && Array.isArray(ctx.groupIndices) && ctx.groupIndices.length >= 2) {
           // UX: Phase 19 follow-up — right-click inside the outer dashed
@@ -34645,11 +36229,9 @@ ${pageBlocks}
                 handleReorderAnnotation(ctx.pageNumber, idx, 'back');
               }
             }),
-            sep(),
             // UX: 2026-04-21 — Group / Ungroup items intentionally omitted
             // from the multi-selection right-click menu. The feature is
             // hidden app-wide until the matrix-per-shape rewrite ships.
-            item('Properties', 'properties', doOpenProperties),
           ];
         } else {
           // Empty canvas / page — only Paste lives here (for annotation paste).
@@ -35158,17 +36740,25 @@ ${pageBlocks}
                   const useLiveStableOverlay = syncfusionLiveStableOverlayEnabled && syncfusionDualLayerEnabled;
                   const isZoomOnlyInteraction = syncfusionInteractionIsZoomOnlyRef.current;
 
-                  // Simplified page list — container pages filtered by visibility + content
-                  const containerPageNumbers = Object.keys(syncfusionPageContainers)
-                    .map(k => Number(k))
-                    .filter(n => Number.isFinite(n) && n > 0);
-
                   // When a drawing/editing tool is active, always include the current page
                   // so the Canvas layer can mount even on pages with no existing annotations.
                   const toolNeedsCanvas = activeTool !== 'pan' && activeTool !== 'text-select';
                   const currentPage = pageNum;
+                  const candidatePageNumbers = new Set([
+                    ...Object.keys(syncfusionPageContainers).map(k => Number(k)),
+                    ...Array.from(syncfusionOverlayWindowPages || []),
+                    ...Object.keys(annotationsByPage || {}).map(k => Number(k)),
+                    ...Object.keys(newSurveyMarkersByPage || {}).map(k => Number(k)),
+                    ...Object.keys(searchResultsByPage || {}).map(k => Number(k)),
+                    currentPage
+                  ]);
+                  if (showRegionSelection && regionSelectionPage) {
+                    candidatePageNumbers.add(Number(regionSelectionPage));
+                  }
+                  const contentPageNumbers = Array.from(candidatePageNumbers)
+                    .filter(n => Number.isFinite(n) && n > 0);
 
-                  return containerPageNumbers
+                  return contentPageNumbers
                     .filter(pageNumber => {
                       if (!shouldShowPage(pageNumber)) return false;
                       const isActiveRegionSelectionPage = showRegionSelection && regionSelectionPage === pageNumber;
@@ -35178,12 +36768,15 @@ ${pageBlocks}
                       // Always include current page when a tool that needs Canvas is active
                       if (toolNeedsCanvas && pageNumber === currentPage) return true;
                       if (isFirstVisibleAnnotationPageGated(pageNumber)) return true;
-                      if (!syncfusionOverlayWindowPages.has(pageNumber)) return false;
                       // Limit portals to pages with content to avoid unbounded memory growth
                       const hasAnnotations = annotationsByPage[pageNumber]?.objects?.length > 0;
                       const hasSurveyMarkers = (newSurveyMarkersByPage[pageNumber]?.length ?? 0) > 0;
                       const hasRegions = getPageRegions(pageNumber)?.length > 0;
                       const hasSearchHighlights = searchResultsByPage[pageNumber]?.length > 0;
+                      if (hasAnnotations || hasSurveyMarkers || hasRegions || hasSearchHighlights) {
+                        return true;
+                      }
+                      if (!syncfusionOverlayWindowPages.has(pageNumber)) return false;
                       return hasAnnotations || hasSurveyMarkers || hasRegions || hasSearchHighlights;
                     })
                     .sort((a, b) => a - b)
@@ -35191,8 +36784,14 @@ ${pageBlocks}
                       // Phase 3: Portal target is the persistent overlay div (Phase 1)
                       const overlayDiv = attachOverlayToPageDiv(pageNumber);
                       if (!overlayDiv) return null;
-                      const { liveRoot } = ensureSyncfusionStablePortalChildren(pageNumber, overlayDiv);
-                      const portalTarget = liveRoot || overlayDiv;
+                      ensureSyncfusionStablePortalChildren(pageNumber, overlayDiv);
+                      // Render the React annotation portal directly into the stable page overlay.
+                      // The separate liveRoot/snapshot roots are managed imperatively for zoom
+                      // presentation; using liveRoot as the React portal target can leave the
+                      // app annotation tree mounted into an empty detached root after Syncfusion
+                      // rebuilds page DOM, which makes annotations look deleted while state still
+                      // contains them.
+                      const portalTarget = overlayDiv;
                       if (!portalTarget) return null;
 
                       const pageRegions = getPageRegions(pageNumber);
@@ -35211,7 +36810,7 @@ ${pageBlocks}
                       const hasSurveyMarkers = (newSurveyMarkersByPage[pageNumber]?.length ?? 0) > 0;
 
                       if (showRegionSelection && regionSelectionPage === pageNumber) {
-                        console.log(
+                        appDebug(
                           `[App-RegionEdit p${pageNumber}] overlay portal mounted — ` +
                           `currentPage=${currentPage}, activeTool=${activeTool}, ` +
                           `hasAnnotations=${Array.isArray(pageAnnotations?.objects) && pageAnnotations.objects.length > 0}, ` +
@@ -35258,7 +36857,7 @@ ${pageBlocks}
                         pageNumber === (Number(pageNumRef.current) || 1)
                         && typeof window !== 'undefined' && window.__DIAG_PAL_RENDER
                       ) {
-                        console.log(`[App-Debug p${pageNumber}] PAL render — pageSize={w:${pageSize.width}, h:${pageSize.height}}, layerScale=${layerScale}, measuredPageScale=${resolvedMeasuredPageScale}, committedPageScale=${hasCommittedPageScale ? committedPageScale : 'none'}, legacyCommitCompensationPending=${legacyCommitCompensationPending}, legacyCommitCompensationScale=${legacyCommitCompensationScale}, overlayContentTransformScale=${overlayContentTransformScale}, storedOverlayTransformScale=${storedOverlayTransformScale}, syncfusionViewerScale=${syncfusionViewerScale}, overlayDiv=${!!overlayDiv}, overlayDivW=${overlayDiv?.offsetWidth}, overlayDivH=${overlayDiv?.offsetHeight}, overlayDivTransform=${overlayDiv?.style?.transform || 'none'}, overlayContentTransform=${overlayContentTransform || 'none'}`);
+                          appDebug(`[App-Debug p${pageNumber}] PAL render — pageSize={w:${pageSize.width}, h:${pageSize.height}}, layerScale=${layerScale}, measuredPageScale=${resolvedMeasuredPageScale}, committedPageScale=${hasCommittedPageScale ? committedPageScale : 'none'}, legacyCommitCompensationPending=${legacyCommitCompensationPending}, legacyCommitCompensationScale=${legacyCommitCompensationScale}, overlayContentTransformScale=${overlayContentTransformScale}, storedOverlayTransformScale=${storedOverlayTransformScale}, syncfusionViewerScale=${syncfusionViewerScale}, overlayDiv=${!!overlayDiv}, overlayDivW=${overlayDiv?.offsetWidth}, overlayDivH=${overlayDiv?.offsetHeight}, overlayDivTransform=${overlayDiv?.style?.transform || 'none'}, overlayContentTransform=${overlayContentTransform || 'none'}`);
                       }
 
                       // Proxy rendering variables. In pan mode, zoom and scroll both use
@@ -35266,14 +36865,19 @@ ${pageBlocks}
                       const interactionPageMode = syncfusionInteractionPageModes[pageNumber] || 'full';
                       const isProxyPageWhileInteracting = interactionPageMode === 'proxy';
                       const isProxyPageWhileCommitting = syncfusionCommittingProxyPages.has(pageNumber);
-                      const shouldRenderLightweightAnnotations = !requiresLegacyAnnotationLayer && useLiveStableOverlay && (
+                      const pageCalloutCount = lightweightCalloutCountByPage[pageNumber] || 0;
+                      const canRenderLightweightOverlay = Boolean(
+                        !requiresLegacyAnnotationLayer &&
+                        (useLiveStableOverlay || overlayDiv?.isConnected)
+                      );
+                      const shouldRenderZoomPreview = false;
+                      const shouldRenderLightweightAnnotations = canRenderLightweightOverlay && (
                         (syncfusionInteractionPhase === 'interacting' && isProxyPageWhileInteracting) ||
                         (syncfusionInteractionPhase === 'committing' && isProxyPageWhileCommitting)
                       );
                       const firstObject = pageAnnotationObjects.length > 0 ? pageAnnotationObjects[0] : null;
                       const lastObject = pageAnnotationObjects.length > 0 ? pageAnnotationObjects[pageAnnotationObjects.length - 1] : null;
                       const annotationRevision = `${pageAnnotationObjects.length}:${firstObject?.id || firstObject?.annotationId || firstObject?.pdfAnnotationId || firstObject?.type || ''}:${lastObject?.id || lastObject?.annotationId || lastObject?.pdfAnnotationId || lastObject?.type || ''}`;
-                      const pageCalloutCount = lightweightCalloutCountByPage[pageNumber] || 0;
                       const calloutRevision = `${pageCalloutCount}:${selectedModuleId || ''}:${showSurveyPanel ? 1 : 0}`;
                       const proxyPayload = syncfusionInteractionProxyPayloads[pageNumber] || null;
                       const proxyRevision = `${syncfusionInteractionSessionId}:${pageNumber}`;
@@ -35287,9 +36891,8 @@ ${pageBlocks}
                       const isProxyReady = syncfusionProxyReadyPages.has(pageNumber);
                       const shouldHideFullLayer = (
                         shouldRenderLightweightAnnotations &&
-                          !hasSurveyMarkers &&
-                          proxyHasRenderablePayload &&
-                          isProxyReady
+                          (shouldRenderZoomPreview || proxyHasRenderablePayload) &&
+                          (shouldRenderZoomPreview || isProxyReady)
                       );
                       const regionSelectionDisplayWidth = overlayDiv?.offsetWidth || (resolvedPageSize.width * layerScale);
                       const regionSelectionDisplayHeight = overlayDiv?.offsetHeight || (resolvedPageSize.height * layerScale);
@@ -35379,6 +36982,13 @@ ${pageBlocks}
                           data-annotation-visual-cover-active={annotationVisualCoverActive ? 'true' : 'false'}
                           data-native-pdf-annotation-layer-hidden={shouldHideNativePdfAnnotationLayer ? 'true' : 'false'}
                           data-native-pdf-annotation-layer-reason={nativePdfAnnotationPolicy?.reason || ''}
+                          data-zoom-preview-active={syncfusionZoomPreviewActive ? 'true' : 'false'}
+                          data-render-lightweight-annotations={shouldRenderLightweightAnnotations ? 'true' : 'false'}
+                          data-render-zoom-preview={shouldRenderZoomPreview ? 'true' : 'false'}
+                          data-use-live-stable-overlay={useLiveStableOverlay ? 'true' : 'false'}
+                          data-can-render-lightweight-overlay={canRenderLightweightOverlay ? 'true' : 'false'}
+                          data-page-annotation-object-count={pageAnnotationObjects.length}
+                          data-page-callout-count={pageCalloutCount}
                         >
                           {shouldHideNativePdfAnnotationLayer && (
                             <style>
@@ -35532,7 +37142,7 @@ ${pageBlocks}
 
                               if (!page || !isRegionOverlayEnabled(activeSpaceId, pageNumber, page)) {
                                 if (pageNumber === (Number(pageNumRef.current) || 1)) {
-                                  console.log(
+                                  appDebug(
                                     `[App-RegionOverlay p${pageNumber}] hidden — ` +
                                     `page=${!!page}, activeSpaceId=${activeSpaceId ?? 'none'}, ` +
                                     `enabled=${!!(page && isRegionOverlayEnabled(activeSpaceId, pageNumber, page))}, ` +
@@ -35552,7 +37162,7 @@ ${pageBlocks}
                               if (validRegions.length === 0) return null;
 
                               if (pageNumber === (Number(pageNumRef.current) || 1)) {
-                                console.log(
+                                appDebug(
                                   `[App-RegionOverlay p${pageNumber}] render — ` +
                                   `regions=${pageRegions.length}, valid=${validRegions.length}, ` +
                                   `display=${Math.round(overlayDiv?.offsetWidth || 0)}x${Math.round(overlayDiv?.offsetHeight || 0)}`
@@ -35600,9 +37210,8 @@ ${pageBlocks}
                               </div>
                             )}
                             </div>
-                          </div>
-                          {/* SVG layer + Drawing Canvas: OUTSIDE the transform/freeze div, directly in the portal overlay.
-                              viewBox auto-scales with the Syncfusion page div — no CSS transforms needed. */}
+                          {/* SVG layer + Drawing Canvas: inside the Syncfusion overlay-content
+                              transform path so zoom uses the same smooth CSS scale as the PDF. */}
                           {!requiresLegacyAnnotationLayer && (() => {
                             const svgInteractive = activeTool === 'select' || activeTool === 'text-select';
                             const isTextTool = activeTool === 'text';
@@ -35610,10 +37219,8 @@ ${pageBlocks}
                             const isEraserTool = activeTool === 'eraser';
                             const isEditMode = editingAnnotation?.pageNumber === pageNumber;
                             const suspendFullSvgForProxy =
-                              activeTool === 'pan' &&
-                              syncfusionInteractionPhase === 'interacting' &&
                               shouldRenderLightweightAnnotations &&
-                              !hasSurveyMarkers &&
+                              syncfusionInteractionPhase === 'interacting' &&
                               proxyHasRenderablePayload &&
                               isProxyReady;
                             // UX 2026-04-19: bbox edit mode (uniform resize + rotate chrome
@@ -35628,13 +37235,27 @@ ${pageBlocks}
 
                             return (
                             <>
+                              <div
+                                data-annotation-real-surface={pageNumber}
+                                data-annotation-hydration-gated={annotationHydrationGated ? 'true' : 'false'}
+                                data-zoom-snapshot-hidden={syncfusionZoomPreviewActive ? 'true' : 'false'}
+                                style={{
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  width: '100%',
+                                  height: '100%',
+                                  pointerEvents: 'none',
+                                  visibility: syncfusionZoomPreviewActive ? 'hidden' : undefined,
+                                }}
+                              >
                               {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (() => {
                                 const space = spaces.find(s => s.id === activeSpaceId);
                                 const page = space?.assignedPages?.find(p => p.pageId === pageNumber);
 
                                 if (!page || !isRegionOverlayEnabled(activeSpaceId, pageNumber, page)) {
                                   if (pageNumber === (Number(pageNumRef.current) || 1)) {
-                                    console.log(
+                                    appDebug(
                                       `[App-RegionOverlay p${pageNumber}] hidden-svg — ` +
                                       `page=${!!page}, activeSpaceId=${activeSpaceId ?? 'none'}, ` +
                                       `enabled=${!!(page && isRegionOverlayEnabled(activeSpaceId, pageNumber, page))}, ` +
@@ -35654,7 +37275,7 @@ ${pageBlocks}
                                 if (validRegions.length === 0) return null;
 
                                 if (pageNumber === (Number(pageNumRef.current) || 1)) {
-                                  console.log(
+                                  appDebug(
                                     `[App-RegionOverlay p${pageNumber}] render-svg — ` +
                                     `regions=${pageRegions.length}, valid=${validRegions.length}, ` +
                                     `display=${Math.round(overlayDiv?.offsetWidth || 0)}x${Math.round(overlayDiv?.offsetHeight || 0)}`
@@ -35711,6 +37332,7 @@ ${pageBlocks}
                               <div
                                 data-diag-svg-wrapper={pageNumber}
                                 data-annotation-hydration-gated={annotationHydrationGated ? 'true' : 'false'}
+                                data-annotation-overlay-recovery-tick={annotationOverlayRecoveryTick}
                                 style={{
                                   position: 'absolute',
                                   top: 0,
@@ -35737,6 +37359,7 @@ ${pageBlocks}
                                 onMouseDown={(svgInteractive && !isFabricEditMode) ? (e) => e.stopPropagation() : undefined}
                               >
                                 <SVGAnnotationLayer
+                                  key={`svg-layer-${pageNumber}-${annotationOverlayRecoveryTick}`}
                                   pageNumber={pageNumber}
                                   isPageInRenderWindow={visiblePagesSet.has(pageNumber) || Math.abs(pageNumber - pageNum) <= 1}
                                   width={resolvedPageSize.width}
@@ -35774,7 +37397,7 @@ ${pageBlocks}
                                     }
                                     // Cooldown: prevent re-entering edit mode within 300ms of dismissal
                                     if (Date.now() - editModeCooldownRef.current < 300) {
-                                      console.log(`[App p${pageNumber}] edit BLOCKED by cooldown — type=${annotationType}, idx=${annotationIndex}`);
+                                      appDebug(`[App p${pageNumber}] edit BLOCKED by cooldown — type=${annotationType}, idx=${annotationIndex}`);
                                       return;
                                     }
                                     const annotationData = pageAnnotations?.objects?.[annotationIndex];
@@ -35800,11 +37423,11 @@ ${pageBlocks}
                                     //   - callout → callout edit mode, unchanged.
                                     const isCounter = annotationData?.data?.type === 'counter';
                                     if (annotationType === 'path') {
-                                      console.log(`[App p${pageNumber}] edit SKIPPED — stroke type=${annotationType}, idx=${annotationIndex}`);
+                                      appDebug(`[App p${pageNumber}] edit SKIPPED — stroke type=${annotationType}, idx=${annotationIndex}`);
                                       return;
                                     }
                                     if (!isCounter && (annotationType === 'rect' || annotationType === 'circle' || annotationType === 'ellipse' || annotationType === 'triangle')) {
-                                      console.log(`[App p${pageNumber}] edit SKIPPED — non-counter shape, type=${annotationType}, idx=${annotationIndex}`);
+                                      appDebug(`[App p${pageNumber}] edit SKIPPED — non-counter shape, type=${annotationType}, idx=${annotationIndex}`);
                                       return;
                                     }
                                     let editType;
@@ -35815,7 +37438,7 @@ ${pageBlocks}
                                     } else {
                                       editType = 'callout';
                                     }
-                                    console.log(`[App p${pageNumber}] edit START — type=${annotationType}, editType=${editType}, idx=${annotationIndex}, fill=${annotationData.fill}, stroke=${annotationData.stroke}`);
+                                    appDebug(`[App p${pageNumber}] edit START — type=${annotationType}, editType=${editType}, idx=${annotationIndex}, fill=${annotationData.fill}, stroke=${annotationData.stroke}`);
                                     setEditingAnnotation({
                                       pageNumber,
                                       index: annotationIndex,
@@ -35878,6 +37501,7 @@ ${pageBlocks}
                                   // pendingSvgSelection state at ~line 11046 for details.
                                   pendingSelection={pendingSvgSelection}
                                   selectionClearToken={annotationSelectionClearToken}
+                                  onSelectionChange={handleSelectionForToolbar}
                                   // UX: pan-mode hover glow broadcast — see pendingSvgHover state.
                                   pendingHover={pendingSvgHover}
                                   // Phase 35 Plan 03 — per-user delete authority. viewerId
@@ -35903,8 +37527,14 @@ ${pageBlocks}
                                   pageHeight={resolvedPageSize.height}
                                   activeTool={activeTool}
                                   strokeColor={strokeColor}
+                                  strokeOpacity={strokeOpacity}
+                                  fillColor={fillColor}
+                                  fillOpacity={fillOpacity}
                                   highlightColor="rgba(255, 193, 7, 0.3)"
                                   strokeWidth={strokeWidth}
+                                  arrowheadStyle={arrowheadStyle}
+                                  lineBorderStyle={lineBorderStyle}
+                                  cloudIntensity={cloudIntensity}
                                   annotations={pageAnnotations}
                                   onStrokeCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'path:created', tool: activeTool })}
                                   onSurveyMarkerCreated={(bounds) => handleSurveyMarkerCreated(pageNumber, bounds)}
@@ -36077,7 +37707,7 @@ ${pageBlocks}
                                     // (Checked BEFORE the runaway guard so popup clicks
                                     // never burn the cooldown window.)
                                     if (e.target?.closest?.('[data-counter-caret-popup]')) {
-                                      console.log('[CSeries popup] counter overlay #1 pointerdown bailed — target inside caret popup');
+                                      appDebug('[CSeries popup] counter overlay #1 pointerdown bailed — target inside caret popup');
                                       return;
                                     }
                                     // UX 2026-05-01 — runaway-pin guard. See ref decl
@@ -36086,7 +37716,7 @@ ${pageBlocks}
                                     // the handler is somehow re-fired in the same
                                     // millisecond.
                                     if (Date.now() - counterPointerDownCooldownRef.current < 200) {
-                                      console.log('[Counter overlay #1] pointerdown bailed — within 200ms cooldown of previous');
+                                      appDebug('[Counter overlay #1] pointerdown bailed — within 200ms cooldown of previous');
                                       return;
                                     }
                                     if (counterDragRef.current?.active) return; // safety: ignore re-entrancy
@@ -36135,7 +37765,7 @@ ${pageBlocks}
                                       activeCounterSeriesIdRef.current = seriesId;
                                       activeCounterSeriesColorRef.current = seriesColor;
                                       seriesAutoCreated = true;
-                                      console.log(`[CSeries new#1 p${pageNumber}] auto-created seriesId=${seriesId} color=${seriesColor} (from toolbar strokeColor=${strokeColor})`);
+                                      appDebug(`[CSeries new#1 p${pageNumber}] auto-created seriesId=${seriesId} color=${seriesColor} (from toolbar strokeColor=${strokeColor})`);
                                     }
                                     // seriesStart inherits from the earliest existing pin in
                                     // this seriesId (so re-entry into a series preserves its
@@ -36202,7 +37832,7 @@ ${pageBlocks}
                                     // handleSaveAnnotations so the saved JSON carries the id. UUID v4
                                     // format matches what serializeFabricObjectToRow used to produce.
                                     counter.data.id = crypto.randomUUID();
-                                    console.log(`[Counter p${pageNumber}] drag-start — x=${x.toFixed(1)}, y=${y.toFixed(1)}, fill=${counter.fill}, dragCreatedAt=${dragCreatedAt}, seriesId=${seriesId}, seriesStart=${seriesStart}, autoCreated=${seriesAutoCreated}`);
+                                    appDebug(`[Counter p${pageNumber}] drag-start — x=${x.toFixed(1)}, y=${y.toFixed(1)}, fill=${counter.fill}, dragCreatedAt=${dragCreatedAt}, seriesId=${seriesId}, seriesStart=${seriesStart}, autoCreated=${seriesAutoCreated}`);
                                     const pageHeight = rect.height / effectiveScale;
                                     const dragState = {
                                       active: true,
@@ -36310,6 +37940,8 @@ ${pageBlocks}
                                   onLiveTextGrow={editingAnnotation?.reactCalloutId
                                     ? setLiveCalloutEditBounds
                                     : setLiveTextEditBounds}
+                                  onRichTextEditorChange={setRichTextEditor}
+                                  onCalloutTextStyleChange={handleCalloutTextStyleChange}
                                   onEditCommit={(updatedJSON) => {
                                     // UX: Phase 15 UAT-1 restructure — reactCalloutId
                                     // routes callout commit through fromFabricGroup.
@@ -36344,7 +37976,7 @@ ${pageBlocks}
                                       if (updatedReactCallout && updatedReactCallout.text !== resolvedText) {
                                         updatedReactCallout = { ...updatedReactCallout, text: resolvedText };
                                       }
-                                      console.log('[CalloutBlankCommitDiag]', {
+                                      appDebug('[CalloutBlankCommitDiag]', {
                                         calloutId: editingAnnotation.reactCalloutId,
                                         isNewCallout,
                                         originalText,
@@ -36469,9 +38101,11 @@ ${pageBlocks}
                                   surveyPanelWidth={surveyPanelWidth}
                                 />
                               )}
+                              </div>
                             </>
                             );
                           })()}
+                          </div>
                           {renderAnnotationHydrationPageCover(pageNumber, 'syncfusion', annotationVisualCoverActive)}
                         </div>,
                         portalTarget
@@ -36623,6 +38257,7 @@ ${pageBlocks}
                                     <div
                                       data-diag-svg-wrapper={pageNumber}
                                       data-annotation-hydration-gated={annotationHydrationGated ? 'true' : 'false'}
+                                      data-annotation-overlay-recovery-tick={annotationOverlayRecoveryTick}
                                       // UX: Fix 3 (2026-04-16) — see first SVGAnnotationLayer
                                       // mount site. No layer-wide visibility hide; per-callout
                                       // skip happens inside SVGAnnotationLayer via editingCalloutId.
@@ -36634,6 +38269,7 @@ ${pageBlocks}
                                       onMouseDown={(svgInteractive && !isFabricEditMode) ? (e) => e.stopPropagation() : undefined}
                                     >
                                     <SVGAnnotationLayer
+                                      key={`svg-layer-${pageNumber}-${annotationOverlayRecoveryTick}`}
                                       pageNumber={pageNumber}
                                       isPageInRenderWindow={visiblePagesSet.has(pageNumber) || Math.abs(pageNumber - pageNum) <= 2}
                                       width={pageSizes[pageNumber].width}
@@ -36667,7 +38303,7 @@ ${pageBlocks}
                                           return;
                                         }
                                         if (Date.now() - editModeCooldownRef.current < 300) {
-                                          console.log(`[App p${pageNumber}] edit BLOCKED by cooldown — type=${annotationType}, idx=${annotationIndex}`);
+                                          appDebug(`[App p${pageNumber}] edit BLOCKED by cooldown — type=${annotationType}, idx=${annotationIndex}`);
                                           return;
                                         }
                                         const annotationData = pageAnnotationsCS?.objects?.[annotationIndex];
@@ -36679,11 +38315,11 @@ ${pageBlocks}
                                         // first mount site; see that comment for rationale).
                                         const isCounter = annotationData?.data?.type === 'counter';
                                         if (annotationType === 'path') {
-                                          console.log(`[App p${pageNumber}] edit SKIPPED — stroke type=${annotationType}, idx=${annotationIndex}`);
+                                          appDebug(`[App p${pageNumber}] edit SKIPPED — stroke type=${annotationType}, idx=${annotationIndex}`);
                                           return;
                                         }
                                         if (!isCounter && (annotationType === 'rect' || annotationType === 'circle' || annotationType === 'ellipse' || annotationType === 'triangle')) {
-                                          console.log(`[App p${pageNumber}] edit SKIPPED — non-counter shape, type=${annotationType}, idx=${annotationIndex}`);
+                                          appDebug(`[App p${pageNumber}] edit SKIPPED — non-counter shape, type=${annotationType}, idx=${annotationIndex}`);
                                           return;
                                         }
                                         let editType;
@@ -36694,7 +38330,7 @@ ${pageBlocks}
                                         } else {
                                           editType = 'callout';
                                         }
-                                        console.log(`[App p${pageNumber}] edit START — type=${annotationType}, editType=${editType}, idx=${annotationIndex}, fill=${annotationData.fill}, stroke=${annotationData.stroke}`);
+                                        appDebug(`[App p${pageNumber}] edit START — type=${annotationType}, editType=${editType}, idx=${annotationIndex}, fill=${annotationData.fill}, stroke=${annotationData.stroke}`);
                                         setEditingAnnotation({
                                           pageNumber,
                                           index: annotationIndex,
@@ -36735,6 +38371,7 @@ ${pageBlocks}
                                       // UX: pan-mode quick-click selection — see first mount site.
                                       pendingSelection={pendingSvgSelection}
                                       selectionClearToken={annotationSelectionClearToken}
+                                      onSelectionChange={handleSelectionForToolbar}
                                       // UX: pan-mode hover glow — see first mount site.
                                       pendingHover={pendingSvgHover}
                                       // Phase 35 Plan 03 — per-user delete authority.
@@ -36754,8 +38391,14 @@ ${pageBlocks}
                                         pageHeight={pageSizes[pageNumber].height}
                                         activeTool={activeTool}
                                         strokeColor={strokeColor}
+                                        strokeOpacity={strokeOpacity}
+                                        fillColor={fillColor}
+                                        fillOpacity={fillOpacity}
                                         highlightColor="rgba(255, 193, 7, 0.3)"
                                         strokeWidth={strokeWidth}
+                                        arrowheadStyle={arrowheadStyle}
+                                        lineBorderStyle={lineBorderStyle}
+                                        cloudIntensity={cloudIntensity}
                                         annotations={pageAnnotationsCS}
                                         onStrokeCommit={(updatedJSON) => handleSaveAnnotations(pageNumber, updatedJSON, { source: 'path:created', tool: activeTool })}
                                         onSurveyMarkerCreated={(bounds) => handleSurveyMarkerCreated(pageNumber, bounds)}
@@ -36916,9 +38559,11 @@ ${pageBlocks}
                                              || '#1e293b')
                                           : '#000'}
                                         // UX: Phase 15 UAT-2 — see mount site 1.
-                                        onLiveTextGrow={editingAnnotation?.reactCalloutId
-                                          ? setLiveCalloutEditBounds
-                                          : setLiveTextEditBounds}
+                                  onLiveTextGrow={editingAnnotation?.reactCalloutId
+                                    ? setLiveCalloutEditBounds
+                                    : setLiveTextEditBounds}
+                                  onRichTextEditorChange={setRichTextEditor}
+                                  onCalloutTextStyleChange={handleCalloutTextStyleChange}
                                         onEditCommit={(updatedJSON) => {
                                           // UX: Phase 15 UAT-1 restructure — see mount
                                           // site 1 for the synthesis rationale.
@@ -36943,7 +38588,7 @@ ${pageBlocks}
                                             if (updatedReactCallout && updatedReactCallout.text !== resolvedText) {
                                               updatedReactCallout = { ...updatedReactCallout, text: resolvedText };
                                             }
-                                            console.log('[CalloutBlankCommitDiag]', {
+                                            appDebug('[CalloutBlankCommitDiag]', {
                                               calloutId: editingAnnotation.reactCalloutId,
                                               isNewCallout,
                                               originalText: editingAnnotation.originalReactCallout?.text,
@@ -37242,6 +38887,7 @@ ${pageBlocks}
                                   <div
                                     data-diag-svg-wrapper={pageNum}
                                     data-annotation-hydration-gated={annotationHydrationGated ? 'true' : 'false'}
+                                    data-annotation-overlay-recovery-tick={annotationOverlayRecoveryTick}
                                     style={{
                                       position: 'relative',
                                       width: '100%',
@@ -37261,6 +38907,7 @@ ${pageBlocks}
                                     onMouseDown={(svgInteractive && !isFabricEditMode) ? (e) => e.stopPropagation() : undefined}
                                   >
                                     <SVGAnnotationLayer
+                                      key={`svg-layer-${pageNum}-${annotationOverlayRecoveryTick}`}
                                       pageNumber={pageNum}
                                       isPageInRenderWindow={true}
                                       width={pageSizes[pageNum].width}
@@ -37294,7 +38941,7 @@ ${pageBlocks}
                                           return;
                                         }
                                         if (Date.now() - editModeCooldownRef.current < 300) {
-                                          console.log(`[App p${pageNum}] edit BLOCKED by cooldown — type=${annotationType}, idx=${annotationIndex}`);
+                                          appDebug(`[App p${pageNum}] edit BLOCKED by cooldown — type=${annotationType}, idx=${annotationIndex}`);
                                           return;
                                         }
                                         const annotationData = pageAnnotations?.objects?.[annotationIndex];
@@ -37303,7 +38950,7 @@ ${pageBlocks}
                                           return;
                                         }
                                         if (annotationType === 'path' || annotationType === 'line' || annotationType === 'polygon' || annotationType === 'polyline') {
-                                          console.log(`[App p${pageNum}] edit SKIPPED — non-editable type=${annotationType}, idx=${annotationIndex}`, {
+                                          appDebug(`[App p${pageNum}] edit SKIPPED — non-editable type=${annotationType}, idx=${annotationIndex}`, {
                                             NOTE: 'Lines/arrows are blocked from edit mode — need line/arrow edit support',
                                             annotationData: { type: annotationData.type, left: annotationData.left, top: annotationData.top, x1: annotationData.x1, y1: annotationData.y1, x2: annotationData.x2, y2: annotationData.y2 },
                                           });
@@ -37317,7 +38964,7 @@ ${pageBlocks}
                                         } else {
                                           editType = 'callout';
                                         }
-                                        console.log(`[App p${pageNum}] edit START — type=${annotationType}, editType=${editType}, idx=${annotationIndex}, fill=${annotationData.fill}, stroke=${annotationData.stroke}`);
+                                        appDebug(`[App p${pageNum}] edit START — type=${annotationType}, editType=${editType}, idx=${annotationIndex}, fill=${annotationData.fill}, stroke=${annotationData.stroke}`);
                                         setEditingAnnotation({
                                           pageNumber: pageNum,
                                           index: annotationIndex,
@@ -37358,6 +39005,7 @@ ${pageBlocks}
                                       // UX: pan-mode quick-click selection — see first mount site.
                                       pendingSelection={pendingSvgSelection}
                                       selectionClearToken={annotationSelectionClearToken}
+                                      onSelectionChange={handleSelectionForToolbar}
                                       // UX: pan-mode hover glow — see first mount site.
                                       pendingHover={pendingSvgHover}
                                       // Phase 35 Plan 03 — per-user delete authority.
@@ -37376,8 +39024,14 @@ ${pageBlocks}
                                       pageHeight={pageSizes[pageNum].height}
                                       activeTool={activeTool}
                                       strokeColor={strokeColor}
+                                      strokeOpacity={strokeOpacity}
+                                      fillColor={fillColor}
+                                      fillOpacity={fillOpacity}
                                       highlightColor="rgba(255, 193, 7, 0.3)"
                                       strokeWidth={strokeWidth}
+                                      arrowheadStyle={arrowheadStyle}
+                                      lineBorderStyle={lineBorderStyle}
+                                      cloudIntensity={cloudIntensity}
                                       annotations={pageAnnotations}
                                       onStrokeCommit={(updatedJSON) => handleSaveAnnotations(pageNum, updatedJSON, { source: 'path:created', tool: activeTool })}
                                       onSurveyMarkerCreated={(bounds) => handleSurveyMarkerCreated(pageNum, bounds)}
@@ -37534,13 +39188,13 @@ ${pageBlocks}
                                         // (Checked BEFORE the runaway guard so popup
                                         // clicks never burn the cooldown window.)
                                         if (e.target?.closest?.('[data-counter-caret-popup]')) {
-                                          console.log('[CSeries popup] counter overlay #2 pointerdown bailed — target inside caret popup');
+                                          appDebug('[CSeries popup] counter overlay #2 pointerdown bailed — target inside caret popup');
                                           return;
                                         }
                                         // UX 2026-05-01 — runaway-pin guard. Mirror of
                                         // overlay #1's guard (~line 29811). Keep in sync.
                                         if (Date.now() - counterPointerDownCooldownRef.current < 200) {
-                                          console.log('[Counter overlay #2] pointerdown bailed — within 200ms cooldown of previous');
+                                          appDebug('[Counter overlay #2] pointerdown bailed — within 200ms cooldown of previous');
                                           return;
                                         }
                                         if (counterDragRef.current?.active) return; // safety: ignore re-entrancy
@@ -37582,7 +39236,7 @@ ${pageBlocks}
                                           activeCounterSeriesIdRef.current = seriesId;
                                           activeCounterSeriesColorRef.current = seriesColor;
                                           seriesAutoCreated = true;
-                                          console.log(`[CSeries new#2 p${pageNum}] auto-created seriesId=${seriesId} color=${seriesColor} (from toolbar strokeColor=${strokeColor})`);
+                                          appDebug(`[CSeries new#2 p${pageNum}] auto-created seriesId=${seriesId} color=${seriesColor} (from toolbar strokeColor=${strokeColor})`);
                                         }
                                         // [COUNTER STEP 7] Mirror of overlay #1 — also inherit
                                         // numberColor from the earliest existing pin so a new
@@ -37642,7 +39296,7 @@ ${pageBlocks}
                                         // of overlay #1. Keep these two blocks in sync per the existing
                                         // two-render-path convention.
                                         counter.data.id = crypto.randomUUID();
-                                        console.log(`[Counter p${pageNum}] drag-start — x=${x.toFixed(1)}, y=${y.toFixed(1)}, fill=${counter.fill}, dragCreatedAt=${dragCreatedAt}, seriesId=${seriesId}, seriesStart=${seriesStart}, autoCreated=${seriesAutoCreated}`);
+                                        appDebug(`[Counter p${pageNum}] drag-start — x=${x.toFixed(1)}, y=${y.toFixed(1)}, fill=${counter.fill}, dragCreatedAt=${dragCreatedAt}, seriesId=${seriesId}, seriesStart=${seriesStart}, autoCreated=${seriesAutoCreated}`);
                                         const pageHeight = rect.height / effectiveScale;
                                         const dragState = {
                                           active: true,
@@ -37734,6 +39388,8 @@ ${pageBlocks}
                                       onLiveTextGrow={editingAnnotation?.reactCalloutId
                                         ? setLiveCalloutEditBounds
                                         : setLiveTextEditBounds}
+                                      onRichTextEditorChange={setRichTextEditor}
+                                      onCalloutTextStyleChange={handleCalloutTextStyleChange}
                                       onEditCommit={(updatedJSON) => {
                                         // UX: Phase 15 UAT-1 restructure — see mount
                                         // site 1 for the synthesis rationale.
@@ -37758,7 +39414,7 @@ ${pageBlocks}
                                           if (updatedReactCallout && updatedReactCallout.text !== resolvedText) {
                                             updatedReactCallout = { ...updatedReactCallout, text: resolvedText };
                                           }
-                                          console.log('[CalloutBlankCommitDiag]', {
+                                          appDebug('[CalloutBlankCommitDiag]', {
                                             calloutId: editingAnnotation.reactCalloutId,
                                             isNewCallout,
                                             originalText: editingAnnotation.originalReactCallout?.text,
@@ -38225,7 +39881,7 @@ ${pageBlocks}
                           e.stopPropagation();
                           setCounterCaretPopupOpen((open) => {
                             const nextOpen = !open;
-                            console.log(`[CSeries popup] counter click — open=${nextOpen} seriesCount=${counterSeriesList.length} activeSeriesId=${activeCounterSeriesIdRef.current} tick=${counterUITick}`);
+                            appDebug(`[CSeries popup] counter click — open=${nextOpen} seriesCount=${counterSeriesList.length} activeSeriesId=${activeCounterSeriesIdRef.current} tick=${counterUITick}`);
                             if (!nextOpen) setCounterCaretSubmenu(null);
                             return nextOpen;
                           });
@@ -38275,7 +39931,7 @@ ${pageBlocks}
                             setActiveTool('counter');
                             setCounterCaretPopupOpen((open) => {
                               const nextOpen = !open;
-                              console.log(`[CSeries popup] chevron click — open=${nextOpen} seriesCount=${counterSeriesList.length} activeSeriesId=${activeCounterSeriesIdRef.current}`);
+                              appDebug(`[CSeries popup] chevron click — open=${nextOpen} seriesCount=${counterSeriesList.length} activeSeriesId=${activeCounterSeriesIdRef.current}`);
                               if (!nextOpen) setCounterCaretSubmenu(null);
                               return nextOpen;
                             });
@@ -45226,6 +46882,48 @@ export default function App() {
     if (typeof window === 'undefined') {
       return undefined;
     }
+    const buildAnnotationDomSnapshot = () => {
+      try {
+        const query = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+        const overlays = query('[data-overlay-page]');
+        const svgWrappers = query('[data-diag-svg-wrapper]');
+        const drawables = query('svg path, svg rect, svg circle, svg line, svg polygon, svg polyline, svg text, svg foreignObject');
+        return {
+          url: window.location?.href || null,
+          appOwnedOverlayRootCount: query('[data-betasafe-app-owned-overlay-root]').length,
+          syncfusionPageDivCount: query('.e-pv-page-div, [id*="_pageDiv_"]').length,
+          overlayCount: overlays.length,
+          overlays: overlays.slice(0, 12).map((element) => {
+            const rect = element.getBoundingClientRect();
+            return {
+              page: element.getAttribute('data-overlay-page'),
+              children: element.childElementCount,
+              connected: element.isConnected,
+              sourceConnected: element.getAttribute('data-source-page-connected'),
+              rect: {
+                top: Math.round(rect.top),
+                left: Math.round(rect.left),
+                width: Math.round(rect.width),
+                height: Math.round(rect.height),
+              },
+            };
+          }),
+          svgWrapperCount: svgWrappers.length,
+          svgWrappers: svgWrappers.slice(0, 12).map((element) => ({
+            page: element.getAttribute('data-diag-svg-wrapper'),
+            visibility: window.getComputedStyle(element).visibility,
+            display: window.getComputedStyle(element).display,
+            children: element.childElementCount,
+            hydrationGated: element.getAttribute('data-annotation-hydration-gated'),
+          })),
+          svgCount: query('svg').length,
+          drawableCount: drawables.length,
+          activeHydrationGateCount: query('[data-annotation-visual-cover-active="true"], [data-annotation-hydration-gated="true"]').length,
+        };
+      } catch (error) {
+        return { error: error?.message || String(error) };
+      }
+    };
     // UX 2026-04-22: Always-on keyboard listener so the shortcut works on
     // iOS Simulator (hardware keyboard) and the Android emulator where
     // there is no Electron File menu. Desktop runs BOTH this and the menu
@@ -45252,9 +46950,11 @@ export default function App() {
       try {
         const api = window.electronAPI;
         if (api && typeof api.saveLogSnapshot === 'function') {
+          const trackpadSave = getWindowTrackpadInteractionDebugSavePayload();
           api.saveLogSnapshot({
             consoleText,
             network: getNetworkLogSnapshot(),
+            extraFiles: trackpadSave.extraFiles,
             summary: {
               triggeredBy: 'cmd-shift-l',
               userAgent: navigator?.userAgent || null,
@@ -45266,9 +46966,15 @@ export default function App() {
               overlayRecorderStatus: typeof window.pdfOverlayRecorder?.status === 'function'
                 ? window.pdfOverlayRecorder.status()
                 : null,
+              trackpadInteractionDebug: trackpadSave.dump?.summary || null,
+              trackpadInteractionDebugDump: trackpadSave.dump || null,
+              annotationDomSnapshot: buildAnnotationDomSnapshot(),
             },
-          }).then((res) => {
-            if (res?.ok) console.log('[SaveLog] local snapshot saved at', res.dir);
+          }).then(async (res) => {
+            if (res?.ok) {
+              await writeSaveLogExtraFiles(api, res.dir, trackpadSave.extraFiles);
+              console.log('[SaveLog] local snapshot saved at', res.dir);
+            }
             else console.warn('[SaveLog] local snapshot failed', res?.error);
           }).catch((err) => console.warn('[SaveLog] local snapshot threw', err?.message || err));
         }
@@ -45285,7 +46991,7 @@ export default function App() {
       return () => window.removeEventListener('keydown', keyHandler);
     }
     const unsubscribe = window.electronAPI.onSaveLogMenu(async () => {
-      console.log('[SaveLog] global menu trigger — capturing console buffer');
+      appDebug('[SaveLog] global menu trigger — capturing console buffer');
 	      const api = window.electronAPI;
 	      const buf = window.__consoleLogBuffer;
 	      const rawConsoleText = Array.isArray(buf) && buf.length > 0
@@ -45315,9 +47021,11 @@ export default function App() {
       // 2026-04-29 — same dated-snapshot save as the keyboard path.
       if (api && typeof api.saveLogSnapshot === 'function') {
         try {
+          const trackpadSave = getWindowTrackpadInteractionDebugSavePayload();
           const res = await api.saveLogSnapshot({
             consoleText,
             network: getNetworkLogSnapshot(),
+            extraFiles: trackpadSave.extraFiles,
             summary: {
               triggeredBy: 'menu',
               userAgent: navigator?.userAgent || null,
@@ -45329,9 +47037,15 @@ export default function App() {
               overlayRecorderStatus: typeof window.pdfOverlayRecorder?.status === 'function'
                 ? window.pdfOverlayRecorder.status()
                 : null,
+              trackpadInteractionDebug: trackpadSave.dump?.summary || null,
+              trackpadInteractionDebugDump: trackpadSave.dump || null,
+              annotationDomSnapshot: buildAnnotationDomSnapshot(),
             },
           });
-          if (res?.ok) console.log('[SaveLog] local snapshot saved at', res.dir);
+          if (res?.ok) {
+            await writeSaveLogExtraFiles(api, res.dir, trackpadSave.extraFiles);
+            console.log('[SaveLog] local snapshot saved at', res.dir);
+          }
           else console.warn('[SaveLog] local snapshot failed', res?.error);
         } catch (snapErr) {
           console.warn('[SaveLog] snapshot trigger error', snapErr?.message || snapErr);
@@ -45401,6 +47115,88 @@ export default function App() {
   // PDFViewer will publish the live toolbar API into this object in the next
   // wiring step.
   const [bottomToolbarApi, setBottomToolbarApi] = useState(null);
+
+  // 2026-05-25: Arrowhead picker — opens below the trigger and shows every
+  // option at once (no native select scroll). Closed on outside click.
+  const [showArrowheadMenu, setShowArrowheadMenu] = useState(false);
+  useEffect(() => {
+    if (!showArrowheadMenu) return;
+    const onDown = (e) => {
+      if (e.target.closest && e.target.closest('[data-arrowhead-menu]')) return;
+      setShowArrowheadMenu(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [showArrowheadMenu]);
+
+  // 2026-05-25: Color picker active tab for shapes (rectangle / ellipse).
+  // 'fill' swaps the picker to read/write fillColor; 'border' swaps to strokeColor.
+  const [colorPickerTab, setColorPickerTab] = useState('fill');
+
+  const [showAlignGrid, setShowAlignGrid] = useState(false);
+  useEffect(() => {
+    if (!showAlignGrid) return;
+    const onDown = (e) => {
+      if (e.target.closest && e.target.closest('[data-align-grid]')) return;
+      setShowAlignGrid(false);
+    };
+    document.addEventListener('mousedown', onDown, true);
+    return () => document.removeEventListener('mousedown', onDown, true);
+  }, [showAlignGrid]);
+
+  const [showFontColorPicker, setShowFontColorPicker] = useState(false);
+  useEffect(() => {
+    if (!showFontColorPicker) return;
+    const onDown = (e) => {
+      if (e.target.closest && e.target.closest('[data-font-color-picker]')) return;
+      setShowFontColorPicker(false);
+    };
+    document.addEventListener('mousedown', onDown, true);
+    return () => document.removeEventListener('mousedown', onDown, true);
+  }, [showFontColorPicker]);
+
+  const [showFontFamilyMenu, setShowFontFamilyMenu] = useState(false);
+  useEffect(() => {
+    if (!showFontFamilyMenu) return;
+    const onDown = (e) => {
+      if (e.target.closest && e.target.closest('[data-font-family-menu]')) return;
+      setShowFontFamilyMenu(false);
+    };
+    document.addEventListener('mousedown', onDown, true);
+    return () => document.removeEventListener('mousedown', onDown, true);
+  }, [showFontFamilyMenu]);
+
+  const [showFontSizeMenu, setShowFontSizeMenu] = useState(false);
+  useEffect(() => {
+    if (!showFontSizeMenu) return;
+    const onDown = (e) => {
+      if (e.target.closest && e.target.closest('[data-font-size-menu]')) return;
+      setShowFontSizeMenu(false);
+    };
+    document.addEventListener('mousedown', onDown, true);
+    return () => document.removeEventListener('mousedown', onDown, true);
+  }, [showFontSizeMenu]);
+
+  useEffect(() => {
+    if (!bottomToolbarApi?.richTextEditor) {
+      setShowFontColorPicker(false);
+      setShowAlignGrid(false);
+      setShowFontFamilyMenu(false);
+      setShowFontSizeMenu(false);
+    }
+  }, [bottomToolbarApi?.richTextEditor]);
+
+  // 2026-05-25: Border-style picker for lines and arrows.
+  const [showStyleMenu, setShowStyleMenu] = useState(false);
+  useEffect(() => {
+    if (!showStyleMenu) return;
+    const onDown = (e) => {
+      if (e.target.closest && e.target.closest('[data-style-menu]')) return;
+      setShowStyleMenu(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [showStyleMenu]);
 
   /*
    * LeftRail/PDFSidebar API audit (UX 2026-05-13 chrome lift)
@@ -45805,6 +47601,64 @@ export default function App() {
     }
   };
 
+  // Determine what to render based on active tab. Keep this before any
+  // conditional return because hooks below depend on it.
+  const activeTab = tabs.find(t => t.id === activeTabId);
+  const isViewerVisible = activeTab && !activeTab.isHome && selectedPDF && currentView === 'viewer';
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+
+    let rafId = 0;
+    const updateChromeTop = () => {
+      rafId = 0;
+      const topHost = document.getElementById('chrome-top-host');
+      if (!topHost || topHost.style.display === 'none') return;
+
+      const topRect = topHost.getBoundingClientRect();
+      let chromeBottom = topRect.bottom;
+      const subHost = document.getElementById('chrome-sub-toolbar-host');
+      if (subHost && subHost.style.display !== 'none') {
+        const subRect = subHost.getBoundingClientRect();
+        if (subRect.height > 0) {
+          chromeBottom = Math.max(chromeBottom, subRect.bottom);
+        }
+      }
+
+      document.documentElement.style.setProperty('--app-chrome-top', `${Math.round(chromeBottom)}px`);
+    };
+
+    const scheduleUpdate = () => {
+      if (rafId) return;
+      rafId = window.requestAnimationFrame(updateChromeTop);
+    };
+
+    scheduleUpdate();
+    window.addEventListener('resize', scheduleUpdate);
+
+    const subHost = document.getElementById('chrome-sub-toolbar-host');
+    const observer = new MutationObserver(scheduleUpdate);
+    if (subHost) {
+      observer.observe(subHost, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['style', 'class'],
+      });
+    }
+
+    return () => {
+      if (rafId) window.cancelAnimationFrame(rafId);
+      window.removeEventListener('resize', scheduleUpdate);
+      observer.disconnect();
+    };
+  }, [
+    isViewerVisible,
+    bottomToolbarApi?.activeCategoryDropdown,
+    bottomToolbarApi?.activeTool,
+    bottomToolbarApi?.richTextEditor,
+  ]);
+
   if (isLoading) {
     return (
       <div style={{
@@ -45824,10 +47678,6 @@ export default function App() {
       </div>
     );
   }
-
-  // Determine what to render based on active tab
-  const activeTab = tabs.find(t => t.id === activeTabId);
-  const isViewerVisible = activeTab && !activeTab.isHome && selectedPDF && currentView === 'viewer';
 
   // Find the tab associated with the selected PDF to pass the correct tabId
   // This ensures that even if we are on Home tab, the PDFViewer still gets the correct tabId prop
@@ -45941,8 +47791,23 @@ export default function App() {
               tool cluster sits centered while Undo/Redo float on the
               left edge. */}
           {bottomToolbarApi && (
-            <>
-              {/* Pan + Select (top-level tools) */}
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {/* 2026-05-26: Pan + Select sit in their own absolute block to
+                  the LEFT of the centered annotation cluster. This mirrors
+                  the right-side tool properties block so the annotation
+                  icons stay centered on the screen — only the side blocks
+                  shift as their contents change. */}
+              <div style={{
+                position: 'absolute',
+                right: '100%',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                paddingRight: '8px',
+                whiteSpace: 'nowrap'
+              }}>
               {[
                 { id: 'pan', label: 'Pan', iconName: 'pan' },
                 { id: 'select', label: 'Select', iconName: 'cursor' }
@@ -45971,6 +47836,7 @@ export default function App() {
               ))}
 
               <div style={{ width: '1px', height: '20px', background: '#555', margin: '0 4px' }} />
+              </div>
 
               {/* Draw category */}
               <button
@@ -46064,7 +47930,11 @@ export default function App() {
                   activeTool through the FORM_TOOL_IDS set. We do not
                   enable Syncfusion's built-in form-designer toolbar — the
                   subtoolbar is wired directly to the FormDesigner API
-                  through the syncfusionViewerRef. */}
+                  through the syncfusionViewerRef.
+                  2026-05-26: Hidden for first release — feature not yet
+                  ready for users. Code stays intact; flip false back to
+                  true to re-enable. */}
+              {false && (
               <button
                 data-testid="forms-category-button"
                 onClick={() => {
@@ -46098,6 +47968,7 @@ export default function App() {
               >
                 <Icon name="edit" size={18} />
               </button>
+              )}
 
               {/* Survey toggle lives in the former survey-tool slot so users
                   enter/exit survey mode from the same top toolbar cluster as
@@ -46141,54 +48012,667 @@ export default function App() {
                 </button>
               )}
 
+              {/* 2026-05-26: Tool properties (divider + color swatch + width +
+                  any tool-specific extras like the arrowhead dropdown + Aa)
+                  are absolutely positioned to the right edge of the icon
+                  cluster so they grow outward to the right / shrink back to
+                  the left without nudging the pan-select or annotation icons.
+                  User priority is icon stability over visual centering. */}
+              <div style={{
+                position: 'absolute',
+                left: '100%',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                paddingLeft: '8px',
+                whiteSpace: 'nowrap'
+              }}>
               <div style={{ width: '1px', height: '20px', background: '#555', margin: '0 4px' }} />
 
               {/* Color swatch + Width input. Color picker now flips DOWN
                   (top: 100%) since the swatch lives at the top of the
                   viewport instead of the bottom — popping up would shoot
-                  off-screen. */}
+                  off-screen.
+                  2026-05-25: Pen + highlighter render the swatch as a flat
+                  solid-disc circle (no fill/border ring) per the new
+                  context-aware strip contract — visual reference is
+                  prototype-context-toolbar.html. Other tools keep the
+                  rectangle swatch until they migrate. */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }}>
-                <button
-                  onClick={() => bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker)}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  className="btn btn-default"
-                  style={{
-                    width: '28px',
-                    height: '20px',
-                    padding: 0,
-                    borderRadius: '4px',
-                    border: '1px solid transparent',
-                    background: bottomToolbarApi.strokeColor,
-                    opacity: bottomToolbarApi.strokeOpacity / 100,
-                    position: 'relative',
-                    overflow: 'visible',
-                    boxSizing: 'content-box'
-                  }}
-                  title="Color"
-                />
-
-                {bottomToolbarApi.showAnnotationColorPicker && (
-                  <div style={{
-                    position: 'absolute',
-                    top: '100%',
-                    left: '50%',
-                    marginTop: '10px',
-                    transform: 'translate(-50%, 0)',
-                    zIndex: 2000
-                  }}>
-                    <CompactColorPicker
-                      color={bottomToolbarApi.strokeColor}
-                      opacity={bottomToolbarApi.strokeOpacity / 100}
-                      marginRight="53px"
-                      onChange={(hex, alpha) => {
-                        bottomToolbarApi.handleStrokeColorChange(hex);
-                        bottomToolbarApi.handleStrokeOpacityChange(Math.round(alpha * 100));
+                {bottomToolbarApi.richTextEditor && typeof document !== 'undefined' && document.getElementById('chrome-sub-toolbar-host') && createPortal(
+                  /* 2026-05-26: Rich-text edit mode — the formatting controls
+                     drop into the sub-row beneath the top strip (mirrors the
+                     Draw / Shape category sub-rows). The inline strip's swatch,
+                     width input, and Aa button stay put — only the rich-text
+                     controls relocate, so the user keeps the usual chrome.
+                     The strip-wide PDFViewer portal suppresses itself when
+                     richTextEditor is non-null so the two sub-rows can't stack.
+                     2026-05-25: Bridge contract — state comes from the
+                     bridge's `state` field (per-selection aware); writes route
+                     through the bridge's `api`. The data-rich-text-toolbar
+                     attribute opts these buttons out of FabricEditCanvas's
+                     document-level click-outside handler so clicks don't
+                     commit-and-close the editor. */
+                  <div data-rich-text-toolbar style={{ width: '100%', height: '34px', background: '#2b2b2b', borderBottom: '1px solid #3a3a3a', borderTop: 'none', cursor: 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', zIndex: 10, boxSizing: 'border-box' }}>
+                    {/* 2026-05-26: Order — font color, font size, B / I / U / S,
+                        alignment. Matches the user's requested left-to-right
+                        sequence so the chrome reads as one cohesive row. Font
+                        family was removed from the strip in this pass per the
+                        same request. */}
+                    {/* Font color — reuses the shared color picker, just like
+                        the stroke/fill swatches above. The picker drops DOWN
+                        below the swatch via an absolute wrapper (top:100%) so
+                        it lines up with the other top-bar pickers. */}
+                    <div data-font-color-picker style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                      <button
+                        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                        onClick={() => setShowFontColorPicker((v) => !v)}
+                        className="ctx-color-swatch"
+                        style={{
+                          width: '24px',
+                          height: '24px',
+                          padding: 0,
+                          borderRadius: '50%',
+                          border: 'none',
+                          position: 'relative',
+                          overflow: 'hidden',
+                          boxSizing: 'border-box',
+                          cursor: 'pointer',
+                        }}
+                        title="Font color"
+                        aria-label="Font color"
+                      >
+                        <span
+                          className="ctx-color-fill"
+                          style={{ background: bottomToolbarApi.richTextEditor?.state?.fontColor || '#1e293b' }}
+                        />
+                      </button>
+                      {showFontColorPicker && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: '50%',
+                          marginTop: '10px',
+                          transform: 'translate(-50%, 0)',
+                          zIndex: 2000,
+                        }}>
+                          <CompactColorPicker
+                            color={bottomToolbarApi.richTextEditor?.state?.fontColor || '#1e293b'}
+                            opacity={1}
+                            marginRight="0"
+                            onChange={(hex) => {
+                              bottomToolbarApi.richTextEditor?.api?.setFontColor?.(hex);
+                            }}
+                            onClose={() => setShowFontColorPicker(false)}
+                            firstPreset="transparent"
+                          />
+                        </div>
+                      )}
+                    </div>
+                    {/* Font family — custom dropdown so it opens strictly
+                        downward and styling matches the rest of the chrome.
+                        Single-name fonts only per the Fabric cursor-drift
+                        gotcha (2026-04-08). */}
+                    {(() => {
+                      const FONT_FAMILIES = ['Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana'];
+                      const currentFamily = bottomToolbarApi.richTextEditor?.state?.fontFamily || 'Arial';
+                      return (
+                        <div data-font-family-menu style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                          <button
+                            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                            onClick={() => setShowFontFamilyMenu((v) => !v)}
+                            style={{
+                              height: '24px',
+                              padding: '0 8px',
+                              minWidth: '110px',
+                              background: '#444',
+                              color: '#ddd',
+                              border: '1px solid transparent',
+                              borderRadius: '5px',
+                              fontSize: '12px',
+                              fontFamily: FONT_FAMILY,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: '6px',
+                            }}
+                            title="Font"
+                            aria-label="Font"
+                          >
+                            <span style={{ fontFamily: currentFamily, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{currentFamily}</span>
+                            <span style={{ color: '#888', fontSize: '9px' }}>▼</span>
+                          </button>
+                          {showFontFamilyMenu && (
+                            <div style={{
+                              position: 'absolute',
+                              top: 'calc(100% + 6px)',
+                              left: 0,
+                              zIndex: 5600,
+                              background: '#1e2026',
+                              border: '1px solid #383d46',
+                              borderRadius: '6px',
+                              padding: '4px',
+                              boxShadow: '0 12px 36px rgba(0,0,0,0.5)',
+                              minWidth: '160px',
+                              maxHeight: '280px',
+                              overflowY: 'auto',
+                            }}>
+                              {FONT_FAMILIES.map((f) => {
+                                const on = f === currentFamily;
+                                return (
+                                  <button
+                                    key={f}
+                                    onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                    onClick={() => {
+                                      bottomToolbarApi.richTextEditor?.api?.setFontFamily?.(f);
+                                      setShowFontFamilyMenu(false);
+                                    }}
+                                    style={{
+                                      display: 'block',
+                                      width: '100%',
+                                      textAlign: 'left',
+                                      padding: '6px 10px',
+                                      background: on ? 'rgba(216,168,78,0.12)' : 'transparent',
+                                      color: on ? '#d8a84e' : '#ddd',
+                                      border: 'none',
+                                      borderRadius: '4px',
+                                      cursor: 'pointer',
+                                      fontFamily: f,
+                                      fontSize: '13px',
+                                    }}
+                                  >
+                                    {f}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                    {/* Font size — custom dropdown of standard increments.
+                        Opens strictly downward (native select can flip up
+                        when many options don't fit below). If the active
+                        size isn't in the preset list, it's prepended so the
+                        trigger label still matches the live value. */}
+                    {(() => {
+                      const FONT_SIZE_PRESETS = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 56, 64, 72];
+                      const currentSize = bottomToolbarApi.richTextEditor?.state?.fontSize ?? 16;
+                      const sizes = FONT_SIZE_PRESETS.includes(currentSize)
+                        ? FONT_SIZE_PRESETS
+                        : [currentSize, ...FONT_SIZE_PRESETS];
+                      return (
+                        <div data-font-size-menu style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                          <button
+                            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                            onClick={() => setShowFontSizeMenu((v) => !v)}
+                            style={{
+                              height: '24px',
+                              padding: '0 8px',
+                              minWidth: '58px',
+                              background: '#444',
+                              color: '#ddd',
+                              border: '1px solid transparent',
+                              borderRadius: '5px',
+                              fontSize: '12px',
+                              fontFamily: FONT_FAMILY,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: '6px',
+                            }}
+                            title="Font size"
+                            aria-label="Font size"
+                          >
+                            <span>{currentSize}</span>
+                            <span style={{ color: '#888', fontSize: '9px' }}>▼</span>
+                          </button>
+                          {showFontSizeMenu && (
+                            <div style={{
+                              position: 'absolute',
+                              top: 'calc(100% + 6px)',
+                              left: 0,
+                              zIndex: 5600,
+                              background: '#1e2026',
+                              border: '1px solid #383d46',
+                              borderRadius: '6px',
+                              padding: '4px',
+                              boxShadow: '0 12px 36px rgba(0,0,0,0.5)',
+                              minWidth: '72px',
+                              maxHeight: '280px',
+                              overflowY: 'auto',
+                            }}>
+                              {sizes.map((s) => {
+                                const on = s === currentSize;
+                                return (
+                                  <button
+                                    key={s}
+                                    onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                    onClick={() => {
+                                      bottomToolbarApi.richTextEditor?.api?.setFontSize?.(s);
+                                      setShowFontSizeMenu(false);
+                                    }}
+                                    style={{
+                                      display: 'block',
+                                      width: '100%',
+                                      textAlign: 'left',
+                                      padding: '6px 10px',
+                                      background: on ? 'rgba(216,168,78,0.12)' : 'transparent',
+                                      color: on ? '#d8a84e' : '#ddd',
+                                      border: 'none',
+                                      borderRadius: '4px',
+                                      cursor: 'pointer',
+                                      fontFamily: FONT_FAMILY,
+                                      fontSize: '13px',
+                                    }}
+                                  >
+                                    {s}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                    {/* Bold / Italic / Underline / Strikethrough toggles. */}
+                    {[
+                      ['B', 'bold', 'toggleBold', { fontWeight: 700 }],
+                      ['I', 'italic', 'toggleItalic', { fontStyle: 'italic' }],
+                      ['U', 'underline', 'toggleUnderline', { textDecoration: 'underline' }],
+                      ['S', 'strike', 'toggleStrike', { textDecoration: 'line-through' }],
+                    ].map(([label, stateKey, apiKey, fontStyleOverride]) => {
+                      const isOn = !!bottomToolbarApi.richTextEditor?.state?.[stateKey];
+                      return (
+                        <button
+                          key={stateKey}
+                          onMouseDown={(e) => {
+                            // Prevent the textbox from losing its selection
+                            // when the user clicks the toggle — without this
+                            // the Fabric Textbox blurs and the toggle would
+                            // apply to an empty range.
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                          onClick={() => bottomToolbarApi.richTextEditor?.api?.[apiKey]?.()}
+                          style={{
+                            width: '28px',
+                            height: '24px',
+                            padding: 0,
+                            background: isOn ? 'rgba(216,168,78,0.18)' : '#444',
+                            color: isOn ? '#d8a84e' : '#ddd',
+                            border: '1px solid transparent',
+                            borderRadius: '5px',
+                            fontSize: '13px',
+                            fontFamily: FONT_FAMILY,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            ...fontStyleOverride,
+                          }}
+                          title={label === 'B' ? 'Bold' : label === 'I' ? 'Italic' : label === 'U' ? 'Underline' : 'Strikethrough'}
+                          aria-label={label === 'B' ? 'Bold' : label === 'I' ? 'Italic' : label === 'U' ? 'Underline' : 'Strikethrough'}
+                          aria-pressed={isOn}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                    {/* Alignment — 28x26 trigger with 3x3 mini-grid, opens a
+                        "Text alignment" popover that picks horizontal +
+                        vertical anchor at once. */}
+                    {(() => {
+                      const hAlign = bottomToolbarApi.richTextEditor?.state?.textAlign || 'left';
+                      const vAlign = bottomToolbarApi.richTextEditor?.state?.verticalAlign || 'top';
+                      const labelFor = (v, h) => `${v}-${h === 'center' ? 'center' : h}`;
+                      const isCellActive = (v, h) => v === vAlign && h === hAlign;
+                      return (
+                        <div data-align-grid style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{
+                            fontSize: '10.5px',
+                            letterSpacing: '0.04em',
+                            textTransform: 'uppercase',
+                            color: '#9ca3af',
+                            fontFamily: FONT_FAMILY,
+                          }}>Align</span>
+                          <button
+                            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                            onClick={() => setShowAlignGrid((v) => !v)}
+                            style={{
+                              width: '28px',
+                              height: '26px',
+                              padding: 0,
+                              background: '#2a2e36',
+                              border: '1px solid #383d46',
+                              borderRadius: '5px',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                            title="Text alignment"
+                            aria-label="Text alignment"
+                          >
+                            <span style={{
+                              display: 'grid',
+                              gridTemplateColumns: 'repeat(3, 4px)',
+                              gridTemplateRows: 'repeat(3, 4px)',
+                              gap: '2px',
+                            }}>
+                              {['top', 'middle', 'bottom'].flatMap((v) => ['left', 'center', 'right'].map((h) => {
+                                const on = isCellActive(v, h);
+                                return (
+                                  <span key={labelFor(v, h)} style={{
+                                    width: '4px',
+                                    height: '4px',
+                                    borderRadius: '1px',
+                                    background: on ? '#d8a84e' : 'rgba(168,176,191,0.4)',
+                                    boxShadow: on ? '0 0 0 1px rgba(216,168,78,0.25)' : 'none',
+                                  }} />
+                                );
+                              }))}
+                            </span>
+                          </button>
+                          {showAlignGrid && (
+                            <div style={{
+                              position: 'absolute',
+                              top: 'calc(100% + 6px)',
+                              right: 0,
+                              zIndex: 5600,
+                              background: '#1e2026',
+                              border: '1px solid #383d46',
+                              borderRadius: '8px',
+                              padding: '10px',
+                              boxShadow: '0 12px 36px rgba(0,0,0,0.5)',
+                            }}>
+                              <div style={{
+                                fontSize: '10.5px',
+                                letterSpacing: '0.04em',
+                                textTransform: 'uppercase',
+                                color: '#9ca3af',
+                                marginBottom: '8px',
+                                fontFamily: FONT_FAMILY,
+                              }}>Text alignment</div>
+                              <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(3, 26px)',
+                                gap: '4px',
+                              }}>
+                                {['top', 'middle', 'bottom'].flatMap((v) => ['left', 'center', 'right'].map((h) => {
+                                  const on = isCellActive(v, h);
+                                  return (
+                                    <button
+                                      key={labelFor(v, h)}
+                                      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                      onClick={() => {
+                                        bottomToolbarApi.richTextEditor?.api?.setTextAlign?.(h);
+                                        bottomToolbarApi.richTextEditor?.api?.setVerticalAlign?.(v);
+                                        setShowAlignGrid(false);
+                                      }}
+                                      style={{
+                                        appearance: 'none',
+                                        width: '26px',
+                                        height: '26px',
+                                        background: on ? 'rgba(216,168,78,0.10)' : '#14171c',
+                                        border: on ? '1px solid #d8a84e' : '1px solid #2a2e36',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        padding: 0,
+                                      }}
+                                      title={`${v} ${h}`}
+                                      aria-label={`${v} ${h}`}
+                                    >
+                                      <span style={{
+                                        width: '6px',
+                                        height: '6px',
+                                        borderRadius: '50%',
+                                        background: on ? '#d8a84e' : '#5a606a',
+                                      }} />
+                                    </button>
+                                  );
+                                }))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>,
+                  document.getElementById('chrome-sub-toolbar-host')
+                )}
+                <>
+                {/* 2026-05-25: Eraser hides the color swatch entirely — only
+                    the diameter input below remains visible for that tool. */}
+                {bottomToolbarApi.activeTool !== 'eraser' && (
+                  <>
+                {!bottomToolbarApi.richTextEditor && (bottomToolbarApi.contextTool === 'pen' || bottomToolbarApi.contextTool === 'highlighter' || bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'line') ? (
+                  /* 2026-05-25: Stroke-only swatch (pen, highlighter, arrow,
+                     line). Checker pattern shows through low-opacity strokes
+                     and a faint hairline ring lifts pure black off the dark
+                     toolbar — both behaviours come from .ctx-color-swatch. */
+                  <button
+                    onClick={() => bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker)}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    className="ctx-color-swatch"
+                    style={{
+                      width: '24px',
+                      height: '24px',
+                      padding: 0,
+                      borderRadius: '50%',
+                      border: 'none',
+                      position: 'relative',
+                      overflow: 'hidden',
+                      boxSizing: 'border-box',
+                      cursor: 'pointer'
+                    }}
+                    title="Color"
+                    aria-label="Color"
+                  >
+                    <span
+                      className="ctx-color-fill"
+                      style={{
+                        background: ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#000000', (bottomToolbarApi.strokeOpacity ?? 100) / 100)
                       }}
-                      onClose={() => bottomToolbarApi.setShowAnnotationColorPicker(false)}
                     />
-                  </div>
+                  </button>
+                ) : bottomToolbarApi.contextTool === 'counter' && bottomToolbarApi.handleFillColorChange ? (
+                  /* 2026-05-25: Counter swatch — a literal preview of the pin.
+                     Background disc = fill colour (pin colour), the centred
+                     "1" = stroke colour (number colour). Updates live as the
+                     user picks colours so they always see what the next pin
+                     will look like, instead of an abstract ring + disc. */
+                  <button
+                    onClick={() => {
+                      bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker);
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    className="ctx-color-swatch"
+                    style={{
+                      width: '24px',
+                      height: '24px',
+                      padding: 0,
+                      borderRadius: '50%',
+                      border: 'none',
+                      boxSizing: 'border-box',
+                      position: 'relative',
+                      overflow: 'hidden',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                    title="Counter colors"
+                    aria-label="Counter colors"
+                  >
+                    <span
+                      className="ctx-color-fill"
+                      style={{
+                        background: ensureRgbaOpacity(bottomToolbarApi.fillColor || '#ef4444', (bottomToolbarApi.fillOpacity ?? 100) / 100)
+                      }}
+                    />
+                    <span style={{
+                      position: 'relative',
+                      zIndex: 2,
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      lineHeight: 1,
+                      color: ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#ffffff', (bottomToolbarApi.strokeOpacity ?? 100) / 100),
+                      fontFamily: FONT_FAMILY,
+                      pointerEvents: 'none'
+                    }}>1</span>
+                  </button>
+                ) : (bottomToolbarApi.contextTool === 'rect' || bottomToolbarApi.contextTool === 'ellipse' || bottomToolbarApi.contextTool === 'text' || bottomToolbarApi.contextTool === 'callout' || !!bottomToolbarApi.richTextEditor) && bottomToolbarApi.handleFillColorChange ? (
+                  /* 2026-05-25: Fill + border swatch. Checker shows through
+                     low-opacity fills, faint hairline lifts black borders. */
+                  <button
+                    onClick={() => {
+                      bottomToolbarApi.setShowAnnotationColorPicker(!bottomToolbarApi.showAnnotationColorPicker);
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    className="ctx-color-swatch"
+                    style={{
+                      width: '24px',
+                      height: '24px',
+                      padding: 0,
+                      borderRadius: '50%',
+                      border: `2px solid ${ensureRgbaOpacity(bottomToolbarApi.strokeColor || '#000000', (bottomToolbarApi.strokeOpacity ?? 100) / 100)}`,
+                      boxSizing: 'border-box',
+                      position: 'relative',
+                      overflow: 'hidden',
+                      cursor: 'pointer'
+                    }}
+                    title="Color"
+                    aria-label="Color"
+                  >
+                    <span
+                      className="ctx-color-fill"
+                      style={{
+                        background: ensureRgbaOpacity(bottomToolbarApi.fillColor || '#ffffff', (bottomToolbarApi.fillOpacity ?? 100) / 100)
+                      }}
+                    />
+                  </button>
+                ) : null}
+
+                {bottomToolbarApi.showAnnotationColorPicker && (() => {
+                  const isShape = (bottomToolbarApi.contextTool === 'rect' || bottomToolbarApi.contextTool === 'ellipse' || bottomToolbarApi.contextTool === 'text' || bottomToolbarApi.contextTool === 'callout' || bottomToolbarApi.contextTool === 'counter')
+                    && bottomToolbarApi.handleFillColorChange;
+                  const isCounter = bottomToolbarApi.contextTool === 'counter';
+                  const secondTabLabel = isCounter ? 'Number' : 'Border';
+                  const onFillTab = isShape && colorPickerTab === 'fill';
+                  // 2026-05-25: Shapes (rectangle + ellipse) follow one rule —
+                  // at least one side must stay visible. Either the fill or
+                  // the border can be transparent, but never both at the same
+                  // time. When the user takes the side they're editing to 0
+                  // while the other side is already at 0, the other side gets
+                  // bumped to fully opaque so the shape stays visible. Text
+                  // and Callout opt out (their borders + fills are optional).
+                  const shapeOneVisibleRule = bottomToolbarApi.contextTool === 'rect'
+                    || bottomToolbarApi.contextTool === 'ellipse';
+                  const currentColor = onFillTab ? (bottomToolbarApi.fillColor || '#ff0000') : bottomToolbarApi.strokeColor;
+                  const currentOpacity = onFillTab ? ((bottomToolbarApi.fillOpacity ?? 100) / 100) : (bottomToolbarApi.strokeOpacity / 100);
+                  const applyChange = (hex, alpha) => {
+                    if (onFillTab) {
+                      const otherAlpha = (bottomToolbarApi.strokeOpacity ?? 100) / 100;
+                      if (shapeOneVisibleRule && alpha <= 0 && otherAlpha <= 0) {
+                        bottomToolbarApi.handleStrokeOpacityChange(100);
+                      }
+                      bottomToolbarApi.handleFillColorChange(hex);
+                      bottomToolbarApi.handleFillOpacityChange(Math.round(alpha * 100));
+                    } else {
+                      const otherAlpha = (bottomToolbarApi.fillOpacity ?? 100) / 100;
+                      if (shapeOneVisibleRule && alpha <= 0 && otherAlpha <= 0) {
+                        bottomToolbarApi.handleFillOpacityChange(100);
+                      }
+                      bottomToolbarApi.handleStrokeColorChange(hex);
+                      bottomToolbarApi.handleStrokeOpacityChange(Math.round(alpha * 100));
+                    }
+                  };
+                  return (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: '50%',
+                      marginTop: '10px',
+                      transform: 'translate(-50%, 0)',
+                      zIndex: 2000
+                    }}>
+                      {isShape && (
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: '1fr 1fr',
+                          background: '#1e1e1e',
+                          border: '1px solid #333',
+                          borderBottom: 'none',
+                          borderRadius: '8px 8px 0 0',
+                          overflow: 'hidden',
+                          width: '260px',
+                          marginRight: '53px'
+                        }}>
+                          {[['fill', 'Fill'], ['border', secondTabLabel]].map(([k, label], i) => {
+                            const on = colorPickerTab === k;
+                            return (
+                              <button
+                                key={k}
+                                onClick={() => setColorPickerTab(k)}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                style={{
+                                  background: on ? 'rgba(216,168,78,0.08)' : 'transparent',
+                                  color: on ? '#eee' : '#888',
+                                  fontWeight: 600,
+                                  fontSize: 12,
+                                  padding: '8px 0',
+                                  border: 0,
+                                  borderRight: i === 0 ? '1px solid #333' : 0,
+                                  cursor: 'pointer',
+                                  position: 'relative'
+                                }}
+                              >
+                                {label}
+                                {on && (
+                                  <span style={{
+                                    position: 'absolute', left: 0, right: 0, bottom: 0,
+                                    height: 2, background: '#d8a84e'
+                                  }} />
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <CompactColorPicker
+                        color={currentColor}
+                        opacity={currentOpacity}
+                        marginRight="53px"
+                        onChange={applyChange}
+                        onClose={() => bottomToolbarApi.setShowAnnotationColorPicker(false)}
+                        firstPreset={(shapeOneVisibleRule && !onFillTab)
+                          ? { kind: 'match', color: bottomToolbarApi.fillColor || '#ffffff', opacity: (bottomToolbarApi.fillOpacity ?? 100) / 100 }
+                          : 'transparent'}
+                      />
+                    </div>
+                  );
+                })()}
+                  </>
                 )}
 
+                {(bottomToolbarApi.contextTool === 'pen'
+                  || bottomToolbarApi.contextTool === 'highlighter'
+                  || bottomToolbarApi.contextTool === 'arrow'
+                  || bottomToolbarApi.contextTool === 'line'
+                  || bottomToolbarApi.contextTool === 'rect'
+                  || bottomToolbarApi.contextTool === 'ellipse'
+                  || bottomToolbarApi.contextTool === 'text'
+                  || bottomToolbarApi.contextTool === 'callout'
+                  || bottomToolbarApi.contextTool === 'counter'
+                  || bottomToolbarApi.activeTool === 'eraser') && (
                 <input
                   type="text"
                   inputMode="numeric"
@@ -46217,8 +48701,248 @@ export default function App() {
                   }}
                   title="Width"
                 />
+                )}
+                {/* 2026-05-25: Style picker — solid/dashed/dotted for line + arrow;
+                    solid/dashed/dotted/cloud for rectangle; solid/dashed/dotted
+                    for ellipse (no cloud option). Always opens downward. */}
+                {(bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'line' || bottomToolbarApi.contextTool === 'rect' || bottomToolbarApi.contextTool === 'ellipse' || bottomToolbarApi.contextTool === 'text' || bottomToolbarApi.contextTool === 'callout') && bottomToolbarApi.setLineBorderStyle && (
+                  <div data-style-menu style={{ position: 'relative' }}>
+                    <button
+                      onClick={() => setShowStyleMenu(!showStyleMenu)}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      style={{
+                        height: '24px',
+                        padding: '0 22px 0 8px',
+                        background: '#444',
+                        color: '#ddd',
+                        border: '1px solid transparent',
+                        borderRadius: '5px',
+                        fontSize: '12px',
+                        fontFamily: FONT_FAMILY,
+                        cursor: 'pointer',
+                        backgroundImage:
+                          'linear-gradient(45deg, transparent 50%, #aaa 50%), linear-gradient(135deg, #aaa 50%, transparent 50%)',
+                        backgroundPosition: 'calc(100% - 11px) 10px, calc(100% - 7px) 10px',
+                        backgroundSize: '4px 4px, 4px 4px',
+                        backgroundRepeat: 'no-repeat'
+                      }}
+                      title="Style"
+                      aria-label="Style"
+                    >
+                      {{ solid: 'Solid', dashed: 'Dashed', dotted: 'Dotted', cloud: 'Cloud' }[bottomToolbarApi.lineBorderStyle] || 'Solid'}
+                    </button>
+                    {showStyleMenu && (
+                      <div style={{
+                        position: 'absolute',
+                        top: 'calc(100% + 4px)',
+                        left: 0,
+                        background: '#1e1e1e',
+                        border: '1px solid #444',
+                        borderRadius: '6px',
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
+                        padding: '4px',
+                        zIndex: 5600,
+                        minWidth: '120px',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        {[
+                          ['solid','Solid'],
+                          ['dashed','Dashed'],
+                          ['dotted','Dotted'],
+                          ...(bottomToolbarApi.contextTool === 'rect' ? [['cloud','Cloud']] : [])
+                        ].map(([val, label]) => {
+                          const isOn = bottomToolbarApi.lineBorderStyle === val;
+                          return (
+                            <button
+                              key={val}
+                              onClick={() => {
+                                bottomToolbarApi.setLineBorderStyle(val);
+                                setShowStyleMenu(false);
+                              }}
+                              style={{
+                                display: 'block',
+                                width: '100%',
+                                padding: '6px 10px',
+                                background: isOn ? 'rgba(216,168,78,0.12)' : 'transparent',
+                                color: isOn ? '#d8a84e' : '#ddd',
+                                border: 'none',
+                                borderRadius: '4px',
+                                fontSize: '12px',
+                                fontFamily: FONT_FAMILY,
+                                textAlign: 'left',
+                                cursor: 'pointer'
+                              }}
+                              onMouseEnter={(e) => { if (!isOn) e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
+                              onMouseLeave={(e) => { if (!isOn) e.currentTarget.style.background = 'transparent'; }}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {/* 2026-05-25: Bump number input — only shows for rectangle when
+                    the border style is Cloud. Drives how big the cloud's wave
+                    bumps render. Mirrors the width input visual. */}
+                {bottomToolbarApi.contextTool === 'rect' && bottomToolbarApi.lineBorderStyle === 'cloud' && bottomToolbarApi.setCloudIntensity && (
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#bbb', fontSize: '11px', fontFamily: FONT_FAMILY }}>
+                    Bump
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      className="no-spin-buttons"
+                      value={bottomToolbarApi.cloudIntensity ?? 2}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw === '' || /^\d+$/.test(raw)) {
+                          const next = raw === '' ? 1 : Math.max(1, Math.min(20, parseInt(raw, 10)));
+                          bottomToolbarApi.setCloudIntensity(next);
+                        }
+                      }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                      style={{
+                        width: '36px',
+                        height: '20px',
+                        padding: '4px 4px',
+                        background: '#444',
+                        color: '#ddd',
+                        border: '1px solid transparent',
+                        borderRadius: '5px',
+                        fontSize: '12px',
+                        fontFamily: FONT_FAMILY,
+                        textAlign: 'center'
+                      }}
+                      title="Cloud bump size"
+                    />
+                  </label>
+                )}
+                {/* 2026-05-25: Arrow tool (or selected callout) — custom
+                    arrowhead menu that always opens downward and shows every
+                    option at once (native select scrolls / picks its own
+                    direction). Callouts have their own arrowhead end so the
+                    same picker drives both. */}
+                {(bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'callout') && bottomToolbarApi.setArrowheadStyle && (
+                  <div data-arrowhead-menu style={{ position: 'relative' }}>
+                    <button
+                      onClick={() => setShowArrowheadMenu(!showArrowheadMenu)}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      style={{
+                        height: '24px',
+                        padding: '0 22px 0 8px',
+                        background: '#444',
+                        color: '#ddd',
+                        border: '1px solid transparent',
+                        borderRadius: '5px',
+                        fontSize: '12px',
+                        fontFamily: FONT_FAMILY,
+                        cursor: 'pointer',
+                        backgroundImage:
+                          'linear-gradient(45deg, transparent 50%, #aaa 50%), linear-gradient(135deg, #aaa 50%, transparent 50%)',
+                        backgroundPosition: 'calc(100% - 11px) 10px, calc(100% - 7px) 10px',
+                        backgroundSize: '4px 4px, 4px 4px',
+                        backgroundRepeat: 'no-repeat'
+                      }}
+                      title="Arrowhead"
+                      aria-label="Arrowhead"
+                    >
+                      {ARROWHEAD_STYLE_LABELS[bottomToolbarApi.arrowheadStyle] || 'Solid Triangle'}
+                    </button>
+                    {showArrowheadMenu && (
+                      <div style={{
+                        position: 'absolute',
+                        top: 'calc(100% + 4px)',
+                        left: 0,
+                        background: '#1e1e1e',
+                        border: '1px solid #444',
+                        borderRadius: '6px',
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
+                        padding: '4px',
+                        zIndex: 5600,
+                        minWidth: '160px',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        {Object.entries(ARROWHEAD_STYLE_LABELS).map(([val, label]) => {
+                          const isOn = bottomToolbarApi.arrowheadStyle === val;
+                          return (
+                            <button
+                              key={val}
+                              onClick={() => {
+                                bottomToolbarApi.setArrowheadStyle(val);
+                                setShowArrowheadMenu(false);
+                              }}
+                              style={{
+                                display: 'block',
+                                width: '100%',
+                                padding: '6px 10px',
+                                background: isOn ? 'rgba(216,168,78,0.12)' : 'transparent',
+                                color: isOn ? '#d8a84e' : '#ddd',
+                                border: 'none',
+                                borderRadius: '4px',
+                                fontSize: '12px',
+                                fontFamily: FONT_FAMILY,
+                                textAlign: 'left',
+                                cursor: 'pointer'
+                              }}
+                              onMouseEnter={(e) => {
+                                if (!isOn) e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                              }}
+                              onMouseLeave={(e) => {
+                                if (!isOn) e.currentTarget.style.background = 'transparent';
+                              }}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {/* 2026-05-25: Rich-text edit entry button. Only renders when
+                    the user is on the text box / callout tool or has one of
+                    those selected. Disabled when nothing editable is picked.
+                    Clicking drops the user into text edit mode on the
+                    selected item — same path as double-clicking the text. */}
+                {bottomToolbarApi.onEnterTextEdit
+                  && (bottomToolbarApi.contextTool === 'text'
+                      || bottomToolbarApi.contextTool === 'callout'
+                      || !!bottomToolbarApi.richTextEditor) && (
+                  <button
+                    onClick={() => bottomToolbarApi.onEnterTextEdit()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    disabled={!bottomToolbarApi.canEnterTextEdit}
+                    style={{
+                      height: '24px',
+                      padding: '0 8px',
+                      background: bottomToolbarApi.richTextEditor ? 'rgba(216,168,78,0.18)' : '#444',
+                      color: bottomToolbarApi.richTextEditor
+                        ? '#d8a84e'
+                        : bottomToolbarApi.canEnterTextEdit ? '#ddd' : '#666',
+                      border: '1px solid transparent',
+                      borderRadius: '5px',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      fontFamily: FONT_FAMILY,
+                      cursor: bottomToolbarApi.canEnterTextEdit ? 'pointer' : 'not-allowed',
+                      opacity: bottomToolbarApi.canEnterTextEdit ? 1 : 0.5,
+                      lineHeight: 1,
+                    }}
+                    title={bottomToolbarApi.canEnterTextEdit
+                      ? 'Edit text'
+                      : 'Select a text box or callout to edit its text'}
+                    aria-label="Edit text"
+                    aria-pressed={!!bottomToolbarApi.richTextEditor}
+                  >
+                    Aa
+                  </button>
+                )}
+                </>
               </div>
-            </>
+              </div>
+            </div>
           )}
           {/* UX 2026-05-14: Survey toggle button moved to the new chrome-right-host
               rail (top slot). Reuses the same topToolbarApi.onSurveyToggle

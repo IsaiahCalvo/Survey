@@ -1184,7 +1184,7 @@ ipcMain.handle('logs:saveSnapshot', async (event, payload = {}) => {
   const MAX_SNAPSHOTS = 20;
   try {
     const startedAt = Date.now();
-    const { consoleText = '', network = [], summary = {} } = payload;
+    const { consoleText = '', network = [], summary = {}, extraFiles = [] } = payload;
     // app.getAppPath() returns the project root in dev (where electron-main.js lives)
     // and the asar root in packaged builds. We anchor Logs to the project root so
     // dev sessions write where the user expects; packaged builds will write inside
@@ -1198,6 +1198,17 @@ ipcMain.handle('logs:saveSnapshot', async (event, payload = {}) => {
     const snapshotDir = path.join(logsRoot, stamp);
     await fs.promises.mkdir(snapshotDir, { recursive: true });
 
+    const extraFileWrites = Array.isArray(extraFiles)
+      ? extraFiles
+        .filter((file) => file && typeof file.name === 'string' && /^[a-zA-Z0-9._-]+$/.test(file.name))
+        .slice(0, 20)
+        .map((file) => fs.promises.writeFile(
+          path.join(snapshotDir, file.name),
+          typeof file.content === 'string' ? file.content : JSON.stringify(file.content ?? null, null, 2),
+          'utf8'
+        ))
+      : [];
+
     await Promise.all([
       fs.promises.writeFile(path.join(snapshotDir, 'console.log'), String(consoleText), 'utf8'),
       fs.promises.writeFile(
@@ -1209,7 +1220,8 @@ ipcMain.handle('logs:saveSnapshot', async (event, payload = {}) => {
         path.join(snapshotDir, 'summary.json'),
         JSON.stringify({ ...summary, savedAtIso: now.toISOString(), snapshotName: stamp }, null, 2),
         'utf8'
-      )
+      ),
+      ...extraFileWrites
     ]);
 
     // Prune to MAX_SNAPSHOTS most-recent dated subfolders. Anything that isn't a

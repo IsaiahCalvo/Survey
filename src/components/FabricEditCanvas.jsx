@@ -1106,6 +1106,8 @@ const FabricEditCanvas = memo(({
   // callout edits (App.jsx checks editingAnnotation.reactCalloutId before
   // passing this prop). Optional — safe no-op for plain text edits.
   onLiveTextGrow,
+  onRichTextEditorChange,
+  onCalloutTextStyleChange,
 }) => {
   // -------------------------------------------------------------------------
   // State
@@ -1463,6 +1465,117 @@ const FabricEditCanvas = memo(({
     },
   });
 
+  const onRichTextEditorChangeRef = useRef(onRichTextEditorChange);
+  useEffect(() => { onRichTextEditorChangeRef.current = onRichTextEditorChange; }, [onRichTextEditorChange]);
+  const onCalloutTextStyleChangeRef = useRef(onCalloutTextStyleChange);
+  useEffect(() => { onCalloutTextStyleChangeRef.current = onCalloutTextStyleChange; }, [onCalloutTextStyleChange]);
+  const reactCalloutIdRef = useRef(reactCalloutId);
+  useEffect(() => { reactCalloutIdRef.current = reactCalloutId; }, [reactCalloutId]);
+  const editingTextboxRef = useRef(null);
+  const lastSelectionRangeRef = useRef(null);
+
+  const calloutStylePatchFromFabricKey = (key, val) => {
+    switch (key) {
+      case 'fontWeight': return { bold: val === 'bold' };
+      case 'fontStyle': return { italic: val === 'italic' };
+      case 'underline': return { underline: !!val };
+      case 'linethrough': return { strikethrough: !!val };
+      case 'textAlign': return { textAlign: val };
+      case 'verticalAlign': return { verticalAlign: val };
+      case 'fontFamily': return { fontFamily: val };
+      case 'fontSize': return { fontSize: Number(val) || 12 };
+      default: return null;
+    }
+  };
+
+  const readRichTextState = useCallback((obj) => {
+    if (!obj || obj.type !== 'textbox') {
+      return { bold: false, italic: false, underline: false, strike: false, fontSize: 16 };
+    }
+    const intendedFontColor = (originalAnnotationRef.current && typeof originalAnnotationRef.current.fill === 'string')
+      ? originalAnnotationRef.current.fill
+      : (typeof obj.fill === 'string' && obj.fill !== 'rgba(0,0,0,0)' ? obj.fill : '#1e293b');
+    return {
+      bold: obj.fontWeight === 'bold',
+      italic: obj.fontStyle === 'italic',
+      underline: !!obj.underline,
+      strike: !!obj.linethrough,
+      fontSize: Math.round(Number(obj.fontSize) || 16),
+      textAlign: obj.textAlign || 'left',
+      verticalAlign: obj.verticalAlign || 'top',
+      fontFamily: obj.fontFamily || 'Arial',
+      fontColor: intendedFontColor,
+    };
+  }, []);
+
+  const richTextApiRef = useRef(null);
+  const publishRichTextEditor = useCallback(() => {
+    const cb = onRichTextEditorChangeRef.current;
+    if (typeof cb !== 'function') return;
+    const obj = fabricRef.current?.getActiveObject() || editingTextboxRef.current;
+    if (!obj || obj.type !== 'textbox') {
+      cb(null);
+      return;
+    }
+    editingTextboxRef.current = obj;
+    if (obj.selectionStart != null && obj.selectionEnd != null) {
+      lastSelectionRangeRef.current = { start: obj.selectionStart, end: obj.selectionEnd };
+    }
+    if (!richTextApiRef.current) {
+      const applyTextStyle = (key, val) => {
+        const canvas = fabricRef.current;
+        const target = editingTextboxRef.current || canvas?.getActiveObject();
+        if (!target || target.type !== 'textbox') return;
+        target.styles = {};
+        target.set(key, val);
+        if (typeof target.initDimensions === 'function') target.initDimensions();
+        if (canvas && target.canvas === canvas) canvas.setActiveObject(target);
+        if (typeof target.enterEditing === 'function' && !target.isEditing) target.enterEditing();
+        const stashed = lastSelectionRangeRef.current;
+        if (stashed && stashed.start !== stashed.end && typeof target.setSelectionStart === 'function') {
+          target.setSelectionStart(stashed.start);
+          target.setSelectionEnd(stashed.end);
+        }
+        const cid = reactCalloutIdRef.current;
+        const styleCb = onCalloutTextStyleChangeRef.current;
+        if (cid && typeof styleCb === 'function') {
+          const patch = calloutStylePatchFromFabricKey(key, val);
+          if (patch) styleCb(cid, patch);
+        }
+        if (typeof target.fire === 'function') target.fire('changed');
+        canvas?.requestRenderAll();
+        publishRichTextEditor();
+      };
+      const readLive = () => readRichTextState(editingTextboxRef.current);
+      richTextApiRef.current = {
+        toggleBold: () => applyTextStyle('fontWeight', readLive().bold ? 'normal' : 'bold'),
+        toggleItalic: () => applyTextStyle('fontStyle', readLive().italic ? 'normal' : 'italic'),
+        toggleUnderline: () => applyTextStyle('underline', !readLive().underline),
+        toggleStrike: () => applyTextStyle('linethrough', !readLive().strike),
+        setFontSize: (n) => applyTextStyle('fontSize', Math.max(6, Math.min(200, Math.round(Number(n) || 16)))),
+        setTextAlign: (a) => applyTextStyle('textAlign', ['left', 'center', 'right', 'justify'].includes(a) ? a : 'left'),
+        setVerticalAlign: (v) => applyTextStyle('verticalAlign', ['top', 'middle', 'bottom'].includes(v) ? v : 'top'),
+        setFontFamily: (f) => applyTextStyle('fontFamily', typeof f === 'string' && f.length > 0 && !f.includes(',') ? f : 'Arial'),
+        setFontColor: (c) => {
+          const hex = typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c) ? c : '#000000';
+          if (originalAnnotationRef.current) originalAnnotationRef.current.fill = hex;
+          else originalAnnotationRef.current = { fill: hex };
+          const cid = reactCalloutIdRef.current;
+          const styleCb = onCalloutTextStyleChangeRef.current;
+          if (cid && typeof styleCb === 'function') styleCb(cid, { fontColor: hex });
+          if (typeof editingTextboxRef.current?.fire === 'function') editingTextboxRef.current.fire('changed');
+          publishRichTextEditor();
+        },
+      };
+    }
+    cb({ api: richTextApiRef.current, state: readRichTextState(obj) });
+  }, [fabricRef, readRichTextState]);
+
+  useEffect(() => () => {
+    const cb = onRichTextEditorChangeRef.current;
+    if (typeof cb === 'function') cb(null);
+  }, []);
+
   // -------------------------------------------------------------------------
   // Compute container style for bbox vs full-page mode
   // useLayoutEffect ensures the container is positioned & visible BEFORE the
@@ -1811,6 +1924,8 @@ const FabricEditCanvas = memo(({
       // Render FIRST, then enter editing (same order as existing text path)
       canvas.renderAll();
       textObj.enterEditing();
+      editingTextboxRef.current = textObj;
+      publishRichTextEditor();
 
       // Suppress native caret on Fabric's hidden textarea (Electron can flash it)
       if (textObj.hiddenTextarea) {
@@ -1893,6 +2008,8 @@ const FabricEditCanvas = memo(({
       // Auto-resize height as text wraps (same as existing text path)
       textObj.on('changed', () => {
         if (!mountedRef.current || !containerRef.current) return;
+        editingTextboxRef.current = textObj;
+        publishRichTextEditor();
         const h = (textObj.calcTextHeight() + BBOX_PADDING * 2) * es + 8;
         const newH = Math.max(Math.round(30 * es), Math.ceil(h));
         canvas.setDimensions({ height: newH });
@@ -2059,6 +2176,8 @@ const FabricEditCanvas = memo(({
         canvas.renderAll();
         textObj.enterEditing();
         textObj.selectAll();
+        editingTextboxRef.current = textObj;
+        publishRichTextEditor();
 
         // Suppress native caret on Fabric's hidden textarea (Electron can flash it)
         if (textObj.hiddenTextarea) {
@@ -2103,10 +2222,14 @@ const FabricEditCanvas = memo(({
           dumpCursorParity('enter', source, resolvedId, textObj, findSvgDiv(), canvas, containerRef.current);
           textObj.on('changed', () => {
             if (!mountedRef.current) return;
+            editingTextboxRef.current = textObj;
+            publishRichTextEditor();
             dumpCursorParity('keystroke', source, resolvedId, textObj, findSvgDiv(), canvas, containerRef.current);
           });
           textObj.on('selection:changed', () => {
             if (!mountedRef.current) return;
+            editingTextboxRef.current = textObj;
+            publishRichTextEditor();
             dumpCursorParity('selection', source, resolvedId, textObj, findSvgDiv(), canvas, containerRef.current);
           });
         }
@@ -2219,6 +2342,17 @@ const FabricEditCanvas = memo(({
               textLines: lines,
               fontSize: textObj.fontSize,
               lineHeight: textObj.lineHeight,
+              fontWeight: textObj.fontWeight,
+              fontStyle: textObj.fontStyle,
+              underline: !!textObj.underline,
+              linethrough: !!textObj.linethrough,
+              textAlign: textObj.textAlign,
+              verticalAlign: textObj.verticalAlign || 'top',
+              fontFamily: textObj.fontFamily,
+              fill: (originalAnnotationRef.current && typeof originalAnnotationRef.current.fill === 'string'
+                && originalAnnotationRef.current.fill !== 'rgba(0,0,0,0)')
+                ? originalAnnotationRef.current.fill
+                : '#1e293b',
             };
             onLiveTextGrow(bounds);
           }
@@ -2801,13 +2935,19 @@ const FabricEditCanvas = memo(({
             });
           };
           broadcastCalloutBounds();
+          editingTextboxRef.current = textChild;
+          publishRichTextEditor();
           textChild.on('changed', () => {
             if (!mountedRef.current) return;
+            editingTextboxRef.current = textChild;
+            publishRichTextEditor();
             dumpCursorParity('keystroke', 'callout', reactCalloutId || null, textChild, findSvg(), canvas, containerRef.current);
             broadcastCalloutBounds();
           });
           textChild.on('selection:changed', () => {
             if (!mountedRef.current) return;
+            editingTextboxRef.current = textChild;
+            publishRichTextEditor();
             dumpCursorParity('selection', 'callout', reactCalloutId || null, textChild, findSvg(), canvas, containerRef.current);
           });
         }
@@ -3140,6 +3280,13 @@ const FabricEditCanvas = memo(({
 
       // Check if click coordinates are inside the Canvas container
       if (isPointInRect(e.clientX, e.clientY, container)) return;
+
+      const richTextToolbar = document.querySelector('[data-rich-text-toolbar]');
+      if (richTextToolbar
+        && (richTextToolbar.contains(e.target)
+          || isPointInRect(e.clientX, e.clientY, richTextToolbar))) {
+        return;
+      }
 
       // Check if click is inside the mini-toolbar or its descendants (e.g. color picker dropdown).
       // Two checks needed:

@@ -3,17 +3,93 @@ import { createClient } from '@supabase/supabase-js';
 const env = import.meta.env || {};
 const supabaseUrl = env.VITE_SUPABASE_URL;
 const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY;
+const supabaseProjectRef = (() => {
+  try {
+    return supabaseUrl ? new URL(supabaseUrl).hostname.split('.')[0] : null;
+  } catch {
+    return null;
+  }
+})();
+export const SUPABASE_AUTH_STORAGE_KEY = supabaseProjectRef
+  ? `sb-${supabaseProjectRef}-auth-token`
+  : null;
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.warn('Supabase credentials not found. Running in offline mode.');
 }
 
 export const supabase = supabaseUrl && supabaseAnonKey
-  ? createClient(supabaseUrl, supabaseAnonKey)
+  ? createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: true,
+        ...(SUPABASE_AUTH_STORAGE_KEY ? { storageKey: SUPABASE_AUTH_STORAGE_KEY } : {}),
+      },
+    })
   : null;
 
 // Helper to check if Supabase is available
 export const isSupabaseAvailable = () => supabase !== null;
+
+export const isAuthRefreshTokenError = (error) => {
+  const message = String(error?.message || error || '').toLowerCase();
+  const code = String(error?.code || '').toLowerCase();
+  return code.includes('refresh')
+    || message.includes('invalid refresh token')
+    || message.includes('refresh token not found')
+    || message.includes('refresh_token_not_found');
+};
+
+export const clearSupabaseAuthStorage = () => {
+  if (typeof window === 'undefined') return;
+  try {
+    if (SUPABASE_AUTH_STORAGE_KEY) {
+      window.localStorage?.removeItem(SUPABASE_AUTH_STORAGE_KEY);
+      window.sessionStorage?.removeItem(SUPABASE_AUTH_STORAGE_KEY);
+    }
+    const localKeys = [];
+    for (let i = 0; i < (window.localStorage?.length || 0); i += 1) {
+      const key = window.localStorage.key(i);
+      if (key && /^sb-.+-auth-token$/.test(key)) localKeys.push(key);
+    }
+    localKeys.forEach((key) => window.localStorage.removeItem(key));
+    const sessionKeys = [];
+    for (let i = 0; i < (window.sessionStorage?.length || 0); i += 1) {
+      const key = window.sessionStorage.key(i);
+      if (key && /^sb-.+-auth-token$/.test(key)) sessionKeys.push(key);
+    }
+    sessionKeys.forEach((key) => window.sessionStorage.removeItem(key));
+  } catch (err) {
+    console.warn('[SupabaseAuth] failed to clear local auth storage', err?.message || String(err));
+  }
+};
+
+export async function recoverSupabaseAuthSession(error, context = 'auth') {
+  if (!isAuthRefreshTokenError(error)) return false;
+  console.warn('[SupabaseAuth] clearing corrupted refresh token ' + JSON.stringify({
+    context,
+    message: error?.message || String(error),
+  }));
+  clearSupabaseAuthStorage();
+  try {
+    await supabase?.auth?.signOut?.({ scope: 'local' });
+  } catch {
+    // Storage was already cleared above; local sign-out is best-effort.
+  }
+  return true;
+}
+
+export async function getSupabaseSession(context = 'auth') {
+  if (!supabase) return null;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session || null;
+  } catch (err) {
+    if (await recoverSupabaseAuthSession(err, context)) return null;
+    throw err;
+  }
+}
 
 // 2026-04-26 — Snapshot of the current Supabase auth session, used by the
 // cloud-sync hook to diagnose whether an empty cloud read came back from a
@@ -23,7 +99,7 @@ export const isSupabaseAvailable = () => supabase !== null;
 export async function getAuthSnapshot() {
   if (!supabase) return { hasSupabase: false };
   try {
-    const { data: { session } } = await supabase.auth.getSession();
+    const session = await getSupabaseSession('getAuthSnapshot');
     if (!session) return { hasSupabase: true, hasSession: false };
     const expiresAt = session.expires_at || null;
     const nowSec = Math.floor(Date.now() / 1000);
@@ -37,6 +113,9 @@ export async function getAuthSnapshot() {
       tokenLooksValid: expiresAt ? expiresAt > nowSec : false
     };
   } catch (err) {
+    if (await recoverSupabaseAuthSession(err, 'getAuthSnapshot')) {
+      return { hasSupabase: true, hasSession: false, authRecovered: true };
+    }
     return { hasSupabase: true, authQueryError: err?.message || String(err) };
   }
 }

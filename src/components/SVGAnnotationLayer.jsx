@@ -61,6 +61,11 @@ import {
 // can dump a full geometry comparison against the Fabric edit-mode capture.
 import { captureSvgCallout } from '../utils/calloutGeometryDiag.js';
 
+const svgAnnotationDebug = (...args) => {
+  if (typeof window === 'undefined' || window.__SVG_ANNOTATION_DEBUG !== true) return;
+  try { console.debug(...args); } catch { /* ignore debug logging failures */ }
+};
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -297,6 +302,7 @@ const SVGAnnotationLayer = memo(({
   // visible annotation context changes so stale selection chrome disappears
   // without saving or deleting any annotation data.
   selectionClearToken = 0,
+  onSelectionChange,
   // UX: pan-mode hover glow — App.jsx runs a document-level mousemove
   // listener in pan mode and, via resolveAnnotationAt, broadcasts
   // { pageNumber, annotationIndex } (or null) whenever the cursor enters
@@ -605,18 +611,24 @@ const SVGAnnotationLayer = memo(({
   const rotInputVisibleRef = useRef(false);
   useEffect(() => { rotInputVisibleRef.current = rotInputVisible; }, [rotInputVisible]);
 
-  // Diagnostic helper: wrap setRotInputVisible so we can log who's toggling
-  // visibility and from where. The flicker investigation needs to know which
-  // call site is firing in the loop.
+  // Diagnostic helper: wrap setRotInputVisible so we can opt into visibility
+  // traces without issuing no-op state updates on every render.
   const setRotInputVisibleDbg = useCallback((next, reason) => {
+    const logVisibilityChange = (value, prev = undefined) => {
+      if (typeof window === 'undefined' || window.__SVG_ROTATION_INPUT_DEBUG !== true) return;
+      const suffix = prev === undefined ? '' : ` prev=${prev}`;
+      console.debug(`[SVGAnnotationLayer] setRotInputVisible(${value}) reason=${reason}${suffix}`);
+    };
     if (typeof next === 'function') {
       setRotInputVisible(prev => {
         const computed = next(prev);
-        console.log(`[SVGAnnotationLayer] setRotInputVisible(${computed}) reason=${reason} prev=${prev}`);
+        logVisibilityChange(computed, prev);
         return computed;
       });
     } else {
-      console.log(`[SVGAnnotationLayer] setRotInputVisible(${next}) reason=${reason}`);
+      if (rotInputVisibleRef.current === next) return;
+      logVisibilityChange(next);
+      rotInputVisibleRef.current = next;
       setRotInputVisible(next);
     }
   }, []);
@@ -1126,6 +1138,15 @@ const SVGAnnotationLayer = memo(({
   const selectedAnnotationIndex = (selectedIds && selectedIds.size === 1)
     ? Array.from(selectedIds)[0]
     : null;
+  useEffect(() => {
+    if (typeof onSelectionChange !== 'function') return;
+    if (selectedAnnotationIndex == null) {
+      onSelectionChange({ pageNumber, annotationIndex: null, annotation: null });
+      return;
+    }
+    const annotation = annotations?.objects?.[selectedAnnotationIndex] || null;
+    onSelectionChange({ pageNumber, annotationIndex: selectedAnnotationIndex, annotation });
+  }, [selectedAnnotationIndex, annotations, pageNumber, onSelectionChange]);
   // UX 2026-04-20: counter pill reads data.pointerAngle + 90 so 0°
   // corresponds to "nub pointing straight up" (matches the mental model
   // the user described). Non-counter shapes read obj.angle as before.
@@ -1341,13 +1362,17 @@ const SVGAnnotationLayer = memo(({
   }, [isRotating, isSurveyMarkerRotating]);
 
   const handleRotationInputHoverChange = useCallback((hovered) => {
-    console.log(`[SVGAnnotationLayer] pill onHoverChange(${hovered}) visibleRef=${rotInputVisibleRef.current} rotatingRef=${isRotatingRef.current}`);
+    if (typeof window !== 'undefined' && window.__SVG_ROTATION_INPUT_DEBUG === true) {
+      console.debug(`[SVGAnnotationLayer] pill onHoverChange(${hovered}) visibleRef=${rotInputVisibleRef.current} rotatingRef=${isRotatingRef.current}`);
+    }
     rotInputHoveredRef.current = hovered;
     if (hovered) {
       // Cancel grace timer if cursor entered the input itself — keeps the
       // pill open while the user is interacting with it.
       if (rotInputCloseTimerRef.current) {
-        console.log(`[SVGAnnotationLayer] pill onHoverChange(true) — cancelling close timer`);
+        if (typeof window !== 'undefined' && window.__SVG_ROTATION_INPUT_DEBUG === true) {
+          console.debug('[SVGAnnotationLayer] pill onHoverChange(true) — cancelling close timer');
+        }
         clearTimeout(rotInputCloseTimerRef.current);
         rotInputCloseTimerRef.current = null;
       }
@@ -1356,18 +1381,24 @@ const SVGAnnotationLayer = memo(({
       // the user can travel back to the handle without dismissing the pill.
       // Suppressed during active rotation drag (drag overrides visibility).
       if (rotInputVisibleRef.current && !rotInputCloseTimerRef.current && !isRotatingRef.current) {
-        console.log(`[SVGAnnotationLayer] pill onHoverChange(false) — scheduling 500ms grace`);
+        if (typeof window !== 'undefined' && window.__SVG_ROTATION_INPUT_DEBUG === true) {
+          console.debug('[SVGAnnotationLayer] pill onHoverChange(false) — scheduling 500ms grace');
+        }
         rotInputCloseTimerRef.current = setTimeout(() => {
           // Same activeElement guard as the mtr-leave path — if the user is
           // currently typing in the pill input, never hide regardless of hover.
           const ae = document.activeElement;
           const focusedInPill = !!(ae && ae.closest && ae.closest('[data-rotation-input-field]'));
           if (focusedInPill) {
-            console.log(`[SVGAnnotationLayer] grace timer expired but pill input is focused, NOT hiding`);
+            if (typeof window !== 'undefined' && window.__SVG_ROTATION_INPUT_DEBUG === true) {
+              console.debug('[SVGAnnotationLayer] grace timer expired but pill input is focused, NOT hiding');
+            }
           } else if (!rotInputHoveredRef.current) {
             setRotInputVisibleDbg(false, '500ms grace expired (pill leave path)');
           } else {
-            console.log(`[SVGAnnotationLayer] grace timer expired but cursor came back, NOT hiding`);
+            if (typeof window !== 'undefined' && window.__SVG_ROTATION_INPUT_DEBUG === true) {
+              console.debug('[SVGAnnotationLayer] grace timer expired but cursor came back, NOT hiding');
+            }
           }
           rotInputCloseTimerRef.current = null;
         }, 500);
@@ -1410,7 +1441,7 @@ const SVGAnnotationLayer = memo(({
       try {
         const hasPdfImported = objects.some((o) => o?.isPdfImported);
         if (hasPdfImported) {
-          console.log(`[SVG-RENDER] Page ${pageNumber} received ${objects.length} objects`,
+          svgAnnotationDebug(`[SVG-RENDER] Page ${pageNumber} received ${objects.length} objects`,
             objects.map((o, i) => ({
               i,
               type: o?.type,
@@ -1524,7 +1555,7 @@ const SVGAnnotationLayer = memo(({
         if (!window.__diagSVGPathRenderStats) window.__diagSVGPathRenderStats = {};
         window.__diagSVGPathRenderStats[pageNumber] = pathStats;
         if (pathStats.pathCount > 0) {
-          console.log('[SVGPathRenderStats] ' + JSON.stringify(pathStats));
+          svgAnnotationDebug('[SVGPathRenderStats] ' + JSON.stringify(pathStats));
         }
       } catch (diagErr) {
         console.warn('[SVGPathRenderStats] failed ' + (diagErr?.message || String(diagErr)));
@@ -1714,7 +1745,7 @@ const SVGAnnotationLayer = memo(({
 
       if (obj.data && obj.data.type === 'counter') {
         if (window.__COUNTER_SVG_DIAG) {
-          console.log(`[Counter SVG p${pageNumber}] dispatching renderCounter — i=${i}, displayNumber=${obj.data.displayNumber}, fill=${obj.fill}, numberColor=${obj.data.numberColor || 'unset'}, left=${obj.left}, top=${obj.top}, radius=${obj.radius}`);
+          svgAnnotationDebug(`[Counter SVG p${pageNumber}] dispatching renderCounter — i=${i}, displayNumber=${obj.data.displayNumber}, fill=${obj.fill}, numberColor=${obj.data.numberColor || 'unset'}, left=${obj.left}, top=${obj.top}, radius=${obj.radius}`);
         }
         element = renderCounter(obj, i);
       } else if (objectType === 'path' && Array.isArray(obj.path) && obj.path.length > 0) {
@@ -1998,7 +2029,7 @@ const SVGAnnotationLayer = memo(({
         dropDetails: dropReasons,
       };
       if (window.__DIAG_SURVEY_REGION_VISIBILITY) {
-        console.log(
+        svgAnnotationDebug(
           `[SurveyMarkerVisibility p${pageNumber}] ` +
           JSON.stringify(window.__diagSurveyMarkerVisibilityStats[pageNumber])
         );
@@ -3067,7 +3098,7 @@ const SVGAnnotationLayer = memo(({
   // change, not just true mount. Re-enable via window.__DIAG_SVG_MOUNT = true.
   useEffect(() => {
     if (typeof window !== 'undefined' && window.__DIAG_SVG_MOUNT) {
-      console.log(
+      svgAnnotationDebug(
         `[SVG p${pageNumber}] MOUNT — ${objectCount} annotations, ${calloutCount} callouts, viewBox=${width}x${height}`
       );
     }
@@ -3085,7 +3116,7 @@ const SVGAnnotationLayer = memo(({
       // 2026-04-30: silenced — emits a JSON blob per page on every imported
       // annotation change. Re-enable via window.__DIAG_SVG_RENDER_SUMMARY = true.
       if (typeof window !== 'undefined' && window.__DIAG_SVG_RENDER_SUMMARY) {
-        console.log(
+        svgAnnotationDebug(
           `[SVG-Imported p${pageNumber}] renderSummary — imported=${importedDebugRows.length}, activeSpaceId=${activeSpaceId}, selectedSpaceId=${selectedSpaceId}, activeRegionId=${activeRegionId}, showSurveyPanel=${showSurveyPanel}, rows=${JSON.stringify(importedDebugRows.slice(0, 12))}`
         );
       }
@@ -3105,7 +3136,7 @@ const SVGAnnotationLayer = memo(({
   // 2026-04-30: silenced — fires on EVERY render of every page. Re-enable
   // per session via window.__DIAG_SVG_RENDER = true.
   if (typeof window !== 'undefined' && window.__DIAG_SVG_RENDER) {
-    console.log(
+    svgAnnotationDebug(
       `[SVG p${pageNumber}] render — ${objectCount} objs, viewBox=${width}x${height}`
     );
   }
@@ -4928,7 +4959,7 @@ const SVGAnnotationLayer = memo(({
                 isBorderFlush,
                 padding: isBorderFlush ? 0 : 2,
               };
-              console.log('[LineBboxDiag] overlayMount ' + JSON.stringify(payload));
+              svgAnnotationDebug('[LineBboxDiag] overlayMount ' + JSON.stringify(payload));
             }
           }
         } catch (_) { /* swallow diag errors */ }

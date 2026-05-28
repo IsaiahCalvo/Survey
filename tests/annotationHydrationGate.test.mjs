@@ -8,7 +8,7 @@ import {
 } from '../src/utils/annotationHydrationGate.js';
 
 describe('annotation hydration first-paint gate', () => {
-  it('keeps the first visible cloud page gated until normal and survey sources are ready', () => {
+  it('does not gate cloud pages while annotations hydrate', () => {
     assert.equal(
       shouldGateFirstVisibleAnnotationPage({
         isCloudBackedDocument: true,
@@ -17,7 +17,7 @@ describe('annotation hydration first-paint gate', () => {
         normalHydration: { ready: false, source: 'starting' },
         surveyHydration: { ready: true, source: 'supabase-highlight' },
       }),
-      true
+      false
     );
 
     assert.equal(
@@ -28,11 +28,11 @@ describe('annotation hydration first-paint gate', () => {
         normalHydration: { ready: true, source: 'ydoc-snapshot' },
         surveyHydration: { ready: false, source: 'supabase-highlight-starting' },
       }),
-      true
+      false
     );
   });
 
-  it('allows the first visible cloud page after Y.Doc and Supabase-only rows are complete', () => {
+  it('allows the first visible cloud page after normal annotations are complete', () => {
     assert.equal(
       shouldGateFirstVisibleAnnotationPage({
         isCloudBackedDocument: true,
@@ -58,7 +58,7 @@ describe('annotation hydration first-paint gate', () => {
     );
   });
 
-  it('visually covers only the first visible cloud page while hydration is gated', () => {
+  it('does not visually cover cloud pages while hydration is gated', () => {
     const pendingSources = {
       normalHydration: { ready: false, source: 'starting' },
       surveyHydration: { ready: false, source: 'supabase-highlight-starting' },
@@ -71,7 +71,7 @@ describe('annotation hydration first-paint gate', () => {
         firstVisiblePageNumber: 1,
         ...pendingSources,
       }),
-      true
+      false
     );
 
     assert.equal(

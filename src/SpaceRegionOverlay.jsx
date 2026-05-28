@@ -1,6 +1,11 @@
 import React, { useId, useLayoutEffect, useMemo, useRef } from 'react';
 import { union, diff } from 'martinez-polygon-clipping';
 
+const spaceRegionDebug = (...args) => {
+  if (typeof window === 'undefined' || window.__SPACE_REGION_DEBUG !== true) return;
+  try { console.debug(...args); } catch { /* ignore debug logging failures */ }
+};
+
 // Helper to convert region to polygon for martinez
 const regionToPolygon = (region) => {
   if (!region || !Array.isArray(region.coordinates)) {
@@ -222,7 +227,7 @@ const SpaceRegionOverlay = ({
     if (!canRender) return;
     const rootRect = rootRef.current?.getBoundingClientRect?.();
     const svgRect = svgRef.current?.getBoundingClientRect?.();
-    console.log(
+    spaceRegionDebug(
       `[SpaceRegionOverlay p${pageNumber}] mounted — ` +
       `root=${rootRect ? `${Math.round(rootRect.width)}x${Math.round(rootRect.height)}` : 'none'}, ` +
       `svg=${svgRect ? `${Math.round(svgRect.width)}x${Math.round(svgRect.height)}` : 'none'}, ` +
@@ -234,7 +239,7 @@ const SpaceRegionOverlay = ({
     return null;
   }
 
-  console.log(
+  spaceRegionDebug(
     `[SpaceRegionOverlay p${pageNumber}] render — ` +
     `regions=${regions.length}, screen=${Math.round(screenWidth)}x${Math.round(screenHeight)}, ` +
     `cutoutPathLength=${regionCutoutPath.length}, maskId=${maskId}`

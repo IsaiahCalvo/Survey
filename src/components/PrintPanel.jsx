@@ -1,6 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './PrintPanel.css';
 
+const printPanelDebug = (...args) => {
+  if (typeof window === 'undefined' || window.__PRINT_PANEL_DEBUG !== true) return;
+  try { console.debug(...args); } catch { /* ignore debug logging failures */ }
+};
+
 /**
  * PrintPanel — custom print dialog for Survey.
  *
@@ -503,7 +508,7 @@ export default function PrintPanel({
       bw: outputApplies ? !colorOn : false,
     };
     if (pageNum === currentPage) {
-      console.log(`[PrintPanel][DBG] opts for page=${pageNum}:`,
+      printPanelDebug(`[PrintPanel][DBG] opts for page=${pageNum}:`,
         `orientation=${orientation}`,
         `manualRot=${manualRot}`,
         `orientOverride=${orientOverride}`,
@@ -557,7 +562,7 @@ export default function PrintPanel({
   useEffect(() => {
     if (!open || typeof getThumbnail !== 'function' || !effectivePages?.length) return;
     let cancelled = false;
-    console.log('[PrintPanel] fetchThumbs start, getThumbnail type:', typeof getThumbnail);
+    printPanelDebug('[PrintPanel] fetchThumbs start, getThumbnail type:', typeof getThumbnail);
     const order = effectivePages
       .map((p) => ({ idx: p.index, dist: Math.abs(p.index - currentPage) }))
       .sort((a, b) => a.dist - b.dist);
@@ -581,10 +586,10 @@ export default function PrintPanel({
           const img = await getThumbnail(idx, { targetWidth: 100, ...opts });
           if (cancelled) return;
           if (img?.src) {
-            console.log(`[PrintPanel] thumb ready page=${idx} (${img.width}×${img.height})`);
+            printPanelDebug(`[PrintPanel] thumb ready page=${idx} (${img.width}×${img.height})`);
             setThumbCache((prev) => ({ ...prev, [cacheKey]: img }));
           } else {
-            console.log(`[PrintPanel] thumb not yet ready page=${idx} (returned ${img === null ? 'null' : 'no src'})`);
+            printPanelDebug(`[PrintPanel] thumb not yet ready page=${idx} (returned ${img === null ? 'null' : 'no src'})`);
           }
         } catch (err) {
           console.warn(`[PrintPanel] thumb fetch failed page=${idx}:`, err?.message || err);
@@ -600,7 +605,7 @@ export default function PrintPanel({
     if (!open || typeof getThumbnail !== 'function' || !currentPage) return;
     let cancelled = false;
     const opts = computePageOptsInline(currentPage);
-    console.log(`[PrintPanel] fetchPreview start page=${currentPage} opts=`, opts);
+    printPanelDebug(`[PrintPanel] fetchPreview start page=${currentPage} opts=`, opts);
     (async () => {
       try {
         // UX 2026-04-24: bumped from 720 → 1600 so the main preview pane
@@ -611,10 +616,10 @@ export default function PrintPanel({
         const img = await getThumbnail(currentPage, { targetWidth: 1600, ...opts });
         if (cancelled) return;
         if (img?.src) {
-          console.log(`[PrintPanel] preview ready page=${currentPage} (${img.width}×${img.height})`);
+          printPanelDebug(`[PrintPanel] preview ready page=${currentPage} (${img.width}×${img.height})`);
           setPreviewImg({ page: currentPage, ...img });
         } else {
-          console.log(`[PrintPanel] preview not ready page=${currentPage}`);
+          printPanelDebug(`[PrintPanel] preview not ready page=${currentPage}`);
         }
       } catch (err) {
         console.warn(`[PrintPanel] preview fetch failed page=${currentPage}:`, err?.message || err);
@@ -639,7 +644,7 @@ export default function PrintPanel({
         const img = await getThumbnail(currentPage, { targetWidth: target, ...opts });
         if (cancelled) return;
         if (img?.src) {
-          console.log(`[PrintPanel] bigPreview ready page=${currentPage} (${img.width}×${img.height})`);
+          printPanelDebug(`[PrintPanel] bigPreview ready page=${currentPage} (${img.width}×${img.height})`);
           setBigPreviewImg({ page: currentPage, ...img });
         }
       } catch (err) {
@@ -836,7 +841,7 @@ export default function PrintPanel({
   // section's scope. Stored mod-360 so repeated clicks cycle cleanly.
   const handleRotate = useCallback((deltaDegrees) => {
     const targetPages = resolveScopePages('orient');
-    console.log(`[PrintPanel][DBG] rotate delta=${deltaDegrees}° scope-pages=${targetPages.length} first10=`, targetPages.slice(0, 10));
+    printPanelDebug(`[PrintPanel][DBG] rotate delta=${deltaDegrees}° scope-pages=${targetPages.length} first10=`, targetPages.slice(0, 10));
     if (!targetPages.length) {
       console.warn('[PrintPanel][DBG] rotate: NO pages in scope — did the orient section narrow to empty?');
       return;
@@ -847,7 +852,7 @@ export default function PrintPanel({
         const cur = next[n] || 0;
         next[n] = (((cur + deltaDegrees) % 360) + 360) % 360;
       }
-      console.log('[PrintPanel][DBG] rotate: pageRotations after =', next);
+      printPanelDebug('[PrintPanel][DBG] rotate: pageRotations after =', next);
       return next;
     });
   }, [resolveScopePages]);
@@ -990,7 +995,7 @@ export default function PrintPanel({
         ? { paper: paperScopeJ, orient: orientScopeJ, output: outputScopeJ }
         : { all: kScope, selectRange: kSelectRange },
     };
-    console.log('[PrintPanel] PRINT pressed → jobSpec pages=', perPage.length, 'first=', perPage[0]);
+    printPanelDebug('[PrintPanel] PRINT pressed → jobSpec pages=', perPage.length, 'first=', perPage[0]);
     onPrint?.(jobSpec);
   }, [
     docName, variant, includedOrdered, computePageOptsInline, effectivePages, currentPage, totalPages,
@@ -1003,44 +1008,44 @@ export default function PrintPanel({
   // confirm mount + teardown in the log.
   useEffect(() => {
     if (open) {
-      console.log('[PrintPanel] RENDER — panel opened with', {
+      printPanelDebug('[PrintPanel] RENDER — panel opened with', {
         totalPages, variant, docName,
         initialIncludedCount: includedCount,
         printers: printers.map((p) => p.id),
       });
     } else {
-      console.log('[PrintPanel] RENDER — panel closed');
+      printPanelDebug('[PrintPanel] RENDER — panel closed');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   // Diagnostic — log each significant control change so the full user flow
   // is reproducible from a log dump.
-  useEffect(() => { if (open) console.log('[PrintPanel] variant =', variant); }, [variant, open]);
-  useEffect(() => { if (open) console.log('[PrintPanel] pagesToPrint =', pagesToPrint, '→ included:', includedCount); }, [pagesToPrint, includedCount, open]);
-  useEffect(() => { if (open) console.log('[PrintPanel] currentPage =', currentPage); }, [currentPage, open]);
-  useEffect(() => { if (open) console.log('[PrintPanel] paperSize =', paperSize, 'fitMode =', fitMode); }, [paperSize, fitMode, open]);
+  useEffect(() => { if (open) printPanelDebug('[PrintPanel] variant =', variant); }, [variant, open]);
+  useEffect(() => { if (open) printPanelDebug('[PrintPanel] pagesToPrint =', pagesToPrint, '→ included:', includedCount); }, [pagesToPrint, includedCount, open]);
+  useEffect(() => { if (open) printPanelDebug('[PrintPanel] currentPage =', currentPage); }, [currentPage, open]);
+  useEffect(() => { if (open) printPanelDebug('[PrintPanel] paperSize =', paperSize, 'fitMode =', fitMode); }, [paperSize, fitMode, open]);
   useEffect(() => {
     if (open && paperSize === 'match') {
       const src = (effectivePages || []).find((p) => p.index === matchPage);
-      console.log('[PrintPanel] matchPage =', matchPage,
+      printPanelDebug('[PrintPanel] matchPage =', matchPage,
         'src dims =', src ? `${src.width}x${src.height}` : 'n/a',
         'current page dims =', curPage ? `${curPage.width}x${curPage.height}` : 'n/a');
     }
   }, [matchPage, paperSize, open, effectivePages, curPage]);
-  useEffect(() => { if (open) console.log('[PrintPanel] orientation =', orientation); }, [orientation, open]);
-  useEffect(() => { if (open) console.log('[PrintPanel] mirrorH =', mirrorH, 'mirrorV =', mirrorV); }, [mirrorH, mirrorV, open]);
-  useEffect(() => { if (open) console.log('[PrintPanel] markupsOn =', markupsOn, 'colorOn =', colorOn); }, [markupsOn, colorOn, open]);
-  useEffect(() => { if (open) console.log('[PrintPanel] copies =', copies, 'collate =', collate, 'duplex =', duplex); }, [copies, collate, duplex, open]);
-  useEffect(() => { if (open) console.log('[PrintPanel] destination =', destination); }, [destination, open]);
-  useEffect(() => { if (open && variant === 'J') console.log('[PrintPanel][J] paperScope =', paperScopeJ); }, [paperScopeJ, variant, open]);
-  useEffect(() => { if (open && variant === 'J') console.log('[PrintPanel][J] orientScope =', orientScopeJ); }, [orientScopeJ, variant, open]);
-  useEffect(() => { if (open && variant === 'J') console.log('[PrintPanel][J] outputScope =', outputScopeJ); }, [outputScopeJ, variant, open]);
-  useEffect(() => { if (open && variant === 'K') console.log('[PrintPanel][K] kScope =', kScope, 'kSelectRange =', kSelectRange); }, [kScope, kSelectRange, variant, open]);
-  useEffect(() => { if (open) console.log('[PrintPanel] bigPreviewOpen =', bigPreviewOpen); }, [bigPreviewOpen, open]);
+  useEffect(() => { if (open) printPanelDebug('[PrintPanel] orientation =', orientation); }, [orientation, open]);
+  useEffect(() => { if (open) printPanelDebug('[PrintPanel] mirrorH =', mirrorH, 'mirrorV =', mirrorV); }, [mirrorH, mirrorV, open]);
+  useEffect(() => { if (open) printPanelDebug('[PrintPanel] markupsOn =', markupsOn, 'colorOn =', colorOn); }, [markupsOn, colorOn, open]);
+  useEffect(() => { if (open) printPanelDebug('[PrintPanel] copies =', copies, 'collate =', collate, 'duplex =', duplex); }, [copies, collate, duplex, open]);
+  useEffect(() => { if (open) printPanelDebug('[PrintPanel] destination =', destination); }, [destination, open]);
+  useEffect(() => { if (open && variant === 'J') printPanelDebug('[PrintPanel][J] paperScope =', paperScopeJ); }, [paperScopeJ, variant, open]);
+  useEffect(() => { if (open && variant === 'J') printPanelDebug('[PrintPanel][J] orientScope =', orientScopeJ); }, [orientScopeJ, variant, open]);
+  useEffect(() => { if (open && variant === 'J') printPanelDebug('[PrintPanel][J] outputScope =', outputScopeJ); }, [outputScopeJ, variant, open]);
+  useEffect(() => { if (open && variant === 'K') printPanelDebug('[PrintPanel][K] kScope =', kScope, 'kSelectRange =', kSelectRange); }, [kScope, kSelectRange, variant, open]);
+  useEffect(() => { if (open) printPanelDebug('[PrintPanel] bigPreviewOpen =', bigPreviewOpen); }, [bigPreviewOpen, open]);
 
   const handleCancel = useCallback((source) => {
-    console.log(`[PrintPanel] CLOSE via ${source}`);
+    printPanelDebug(`[PrintPanel] CLOSE via ${source}`);
     onClose?.();
   }, [onClose]);
 
@@ -1120,7 +1125,7 @@ export default function PrintPanel({
         role="button"
         tabIndex={0}
         onClick={(e) => {
-          console.log(`[PrintPanel] thumb click page=${page.index} alt=${!!e.altKey} meta=${!!e.metaKey} currentlyIncluded=${included}`);
+          printPanelDebug(`[PrintPanel] thumb click page=${page.index} alt=${!!e.altKey} meta=${!!e.metaKey} currentlyIncluded=${included}`);
           if (e.altKey) {
             togglePageInclusion(page.index);
           } else {
@@ -1160,7 +1165,7 @@ export default function PrintPanel({
       className="pp-rail"
       aria-label="Print options"
       style={{ flex: '0 0 340px', width: 340, minWidth: 340, maxWidth: 340, display: 'block', background: '#242428', borderLeft: '1px solid #333' }}
-      ref={(node) => { if (node) console.log('[PrintPanel][J] rail mounted, rect:', node.getBoundingClientRect()); }}
+      ref={(node) => { if (node) printPanelDebug('[PrintPanel][J] rail mounted, rect:', node.getBoundingClientRect()); }}
     >
       <div className="pp-section">
         <div className="pp-section-head">
@@ -1254,7 +1259,7 @@ export default function PrintPanel({
       className="pp-rail"
       aria-label="Print options"
       style={{ flex: '0 0 340px', width: 340, minWidth: 340, maxWidth: 340, display: 'block', background: '#242428', borderLeft: '1px solid #333' }}
-      ref={(node) => { if (node) console.log('[PrintPanel][K] rail mounted, rect:', node.getBoundingClientRect()); }}
+      ref={(node) => { if (node) printPanelDebug('[PrintPanel][K] rail mounted, rect:', node.getBoundingClientRect()); }}
     >
       <div className="pp-scope-tabs" role="tablist" aria-label="Customization scope">
         {['all', 'select', 'current'].map((id) => (
@@ -1411,7 +1416,7 @@ export default function PrintPanel({
         || (orientation === 'auto' && imageAspect > 1);
     }
     aspect = forceLandscape ? Math.max(base, 1 / base) : Math.min(base, 1 / base);
-    console.log('[PrintPanel][DBG] paper aspect resolve:',
+    printPanelDebug('[PrintPanel][DBG] paper aspect resolve:',
       `paperSize=${currentPageSettings.paperSize}`,
       `matchPage=${matchPage}`,
       `base=${base.toFixed(3)}`,
@@ -1541,7 +1546,7 @@ export default function PrintPanel({
           <div
             className="pp-mid"
             style={{ display: 'flex', flexDirection: 'row', minHeight: 0, minWidth: 0, overflow: 'hidden', height: '100%' }}
-            ref={(node) => { if (node) console.log('[PrintPanel] pp-mid mounted, rect:', node.getBoundingClientRect()); }}
+            ref={(node) => { if (node) printPanelDebug('[PrintPanel] pp-mid mounted, rect:', node.getBoundingClientRect()); }}
           >
             <div className="pp-preview-col">
               <div className="pp-preview-top">
@@ -1616,7 +1621,7 @@ export default function PrintPanel({
                         key={pageNum}
                         className={`pp-pager-dot ${pg?.isLandscape ? 'is-landscape' : ''} ${isCurrent ? 'is-current' : ''}`}
                         onClick={() => {
-                          console.log(`[PrintPanel] pager dot click page=${pageNum}`);
+                          printPanelDebug(`[PrintPanel] pager dot click page=${pageNum}`);
                           setCurrentPage(pageNum);
                         }}
                         aria-label={`Jump to page ${pageNum}`}

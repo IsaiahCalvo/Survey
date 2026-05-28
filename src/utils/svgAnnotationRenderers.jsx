@@ -971,8 +971,11 @@ export const renderText = (obj, index, liveBounds = null, hideText = false) => {
     : (obj.text || '');
 
   const key = `text-${obj.id || index}`;
-  // Add buffer for descenders (j,p,g,q,y) + bottom breathing room
-  const fontSize = obj.fontSize || 16;
+  // Add buffer for descenders (j,p,g,q,y) + bottom breathing room.
+  // During edit, liveBounds carries the current toolbar font size.
+  const fontSize = (liveBounds && Number.isFinite(Number(liveBounds.fontSize)) && Number(liveBounds.fontSize) > 0)
+    ? Number(liveBounds.fontSize)
+    : (obj.fontSize || 16);
   const descenderBuffer = fontSize * 0.35;
   const displayHeight = effectiveHeight + descenderBuffer;
   // UX (Plan 15-04 Issue 4, 2026-04-17): gutter between the border and text
@@ -996,6 +999,15 @@ export const renderText = (obj, index, liveBounds = null, hideText = false) => {
 
   return (
     <g key={key} opacity={obj.opacity ?? 1} transform={rotateTransform}>
+      {obj.backgroundColor && obj.backgroundColor !== 'transparent' ? (
+        <rect
+          x={left}
+          y={top}
+          width={effectiveWidth}
+          height={effectiveHeight}
+          fill={obj.backgroundColor}
+        />
+      ) : null}
       {/* Border rect: drawn only when the textbox carries a positive strokeWidth.
           PDF-imported FreeText annotations with BS.W>0 (see
           pdfAnnotationImporter.convertFreeTextToFabricTextbox) and user-created
@@ -1012,7 +1024,7 @@ export const renderText = (obj, index, liveBounds = null, hideText = false) => {
           fill="none"
           stroke={obj.stroke}
           strokeWidth={obj.strokeWidth}
-          vectorEffect={obj.strokeUniform ? 'non-scaling-stroke' : undefined}
+          data-stroke-uniform={obj.strokeUniform ? 'true' : undefined}
         />
       ) : null}
       {!hideText && (
@@ -1051,17 +1063,23 @@ export const renderText = (obj, index, liveBounds = null, hideText = false) => {
             width: innerWidth,
             height: innerDisplayHeight,
             fontSize: `${fontSize}px`,
-            fontFamily: obj.fontFamily || 'sans-serif',
-            fontWeight: obj.fontWeight || 'normal',
-            fontStyle: obj.fontStyle || 'normal',
-            color: obj.fill || '#000',
-            textAlign: obj.textAlign || 'left',
+            fontFamily: (liveBounds && liveBounds.fontFamily) || obj.fontFamily || 'sans-serif',
+            fontWeight: (liveBounds && liveBounds.fontWeight) || obj.fontWeight || 'normal',
+            fontStyle: (liveBounds && liveBounds.fontStyle) || obj.fontStyle || 'normal',
+            color: (liveBounds && liveBounds.fill) || obj.fill || '#000',
+            textAlign: (liveBounds && liveBounds.textAlign) || obj.textAlign || 'left',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: (() => {
+              const v = (liveBounds && liveBounds.verticalAlign) || obj.verticalAlign || 'top';
+              return v === 'middle' ? 'center' : v === 'bottom' ? 'flex-end' : 'flex-start';
+            })(),
             // KAL-34: text decoration honors underline + linethrough flags set
             // via AnnotationPropertiesPanel. Both can stack ("underline line-
             // through") to match Fabric.js text-decoration semantics.
             textDecoration: [
-              obj.underline ? 'underline' : null,
-              obj.linethrough ? 'line-through' : null,
+              ((liveBounds && liveBounds.underline != null) ? liveBounds.underline : obj.underline) ? 'underline' : null,
+              ((liveBounds && liveBounds.linethrough != null) ? liveBounds.linethrough : obj.linethrough) ? 'line-through' : null,
             ].filter(Boolean).join(' ') || 'none',
             // UX: Fabric 5.x textbox per-line pixel step =
             // `fontSize × lineHeight × _fontSizeMult` where `_fontSizeMult` is

@@ -56,6 +56,11 @@ const SUPABASE_PAGE_SIZE = 1000;
 const UPSERT_BATCH_SIZE = 250;
 const SUPABASE_READ_PAGE_CONCURRENCY = 4;
 
+function cloudSyncDebug(message) {
+  if (typeof window === 'undefined' || window.__CLOUD_SYNC_DEBUG !== true) return;
+  try { console.debug(message); } catch { /* ignore debug logging failures */ }
+}
+
 function isAllTypesOwnedRow(row) {
   if (!row) return false;
   if (NON_HIGHLIGHT_TYPES.includes(row.annotation_type)) return true;
@@ -175,7 +180,7 @@ export async function upsertAnnotationsByPage(annotationsByPage, opts = {}) {
   }
 
   if (rows.length === 0) {
-    console.log('[CloudSync][push] upsertAnnotationsByPage: nothing to push (0 rows) ' + JSON.stringify({
+    cloudSyncDebug('[CloudSync][push] upsertAnnotationsByPage: nothing to push (0 rows) ' + JSON.stringify({
       documentId: opts.documentId, pdfId: opts.pdfId
     }));
     return { data: [], error: null };
@@ -202,7 +207,7 @@ export async function upsertAnnotationsByPage(annotationsByPage, opts = {}) {
   const t0 = Date.now();
   // JSON.stringify so values survive Windows DevTools "Save as..." export,
   // which collapses live object refs to the literal string "Object".
-  console.log('[CloudSync][push] upsertAnnotationsByPage start ' + JSON.stringify({
+  cloudSyncDebug('[CloudSync][push] upsertAnnotationsByPage start ' + JSON.stringify({
     documentId: opts.documentId,
     pdfId: opts.pdfId,
     userId: opts.userId,
@@ -247,7 +252,7 @@ export async function upsertAnnotationsByPage(annotationsByPage, opts = {}) {
     }));
     return { data: [], error };
   }
-  console.log('[CloudSync][push] upsertAnnotationsByPage ok ' + JSON.stringify({
+  cloudSyncDebug('[CloudSync][push] upsertAnnotationsByPage ok ' + JSON.stringify({
     elapsedMs,
     pdfId: opts.pdfId,
     actionType: opts.actionType || null,
@@ -263,12 +268,12 @@ export async function upsertAnnotationsByPage(annotationsByPage, opts = {}) {
 export async function upsertCallouts(callouts, opts = {}) {
   if (!supabase) return { data: [], error: new Error('Supabase unavailable') };
   if (!Array.isArray(callouts) || callouts.length === 0) {
-    console.log('[CloudSync][push] upsertCallouts: nothing to push (empty list)');
+    cloudSyncDebug('[CloudSync][push] upsertCallouts: nothing to push (empty list)');
     return { data: [], error: null };
   }
   const rows = callouts.map((c) => serializeCalloutToRow(c, opts));
   const t0 = Date.now();
-  console.log('[CloudSync][push] upsertCallouts start ' + JSON.stringify({
+  cloudSyncDebug('[CloudSync][push] upsertCallouts start ' + JSON.stringify({
     documentId: opts.documentId,
     userId: opts.userId,
     actionType: opts.actionType || null,
@@ -293,7 +298,7 @@ export async function upsertCallouts(callouts, opts = {}) {
     }));
     return { data: [], error };
   }
-  console.log('[CloudSync][push] upsertCallouts ok ' + JSON.stringify({
+  cloudSyncDebug('[CloudSync][push] upsertCallouts ok ' + JSON.stringify({
     elapsedMs,
     actionType: opts.actionType || null,
     supabaseUpsertCount: rows.length,
@@ -346,7 +351,7 @@ export async function deleteAnnotations(documentId, annotationIds) {
       return { success: false, error };
     }
   }
-  console.log('[CloudSync] deleteAnnotations ok ' + JSON.stringify({
+  cloudSyncDebug('[CloudSync] deleteAnnotations ok ' + JSON.stringify({
     documentId,
     count: uniqueIds.length,
     chunks: Math.ceil(uniqueIds.length / chunkSize),
@@ -369,7 +374,7 @@ export async function loadAllNonSurveyMarkerAnnotations(documentId) {
     return { annotationsByPage: {}, callouts: [], error: null };
   }
   const t0 = Date.now();
-  console.log('[CloudSync][hydrate] loadAllNonSurveyMarkerAnnotations start ' + JSON.stringify({ documentId }));
+  cloudSyncDebug('[CloudSync][hydrate] loadAllNonSurveyMarkerAnnotations start ' + JSON.stringify({ documentId }));
   const { rows: allRows, error, scanned } = await loadAllTypesOwnedRowsForDocument(documentId);
   const elapsedMs = Date.now() - t0;
   if (error) {
@@ -386,7 +391,7 @@ export async function loadAllNonSurveyMarkerAnnotations(documentId) {
   }, {});
   const annotationsByPage = deserializeRowsToAnnotationsByPage(rows);
   const callouts = deserializeRowsToCallouts(rows);
-  console.log('[CloudSync][hydrate] loadAllNonSurveyMarkerAnnotations ok ' + JSON.stringify({
+  cloudSyncDebug('[CloudSync][hydrate] loadAllNonSurveyMarkerAnnotations ok ' + JSON.stringify({
     elapsedMs,
     totalRowsScanned: allRows?.length || 0,
     scanned,
@@ -448,7 +453,7 @@ export function subscribeToAllNonSurveyMarkerAnnotations(documentId, callbacks =
     onError
   } = callbacks;
 
-  console.log('[CloudSync][realtime] subscribing ' + JSON.stringify({
+  cloudSyncDebug('[CloudSync][realtime] subscribing ' + JSON.stringify({
     documentId,
     currentUserId,
     currentSessionId,
@@ -500,7 +505,7 @@ export function subscribeToAllNonSurveyMarkerAnnotations(documentId, callbacks =
         // recover the originating sessionId. Applying our own DELETE
         // echo is harmless: removing a annotation_id that's already
         // absent from local state is a no-op.
-        console.log('[CloudSync][realtime] applying DELETE ' + JSON.stringify({
+        cloudSyncDebug('[CloudSync][realtime] applying DELETE ' + JSON.stringify({
           annotationId: oldRow.annotation_id,
           annotationType: oldRow.annotation_type,
           lastModifiedBy: oldRow.last_modified_by,
@@ -533,7 +538,7 @@ export function subscribeToAllNonSurveyMarkerAnnotations(documentId, callbacks =
       }
     )
     .subscribe((status, err) => {
-      console.log('[CloudSync][realtime] subscribe status ' + JSON.stringify({
+      cloudSyncDebug('[CloudSync][realtime] subscribe status ' + JSON.stringify({
         status,
         error: err?.message || null
       }));
@@ -554,7 +559,7 @@ export function subscribeToAllNonSurveyMarkerAnnotations(documentId, callbacks =
     });
 
   return () => {
-    console.log('[CloudSync][realtime] unsubscribing ' + JSON.stringify({ documentId }));
+    cloudSyncDebug('[CloudSync][realtime] unsubscribing ' + JSON.stringify({ documentId }));
     if (supabase?.removeChannel) {
       supabase.removeChannel(channel);
     }
@@ -573,7 +578,7 @@ function routeRow(event, row, callbacks, currentUserId, currentSessionId) {
   // different session id) still gets the live update.
   const rowSessionId = row.annotation_data?.clientSessionId || null;
   if (currentSessionId && rowSessionId && rowSessionId === currentSessionId) {
-    console.log(`[CloudSync][realtime] echo-filtered ${event.toUpperCase()} ` + JSON.stringify({
+    cloudSyncDebug(`[CloudSync][realtime] echo-filtered ${event.toUpperCase()} ` + JSON.stringify({
       annotationId: row.annotation_id,
       annotationType: type,
       lastModifiedBy: row.last_modified_by,
@@ -587,7 +592,7 @@ function routeRow(event, row, callbacks, currentUserId, currentSessionId) {
   // if there's no rowSessionId on the incoming row but last_modified_by
   // matches the current user, treat as a same-user echo.
   if (!rowSessionId && currentUserId && row.last_modified_by === currentUserId) {
-    console.log(`[CloudSync][realtime] echo-filtered ${event.toUpperCase()} ` + JSON.stringify({
+    cloudSyncDebug(`[CloudSync][realtime] echo-filtered ${event.toUpperCase()} ` + JSON.stringify({
       annotationId: row.annotation_id,
       annotationType: type,
       lastModifiedBy: row.last_modified_by,
@@ -600,7 +605,7 @@ function routeRow(event, row, callbacks, currentUserId, currentSessionId) {
   if (type === 'callout') {
     try {
       const callout = deserializeRowToCallout(row);
-      console.log(`[CloudSync][realtime] applying ${event.toUpperCase()} callout ` + JSON.stringify({
+      cloudSyncDebug(`[CloudSync][realtime] applying ${event.toUpperCase()} callout ` + JSON.stringify({
         annotationId: row.annotation_id,
         pageNumber: row.page_number,
         lastModifiedBy: row.last_modified_by
@@ -615,7 +620,7 @@ function routeRow(event, row, callbacks, currentUserId, currentSessionId) {
   if (NON_HIGHLIGHT_TYPES.includes(type)) {
     try {
       const { fabricObject, pageNumber, annotationId } = deserializeRowToFabricObject(row);
-      console.log(`[CloudSync][realtime] applying ${event.toUpperCase()} fabric ` + JSON.stringify({
+      cloudSyncDebug(`[CloudSync][realtime] applying ${event.toUpperCase()} fabric ` + JSON.stringify({
         annotationId,
         annotationType: type,
         pageNumber,

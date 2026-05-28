@@ -6,9 +6,29 @@ const APP_SOURCE = readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf
 const CLOUD_SYNC_SOURCE = readFileSync(new URL('../src/hooks/useAnnotationCloudSync.js', import.meta.url), 'utf8');
 
 test('cloud-backed survey highlights are not painted from localStorage before Supabase settles', () => {
-  assert.match(APP_SOURCE, /const loadedSurveyMarkers = isCloudBackedDoc \? \{\} : loadSurveyMarkers\(id\);/);
-  assert.match(APP_SOURCE, /setSurveyMarkers\(remoteAnnotations \|\| \{\}\);/);
+  assert.match(APP_SOURCE, /const loadedSurveyMarkers = isCloudBackedDoc\s*\?\s*\(isSamePdfReload \? previousSurveyMarkersForSamePdf : \{\}\)\s*:\s*loadSurveyMarkers\(id\);/);
+  assert.match(APP_SOURCE, /context: 'survey-marker-hydrate'/);
+  assert.match(APP_SOURCE, /setSurveyMarkers\(safeSurveySnapshot\.value\);/);
   assert.match(APP_SOURCE, /source: 'supabase-highlight'/);
+});
+
+test('survey marker hydration cannot stay pending after a cancelled same-document load', () => {
+  assert.match(APP_SOURCE, /const activeCloudDocumentIdRef = useRef\(null\);/);
+  assert.match(APP_SOURCE, /const surveyHydrationRequestSeqRef = useRef\(0\);/);
+  assert.match(APP_SOURCE, /activeCloudDocumentIdRef\.current !== documentId/);
+  assert.match(APP_SOURCE, /wasCancelledSameDocument: !!cancelled/);
+  assert.match(APP_SOURCE, /source: 'supabase-highlight-error'/);
+  assert.match(APP_SOURCE, /\[AnnotationHydrationGate\]\[survey\] supabase surveyMarkers start/);
+  assert.match(APP_SOURCE, /\[AnnotationHydrationGate\]\[survey\] supabase surveyMarkers complete/);
+});
+
+test('same-document reload preserves cloud-owned layers instead of blanking them', () => {
+  assert.match(APP_SOURCE, /const previousSurveyMarkersForSamePdf = surveyMarkersRef\.current \|\| \{\};/);
+  assert.match(APP_SOURCE, /const previousCalloutsForSamePdf = calloutsRef\.current \|\| \[\];/);
+  assert.match(APP_SOURCE, /const previousSpacesForSamePdf = spacesRef\.current \|\| \[\];/);
+  assert.match(APP_SOURCE, /spacesRef\.current = isSamePdfReload \? previousSpacesForSamePdf : \[\];/);
+  assert.match(APP_SOURCE, /setSpaces\(isSamePdfReload \? previousSpacesForSamePdf : \[\]\);/);
+  assert.match(APP_SOURCE, /const loadedCallouts = isCloudBackedDoc\s*\?\s*\(isSamePdfReload \? previousCalloutsForSamePdf : \[\]\)\s*:\s*loadCallouts\(id\);/);
 });
 
 test('normal annotation hydration can start before live sync subscription is enabled', () => {
@@ -28,6 +48,23 @@ test('normal annotation hydration can start before live sync subscription is ena
 test('cutover-sealed documents mark the first-paint source as Y.Doc authoritative', () => {
   assert.match(CLOUD_SYNC_SOURCE, /source: 'ydoc-snapshot'/);
   assert.match(CLOUD_SYNC_SOURCE, /markInitialHydration\(\{\s*ready: true,\s*source: 'ydoc-snapshot'/s);
+});
+
+test('cutover reconnect/focus cannot leave a blank local view when Supabase still has annotations', () => {
+  assert.match(CLOUD_SYNC_SOURCE, /const restoreCutoverSnapshotIfLocalEmpty = async/);
+  assert.match(CLOUD_SYNC_SOURCE, /local cutover view is empty — probing Supabase durable snapshot/);
+  assert.match(CLOUD_SYNC_SOURCE, /source: 'cutover-durable-snapshot-recovery'/);
+  assert.match(CLOUD_SYNC_SOURCE, /restoreCutoverSnapshotIfLocalEmpty\('cutover-post-subscribe-empty-view-recovery'\)/);
+  assert.match(CLOUD_SYNC_SOURCE, /restoreCutoverSnapshotIfLocalEmpty\('cutover-focus-empty-view-recovery'\)/);
+});
+
+test('cloud snapshots use the shared safe-snapshot rule before replacing visible state', () => {
+  assert.match(APP_SOURCE, /resolveSafeSnapshot\(\{\s*current: surveyMarkersRef\.current \|\| \{\},\s*incoming: remoteAnnotations \|\| \{\},\s*cloudBacked: true,\s*kind: 'object-map',\s*context: 'survey-marker-hydrate'/s);
+  assert.match(APP_SOURCE, /context: 'supabase-storage-spaces'/);
+  assert.match(CLOUD_SYNC_SOURCE, /context: 'initial-hydrate-fabric'/);
+  assert.match(CLOUD_SYNC_SOURCE, /context: 'post-subscribe-fabric'/);
+  assert.match(CLOUD_SYNC_SOURCE, /context: 'focus-rehydrate-fabric'/);
+  assert.match(CLOUD_SYNC_SOURCE, /preserved visible state instead of applying empty Y\.Doc snapshot/);
 });
 
 test('first visible annotation wrappers expose and honor the hydration gate', () => {

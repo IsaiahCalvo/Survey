@@ -39,6 +39,11 @@ import StorageFailureBanner from './StorageFailureBanner.jsx';
 import ReSignInModal from './ReSignInModal.jsx';
 import ReadOnlyGate from './ReadOnlyGate.jsx';
 
+const ydocProviderDebug = (...args) => {
+  if (typeof window === 'undefined' || window.__CRDT_BACKFILL_DEBUG !== true) return;
+  try { console.debug(...args); } catch { /* ignore debug logging failures */ }
+};
+
 // Phase 28 — locked transport provider per 28-BENCHMARK.md (custom Supabase
 // Realtime adapter wins; Hocuspocus path remains as dormant v2.5+ fallback).
 // Importing the alias `createTransportProvider` keeps the call site transport-
@@ -47,7 +52,7 @@ import { createSupabaseYjsProvider as createTransportProvider } from '../../lib/
 import { attachAuthSessionBridge } from '../../lib/collab/authSessionBridge.js';
 import { buildOrigin } from '../../lib/collab/originBuilder.js';
 import { getDeviceId } from '../../lib/collab/deviceId.js';
-import { supabase } from '../../supabaseClient.js';
+import { getSupabaseSession, supabase } from '../../supabaseClient.js';
 // Phase 29 — per-user Y.UndoManager mount. createUndoManager memoizes the origin
 // reference (Pitfall 7 mitigation) so the bridge and the undo manager use the same
 // frozen object — trackedOrigins.has() identity check holds across both call sites.
@@ -104,6 +109,12 @@ import { CleanupResidueReviewPanel } from './CleanupResidueReviewPanel.jsx';
 // banner for a document, it never reappears for that document — the residue
 // audit is a one-shot affordance, not a recurring nag.
 const PHASE35_DISMISSED_KEY = 'phase35.dismissedCleanupBanners';
+const TRANSPORT_OFFLINE_BANNER_GRACE_MS = 1500;
+
+const ydocTransportDebug = (...args) => {
+  if (typeof window === 'undefined' || window.__YDOC_TRANSPORT_DEBUG !== true) return;
+  try { console.debug(...args); } catch { /* ignore debug logging failures */ }
+};
 
 function readDismissedDocIds() {
   // UX: defensive read — corrupt JSON or missing key both yield an empty
@@ -250,15 +261,39 @@ function YDocProviderInner({ docId, children, closeDocument }) {
   // undo manager's trackedOrigins entry share the exact memoized origin object.
   // Reference equality at trackedOrigins is the entire Pitfall 7 mitigation.
   //
-  // supabase reference: uses the EXISTING import at the top of this file
-  // (line 49 confirmed at plan revision iteration 1). Same `await
-  // supabase.auth.getSession()` shape used by Phase 28's authSessionBridge.
+  // Supabase session lookup goes through getSupabaseSession so corrupted local
+  // refresh-token state can be cleared instead of poisoning boot/reconnect.
   const [undoState, setUndoState] = useState(null);
 
   // Ref-mirror of storageState so the transport provider's async callbacks can
   // read the latest code without stale-closure bugs. Updated via the effect below.
   const storageStateRef = useRef(null);
   useEffect(() => { storageStateRef.current = storageState; }, [storageState]);
+  const transportOfflineBannerTimerRef = useRef(null);
+  const transportOfflineGenerationRef = useRef(0);
+
+  const clearTransportOfflineBannerTimer = useCallback(() => {
+    if (!transportOfflineBannerTimerRef.current) return;
+    clearTimeout(transportOfflineBannerTimerRef.current);
+    transportOfflineBannerTimerRef.current = null;
+  }, []);
+
+  const scheduleTransportOfflineBanner = useCallback(() => {
+    const generation = transportOfflineGenerationRef.current + 1;
+    transportOfflineGenerationRef.current = generation;
+    clearTransportOfflineBannerTimer();
+    transportOfflineBannerTimerRef.current = setTimeout(() => {
+      transportOfflineBannerTimerRef.current = null;
+      if (transportOfflineGenerationRef.current !== generation) return;
+      const currentCode = storageStateRef.current?.code || 'ok';
+      if (currentCode !== 'ok' && currentCode !== 'transport_offline') {
+        ydocTransportDebug('[YDocProvider] transport offline persisted but another banner is active', currentCode);
+        return;
+      }
+      ydocTransportDebug('[YDocProvider] transport offline persisted; showing banner');
+      setStorageState({ code: 'transport_offline', role: 'unknown' });
+    }, TRANSPORT_OFFLINE_BANNER_GRACE_MS);
+  }, [clearTransportOfflineBannerTimer]);
 
   useEffect(() => {
     // Fresh mount → reset banner-dismiss state. Subsequent storage failures
@@ -300,15 +335,21 @@ function YDocProviderInner({ docId, children, closeDocument }) {
           // only on 'offline' so steady-state 'online' is invisible to the user.
           setTransportState(state);
           if (state === 'offline') {
-            // UX: live sync broke — surface honestly per CONTEXT.md
-            // anti-silent-fallback principle. Banner copy in
-            // StorageFailureBanner.jsx tells the user what's at risk.
-            setStorageState({ code: 'transport_offline', role: 'unknown' });
+            // UX: brief realtime reconnect blips are common and recoverable.
+            // Keep the status state accurate immediately, but only show the
+            // user-facing banner if the offline state persists past the grace
+            // window. This prevents the red banner from flashing while the
+            // bottom-left cloud-save chip remains healthy.
+            ydocTransportDebug('[YDocProvider] transport offline; delaying banner');
+            scheduleTransportOfflineBanner();
           } else if (state === 'online') {
+            transportOfflineGenerationRef.current += 1;
+            clearTransportOfflineBannerTimer();
             // UX: only clear if the current state is the transport-side banner.
             // Don't stomp on persistence-side codes (quota / blocked / etc.) —
             // those are independent failure modes.
             if (storageStateRef.current?.code === 'transport_offline') {
+              ydocTransportDebug('[YDocProvider] transport online; clearing banner');
               setStorageState({ code: 'ok', role: 'unknown' });
             }
           }
@@ -401,6 +442,8 @@ function YDocProviderInner({ docId, children, closeDocument }) {
       cancelled = true;
       clearInterval(roleInterval);
       clearTimeout(hydrationFallback);
+      transportOfflineGenerationRef.current += 1;
+      clearTransportOfflineBannerTimer();
       try { handle.detach(); } catch { /* swallow — handle may already be torn down */ }
       try { providerHandle?.disconnect?.(); } catch { /* swallow */ }
       try { providerRef.current?.disconnect?.(); } catch { /* swallow */ }
@@ -411,7 +454,7 @@ function YDocProviderInner({ docId, children, closeDocument }) {
       releaseYDoc(docId);
       lifecycleRef.current = null;
     };
-  }, [ydoc, docId]);
+  }, [clearTransportOfflineBannerTimer, docId, scheduleTransportOfflineBanner, ydoc]);
 
   // Phase 29 — Per-user UndoManager mount effect (additive — Plan 29-04 narrow waiver).
   //
@@ -432,7 +475,7 @@ function YDocProviderInner({ docId, children, closeDocument }) {
     (async () => {
       let userId = null;
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const session = await getSupabaseSession('YDocProvider.undoManager');
         userId = session?.user?.id ?? null;
       } catch (err) {
         // eslint-disable-next-line no-console
@@ -675,9 +718,7 @@ function YDocProviderInner({ docId, children, closeDocument }) {
   const backfillRanRef = useRef(null);
   useEffect(() => {
     const userId = undoState?.undoCtx?.userId;
-    // Phase 31 UAT (2026-05-03) — confirm the effect fires and which gate
-    // path it follows. Stripped at Phase 31 close.
-    console.log('[Phase31 UAT] backfill:effect ' + JSON.stringify({
+    ydocProviderDebug('[Phase31 UAT] backfill:effect ' + JSON.stringify({
       hasYdoc: !!ydoc,
       docId: docId || null,
       userId: userId || null,
@@ -895,7 +936,7 @@ function YDocProviderInner({ docId, children, closeDocument }) {
 
   // Phase 35 Plan 05 — cleanup-banner audit effect. Runs once per document
   // open. Flow:
-  //   1. Resolve viewerId from supabase.auth.getSession().
+  //   1. Resolve viewerId from the recoverable Supabase session helper.
   //   2. Resolve documentOwnerId + cutover seal from the documents table by docId.
   //   3. Short-circuit when viewer is not the owner (collaborators never see
   //      the banner per CONTEXT.md decision).
@@ -928,7 +969,7 @@ function YDocProviderInner({ docId, children, closeDocument }) {
       // Resolve viewer identity. Audit silently skips when no session.
       let viewerId = null;
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const session = await getSupabaseSession('YDocProvider.cleanupAudit');
         viewerId = session?.user?.id ?? null;
       } catch (err) {
         // eslint-disable-next-line no-console

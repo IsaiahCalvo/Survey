@@ -11,8 +11,8 @@
 //   - Missing dep produces a clear runtime error, NOT a build break
 //   - The benchmark's --transport=supabase path stays green even with no Hocuspocus install
 //
-// Pitfall 1 defense (carried over from Pattern 4): the token thunk calls
-// supabase.auth.getSession() on every reconnect — Hocuspocus internally calls the
+// Pitfall 1 defense (carried over from Pattern 4): the token thunk resolves the
+// current Supabase session on every reconnect — Hocuspocus internally calls the
 // thunk on each reconnect attempt, so a refreshed JWT is always carried fresh.
 // (See SupabaseYjsProvider's authSessionBridge for the parallel TOKEN_REFRESHED →
 // realtime.setAuth wiring on the default path. Hocuspocus's token-thunk pattern is
@@ -30,6 +30,7 @@
 // handles onAuthenticate (verifies Supabase JWT signature, runs user_can_access_document
 // RPC) and onStoreDocument (persists snapshot to doc_yjs_state via service-role client).
 // Deployment shape (Fly.io / Railway / etc.) decided in 28-BENCHMARK.md if Hocuspocus wins.
+import { getSupabaseSession } from '../../supabaseClient.js';
 
 /**
  * Create a Hocuspocus-backed Yjs provider for a single document.
@@ -38,7 +39,7 @@
  * Public contract (interchangeable with SupabaseYjsProvider behind --transport flag):
  *   args.documentId        — string identifier; used as Hocuspocus document `name`
  *   args.ydoc              — borrowed Y.Doc (from ydocRegistry); never constructed here
- *   args.supabase          — Supabase client used for the token thunk (auth.getSession)
+ *   args.supabase          — Supabase client required by the shared provider contract
  *   args.url               — Hocuspocus WS URL; falls back to VITE_HOCUSPOCUS_URL env, then localhost
  *   args.awareness         — optional y-protocols Awareness (Phase 33 consumer)
  *   args.onUpdateRejected  — invoked on onAuthenticationFailed; surfaces as kick-UX banner
@@ -55,7 +56,7 @@
  * @param {object} args
  * @param {string} args.documentId
  * @param {object} args.ydoc - borrowed from ydocRegistry; this provider must not construct it
- * @param {object} args.supabase - Supabase client (for token thunk via auth.getSession)
+ * @param {object} args.supabase - Supabase client required by the shared provider contract
  * @param {string} [args.url] - Hocuspocus WS URL; defaults to env VITE_HOCUSPOCUS_URL
  * @param {object} [args.awareness]
  * @param {(reason: string) => void} [args.onUpdateRejected]
@@ -115,8 +116,8 @@ export async function createHocuspocusYjsProvider({
     // The thunk is the contract the test harness verifies; we MUST NOT cache the token.
     token: async () => {
       try {
-        const { data } = await supabase.auth.getSession();
-        return data?.session?.access_token || null;
+        const session = await getSupabaseSession('HocuspocusYjsProvider.token');
+        return session?.access_token || null;
       } catch {
         // Returning null here lets Hocuspocus's onAuthenticationFailed surface the failure
         // through onUpdateRejected; the user gets a banner, not a silent freeze.

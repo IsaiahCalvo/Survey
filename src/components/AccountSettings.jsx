@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useMSGraph } from '../contexts/MSGraphContext';
-import { supabase } from '../supabaseClient';
+import { getSupabaseSession, supabase } from '../supabaseClient';
 import Icon from '../Icons';
 import StripeCheckout from './StripeCheckout';
 import UsageIndicator from './UsageIndicator';
@@ -201,7 +201,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
       // Send email notification about changed fields
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const session = await getSupabaseSession('AccountSettings.profileNotification');
 
         if (session) {
           const response = await fetch(
@@ -971,4 +971,3 @@ export const AccountSettings = ({ isOpen, onClose }) => {
     </div>
   );
 };
-
