@@ -1,0 +1,18 @@
+===== SurveyApp Save Log =====
+version:   0.1.46
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1203x822
+locale:    en-US
+timestamp: 2026-05-28T17:48:07.879Z (5/28/2026, 1:48:07 PM)
+==============================
+[crdtDedupePdfImports] removed 1 duplicate PDF-imported annotations across 10 unique signatures
+
+===== Undo/Redo Chronology =====
+events=1
+lanes=local annotation history | callout history | legacy history | Yjs/CRDT history
+{"seq":1,"order":null,"at":"2026-05-28T17:47:24.838Z","event":"history_reset_for_pdf_change","actionType":"pdf:change","rawActionType":"pdf:change","annotationType":null,"annotationId":null,"pageNumber":null,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+===== End Undo/Redo Chronology =====
