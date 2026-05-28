@@ -1,0 +1,43 @@
+===== SurveyApp Save Log =====
+version:   0.1.46
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1203x822
+locale:    en-US
+timestamp: 2026-05-28T17:39:14.795Z (5/28/2026, 1:39:14 PM)
+==============================
+[dev-auto-login] boot {"hasDevEmail":true,"devEmailHint":"isai***","hasDevPassword":true,"hasCachedSession":true,"cachedSessionEmail":"isaiahcalvo123@gmail.com","cachedSessionExpiresAt":1779990280}
+[dev-auto-login] cached session matches dev email, keeping it
+[dev-auto-login] decision {"needsAutoLogin":false,"willAttemptSignIn":false}
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":null,"alreadyRanFor":null,"willRun":false}
+[Phase31 UAT] backfill:effect {"hasYdoc":true,"docId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","alreadyRanFor":null,"willRun":true}
+[Phase31 UAT] backfill:start {"hasYdoc":true,"hasSupabase":true,"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","markCutoverComplete":true}
+[PDFImport] skipped embedded PDF annotation import — cloud/Y.Doc is authoritative {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9"}
+[Phase31 UAT] backfill:cutover-dedupe-anchor-skip {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","yMapSize":533,"lastGoodSize":532}
+[crdtDedupePdfImports] removed 1 duplicate PDF-imported annotations across 10 unique signatures
+console.warn @ [CloudSync][hook] dedupe-resync skipped unsafe shrink {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","removed":1,"currentCount":533,"resyncCount":532,"reason":"startup-shrink","shrink":1,"startupSyncInFlight":true,"hydrated":false}
+[PDFCounterImport] summary {"marker":"survey-counter","metadataKey":"SurveyApp","counterAnnotationsImported":0,"plainCirclesImported":0,"counterMetadataParseFailures":0,"appCalloutMarker":"survey-callout","appCalloutMetadataKey":"SurveyAppCallout","appCalloutAnnotationsImported":0,"appCalloutPiecesSkipped":0}
+[PDFAppLayerStateImport] summary {"found":false,"documentId":null,"exportId":null,"scopedAnnotationPages":0,"scopedCallouts":0,"surveyMarkers":0,"spaces":0}
+[PDFImport] native layer policy {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","cloudAuthoritative":true,"reason":"cloud/Y.Doc annotations are authoritative; native PDF annotation layer is hidden when all renderable native annotations are accounted for by importer diagnostics.","pages":{"1":{"hideNativeLayer":true,"nativeRenderableAnnotationCount":2,"nativeOnlyAnnotationCount":0,"reason":"all-renderable-native-annotations-imported-as-editable-app-annotations"},"2":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"3":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"4":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"5":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"6":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"7":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"8":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"9":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"10":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"11":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"12":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"13":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"14":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"15":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"16":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"17":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"18":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"19":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"20":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"21":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"22":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"23":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"24":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"25":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"26":{"hideNativeLayer":false,"nativeRenderableAnnotationCount":0,"nativeOnlyAnnotationCount":0,"reason":"no-renderable-native-annotations"},"27":{"hideN... [truncated 24 chars]
+[PrintPanel] RENDER — panel closed
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SVGAnnotationLayer] setRotInputVisible(false) reason=no single rotation target selected
+[SaveLog] global menu trigger — capturing console buffer
+
+===== Undo/Redo Chronology =====
+events=1
+lanes=local annotation history | callout history | legacy history | Yjs/CRDT history
+{"seq":1,"order":null,"at":"2026-05-28T17:38:17.612Z","event":"history_reset_for_pdf_change","actionType":"pdf:change","rawActionType":"pdf:change","annotationType":null,"annotationId":null,"pageNumber":null,"lane":null,"receivedStack":null,"chosenStack":null,"chosenLane":null,"decisionReason":null,"undoDepth":0,"redoDepth":0}
+===== End Undo/Redo Chronology =====
