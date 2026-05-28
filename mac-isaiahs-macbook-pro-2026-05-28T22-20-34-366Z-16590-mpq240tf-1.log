@@ -1,0 +1,24 @@
+===== SurveyApp Save Log =====
+version:   0.1.46
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1203x822
+locale:    en-US
+timestamp: 2026-05-28T22:20:34.362Z (5/28/2026, 6:20:34 PM)
+==============================
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/App.jsx?t=1780006500761:11558:22)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx:134:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx:118:32)
+    at div
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1780006500761:44440:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:49:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:31:5)
