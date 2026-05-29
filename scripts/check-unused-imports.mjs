@@ -17,8 +17,8 @@
 // binding can be referenced in ways static analysis misses (rare, but verify).
 //
 // Usage:
-//   node scripts/check-unused-imports.mjs src/App.jsx src/PDFViewer.jsx
-//   node scripts/check-unused-imports.mjs --json src/App.jsx     (machine output)
+//   node scripts/check-unused-imports.mjs src/viewerShared.js src/PDFViewer.jsx
+//   node scripts/check-unused-imports.mjs --json src/viewerShared.js     (machine output)
 
 import fs from 'fs';
 import path from 'path';

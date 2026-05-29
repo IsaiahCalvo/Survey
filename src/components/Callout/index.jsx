@@ -4,7 +4,7 @@
 // rendering into the SVG pipeline (svgAnnotationRenderers.renderCallout,
 // via SVGAnnotationLayer) and retires this subsystem.
 //
-// The stub remains because src/PageAnnotationLayer.jsx:4 and src/App.jsx:77
+// The stub remains because src/PageAnnotationLayer.jsx:4 and src/viewerShared.js:77
 // still import CalloutOverlay from this path. PAL is an Always-Protected
 // file (CLAUDE.md); removing its import requires a waiver. The stub
 // preserves the import contract while rendering nothing — all callout

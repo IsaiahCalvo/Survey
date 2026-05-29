@@ -7,7 +7,7 @@
 //
 // Usage: node scripts/check-undef.mjs <file.jsx>
 //
-// The known-good monolith (src/App.jsx) defines the baseline set of acceptable
+// The known-good monolith (src/viewerShared.js) defines the baseline set of acceptable
 // globals (real browser/JS globals + intentional ambient refs). An extracted
 // file should produce NO globals outside that baseline.
 

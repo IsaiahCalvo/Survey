@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 test('eraser save path short-circuits precise no-op before history and state save', () => {
-  const app = readFileSync(resolve(ROOT, 'src/App.jsx'), 'utf8')
+  const app = readFileSync(resolve(ROOT, 'src/viewerShared.js'), 'utf8')
     + '\n' + readFileSync(resolve(ROOT, 'src/PDFViewer.jsx'), 'utf8');
   const noopIndex = app.indexOf("reason: 'eraser:precise-noop'");
   const recordIndex = app.indexOf('recordAnnotationCommit({', noopIndex);
@@ -19,7 +19,7 @@ test('eraser save path short-circuits precise no-op before history and state sav
 });
 
 test('eraser save path publishes precise ids for cloud sync fan-out', () => {
-  const app = readFileSync(resolve(ROOT, 'src/App.jsx'), 'utf8')
+  const app = readFileSync(resolve(ROOT, 'src/viewerShared.js'), 'utf8')
     + '\n' + readFileSync(resolve(ROOT, 'src/PDFViewer.jsx'), 'utf8');
 
   assert.ok(app.includes("new CustomEvent('annotations:precise-fabric-commit'"), 'expected precise commit event');

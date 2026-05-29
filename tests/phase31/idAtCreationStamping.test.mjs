@@ -28,11 +28,11 @@ import path from 'node:path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const APP_PATH = path.resolve(__dirname, '../../src/App.jsx');
+const APP_PATH = path.resolve(__dirname, '../../src/viewerShared.js');
 // The counter overlay handlers moved to src/PDFViewer.jsx when PDFViewer was
 // extracted from App.jsx; read both so the source grep finds them.
 const PDFVIEWER_PATH = path.resolve(__dirname, '../../src/PDFViewer.jsx');
-const APP_SKIP = !existsSync(APP_PATH) ? 'src/App.jsx missing' : false;
+const APP_SKIP = !existsSync(APP_PATH) ? 'src/viewerShared.js missing' : false;
 
 describe('Counter pointerdown handlers stamp data.id at creation (Plan 31-02)', () => {
   it('App.jsx contains >= 2 occurrences of data.id = crypto.randomUUID() (one per counter overlay)', { skip: APP_SKIP }, () => {

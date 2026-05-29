@@ -38,7 +38,7 @@ test('two clients edit different properties of same shape — per-property LWW m
   }
 
   // Real two-context flow lands when (a) bot credentials exist AND (b) seam exists.
-  // Once Plan 29-04 lands its seam in src/App.jsx, this body fills in:
+  // Once Plan 29-04 lands its seam in src/viewerShared.js, this body fills in:
   //   1. Pre-seed: a rectangle annotation 'annoX' exists on page 6 (synced to both clients)
   //   2. bot1 changes annoX.fill to red; bot2 changes annoX.left by 100px in parallel
   //   3. Wait for Realtime sync

@@ -1,11 +1,11 @@
 /**
- * App.jsx — !!! MISNAMED: this is NOT the application root. !!!
+ * viewerShared.js — shared constants + helper functions for the PDF viewer.
  *
- * Despite the filename (and the old "PDF Management Dashboard" comment that used
- * to sit here), this file is now a SHARED MODULE of constants and helper
- * functions imported by the viewer (PDFViewer.jsx) and the app shell
- * (AppShell.jsx). The real application root is AppShell.jsx.
- * Rename candidate: src/shared/viewerShared.js (see HANDOFF.md).
+ * This is NOT the application root (that is AppShell.jsx). It is a leaf module
+ * of pure constants and helpers, imported by the viewer (PDFViewer.jsx) and the
+ * app shell (AppShell.jsx). It was historically named App.jsx — a leftover from
+ * before the viewer/shell/dashboard were extracted out of it — and was renamed
+ * to match what it actually is (2026-05-29).
  *
  * What lives here:
  *   - Supabase client + auth/session helpers

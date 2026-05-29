@@ -20,7 +20,7 @@ const PLUGINS = ['jsx', 'classProperties', 'optionalChaining', 'nullishCoalescin
 const start = parseInt(process.argv[2], 10);
 const end = parseInt(process.argv[3], 10);
 
-const app = readFileSync('src/App.jsx', 'utf8');
+const app = readFileSync('src/viewerShared.js', 'utf8');
 const appLines = app.split('\n');
 const appAst = parse(app, { sourceType: 'module', plugins: PLUGINS });
 

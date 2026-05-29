@@ -1,5 +1,5 @@
 // Dashboard — the application home screen (project tree, document grid,
-// template management, SurveyHub). Extracted from src/App.jsx so it can be
+// template management, SurveyHub). Extracted from src/viewerShared.js so it can be
 // developed independently of the PDF viewer monolith. Communicates with the
 // app shell purely through props + a forwarded ref (openTemplateModal, etc.).
 //

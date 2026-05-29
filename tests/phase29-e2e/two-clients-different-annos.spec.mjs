@@ -51,7 +51,7 @@ test('two clients edit different shapes on same page — both edits land', async
   // is locked by tests/phase29/concurrentDifferentAnnos.test.mjs at the bridge
   // level (per-property writes, no collision, both annoIds present in Y.Map).
   // Once Plan 29-04 lands its keyboard handler rewire + window.__navigateToPage
-  // seam in src/App.jsx, this body fills in:
+  // seam in src/viewerShared.js, this body fills in:
   //   1. Boot two browser contexts, sign in as bot1 and bot2 (Phase 28 bots)
   //   2. Open the same PDF document in both
   //   3. bot1 draws a rectangle on page 6; bot2 draws a circle on page 6 in parallel

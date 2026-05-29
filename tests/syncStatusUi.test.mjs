@@ -6,7 +6,7 @@ import { getSyncStatusViewModel } from '../src/utils/syncStatusViewModel.js';
 import { getSyncedDelayMs, MIN_SYNC_ACTIVITY_VISIBLE_MS } from '../src/utils/syncStatusTiming.js';
 
 const hookSource = () => readFileSync(resolve('src/hooks/useAnnotationCloudSync.js'), 'utf8');
-const appSource = () => readFileSync(resolve('src/App.jsx'), 'utf8')
+const appSource = () => readFileSync(resolve('src/viewerShared.js'), 'utf8')
   + '\n' + readFileSync(resolve('src/PDFViewer.jsx'), 'utf8');
 
 test('sync status view model exposes pending debounce as visible saving state', () => {
