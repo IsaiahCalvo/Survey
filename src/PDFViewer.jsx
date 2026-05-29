@@ -48,6 +48,7 @@ import { PageRenderCache } from './utils/pdfCache';
 import { UndoToast } from './components/collab/UndoToast.jsx';
 import { applyAnnotationGroupId, findGroupMembers, generateGroupId, getAnnotationGroupId, getCalloutGroupId } from './utils/annotationGroups';
 import { applyAnnotationHistoryAction, buildAnnotationHistoryAction, buildPreciseAnnotationHistoryAction, filterAnnotationHistoryActionByOwner, invertAnnotationHistoryAction } from './utils/annotationLocalHistory';
+import { areViewStatesEqual, normalizeViewState } from './utils/viewState';
 import { arrayMove } from '@dnd-kit/sortable';
 import { buildAnnotationSelectionContextKey, didAnnotationSelectionContextChange } from './utils/annotationSelectionContext';
 import { buildBulkDeletePlan } from './lib/collab/bulkDeletePlan.js';
@@ -4657,31 +4658,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const { supabaseId, ...rest } = template;
     return rest;
   };
-
-  const normalizeViewState = useCallback((viewState) => {
-    if (!viewState || typeof viewState !== 'object') return null;
-    return {
-      pageNum: coercePageNumber(viewState.pageNum, Number.POSITIVE_INFINITY) || 1,
-      scale: Number.isFinite(viewState.scale) ? Number(Number(viewState.scale).toFixed(4)) : 1,
-      zoomMode: viewState.zoomMode || ZOOM_MODES.MANUAL,
-      scrollMode: 'continuous',
-      scrollLeft: Number.isFinite(viewState.scrollLeft) ? Math.round(viewState.scrollLeft) : 0,
-      scrollTop: Number.isFinite(viewState.scrollTop) ? Math.round(viewState.scrollTop) : 0
-    };
-  }, []);
-
-  const areViewStatesEqual = useCallback((a, b) => {
-    if (!a || !b) return false;
-    const floatEqual = (left, right) => Math.abs(Number(left) - Number(right)) < 0.0001;
-    return (
-      Number(a.pageNum) === Number(b.pageNum) &&
-      floatEqual(a.scale, b.scale) &&
-      String(a.zoomMode) === String(b.zoomMode) &&
-      String(a.scrollMode) === String(b.scrollMode) &&
-      Number(a.scrollLeft) === Number(b.scrollLeft) &&
-      Number(a.scrollTop) === Number(b.scrollTop)
-    );
-  }, []);
 
   // Restore scroll position when PDF loads or tab/document context changes.
   useEffect(() => {
