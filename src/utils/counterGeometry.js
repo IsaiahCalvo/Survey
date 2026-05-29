@@ -35,3 +35,37 @@ export function updateCounterDragPreview(drag) {
     drag.previewText.setAttribute('font-size', String(geometry.fontSize));
     drag.previewText.textContent = String(drag.displayNumber ?? 1);
   }
+
+export function createCounterDragPreview(overlayEl, drag) {
+    if (!overlayEl || !drag) return;
+    const svgNs = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNs, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${drag.pageWidth} ${drag.pageHeight}`);
+    svg.setAttribute('preserveAspectRatio', 'none');
+    svg.style.position = 'absolute';
+    svg.style.inset = '0';
+    svg.style.width = '100%';
+    svg.style.height = '100%';
+    svg.style.overflow = 'visible';
+    svg.style.pointerEvents = 'none';
+    svg.setAttribute('aria-hidden', 'true');
+
+    const path = document.createElementNS(svgNs, 'path');
+    path.setAttribute('stroke', 'none');
+    const text = document.createElementNS(svgNs, 'text');
+    text.setAttribute('fill', drag.numberColor || '#ffffff');
+    text.setAttribute('font-weight', '700');
+    text.setAttribute('font-family', '-apple-system, system-ui, sans-serif');
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('dominant-baseline', 'central');
+    text.style.userSelect = 'none';
+    text.style.pointerEvents = 'none';
+
+    svg.appendChild(path);
+    svg.appendChild(text);
+    overlayEl.appendChild(svg);
+    drag.previewSvg = svg;
+    drag.previewPath = path;
+    drag.previewText = text;
+    updateCounterDragPreview(drag);
+  }

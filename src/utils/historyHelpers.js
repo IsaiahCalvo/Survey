@@ -257,3 +257,64 @@ export function summarizeHistorySnapshot(snapshot) {
       annotationsStateBytes: annotationsFingerprint.bytes
     };
   }
+
+export function summarizeHistoryDelta(fromState, toState) {
+    const fromSnapshot = fromState || { annotationsByPage: {}, surveyMarkers: {}, spaces: [] };
+    const toSnapshot = toState || { annotationsByPage: {}, surveyMarkers: {}, spaces: [] };
+
+    const fromSummary = summarizeHistorySnapshot(fromSnapshot);
+    const toSummary = summarizeHistorySnapshot(toSnapshot);
+
+    const fromPages = fromSnapshot.annotationsByPage || {};
+    const toPages = toSnapshot.annotationsByPage || {};
+    const changedPages = [];
+    const pageKeys = new Set([...Object.keys(fromPages), ...Object.keys(toPages)]);
+    pageKeys.forEach((pageKey) => {
+      if (JSON.stringify(fromPages[pageKey] || null) !== JSON.stringify(toPages[pageKey] || null)) {
+        changedPages.push(pageKey);
+      }
+    });
+
+    changedPages.sort((left, right) => {
+      const leftNum = Number(left);
+      const rightNum = Number(right);
+      if (Number.isFinite(leftNum) && Number.isFinite(rightNum)) {
+        return leftNum - rightNum;
+      }
+      return String(left).localeCompare(String(right));
+    });
+
+    const changedPageDetailsPreview = changedPages
+      .slice(0, HISTORY_PAGE_PREVIEW_LIMIT)
+      .map((pageKey) => {
+        const previousPage = fromPages[pageKey] || null;
+        const nextPage = toPages[pageKey] || null;
+        const previousFingerprint = getHistoryFingerprint(previousPage);
+        const nextFingerprint = getHistoryFingerprint(nextPage);
+        return {
+          pageNumber: pageKey,
+          previousHash: previousFingerprint.hash,
+          nextHash: nextFingerprint.hash,
+          previousObjectCount: Array.isArray(previousPage?.objects) ? previousPage.objects.length : 0,
+          nextObjectCount: Array.isArray(nextPage?.objects) ? nextPage.objects.length : 0
+        };
+      });
+
+    const changedPageTransitionsPreview = changedPages
+      .slice(0, Math.min(3, HISTORY_PAGE_PREVIEW_LIMIT))
+      .map((pageKey) => ({
+        pageNumber: pageKey,
+        ...summarizeAnnotationPageTransitionForDebug(fromPages[pageKey] || null, toPages[pageKey] || null)
+      }));
+
+    return {
+      annotationObjectDelta: toSummary.annotationObjectCount - fromSummary.annotationObjectCount,
+      surveyMarkerDelta: toSummary.surveyMarkerCount - fromSummary.surveyMarkerCount,
+      spacesDelta: toSummary.spacesCount - fromSummary.spacesCount,
+      regionDelta: toSummary.regionCount - fromSummary.regionCount,
+      changedPagesCount: changedPages.length,
+      changedPagesPreview: changedPages.slice(0, HISTORY_PAGE_PREVIEW_LIMIT),
+      changedPageDetailsPreview,
+      changedPageTransitionsPreview
+    };
+  }

@@ -67,7 +67,7 @@ import { fromFabricGroup, toFabricGroup } from './utils/calloutEditAdapter';
 import { getActivePageRegionId, getPageAnnotationVisibilityState, normalizePageRegions, normalizeRegionVisibility } from './utils/annotationVisibilityRules';
 import { getCalloutSyncFingerprint } from './utils/calloutSyncPayload';
 import { getCounterSeriesList, pickNextSeriesColor, renumberCounters } from './utils/counterNumbering';
-import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug, summarizeHistorySnapshot } from './utils/historyHelpers';
+import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug, summarizeHistoryDelta, summarizeHistorySnapshot } from './utils/historyHelpers';
 import { getHistoryOrder, shouldRedoLocalBeforeLegacy, shouldUndoLocalBeforeLegacy } from './utils/historyStacks';
 import { importAnnotationsFromPdf } from './utils/pdfAnnotationImporter';
 import { isBlankCalloutText, resolveCommittedCalloutText, shouldDeleteBlankCalloutOnCommit } from './utils/calloutBlankCommit';
@@ -98,7 +98,6 @@ import {
   DEFAULT_SURVEY_MARKER_OPACITY,
   FONT_FAMILY,
   HISTORY_DEBUG_TRACE_LIMIT,
-  HISTORY_PAGE_PREVIEW_LIMIT,
   HISTORY_SAVELOG_EVENT_LIMIT,
   INTERACTION_PERF_DRAW_HOLD_MS,
   INTERACTION_PERF_MIN_HOLD_MS,
@@ -233,7 +232,7 @@ import {
 import { getBoundsCenter, hasValidRegionAreas, resolvePageContentElement, sortSyncfusionPagesByDistance } from './utils/regionGeometry';
 import { composeColorForPatch, materializeFabricAnnotationFromYMap } from './utils/annotationData';
 import { extractPdfOutlineBookmarks, generateBookmarkId } from './utils/bookmarkOutline';
-import { removeCounterDragPreview, updateCounterDragPreview } from './utils/counterGeometry';
+import { createCounterDragPreview, removeCounterDragPreview, updateCounterDragPreview } from './utils/counterGeometry';
 import { getExportErrorMessage, isFileLocked } from './utils/exportHelpers';
 import { buildTrackpadInteractionDebugSummaryText, summarizeOverlayLagSamples } from './utils/overlayDebug';
 
@@ -3030,40 +3029,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   //   counter: object,           // final Fabric-style counter JSON to save on release
   // }
   const counterDragRef = useRef(null);
-
-  const createCounterDragPreview = useCallback((overlayEl, drag) => {
-    if (!overlayEl || !drag) return;
-    const svgNs = 'http://www.w3.org/2000/svg';
-    const svg = document.createElementNS(svgNs, 'svg');
-    svg.setAttribute('viewBox', `0 0 ${drag.pageWidth} ${drag.pageHeight}`);
-    svg.setAttribute('preserveAspectRatio', 'none');
-    svg.style.position = 'absolute';
-    svg.style.inset = '0';
-    svg.style.width = '100%';
-    svg.style.height = '100%';
-    svg.style.overflow = 'visible';
-    svg.style.pointerEvents = 'none';
-    svg.setAttribute('aria-hidden', 'true');
-
-    const path = document.createElementNS(svgNs, 'path');
-    path.setAttribute('stroke', 'none');
-    const text = document.createElementNS(svgNs, 'text');
-    text.setAttribute('fill', drag.numberColor || '#ffffff');
-    text.setAttribute('font-weight', '700');
-    text.setAttribute('font-family', '-apple-system, system-ui, sans-serif');
-    text.setAttribute('text-anchor', 'middle');
-    text.setAttribute('dominant-baseline', 'central');
-    text.style.userSelect = 'none';
-    text.style.pointerEvents = 'none';
-
-    svg.appendChild(path);
-    svg.appendChild(text);
-    overlayEl.appendChild(svg);
-    drag.previewSvg = svg;
-    drag.previewPath = path;
-    drag.previewText = text;
-    updateCounterDragPreview(drag);
-  }, [updateCounterDragPreview]);
 
   // [COUNTER MULTI-LIST] Active series state — which series the next pin
   // joins. Both null until the user drops the very first pin (or picks
@@ -9284,67 +9249,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => {
     redoHistoryRef.current = redoHistory;
   }, [redoHistory]);
-
-  const summarizeHistoryDelta = useCallback((fromState, toState) => {
-    const fromSnapshot = fromState || { annotationsByPage: {}, surveyMarkers: {}, spaces: [] };
-    const toSnapshot = toState || { annotationsByPage: {}, surveyMarkers: {}, spaces: [] };
-
-    const fromSummary = summarizeHistorySnapshot(fromSnapshot);
-    const toSummary = summarizeHistorySnapshot(toSnapshot);
-
-    const fromPages = fromSnapshot.annotationsByPage || {};
-    const toPages = toSnapshot.annotationsByPage || {};
-    const changedPages = [];
-    const pageKeys = new Set([...Object.keys(fromPages), ...Object.keys(toPages)]);
-    pageKeys.forEach((pageKey) => {
-      if (JSON.stringify(fromPages[pageKey] || null) !== JSON.stringify(toPages[pageKey] || null)) {
-        changedPages.push(pageKey);
-      }
-    });
-
-    changedPages.sort((left, right) => {
-      const leftNum = Number(left);
-      const rightNum = Number(right);
-      if (Number.isFinite(leftNum) && Number.isFinite(rightNum)) {
-        return leftNum - rightNum;
-      }
-      return String(left).localeCompare(String(right));
-    });
-
-    const changedPageDetailsPreview = changedPages
-      .slice(0, HISTORY_PAGE_PREVIEW_LIMIT)
-      .map((pageKey) => {
-        const previousPage = fromPages[pageKey] || null;
-        const nextPage = toPages[pageKey] || null;
-        const previousFingerprint = getHistoryFingerprint(previousPage);
-        const nextFingerprint = getHistoryFingerprint(nextPage);
-        return {
-          pageNumber: pageKey,
-          previousHash: previousFingerprint.hash,
-          nextHash: nextFingerprint.hash,
-          previousObjectCount: Array.isArray(previousPage?.objects) ? previousPage.objects.length : 0,
-          nextObjectCount: Array.isArray(nextPage?.objects) ? nextPage.objects.length : 0
-        };
-      });
-
-    const changedPageTransitionsPreview = changedPages
-      .slice(0, Math.min(3, HISTORY_PAGE_PREVIEW_LIMIT))
-      .map((pageKey) => ({
-        pageNumber: pageKey,
-        ...summarizeAnnotationPageTransitionForDebug(fromPages[pageKey] || null, toPages[pageKey] || null)
-      }));
-
-    return {
-      annotationObjectDelta: toSummary.annotationObjectCount - fromSummary.annotationObjectCount,
-      surveyMarkerDelta: toSummary.surveyMarkerCount - fromSummary.surveyMarkerCount,
-      spacesDelta: toSummary.spacesCount - fromSummary.spacesCount,
-      regionDelta: toSummary.regionCount - fromSummary.regionCount,
-      changedPagesCount: changedPages.length,
-      changedPagesPreview: changedPages.slice(0, HISTORY_PAGE_PREVIEW_LIMIT),
-      changedPageDetailsPreview,
-      changedPageTransitionsPreview
-    };
-  }, [getHistoryFingerprint, summarizeAnnotationPageTransitionForDebug, summarizeHistorySnapshot]);
 
   const pushHistoryDebugEvent = useCallback((type, payload = {}) => {
     const event = {
