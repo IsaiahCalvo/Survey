@@ -5,7 +5,10 @@ import assert from 'node:assert/strict';
 // PDFViewer was extracted from App.jsx into src/PDFViewer.jsx; read both so the
 // source guards find the code wherever it now lives.
 const APP_SOURCE = readFileSync(new URL('../src/viewerShared.js', import.meta.url), 'utf8')
-  + '\n' + readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  + '\n' + readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8')
+  // the hydration page-cover render helper was lifted into its own module
+  // (2026-05-29); scan it too so the guard still finds the relocated markup.
+  + '\n' + readFileSync(new URL('../src/components/annotationHydrationCover.jsx', import.meta.url), 'utf8');
 const CLOUD_SYNC_SOURCE = readFileSync(new URL('../src/hooks/useAnnotationCloudSync.js', import.meta.url), 'utf8');
 
 test('cloud-backed survey highlights are not painted from localStorage before Supabase settles', () => {
@@ -77,7 +80,7 @@ test('first visible annotation wrappers expose and honor the hydration gate', ()
 });
 
 test('first visible page is visually covered while annotation hydration is gated', () => {
-  assert.match(APP_SOURCE, /const renderAnnotationHydrationPageCover = useCallback/);
+  assert.match(APP_SOURCE, /function renderAnnotationHydrationPageCover\(/);
   assert.match(APP_SOURCE, /data-annotation-hydration-cover="true"/);
   assert.match(APP_SOURCE, /data-annotation-visual-cover-active=\{annotationVisualCoverActive \? 'true' : 'false'\}/);
   assert.match(APP_SOURCE, /renderAnnotationHydrationPageCover\(pageNumber, 'syncfusion', annotationVisualCoverActive\)/);

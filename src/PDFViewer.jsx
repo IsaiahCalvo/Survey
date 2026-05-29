@@ -233,6 +233,7 @@ import { getBoundsCenter, hasValidRegionAreas, resolvePageContentElement, sortSy
 import { composeColorForPatch, materializeFabricAnnotationFromYMap } from './utils/annotationData';
 import { extractPdfOutlineBookmarks, generateBookmarkId } from './utils/bookmarkOutline';
 import { createCounterDragPreview, removeCounterDragPreview, updateCounterDragPreview } from './utils/counterGeometry';
+import { renderAnnotationHydrationPageCover } from './components/annotationHydrationCover';
 import { getExportErrorMessage, isFileLocked } from './utils/exportHelpers';
 import { buildTrackpadInteractionDebugSummaryText, summarizeOverlayLagSamples } from './utils/overlayDebug';
 
@@ -16167,56 +16168,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     pdfId,
     surveyAnnotationHydration,
   ]);
-
-  const renderAnnotationHydrationPageCover = useCallback((pageNumber, renderer, active) => {
-    if (!active) return null;
-    return (
-      <div
-        data-annotation-hydration-cover="true"
-        data-annotation-hydration-cover-active="true"
-        data-annotation-hydration-cover-page={pageNumber}
-        data-annotation-hydration-cover-renderer={renderer}
-        role="status"
-        aria-live="polite"
-        aria-label="Loading annotations"
-        style={{
-          position: 'absolute',
-          inset: 0,
-          zIndex: 1000,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: '#f3f4f6',
-          color: '#4b5563',
-          pointerEvents: 'auto',
-          boxShadow: 'inset 0 0 0 1px rgba(17, 24, 39, 0.08)',
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: '10px',
-            fontSize: '13px',
-            fontWeight: 500,
-          }}
-        >
-          <div
-            style={{
-              width: '26px',
-              height: '26px',
-              borderRadius: '50%',
-              border: '3px solid rgba(75, 85, 99, 0.22)',
-              borderTopColor: '#4b5563',
-              animation: 'annotationHydrationSpin 0.8s linear infinite',
-            }}
-          />
-          <span>Loading annotations...</span>
-        </div>
-      </div>
-    );
-  }, []);
 
   useEffect(() => {
     if (!useSyncfusionRenderer) return undefined;
