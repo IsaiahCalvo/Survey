@@ -18,200 +18,29 @@
  * Import direction: this file does NOT import AppShell.jsx, PDFViewer.jsx, or
  * Dashboard.jsx, so there are no import cycles among the top-level files.
  */
-import React, { useRef, useState, useEffect, useLayoutEffect, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
-import { createPortal, flushSync } from 'react-dom';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.js?url';
-import { PDFDocument, degrees } from 'pdf-lib';
-import ExcelJS from 'exceljs';
-import { uploadExcelFile, getFileMetadata, getFileById, downloadExcelFile, downloadExcelFileByPath, getFileETag, uploadFileContentById, checkFileExists, checkFileExistsInDrive, getTemplateIdFromExcel, uploadFileToDrive } from './services/excelGraphService';
-import {
-  getFileIdFromPath,
-  createWorkbookSession,
-  closeWorkbookSession,
-  refreshWorkbookSession,
-  updateCellRange,
-  getCellRange,
-  getWorksheets,
-  getUsedRange,
-  checkSessionSupport
-} from './services/excelSessionService';
-import PageAnnotationLayer, { ARROWHEAD_STYLES, ARROWHEAD_STYLE_LABELS } from './PageAnnotationLayer';
-import TextLayer from './TextLayer';
-import {
-  buildPrintableRegularAnnotationPayload,
-  savePDFWithFlattenedRegularAnnotationsForPrint,
-  savePDFWithAnnotationsPdfLib
-} from './utils/pdfAnnotationsPdfLib';
-import { importAnnotationsFromPdf } from './utils/pdfAnnotationImporter';
-import { resolveAnnotationAt } from './utils/annotationHitTest';
-import { splitImportedCalloutsFromPage } from './utils/calloutImportAdapter';
-import {
-  generateGroupId,
-  getAnnotationGroupId,
-  getCalloutGroupId,
-  findGroupMembers,
-  applyAnnotationGroupId,
-} from './utils/annotationGroups';
-import {
-  renumberCounters,
-  getCounterSeriesList,
-  pickNextSeriesColor,
-} from './utils/counterNumbering';
-import {
-  preserveExistingCountersOnPage,
-  shouldRenumberCountersForSave,
-  summarizeCounterRenumberEffect,
-} from './utils/counterRenumberSavePolicy';
-import {
-  applyAnnotationHistoryAction,
-  buildAnnotationHistoryAction,
-  buildPreciseAnnotationHistoryAction,
-  filterAnnotationHistoryActionByOwner,
-  invertAnnotationHistoryAction,
-} from './utils/annotationLocalHistory';
-import {
-  getHistoryOrder,
-  shouldRedoLocalBeforeLegacy,
-  shouldUndoLocalBeforeLegacy,
-} from './utils/historyStacks';
-import { sanitizeConsoleLogText } from './utils/consoleLogFilter';
-import { buildTextSearchDiagLogSection, emitTextSearchDiag } from './utils/textSearchDiag';
-import {
-  recordAnnotationBackupWrite,
-  recordAnnotationCommit,
-  recordAnnotationSyncPush,
-  recordAnnotationUndoRedo,
-} from './utils/annotationPreviewDiag';
-import {
-  getCalloutSyncFingerprint,
-  normalizeCalloutsForSync,
-} from './utils/calloutSyncPayload';
-import { markCalloutRemovalIntent } from './utils/calloutRemovalIntent';
-import {
-  getCalloutIdsFromHistoryMeta,
-  scopeHistoryStateForCalloutRestore,
-} from './utils/calloutHistoryScope';
-import {
-  buildAnnotationSelectionContextKey,
-  didAnnotationSelectionContextChange,
-} from './utils/annotationSelectionContext';
-import PDFPageCanvas from './components/PDFPageCanvas';
-import Icon from './Icons';
-import RegionSelectionTool from './RegionSelectionTool';
-import SpaceRegionOverlay from './SpaceRegionOverlay';
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-  arrayMove
-} from '@dnd-kit/sortable';
-import { PageRenderCache } from './utils/pdfCache';
-import { regionContainsPoint } from './utils/regionMath';
-import { createZoomController, ZOOM_MODES, loadZoomPreferences, saveZoomPreferences, clampScale, DEFAULT_ZOOM_PREFERENCES } from './utils/zoomController';
-import { useAuth } from './contexts/AuthContext';
-import SearchHighlightLayer from './components/SearchHighlightLayer';
-import UnsupportedAnnotationsNotice from './components/UnsupportedAnnotationsNotice';
-import NewColumnsModal from './components/NewColumnsModal';
-import ExcelLockedModal from './components/ExcelLockedModal';
-import OneDriveFileSaveModal from './components/OneDriveFileSaveModal';
-import TemplateOverwriteWarningModal from './components/TemplateOverwriteWarningModal';
-import ExcelSyncConfirmModal from './components/ExcelSyncConfirmModal';
-import SyncfusionPDFContainer from './components/SyncfusionPDFContainer';
-import FormFieldPropertiesPanel from './components/FormFieldPropertiesPanel';
-import {
-  FORM_TOOLS as FORM_DESIGNER_TOOLS,
-  FORM_TOOL_IDS,
-  isFormTool,
-  getFormFieldTypeForTool,
-  buildFieldSettings as buildFormFieldSettings
-} from './components/formDesignerTools';
-import {
-  buildHistoryEventRowFromDebugEvent,
-  recordDocumentHistoryEvent,
-} from './services/documentHistoryService.js';
+import { recordAnnotationBackupWrite } from './utils/annotationPreviewDiag';
+import { normalizeCalloutsForSync } from './utils/calloutSyncPayload';
+import { getCalloutIdsFromHistoryMeta } from './utils/calloutHistoryScope';
+import { ZOOM_MODES } from './utils/zoomController';
 // Phase 29 — per-user Y.UndoManager hook + user-action wrappers. handleUndo and
 // handleRedo bodies route through these so trackedOrigins reference equality
 // (Pitfall 7) holds across the bridge and the keyboard handler call sites.
-import { useYDoc } from './hooks/useYDoc.js';
-import { userUndo, userRedo } from './lib/collab/crdtUndoManager.js';
-import { materializeCalloutFromYMap } from './lib/collab/crdtAnnotationBridge.js';
 // Phase 35 Plan 04 — bulk-delete modals + undo toast layer. The planner
 // builds the BulkDeletePlan in scope of viewerId/documentOwnerId; the modal
 // branches on plan.mode; the toast hook owns the 5/6s auto-dismiss.
-import { buildBulkDeletePlan } from './lib/collab/bulkDeletePlan.js';
-import { canModify, getAnnotationAuthorId } from './lib/collab/permissionScope.js';
-import { ConfirmDeleteModal } from './components/collab/ConfirmDeleteModal.jsx';
-import { UndoToast } from './components/collab/UndoToast.jsx';
-import { useUndoToast } from './hooks/useUndoToast.js';
-import SaveLogBanner from './components/SaveLogBanner';
-import PrintPanel from './components/PrintPanel';
-import LightweightAnnotationOverlay from './components/LightweightAnnotationOverlay';
-import SVGAnnotationLayer from './components/SVGAnnotationLayer';
-import FabricDrawingCanvas from './components/FabricDrawingCanvas';
-import FabricEraserCanvas from './components/FabricEraserCanvas';
-import FabricEditCanvas from './components/FabricEditCanvas';
-import AnnotationPropertiesPanel from './components/AnnotationPropertiesPanel';
 // FabricTextCanvas removed — text tool now creates text-only callouts via CalloutCanvas
-import CalloutOverlay from './components/Callout';
 // Plan 14-03 Task 3 (CALL-10): callout edit-mode adapter. Converts React
 // callouts <-> plain Fabric JSON so FabricEditCanvas's existing
 // loadCalloutAnnotation at :1937 can enliven them without any edits to
 // FabricEditCanvas.jsx (protected file). toFabricGroup is used when
 // entering edit mode; fromFabricGroup is used in the save-callback
 // wrapper on edit-mode exit.
-import { toFabricGroup, fromFabricGroup } from './utils/calloutEditAdapter';
-import {
-  isBlankCalloutText,
-  resolveCommittedCalloutText,
-  shouldDeleteBlankCalloutOnCommit,
-} from './utils/calloutBlankCommit';
-import { COLORS, BORDERS, SHADOWS, TYPOGRAPHY } from './theme';
-import { useProjects, useDocuments, useTemplates, useStorage, useDocumentToolPreferences, DEFAULT_TOOL_PREFERENCES, TOOLS_WITH_STROKE_WIDTH, TOOLS_WITH_FILL } from './hooks/useDatabase';
-import { supabase, getSupabaseSession } from './supabaseClient';
-import {
-  syncAnnotationsToSupabase,
-  loadAnnotationsFromSupabase,
-  subscribeToDocumentAnnotations,
-  updateDocumentPresence,
-  removeDocumentPresence,
-  deleteAnnotations,
-  countSurveyMarkersReferencingChecklistItem,
-} from './services/documentAnnotationService';
-import { perfUpload, perfLoad, perfRender, perfZoom, setDebugEnabled as setPerfDebugEnabled } from './utils/performanceLogger';
-import {
-  setDebugEnabled as setPdfDebugEnabled,
-  emitDebugEvent as emitPdfDebugEvent,
-  debugLog,
-  getDebugSnapshot,
-  setDebugData,
-  setPresenceDebugStatus,
-  setLastDebugError,
-  clearDebugState
-} from './utils/pdfDebug';
-import { useZoomState } from './hooks/useZoomState';
+import { COLORS } from './theme';
 // Phase 21: cloud sync for all annotation types — see
 // .planning/phases/21-cloud-sync-all-annotations/CONTEXT.md
-import { useAnnotationCloudSync } from './hooks/useAnnotationCloudSync.js';
-import { useDocumentPresenceList } from './hooks/useDocumentPresenceList.js';
-import { debugMark } from './utils/debugBridge';
-import {
-  computeExcelSyncFingerprint,
-  computeHasPendingExcelSyncChanges
-} from './utils/excelSyncDirtyState';
-import {
-  getActivePageRegionId,
-  getPageAnnotationVisibilityState,
-  normalizePageRegions,
-  normalizeRegionVisibility
-} from './utils/annotationVisibilityRules';
-import {
-  ANNOTATION_HYDRATION_PENDING,
-  ANNOTATION_HYDRATION_READY_LOCAL,
-  resolveFirstVisibleAnnotationPage,
-  shouldGateFirstVisibleAnnotationPage,
-} from './utils/annotationHydrationGate';
-import { shouldRunSurveyMarkerSync } from './utils/surveyMarkerSyncSafety';
-import { resolveSafeSnapshot } from './utils/safeSnapshot';
+import { normalizePageRegions } from './utils/annotationVisibilityRules';
 
 export const NATIVE_TEXT_MARKUP_TOOLS = new Set(['text-highlight', 'underline', 'strikeout', 'squiggly']);
 const SELECT_DELETE_ONLY_IMPORTED_TEXT_MARKUP_TYPES = new Set(['underline', 'strikeout', 'squiggly']);
