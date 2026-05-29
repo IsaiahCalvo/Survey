@@ -67,6 +67,7 @@ import { fromFabricGroup, toFabricGroup } from './utils/calloutEditAdapter';
 import { getActivePageRegionId, getPageAnnotationVisibilityState, normalizePageRegions, normalizeRegionVisibility } from './utils/annotationVisibilityRules';
 import { getCalloutSyncFingerprint } from './utils/calloutSyncPayload';
 import { getCounterSeriesList, pickNextSeriesColor, renumberCounters } from './utils/counterNumbering';
+import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug } from './utils/historyHelpers';
 import { getHistoryOrder, shouldRedoLocalBeforeLegacy, shouldUndoLocalBeforeLegacy } from './utils/historyStacks';
 import { importAnnotationsFromPdf } from './utils/pdfAnnotationImporter';
 import { isBlankCalloutText, resolveCommittedCalloutText, shouldDeleteBlankCalloutOnCommit } from './utils/calloutBlankCommit';
@@ -97,7 +98,6 @@ import {
   DEFAULT_SURVEY_MARKER_OPACITY,
   FONT_FAMILY,
   HISTORY_DEBUG_TRACE_LIMIT,
-  HISTORY_OBJECT_CHANGE_PREVIEW_LIMIT,
   HISTORY_PAGE_PREVIEW_LIMIT,
   HISTORY_SAVELOG_EVENT_LIMIT,
   INTERACTION_PERF_DRAW_HOLD_MS,
@@ -172,8 +172,6 @@ import {
   getCategoryName,
   getHexFromColor,
   getHistoryAnnotationId,
-  getHistoryObjectDiffType,
-  getHistoryObjectSignature,
   getModuleDataKey,
   getModuleName,
   getNormalizedWheelDeltas,
@@ -192,7 +190,6 @@ import {
   hasNameConflict,
   hasSyncfusionPdfSurface,
   hasVisibleSyncfusionSpinner,
-  hashHistoryString,
   hexToRgba,
   isPointOnSelectDeleteOnlyTextMarkup,
   isSelectDeleteOnlyImportedTextMarkupType,
@@ -230,7 +227,6 @@ import {
   summarizeAnnotationCountsForSaveExport,
   summarizeHistoryActionForLog,
   summarizeHistoryMetaForLog,
-  toHistoryObjectDebug,
   transferItems,
   writeDocumentSyncStructuralDisabled,
   writeHistoryDebugConsoleEnabled,
@@ -9722,61 +9718,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     redoHistoryRef.current = redoHistory;
   }, [redoHistory]);
 
-  const normalizeHistoryReason = useCallback((reason) => {
-    if (typeof reason !== 'string') return 'unspecified';
-    const trimmed = reason.trim();
-    return trimmed || 'unspecified';
-  }, []);
-
-  const getHistoryFingerprint = useCallback((value) => {
-    const serialized = JSON.stringify(value ?? null);
-    return {
-      serialized,
-      hash: hashHistoryString(serialized),
-      bytes: serialized.length
-    };
-  }, []);
-
-  const summarizeAnnotationPageTransitionForDebug = useCallback((previousPageState, nextPageState) => {
-    const previousObjects = Array.isArray(previousPageState?.objects) ? previousPageState.objects : [];
-    const nextObjects = Array.isArray(nextPageState?.objects) ? nextPageState.objects : [];
-    const changedObjectsPreview = [];
-    let changedObjectsCount = 0;
-    const objectCount = Math.max(previousObjects.length, nextObjects.length);
-
-    for (let index = 0; index < objectCount; index += 1) {
-      const previousObject = previousObjects[index];
-      const nextObject = nextObjects[index];
-      if (!previousObject && !nextObject) continue;
-
-      const previousDebug = previousObject ? toHistoryObjectDebug(previousObject, index) : null;
-      const nextDebug = nextObject ? toHistoryObjectDebug(nextObject, index) : null;
-      const previousSignature = previousDebug ? getHistoryObjectSignature(previousDebug) : null;
-      const nextSignature = nextDebug ? getHistoryObjectSignature(nextDebug) : null;
-
-      if (previousSignature === nextSignature) {
-        continue;
-      }
-
-      changedObjectsCount += 1;
-      if (changedObjectsPreview.length < HISTORY_OBJECT_CHANGE_PREVIEW_LIMIT) {
-        changedObjectsPreview.push({
-          index,
-          changeType: getHistoryObjectDiffType(previousDebug, nextDebug),
-          before: previousDebug,
-          after: nextDebug
-        });
-      }
-    }
-
-    return {
-      previousObjectCount: previousObjects.length,
-      nextObjectCount: nextObjects.length,
-      changedObjectsCount,
-      changedObjectsPreview
-    };
-  }, []);
-
   const summarizeHistorySnapshot = useCallback((snapshot) => {
     const annotationsState = snapshot?.annotationsByPage || {};
     const pageEntries = Object.entries(annotationsState);
@@ -9956,41 +9897,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 	    return event;
 	  }, [pdfFile?.id, user]);
 
-  const getHistoryDebugRows = useCallback((events) => (
-    events.map((event) => {
-      const pageNumber = event.pageNumber ?? event.context?.pageNumber ?? '';
-      const source = event.source || event.context?.source || event.context?.saveContext?.source || '';
-      const interactionId = event.interactionId || event.context?.interactionId || event.context?.saveContext?.interactionId || '';
-      const checkpointPolicy = event.checkpointPolicy || event.context?.checkpointPolicy || event.context?.saveContext?.checkpointPolicy || '';
-      const changedPages = Array.isArray(event?.delta?.changedPagesPreview)
-        ? event.delta.changedPagesPreview.join(', ')
-        : '';
-      const changedObjectsCount =
-        event.changedObjectsCount ??
-        event.pageTransition?.changedObjectsCount ??
-        event.context?.changedObjectsCount ??
-        '';
-      return {
-        seq: event.seq,
-        at: event.at,
-        type: event.type,
-        reason: event.reason || event.undoneReason || event.redoReason || '',
-        source,
-        interactionId,
-        checkpointPolicy,
-        page: pageNumber,
-        checkpointId: event.checkpointId || '',
-        undoDepth: event.undoDepth ?? '',
-        redoDepth: event.redoDepth ?? '',
-        changedPages,
-        changedObjects: changedObjectsCount,
-        snapshotHash: event.snapshotHash || event.currentSnapshotHash || event.previousPageHash || '',
-        restoreHash: event.restoreSnapshotHash || event.nextPageHash || '',
-        noEffect: event.noEffect ? 'yes' : ''
-      };
-    })
-  ), []);
-
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
 
@@ -10163,18 +10069,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
   }, []);
 
-  const migrateHistorySpaces = useCallback((historySpaces = []) => (
-    historySpaces.map(space => ({
-      ...space,
-      assignedPages: (space.assignedPages || []).map(page => {
-        return {
-          ...page,
-          regions: normalizePageRegions(page.regions || [])
-        };
-      })
-    }))
-  ), []);
-
   const restoreHistoryState = useCallback((stateToRestore) => {
     const restoredAnnotationsByPage = stateToRestore.annotationsByPage || {};
     const restoredSurveyMarkers = stateToRestore.surveyMarkers || {};
@@ -10215,14 +10109,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       snapshotBytes: snapshotFingerprint.bytes
     };
   }, [getHistoryFingerprint, normalizeHistoryReason, summarizeHistoryDelta, summarizeHistorySnapshot]);
-
-  const isLegacyAnnotationHistoryMeta = useCallback((meta) => {
-    const reason = typeof meta?.reason === 'string' ? meta.reason : '';
-    return reason.startsWith('callouts:')
-      || reason.startsWith('highlight:')
-      || reason === 'delete:batch'
-      || reason === 'annotations:save';
-  }, []);
 
   // Explicitly add a checkpoint to history BEFORE making changes
   const addHistoryCheckpoint = useCallback((reason = 'unspecified', context = null, snapshotOverride = null) => {
@@ -10767,34 +10653,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 	    });
     return true;
   }, [pushHistoryDebugEvent, user?.id, yjsUndoCtx?.userId]);
-
-  const getYjsHistoryTarget = useCallback((stackItem) => {
-    const diagnostics = (() => {
-      try {
-        const value = stackItem?.meta?.get?.('historyDiagnostics');
-        return Array.isArray(value) ? value : [];
-      } catch (_err) {
-        return [];
-      }
-    })();
-    for (const diagnostic of diagnostics) {
-      const id = diagnostic?.annotationId
-        || diagnostic?.changedKeys?.find?.((entry) => typeof entry?.key === 'string' && entry.key)?.key
-        || null;
-      if (!id) continue;
-      const annotationType = String(diagnostic?.annotationType || '').toLowerCase();
-      const stack = String(diagnostic?.stack || diagnostic?.parentStack || '').toLowerCase();
-      const path = Array.isArray(diagnostic?.path) ? diagnostic.path : [];
-      const isCallout = annotationType === 'callout' || stack === 'callouts' || path[0] === 'callouts';
-      return {
-        id,
-        kind: isCallout ? 'callout' : 'fabric',
-        pageNumber: diagnostic?.pageNumber ?? stackItem?.meta?.get?.('pageNumber') ?? null,
-        diagnostic,
-      };
-    }
-    return null;
-  }, []);
 
   const materializeFabricAnnotationFromYMap = useCallback((annoYMap, fallbackId = null) => {
     if (!annoYMap || typeof annoYMap.get !== 'function') return null;
@@ -21032,56 +20890,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     alignItems: 'center',
     ...(scrollMode === 'single' && { justifyContent: 'center' })
   }), [scrollMode]);
-
-  const normalizeCanvasJsonForHistory = useCallback((value) => {
-    const transientKeys = new Set([
-      '_originalHasControls',
-      '_originalHasBorders',
-      '_lastLeft',
-      '_lastTop',
-      '_dragSessionId',
-      'hasBorders',
-      'hasControls',
-      'lockMovementX',
-      'lockMovementY',
-      'lockScalingFlip',
-      'perPixelTargetFind',
-      'targetFindTolerance',
-      'hoverCursor',
-      'moveCursor',
-      'selectable',
-      'evented',
-      'dirty',
-      'cacheKey',
-      'isMoving'
-    ]);
-
-    const walk = (node) => {
-      if (Array.isArray(node)) {
-        return node.map(walk);
-      }
-      if (!node || typeof node !== 'object') {
-        return node;
-      }
-
-      const normalized = {};
-      Object.entries(node).forEach(([key, child]) => {
-        if (transientKeys.has(key)) {
-          return;
-        }
-        normalized[key] = walk(child);
-      });
-
-      // Callout control handles are shown/hidden during selection only.
-      if (normalized.partType === 'knee' || normalized.partType === 'arrowTip') {
-        normalized.opacity = 0;
-      }
-
-      return normalized;
-    };
-
-    return walk(value);
-  }, []);
 
   const pushLocalAnnotationHistoryAction = useCallback((action) => {
     if (!action || isUndoingRef.current) return;
