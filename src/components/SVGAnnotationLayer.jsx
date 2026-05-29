@@ -20,7 +20,7 @@
  * Phase 9 Plan 02: Drag-to-move, resize-by-handle, rotation visual + pointer wiring
  * Phase 9 Plan 03: Multi-select group ops (group-move visual, group bbox, delete)
  */
-import React, { memo, useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
+import { memo, useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import {
   renderPath,
   renderRect,

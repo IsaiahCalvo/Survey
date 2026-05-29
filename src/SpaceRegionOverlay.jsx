@@ -1,4 +1,4 @@
-import React, { useId, useLayoutEffect, useMemo, useRef } from 'react';
+import { useId, useLayoutEffect, useMemo, useRef } from 'react';
 import { union, diff } from 'martinez-polygon-clipping';
 
 const spaceRegionDebug = (...args) => {

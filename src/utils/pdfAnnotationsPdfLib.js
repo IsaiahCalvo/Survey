@@ -4,7 +4,7 @@
  * Compatible with Adobe Acrobat and all PDF readers
  */
 
-import { PDFDocument, PDFName, PDFArray, PDFDict, PDFNumber, PDFString, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, PDFName, PDFNumber, PDFString, StandardFonts, rgb } from 'pdf-lib';
 import {
   PDF_COUNTER_METADATA_KEY,
   PDF_COUNTER_SUBJECT,

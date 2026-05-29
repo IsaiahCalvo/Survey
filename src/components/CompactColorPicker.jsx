@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import Icon from '../Icons';
+import { useState, useEffect, useRef } from 'react';
 
 const PRESET_COLORS = [
     'transparent', '#FF0000', '#FF0080', '#FF00FF', // Transparent + Reds/Pinks

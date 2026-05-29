@@ -1,10 +1,9 @@
-import React, { useEffect, useLayoutEffect, useRef, memo, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useRef, memo, useState, useCallback } from 'react';
 import { debugMark } from './utils/debugBridge';
 import * as contextMenuBridge from './utils/contextMenuBridge';
 import { createPortal } from 'react-dom';
 import CalloutOverlay from './components/Callout';
 import CompactColorPicker from './components/CompactColorPicker';
-import Icon from './Icons';
 
 // Patch getContext BEFORE importing Fabric.js so only Fabric canvases opt into willReadFrequently.
 // A global unconditional patch can slow PDF page rendering by disabling GPU acceleration.
@@ -35,38 +34,17 @@ if (typeof HTMLCanvasElement !== 'undefined' && !HTMLCanvasElement.prototype._wi
 import { fabric as fabricLib } from 'fabric';
 const { Canvas, Rect, Circle, Line, Triangle, Textbox, PencilBrush, Polyline, Group, Control, util, Path } = fabricLib;
 // Note: polygon-clipping removed - using clipPath-based erasing instead
-import { regionContainsPoint } from './utils/regionMath';
 import {
   ANNOTATION_VISIBILITY_SCOPE,
   getAnnotationVisibilityScope,
   isAnnotationVisibleByPageControl
 } from './utils/annotationVisibilityRules';
-import {
-  isPointOnObject,
-  doesRectIntersectObject,
-  isObjectFullyInRect,
-  getObjectGeometryBounds
-} from './utils/geometryHitTest';
-import { splitPathDataByEraser, booleanErasePath } from './utils/geometryEraser';
+import { isPointOnObject, doesRectIntersectObject } from './utils/geometryHitTest';
+import { booleanErasePath } from './utils/geometryEraser';
 import { configureFabricOverrides } from './utils/fabricCustomization';
 import { calculateViewportSafePosition } from './utils/menuPositioning';
-import {
-  getMidpoint,
-  shouldSnapToLinear,
-  getCurvedPath,
-  getCurveEndAngle,
-  getCurveStartAngle,
-  getPointOnCurve,
-  getControlPoint,
-  distanceToLineSegment as perpendicularDistanceToLine
-} from './utils/lineGeometry';
-import {
-  calculateCalloutConnection,
-  MIN_KNEE_TO_ARROW_DISTANCE,
-  MIN_KNEE_TO_BOX_EDGE_DISTANCE,
-  MIN_SEGMENT_LENGTH,
-  MIN_TEXTBOX_TO_ARROW_DISTANCE
-} from './utils/calloutGeometry';
+import { getMidpoint, shouldSnapToLinear, getCurvedPath, getCurveEndAngle } from './utils/lineGeometry';
+import { calculateCalloutConnection } from './utils/calloutGeometry';
 import { debugLog, debugWarn, isDebugEnabled, setDebugData } from './utils/pdfDebug';
 
 // Apply custom Drawboard-style controls and selection visuals

@@ -12,7 +12,7 @@
  *
  * Phase 9 Plan 01: Selection overlay foundation.
  */
-import React, { memo } from 'react';
+import { memo } from 'react';
 import { getCursorForHandle } from '../utils/svgTransformMath';
 import { getHandlePositions } from '../utils/svgBoundingBox';
 import {

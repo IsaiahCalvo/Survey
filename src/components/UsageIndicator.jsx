@@ -1,4 +1,3 @@
-import React from 'react';
 import { useSubscriptionLimits } from '../hooks/useSubscriptionLimits';
 import { useAuth } from '../contexts/AuthContext';
 

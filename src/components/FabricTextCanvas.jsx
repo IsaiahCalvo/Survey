@@ -18,7 +18,7 @@
  * Replaces the FabricEditCanvas zoom=1 hack for new text creation.
  * FabricEditCanvas still handles editing of existing text (double-click flow).
  */
-import React, { memo, useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 
 import { fabric } from 'fabric';
 import { useFabricCanvas } from '../hooks/useFabricCanvas';

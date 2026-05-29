@@ -1,7 +1,7 @@
 // DevTestRoute.jsx -- Dev-only component that loads a test PDF without authentication.
 // Dynamically imported by main.jsx inside an `if (import.meta.env.DEV)` guard,
 // so this file is never included in production bundles.
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AuthContext } from './contexts/AuthContext';
 import { MSGraphContext } from './contexts/MSGraphContext';
 import ErrorBoundary from './components/ErrorBoundary';

@@ -1,5 +1,4 @@
-import React, { useEffect, useRef, memo } from 'react';
-import * as pdfjsLib from 'pdfjs-dist';
+import { useEffect, useRef, memo } from 'react';
 
 const TextLayer = memo(({
   pageNumber,

@@ -7,7 +7,7 @@
    Literal hex colors: these overlays render outside the `.survey-hub` root,
    where the palette CSS variables are not in scope.
 */
-import React, { useState } from 'react';
+import { useState } from 'react';
 
 const C = {
   scrim: 'rgba(13,15,20,0.55)',

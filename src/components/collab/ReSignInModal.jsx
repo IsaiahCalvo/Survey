@@ -20,7 +20,7 @@
 //   - The only ways out are successful sign-in OR closing the document via
 //     "Sign in with a different account"
 
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import './ReSignInModal.css';
 

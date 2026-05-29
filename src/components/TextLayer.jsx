@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, memo } from 'react';
+import { useEffect, useRef, memo } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 
 const TextLayer = ({ page, scale, width, height, onTextSelected, isSelectionMode, debug }) => {

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { COLORS, TYPOGRAPHY, SHADOWS, Z_INDEX, TRANSITIONS } from '../theme';
 
 /**

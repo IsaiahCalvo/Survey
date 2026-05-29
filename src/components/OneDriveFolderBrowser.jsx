@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
+import { COLORS, TYPOGRAPHY, BORDERS } from '../theme';
 import {
   listFolders,
   listDriveItems,

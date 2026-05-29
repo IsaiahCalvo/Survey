@@ -10,7 +10,7 @@
  * 4. Direct page subscription model (like Redux)
  */
 
-import React, { createContext, useContext, useRef, useCallback, useSyncExternalStore } from 'react';
+import { createContext, useContext, useRef, useCallback, useSyncExternalStore } from 'react';
 
 const AnnotationContext = createContext(null);
 

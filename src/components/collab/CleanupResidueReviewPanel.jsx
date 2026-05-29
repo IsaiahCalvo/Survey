@@ -21,7 +21,6 @@
 //   - .planning/phases/35-per-user-delete-authority-confirm-before-wipe/35-05-PLAN.md
 //     Task 3 — minimal Review surface, count + first 5 IDs + Clean up + Close
 
-import React from 'react';
 import './CleanupResidueReviewPanel.css';
 
 /**

@@ -20,12 +20,7 @@ import { shouldSnapToLinear, getMidpoint } from '../utils/lineGeometry.js';
 // every member of that group on the page. Same helper module powers App's
 // Group / Ungroup actions; storage model documented at the top of the file.
 import { getAnnotationGroupId, getCalloutGroupId, findGroupMembers } from '../utils/annotationGroups.js';
-import {
-  deriveMidpointFromPointer,
-  shouldRevertEndpointCurve,
-  applyMidpointToAnnotation,
-  clearMidpointFromAnnotation,
-} from '../utils/lineDragMath.js';
+import { shouldRevertEndpointCurve, applyMidpointToAnnotation, clearMidpointFromAnnotation } from '../utils/lineDragMath.js';
 // Phase 19 — AutoCAD Window + Crossing marquee selection.
 // Pure math lives in marqueeSelection.js (unit-tested in
 // tests/marqueeSelection.test.mjs). This hook owns the React state,

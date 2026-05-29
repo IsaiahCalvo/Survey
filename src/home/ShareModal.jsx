@@ -15,7 +15,7 @@
  *
  * UI structure is preserved from the approved design — do not redesign.
  */
-import React, { useContext, useEffect, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 import { createDocumentInvite, buildInviteUrl } from '../services/documentInviteService';
 

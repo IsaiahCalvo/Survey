@@ -13,7 +13,7 @@
  * - Per-page annotation subscription (only re-render affected pages)
  */
 
-import React, { memo, useRef, useEffect, useState } from 'react';
+import { memo, useRef, useEffect, useState } from 'react';
 import { usePageAnnotations } from '../contexts/AnnotationContext';
 import {
   PAGE_CONTAINER_STYLES,

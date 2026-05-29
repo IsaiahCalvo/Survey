@@ -25,7 +25,6 @@
 // Plan 30-06 owns the per-page mount + bbox feed; Plan 30-05 ships the component
 // shape so 30-06 can drop it in without touching Always-Protected files.
 
-import React from 'react';
 import './QuarantineMarkerOverlay.css';
 
 // UX: locked verbatim per 30-UI-SPEC.md Surface 2 and CONTEXT.md `<specifics>`.

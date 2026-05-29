@@ -1,4 +1,3 @@
-import React from 'react';
 import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
 
 const ExcelLockedModal = ({

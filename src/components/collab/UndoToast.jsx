@@ -16,7 +16,6 @@
 //     onDismiss to clear the toast (matches Plan 35-01 test #3 — onUndo
 //     fires exactly once and the toast clears).
 
-import React from 'react';
 import './UndoToast.css';
 
 export function UndoToast({ toast, onDismiss }) {

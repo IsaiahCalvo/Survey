@@ -10,7 +10,7 @@
  * - Old content stays visible until new content is ready
  */
 
-import React, { useEffect, useRef, useState, memo, useCallback } from 'react';
+import { useEffect, useRef, useState, memo, useCallback } from 'react';
 import { perfRender } from '../utils/performanceLogger';
 
 // Configuration - dynamic concurrent render cap for faster page appearance on modern CPUs.

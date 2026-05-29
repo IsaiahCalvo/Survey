@@ -1,4 +1,3 @@
-import React from 'react';
 import { useMSGraph } from '../contexts/MSGraphContext';
 
 import oneDriveLogo from '../assets/brand/onedrive-logo.png';

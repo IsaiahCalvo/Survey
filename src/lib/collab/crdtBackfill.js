@@ -32,7 +32,6 @@
 // remediation for a missing-side write is retry, never reconcile-by-removal
 // (Pitfall 5 defense). // NO_DIFF_DELETE_OK
 
-import * as Y from 'yjs';
 import { applyFabricCreate } from './crdtAnnotationBridge.js';
 import { buildOrigin } from './originBuilder.js';
 

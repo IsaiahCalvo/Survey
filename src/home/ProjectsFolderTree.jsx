@@ -22,7 +22,7 @@
    clip them or force a scrollbar. Because the portal renders OUTSIDE the
    `.survey-hub` root, those popups use literal hex colors, not CSS vars.
 */
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { HubShell, Icon, Avatar, AvatarStack, Search } from './HubShell';
 import ManageTeamModal from './ManageTeamModal';

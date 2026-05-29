@@ -23,7 +23,7 @@
 // or mode === 'owner-own-only' should NEVER reach this component — App.jsx's
 // onRequestBulkDelete callback short-circuits those upstream.
 
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import './ConfirmDeleteModal.css';
 
 export function ConfirmDeleteModal({ plan, onConfirm, onCancel }) {

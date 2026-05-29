@@ -217,7 +217,6 @@ import { sanitizeConsoleLogText, shouldCaptureConsoleLine } from './utils/consol
   try { if (typeof document !== 'undefined') document.addEventListener('keydown', handler, true); } catch (_e) { /* swallow */ }
 })();
 
-import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { registerLicense } from '@syncfusion/ej2-base';
 import App from './AppShell';

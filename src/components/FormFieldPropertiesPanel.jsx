@@ -15,7 +15,7 @@
  * read-only / tooltip — and add field-type-specific fields only when
  * the user actually asks for them.
  */
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { buildFormFieldUpdate } from './formDesignerTools';
 
 // Re-export so existing callers / tests that import from this module keep

@@ -13,7 +13,7 @@
  *   - Active share links are listed grouped (link-only invites with no
  *     target_email).
  */
-import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 import ShareModal from './ShareModal';
 import {

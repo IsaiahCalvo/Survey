@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useMemo } from 'react';
+import { memo, useEffect, useMemo } from 'react';
 import { calculateCalloutConnection } from '../utils/calloutGeometry';
 import { isAnnotationVisibleInContext } from '../utils/annotationVisibilityRules';
 

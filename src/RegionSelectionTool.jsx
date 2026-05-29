@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import Icon from './Icons';
 import { diff, union, intersection } from 'martinez-polygon-clipping';
 import { REGION_OPERATIONS, simplifyPolygon, subtractRegionFromRegion } from './utils/regionMath';

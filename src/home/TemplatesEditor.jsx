@@ -39,7 +39,7 @@
    the parent panels' `overflow: hidden` can never clip them or spawn
    scrollbars.
 */
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import {
   closestCenter,

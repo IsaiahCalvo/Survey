@@ -9,7 +9,7 @@
 // tab or Spaces UI. The Spaces panel lives in the LEFT rail (PDFSidebar).
 // Accurate rename candidate: SurveyRail.jsx.
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Icon from './Icons';
 import EntityIndicator from './components/EntityIndicator';
 import { COLORS } from './theme';

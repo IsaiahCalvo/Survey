@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, memo, useState, useMemo } from 'react';
+import { useEffect, useRef, memo, useMemo } from 'react';
 import { pdfWorkerManager } from '../utils/PDFWorkerManager';
 
 const TILE_SIZE = 512;

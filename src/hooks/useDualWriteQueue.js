@@ -31,12 +31,7 @@
 //        module).
 
 import { useEffect, useState } from 'react';
-import {
-  getStuckCount,
-  getQuarantinedAnnoIds,
-  hasPendingForUser,
-  STUCK_THRESHOLD_MS,
-} from '../lib/collab/crdtDualWriteQueue.js';
+import { getStuckCount, getQuarantinedAnnoIds, hasPendingForUser } from '../lib/collab/crdtDualWriteQueue.js';
 
 // UX: 1s polling tick is well under STUCK_THRESHOLD_MS (30_000ms / 30s) so the
 // banner gate sees stuck transitions within 1s of crossing the threshold.

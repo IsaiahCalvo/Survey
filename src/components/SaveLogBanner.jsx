@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { buildLogPreamble } from '../utils/logPreamble';
 import { sanitizeConsoleLogText } from '../utils/consoleLogFilter';
 

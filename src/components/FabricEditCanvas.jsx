@@ -20,7 +20,7 @@
  *
  * Phase 11 Plan 01: Final user-facing feature of v2.0 SVG migration.
  */
-import React, { memo, useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import { memo, useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { flushSync } from 'react-dom';
 import { fabric } from 'fabric';
@@ -57,12 +57,7 @@ import { TEXT_PADDING } from '../utils/svgAnnotationRenderers';
 // bracket — both require waivering FabricEraserCanvas. Both are out of scope
 // for v2.4. tests/phase29-e2e/eraser-swipe-undo.spec.mjs STAYS test.fixme'd
 // and the Phase 29 reconciliation acknowledges the gap.
-import {
-  applyFabricCommit,
-  applyFabricDelete,
-  applyYUpdateToFabric,
-  isApplyingRemote,
-} from '../lib/collab/crdtAnnotationBridge.js';
+import { applyFabricCommit, isApplyingRemote } from '../lib/collab/crdtAnnotationBridge.js';
 import { getLocalFabricOrigin } from '../lib/collab/crdtUndoManager.js';
 import { isCRDTEnabled as readCRDTEnabledFlag } from '../lib/collab/crdtFeatureFlag.js';
 import { useYDoc } from '../hooks/useYDoc.js';

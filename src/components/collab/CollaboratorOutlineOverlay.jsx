@@ -31,7 +31,7 @@
 // renders rects. Plan 29-06 mounts this at YDocProvider scope with empty
 // editors initially; per-page bbox feed is a follow-up (Phase 32 hardening).
 
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import './CollaboratorOutlineOverlay.css';
 
 /**

@@ -36,7 +36,7 @@
 // secondary metadata. Phase 27's HEADING / SECONDARY constants are folded into
 // HEADING_BY_CODE / SECONDARY_BY_CODE to avoid two parallel sources of truth.
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import './StorageFailureBanner.css';
 
 // Locked copy per 27-UI-SPEC.md Surface 2 + 28-UI-SPEC.md Component Inventory

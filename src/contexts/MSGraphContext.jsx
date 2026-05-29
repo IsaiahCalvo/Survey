@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { Client } from '@microsoft/microsoft-graph-client';
 import { useAuth } from './AuthContext';
 import { supabase, isSupabaseAvailable } from '../supabaseClient';

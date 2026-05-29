@@ -8,7 +8,7 @@
    store yet (page count, revision, per-event activity) fall back gracefully
    without changing the layout.
 */
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { HubShell, Icon, Avatar, PdfThumb, Search } from './HubShell';
 import { MoveCopyModal, ConfirmModal } from './BulkModals';

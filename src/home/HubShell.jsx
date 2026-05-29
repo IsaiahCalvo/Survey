@@ -1,7 +1,7 @@
 /* Survey Hub — shared shell + small presentational components.
    Ported from the Claude Design prototype (survey-hub/shell.jsx). All markup is
    rendered inside a `.survey-hub` root so hub.css stays fully scoped. */
-import React, { useState, useRef, useEffect, useContext, createContext } from 'react';
+import { useState, useRef, useEffect, useContext, createContext } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
 /* Friendly per-tier label used in the bottom-left profile chip. Maps the

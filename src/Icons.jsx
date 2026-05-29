@@ -1,5 +1,4 @@
 // Minimalist SVG Icons Component
-import React from 'react';
 
 const Icon = ({ name, size = 16, color = 'currentColor', style, className }) => {
   const icons = {

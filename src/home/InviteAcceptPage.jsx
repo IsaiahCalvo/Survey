@@ -15,7 +15,7 @@
  * flow. We carry the token through localStorage so the user lands back on
  * the same invite after auth.
  */
-import React, { useContext, useEffect, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 import { acceptDocumentInvite } from '../services/documentInviteService';
 import { supabase } from '../supabaseClient';

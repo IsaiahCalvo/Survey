@@ -17,7 +17,7 @@
 
    When a document has no usable source (or rendering fails) the `fallback`
    node is rendered instead — the existing stylised placeholder. */
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 
 /* Rendered thumbnails cached by document id for the lifetime of the page, so

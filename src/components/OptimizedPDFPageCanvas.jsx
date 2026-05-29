@@ -8,7 +8,7 @@
  * 4. Smooth transition animation during zoom
  */
 
-import React, { useEffect, useRef, useState, memo, useCallback } from 'react';
+import { useEffect, useRef, useState, memo, useCallback } from 'react';
 import { perfRender } from '../utils/performanceLogger';
 
 // How long to wait after zoom before re-rendering at new resolution

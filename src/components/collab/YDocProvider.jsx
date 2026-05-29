@@ -30,7 +30,7 @@
 // invariant (Pitfall 5) is grep-asserted by tests/phase27/applyUpdateOnlyInvariant.test.mjs
 // — the only allowed Y.Doc constructor site is src/lib/collab/ydocRegistry.js.
 
-import React, { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Y from 'yjs';
 import { getOrCreateYDoc, releaseYDoc } from '../../lib/collab/ydocRegistry.js';
 import { attachLifecycle } from '../../lib/collab/ydocLifecycle.js';

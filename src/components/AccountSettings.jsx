@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useMSGraph } from '../contexts/MSGraphContext';
 import { getSupabaseSession, supabase } from '../supabaseClient';
-import Icon from '../Icons';
 import StripeCheckout from './StripeCheckout';
 import UsageIndicator from './UsageIndicator';
 import './AccountSettings.css';

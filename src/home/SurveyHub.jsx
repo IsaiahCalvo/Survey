@@ -14,7 +14,7 @@
      onCreateProject()     — start the new-project flow
      onCreateTemplate()    — start the new-template flow
 */
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import DocumentsLedger from './DocumentsLedger';
 import ProjectsFolderTree from './ProjectsFolderTree';
 import TemplatesEditor from './TemplatesEditor';

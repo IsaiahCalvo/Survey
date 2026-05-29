@@ -16,7 +16,7 @@
  *
  * Phase 10 Plan 01: Core drawing Canvas mount/unmount mechanism.
  */
-import React, { memo, useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import { fabric } from 'fabric';
 import { useFabricCanvas } from '../hooks/useFabricCanvas';
