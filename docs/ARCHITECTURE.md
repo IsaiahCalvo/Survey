@@ -47,7 +47,7 @@ Syncfusion-and-zoom replacement feasible. Full motive in `HANDOFF.md`.
 | File | Lines (approx) | Role |
 |---|---|---|
 | `AppShell.jsx` | ~2,850 | **App root.** Tabs, auth/entity state, chrome host divs, top-right zoom/page pill, router between `Dashboard` (home) and `PDFViewer` (open doc). Receives the panel APIs. |
-| `PDFViewer.jsx` | ~34,000 (1.5MB) | **The document viewer** — bulk of the app. Syncfusion canvas, annotation overlays, zoom/scroll lifecycle, save/sync, history. HIGH-RISK. |
+| `PDFViewer.jsx` | ~33,200 (1.5MB) | **The document viewer** — bulk of the app. Syncfusion canvas, annotation overlays, zoom/scroll lifecycle, save/sync, history. HIGH-RISK. Pure capture-free helpers progressively lifted into dedicated modules (see "Viewer helper modules" below). |
 | `Dashboard.jsx` | ~3,900 | **Home screen** — project tree, document grid, template management, SurveyHub host. Talks to shell via props + forwarded ref only. |
 | `viewerShared.js` | ~2,360 | **Shared helpers/constants module** (misnamed — see §1). |
 | `SurveySpacesRail.jsx` | ~3,000 | **Survey right rail** (module/category controls, survey-marker toolbar, export block). Publishes `rightRailApi`. Renders NO Spaces UI — the Spaces panel is the LEFT rail (`PDFSidebar`). Rename candidate: `SurveyRail.jsx`. |
@@ -59,8 +59,8 @@ Syncfusion-and-zoom replacement feasible. Full motive in `HANDOFF.md`.
 
 | Dir | Code files (top-level) | Purpose |
 |---|---|---|
-| `src/components/` | 48 (79 incl. nested) | Reusable components: Fabric canvases, SVG layer, modals, toolbars, panels. Houses the four NO-GO Fabric/SVG files. |
-| `src/utils/` | 78 (93 incl. nested) | Pure utilities (zoomController, hydration gate, loggers, etc.). |
+| `src/components/` | 49 (80 incl. nested) | Reusable components: Fabric canvases, SVG layer, modals, toolbars, panels. Houses the four NO-GO Fabric/SVG files. |
+| `src/utils/` | 86 (101 incl. nested) | Pure utilities (zoomController, hydration gate, loggers, etc.) + the viewer helper modules extracted from `PDFViewer.jsx`. |
 | `src/services/` | 16 | External I/O: Excel/Graph, document annotation, document lock, etc. |
 | `src/hooks/` | 15 (20 incl. nested) | React hooks (`useDatabase`, `useSubscriptionLimits`, …). |
 | `src/home/` | 14 | Home-screen pieces (`SurveyHub`, template reorder utils, …). |
@@ -73,7 +73,32 @@ Syncfusion-and-zoom replacement feasible. Full motive in `HANDOFF.md`.
 | `src/lib/` | nested only | Vendored/library glue. |
 | `src/assets/` | static | Images/assets. |
 
-Total: 260 `.js/.jsx/.ts/.tsx` files under `src/`.
+Total: 269 `.js/.jsx/.ts/.tsx` files under `src/`.
+
+### Viewer helper modules (extracted from `PDFViewer.jsx`, 2026-05-29)
+
+Pure, capture-free helpers lifted out of the viewer into focused modules — each a
+verbatim relocation with no behavior change (proven capture-free by
+`scripts/find-hoistable.mjs`, adversarially verified, gated on check-undef +
+`vite build` + `npm test` 834/0/6 per extraction):
+
+| Module | Helpers |
+|---|---|
+| `src/utils/viewState.js` | `normalizeViewState`, `areViewStatesEqual` |
+| `src/utils/historyHelpers.js` | history serialize/diff/classify: `normalizeHistoryReason`, `getHistoryFingerprint`, `summarizeHistorySnapshot`, `summarizeHistoryDelta`, `summarizeAnnotationPageTransitionForDebug`, `getHistoryDebugRows`, `migrateHistorySpaces`, `isLegacyAnnotationHistoryMeta`, `getYjsHistoryTarget`, `normalizeCanvasJsonForHistory` |
+| `src/utils/regionGeometry.js` | `sortSyncfusionPagesByDistance`, `hasValidRegionAreas`, `resolvePageContentElement`, `getBoundsCenter` |
+| `src/utils/annotationData.js` | `composeColorForPatch`, `materializeFabricAnnotationFromYMap` |
+| `src/utils/bookmarkOutline.js` | `generateBookmarkId`, `resolvePdfOutlinePageNumber`, `extractPdfOutlineBookmarks` |
+| `src/utils/counterGeometry.js` | `getCounterRenderGeometry`, `removeCounterDragPreview`, `updateCounterDragPreview`, `createCounterDragPreview` |
+| `src/utils/exportHelpers.js` | `getExportErrorMessage`, `isFileLocked` |
+| `src/utils/overlayDebug.js` | `buildTrackpadInteractionDebugSummaryText`, `summarizeOverlayLagSamples` |
+| `src/components/annotationHydrationCover.jsx` | `renderAnnotationHydrationPageCover` |
+
+Still resident in the viewer and deliberately NOT lifted (they are not pure
+relocations): `sanitizeTemplateConfig` and `boundsMatch` are identity-sensitive
+(consumed in React dependency arrays; `sanitizeTemplateConfig` is also duplicated
+in `Dashboard.jsx`), so moving them would change render/memoization timing — they
+need a deliberate, separately-tested change, not a verbatim lift.
 
 ---
 
