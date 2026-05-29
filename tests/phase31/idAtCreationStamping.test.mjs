@@ -29,11 +29,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const APP_PATH = path.resolve(__dirname, '../../src/App.jsx');
+// The counter overlay handlers moved to src/PDFViewer.jsx when PDFViewer was
+// extracted from App.jsx; read both so the source grep finds them.
+const PDFVIEWER_PATH = path.resolve(__dirname, '../../src/PDFViewer.jsx');
 const APP_SKIP = !existsSync(APP_PATH) ? 'src/App.jsx missing' : false;
 
 describe('Counter pointerdown handlers stamp data.id at creation (Plan 31-02)', () => {
   it('App.jsx contains >= 2 occurrences of data.id = crypto.randomUUID() (one per counter overlay)', { skip: APP_SKIP }, () => {
-    const source = readFileSync(APP_PATH, 'utf8');
+    const source = readFileSync(APP_PATH, 'utf8') + '\n' + readFileSync(PDFVIEWER_PATH, 'utf8');
     // The two counter pointerdown handlers around lines 29811 and 31170 must
     // each stamp the id at creation, NOT defer to first cloud upload. The
     // grep target is the literal assignment form so the executor of Plan
@@ -46,7 +49,7 @@ describe('Counter pointerdown handlers stamp data.id at creation (Plan 31-02)', 
   });
 
   it('counter object construction includes id field next to data.type and data.createdAt', { skip: APP_SKIP }, () => {
-    const source = readFileSync(APP_PATH, 'utf8');
+    const source = readFileSync(APP_PATH, 'utf8') + '\n' + readFileSync(PDFVIEWER_PATH, 'utf8');
     // For each counter overlay region (find by data-counter-overlay attribute),
     // take ~3000 chars after each match and assert the slice contains BOTH
     // type: 'counter' AND an id-related stamp (the stamp form is left to the
@@ -76,7 +79,7 @@ describe('Counter pointerdown handlers stamp data.id at creation (Plan 31-02)', 
   });
 
   it('counter id stamp lives BEFORE handleSaveAnnotations call (stamp must be in the saved JSON)', { skip: APP_SKIP }, () => {
-    const source = readFileSync(APP_PATH, 'utf8');
+    const source = readFileSync(APP_PATH, 'utf8') + '\n' + readFileSync(PDFVIEWER_PATH, 'utf8');
     // For each counter overlay region, find the offset of the crypto.randomUUID
     // call and the offset of the FIRST handleSaveAnnotations call. The
     // randomUUID offset MUST be smaller (i.e. earlier in source) so the saved

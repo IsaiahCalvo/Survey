@@ -2,7 +2,10 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-const APP_SOURCE = readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
+// PDFViewer was extracted from App.jsx into src/PDFViewer.jsx; read both so the
+// source guards find the code wherever it now lives.
+const APP_SOURCE = readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8')
+  + '\n' + readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
 const CLOUD_SYNC_SOURCE = readFileSync(new URL('../src/hooks/useAnnotationCloudSync.js', import.meta.url), 'utf8');
 
 test('cloud-backed survey highlights are not painted from localStorage before Supabase settles', () => {

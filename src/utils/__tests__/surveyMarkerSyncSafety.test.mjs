@@ -34,7 +34,10 @@ test('allows real survey-marker deletes after hydration is ready', () => {
 });
 
 test('App survey marker sync is protected from pending-hydration empty deletes', () => {
-  const appSource = readFileSync(resolve('src/App.jsx'), 'utf8');
+  // PDFViewer (with the survey-marker sync + locate logic) was extracted from
+  // App.jsx into src/PDFViewer.jsx; read both so the guard finds it.
+  const appSource = readFileSync(resolve('src/App.jsx'), 'utf8')
+    + '\n' + readFileSync(resolve('src/PDFViewer.jsx'), 'utf8');
   const decisionIndex = appSource.indexOf('shouldRunSurveyMarkerSync({');
   const syncIndex = appSource.indexOf('syncAnnotationsToSupabase(documentId, user.id, surveyMarkers, {');
 
@@ -46,7 +49,10 @@ test('App survey marker sync is protected from pending-hydration empty deletes',
 });
 
 test('Locate preserves the survey sub-toolbar while selecting a marker', () => {
-  const appSource = readFileSync(resolve('src/App.jsx'), 'utf8');
+  // PDFViewer (with the survey-marker sync + locate logic) was extracted from
+  // App.jsx into src/PDFViewer.jsx; read both so the guard finds it.
+  const appSource = readFileSync(resolve('src/App.jsx'), 'utf8')
+    + '\n' + readFileSync(resolve('src/PDFViewer.jsx'), 'utf8');
 
   assert.match(appSource, /setActiveTool\('select'\);\s*setActiveCategoryDropdown\('survey'\);/);
   assert.match(appSource, /!\(showSurveyPanel && activeCategoryDropdown === 'survey'\)/);

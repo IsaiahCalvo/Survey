@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-const APP_SOURCE = readFileSync(new URL('../../src/App.jsx', import.meta.url), 'utf8');
+const APP_SOURCE = readFileSync(new URL('../../src/App.jsx', import.meta.url), 'utf8')
+  + '\n' + readFileSync(new URL('../../src/PDFViewer.jsx', import.meta.url), 'utf8');
 
 test('overlay recorder samples include PDF/annotation presentation-gap metrics', () => {
   assert.match(APP_SOURCE, /const visiblePresentationGapPages = \[\];/);
