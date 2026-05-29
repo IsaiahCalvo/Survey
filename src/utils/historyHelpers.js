@@ -6,7 +6,7 @@
 // reference), so they move to plain module functions with no behavior change:
 // callers and effect dependency arrays still see stable references.
 
-import { HISTORY_OBJECT_CHANGE_PREVIEW_LIMIT, getHistoryObjectDiffType, getHistoryObjectSignature, hashHistoryString, toHistoryObjectDebug } from '../viewerShared';
+import { HISTORY_OBJECT_CHANGE_PREVIEW_LIMIT, HISTORY_PAGE_PREVIEW_LIMIT, getHistoryObjectDiffType, getHistoryObjectSignature, hashHistoryString, toHistoryObjectDebug } from '../viewerShared';
 import { normalizePageRegions } from './annotationVisibilityRules';
 
 export function normalizeHistoryReason(reason) {
@@ -196,3 +196,64 @@ export function normalizeCanvasJsonForHistory(value) {
 
   return walk(value);
 }
+
+export function summarizeHistorySnapshot(snapshot) {
+    const annotationsState = snapshot?.annotationsByPage || {};
+    const pageEntries = Object.entries(annotationsState);
+    let annotationObjectCount = 0;
+    const pageObjectCounts = {};
+
+    pageEntries.forEach(([pageKey, pageState]) => {
+      const objectCount = Array.isArray(pageState?.objects) ? pageState.objects.length : 0;
+      annotationObjectCount += objectCount;
+      if (objectCount > 0) {
+        pageObjectCounts[pageKey] = objectCount;
+      }
+    });
+
+    const spacesState = Array.isArray(snapshot?.spaces) ? snapshot.spaces : [];
+    let assignedPagesCount = 0;
+    let regionCount = 0;
+    spacesState.forEach((space) => {
+      const assignedPages = Array.isArray(space?.assignedPages) ? space.assignedPages : [];
+      assignedPagesCount += assignedPages.length;
+      assignedPages.forEach((page) => {
+        regionCount += Array.isArray(page?.regions) ? page.regions.length : 0;
+      });
+    });
+
+    const sortedPageEntries = Object.entries(pageObjectCounts)
+      .sort((a, b) => Number(a[0]) - Number(b[0]));
+
+    const pageObjectCountsPreview = Object.entries(pageObjectCounts)
+      .sort((a, b) => Number(a[0]) - Number(b[0]))
+      .slice(0, HISTORY_PAGE_PREVIEW_LIMIT)
+      .reduce((acc, [pageKey, count]) => {
+        acc[pageKey] = count;
+        return acc;
+      }, {});
+
+    const pageStateHashPreview = sortedPageEntries
+      .slice(0, HISTORY_PAGE_PREVIEW_LIMIT)
+      .reduce((acc, [pageKey, count]) => {
+        const fingerprint = getHistoryFingerprint(annotationsState[pageKey] || null);
+        acc[pageKey] = `${count}:${fingerprint.hash}`;
+        return acc;
+      }, {});
+
+    const annotationsFingerprint = getHistoryFingerprint(annotationsState);
+
+    return {
+      annotationsPageCount: pageEntries.length,
+      annotationObjectCount,
+      surveyMarkerCount: Object.keys(snapshot?.surveyMarkers || {}).length,
+      spacesCount: spacesState.length,
+      assignedPagesCount,
+      regionCount,
+      nonEmptyAnnotationPages: Object.keys(pageObjectCounts).length,
+      pageObjectCountsPreview,
+      pageStateHashPreview,
+      annotationsStateHash: annotationsFingerprint.hash,
+      annotationsStateBytes: annotationsFingerprint.bytes
+    };
+  }

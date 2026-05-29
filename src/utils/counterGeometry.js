@@ -24,3 +24,14 @@ export function removeCounterDragPreview(drag) {
       drag.previewSvg.parentNode.removeChild(drag.previewSvg);
     }
   }
+
+export function updateCounterDragPreview(drag) {
+    if (!drag?.previewPath || !drag?.previewText) return;
+    const geometry = getCounterRenderGeometry(drag.bodyX, drag.bodyY, drag.radius, drag.angle);
+    drag.previewPath.setAttribute('d', geometry.pathD);
+    drag.previewPath.setAttribute('fill', drag.color || '#ef4444');
+    drag.previewText.setAttribute('x', String(drag.bodyX));
+    drag.previewText.setAttribute('y', String(drag.bodyY));
+    drag.previewText.setAttribute('font-size', String(geometry.fontSize));
+    drag.previewText.textContent = String(drag.displayNumber ?? 1);
+  }

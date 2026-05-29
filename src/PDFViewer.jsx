@@ -67,7 +67,7 @@ import { fromFabricGroup, toFabricGroup } from './utils/calloutEditAdapter';
 import { getActivePageRegionId, getPageAnnotationVisibilityState, normalizePageRegions, normalizeRegionVisibility } from './utils/annotationVisibilityRules';
 import { getCalloutSyncFingerprint } from './utils/calloutSyncPayload';
 import { getCounterSeriesList, pickNextSeriesColor, renumberCounters } from './utils/counterNumbering';
-import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug } from './utils/historyHelpers';
+import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug, summarizeHistorySnapshot } from './utils/historyHelpers';
 import { getHistoryOrder, shouldRedoLocalBeforeLegacy, shouldUndoLocalBeforeLegacy } from './utils/historyStacks';
 import { importAnnotationsFromPdf } from './utils/pdfAnnotationImporter';
 import { isBlankCalloutText, resolveCommittedCalloutText, shouldDeleteBlankCalloutOnCommit } from './utils/calloutBlankCommit';
@@ -232,8 +232,8 @@ import {
 } from './viewerShared';
 import { getBoundsCenter, hasValidRegionAreas, resolvePageContentElement, sortSyncfusionPagesByDistance } from './utils/regionGeometry';
 import { composeColorForPatch, materializeFabricAnnotationFromYMap } from './utils/annotationData';
-import { generateBookmarkId, resolvePdfOutlinePageNumber } from './utils/bookmarkOutline';
-import { getCounterRenderGeometry, removeCounterDragPreview } from './utils/counterGeometry';
+import { extractPdfOutlineBookmarks, generateBookmarkId } from './utils/bookmarkOutline';
+import { removeCounterDragPreview, updateCounterDragPreview } from './utils/counterGeometry';
 import { getExportErrorMessage, isFileLocked } from './utils/exportHelpers';
 import { buildTrackpadInteractionDebugSummaryText, summarizeOverlayLagSamples } from './utils/overlayDebug';
 
@@ -3030,17 +3030,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   //   counter: object,           // final Fabric-style counter JSON to save on release
   // }
   const counterDragRef = useRef(null);
-
-  const updateCounterDragPreview = useCallback((drag) => {
-    if (!drag?.previewPath || !drag?.previewText) return;
-    const geometry = getCounterRenderGeometry(drag.bodyX, drag.bodyY, drag.radius, drag.angle);
-    drag.previewPath.setAttribute('d', geometry.pathD);
-    drag.previewPath.setAttribute('fill', drag.color || '#ef4444');
-    drag.previewText.setAttribute('x', String(drag.bodyX));
-    drag.previewText.setAttribute('y', String(drag.bodyY));
-    drag.previewText.setAttribute('font-size', String(geometry.fontSize));
-    drag.previewText.textContent = String(drag.displayNumber ?? 1);
-  }, [getCounterRenderGeometry]);
 
   const createCounterDragPreview = useCallback((overlayEl, drag) => {
     if (!overlayEl || !drag) return;
@@ -9295,67 +9284,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => {
     redoHistoryRef.current = redoHistory;
   }, [redoHistory]);
-
-  const summarizeHistorySnapshot = useCallback((snapshot) => {
-    const annotationsState = snapshot?.annotationsByPage || {};
-    const pageEntries = Object.entries(annotationsState);
-    let annotationObjectCount = 0;
-    const pageObjectCounts = {};
-
-    pageEntries.forEach(([pageKey, pageState]) => {
-      const objectCount = Array.isArray(pageState?.objects) ? pageState.objects.length : 0;
-      annotationObjectCount += objectCount;
-      if (objectCount > 0) {
-        pageObjectCounts[pageKey] = objectCount;
-      }
-    });
-
-    const spacesState = Array.isArray(snapshot?.spaces) ? snapshot.spaces : [];
-    let assignedPagesCount = 0;
-    let regionCount = 0;
-    spacesState.forEach((space) => {
-      const assignedPages = Array.isArray(space?.assignedPages) ? space.assignedPages : [];
-      assignedPagesCount += assignedPages.length;
-      assignedPages.forEach((page) => {
-        regionCount += Array.isArray(page?.regions) ? page.regions.length : 0;
-      });
-    });
-
-    const sortedPageEntries = Object.entries(pageObjectCounts)
-      .sort((a, b) => Number(a[0]) - Number(b[0]));
-
-    const pageObjectCountsPreview = Object.entries(pageObjectCounts)
-      .sort((a, b) => Number(a[0]) - Number(b[0]))
-      .slice(0, HISTORY_PAGE_PREVIEW_LIMIT)
-      .reduce((acc, [pageKey, count]) => {
-        acc[pageKey] = count;
-        return acc;
-      }, {});
-
-    const pageStateHashPreview = sortedPageEntries
-      .slice(0, HISTORY_PAGE_PREVIEW_LIMIT)
-      .reduce((acc, [pageKey, count]) => {
-        const fingerprint = getHistoryFingerprint(annotationsState[pageKey] || null);
-        acc[pageKey] = `${count}:${fingerprint.hash}`;
-        return acc;
-      }, {});
-
-    const annotationsFingerprint = getHistoryFingerprint(annotationsState);
-
-    return {
-      annotationsPageCount: pageEntries.length,
-      annotationObjectCount,
-      surveyMarkerCount: Object.keys(snapshot?.surveyMarkers || {}).length,
-      spacesCount: spacesState.length,
-      assignedPagesCount,
-      regionCount,
-      nonEmptyAnnotationPages: Object.keys(pageObjectCounts).length,
-      pageObjectCountsPreview,
-      pageStateHashPreview,
-      annotationsStateHash: annotationsFingerprint.hash,
-      annotationsStateBytes: annotationsFingerprint.bytes
-    };
-  }, [getHistoryFingerprint]);
 
   const summarizeHistoryDelta = useCallback((fromState, toState) => {
     const fromSnapshot = fromState || { annotationsByPage: {}, surveyMarkers: {}, spaces: [] };
@@ -17735,72 +17663,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // setSurveyMarkers({});
     }
   }, [selectedTemplate, pdfId]); // Only run when template changes
-
-  const extractPdfOutlineBookmarks = useCallback(async (pdf) => {
-    if (!pdf?.getOutline) return [];
-
-    let outlineItems = null;
-    try {
-      outlineItems = await pdf.getOutline();
-    } catch {
-      return [];
-    }
-
-    if (!Array.isArray(outlineItems) || outlineItems.length === 0) {
-      return [];
-    }
-
-    const imported = [];
-
-    const walkOutline = async (items, parentId = null, path = []) => {
-      for (let index = 0; index < items.length; index += 1) {
-        const item = items[index];
-        if (!item) continue;
-
-        const childItems = Array.isArray(item.items) ? item.items : [];
-        const hasChildren = childItems.length > 0;
-        const pageNumber = await resolvePdfOutlinePageNumber(pdf, item.dest);
-        const hasValidPage = Boolean(pageNumber);
-
-        // Skip non-navigable external outline entries unless they contain children.
-        if (!hasChildren && !hasValidPage) {
-          continue;
-        }
-
-        const title = typeof item.title === 'string' ? item.title.trim() : '';
-        const fallbackName = hasChildren ? `Section ${index + 1}` : `Bookmark ${index + 1}`;
-        const name = title || fallbackName;
-        const nextPath = [...path, name];
-        const sourceId = `pdfjs:${nextPath.join('>')}#${index}`;
-        const id = `pdf:${sourceId}`;
-        const pageIds = hasValidPage ? [pageNumber] : [];
-
-        imported.push({
-          id,
-          name,
-          type: hasChildren ? 'folder' : 'bookmark',
-          pageIds,
-          parentId,
-          children: [],
-          source: 'pdf',
-          sourceId,
-          outlinePath: nextPath,
-          order: index,
-          dest: {
-            pageNumber: hasValidPage ? pageNumber : null
-          },
-          isFromPDF: true
-        });
-
-        if (hasChildren) {
-          await walkOutline(childItems, id, nextPath);
-        }
-      }
-    };
-
-    await walkOutline(outlineItems, null, []);
-    return imported;
-  }, [resolvePdfOutlinePageNumber]);
 
   useEffect(() => {
     if (!pdfDoc) return undefined;
