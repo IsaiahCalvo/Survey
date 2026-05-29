@@ -57,21 +57,6 @@ const FABRIC_TYPE_TO_DB_TYPE = {
   image: 'stamp'
 };
 
-const DB_TYPE_TO_FABRIC_DEFAULT = {
-  ink: 'path',
-  square: 'rect',
-  circle: 'circle',
-  line: 'line',
-  polyline: 'polyline',
-  polygon: 'polygon',
-  freetext: 'textbox',
-  stamp: 'image',
-  sticky_note: 'group',
-  callout: 'group',
-  counter: 'group',
-  eraser: 'path'
-};
-
 const SUPPORTED_DB_TYPES = new Set([
   SURVEY_MARKER_TYPE,
   'ink',
