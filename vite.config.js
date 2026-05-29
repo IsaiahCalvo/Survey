@@ -70,9 +70,6 @@ export default defineConfig({
       '@syncfusion/ej2-markdown-converter': path.resolve(__dirname, 'src/shims/ej2-markdown-converter.js')
     }
   },
-  optimizeDeps: {
-    include: ['xlsx-js-style']
-  },
   define: {
     'process.env': {},
     global: 'globalThis',

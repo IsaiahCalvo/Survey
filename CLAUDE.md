@@ -30,8 +30,11 @@ not protection-list items — they are correctness invariants.
 
 - `src/App.jsx` — ~1.3MB main file, zoom logic, portal host resolution, render
   loop. Edits here are high-risk; minimum viable diff only.
-- `src/components/PageAnnotationLayer.jsx` — per-page Fabric.js canvas overlay
-  (~9,858 lines). Only touch when actually needed for the current task.
+- `src/PageAnnotationLayer.jsx` — per-page Fabric.js canvas overlay
+  (~10,097 lines). Only touch when actually needed for the current task.
+  (The real file is `src/PageAnnotationLayer.jsx`. A dead 41-line stub at
+  `src/components/PageAnnotationLayer.jsx` was deleted 2026-05-28 — do not
+  recreate it.)
 - `src/components/FabricDrawingCanvas.jsx` / `FabricEraserCanvas.jsx` /
   `FabricEditCanvas.jsx` — all use the `zoomGeneration` signal contract; do not
   remove or rename that signal.

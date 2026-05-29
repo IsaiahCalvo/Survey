@@ -1,0 +1,45 @@
+name: CI
+
+# 2026-05-28 — Build + test gate. Before this, a broken change could land on
+# main with a green checkmark because nothing ran the build or the full test
+# suite. This is the guardrail that makes parallel work safe: a bad cross-edit
+# now shows up as a red X instead of being discovered by hand later.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        # Use `install` (not `ci`) to sidestep the npm optional-deps bug
+        # (npm/cli#4828), matching the release workflow.
+        run: npm install --include=optional --no-audit --no-fund
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build web bundle
+        run: npm run build
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_SYNCFUSION_LICENSE_KEY: ${{ secrets.VITE_SYNCFUSION_LICENSE_KEY }}

@@ -46,11 +46,13 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_SYNCFUSION_LICENSE_KEY: ${{ secrets.VITE_SYNCFUSION_LICENSE_KEY }}
-          # Bakes a token into the renderer bundle so Save Log (Ctrl+Shift+L)
-          # can fall back to the GitHub Contents API when the user's machine
-          # doesn't have the `gh` CLI installed. Common on Windows end-user
-          # installs. Add the matching secret in repo settings → Actions.
-          VITE_GITHUB_LOG_TOKEN: ${{ secrets.VITE_GITHUB_LOG_TOKEN }}
+          # SECURITY 2026-05-28: VITE_GITHUB_LOG_TOKEN removed. Baking a GitHub
+          # write-token into the renderer leaked it byte-for-byte in every
+          # shipped build (and IsaiahCalvo/Survey is public). Save Log now
+          # relies on the `gh` CLI on desktop and the OS share sheet on
+          # mobile/browser. If GitHub upload must be restored, do it via a
+          # server-side path (e.g. a Supabase Edge Function under RLS) — never
+          # a baked client token. See audit/deep-dive-today/REPORT.md (risk #1).
         run: npm run build
 
       - name: Build & publish installer

@@ -73,3 +73,10 @@ supabase/.temp/
 
 # KAL-48 verification artifacts (transient: screenshots + scratch scripts)
 /.kal48/
+
+# 2026-05-28 — Audit run outputs are transient/regenerable. Keep tracked docs
+# (audit/**/REPORT.md) and reusable scripts; ignore the heavy generated noise.
+audit/**/logs/
+audit/**/screenshots/
+audit/**/artifacts/
+audit/**/*.log

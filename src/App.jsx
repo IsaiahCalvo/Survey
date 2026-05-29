@@ -4,7 +4,6 @@ import { createPortal, flushSync } from 'react-dom';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.js?url';
 import { PDFDocument, degrees } from 'pdf-lib';
-import * as XLSX from 'xlsx-js-style';
 import ExcelJS from 'exceljs';
 import { useMSGraph } from './contexts/MSGraphContext';
 import { uploadExcelFile, getFileMetadata, getFileById, downloadExcelFile, downloadExcelFileByPath, getFileETag, uploadFileContentById, checkFileExists, checkFileExistsInDrive, getTemplateIdFromExcel, uploadFileToDrive } from './services/excelGraphService';
@@ -15653,8 +15652,8 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
         pendingWheelScroll.preventedEvents += 1;
         pendingWheelScroll.clippedEvents += isLargeWheelStep ? 1 : 0;
         pendingWheelScroll.diagonalEvents += isDiagonalTrackpadScroll ? 1 : 0;
-        pendingWheelScroll.frameMaxX = Math.max(pendingWheelScroll.frameMaxX, frameMaxX);
-        pendingWheelScroll.frameMaxY = Math.max(pendingWheelScroll.frameMaxY, frameMaxY);
+        pendingWheelScroll.frameMaxX += frameMaxX;
+        pendingWheelScroll.frameMaxY += frameMaxY;
         pendingWheelScroll.lastSensitivity = sensitivity;
         pendingWheelScroll.currentZoomForScroll = currentZoomForScroll;
         if (wheelScrollApplyRafId === null) {
@@ -15983,34 +15982,19 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       return null;
     }
 
-    const viewer = syncfusionViewerRef.current;
     const pageDiv = resolveSyncfusionLivePageHost(
       safePageNumber,
       syncfusionPageContainersStateRef.current || pageContainersRef.current || {}
     );
-    const pageLayer = [
-      viewer?.getPageLayerContainer?.(),
-      viewer?.viewerBase?.pageContainer,
-      viewer?.element?.querySelector?.('.e-pv-page-container'),
-      pageDiv?.parentElement,
-      contentRef.current,
+    const stableViewerHost = [
+      syncfusionWrapperRef.current,
       typeof document !== 'undefined'
-        ? document.getElementById(syncfusionViewerElementId)?.querySelector?.('.e-pv-page-container')
+        ? document.getElementById(syncfusionViewerElementId)?.closest?.('[data-testid="pdf-container"]')
         : null,
-      typeof document !== 'undefined'
-        ? document.querySelector?.('.survey-syncfusion-viewer.e-pdfviewer .e-pv-page-container')
-        : null
+      containerRef.current
     ].find((candidate) => candidate?.isConnected) || null;
 
-    if (!pageDiv?.isConnected || !pageLayer?.isConnected) {
-      const existingOverlayDiv = overlayDivsRef.current[safePageNumber];
-      if (existingOverlayDiv) {
-        existingOverlayDiv.setAttribute('data-source-page-connected', 'false');
-        if (existingOverlayDiv.parentElement) {
-          existingOverlayDiv.parentElement.removeChild(existingOverlayDiv);
-        }
-      }
-      delete syncfusionStablePortalHostsRef.current[safePageNumber];
+    if (!stableViewerHost?.isConnected) {
       return null;
     }
 
@@ -16018,23 +16002,25 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     if (!overlayRoot) {
       overlayRoot = document.createElement('div');
       overlayRoot.setAttribute('data-betasafe-app-owned-overlay-root', 'true');
+      overlayRoot.setAttribute('data-overlay-host-owner', 'app-stable-viewer');
       overlayRoot.style.cssText =
         'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:30;overflow:visible;';
       syncfusionAppOverlayRootRef.current = overlayRoot;
     }
 
-    const pageLayerStyle = window.getComputedStyle(pageLayer);
-    if (pageLayerStyle.position === 'static') {
-      pageLayer.style.position = 'relative';
+    const stableHostStyle = window.getComputedStyle(stableViewerHost);
+    if (stableHostStyle.position === 'static') {
+      stableViewerHost.style.position = 'relative';
     }
-    if (overlayRoot.parentElement !== pageLayer) {
-      pageLayer.appendChild(overlayRoot);
+    if (overlayRoot.parentElement !== stableViewerHost) {
+      stableViewerHost.appendChild(overlayRoot);
     }
 
     let overlayDiv = overlayDivsRef.current[safePageNumber];
     if (!overlayDiv) {
       overlayDiv = document.createElement('div');
       overlayDiv.setAttribute('data-overlay-page', String(safePageNumber));
+      overlayDiv.setAttribute('data-overlay-host-owner', 'app-stable-viewer');
       overlayDiv.style.cssText =
         'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:30;overflow:visible;';
       overlayDivsRef.current[safePageNumber] = overlayDiv;
@@ -16047,6 +16033,15 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     }
 
     syncfusionStablePortalHostsRef.current[safePageNumber] = overlayDiv;
+
+    if (!overlayRoot?.isConnected || overlayDiv.parentElement !== overlayRoot) {
+      overlayRoot.appendChild(overlayDiv);
+    }
+
+    if (!pageDiv?.isConnected) {
+      overlayDiv.setAttribute('data-source-page-connected', 'false');
+      return overlayDiv;
+    }
 
     const pageRect = pageDiv.getBoundingClientRect?.();
     const rootRect = overlayRoot?.getBoundingClientRect?.();
@@ -16063,10 +16058,6 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     if (width > 0) overlayDiv.style.width = `${width}px`;
     if (height > 0) overlayDiv.style.height = `${height}px`;
     overlayDiv.setAttribute('data-source-page-connected', 'true');
-
-    if (overlayRoot?.isConnected && overlayDiv.parentElement !== overlayRoot) {
-      overlayRoot.appendChild(overlayDiv);
-    }
 
     if (!zoomOverlayTransformActiveRef.current) {
       const overlayContent = syncfusionOverlayContentRefs.current?.[safePageNumber];
@@ -16092,7 +16083,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     }
 
     return overlayDiv;
-  }, [resolveSyncfusionLivePageHost]);
+  }, [resolveSyncfusionLivePageHost, syncfusionViewerElementId]);
 
   // [Phase 11] Removed: applyOverlayZoomTransform, startOverlayZoomSettleTimer (old Phase 2 overlay div zoom — dead in SVG mode)
 
@@ -34593,6 +34584,47 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
       attachOverlayToPageDiv(pageNumber);
     });
   }, [useSyncfusionRenderer, syncfusionPageContainers, attachOverlayToPageDiv]);
+
+  useEffect(() => {
+    if (!useSyncfusionRenderer) return;
+    const viewerContainer = containerRef.current;
+    if (!viewerContainer) return;
+
+    let frameId = null;
+    const raf = typeof window.requestAnimationFrame === 'function'
+      ? window.requestAnimationFrame.bind(window)
+      : (callback) => window.setTimeout(callback, 16);
+    const cancelRaf = typeof window.cancelAnimationFrame === 'function'
+      ? window.cancelAnimationFrame.bind(window)
+      : (id) => window.clearTimeout(id);
+    const scheduleOverlayPositionSync = () => {
+      if (frameId !== null) return;
+      frameId = raf(() => {
+        frameId = null;
+        const pages = new Set([
+          ...Object.keys(syncfusionPageContainersStateRef.current || {}).map((pageKey) => Number(pageKey)),
+          ...Object.keys(overlayDivsRef.current || {}).map((pageKey) => Number(pageKey))
+        ]);
+        pages.forEach((pageNumber) => {
+          if (Number.isFinite(pageNumber) && pageNumber > 0) {
+            attachOverlayToPageDiv(pageNumber);
+          }
+        });
+      });
+    };
+
+    viewerContainer.addEventListener('scroll', scheduleOverlayPositionSync, { passive: true });
+    window.addEventListener('resize', scheduleOverlayPositionSync);
+    scheduleOverlayPositionSync();
+
+    return () => {
+      viewerContainer.removeEventListener('scroll', scheduleOverlayPositionSync);
+      window.removeEventListener('resize', scheduleOverlayPositionSync);
+      if (frameId !== null) {
+        cancelRaf(frameId);
+      }
+    };
+  }, [useSyncfusionRenderer, attachOverlayToPageDiv, syncfusionPageContainers]);
 
   useEffect(() => {
     if (!useSyncfusionRenderer || !containerRef.current) {
