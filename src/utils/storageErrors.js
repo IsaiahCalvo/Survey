@@ -1,9 +1,9 @@
 // Shared Supabase storage / row error classifiers.
 //
 // Extracted from App.jsx so they can be reused by components that are being
-// lifted out of the monolith (e.g. PDFThumbnail, Dashboard) without those
-// components having to import back into App.jsx. Both functions are pure —
-// no side effects, no module state.
+// lifted out of the monolith (e.g. Dashboard and the home components) without
+// those components having to import back into App.jsx. Both functions are
+// pure — no side effects, no module state.
 
 export const isStorageFileNotFoundError = (error) => {
   // 404 is always "not found".
