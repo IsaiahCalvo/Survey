@@ -5,7 +5,6 @@ import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.js?url';
 import { PDFDocument, degrees } from 'pdf-lib';
 import ExcelJS from 'exceljs';
-import { useMSGraph } from './contexts/MSGraphContext';
 import { uploadExcelFile, getFileMetadata, getFileById, downloadExcelFile, downloadExcelFileByPath, getFileETag, uploadFileContentById, checkFileExists, checkFileExistsInDrive, getTemplateIdFromExcel, uploadFileToDrive } from './services/excelGraphService';
 import {
   getFileIdFromPath,
@@ -28,7 +27,6 @@ import {
 import { importAnnotationsFromPdf } from './utils/pdfAnnotationImporter';
 import { resolveAnnotationAt } from './utils/annotationHitTest';
 import { splitImportedCalloutsFromPage } from './utils/calloutImportAdapter';
-import { getNetworkLogSnapshot } from './utils/networkLogger';
 import {
   generateGroupId,
   getAnnotationGroupId,
@@ -80,45 +78,18 @@ import {
   didAnnotationSelectionContextChange,
 } from './utils/annotationSelectionContext';
 import PDFPageCanvas from './components/PDFPageCanvas';
-import { pdfWorkerManager } from './utils/PDFWorkerManager';
 import Icon from './Icons';
-import CompactColorPicker from './components/CompactColorPicker';
-import PDFSidebar from './PDFSidebar';
-import SurveySpacesRail from './SurveySpacesRail';
 import RegionSelectionTool from './RegionSelectionTool';
 import SpaceRegionOverlay from './SpaceRegionOverlay';
-import TabBar from './TabBar';
-import {
-  DndContext,
-  PointerSensor,
-  closestCenter,
-  useSensor,
-  useSensors
-} from '@dnd-kit/core';
 import {
   SortableContext,
   verticalListSortingStrategy,
   arrayMove
 } from '@dnd-kit/sortable';
-import {
-  EntitySortableRow,
-  TemplateCategorySortableRow,
-  TemplateModuleSortableRow
-} from './home/TemplateReorderRows';
-import {
-  reorderCategoriesByActiveOver,
-  reorderItemsByActiveOver,
-  restrictSortableToVerticalAxis
-} from './home/templateReorderUtils';
 import { PageRenderCache } from './utils/pdfCache';
 import { regionContainsPoint } from './utils/regionMath';
 import { createZoomController, ZOOM_MODES, loadZoomPreferences, saveZoomPreferences, clampScale, DEFAULT_ZOOM_PREFERENCES } from './utils/zoomController';
 import { useAuth } from './contexts/AuthContext';
-import { AuthModal } from './components/AuthModal';
-import { UserMenu } from './components/UserMenu';
-import { AccountSettings } from './components/AccountSettings';
-import SurveyHub from './home/SurveyHub';
-import { useOptionalAuth } from './components/OptionalAuthPrompt';
 import SearchHighlightLayer from './components/SearchHighlightLayer';
 import UnsupportedAnnotationsNotice from './components/UnsupportedAnnotationsNotice';
 import NewColumnsModal from './components/NewColumnsModal';
@@ -135,9 +106,6 @@ import {
   getFormFieldTypeForTool,
   buildFieldSettings as buildFormFieldSettings
 } from './components/formDesignerTools';
-import YDocProvider from './components/collab/YDocProvider.jsx';
-import DocumentLockBanner from './components/DocumentLockBanner.jsx';
-import { lockDocument, unlockDocument } from './services/documentLockService.js';
 import {
   buildHistoryEventRowFromDebugEvent,
   recordDocumentHistoryEvent,
@@ -179,10 +147,7 @@ import {
   shouldDeleteBlankCalloutOnCommit,
 } from './utils/calloutBlankCommit';
 import { COLORS, BORDERS, SHADOWS, TYPOGRAPHY } from './theme';
-import { isStorageFileNotFoundError, isSupabaseRowNotFoundError } from './utils/storageErrors';
-import Dashboard from './Dashboard';
 import { useProjects, useDocuments, useTemplates, useStorage, useDocumentToolPreferences, DEFAULT_TOOL_PREFERENCES, TOOLS_WITH_STROKE_WIDTH, TOOLS_WITH_FILL } from './hooks/useDatabase';
-import { useSubscriptionLimits } from './hooks/useSubscriptionLimits';
 import { supabase, getSupabaseSession } from './supabaseClient';
 import {
   syncAnnotationsToSupabase,
@@ -193,7 +158,6 @@ import {
   deleteAnnotations,
   countSurveyMarkersReferencingChecklistItem,
 } from './services/documentAnnotationService';
-import { countMarkersReferencingItem as countMarkersReferencingItemInMemory } from './services/checklistOrphanCleanup';
 import { perfUpload, perfLoad, perfRender, perfZoom, setDebugEnabled as setPerfDebugEnabled } from './utils/performanceLogger';
 import {
   setDebugEnabled as setPdfDebugEnabled,
@@ -229,7 +193,6 @@ import {
 } from './utils/annotationHydrationGate';
 import { shouldRunSurveyMarkerSync } from './utils/surveyMarkerSyncSafety';
 import { resolveSafeSnapshot } from './utils/safeSnapshot';
-import KeyboardShortcutsOverlay from './components/KeyboardShortcutsOverlay';
 
 const NATIVE_TEXT_MARKUP_TOOLS = new Set(['text-highlight', 'underline', 'strikeout', 'squiggly']);
 const SELECT_DELETE_ONLY_IMPORTED_TEXT_MARKUP_TYPES = new Set(['underline', 'strikeout', 'squiggly']);
