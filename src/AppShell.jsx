@@ -6,10 +6,12 @@
 // ./App (one-directional — App.jsx never imports AppShell, so no cycle).
 // The entry point (main.jsx) and DevTestRoute import the default from here.
 //
-// INVARIANT: the API-publisher effects that republish a panel's handler bundle
-// up to App state MUST keep the 2026-05-13 identity-churn guard (compare next
-// vs previous; treat function-only identity changes as "unchanged"), or they
-// trigger a max-update-depth render loop. See CLAUDE.md (Gotchas).
+// AppShell RECEIVES the rail/toolbar handler bundles that PDFViewer publishes
+// (setLeftRailApi / setRightRailApi / setBottomToolbarApi). The 2026-05-13
+// identity-churn guard that prevents a max-update-depth render loop (compare
+// next vs previous; treat function-only identity changes as "unchanged") lives
+// in PDFViewer's publisher effects, not here — preserve that contract.
+// (Note: CLAUDE.md still says the guard lives in AppShell; that line is stale.)
 
 import CompactColorPicker from './components/CompactColorPicker';
 import Dashboard from './Dashboard';
