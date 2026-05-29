@@ -4,6 +4,32 @@
 **Branch**: `main` — everything below is committed locally on `main`. Nothing pushed (Isaiah pushes on his own cadence).
 **State**: Build green (`vite build`, exit 0). `npm test` = **834 pass / 0 fail / 6 skip** (unchanged from baseline, verified after every change this session).
 
+## WHY we are doing all this (the north star — read this first)
+
+The file breakup, dead-code removal, and simplification are NOT busywork. There are
+two motives, and the second is the real prize:
+
+1. **Parallel agent work.** Smaller, single-purpose files with accurate headers let
+   multiple agents work at once without colliding or guessing intent.
+2. **Performance — own the rendering and the zoom.** The app currently leans on
+   **Syncfusion** for the PDF viewer, and Syncfusion owns a huge amount of the
+   pipeline. The zoom experience today is the pain point: laggy, not smooth in/out,
+   not professional. The end goal is to **remove Syncfusion entirely**, own the PDF
+   rendering ourselves, and build **custom zoom with near-zero lag** that feels
+   smooth and professional. We can't safely do that while the code is a tangle of
+   layers and cruft, so every cleanup step is in service of getting the codebase
+   light and understandable enough to swap out Syncfusion + the zoom engine.
+
+**Important nuance for incremental work:** the Syncfusion zoom/scale lifecycle and
+the overlay portal loop are NO-GO for piecemeal refactors *right now* — they are
+load-bearing and fragile, and the four invariants exist to keep today's app working.
+Do NOT half-rewrite the zoom engine in small steps. The eventual zoom/Syncfusion
+replacement is a deliberate, dedicated, well-planned effort (its own milestone), not
+something to chip at while doing cleanup. Until then: protect the zoom system,
+keep simplifying everything *around* it, and document how it actually works so the
+eventual replacement is feasible. Bias all cleanup toward fewer layers and lighter
+weight — that directly serves the zoom/performance goal.
+
 ## What this session did (3 commits, oldest→newest)
 
 1. **`989afa0d` — file-header overviews on the five top-level modules.** Pure comments.

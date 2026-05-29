@@ -8,6 +8,14 @@ Authoritative sources this doc is built from (read them too): `CLAUDE.md`
 (the "CRITICAL — DO NOT BREAK" rules + Gotchas), `HANDOFF.md`, and the
 file-header comments at the top of the five top-level modules.
 
+**North star (why this structure matters):** the file breakup + simplification serve
+two goals — (1) parallel agent work, and (2) **performance**. The long-term prize is
+removing **Syncfusion** entirely so we own the PDF rendering and can build **custom
+zoom with near-zero lag** (today's Syncfusion zoom is the pain point — laggy, not
+smooth). Protect the current zoom system as NO-GO for now, but bias every cleanup
+toward fewer layers / lighter weight, because that is what makes the eventual
+Syncfusion-and-zoom replacement feasible. Full motive in `HANDOFF.md`.
+
 ---
 
 ## 1. Orientation
