@@ -1322,15 +1322,6 @@ const getCategoryGlyphLabel = (name) => {
   return initials.slice(0, 3) || '?';
 };
 
-// Convert hex to RGB
-const hexToRgb = (hex) => {
-  hex = hex.replace('#', '');
-  const r = parseInt(hex.substring(0, 2), 16);
-  const g = parseInt(hex.substring(2, 4), 16);
-  const b = parseInt(hex.substring(4, 6), 16);
-  return { r, g, b };
-};
-
 // Extract hex color from rgba or hex string (for indicator display)
 const getHexFromColor = (color) => {
   if (!color) return null;
@@ -1421,37 +1412,6 @@ const handleModalPrimaryButtonMouseLeave = (event) => {
   event.currentTarget.style.background = COLORS.modal.primaryButton;
   event.currentTarget.style.borderColor = COLORS.modal.borderStrong;
   event.currentTarget.style.boxShadow = 'none';
-};
-
-// Helper to get hex from color (for stroke/fill)
-const getHexFromAnnotationColor = (color) => {
-  if (!color) return '#ff0000';
-  if (color.startsWith('rgba')) {
-    const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/);
-    if (match) {
-      const r = parseInt(match[1]).toString(16).padStart(2, '0');
-      const g = parseInt(match[2]).toString(16).padStart(2, '0');
-      const b = parseInt(match[3]).toString(16).padStart(2, '0');
-      return `#${r}${g}${b}`;
-    }
-  }
-  if (color.startsWith('#')) {
-    return color;
-  }
-  return '#ff0000';
-};
-
-// Helper to get opacity from color (for stroke/fill)
-const getOpacityFromAnnotationColor = (color) => {
-  if (!color) return 100;
-  if (color.startsWith('rgba')) {
-    const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
-    if (match && match[4]) {
-      const opacity = parseFloat(match[4]);
-      return Math.round(opacity * 100);
-    }
-  }
-  return 100;
 };
 
 const coercePageNumber = (value, maxPages = Number.POSITIVE_INFINITY) => {
@@ -1884,76 +1844,6 @@ const ZOOM_MODE_OPTIONS = [
 
 const MANUAL_ZOOM_SESSION_KEY = 'pdfViewerManualZoomScale';
 
-// Convert RGB to HSL
-const rgbToHsl = (r, g, b) => {
-  r /= 255;
-  g /= 255;
-  b /= 255;
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  let h, s, l = (max + min) / 2;
-
-  if (max === min) {
-    h = s = 0;
-  } else {
-    const d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    switch (max) {
-      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
-      case g: h = ((b - r) / d + 2) / 6; break;
-      case b: h = ((r - g) / d + 4) / 6; break;
-    }
-  }
-  return { h: h * 360, s: s * 100, l: l * 100 };
-};
-
-// Convert HSL to RGB
-const hslToRgb = (h, s, l) => {
-  h /= 360;
-  s /= 100;
-  l /= 100;
-  let r, g, b;
-
-  if (s === 0) {
-    r = g = b = l;
-  } else {
-    const hue2rgb = (p, q, t) => {
-      if (t < 0) t += 1;
-      if (t > 1) t -= 1;
-      if (t < 1 / 6) return p + (q - p) * 6 * t;
-      if (t < 1 / 2) return q;
-      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
-      return p;
-    };
-    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-    const p = 2 * l - q;
-    r = hue2rgb(p, q, h + 1 / 3);
-    g = hue2rgb(p, q, h);
-    b = hue2rgb(p, q, h - 1 / 3);
-  }
-  return {
-    r: Math.round(r * 255),
-    g: Math.round(g * 255),
-    b: Math.round(b * 255)
-  };
-};
-
-// Generate color swatch grid
-const generateColorSwatches = () => {
-  const swatches = [];
-  // Row 1: Reds and pinks
-  swatches.push('#FF0000', '#CC0000', '#990000', '#660000', '#FF3366', '#FF6699', '#FF99CC', '#CC0066');
-  // Row 2: Yellows and oranges
-  swatches.push('#FFFF00', '#FFCC00', '#FF9900', '#FF6600', '#CC6600', '#996600', '#CC9900', '#FFCC66');
-  // Row 3: Greens
-  swatches.push('#00FF00', '#00CC00', '#00FF66', '#66FF00', '#33CC00', '#00CC66', '#009900', '#006600');
-  // Row 4: Blues and purples
-  swatches.push('#0000FF', '#0066FF', '#0099FF', '#00CCFF', '#00FFFF', '#0066CC', '#6600CC', '#0000CC');
-  // Row 5: Grays and neutrals
-  swatches.push('#000000', '#333333', '#666666', '#999999', '#CCCCCC', '#FFFFFF', '#E3D1FB', '#CBDCFF');
-  return swatches;
-};
-
 // ==========================================
 // DATA PERSISTENCE LAYER
 // ==========================================
@@ -2369,12 +2259,6 @@ const getModuleItems = (items, moduleId, template) => {
   });
 };
 
-// Get all items in a category within a module
-const getCategoryItems = (items, moduleId, categoryId, template) => {
-  const categoryName = getCategoryName(template, moduleId, categoryId);
-  return Object.values(items).filter(item => item.itemType === categoryName);
-};
-
 // Filter annotations by module
 const filterAnnotationsByModule = (annotations, moduleId) => {
   return Object.fromEntries(
@@ -2389,14 +2273,6 @@ const categoryExists = (template, destModuleId, categoryName) => {
   const module = template?.modules?.find(m => m.id === destModuleId);
   if (!module || !module.categories) return false;
   return module.categories.some(cat => cat.name === categoryName);
-};
-
-// Get checklist from source category
-const getCategoryChecklist = (template, moduleId, categoryId) => {
-  const module = template?.modules?.find(m => m.id === moduleId);
-  if (!module || !module.categories) return [];
-  const category = module.categories.find(c => c.id === categoryId);
-  return category?.checklist || [];
 };
 
 // Transfer items between modules with proper category checks
