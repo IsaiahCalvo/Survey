@@ -179,6 +179,7 @@ import {
   shouldDeleteBlankCalloutOnCommit,
 } from './utils/calloutBlankCommit';
 import { COLORS, BORDERS, SHADOWS, TYPOGRAPHY } from './theme';
+import { isStorageFileNotFoundError, isSupabaseRowNotFoundError } from './utils/storageErrors';
 import { useProjects, useDocuments, useTemplates, useStorage, useDocumentToolPreferences, DEFAULT_TOOL_PREFERENCES, TOOLS_WITH_STROKE_WIDTH, TOOLS_WITH_FILL } from './hooks/useDatabase';
 import { useSubscriptionLimits } from './hooks/useSubscriptionLimits';
 import { supabase, getSupabaseSession } from './supabaseClient';
@@ -1690,63 +1691,6 @@ const resolveBookmarkPageFromOutlineLookup = (bookmark, lookup) => {
 
 // Helper to detect if a storage error indicates the file no longer exists
 // Used to clean up stale document records only when the object is truly missing.
-const isStorageFileNotFoundError = (error) => {
-  // 404 is always "not found".
-  if (error?.status === 404 || error?.statusCode === 404) return true;
-
-  const errorDetails = [
-    error?.message,
-    error?.error_description,
-    error?.details,
-    error?.hint
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
-
-  const mentionsNotFound = (
-    errorDetails.includes('not found') ||
-    errorDetails.includes('object not found') ||
-    errorDetails.includes('resource was not found') ||
-    errorDetails.includes('no such object')
-  );
-
-  // Supabase storage may use HTTP 400 for missing objects; require explicit not-found text.
-  if ((error?.status === 400 || error?.statusCode === 400) && mentionsNotFound) {
-    return true;
-  }
-
-  // Check error name (Supabase uses StorageUnknownError for missing files)
-  const errorName = error?.name?.toLowerCase() || error?.constructor?.name?.toLowerCase() || '';
-  if ((errorName.includes('storageunknownerror') || errorName.includes('storageapierror')) && mentionsNotFound) {
-    return true;
-  }
-
-  // Check stringified error (fallback) for explicit not-found wording only.
-  try {
-    const errorStr = String(error).toLowerCase();
-    if (errorStr.includes('not found') || errorStr.includes('resource was not found') || errorStr.includes('object not found')) {
-      return true;
-    }
-  } catch { }
-
-  return false;
-};
-
-const isSupabaseRowNotFoundError = (error) => {
-  if (!error) return false;
-
-  const code = String(error.code || '').toUpperCase();
-  if (code === 'PGRST116') return true;
-
-  if (error.status === 404 || error.statusCode === 404) return true;
-
-  const message = String(error.message || '').toLowerCase();
-  if (message.includes('no rows') || message.includes('not found')) return true;
-
-  return false;
-};
-
 const serializeError = (error) => {
   if (!error) return null;
   return {
