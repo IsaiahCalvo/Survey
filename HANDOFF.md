@@ -1,51 +1,47 @@
-# Handoff: App.jsx breakup — monolith split into four files (95% reduction)
+# Handoff: professional-polish pass — headers, architecture guide, dead-import prune
 
-**Generated**: 2026-05-29
-**Branch**: `main` — everything below is committed locally on `main`. Working tree: only `HANDOFF.md` modified. Nothing pushed (Isaiah pushes on his own cadence).
-**Status**: **`src/App.jsx` went from 46,779 → 2,359 lines this session (95% reduction).** Build green; `npm test` = 834 pass / 0 fail / 6 skip. The home screen was verified rendering on Isaiah's dev server; the viewer move is verified statically + build + tests but still wants a dev-server look.
+**Generated**: 2026-05-29 (afternoon "keep optimizing until ~50% context" session)
+**Branch**: `main` — everything below is committed locally on `main`. Nothing pushed (Isaiah pushes on his own cadence).
+**State**: Build green (`vite build`, exit 0). `npm test` = **834 pass / 0 fail / 6 skip** (unchanged from baseline, verified after every change this session).
 
-## How to start (read this, then you have full context — no need to re-explore)
+## What this session did (3 commits, oldest→newest)
 
-The giant `src/App.jsx` has been broken into separate files so multiple agents can work in parallel without colliding. The pieces:
+1. **`989afa0d` — file-header overviews on the five top-level modules.** Pure comments.
+   - `src/App.jsx`: replaced the **stale, wrong** `// App.jsx - PDF Management Dashboard` comment with an accurate header (this file is now a shared constants/helpers module, NOT the app; rename candidate).
+   - `src/SurveySpacesRail.jsx`: added a header (it was the only big file missing one), incl. the "Spaces in the name renders no Spaces UI" clarification.
+   - `src/PDFViewer.jsx`, `src/AppShell.jsx`, `src/Dashboard.jsx`: already had accurate headers — added the four-invariants + NO-GO note to the viewer; added a guard note to the shell (corrected in commit 2).
+2. **`1d7a5602` — architecture guide + AppShell guard-note fix.**
+   - `docs/ARCHITECTURE.md` (233 lines): a verified, skimmable map of `src/` for parallel agent + human work — entry point, the five top-level modules and their one-directional import graph, the published-API communication pattern, the NO-GO zones + four invariants, the verification workflow. Every structural claim was grep/ls-verified.
+   - `src/AppShell.jsx`: corrected the guard note — the identity-churn guard actually lives in **PDFViewer's publisher effects**, not the shell. (See "CLAUDE.md is stale" below.)
+3. **`ebc80d62` — pruned 177 dead imports from `src/App.jsx` + added a checker tool.**
+   - App.jsx became pure non-React helper code after the extractions (zero JSX, zero hook calls, zero `React.*`), leaving 177 unused import specifiers across 72 statements (incl. the entire React import). Removed them with a surgical AST transform that only touches import-declaration spans.
+   - Verified safe **three ways**: `scripts/check-undef.mjs` set-diff showed ZERO new unresolved identifiers; build green; tests unchanged.
+   - Added **`scripts/check-unused-imports.mjs`** — read-only companion to `check-undef.mjs`; reports unused/duplicate imports, `--json` mode for automation.
 
-- `src/AppShell.jsx` (~2,852) — application root: tabs, auth/entity state, chrome host divs, top-right zoom/page pill, and the router between the home screen and the viewer. **This is the entry component** — `src/main.jsx` and `src/DevTestRoute.jsx` import the default from here.
-- `src/PDFViewer.jsx` (~34,289) — the document viewer: Syncfusion canvas, annotation overlays, zoom/scroll lifecycle, save/sync, history. The bulk of the app.
-- `src/Dashboard.jsx` (~3,875) — the home screen (project tree, document grid, template management, SurveyHub host).
-- `src/App.jsx` (~2,359) — **no longer the app**; now just shared module helpers/constants that the viewer + shell import. It is a misnamed grab-bag (rename/split candidate — see next steps).
-- `src/SurveySpacesRail.jsx` (~2,969) — survey right rail (from an earlier session).
+## Current architecture (read `docs/ARCHITECTURE.md` first — it's the source of truth)
 
-Import direction is one-way: `AppShell → {PDFViewer, Dashboard, App}` and `PDFViewer → App`. App.jsx imports neither PDFViewer nor AppShell, so there are no cycles.
+- `src/AppShell.jsx` (~2,857) — the real app root (main.jsx imports its default). Tabs, auth/entity state, chrome host divs, top-right zoom pill, Dashboard↔PDFViewer router. RECEIVES the rail/toolbar APIs.
+- `src/PDFViewer.jsx` (~34,300) — the document viewer. **One giant React function component** (see below). PUBLISHES leftRailApi/rightRailApi/bottomToolbarApi.
+- `src/Dashboard.jsx` (~3,875) — the home screen.
+- `src/App.jsx` (~2,180 now) — **misnamed**: shared constants/helpers module, imported by viewer + shell. Leaf (imports none of the big three; no cycles).
+- `src/SurveySpacesRail.jsx` (~2,980) — the survey right rail (renders no Spaces UI despite the name).
 
-## Reusable tooling (built this session — USE IT for every future extraction)
+## Recommended next steps (risk-ordered, safest first)
 
-- `scripts/check-undef.mjs <file>` — prints every identifier a file leaves unresolved (Babel scope.globals). Method: capture a known-good file's unresolved set as a baseline, extract, then assert the new/changed files introduce ZERO unresolved identifiers outside that baseline. **Diff with a Python set, not shell `comm`** (comm mis-sorts case → false positives).
-- `scripts/derive-slice-deps.mjs <startLine> <endLine>` — reconstructs the exact import statements + App.jsx module-symbol deps a slice needs. Derive deps mechanically; don't trust prose analysis (the original mapping agent mis-reported deps repeatedly this session).
-
-## What was done (8 refactor commits, oldest→newest)
-
-1. removed dead `legacyHomeUI` block (~2,952 lines) + dead helper.
-2. extracted storage error helpers → `src/utils/storageErrors.js`.
-3. removed now-dead `PDFThumbnail` + `thumbnailQueue`.
-4. removed orphaned `BottomToolbar` function + audit comment.
-5. removed 8 unreferenced helper functions.
-6. extracted `Dashboard` → `src/Dashboard.jsx`.
-7. extracted the App shell → `src/AppShell.jsx`; dropped 23 orphaned imports.
-8. extracted `PDFViewer` → `src/PDFViewer.jsx` (the big one); repointed 7 source-guard tests.
-
-Steps 1, 3, 4, 5 were dead code orphaned by the 2026-05-13 chrome-lift / right-rail refactor (it inlined component rendering into the App shell and left the original functions unused).
-
-## Recommended next steps (all smaller / lower-risk now)
-
-1. **Rename/clean `src/App.jsx`** — it's now just shared helpers/constants, not "the app". Consider renaming to something like `src/viewerShared.js` (or splitting into `constants/` + `utils/`) and updating the imports in PDFViewer.jsx / AppShell.jsx. Mechanical; verify with check-undef + build + test.
-2. **Delete the dead `src/components/LocateModal.jsx`** — it exists but is imported nowhere; the live Locate dialog is inline JSX inside PDFViewer.jsx. (It's someone's earlier WIP — confirm with Isaiah before deleting, or extract the inline one into it.)
-3. **Break up PDFViewer internally** (its own effort) — lift the undo/redo engine into `src/hooks/useAnnotationHistory.js`, then other cohesive hooks. Each verified with check-undef + build + test. The render-tree dialogs (Excel/OneDrive) are ALREADY their own components.
-4. A few partial imports in App.jsx have unused specifiers (react's forwardRef/useImperativeHandle, etc.) — harmless, optional.
+1. **Rename `src/App.jsx` → `src/shared/viewerShared.js`** (or split into `constants/` + `utils/`). The single biggest remaining "amateur smell" (a file named App.jsx that isn't the app). MECHANICAL but multi-file: update the import path in `PDFViewer.jsx` and `AppShell.jsx` (the import LISTS don't change, only the path), move the file, and **repoint the source-guard tests that read `App.jsx` by filename** (last session repointed 7 such tests to read App.jsx + PDFViewer.jsx concatenated — those file-reads need updating). Verify: `check-undef` + build + test. Do it as one focused commit.
+2. **Repo-wide dead-import cleanup** using the new `scripts/check-unused-imports.mjs`. Current scan: **99 unused specifiers across 78 files** (most 1–2 each; App.jsx already done). Top offenders: `PageAnnotationLayer.jsx` (14 — HIGH-RISK file, handle with care), `components/FabricEditCanvas.jsx` (3), `components/CompactColorPicker.jsx` (3). NOTE: a `React` flagged unused in a JSX file is safe to drop ONLY because this project uses the automatic JSX runtime (@vitejs/plugin-react) — confirm build stays green. Also 2 files have duplicate imports. The `/tmp/prune.mjs`-style transform from commit 3 can be reused (it lived at `scripts/_prune_tmp.mjs`, deleted after use — rewrite from the commit if needed). Always gate on check-undef + build + test.
+3. **`src/components/LocateModal.jsx` is confirmed dead** (imported by nobody; the live Locate dialog is inline `showLocateModal` JSX in PDFViewer). Safe to delete, but it's someone's WIP — **confirm with Isaiah** before deleting (git-reversible either way).
+4. **Internal PDFViewer extractions (own session, careful).** See the NO-GO warning below.
 
 ## Warnings / invariants (still law)
 
-- **NO-GO zones inside PDFViewer.jsx**: the zoom/scale lifecycle and the per-page Syncfusion overlay portal render loop. Never refactor these (relocating the whole file was fine; rewriting the zoom engine is not).
-- The four invariants in `CLAUDE.md` (container-aware canvas sizing, SVG viewBox owns zoom, never remove the `zoomGeneration` signal, single-name Fabric `fontFamily`) remain correctness law. The identity-churn guard on API-publisher effects must stay verbatim (lives in AppShell.jsx).
-- **No automated test renders the viewer/home/shell** — build + check-undef + the source-guard tests cover *static* correctness; behavioral/visual changes still want a dev-server look (`npm run dev`, logged-in account).
-- **Source-guard tests**: several tests scan source files for required patterns. If you move code, repoint the guard to read the new file (the pattern: read `App.jsx` + the new file concatenated). 7 such tests were repointed this session.
-- Don't trust "component X is rendered" claims — grep for real JSX/call sites first. Several "extractions" this session were actually dead code.
-- `src/App.jsx` and `src/PDFViewer.jsx` are high-risk; minimum-viable diffs, `npm test` after every touch.
+- **PDFViewer.jsx is ONE giant React function component** (opens ~line 234, closes at EOF; ~202 useState / 224 useRef / 318 useCallback / 188 useEffect). Almost nothing is verbatim-liftable. Only ~8 pure helpers (useCallback w/ empty deps, no refs/state) could move to a module cheaply. Everything else (history engine, page ops, survey, Excel sync) is a closure over dozens of setters/refs → must become a hook taking a wide ref/setter bundle (medium-high risk). The four API-publisher effects bundle most handlers, so any handler an extraction touches is likely referenced by a publisher.
+- **NO-GO zones in PDFViewer (never relocate/rewrite):** (1) the Syncfusion zoom/scale lifecycle (`beginSyncfusionScaleConfirmPending` ~1780, the `setZoomGeneration(prev=>prev+1)` signal, the snapshot/commit/transform cluster); (2) the per-page Syncfusion overlay portal render loop in the JSX (the `createPortal` `.map`). There are 7 NO-GO banners in the file marking these.
+- **The four CLAUDE.md invariants** (container-aware canvas sizing, SVG viewBox owns all zoom scaling, never remove `zoomGeneration`, single-name Fabric `fontFamily`) are correctness law.
+- **CLAUDE.md is STALE on one point:** it says the identity-churn guard "lives in AppShell.jsx." After the PDFViewer extraction, the publisher effects (and their `(prev)=>` compare guard) moved to `PDFViewer.jsx`. AppShell only RECEIVES the APIs. Worth fixing in CLAUDE.md (use `/gotcha`).
+- **No automated test renders the viewer/home/shell.** Build + check-undef + source-guard tests cover *static* correctness; behavioral/visual changes still want a dev-server look.
+- **Verify before asserting "dead"/"used":** confirm with a fresh single command (grep file contents / `check-unused-imports.mjs`), not a remembered claim.
+
+## Session note (environment)
+
+This session hit a tooling glitch: large parallel tool batches got cancelled when one call errored, and long multi-line output truncated/garbled in the display. Several mid-session "findings" were noise and were corrected by clean single-command re-checks (see `memory/session-moments/2026-05-29.md`, 15:25 INSIGHT). Working rule for the next agent: **small sequential tool calls, tiny outputs, never mix Edits with a Bash call that can fail.** Final state is fully verified and clean.
