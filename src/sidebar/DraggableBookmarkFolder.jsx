@@ -17,6 +17,7 @@ const DraggableBookmarkFolder = ({
   isSelected,
   onSelect,
   incomingPlaceholderHeight = 0,
+  rowDragFeel = false,
   children
 }) => {
   const {
@@ -77,9 +78,11 @@ const DraggableBookmarkFolder = ({
 
   const style = {
     transform: CSS.Transform.toString(transform),
-    transition: isDragging ? 'transform 0ms linear, opacity 80ms ease-out' : resolvedTransition,
+    transition: rowDragFeel ? transition : isDragging ? 'transform 0ms linear, opacity 80ms ease-out' : resolvedTransition,
     willChange: 'transform, opacity',
-    opacity: isDragging ? 0.85 : 1,
+    opacity: isDragging ? (rowDragFeel ? 0.8 : 0.85) : 1,
+    zIndex: isDragging && rowDragFeel ? 1 : undefined,
+    position: rowDragFeel ? 'relative' : undefined,
     marginBottom: '1px',
   };
 

@@ -29,7 +29,7 @@
    interactive control actually mutates state: New Module / New Category /
    New Entity, the Select/edit bulk actions (Duplicate / Delete), inline
    rename of templates, modules, categories, entities and checklist items,
-   drag-reorder of module tabs, the per-entity colour picker, and the per-row
+   drag-reorder of templates, module tabs, categories, and entities, the per-entity colour picker, and the per-row
    "more" menus. None of this is persisted to a backend in this pass — exactly
    as the prototype intended. "New Template" still calls the onCreateTemplate
    prop (template creation is owned by the host).
@@ -40,15 +40,75 @@
    scrollbars.
 */
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { createPortal } from 'react-dom';
+import { createPortal, flushSync } from 'react-dom';
+import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  horizontalListSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { HubShell, Icon, Search } from './HubShell';
 import CompactColorPicker from '../components/CompactColorPicker';
+import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
+import { SortableRearrangeList, SortableRearrangeRow } from '../reorder/SortableRearrangeList';
 import {
   archiveChecklistItem,
   isActiveChecklistItem,
   isArchivedChecklistItem,
   archivedItemLabel,
 } from '../services/checklistOrphanCleanup';
+import { moveItemById } from '../reorder/flatReorderUtils.js';
+
+const CATEGORY_COLLAPSE_TRANSITION = 'grid-template-rows 0.18s ease, opacity 0.16s ease';
+const TEMPLATE_ORDER_STORAGE_KEY = 'surveyHub.templateOrder';
+const animateCategoryLayoutChanges = undefined;
+
+const restrictSortableToHorizontalAxis = ({ transform }) => ({
+  ...transform,
+  y: 0,
+});
+
+const getModuleTabClampBounds = (activeId) => {
+  if (typeof document === 'undefined') return null;
+  const activeNode = Array.from(document.querySelectorAll('[data-module-tab-id]'))
+    .find((node) => node.getAttribute('data-module-tab-id') === String(activeId ?? ''));
+  const listNode = activeNode?.closest?.('[data-module-tab-list]');
+  if (!activeNode || !listNode) return null;
+
+  const listRect = listNode.getBoundingClientRect();
+  const activeRect = activeNode.getBoundingClientRect();
+  const tabRects = Array.from(listNode.querySelectorAll('[data-module-tab-id]'))
+    .map((node) => {
+      const rect = node.getBoundingClientRect();
+      return {
+        id: node.getAttribute('data-module-tab-id'),
+        left: rect.left - listRect.left,
+        width: rect.width,
+      };
+    })
+    .filter((rect) => rect.width > 0);
+
+  if (!tabRects.length) return null;
+
+  const activeLeft = activeRect.left - listRect.left;
+  const firstSlotLeft = Math.min(...tabRects.map((rect) => rect.left));
+  const lastSlotLeft = Math.max(...tabRects.map((rect) => rect.left));
+
+  return {
+    minX: firstSlotLeft - activeLeft,
+    maxX: lastSlotLeft - activeLeft,
+  };
+};
 
 /* ============================================================
    Inline scoped stylesheet — the prototype's `.ed-scope` editorial
@@ -267,6 +327,239 @@ const buildRich = (templates) => templates.map((t, i) => {
   };
 });
 
+const templateOrderKeyForUser = (user) => `${TEMPLATE_ORDER_STORAGE_KEY}:${user?.id || user?.email || 'local'}`;
+
+const loadTemplateOrderPreference = (user) => {
+  if (typeof localStorage === 'undefined') return [];
+  try {
+    const parsed = JSON.parse(localStorage.getItem(templateOrderKeyForUser(user)) || '[]');
+    return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveTemplateOrderPreference = (user, ids) => {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(templateOrderKeyForUser(user), JSON.stringify(ids.filter(Boolean)));
+  } catch {
+    /* Preference persistence is non-critical. */
+  }
+};
+
+const applyTemplateOrderPreference = (templates, user) => {
+  const order = loadTemplateOrderPreference(user);
+  if (!order.length) return templates;
+
+  const rank = new Map(order.map((id, index) => [id, index]));
+  return [...templates].sort((a, b) => {
+    const ai = rank.has(a?.id) ? rank.get(a.id) : Number.MAX_SAFE_INTEGER;
+    const bi = rank.has(b?.id) ? rank.get(b.id) : Number.MAX_SAFE_INTEGER;
+    if (ai !== bi) return ai - bi;
+    return 0;
+  });
+};
+
+function SortableModuleTab({
+  mod,
+  index,
+  isOn,
+  catCount,
+  isRenaming,
+  onOpen,
+  onStartRename,
+  onRename,
+  onCancelRename,
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+    isSorting,
+  } = useSortable({
+    id: mod.id,
+    disabled: isRenaming,
+  });
+
+  const activeInk = isOn ? 'var(--ink)' : 'var(--ink-muted)';
+  const tabTransition = [
+    isDragging ? null : transition,
+    'background 0.15s ease',
+    'box-shadow 0.15s ease',
+    'opacity 0.15s ease',
+  ].filter(Boolean).join(', ');
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...attributes}
+      {...(!isRenaming ? listeners : {})}
+      data-module-tab-id={mod.id}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition: tabTransition || undefined,
+        display: 'flex',
+        alignItems: 'center',
+        marginBottom: -1,
+        borderBottom: isOn ? '2px solid var(--ink)' : '2px solid transparent',
+        borderRadius: '5px 5px 0 0',
+        background: isDragging ? 'rgba(216,168,78,0.14)' : (isOn ? 'rgba(244,241,234,0.035)' : 'transparent'),
+        boxShadow: isDragging ? '0 12px 26px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(216,168,78,0.28)' : 'none',
+        cursor: isRenaming ? 'text' : (isDragging ? 'grabbing' : 'grab'),
+        flex: '1 1 0',
+        minWidth: 32,
+        maxWidth: 140,
+        overflow: 'hidden',
+        position: 'relative',
+        zIndex: isDragging ? 4 : (isOn ? 1 : 0),
+        opacity: isDragging ? 0.94 : 1,
+        touchAction: 'none',
+        userSelect: isDragging || isSorting ? 'none' : undefined,
+      }}
+    >
+      {isRenaming ? (
+        <input
+          className="inline-edit"
+          defaultValue={mod.name}
+          autoFocus
+          onFocus={(e) => e.currentTarget.select()}
+          onBlur={(e) => onRename(index, e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur();
+            else if (e.key === 'Escape') onCancelRename();
+          }}
+          style={{
+            background: 'transparent',
+            border: 0,
+            padding: '3px 6px',
+            fontSize: 12,
+            fontWeight: isOn ? 500 : 400,
+            color: activeInk,
+            width: '100%',
+            borderBottom: '1px solid var(--accent)',
+            outline: 'none',
+          }}
+        />
+      ) : (
+        <button
+          onClick={() => onOpen(index)}
+          onDoubleClick={() => onStartRename(index)}
+          title={`${mod.name} · drag to reorder · double-click to rename`}
+          style={{
+            background: 'transparent',
+            border: 0,
+            padding: '3px 6px',
+            fontFamily: 'inherit',
+            color: activeInk,
+            fontSize: 12,
+            fontWeight: isOn ? 500 : 400,
+            cursor: isDragging ? 'grabbing' : 'grab',
+            flex: 1,
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            textAlign: 'left',
+          }}
+        >
+          {mod.name}
+        </button>
+      )}
+      <span className="mono" style={{ fontSize: 9.5, color: 'var(--ink-quiet)', padding: '0 6px 0 2px', flex: 'none' }}>
+        {catCount}
+      </span>
+    </div>
+  );
+}
+
+function SortableModuleTabs({
+  modules,
+  openMod,
+  modRename,
+  onOpenModule,
+  onStartRename,
+  onRenameModule,
+  onCancelRename,
+  onReorderModules,
+  children,
+}) {
+  const [activeId, setActiveId] = useState(null);
+  const dragClampBoundsRef = useRef(null);
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 160, tolerance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const modifiers = useMemo(() => [
+    restrictSortableToHorizontalAxis,
+    ({ transform }) => {
+      const bounds = dragClampBoundsRef.current;
+      if (!bounds) return transform;
+      return {
+        ...transform,
+        x: Math.min(Math.max(transform.x, bounds.minX), bounds.maxX),
+      };
+    },
+  ], []);
+
+  const handleDragEnd = useCallback(({ active, over }) => {
+    setActiveId(null);
+    dragClampBoundsRef.current = null;
+    if (!over || active.id === over.id) return;
+    const fromIndex = modules.findIndex((mod) => mod.id === active.id);
+    const toIndex = modules.findIndex((mod) => mod.id === over.id);
+    if (fromIndex < 0 || toIndex < 0) return;
+    flushSync(() => {
+      onReorderModules(fromIndex, toIndex);
+    });
+  }, [modules, onReorderModules]);
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      modifiers={modifiers}
+      onDragStart={({ active }) => {
+        dragClampBoundsRef.current = getModuleTabClampBounds(active.id);
+        setActiveId(active.id);
+      }}
+      onDragEnd={handleDragEnd}
+      onDragCancel={() => {
+        dragClampBoundsRef.current = null;
+        setActiveId(null);
+      }}
+    >
+      <SortableContext items={modules.map((mod) => mod.id)} strategy={horizontalListSortingStrategy}>
+        <div
+          data-module-tab-list={String(activeId ?? '')}
+          style={{ display: 'flex', alignItems: 'stretch', gap: 0, borderBottom: '1px solid var(--rule)', minHeight: 26 }}
+        >
+          {modules.map((mod, mi) => (
+            <SortableModuleTab
+              key={mod.id}
+              mod={mod}
+              index={mi}
+              isOn={openMod === mi}
+              catCount={(mod.categories || []).length}
+              isRenaming={modRename === mi}
+              onOpen={onOpenModule}
+              onStartRename={onStartRename}
+              onRename={onRenameModule}
+              onCancelRename={onCancelRename}
+            />
+          ))}
+          {children}
+        </div>
+      </SortableContext>
+    </DndContext>
+  );
+}
+
 /* ============================================================
    Fixed-position "more" menu, portalled to document.body.
    `anchorRect` is the trigger's getBoundingClientRect(); the menu
@@ -471,7 +764,7 @@ export default function TemplatesEditor({
      Seeded from the `templates` prop, then owned locally so every editor
      action below actually mutates it. Re-seeded whenever the prop identity
      changes (e.g. the host adds a template via onCreateTemplate). */
-  const [rich, setRich] = useState(() => buildRich(templates));
+  const [rich, setRich] = useState(() => buildRich(applyTemplateOrderPreference(templates, user)));
   /* True once the user edits anything; drives the Save / Cancel bar. Reset
      whenever the editor reloads from props, or on Save / Cancel. */
   const [dirty, setDirty] = useState(false);
@@ -485,7 +778,12 @@ export default function TemplatesEditor({
   const tplSelCount = selTpls.size;
   const [tplMenu, setTplMenu] = useState(null);       // { id, rect }
   const [entityMenu, setEntityMenu] = useState(null); // { id, rect }
-  const [dragMod, setDragMod] = useState(null);
+  const [dragTpl, setDragTpl] = useState(null);
+  const [dragOverTpl, setDragOverTpl] = useState(null);
+  const [dragCat, setDragCat] = useState(null);
+  const [dragOverCat, setDragOverCat] = useState(null);
+  const [dragEntity, setDragEntity] = useState(null);
+  const [dragOverEntity, setDragOverEntity] = useState(null);
   const [entityEdit, setEntityEdit] = useState(false);
   const [selEntities, setSelEntities] = useState(() => new Set());
   const toggleEntitySel = (id) => setSelEntities((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -513,7 +811,7 @@ export default function TemplatesEditor({
      Seeds the maps from each entity's persisted refinements so saved colours
      round-trip, and clears the dirty flag since the copy now matches the host. */
   const reloadFromProps = useCallback(() => {
-    const next = buildRich(templates);
+    const next = buildRich(applyTemplateOrderPreference(templates, user));
     const rc = {}, bc = {}, mf = {};
     next.forEach((t) => t.roster.forEach((r) => {
       rc[r.id] = { color: r.color, opacity: r.opacity ?? 0.35 };
@@ -525,7 +823,7 @@ export default function TemplatesEditor({
     setBorderColors(bc);
     setMatchFill(mf);
     setDirty(false);
-  }, [templates]);
+  }, [templates, user?.id, user?.email]);
   /* Reload whenever the host swaps the templates prop (added a template, or a
      Save refetched fresh rows). */
   useEffect(() => { reloadFromProps(); }, [reloadFromProps]);
@@ -648,9 +946,26 @@ export default function TemplatesEditor({
     });
     setDirty(true);
   };
+  const reorderTemplates = (activeId, overId) => {
+    if (!activeId || !overId || activeId === overId) return;
+    setRich((prev) => {
+      const next = moveItemById(prev, activeId, overId);
+      if (next !== prev) saveTemplateOrderPreference(user, next.map((template) => template.id));
+      return next === prev ? prev : next;
+    });
+  };
   const deleteTemplates = (ids) => {
-    setRich((prev) => prev.filter((t) => !ids.has(t.id)));
-    setDirty(true);
+    setRich((prev) => {
+      const next = prev.filter((t) => !ids.has(t.id));
+      if (onSaveTemplates) {
+        Promise.resolve(onSaveTemplates(next.map(richToTemplate))).catch((err) => {
+          console.error('Failed to delete templates', err);
+          setDirty(true);
+        });
+      }
+      return next;
+    });
+    setDirty(false);
   };
 
   /* --- module-level --- */
@@ -768,6 +1083,21 @@ export default function TemplatesEditor({
     });
     setSelCats(new Set());
   };
+  const reorderCategories = (activeId, overId) => {
+    if (!activeId || !overId || activeId === overId) return;
+    const categories = orderedMods[openMod]?.categories || [];
+    const from = categories.findIndex((category) => category.id === activeId);
+    const to = categories.findIndex((category) => category.id === overId);
+
+    mutateOpenModule((module) => {
+      const nextCategories = moveItemById(module.categories || [], activeId, overId);
+      return nextCategories === module.categories ? module : { ...module, categories: nextCategories };
+    });
+
+    if (openCat === from) setOpenCat(to);
+    else if (from < openCat && to >= openCat) setOpenCat(openCat - 1);
+    else if (from > openCat && to <= openCat) setOpenCat(openCat + 1);
+  };
 
   /* --- checklist-item-level (scoped to a category in the open module) --- */
   const mutateCategory = (ci, fn) => {
@@ -782,6 +1112,15 @@ export default function TemplatesEditor({
   const renameItem = (ci, itemId, text) => mutateCategory(ci, (c) => ({
     ...c, items: c.items.map((it) => (it.id === itemId ? { ...it, text } : it)),
   }));
+  const reorderItems = (ci, activeId, overId) => {
+    if (!activeId || !overId || activeId === overId) return;
+    mutateCategory(ci, (c) => {
+      const activeItems = (c.items || []).filter(isActiveChecklistItem);
+      const archivedItems = (c.items || []).filter(isArchivedChecklistItem);
+      const nextActiveItems = moveItemById(activeItems, activeId, overId);
+      return nextActiveItems === activeItems ? c : { ...c, items: [...nextActiveItems, ...archivedItems] };
+    });
+  };
 
   /* KAL-44 archive flow state. When the user clicks the "×" delete button on
      a checklist item that has marker responses, we open this confirmation
@@ -877,6 +1216,13 @@ export default function TemplatesEditor({
     });
     setSelEntities(new Set());
   };
+  const reorderEntities = (activeId, overId) => {
+    if (!activeId || !overId || activeId === overId || !tpl) return;
+    mutateTpl(tpl.id, (t) => {
+      const nextRoster = moveItemById(t.roster || [], activeId, overId);
+      return nextRoster === t.roster ? t : { ...t, roster: nextRoster };
+    });
+  };
 
   /* Resolve an entity's fill + border for its identifier swatch (left template
      list AND right entities panel). The swatch shows the colour at FULL
@@ -950,7 +1296,12 @@ export default function TemplatesEditor({
   };
 
   const handleSaveTemplates = () => {
-    if (onSaveTemplates) onSaveTemplates(rich.map(richToTemplate));
+    if (onSaveTemplates) {
+      Promise.resolve(onSaveTemplates(rich.map(richToTemplate))).catch((err) => {
+        console.error('Failed to save templates', err);
+        setDirty(true);
+      });
+    }
     setDirty(false);
   };
   const handleCancelEdits = () => { reloadFromProps(); };
@@ -1018,32 +1369,43 @@ export default function TemplatesEditor({
                 )}
               </div>
             </div>
-            <div className="slim-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 2, minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
+            <div className="slim-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
               {rich.length === 0 && (
                 <div className="meta" style={{ padding: '20px 8px', fontSize: 11.5 }}>No templates yet — create one to get started.</div>
               )}
+              <SortableRearrangeList ids={rich.map((t) => t.id)} onReorder={reorderTemplates}>
               {rich.map((t) => {
                 const active = t.id === selectedId;
                 const isSel = selTpls.has(t.id);
                 return (
-                  <div key={t.id} style={{ position: 'relative' }} draggable={tplEdit}>
+                  <SortableRearrangeRow
+                    key={t.id}
+                    id={t.id}
+                  >
+                    {({ attributes, listeners, isDragging }) => (
                     <div
+                      data-drag-rearrange-row
                       onClick={() => { if (tplEdit) toggleTplSel(t.id); else { setSelected(t.id); setOpenCat(-1); setOpenMod(0); } }}
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: '14px 1fr auto',
+                        gridTemplateColumns: '28px 1fr auto',
                         gap: 8, alignItems: 'center',
                         padding: '8px 8px', borderRadius: 6,
                         height: 50, boxSizing: 'border-box',
-                        background: tplEdit ? (isSel ? 'var(--ink-600)' : 'transparent') : (active ? 'var(--ink-600)' : 'transparent'),
+                        background: dragOverTpl === t.id && dragTpl !== t.id
+                          ? 'rgba(216,168,78,0.10)'
+                          : tplEdit ? (isSel ? 'var(--ink-600)' : 'transparent') : (active ? 'var(--ink-600)' : 'transparent'),
+                        opacity: isDragging ? 0.72 : 1,
                         cursor: 'pointer',
                         borderLeft: !tplEdit && active ? '2px solid var(--accent)' : '2px solid transparent',
+                        transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                       }}
                     >
-                      <span
-                        title={tplEdit ? 'Drag to reorder' : undefined}
-                        style={{ color: 'var(--ink-200)', fontSize: 11, cursor: tplEdit ? 'grab' : 'default', userSelect: 'none', lineHeight: 1, textAlign: 'center' }}
-                      >⋮⋮</span>
+                      <DragRearrangeHandle
+                        {...attributes}
+                        {...listeners}
+                        isDragging={isDragging}
+                      />
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{t.name}</div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
@@ -1082,9 +1444,11 @@ export default function TemplatesEditor({
                         >⋯</button>
                       )}
                     </div>
-                  </div>
+                    )}
+                  </SortableRearrangeRow>
                 );
               })}
+              </SortableRearrangeList>
             </div>
           </aside>
 
@@ -1129,54 +1493,16 @@ export default function TemplatesEditor({
                     Select
                   </button>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'stretch', gap: 0, borderBottom: '1px solid var(--rule)', minHeight: 26 }}>
-                  {orderedMods.map((mod, mi) => {
-                    const isOn = openMod === mi;
-                    const catCount = (mod.categories || []).length;
-                    return (
-                      <div
-                        key={mod.id}
-                        draggable
-                        onDragStart={() => setDragMod(mi)}
-                        onDragOver={(e) => { e.preventDefault(); }}
-                        onDrop={(e) => { e.preventDefault(); reorderMods(dragMod, mi); setDragMod(null); }}
-                        onDragEnd={() => setDragMod(null)}
-                        style={{
-                          display: 'flex', alignItems: 'center', marginBottom: -1,
-                          borderBottom: isOn ? '2px solid var(--ink)' : '2px solid transparent',
-                          opacity: dragMod === mi ? 0.4 : 1,
-                          cursor: 'grab',
-                          flex: '1 1 0', minWidth: 32, maxWidth: 140,
-                          overflow: 'hidden',
-                        }}
-                      >
-                        {modRename === mi ? (
-                          <input
-                            className="inline-edit"
-                            defaultValue={mod.name}
-                            autoFocus
-                            onFocus={(e) => e.currentTarget.select()}
-                            onBlur={(e) => renameModule(mi, e.currentTarget.value)}
-                            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') setModRename(null); }}
-                            style={{ background: 'transparent', border: 0, padding: '3px 6px', fontSize: 12, fontWeight: isOn ? 500 : 400, color: isOn ? 'var(--ink)' : 'var(--ink-muted)', width: '100%', borderBottom: '1px solid var(--accent)', outline: 'none' }}
-                          />
-                        ) : (
-                          <button
-                            onClick={() => { setOpenMod(mi); setOpenCat(-1); }}
-                            onDoubleClick={() => setModRename(mi)}
-                            title={`${mod.name} · drag to reorder · double-click to rename`}
-                            style={{
-                              background: 'transparent', border: 0, padding: '3px 6px',
-                              fontFamily: 'inherit', color: isOn ? 'var(--ink)' : 'var(--ink-muted)',
-                              fontSize: 12, fontWeight: isOn ? 500 : 400, cursor: 'grab',
-                              flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left',
-                            }}
-                          >{mod.name}</button>
-                        )}
-                        <span className="mono" style={{ fontSize: 9.5, color: 'var(--ink-quiet)', padding: '0 6px 0 2px', flex: 'none' }}>{catCount}</span>
-                      </div>
-                    );
-                  })}
+                <SortableModuleTabs
+                  modules={orderedMods}
+                  openMod={openMod}
+                  modRename={modRename}
+                  onOpenModule={(mi) => { setOpenMod(mi); setOpenCat(-1); }}
+                  onStartRename={setModRename}
+                  onRenameModule={renameModule}
+                  onCancelRename={() => setModRename(null)}
+                  onReorderModules={reorderMods}
+                >
                   <button
                     onClick={addModule}
                     title="New module"
@@ -1192,7 +1518,7 @@ export default function TemplatesEditor({
                       flex: 'none', alignSelf: 'center',
                     }}
                   ><span style={{ display: 'block', lineHeight: 1, transform: 'translateY(-0.5px)' }}>+</span></button>
-                </div>
+                </SortableModuleTabs>
               </div>
 
               {/* Categories header */}
@@ -1232,6 +1558,12 @@ export default function TemplatesEditor({
                 {visibleCats.length === 0 && (
                   <div className="meta" style={{ padding: '16px 4px', fontSize: 11.5 }}>This module has no categories yet.</div>
                 )}
+                <SortableRearrangeList
+                  ids={visibleCats.map((c) => c.id)}
+                  onReorder={reorderCategories}
+                  variableHeight
+                  gap={6}
+                >
                 {visibleCats.map((c, i) => {
                   const allItems = c.items || [];
                   /* KAL-44 — active vs archived split. Editor surfaces the
@@ -1244,18 +1576,38 @@ export default function TemplatesEditor({
                   const open = openCat === i;
                   const isSel = selCats.has(c.id);
                   return (
-                    <div key={c.id} className="card-line" style={{ overflow: 'hidden', flexShrink: 0 }}>
+                    <SortableRearrangeRow
+                      key={c.id}
+                      id={c.id}
+                      animateLayoutChanges={animateCategoryLayoutChanges}
+                    >
+                      {({ attributes, listeners, isDragging }) => (
+                    <div
+                      className="card-line"
+                      style={{
+                        overflow: 'hidden',
+                        flexShrink: 0,
+                        opacity: isDragging ? 0.72 : 1,
+                        transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
+                      }}
+                    >
                       {/* Row header */}
                       <div
+                        data-drag-rearrange-row
                         onClick={() => { if (catEdit) toggleCatSel(c.id); }}
                         style={{
-                          width: '100%', display: 'grid', gridTemplateColumns: catEdit ? '14px 20px 1fr auto 16px' : '14px 20px 1fr auto', gap: 8,
+                          width: '100%', display: 'grid', gridTemplateColumns: catEdit ? '24px 20px 1fr auto 16px' : '24px 20px 1fr auto', gap: 8,
                           alignItems: 'center', padding: '3px 10px',
                           cursor: catEdit ? 'pointer' : 'default',
                           background: catEdit && isSel ? 'rgba(216,168,78,0.08)' : 'transparent',
                         }}
                       >
-                        <span title="Drag to reorder" style={{ color: 'var(--ink-muted)', fontSize: 11, cursor: 'grab', userSelect: 'none', lineHeight: 1, textAlign: 'center' }}>⋮⋮</span>
+                        <DragRearrangeHandle
+                          {...attributes}
+                          {...listeners}
+                          isDragging={isDragging}
+                          style={{ width: 24, height: 24 }}
+                        />
                         <button
                           onClick={(e) => { e.stopPropagation(); setOpenCat(open ? -1 : i); }}
                           title={open ? 'Collapse' : 'Expand'}
@@ -1291,22 +1643,45 @@ export default function TemplatesEditor({
                       </div>
 
                       {/* Expanded body — checklist items */}
-                      {open && (
-                        <div style={{ padding: '4px 14px 12px 50px', borderTop: '1px solid var(--rule)', background: 'var(--paper-deep)' }}>
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateRows: open ? '1fr' : '0fr',
+                          opacity: open ? 1 : 0,
+                          visibility: open ? 'visible' : 'hidden',
+                          transition: `${CATEGORY_COLLAPSE_TRANSITION}, visibility 0s linear ${open ? '0s' : '0.18s'}`,
+                          borderTop: open ? '1px solid var(--rule)' : '1px solid transparent',
+                          minHeight: 0,
+                        }}
+                      >
+                        <div style={{ overflow: 'hidden', minHeight: 0 }}>
+                          <div style={{ padding: '4px 14px 12px 50px', background: 'var(--paper-deep)' }}>
                           <div style={{ display: 'grid', gap: 1, marginTop: 6 }}>
                             {items.length === 0 && (
                               <div className="meta" style={{ fontSize: 11, padding: '3px 0' }}>No checklist items yet.</div>
                             )}
+                            <SortableRearrangeList ids={items.map((it) => it.id)} onReorder={(activeId, overId) => reorderItems(i, activeId, overId)} gap={0}>
                             {items.map((it, j) => (
-                              <div
+                              <SortableRearrangeRow
                                 key={it.id}
+                                id={it.id}
+                              >
+                                {({ attributes, listeners, isDragging }) => (
+                              <div
+                                data-drag-rearrange-row
                                 style={{
-                                  display: 'grid', gridTemplateColumns: '14px 1fr 16px',
+                                  display: 'grid', gridTemplateColumns: '24px 1fr 16px',
                                   alignItems: 'center', gap: 6, padding: '3px 0',
                                   borderBottom: j === items.length - 1 ? 0 : '1px dashed var(--rule)',
+                                  opacity: isDragging ? 0.8 : 1,
                                 }}
                               >
-                                <span style={{ color: 'var(--ink-muted)', fontSize: 11, cursor: 'grab' }}>⋮⋮</span>
+                                <DragRearrangeHandle
+                                  {...attributes}
+                                  {...listeners}
+                                  isDragging={isDragging}
+                                  style={{ width: 18, height: 18 }}
+                                />
                                 <input
                                   className="inline-edit"
                                   defaultValue={it.text}
@@ -1322,7 +1697,10 @@ export default function TemplatesEditor({
                                   style={{ background: 'transparent', border: 0, color: 'var(--ink-quiet)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0, width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit' }}
                                 >×</button>
                               </div>
+                                )}
+                              </SortableRearrangeRow>
                             ))}
+                            </SortableRearrangeList>
                             <button
                               onClick={() => addItem(i)}
                               style={{
@@ -1380,11 +1758,15 @@ export default function TemplatesEditor({
                               </div>
                             )}
                           </div>
+                          </div>
                         </div>
-                      )}
+                      </div>
                     </div>
+                      )}
+                    </SortableRearrangeRow>
                   );
                 })}
+                </SortableRearrangeList>
               </div>
             </div>
             </>
@@ -1445,7 +1827,9 @@ export default function TemplatesEditor({
                 {(!tpl || tpl.roster.length === 0) && (
                   <div className="meta" style={{ fontSize: 11.5, padding: '12px 2px' }}>No entities on this template yet.</div>
                 )}
-                {tpl && tpl.roster.map((r) => {
+                {tpl && (
+                <SortableRearrangeList ids={tpl.roster.map((r) => r.id)} onReorder={reorderEntities} gap={4}>
+                {tpl.roster.map((r) => {
                   const c = roleColors[r.id]?.color || r.color || '#8c8c8a';
                   const op = roleColors[r.id]?.opacity ?? 0.35;
                   /* Glyph border colour: when "Match Fill" is on the border equals the
@@ -1457,13 +1841,25 @@ export default function TemplatesEditor({
                   const isOpen = openColor === r.id;
                   const isSel = selEntities.has(r.id);
                   return (
-                    <div key={r.id}>
-                      <div className="card-line" style={{
-                        display: 'grid', gridTemplateColumns: '14px 18px 1fr 16px', gap: 10,
+                    <SortableRearrangeRow
+                      key={r.id}
+                      id={r.id}
+                    >
+                      {({ attributes, listeners, isDragging }) => (
+                      <>
+                      <div data-drag-rearrange-row className="card-line" style={{
+                        display: 'grid', gridTemplateColumns: '24px 18px 1fr 16px', gap: 10,
                         padding: '8px 10px', alignItems: 'center',
                         height: 38, boxSizing: 'border-box',
+                        opacity: isDragging ? 0.72 : 1,
+                        transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                       }}>
-                        <span style={{ color: 'var(--ink-muted)', fontSize: 12, cursor: 'grab', userSelect: 'none', lineHeight: 1 }}>⋮⋮</span>
+                        <DragRearrangeHandle
+                          {...attributes}
+                          {...listeners}
+                          isDragging={isDragging}
+                          style={{ width: 24, height: 24 }}
+                        />
                         <button
                           onClick={() => setOpenColor(isOpen ? null : r.id)}
                           title="Edit color"
@@ -1585,9 +1981,13 @@ export default function TemplatesEditor({
                           </div>
                         );
                       })()}
-                    </div>
+                      </>
+                      )}
+                    </SortableRearrangeRow>
                   );
                 })}
+                </SortableRearrangeList>
+                )}
               </div>
             </div>
           </aside>

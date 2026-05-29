@@ -27,6 +27,8 @@ import { createPortal } from 'react-dom';
 import { HubShell, Icon, Avatar, AvatarStack, Search } from './HubShell';
 import ManageTeamModal from './ManageTeamModal';
 import { MoveCopyModal } from './BulkModals';
+import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
+import { SortableRearrangeList, SortableRearrangeRow } from '../reorder/SortableRearrangeList';
 
 /* Literal palette — used by the portal popups, which render outside the
    `.survey-hub` root and therefore cannot inherit its CSS variables. */
@@ -214,9 +216,11 @@ export default function ProjectsFolderTree({
   const fileInputRef = useRef(null);
   const pendingPickProject = useRef(null);
 
-  // Drag-reorder bookkeeping (index of the row currently being dragged).
-  const dragProjIdx = useRef(null);
-  const dragFileIdx = useRef(null);
+  // Drag-reorder bookkeeping.
+  const [draggingProjectId, setDraggingProjectId] = useState(null);
+  const [dragOverProjectId, setDragOverProjectId] = useState(null);
+  const [draggingFileId, setDraggingFileId] = useState(null);
+  const [dragOverFileId, setDragOverFileId] = useState(null);
 
   const toggleFileSel = (i) => setSelFiles((prev) => {
     const n = new Set(prev);
@@ -369,13 +373,10 @@ export default function ProjectsFolderTree({
     )));
   }, []);
 
-  const reorderProjects = useCallback((from, to) => {
-    if (from == null || to == null || from === to) return;
+  const reorderProjects = useCallback((fromId, toId) => {
+    if (fromId == null || toId == null || fromId === toId) return;
     setLocalProjects((prev) => {
       // `filtered` may be a search subset — reorder by the actual project ids.
-      const fromId = filtered[from]?.id;
-      const toId = filtered[to]?.id;
-      if (fromId == null || toId == null) return prev;
       const out = [...prev];
       const fi = out.findIndex((p) => p.id === fromId);
       const ti = out.findIndex((p) => p.id === toId);
@@ -384,7 +385,7 @@ export default function ProjectsFolderTree({
       out.splice(ti, 0, moved);
       return out;
     });
-  }, [filtered]);
+  }, []);
 
   /* ---- Document mutations (local state) -------------------------------- */
 
@@ -453,15 +454,17 @@ export default function ProjectsFolderTree({
     setSelFiles(new Set());
   }, [openFiles, onDeleteDocuments]);
 
-  const reorderFiles = useCallback((from, to) => {
-    if (from == null || to == null || from === to || !open) return;
+  const reorderFiles = useCallback((fromId, toId) => {
+    if (fromId == null || toId == null || fromId === toId || !open) return;
     setLocalDocs((prev) => {
       // Split docs into this project's slice (in display order) and the rest,
       // reorder the slice, then stitch back together.
       const slice = [];
       const rest = [];
       prev.forEach((d) => { (d.project_id === open.id ? slice : rest).push(d); });
-      if (from >= slice.length || to >= slice.length) return prev;
+      const from = slice.findIndex((d) => d.id === fromId);
+      const to = slice.findIndex((d) => d.id === toId);
+      if (from < 0 || to < 0) return prev;
       const [moved] = slice.splice(from, 1);
       slice.splice(to, 0, moved);
       return [...rest, ...slice];
@@ -573,56 +576,56 @@ export default function ProjectsFolderTree({
               )}
             </div>
           </div>
-          <div className="slim-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 2, overflow: 'auto', paddingRight: 4 }}>
+          <div className="slim-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
             {filtered.length === 0 && (
               <div className="meta" style={{ fontSize: 11.5, padding: '14px 8px' }}>
                 {localProjects.length === 0 ? 'No projects yet — create one to group your documents.' : 'No projects match your search.'}
               </div>
             )}
-            {filtered.map((p, idx) => {
+            <SortableRearrangeList ids={filtered.map((p) => p.id)} onReorder={reorderProjects}>
+            {filtered.map((p) => {
               const isOpen = open && p.id === open.id;
               const isSel = selProj.has(p.id);
               const isPinned = pinnedIds.has(p.id);
               const projMembers = projectTeam(p);
               return (
-                <div
+                <SortableRearrangeRow
                   key={p.id}
-                  style={{ position: 'relative' }}
-                  draggable={jobsEdit}
-                  onDragStart={() => { if (jobsEdit) dragProjIdx.current = idx; }}
-                  onDragOver={(e) => { if (jobsEdit) e.preventDefault(); }}
-                  onDrop={(e) => {
-                    if (!jobsEdit) return;
-                    e.preventDefault();
-                    reorderProjects(dragProjIdx.current, idx);
-                    dragProjIdx.current = null;
-                  }}
+                  id={p.id}
                 >
+                  {({ attributes, listeners, isDragging }) => (
                   <div
+                    data-drag-rearrange-row
                     onClick={() => { if (jobsEdit) toggleProjSel(p.id); else setOpenId(p.id); }}
                     style={{
                       display: 'grid',
-                      gridTemplateColumns: '14px 1fr auto',
+                      gridTemplateColumns: '28px 1fr auto',
                       gap: 8, alignItems: 'center',
                       padding: '8px 8px', borderRadius: 6,
-                      background: jobsEdit ? (isSel ? 'var(--ink-600)' : 'transparent') : (isOpen ? 'var(--ink-600)' : 'transparent'),
-                      cursor: 'pointer',
+                      background: dragOverProjectId === p.id && draggingProjectId !== p.id
+                        ? 'rgba(216,168,78,0.10)'
+                        : jobsEdit ? (isSel ? 'var(--ink-600)' : 'transparent') : (isOpen ? 'var(--ink-600)' : 'transparent'),
+                      cursor: isDragging ? 'grabbing' : 'pointer',
                       borderLeft: !jobsEdit && isOpen ? '2px solid var(--gold)' : '2px solid transparent',
                       height: 50, boxSizing: 'border-box',
+                      opacity: isDragging ? 0.82 : 1,
+                      transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                     }}
                   >
-                    {/* Drag handle / pin marker — in Select mode this row is
-                        draggable to reorder. When the project is pinned the
-                        "⋮⋮" grabber is replaced by a gold pin icon to mark
-                        its pinned-to-top status. */}
+                    {/* Drag handle / pin marker. Only the handle starts
+                        reorder, leaving the rest of the row free for opening
+                        or select-mode selection. When the project is pinned,
+                        the grabber is replaced by a gold pin icon. */}
                     {isPinned ? (
                       <span title="Pinned" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
                         <PinIcon size={12} color="var(--gold)" />
                       </span>
-                    ) : jobsEdit ? (
-                      <span title="Drag to reorder" style={{ color: 'var(--ink-200)', fontSize: 11, cursor: 'grab', userSelect: 'none', lineHeight: 1, textAlign: 'center' }}>⋮⋮</span>
                     ) : (
-                      <span style={{ color: 'var(--ink-200)', fontSize: 11, userSelect: 'none', lineHeight: 1, textAlign: 'center' }}>⋮⋮</span>
+                      <DragRearrangeHandle
+                        {...attributes}
+                        {...listeners}
+                        isDragging={isDragging}
+                      />
                     )}
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{p.name}</div>
@@ -659,9 +662,11 @@ export default function ProjectsFolderTree({
                       >⋯</button>
                     )}
                   </div>
-                </div>
+                  )}
+                </SortableRearrangeRow>
               );
             })}
+            </SortableRearrangeList>
           </div>
         </div>
 
@@ -766,12 +771,13 @@ export default function ProjectsFolderTree({
                       </button>
                     </div>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '16px 1fr 90px 90px 28px', gap: 12, padding: '0 10px 6px', fontSize: 10, color: 'var(--ink-200)', letterSpacing: 0.06, textTransform: 'uppercase' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr 90px 90px 28px', gap: 12, padding: '0 10px 6px', fontSize: 10, color: 'var(--ink-200)', letterSpacing: 0.06, textTransform: 'uppercase' }}>
                     <span></span><span>Name</span><span>Last edited by</span><span>Edited</span><span></span>
                   </div>
                   {openFiles.length === 0 ? (
                     <div className="meta" style={{ fontSize: 11.5, padding: '12px 10px' }}>No files in this project yet.</div>
                   ) : (
+                    <SortableRearrangeList ids={openFiles.map((f) => f.id)} onReorder={reorderFiles}>
                     <div style={{ display: 'grid', gap: 1 }}>
                       {openFiles.map((f, i) => {
                         const isChecked = selFiles.has(i);
@@ -783,28 +789,33 @@ export default function ProjectsFolderTree({
                         const ownerInitials = owner ? initialsOf(owner.name) : '—';
                         const ownerFirst = owner?.name?.split(' ')[0] || '—';
                         return (
-                          <div
+                          <SortableRearrangeRow
                             key={f.id}
-                            draggable={fileSelect}
-                            onDragStart={() => { if (fileSelect) dragFileIdx.current = i; }}
-                            onDragOver={(e) => { if (fileSelect) e.preventDefault(); }}
-                            onDrop={(e) => {
-                              if (!fileSelect) return;
-                              e.preventDefault();
-                              reorderFiles(dragFileIdx.current, i);
-                              dragFileIdx.current = null;
-                            }}
+                            id={f.id}
+                          >
+                            {({ attributes, listeners, isDragging }) => (
+                          <div
+                            data-drag-rearrange-row
                             onClick={() => { if (fileSelect) { toggleFileSel(i); return; } onOpenDocument && onOpenDocument(f); }}
                             style={{
-                              background: fileSelect && isChecked ? 'rgba(216,168,78,0.10)' : (i % 2 ? 'transparent' : 'rgba(255,255,255,0.02)'),
+                              background: dragOverFileId === f.id && draggingFileId !== f.id
+                                ? 'rgba(216,168,78,0.10)'
+                                : fileSelect && isChecked ? 'rgba(216,168,78,0.10)' : (i % 2 ? 'transparent' : 'rgba(255,255,255,0.02)'),
                               borderRadius: 6,
-                              display: 'grid', gridTemplateColumns: '16px 1fr 90px 90px 28px',
+                              display: 'grid', gridTemplateColumns: '24px 1fr 90px 90px 28px',
                               gap: 12, alignItems: 'center', padding: '8px 10px', fontSize: 12,
-                              height: 36, boxSizing: 'border-box',
-                              cursor: 'pointer',
+                              height: 42, boxSizing: 'border-box',
+                              cursor: isDragging ? 'grabbing' : 'pointer',
+                              opacity: isDragging ? 0.82 : 1,
+                              transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                             }}
                           >
-                            <span title="Drag to reorder" style={{ color: 'var(--ink-200)', fontSize: 11, cursor: 'grab', userSelect: 'none', lineHeight: 1, textAlign: 'center' }}>⋮⋮</span>
+                            <DragRearrangeHandle
+                              {...attributes}
+                              {...listeners}
+                              isDragging={isDragging}
+                              style={{ width: 24, height: 24 }}
+                            />
                             <div style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
                             {/* "Last edited by" — file's owner resolved against
                                 the member directory: avatar + first name. */}
@@ -835,9 +846,12 @@ export default function ProjectsFolderTree({
                               >⋯</button>
                             )}
                           </div>
+                            )}
+                          </SortableRearrangeRow>
                         );
                       })}
                     </div>
+                    </SortableRearrangeList>
                   )}
                 </div>
 
