@@ -1,38 +1,46 @@
-# Handoff: App.jsx breakup — dead-code purge + Dashboard extracted
+# Handoff: App.jsx breakup — dead code + Dashboard + App shell extracted
 
 **Generated**: 2026-05-29
-**Branch**: `main` — all work below is committed locally on `main`. Working tree: only `HANDOFF.md` modified. Not pushed (Isaiah pushes on his own cadence).
-**Status**: 7 commits this session. App.jsx shrank from **46,779 → 39,271 lines** (−7,508, ~16%, first time under 40k). Build green; `npm test` 834 pass / 0 fail / 6 skip throughout.
+**Branch**: `main` — all work committed locally on `main`. Working tree: only `HANDOFF.md` modified. Not pushed (Isaiah pushes on his own cadence).
+**Status**: 9 commits this session. **App.jsx 46,779 → 36,416 lines (−10,363, 22%).** Build green; `npm test` 834 pass / 0 fail / 6 skip throughout. Isaiah confirmed the extracted home screen renders fine on his dev server.
 
-## What happened this session
+## Architecture now
 
-Goal: keep chipping away at `src/App.jsx` and make the codebase optimal for future multi-agent parallel work. A 6-agent mapping workflow produced a risk-rated breakup roadmap; then I executed the lowest-risk steps, verifying build + test after each.
+The three big pieces live in separate files and can be edited by different agents without colliding:
+- `src/AppShell.jsx` (~2,851) — application root: tabs, auth/entity state, chrome hosts, top-right zoom/page pill, Dashboard↔PDFViewer router. The entry point (`main.jsx`) and `DevTestRoute.jsx` import the default from here.
+- `src/Dashboard.jsx` (~3,875) — home screen (project tree, document grid, template mgmt, SurveyHub host).
+- `src/App.jsx` (~36,416) — now holds **PDFViewer (~34k lines)** + shared module helpers/constants, and exports `PDFViewer` + 10 shared symbols that AppShell imports. Dependency direction is one-way (App.jsx never imports AppShell), so no cycles.
+- `src/SurveySpacesRail.jsx` (~2,969) — survey right rail (from a prior session).
 
-Commits (oldest first), each its own verified change:
-1. `3cb37412` — removed dead `legacyHomeUI` block (~2,952 lines, never rendered, `void legacyHomeUI`) + dead `getToolFromSyncfusionMarkupType`.
-2. `37a0c9d1` — extracted `isStorageFileNotFoundError` / `isSupabaseRowNotFoundError` to **`src/utils/storageErrors.js`**.
-3. `3b9089b3` — removed now-dead `PDFThumbnail` + `thumbnailQueue` (all render sites were inside the deleted legacyHomeUI block; live home uses `src/home/PdfPageThumb.jsx`).
-4. `db7d0438` — removed orphaned `BottomToolbar(props)` + its audit comment (the 2026-05-13 chrome lift moved toolbar rendering into inline App-shell JSX reading `bottomToolbarApi`; the function had zero call sites).
-5. `ddc8544e` — removed 8 unreferenced helper functions (hexToRgb, getHexFromAnnotationColor, getOpacityFromAnnotationColor, rgbToHsl, hslToRgb, generateColorSwatches, getCategoryItems, getCategoryChecklist).
-6. `9a9f1a41` — **extracted `Dashboard` (~3,775 lines) into `src/Dashboard.jsx`**, wired via `import Dashboard from './Dashboard'`. Also added the reusable checker `scripts/check-undef.mjs`.
+## What happened this session (commits oldest→newest)
 
-## Key tool: `scripts/check-undef.mjs`
+1. `3cb37412` removed dead `legacyHomeUI` block (~2,952 lines) + dead helper.
+2. `37a0c9d1` extracted storage error helpers → `src/utils/storageErrors.js`.
+3. `3b9089b3` removed now-dead `PDFThumbnail` + `thumbnailQueue`.
+4. `db7d0438` removed orphaned `BottomToolbar` function + audit comment.
+5. `ddc8544e` removed 8 unreferenced helper functions.
+6. `9a9f1a41` extracted `Dashboard` → `src/Dashboard.jsx`.
+7. `85b8ba71` extracted the App shell → `src/AppShell.jsx`.
+8. `09ca000c` dropped 23 imports orphaned by the Dashboard/AppShell lifts.
+(Steps 1, 3, 4, 5 were dead code from the 2026-05-13 chrome-lift / right-rail refactor, which inlined component rendering into the App shell and left the original functions orphaned.)
 
-Scope-aware "unresolved identifier" checker (uses `@babel/parser` + `@babel/traverse`, already installed). `node scripts/check-undef.mjs <file>` prints every identifier the file leaves unresolved. **Extraction-safety method**: capture the known-good monolith's unresolved set as a baseline, then assert an extracted module introduces ZERO unresolved identifiers outside that baseline (compare via Python set-diff, NOT shell `comm` — it mis-sorts case). This is how the Dashboard move was verified faithful without running the app. Use it for every future extraction.
+## Reusable tooling (built this session — use for every future extraction)
 
-## IMPORTANT — verify Dashboard on the dev server
+- `scripts/check-undef.mjs <file>` — prints every identifier a file leaves unresolved (Babel scope.globals). Method: capture the known-good monolith's unresolved set as a baseline, then assert an extracted module introduces ZERO unresolved identifiers outside it. **Compare with a Python set-diff, not shell `comm`** (comm mis-sorts case → false positives).
+- `scripts/derive-slice-deps.mjs <startLine> <endLine>` — reconstructs the exact import statements + App.jsx module-symbol deps a slice needs (flags which module symbols are also used outside the slice → export vs move). Derive deps mechanically; don't trust an analysis agent's prose (the mapping agent mis-reported deps this session).
 
-Every commit 1–5 was provably safe (removing unreferenced code can't change behavior; build + test sufficed). **Commit 6 (Dashboard) is different**: no automated test renders Dashboard, so build + test + the undef-checker cover the move's *static* risk but NOT runtime. Please run `npm run dev` with a logged-in account and confirm the home screen renders normally: project tree, document grid, PDF thumbnails, template editor opens, SurveyHub, upload flow. The static checker showed the move introduces zero new unresolved refs, so it *should* be clean — but a human look is the final gate before building on top of it.
+## Recommended next step — break up PDFViewer (own session)
 
-## Recommended next step
+PDFViewer (~34k lines, still in App.jsx) is the last parallel-work bottleneck. Start with the LOW-RISK render-tree extractions, each its own commit, verified with check-undef + build + test:
+- `LocateModal` (a file already exists — validate/consolidate), the annotation context-menu portal, and the ExcelOneDrive modal cluster. These are presentational, prop-driven JSX blocks inside PDFViewer's render — lifting them shrinks PDFViewer without touching the engine.
+- Then the undo/redo engine → `src/hooks/useAnnotationHistory.js` (medium risk).
 
-After Dashboard is confirmed on the dev server: **extract the App shell (step 8, ~2,818 lines) into `src/AppShell.jsx`** — rename the default-export `App` to `AppShell`, move it out, and make `src/App.jsx` a thin file that imports + re-exports it (keeps the Vite entry point unchanged). Medium risk: the shell renders the top-right zoom pill that reads `bottomToolbarApi`, and the **2026-05-13 identity-churn guard** on the API publisher effects must be preserved verbatim (dropping it causes max-update-depth loops). Use `check-undef.mjs` to verify.
-
-Then the PDFViewer render-tree extractions (parallel-safe, low risk): `LocateModal` (already a file — validate/consolidate), the annotation context-menu portal, and the ExcelOneDrive modal cluster. Larger/medium: lift the undo/redo engine into `src/hooks/useAnnotationHistory.js`.
+A full verbatim move of PDFViewer into `src/PDFViewer.jsx` is possible later (App.jsx would shrink to just shared constants), but it has the largest dependency surface — do the smaller extractions first.
 
 ## Warnings / invariants (unchanged, still law)
 
 - **NO-GO zones inside PDFViewer**: the zoom/scale lifecycle and the per-page Syncfusion overlay portal render loop. Never extract or refactor these.
-- The four invariants in `CLAUDE.md` (container-aware canvas sizing, SVG viewBox owns zoom, never remove the `zoomGeneration` signal, single-name Fabric `fontFamily`) remain correctness law.
-- `src/App.jsx` and `src/Dashboard.jsx` are high-risk; minimum-viable diffs, `npm test` after every touch.
-- Don't trust "component X is rendered" claims — grep for real JSX/call sites first. Several planned "extractions" this session turned out to be dead code (the chrome-lift refactor orphaned them).
+- The four invariants in `CLAUDE.md` (container-aware canvas sizing, SVG viewBox owns zoom, never remove the `zoomGeneration` signal, single-name Fabric `fontFamily`) remain correctness law. The identity-churn guard on API-publisher effects must stay verbatim (now in AppShell.jsx).
+- No automated test renders PDFViewer/Dashboard/AppShell — build + check-undef + tests cover *static* correctness; runtime/visual changes still want a dev-server look.
+- Don't trust "component X is rendered" claims — grep for real JSX/call sites first.
+- A few partial imports in App.jsx still have unused specifiers (react's forwardRef/useImperativeHandle, etc.) — harmless, optional cleanup.
