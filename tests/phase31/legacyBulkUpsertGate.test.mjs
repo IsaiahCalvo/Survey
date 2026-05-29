@@ -133,10 +133,10 @@ describe('useAnnotationCloudSync legacy bypass (Plan 31-03)', () => {
 
   it('callout save path persists Supabase before Y.Doc fan-out', { skip: HOOK_SKIP }, () => {
     const source = readFileSync(HOOK_PATH, 'utf8');
-    const start = source.indexOf("console.log('[CloudSync][hook] callout Supabase upsert start");
+    const start = source.indexOf('[CloudSync][hook] callout Supabase upsert start');
     const upsert = source.indexOf('result = await upsertCallouts', start);
-    const success = source.indexOf("console.log('[CloudSync][hook] callout Supabase upsert ok", upsert);
-    const fanout = source.indexOf("console.log('[CloudSync][hook] callout Y.Doc fan-out start after Supabase success", success);
+    const success = source.indexOf('[CloudSync][hook] callout Supabase upsert ok', upsert);
+    const fanout = source.indexOf('[CloudSync][hook] callout Y.Doc fan-out start after Supabase success', success);
     const fanoutCall = source.indexOf('await fanOutCrdtForCallouts', fanout);
 
     assert.ok(start > 0, 'callout Supabase upsert start log must exist');

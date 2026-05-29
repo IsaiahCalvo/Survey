@@ -38,7 +38,7 @@ test('fabric sync flush rechecks pointer state and defers while pointer is down'
   const hook = readFileSync(resolve(ROOT, 'src/hooks/useAnnotationCloudSync.js'), 'utf8');
   const runIndex = hook.indexOf('const runFabricPush = async () => {');
   const pointerIndex = hook.indexOf('if (pointerDownRef.current) {', runIndex);
-  const pushIndex = hook.indexOf("console.log('[CloudSync][hook] fabric push debounce elapsed", runIndex);
+  const pushIndex = hook.indexOf('[CloudSync][hook] fabric push debounce elapsed', runIndex);
 
   assert.ok(runIndex > 0, 'expected fabric push runner');
   assert.ok(pointerIndex > runIndex, 'expected pointer check inside fabric push runner');

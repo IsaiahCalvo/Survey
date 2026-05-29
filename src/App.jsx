@@ -583,7 +583,7 @@ const SYNCFUSION_SCROLL_FRAME_MAX_PX = 180;
 const SYNCFUSION_WHEEL_SCROLL_BATCH_MS = 24;
 // Trackpad pinch/wheel zoom sensitivity. Keep this centralized so both
 // Syncfusion wheel paths stay cursor-anchored and feel equally responsive.
-const SYNCFUSION_WHEEL_ZOOM_EXPONENT = 0.0044;
+const SYNCFUSION_WHEEL_ZOOM_EXPONENT = 0.004;
 const SYNCFUSION_WHEEL_ZOOM_MAX_STEP_PERCENT = 24;
 const SYNCFUSION_WHEEL_ZOOM_BATCH_MS = 3;
 const SYNCFUSION_WHEEL_ZOOM_STALE_DROP_MS = 260;
@@ -25480,6 +25480,13 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
     let deferredInitialPresenceTimer = null;
     let cancelled = false;
 
+    appDebug('[AnnotationHydrationGate][survey] supabase surveyMarkers start ' + JSON.stringify({
+      documentId,
+      pdfId: hydrationPdfId,
+      requestId: hydrationRequestId,
+      preservedCount: Object.keys(surveyMarkersRef.current || {}).length,
+    }));
+
     loadAnnotationsFromSupabase(documentId)
       .then(async ({ surveyMarkers: remoteAnnotations, error }) => {
         if (activeCloudDocumentIdRef.current !== documentId) {
@@ -25494,6 +25501,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
             pdfId: hydrationPdfId,
             count: Object.keys(surveyMarkersRef.current || {}).length,
             durationMs: Date.now() - hydrationStartedAt,
+            wasCancelledSameDocument: !!cancelled,
           });
           return;
         }
@@ -25516,6 +25524,16 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
         }
         setSurveyMarkers(safeSurveySnapshot.value);
         lastSyncedAnnotationsRef.current = JSON.stringify(safeSurveySnapshot.value || {});
+        appDebug('[AnnotationHydrationGate][survey] supabase surveyMarkers complete ' + JSON.stringify({
+          documentId,
+          pdfId: hydrationPdfId,
+          requestId: hydrationRequestId,
+          count: Object.keys(safeSurveySnapshot.value || {}).length,
+          remoteCount,
+          preserved: !!safeSurveySnapshot.preserved,
+          wasCancelledSameDocument: !!cancelled,
+          durationMs: Date.now() - hydrationStartedAt,
+        }));
         setSurveyAnnotationHydration({
           ready: true,
           source: 'supabase-highlight',
@@ -25523,6 +25541,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
           pdfId: hydrationPdfId,
           count: Object.keys(safeSurveySnapshot.value || {}).length,
           durationMs: Date.now() - hydrationStartedAt,
+          wasCancelledSameDocument: !!cancelled,
         });
 
         setDocumentSyncEnabled(false);
@@ -25606,6 +25625,7 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
           pdfId: hydrationPdfId,
           count: Object.keys(surveyMarkersRef.current || {}).length,
           durationMs: Date.now() - hydrationStartedAt,
+          wasCancelledSameDocument: !!cancelled,
         });
       })
       .finally(() => {
