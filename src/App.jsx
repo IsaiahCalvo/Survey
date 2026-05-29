@@ -92,16 +92,23 @@ import {
   PointerSensor,
   closestCenter,
   useSensor,
-  useSensors,
-  DragOverlay
+  useSensors
 } from '@dnd-kit/core';
 import {
   SortableContext,
-  useSortable,
   verticalListSortingStrategy,
   arrayMove
 } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+import {
+  EntitySortableRow,
+  TemplateCategorySortableRow,
+  TemplateModuleSortableRow
+} from './home/TemplateReorderRows';
+import {
+  reorderCategoriesByActiveOver,
+  reorderItemsByActiveOver,
+  restrictSortableToVerticalAxis
+} from './home/templateReorderUtils';
 import { PageRenderCache } from './utils/pdfCache';
 import { regionContainsPoint } from './utils/regionMath';
 import { createZoomController, ZOOM_MODES, loadZoomPreferences, saveZoomPreferences, clampScale, DEFAULT_ZOOM_PREFERENCES } from './utils/zoomController';
@@ -1942,416 +1949,6 @@ const ZOOM_MODE_OPTIONS = [
 
 const MANUAL_ZOOM_SESSION_KEY = 'pdfViewerManualZoomScale';
 
-const TemplateDragOverlayItem = ({ label }) => (
-  <div
-    style={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: '8px',
-      padding: '8px 12px',
-      borderRadius: '8px',
-      border: '2px solid #4A90E2',
-      background: 'rgba(43, 43, 43, 0.92)',
-      color: '#eaeaea',
-      fontSize: '13px',
-      fontWeight: 500,
-      boxShadow: '0 10px 26px rgba(0, 0, 0, 0.45)',
-      backdropFilter: 'blur(2px)'
-    }}
-  >
-    <span style={{ fontSize: '16px', color: '#4A90E2' }}>☰</span>
-    <span style={{ whiteSpace: 'nowrap' }}>{label}</span>
-  </div>
-);
-
-const TemplateModuleSortableRow = React.memo(function TemplateModuleSortableRow({
-  module,
-  isSelected,
-  nameValue,
-  onToggleSelect,
-  onNameChange,
-  onNameKeyDown,
-  disabled
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging
-  } = useSortable({
-    id: module.id,
-    disabled
-  });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition: transition || 'transform 180ms cubic-bezier(0.2, 0, 0.2, 1)',
-    width: '100%'
-  };
-
-  return (
-    <div ref={setNodeRef} style={style}>
-      <div
-        style={{
-          display: 'flex',
-          gap: '6px',
-          alignItems: 'center',
-          padding: '4px 6px',
-          borderRadius: '8px',
-          background: isDragging ? 'rgba(58, 58, 58, 0.25)' : 'transparent',
-          border: isSelected ? '1px solid rgba(74, 144, 226, 0.45)' : '1px solid transparent',
-          transition: 'background 0.18s ease, border-color 0.18s ease'
-        }}
-      >
-        <style>
-          {`@keyframes annotationHydrationSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}
-        </style>
-        <div
-          {...attributes}
-          {...listeners}
-          style={{
-            cursor: disabled ? 'default' : (isDragging ? 'grabbing' : 'grab'),
-            color: '#888',
-            fontSize: '16px',
-            userSelect: 'none',
-            padding: '4px',
-            display: 'flex',
-            alignItems: 'center',
-            touchAction: 'none'
-          }}
-          aria-label="Drag to reorder module"
-        >
-          ☰
-        </div>
-        <input
-          type="checkbox"
-          checked={isSelected}
-          onChange={() => onToggleSelect(module.id)}
-          style={{ cursor: 'pointer', width: '16px', height: '16px', flexShrink: 0 }}
-        />
-        <input
-          type="text"
-          value={nameValue}
-          onChange={(e) => onNameChange(module.id, e.target.value)}
-          onKeyDown={(e) => onNameKeyDown(module.id, e)}
-          style={{
-            flex: 1,
-            padding: '6px 8px',
-            borderRadius: '6px',
-            border: '1px solid #4A90E2',
-            outline: 'none',
-            background: '#141414',
-            color: '#eaeaea',
-            fontFamily: FONT_FAMILY,
-            fontSize: '13px',
-            minWidth: 0
-          }}
-        />
-      </div>
-    </div>
-  );
-});
-
-const EntitySortableRow = React.memo(function EntitySortableRow({
-  entity,
-  selectedColorPickerId,
-  onOpenColorPicker,
-  onNameChange,
-  onDelete,
-  isAnyDragging
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging
-  } = useSortable({
-    id: entity.id
-  });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition: transition || 'transform 180ms cubic-bezier(0.2, 0, 0.2, 1)',
-    width: '100%'
-  };
-
-  const isColorPickerSelected = selectedColorPickerId === entity.id;
-  const currentHex = getHexFromEntityColor(entity.color);
-  const currentOpacity = getOpacityFromEntityColor(entity.color);
-
-  return (
-    <div ref={setNodeRef} style={style}>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'flex-start',
-          gap: '10px',
-          padding: '8px 10px',
-          background: '#1b1b1b',
-          border: isDragging ? '1px solid rgba(74, 144, 226, 0.6)' : '1px solid #2f2f2f',
-          borderRadius: '8px',
-          boxShadow: isDragging ? '0 8px 24px rgba(0, 0, 0, 0.45)' : 'none',
-          opacity: isDragging ? 0.65 : 1,
-          transition: 'border 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease'
-        }}
-      >
-        <div
-          {...attributes}
-          {...listeners}
-          data-entity-drag-handle
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: '28px',
-            height: '28px',
-            borderRadius: '6px',
-            background: '#1f1f1f',
-            border: '1px solid #2d2d2d',
-            cursor: isDragging ? 'grabbing' : 'grab',
-            color: '#777',
-            flexShrink: 0,
-            transition: 'background 0.15s ease, color 0.15s ease, border 0.15s ease'
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.color = '#bbb';
-            e.currentTarget.style.background = '#262626';
-            e.currentTarget.style.border = '1px solid #3a3a3a';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.color = '#777';
-            e.currentTarget.style.background = '#1f1f1f';
-            e.currentTarget.style.border = '1px solid #2d2d2d';
-          }}
-          title="Drag to reorder"
-        >
-          <Icon name="grip" size={11} />
-        </div>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', flex: 1 }}>
-          <div data-color-picker-area style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-              <div
-                style={{
-                  width: '40px',
-                  height: '28px',
-                  border: isColorPickerSelected ? '2px solid #4A90E2' : '1px solid #2f2f2f',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  position: 'relative',
-                  boxSizing: 'border-box',
-                  overflow: 'hidden',
-                  background: '#ffffff'
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOpenColorPicker(entity.id, currentHex, currentOpacity);
-                }}
-              >
-                <div
-                  style={{
-                    position: 'absolute',
-                    inset: 0,
-                    background: currentHex || '#E3D1FB',
-                    opacity: currentOpacity / 100,
-                    mixBlendMode: 'multiply',
-                    borderRadius: '5px'
-                  }}
-                />
-              </div>
-              <div
-                style={{
-                  fontSize: '9px',
-                  color: '#666',
-                  lineHeight: 1,
-                  textAlign: 'center',
-                  opacity: 0.7
-                }}
-              >
-                {currentOpacity}%
-              </div>
-            </div>
-          </div>
-          <input
-            type="text"
-            value={entity.name}
-            onChange={(e) => onNameChange(entity.id, e.target.value)}
-            placeholder="Entity name (e.g., GC, Subcontractor)"
-            style={{
-              flex: 1,
-              padding: '6px 8px',
-              background: '#141414',
-              color: '#ddd',
-              border: '1px solid #2f2f2f',
-              borderRadius: '6px',
-              outline: 'none',
-              fontSize: '13px',
-              height: '28px',
-              boxSizing: 'border-box'
-            }}
-          />
-        </div>
-        <button
-          data-entity-delete
-          onClick={onDelete}
-          title="Delete"
-          className="btn btn-danger btn-icon-only btn-sm"
-          style={{
-            padding: '6px',
-            minWidth: '28px',
-            minHeight: '28px',
-            flexShrink: 0,
-            display: isAnyDragging ? 'none' : 'flex'
-          }}
-        >
-          <Icon name="close" size={11} />
-        </button>
-      </div>
-    </div>
-  );
-});
-
-const EntityDragOverlayItem = ({ entity }) => {
-  if (!entity) return null;
-  const currentHex = getHexFromEntityColor(entity.color);
-  const currentOpacity = getOpacityFromEntityColor(entity.color);
-  return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        padding: '8px 12px',
-        borderRadius: '8px',
-        border: '2px solid #4A90E2',
-        background: 'rgba(43, 43, 43, 0.92)',
-        color: '#eaeaea',
-        fontSize: '13px',
-        fontWeight: 500,
-        boxShadow: '0 10px 26px rgba(0, 0, 0, 0.45)',
-        backdropFilter: 'blur(2px)'
-      }}
-    >
-      <span
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          width: '28px',
-          height: '28px',
-          borderRadius: '6px',
-          background: '#1f1f1f',
-          border: '1px solid #2d2d2d',
-          color: '#bbb'
-        }}
-      >
-        <Icon name="grip" size={11} />
-      </span>
-      <span
-        style={{
-          width: '32px',
-          height: '20px',
-          borderRadius: '5px',
-          background: currentHex || '#E3D1FB',
-          opacity: currentOpacity / 100,
-          border: '1px solid rgba(255, 255, 255, 0.12)'
-        }}
-      />
-      <span style={{ whiteSpace: 'nowrap' }}>{entity.name || 'Entity'}</span>
-    </div>
-  );
-};
-
-const TemplateCategorySortableRow = React.memo(function TemplateCategorySortableRow({
-  category,
-  isSelected,
-  nameValue,
-  onToggleSelect,
-  onNameChange,
-  onNameKeyDown,
-  disabled
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging
-  } = useSortable({
-    id: category.id,
-    disabled
-  });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition: transition || 'transform 180ms cubic-bezier(0.2, 0, 0.2, 1)',
-    width: '100%'
-  };
-
-  return (
-    <div ref={setNodeRef} style={style}>
-      <div
-        style={{
-          display: 'flex',
-          gap: '6px',
-          alignItems: 'center',
-          padding: '4px 6px',
-          borderRadius: '8px',
-          background: isDragging ? 'rgba(58, 58, 58, 0.25)' : 'transparent',
-          border: isSelected ? '1px solid rgba(74, 144, 226, 0.45)' : '1px solid transparent',
-          transition: 'background 0.18s ease, border-color 0.18s ease'
-        }}
-      >
-        <div
-          {...attributes}
-          {...listeners}
-          style={{
-            cursor: disabled ? 'default' : (isDragging ? 'grabbing' : 'grab'),
-            color: '#888',
-            fontSize: '16px',
-            userSelect: 'none',
-            padding: '4px',
-            display: 'flex',
-            alignItems: 'center',
-            touchAction: 'none'
-          }}
-          aria-label="Drag to reorder category"
-        >
-          ☰
-        </div>
-        <input
-          type="checkbox"
-          checked={isSelected}
-          onChange={() => onToggleSelect(category.id)}
-          style={{ cursor: 'pointer', width: '16px', height: '16px', flexShrink: 0 }}
-        />
-        <input
-          type="text"
-          value={nameValue}
-          onChange={(e) => onNameChange(category.id, e.target.value)}
-          onKeyDown={(e) => onNameKeyDown(category.id, e)}
-          style={{
-            flex: 1,
-            padding: '6px 8px',
-            borderRadius: '6px',
-            border: '1px solid #4A90E2',
-            outline: 'none',
-            background: '#141414',
-            color: '#eaeaea',
-            fontFamily: FONT_FAMILY,
-            fontSize: '13px',
-            minWidth: 0
-          }}
-        />
-      </div>
-    </div>
-  );
-});
-
 // Convert RGB to HSL
 const rgbToHsl = (r, g, b) => {
   r /= 255;
@@ -3365,10 +2962,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   }, [showUserDropdown]);
 
   const [activeEntityId, setActiveEntityId] = useState(null);
-  const activeEntity = useMemo(
-    () => entities.find((entity) => entity.id === activeEntityId) || null,
-    [activeEntityId, entities]
-  );
   const handleEntityDragStart = useCallback(({ active }) => {
     setActiveEntityId(active.id);
   }, []);
@@ -3377,14 +2970,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     if (!over || active.id === over.id) {
       return;
     }
-    setEntities((prevEntities) => {
-      const oldIndex = prevEntities.findIndex((entity) => entity.id === active.id);
-      const newIndex = prevEntities.findIndex((entity) => entity.id === over.id);
-      if (oldIndex === -1 || newIndex === -1) {
-        return prevEntities;
-      }
-      return arrayMove(prevEntities, oldIndex, newIndex);
-    });
+    setEntities((prevEntities) => reorderItemsByActiveOver(prevEntities, active.id, over.id));
   }, []);
   const handleEntityDragCancel = useCallback(() => {
     setActiveEntityId(null);
@@ -5420,37 +5006,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     })
   );
 
-  const [activeModuleId, setActiveModuleId] = useState(null);
-
-  const activeModule = useMemo(
-    () => modules.find((module) => module.id === activeModuleId) || null,
-    [activeModuleId, modules]
-  );
-
-  const handleModuleDragStart = useCallback(({ active }) => {
-    setActiveModuleId(active.id);
-  }, []);
-
   const handleModuleDragEnd = useCallback(({ active, over }) => {
-    setActiveModuleId(null);
     if (!over || active.id === over.id) {
       return;
     }
 
-    setModules((prevModules) => {
-      const oldIndex = prevModules.findIndex((mod) => mod.id === active.id);
-      const newIndex = prevModules.findIndex((mod) => mod.id === over.id);
-
-      if (oldIndex === -1 || newIndex === -1) {
-        return prevModules;
-      }
-
-      return arrayMove(prevModules, oldIndex, newIndex);
-    });
-  }, []);
-
-  const handleModuleDragCancel = useCallback(() => {
-    setActiveModuleId(null);
+    setModules((prevModules) => reorderItemsByActiveOver(prevModules, active.id, over.id));
   }, []);
 
   const handleModuleInputKeyDown = useCallback((moduleId, event) => {
@@ -5702,49 +5263,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     })
   );
 
-  const [activeCategoryId, setActiveCategoryId] = useState(null);
-
-  const activeCategory = useMemo(() => {
-    const categories = selectedModuleForCategories?.categories || [];
-    return categories.find((cat) => cat.id === activeCategoryId) || null;
-  }, [activeCategoryId, selectedModuleForCategories]);
-
-  const handleCategoryDragStart = useCallback(({ active }) => {
-    setActiveCategoryId(active.id);
-  }, []);
-
   const handleCategoryDragEnd = useCallback(({ active, over }) => {
-    setActiveCategoryId(null);
-
     if (!over || active.id === over.id || !selectedModuleId) {
       return;
     }
 
-    setModules((prevModules) =>
-      prevModules.map((module) => {
-        if (module.id !== selectedModuleId) {
-          return module;
-        }
-
-        const categories = module.categories || [];
-        const oldIndex = categories.findIndex((cat) => cat.id === active.id);
-        const newIndex = categories.findIndex((cat) => cat.id === over.id);
-
-        if (oldIndex === -1 || newIndex === -1) {
-          return module;
-        }
-
-        return {
-          ...module,
-          categories: arrayMove(categories, oldIndex, newIndex)
-        };
-      })
-    );
+    setModules((prevModules) => reorderCategoriesByActiveOver(prevModules, selectedModuleId, active.id, over.id));
   }, [selectedModuleId]);
-
-  const handleCategoryDragCancel = useCallback(() => {
-    setActiveCategoryId(null);
-  }, []);
 
   const handleCategoryInputKeyDown = useCallback((categoryId, event) => {
     if (event.key === 'Enter') {
@@ -8089,9 +7614,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                           <DndContext
                             sensors={moduleSensors}
                             collisionDetection={closestCenter}
-                            onDragStart={handleModuleDragStart}
+                            modifiers={[restrictSortableToVerticalAxis]}
                             onDragEnd={handleModuleDragEnd}
-                            onDragCancel={handleModuleDragCancel}
                           >
                             <SortableContext
                               items={modules.map((module) => module.id)}
@@ -8116,9 +7640,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                                 ))}
                               </div>
                             </SortableContext>
-                            <DragOverlay>
-                              {activeModule && <TemplateDragOverlayItem label={activeModule.name} />}
-                            </DragOverlay>
                           </DndContext>
                           <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
                             <button
@@ -8296,9 +7817,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                                 <DndContext
                                   sensors={categorySensors}
                                   collisionDetection={closestCenter}
-                                  onDragStart={handleCategoryDragStart}
+                                  modifiers={[restrictSortableToVerticalAxis]}
                                   onDragEnd={handleCategoryDragEnd}
-                                  onDragCancel={handleCategoryDragCancel}
                                 >
                                   <SortableContext
                                     items={(selectedModule.categories || []).map((cat) => cat.id)}
@@ -8323,9 +7843,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                                       ))}
                                     </div>
                                   </SortableContext>
-                                  <DragOverlay>
-                                    {activeCategory && <TemplateDragOverlayItem label={activeCategory.name} />}
-                                  </DragOverlay>
                                 </DndContext>
                                 <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
                                   <button
@@ -8524,6 +8041,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                   <DndContext
                     sensors={entitySensors}
                     collisionDetection={closestCenter}
+                    modifiers={[restrictSortableToVerticalAxis]}
                     onDragStart={handleEntityDragStart}
                     onDragEnd={handleEntityDragEnd}
                     onDragCancel={handleEntityDragCancel}
@@ -8551,9 +8069,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
                         )}
                       </div>
                     </SortableContext>
-                    <DragOverlay>
-                      {activeEntity && <EntityDragOverlayItem entity={activeEntity} />}
-                    </DragOverlay>
                   </DndContext>
                 </div>
 

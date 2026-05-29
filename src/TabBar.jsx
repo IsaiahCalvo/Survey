@@ -1,12 +1,279 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useMemo } from 'react';
+import { flushSync } from 'react-dom';
+import {
+  DndContext,
+  KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  horizontalListSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import Icon from './Icons';
-import { useDragToReorder } from './utils/useDragToReorder';
 // Phase 30 — per-tab subscription to the dual-write retry queue. Each tab
 // renders its own dot independently when its documentId has at least one
 // non-quarantined queue entry. CONTEXT.md AC-13 / 30-UI-SPEC.md Surface 3.
 import { useDocsPendingDualWrite } from './hooks/useTabPendingDualWrite.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
+const TAB_HEIGHT = 32;
+const HOME_TAB_WIDTH = 148;
+const PDF_TAB_MIN_WIDTH = 168;
+const PDF_TAB_MAX_WIDTH = 280;
+const TAB_BAR_BG = '#0d0f14';
+const TAB_IDLE_BG = '#0f1218';
+const TAB_ACTIVE_BG = '#181c24';
+const TAB_HOVER_BG = '#151922';
+const TAB_BORDER = '#2a3140';
+const TAB_TEXT = '#8d96a6';
+const TAB_TEXT_ACTIVE = '#f4f1ea';
+const TAB_ACCENT = '#d8a84e';
+
+const restrictTabsToHorizontalAxis = ({ transform }) => ({
+  ...transform,
+  y: 0,
+});
+
+const createTabBoundsModifier = () => ({ active, activeNodeRect, transform }) => {
+  const activeIdValue = String(active?.id ?? '');
+  const activeNode = Array.from(document.querySelectorAll('[data-pdf-tab-id]'))
+    .find((node) => node.dataset.pdfTabId === activeIdValue);
+  const listNode = activeNode?.closest?.('[data-pdf-tab-list]');
+
+  if (!activeNodeRect || !activeNode || !listNode) {
+    return transform;
+  }
+
+  const itemRects = Array.from(listNode.querySelectorAll('[data-pdf-tab-id]'))
+    .map((node) => ({
+      left: node.offsetLeft,
+      right: node.offsetLeft + node.offsetWidth,
+    }))
+    .filter((rect) => rect.right > rect.left);
+
+  if (!itemRects.length) {
+    return transform;
+  }
+
+  const left = Math.min(...itemRects.map((rect) => rect.left));
+  const right = Math.max(...itemRects.map((rect) => rect.right));
+
+  return {
+    ...transform,
+    x: Math.min(
+      Math.max(transform.x, left - activeNode.offsetLeft),
+      right - (activeNode.offsetLeft + activeNode.offsetWidth)
+    ),
+  };
+};
+
+const moveArrayItem = (items, fromIndex, toIndex) => {
+  if (
+    fromIndex === toIndex ||
+    fromIndex < 0 ||
+    toIndex < 0 ||
+    fromIndex >= items.length ||
+    toIndex >= items.length
+  ) {
+    return items;
+  }
+
+  const nextItems = items.slice();
+  const [moved] = nextItems.splice(fromIndex, 1);
+  nextItems.splice(toIndex, 0, moved);
+  return nextItems;
+};
+
+function TabItem({
+  tab,
+  isActive,
+  isHome,
+  isSorting = false,
+  isDragging = false,
+  dragOverTabId,
+  hasPendingDualWrite,
+  onTabClick,
+  onTabClose,
+  onPageDragOver,
+  onPageDragLeave,
+  onPageDrop,
+  sortableAttributes = {},
+  sortableListeners = {},
+  setNodeRef = null,
+  style: sortableStyle = {},
+}) {
+  const handleTabCloseClick = (e) => {
+    e.stopPropagation();
+    onTabClose(tab.id);
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...sortableAttributes}
+      {...sortableListeners}
+      data-pdf-tab-id={!isHome ? tab.id : undefined}
+      onClick={() => onTabClick(tab.id)}
+      onDragOver={(e) => !isHome && onPageDragOver(e, tab.id)}
+      onDragLeave={(e) => !isHome && onPageDragLeave(e, tab.id)}
+      onDrop={(e) => !isHome && onPageDrop(e, tab.id)}
+      style={{
+        ...sortableStyle,
+        position: 'relative',
+        display: 'flex',
+        alignItems: 'center',
+        minWidth: isHome ? `${HOME_TAB_WIDTH}px` : `${PDF_TAB_MIN_WIDTH}px`,
+        maxWidth: isHome ? `${HOME_TAB_WIDTH}px` : `${PDF_TAB_MAX_WIDTH}px`,
+        width: isHome ? `${HOME_TAB_WIDTH}px` : 'auto',
+        height: `${TAB_HEIGHT}px`,
+        padding: '0 10px',
+        background: dragOverTabId === tab.id ? TAB_HOVER_BG : (isActive ? TAB_ACTIVE_BG : TAB_IDLE_BG),
+        borderRight: `1px solid ${TAB_BORDER}`,
+        borderTop: isActive ? `2px solid ${TAB_ACCENT}` : (dragOverTabId === tab.id ? `2px solid ${TAB_ACCENT}` : '2px solid transparent'),
+        cursor: isHome ? 'pointer' : (isDragging ? 'grabbing' : 'grab'),
+        userSelect: 'none',
+        opacity: isDragging ? 0.92 : 1,
+        transition: isDragging
+          ? 'background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease'
+          : [sortableStyle.transition, 'background 0.15s ease', 'border-color 0.15s ease', 'box-shadow 0.15s ease'].filter(Boolean).join(', '),
+        fontFamily: FONT_FAMILY,
+        fontSize: '12px',
+        color: isActive ? TAB_TEXT_ACTIVE : TAB_TEXT,
+        zIndex: isDragging ? 5 : undefined,
+        boxShadow: isDragging ? '0 10px 26px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(216,168,78,0.28)' : 'none',
+        touchAction: isHome ? undefined : 'none',
+      }}
+      onMouseEnter={(e) => {
+        if (!isActive && !isSorting) {
+          e.currentTarget.style.background = TAB_HOVER_BG;
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!isActive && !isSorting) {
+          e.currentTarget.style.background = TAB_IDLE_BG;
+        }
+      }}
+    >
+      {isHome ? (
+        <Icon
+          name="home"
+          size={13}
+          style={{ marginRight: '7px', flexShrink: 0 }}
+        />
+      ) : tab.hasUnsavedAnnotations ? (
+        <span
+          style={{
+            width: '5px',
+            height: '5px',
+            borderRadius: '50%',
+            background: TAB_ACCENT,
+            display: 'inline-block',
+            marginRight: '7px',
+            flexShrink: 0
+          }}
+          title="Unsaved changes (Cmd/Ctrl+S to save)"
+        />
+      ) : (
+        <div style={{ width: '12px', marginRight: '7px', flexShrink: 0 }} />
+      )}
+
+      <span
+        style={{
+          flex: 1,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          fontWeight: isActive ? '500' : '400'
+        }}
+        title={tab.name}
+      >
+        {tab.name}
+      </span>
+
+      {!isHome && hasPendingDualWrite && (
+        <span
+          role="status"
+          aria-label="This document has unsaved changes"
+          title="This document has unsaved changes"
+          style={{
+            width: '6px',
+            height: '6px',
+            borderRadius: '50%',
+            background: '#DC3545',
+            display: 'inline-block',
+            marginRight: '7px',
+            flexShrink: 0
+          }}
+        />
+      )}
+
+      {!isHome && (
+        <button
+          onClick={handleTabCloseClick}
+          onPointerDown={(e) => e.stopPropagation()}
+          style={{
+            marginLeft: '7px',
+            padding: '3px',
+            background: 'transparent',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#666',
+            transition: 'all 0.15s ease',
+            flexShrink: 0
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = TAB_HOVER_BG;
+            e.currentTarget.style.color = TAB_TEXT_ACTIVE;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.color = TAB_TEXT;
+          }}
+        >
+          <Icon name="close" size={11} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function SortablePdfTab(props) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+    isSorting,
+  } = useSortable({ id: props.tab.id });
+
+  return (
+    <TabItem
+      {...props}
+      isDragging={isDragging}
+      isSorting={isSorting}
+      setNodeRef={setNodeRef}
+      sortableAttributes={attributes}
+      sortableListeners={listeners}
+      style={{
+        transform: CSS.Translate.toString(transform),
+        transition,
+      }}
+    />
+  );
+}
 
 const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onPageDrop }) => {
   const [dragOverTabId, setDragOverTabId] = useState(null);
@@ -22,41 +289,30 @@ const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onPag
 
   // Use drag-to-reorder for tabs (excluding home tab)
   const pdfTabs = tabs.filter(t => !t.isHome);
-  const {
-    draggingState: tabDraggingState,
-    virtualOrder: tabVirtualOrder,
-    handleGrab: handleTabGrab,
-    registerItemRef: registerTabRef,
-    containerRef: tabContainerRef
-  } = useDragToReorder(pdfTabs, (reorderedPdfTabs) => {
-    // Recombine with home tab at the beginning
-    const homeTab = tabs.find(t => t.isHome);
-    if (homeTab) {
-      onTabReorder([homeTab, ...reorderedPdfTabs]);
-    } else {
-      onTabReorder(reorderedPdfTabs);
-    }
-  }, {
-    itemHeight: 40,
-    gap: 0,
-    dragHandleSelector: '[data-tab-drag-handle]'
-  });
-  
-  // Combine home tab with reordered PDF tabs for display
-  const displayTabs = (() => {
-    const homeTab = tabs.find(t => t.isHome);
-    if (!homeTab) return tabVirtualOrder || pdfTabs.map((tab, idx) => ({ item: tab, index: idx }));
-    
-    const homeTabDisplay = { item: homeTab, index: 0 };
-    const pdfTabsDisplay = tabVirtualOrder || pdfTabs.map((tab, idx) => ({ item: tab, index: idx + 1 }));
-    return [homeTabDisplay, ...pdfTabsDisplay];
-  })();
+  const homeTab = tabs.find(t => t.isHome);
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 160, tolerance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+  const tabModifiers = useMemo(() => [
+    restrictTabsToHorizontalAxis,
+    createTabBoundsModifier(),
+  ], []);
 
-  const handleTabCloseClick = (e, tabId) => {
-    e.stopPropagation();
-    onTabClose(tabId);
-  };
+  const handleTabDragEnd = useCallback(({ active, over }) => {
+    if (!over || active.id === over.id) return;
 
+    const fromIndex = pdfTabs.findIndex((tab) => tab.id === active.id);
+    const toIndex = pdfTabs.findIndex((tab) => tab.id === over.id);
+    const reorderedPdfTabs = moveArrayItem(pdfTabs, fromIndex, toIndex);
+
+    if (reorderedPdfTabs === pdfTabs) return;
+
+    flushSync(() => {
+      onTabReorder(homeTab ? [homeTab, ...reorderedPdfTabs] : reorderedPdfTabs);
+    });
+  }, [homeTab, onTabReorder, pdfTabs]);
 
   const handlePageDragOver = (e, targetTabId) => {
     // Check if this is a page drag by checking dataTransfer types
@@ -109,13 +365,13 @@ const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onPag
       ref={tabBarRef}
       style={{
         display: 'flex',
-        background: '#1e1e1e',
-        borderBottom: '1px solid #3a3a3a',
+        background: TAB_BAR_BG,
+        borderBottom: `1px solid ${TAB_BORDER}`,
         overflowX: 'auto',
         overflowY: 'hidden',
         flexShrink: 0,
         scrollbarWidth: 'thin',
-        scrollbarColor: '#555 #1e1e1e'
+        scrollbarColor: `${TAB_BORDER} ${TAB_BAR_BG}`
       }}
     >
       <style>{`
@@ -123,220 +379,76 @@ const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onPag
           height: 6px;
         }
         .tab-bar::-webkit-scrollbar-track {
-          background: #1e1e1e;
+          background: ${TAB_BAR_BG};
         }
         .tab-bar::-webkit-scrollbar-thumb {
-          background: #555;
+          background: ${TAB_BORDER};
           border-radius: 3px;
         }
         .tab-bar::-webkit-scrollbar-thumb:hover {
-          background: #666;
+          background: #3a4252;
         }
       `}</style>
       <div
-        ref={tabContainerRef}
         className="tab-bar"
         style={{
           display: 'flex',
           minWidth: '100%',
-          height: '40px'
+          height: `${TAB_HEIGHT}px`
         }}
       >
-        {displayTabs
-          .sort((a, b) => {
-            // Always put home tab first
-            if (a.item.isHome) return -1;
-            if (b.item.isHome) return 1;
-            return a.index - b.index;
-          })
-          .map(({ item: tab }) => {
-            // Phase 30 — per-tab dual-write dot. We do NOT call a hook here
-            // (closing a tab would change the hook count and crash render).
-            // Consult the Set computed once at the top of TabBar instead.
-            const tabDocId = tab.documentId || tab.id;
-            const hasPendingDualWrite = pendingDualWriteDocIds.has(tabDocId);
-            const isActive = tab.id === activeTabId;
-            const isDragging = tabDraggingState?.itemId === tab.id;
-            const isHome = tab.isHome;
+        {homeTab && (
+          <TabItem
+            tab={homeTab}
+            isActive={homeTab.id === activeTabId}
+            isHome
+            dragOverTabId={dragOverTabId}
+            hasPendingDualWrite={false}
+            onTabClick={onTabClick}
+            onTabClose={onTabClose}
+            onPageDragOver={handlePageDragOver}
+            onPageDragLeave={handlePageDragLeave}
+            onPageDrop={handlePageDrop}
+          />
+        )}
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          modifiers={tabModifiers}
+          onDragEnd={handleTabDragEnd}
+        >
+          <SortableContext items={pdfTabs.map((tab) => tab.id)} strategy={horizontalListSortingStrategy}>
+            <div data-pdf-tab-list style={{ display: 'flex', height: `${TAB_HEIGHT}px` }}>
+              {pdfTabs.map((tab) => {
+                // Phase 30 — per-tab dual-write dot. We do NOT call a hook here
+                // (closing a tab would change the hook count and crash render).
+                // Consult the Set computed once at the top of TabBar instead.
+                const tabDocId = tab.documentId || tab.id;
+                const hasPendingDualWrite = pendingDualWriteDocIds.has(tabDocId);
+                const isActive = tab.id === activeTabId;
 
-            return (
-              <div
-                key={tab.id}
-                ref={(el) => {
-                  // Only register PDF tabs for drag-to-reorder
-                  if (!isHome) {
-                    registerTabRef(tab.id, el);
-                  }
-                }}
-                onClick={() => onTabClick(tab.id)}
-                onDragOver={(e) => !isHome && handlePageDragOver(e, tab.id)}
-                onDragLeave={(e) => !isHome && handlePageDragLeave(e, tab.id)}
-                onDrop={(e) => !isHome && handlePageDrop(e, tab.id)}
-                style={{
-                  position: 'relative',
-                  display: 'flex',
-                  alignItems: 'center',
-                  minWidth: isHome ? '200px' : '200px',
-                  maxWidth: isHome ? '200px' : '300px',
-                  width: isHome ? '200px' : 'auto',
-                  height: '40px',
-                  padding: '0 12px',
-                  background: dragOverTabId === tab.id ? '#3a3a3a' : (isActive ? '#2b2b2b' : '#252525'),
-                  borderRight: '1px solid #3a3a3a',
-                  borderTop: isActive ? '2px solid #4A90E2' : (dragOverTabId === tab.id ? '2px solid #4A90E2' : '2px solid transparent'),
-                  cursor: 'pointer',
-                  userSelect: 'none',
-                  opacity: isDragging ? 0.5 : 1,
-                  transition: 'background 0.15s ease, border-color 0.15s ease',
-                  fontFamily: FONT_FAMILY,
-                  fontSize: '13px',
-                  color: isActive ? '#ddd' : '#999'
-                }}
-                onMouseEnter={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.background = '#2a2a2a';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.background = '#252525';
-                  }
-                }}
-              >
-                {/* Drag handle - hidden for home tab */}
-                {!isHome && (
-                  <div
-                    data-tab-drag-handle
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleTabGrab(e, tab.id);
-                    }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      cursor: 'grab',
-                      padding: '4px',
-                      marginRight: '8px',
-                      color: '#666',
-                      fontSize: '12px'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.color = '#999';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.color = '#666';
-                    }}
-                  >
-                    <Icon name="grip" size={12} />
-                  </div>
-                )}
-
-                {/* Tab icon - home icon for home tab, blue circle for PDFs with unsaved changes */}
-                {isHome ? (
-                  <Icon 
-                    name="home" 
-                    size={14} 
-                    style={{ marginRight: '8px', flexShrink: 0 }} 
+                return (
+                  <SortablePdfTab
+                    key={tab.id}
+                    tab={tab}
+                    isActive={isActive}
+                    isHome={false}
+                    dragOverTabId={dragOverTabId}
+                    hasPendingDualWrite={hasPendingDualWrite}
+                    onTabClick={onTabClick}
+                    onTabClose={onTabClose}
+                    onPageDragOver={handlePageDragOver}
+                    onPageDragLeave={handlePageDragLeave}
+                    onPageDrop={handlePageDrop}
                   />
-                ) : tab.hasUnsavedAnnotations ? (
-                  <span
-                    style={{
-                      width: '5px',
-                      height: '5px',
-                      borderRadius: '50%',
-                      background: '#4A90E2',
-                      display: 'inline-block',
-                      marginRight: '8px',
-                      flexShrink: 0
-                    }}
-                    title="Unsaved changes (Cmd/Ctrl+S to save)"
-                  />
-                ) : (
-                  <div style={{ width: '14px', marginRight: '8px', flexShrink: 0 }} />
-                )}
-
-                {/* Tab title */}
-                <span
-                  style={{
-                    flex: 1,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                    fontWeight: isActive ? '500' : '400'
-                  }}
-                  title={tab.name}
-                >
-                  {tab.name}
-                </span>
-
-                {/* Phase 30 — red 'unsaved dual-write' dot per 30-UI-SPEC.md Surface 3.
-                    UX: 6px-diameter solid red dot — distinct from the existing blue 5px
-                    'unsaved annotations' dot at the left of the tab. Blue = "you have
-                    local edits not yet committed via Cmd+S to the legacy save path";
-                    Red = "your dual-write retry queue has pending entries (one side of
-                    a save failed and the queue is still retrying)". The two are
-                    independent — both can appear on the same tab.
-                    Per 30-UI-SPEC.md Surface 3: 6px diameter, var(--accent-red) (#DC3545),
-                    8px gap (sm token) before the close button — matches macOS "modified
-                    document" indicator convention. Per-user (queue is local); only the
-                    affected user sees the dot on their own client. role=status +
-                    aria-label so screen readers announce; does NOT steal focus or
-                    affect Tab keyboard navigation. */}
-                {!isHome && hasPendingDualWrite && (
-                  <span
-                    role="status"
-                    aria-label="This document has unsaved changes"
-                    title="This document has unsaved changes"
-                    style={{
-                      width: '6px',
-                      height: '6px',
-                      borderRadius: '50%',
-                      background: '#DC3545',
-                      display: 'inline-block',
-                      marginRight: '8px',
-                      flexShrink: 0
-                    }}
-                  />
-                )}
-
-                {/* Close button - hidden for home tab */}
-                {!isHome && (
-                  <button
-                    onClick={(e) => handleTabCloseClick(e, tab.id)}
-                    style={{
-                      marginLeft: '8px',
-                      padding: '4px',
-                      background: 'transparent',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: '#666',
-                      transition: 'all 0.15s ease',
-                      flexShrink: 0
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = '#3a3a3a';
-                      e.currentTarget.style.color = '#ddd';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'transparent';
-                      e.currentTarget.style.color = '#666';
-                    }}
-                  >
-                    <Icon name="close" size={12} />
-                  </button>
-                )}
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          </SortableContext>
+        </DndContext>
       </div>
     </div>
   );
 };
 
 export default TabBar;
-
