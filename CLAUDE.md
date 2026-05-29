@@ -28,8 +28,14 @@ container-aware canvas sizing, single-name fontFamily, `zoomGeneration` signal
 contract, no JavaScript zoom coordination in `SVGAnnotationLayer.jsx`. Those are
 not protection-list items — they are correctness invariants.
 
-- `src/App.jsx` — ~1.3MB main file, zoom logic, portal host resolution, render
-  loop. Edits here are high-risk; minimum viable diff only.
+- `src/PDFViewer.jsx` — ~1.5MB / ~34k-line document viewer: the Syncfusion
+  zoom/scale lifecycle, the per-page overlay portal render loop, save/sync, and
+  the history engine. The single highest-risk file; minimum viable diff only.
+- `src/viewerShared.js` — shared constants + helper functions imported by
+  PDFViewer and AppShell. Renamed from the misleading `App.jsx` on 2026-05-29
+  (it is NOT the app root and is not the 1.3MB monolith — that history belonged
+  to the old pre-extraction App.jsx). Not fragile itself, but both big files
+  import it, so run build + `npm test` after any change.
 - `src/PageAnnotationLayer.jsx` — per-page Fabric.js canvas overlay
   (~10,097 lines). Only touch when actually needed for the current task.
   (The real file is `src/PageAnnotationLayer.jsx`. A dead 41-line stub at

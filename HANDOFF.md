@@ -1,73 +1,70 @@
-# Handoff: professional-polish pass — headers, architecture guide, dead-import prune
+# Handoff: rename + repo cleanup + the annotation-contract map
 
-**Generated**: 2026-05-29 (afternoon "keep optimizing until ~50% context" session)
-**Branch**: `main` — everything below is committed locally on `main`. Nothing pushed (Isaiah pushes on his own cadence).
-**State**: Build green (`vite build`, exit 0). `npm test` = **834 pass / 0 fail / 6 skip** (unchanged from baseline, verified after every change this session).
+**Generated**: 2026-05-29 (evening "drive it forward until ~50% context" session)
+**Branch**: `main` — everything below is committed locally on `main`. Nothing pushed (Isaiah pushes on his own cadence; direct-to-main workflow, test on the dev server first).
+**State**: Build green (`vite build`, exit 0). `npm test` = **834 pass / 0 fail / 6 skip** — verified after EVERY commit this session (unchanged from baseline throughout).
 
-## WHY we are doing all this (the north star — read this first)
+## WHY (the north star — unchanged, read first)
 
-The file breakup, dead-code removal, and simplification are NOT busywork. There are
-two motives, and the second is the real prize:
+The breakup + cleanup + documentation serve two goals, the second being the real prize:
+1. **Parallel agent work.** Small, single-purpose, accurately-headed files so many agents can work at once without colliding or guessing intent. (Isaiah's stated end-state: point ~20–50 agents at the Linear backlog at once, each scoped, verified, self-reporting.)
+2. **Performance — own the rendering + zoom.** The app leans on **Syncfusion** for the PDF viewer; its zoom is the pain point (laggy, not smooth/professional). The long-term prize is to **remove Syncfusion entirely**, own the PDF rendering, and build **custom near-zero-lag zoom**. Every cleanup makes that swap feasible by getting the codebase light + understandable. Bias all cleanup toward **fewer layers / lighter weight**.
 
-1. **Parallel agent work.** Smaller, single-purpose files with accurate headers let
-   multiple agents work at once without colliding or guessing intent.
-2. **Performance — own the rendering and the zoom.** The app currently leans on
-   **Syncfusion** for the PDF viewer, and Syncfusion owns a huge amount of the
-   pipeline. The zoom experience today is the pain point: laggy, not smooth in/out,
-   not professional. The end goal is to **remove Syncfusion entirely**, own the PDF
-   rendering ourselves, and build **custom zoom with near-zero lag** that feels
-   smooth and professional. We can't safely do that while the code is a tangle of
-   layers and cruft, so every cleanup step is in service of getting the codebase
-   light and understandable enough to swap out Syncfusion + the zoom engine.
+**NO-GO for piecemeal refactor (still law):** the Syncfusion zoom/scale lifecycle and the overlay portal render loop in `PDFViewer.jsx`. The eventual zoom/Syncfusion replacement is a dedicated, well-planned milestone, NOT something to chip at during cleanup. Same discipline now applies to the **callout unification** (see below) — it's a dedicated migration, not a piecemeal job.
 
-**Important nuance for incremental work:** the Syncfusion zoom/scale lifecycle and
-the overlay portal loop are NO-GO for piecemeal refactors *right now* — they are
-load-bearing and fragile, and the four invariants exist to keep today's app working.
-Do NOT half-rewrite the zoom engine in small steps. The eventual zoom/Syncfusion
-replacement is a deliberate, dedicated, well-planned effort (its own milestone), not
-something to chip at while doing cleanup. Until then: protect the zoom system,
-keep simplifying everything *around* it, and document how it actually works so the
-eventual replacement is feasible. Bias all cleanup toward fewer layers and lighter
-weight — that directly serves the zoom/performance goal.
+## What this session did (6 commits, oldest→newest)
 
-## What this session did (3 commits, oldest→newest)
+1. **`ad2ad6e9` — renamed `src/App.jsx` → `src/viewerShared.js`.** The file stopped being the app root long ago; it's a leaf module of shared constants + helpers (zero JSX). Kept it FLAT in `src/` (not nested in `shared/`) so its own relative imports don't shift. Repointed the 2 live importers (`PDFViewer.jsx:238`, `AppShell.jsx:39` — only the path string changed), 9 test/script filesystem reads (incl. a real `readFileSync` in `src/utils/__tests__/surveyMarkerSyncSafety.test.mjs`), and stale comment refs. Rewrote the header.
+2. **`ff272116` — removed 99 dead import specifiers across 78 files.** 66 were just an unused `React` default (safe under the automatic JSX runtime). Surgical AST-span transform (only import declarations rewritten; all other bytes untouched). Re-scan now reports 0 unused.
+3. **`4a91a308` — `docs/ANNOTATION-CONTRACT.md` + refreshed `docs/ARCHITECTURE.md`.** The big one — see next section.
+4. **`204125fe` — removed orphaned annotation dead code** (remediation #1+#2): deleted `src/contexts/AnnotationContext.jsx` (a fully-built parallel `AnnotationStore` state engine nothing renders) + its only consumer `src/components/OptimizedPDFPage.jsx`, and the unused `DB_TYPE_TO_FABRIC_DEFAULT` map in `annotationTypeSerializers.js`. Each verified dead by grep (0 external refs) first.
+5. **`d73e4d5c` — top-of-file headers on 96 source files.** A 13-agent parallel pass added 95 concise, accurate headers (grounded strictly in each file's real exports/imports); PageAnnotationLayer.jsx headered by hand. Callout/survey-marker-pipeline files carry a pointer to `docs/ANNOTATION-CONTRACT.md`. All comment-only insertions (0 deletions).
+6. **(this commit) — fixed stale `CLAUDE.md` high-risk list + this handoff.** The high-risk entry described a nonexistent `App.jsx` as the 1.3MB zoom file; corrected to list `PDFViewer.jsx` (the actual 1.5MB zoom/render-loop file) and describe `viewerShared.js` accurately.
 
-1. **`989afa0d` — file-header overviews on the five top-level modules.** Pure comments.
-   - `src/App.jsx`: replaced the **stale, wrong** `// App.jsx - PDF Management Dashboard` comment with an accurate header (this file is now a shared constants/helpers module, NOT the app; rename candidate).
-   - `src/SurveySpacesRail.jsx`: added a header (it was the only big file missing one), incl. the "Spaces in the name renders no Spaces UI" clarification.
-   - `src/PDFViewer.jsx`, `src/AppShell.jsx`, `src/Dashboard.jsx`: already had accurate headers — added the four-invariants + NO-GO note to the viewer; added a guard note to the shell (corrected in commit 2).
-2. **`1d7a5602` — architecture guide + AppShell guard-note fix.**
-   - `docs/ARCHITECTURE.md` (233 lines): a verified, skimmable map of `src/` for parallel agent + human work — entry point, the five top-level modules and their one-directional import graph, the published-API communication pattern, the NO-GO zones + four invariants, the verification workflow. Every structural claim was grep/ls-verified.
-   - `src/AppShell.jsx`: corrected the guard note — the identity-churn guard actually lives in **PDFViewer's publisher effects**, not the shell. (See "CLAUDE.md is stale" below.)
-3. **`ebc80d62` — pruned 177 dead imports from `src/App.jsx` + added a checker tool.**
-   - App.jsx became pure non-React helper code after the extractions (zero JSX, zero hook calls, zero `React.*`), leaving 177 unused import specifiers across 72 statements (incl. the entire React import). Removed them with a surgical AST transform that only touches import-declaration spans.
-   - Verified safe **three ways**: `scripts/check-undef.mjs` set-diff showed ZERO new unresolved identifiers; build green; tests unchanged.
-   - Added **`scripts/check-unused-imports.mjs`** — read-only companion to `check-undef.mjs`; reports unused/duplicate imports, `--json` mode for automation.
+## The key new artifact: `docs/ANNOTATION-CONTRACT.md` (READ IT)
 
-## Current architecture (read `docs/ARCHITECTURE.md` first — it's the source of truth)
+A 10-agent parallel audit mapped every annotation type across 9 lifecycle stages
+(create / state / render / serialize / sync / undo / edit / delete / export). The doc contains:
+- **The shared contract** — the one way annotations are supposed to flow, stage by stage, with `file:line` anchors.
+- **A per-type conformance table** — ✅ on contract / ⚠️ necessary divergence / ❌ accidental.
+- **A 20-item divergence catalogue** with evidence + recommendation + risk/effort.
+- **A safest-first remediation plan** (12 ordered actions).
 
-- `src/AppShell.jsx` (~2,857) — the real app root (main.jsx imports its default). Tabs, auth/entity state, chrome host divs, top-right zoom pill, Dashboard↔PDFViewer router. RECEIVES the rail/toolbar APIs.
-- `src/PDFViewer.jsx` (~34,300) — the document viewer. **One giant React function component** (see below). PUBLISHES leftRailApi/rightRailApi/bottomToolbarApi.
-- `src/Dashboard.jsx` (~3,875) — the home screen.
-- `src/App.jsx` (~2,180 now) — **misnamed**: shared constants/helpers module, imported by viewer + shell. Leaf (imports none of the big three; no cycles).
-- `src/SurveySpacesRail.jsx` (~2,980) — the survey right rail (renders no Spaces UI despite the name).
+### The headline finding (this is what Isaiah asked about)
+**Callout is the odd-one-out**, diverging from the shared contract at nearly EVERY stage: a separate `callouts[]` state slice (normalized 0–1 coords instead of page-pixel Fabric), a separate serializer (`annotation_data.callout` + an explicit deserialize bypass at `annotationTypeSerializers.js:101`), a fully parallel cloud-sync + a dedicated `Y.Map('callouts')`, a bespoke history-scope module (`calloutHistoryScope.js`), a separate render loop, an edit adapter, AND an **ungated delete** (no `canModify` — a real collaboration security gap).
 
-## Recommended next steps (risk-ordered, safest first)
+**Root cause:** callouts were grafted in from a reference "Callout app", not designed on the contract; Phase 14 ("unified-svg-callout-render-shared-tool-foundation") began unifying but never finished. **Decisive proof it's accidental, not necessary:** the **counter** tool is an equally composite multi-part group object yet rides the unified path (in `annotationsByPage`, shared serializer/sync/history, dispatched by a `data.type==='counter'` guard). The ONLY genuinely necessary callout-specific code is the leader-line geometry (`renderCallout`'s richer signature) + the `data-callout-id` hit-test. **survey_marker** is a milder runner-up (its separation is mostly legit Excel-two-way-sync + dedicated DB columns).
 
-1. **Rename `src/App.jsx` → `src/shared/viewerShared.js`** (or split into `constants/` + `utils/`). The single biggest remaining "amateur smell" (a file named App.jsx that isn't the app). MECHANICAL but multi-file: update the import path in `PDFViewer.jsx` and `AppShell.jsx` (the import LISTS don't change, only the path), move the file, and **repoint the source-guard tests that read `App.jsx` by filename** (last session repointed 7 such tests to read App.jsx + PDFViewer.jsx concatenated — those file-reads need updating). Verify: `check-undef` + build + test. Do it as one focused commit.
-2. **Repo-wide dead-import cleanup** using the new `scripts/check-unused-imports.mjs`. Current scan: **99 unused specifiers across 78 files** (most 1–2 each; App.jsx already done). Top offenders: `PageAnnotationLayer.jsx` (14 — HIGH-RISK file, handle with care), `components/FabricEditCanvas.jsx` (3), `components/CompactColorPicker.jsx` (3). NOTE: a `React` flagged unused in a JSX file is safe to drop ONLY because this project uses the automatic JSX runtime (@vitejs/plugin-react) — confirm build stays green. Also 2 files have duplicate imports. The `/tmp/prune.mjs`-style transform from commit 3 can be reused (it lived at `scripts/_prune_tmp.mjs`, deleted after use — rewrite from the commit if needed). Always gate on check-undef + build + test.
-3. **`src/components/LocateModal.jsx` is confirmed dead** (imported by nobody; the live Locate dialog is inline `showLocateModal` JSX in PDFViewer). Safe to delete, but it's someone's WIP — **confirm with Isaiah** before deleting (git-reversible either way).
-4. **Internal PDFViewer extractions (own session, careful).** See the NO-GO warning below.
+## Recommended next steps (safest-first — full detail in ANNOTATION-CONTRACT.md remediation plan)
 
-## Warnings / invariants (still law)
+**Safe, independent, do-anytime (low risk):**
+1. Retire the `Callout/index.jsx` `CalloutOverlay` stub — it's a mounted no-op (renders `null`). Repoint its 3 re-exports to `./types`, remove the 3 `<CalloutOverlay>` render sites + 2 default imports, delete the stub. (Touches PDFViewer + PAL — minimal diff under the standing waiver; run `npm test`.)
+2. Delete the dead `saveAnnotatedPDFFile.js` helper (silently drops callouts+markers; confirm dead first).
+3. Decide the 2 empty 0-byte orphan files (`src/contexts/SurveySessionContext.jsx`, `src/hooks/useSurveySync.js`) — no importers; likely deletable but **confirm with Isaiah** (could be placeholders).
+4. Delete the legacy `renderArrow` group renderer after a data audit confirms no stored/cloud data serializes arrows as Fabric groups.
 
-- **PDFViewer.jsx is ONE giant React function component** (opens ~line 234, closes at EOF; ~202 useState / 224 useRef / 318 useCallback / 188 useEffect). Almost nothing is verbatim-liftable. Only ~8 pure helpers (useCallback w/ empty deps, no refs/state) could move to a module cheaply. Everything else (history engine, page ops, survey, Excel sync) is a closure over dozens of setters/refs → must become a hook taking a wide ref/setter bundle (medium-high risk). The four API-publisher effects bundle most handlers, so any handler an extraction touches is likely referenced by a publisher.
-- **NO-GO zones in PDFViewer (never relocate/rewrite):** (1) the Syncfusion zoom/scale lifecycle (`beginSyncfusionScaleConfirmPending` ~1780, the `setZoomGeneration(prev=>prev+1)` signal, the snapshot/commit/transform cluster); (2) the per-page Syncfusion overlay portal render loop in the JSX (the `createPortal` `.map`). There are 7 NO-GO banners in the file marking these.
-- **The four CLAUDE.md invariants** (container-aware canvas sizing, SVG viewBox owns all zoom scaling, never remove `zoomGeneration`, single-name Fabric `fontFamily`) are correctness law.
-- **CLAUDE.md is STALE on one point:** it says the identity-churn guard "lives in AppShell.jsx." After the PDFViewer extraction, the publisher effects (and their `(prev)=>` compare guard) moved to `PDFViewer.jsx`. AppShell only RECEIVES the APIs. Worth fixing in CLAUDE.md (use `/gotcha`).
-- **No automated test renders the viewer/home/shell.** Build + check-undef + source-guard tests cover *static* correctness; behavioral/visual changes still want a dev-server look.
-- **Verify before asserting "dead"/"used":** confirm with a fresh single command (grep file contents / `check-unused-imports.mjs`), not a remembered claim.
+**Real correctness/security fixes (HIGH risk — touch PDFViewer delete paths; do each isolated + verified, ideally tell Isaiah first):**
+5. **Callout delete has no `canModify` gate** (`PDFViewer.jsx:~10461` keyboard, `PageAnnotationLayer.jsx:~4346` context-menu) — a non-owner can delete other users' callouts; the same op on a shape is gated. Route callout ids through `canModify` + `buildBulkDeletePlan`.
+6. **Survey-marker delete uses a bespoke ownership chain** (`PDFViewer.jsx:~23243`) instead of `permissionScope.getAnnotationAuthorId` — author resolved from a different slot than the canonical chain → inconsistent authority. Route through `permissionScope`.
+7. **Stamp (image) silently renders nothing AND exports nothing** despite being a DB type — likely a lost render path from the SVG migration. Decide scope with Isaiah: add `renderImage` + export case, or make the skip explicit/diagnosed.
 
-## Session note (environment)
+**The KEYSTONE (do LAST, dedicated effort, HIGH risk + large):**
+8. Migrate callouts into `annotationsByPage` as page-coord Fabric `group` objects with `data.type==='callout'` (mirroring counter). Collapses ~6 divergences at once (separate state, serializer, sync, CRDT map, history scope, count arg). **Requires a schema + CRDT backfill** (existing callout rows + live-collab `Y.Map('callouts')` entries → page-coord groups). The dependent forks are load-bearing UNTIL this lands — do NOT delete them piecemeal first. This finishes Phase 14. Treat like the zoom rewrite: plan it as its own milestone.
 
-This session hit a tooling glitch: large parallel tool batches got cancelled when one call errored, and long multi-line output truncated/garbled in the display. Several mid-session "findings" were noise and were corrected by clean single-command re-checks (see `memory/session-moments/2026-05-29.md`, 15:25 INSIGHT). Working rule for the next agent: **small sequential tool calls, tiny outputs, never mix Edits with a Bash call that can fail.** Final state is fully verified and clean.
+## Open flags / things to confirm
+- **2 empty orphan files** (above) — flagged, not touched.
+- **`src/components/LocateModal.jsx`** — still confirmed dead (nobody imports it; the live Locate dialog is inline `showLocateModal` JSX in PDFViewer). Someone's WIP — **confirm before deleting** (git-reversible either way).
+- No automated test renders the viewer/home/shell. Build + tests cover static correctness; behavioral/visual changes still want a dev-server look.
+
+## Tooling + workflow notes (carry forward)
+- **Verify before asserting "dead"/"used"** with a fresh single command, not a remembered claim.
+- `scripts/check-unused-imports.mjs --json <files…>` — read-only unused/duplicate-import scanner. To scan the repo: `find src -type f \( -name '*.js' -o -name '*.jsx' \) -print0 | xargs -0 node scripts/check-unused-imports.mjs --json`.
+- `scripts/check-undef.mjs <file>` — undefined-identifier (globals) checker; baseline set-diff per `memory/reference_extraction_undef_checker.md`.
+- **zsh gotcha:** unquoted `$var` does NOT word-split in zsh — passing a file list via a var gives the tool ONE giant arg. Use `-print0 | xargs -0`, or `${(f)var}`, or `${=var}`.
+- **Workflow gotcha:** the `Workflow` tool's `args` must be passed as an actual JSON value, but it arrived in-script as a STRING this session — guard with `const X = Array.isArray(args) ? args : JSON.parse(args)`.
+- **Verification gate for any cleanup:** re-scan (or grep) to prove the change did what you intended + `vite build` + `npm test` (must stay 834/0/6) before committing. One focused commit per change.
+
+## Where the audit data lives
+- `docs/ANNOTATION-CONTRACT.md` — the contract + catalogue + plan (the source of truth for the next phase).
+- `docs/ARCHITECTURE.md` — the `src/` map (updated for the rename; now points to the contract doc).
+- Session moments: `~/.claude/projects/-Users-isaiahcalvo-Documents-Projects-Active-Survey-BetaSafeS2/memory/session-moments/2026-05-29.md` (evening entries).
