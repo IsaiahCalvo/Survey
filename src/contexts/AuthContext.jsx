@@ -1,3 +1,14 @@
+/**
+ * AuthContext.jsx — Supabase auth provider and the app-wide useAuth() hook.
+ *
+ * Exports AuthContext, the useAuth() hook, and the AuthProvider that owns
+ * user/session/loading plus the subscription tier. Boots the initial session
+ * (with corrupted-token recovery and a DEV-only auto-login), listens to
+ * onAuthStateChange, polls/refetches the tier (focus + every 5 min), and
+ * exposes signUp/signIn/signInWithGoogle/signInWithSSO/signOut/resetPassword/
+ * updatePassword/updateProfile plus derived `tier`/`features` gating flags.
+ * Also pushes developer-mode state to the Electron main process.
+ */
 import { createContext, useContext, useEffect, useState } from 'react';
 import {
   supabase,

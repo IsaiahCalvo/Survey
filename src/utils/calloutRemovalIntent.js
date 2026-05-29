@@ -1,3 +1,13 @@
+/**
+ * calloutRemovalIntent.js — records and reads a short-lived "intentional callout
+ * removal" signal so sync can distinguish deliberate deletes from suspicious shrinks.
+ *
+ * Exports markCalloutRemovalIntent / getRecentCalloutRemovalIntent (stash a TTL'd
+ * intent on globalThis from undo/redo/delete/cancel-new sources), diffCalloutIds,
+ * and classifyCalloutShrink (rates a before/after count drop as normal/warning/
+ * high-warning based on whether a matching intent explains it).
+ * Part of the separate callout pipeline — see docs/ANNOTATION-CONTRACT.md.
+ */
 const CALLOUT_REMOVAL_INTENT_KEY = '__pdfLastCalloutRemovalIntent';
 export const CALLOUT_REMOVAL_INTENT_TTL_MS = 5000;
 

@@ -1,3 +1,13 @@
+/**
+ * geometryEraser.js — boolean-subtracts an eraser stroke from a Fabric.js path's
+ * geometry, producing new path commands ("cookie-cutter" erase).
+ *
+ * Exports booleanErasePath (flattens the path, converts the stroke to a constant-
+ * width ribbon polygon via bisector miter offsets, unions eraser circles, and
+ * Martinez-diffs them; returns { pathData, isConvertedToOutline }) and
+ * splitPathDataByEraser (a simpler segment-cutting fallback). Used by the eraser
+ * tool to reshape ink strokes in local path space.
+ */
 import { diff, union } from 'martinez-polygon-clipping';
 // Copied from geometryHitTest.js to avoid circular dependencies or just for self-containment
 const transformPointInverse = (point, matrix) => {

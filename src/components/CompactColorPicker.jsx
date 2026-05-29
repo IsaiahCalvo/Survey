@@ -1,3 +1,12 @@
+/**
+ * CompactColorPicker.jsx — the app's single shared colour picker popover.
+ *
+ * Default-exports the CompactColorPicker component: an 8-wide preset grid plus a
+ * spectrum (HSV) view, an opacity slider, and a hex field. Used everywhere colours
+ * are chosen (annotation fill/border, pins, etc). Supports a transparent first cell
+ * or a "Match Fill" first cell (firstPreset), a minOpacity floor, and optional
+ * opacity controls (showOpacity). Calls onChange(hex, alpha) live as the user drags.
+ */
 import { useState, useEffect, useRef } from 'react';
 
 const PRESET_COLORS = [

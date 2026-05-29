@@ -1,3 +1,12 @@
+/**
+ * flatReorderUtils.js — pure array-reorder helpers for drag-rearrange lists.
+ *
+ * Exports moveItem, getActiveOverIndices, moveItemById, moveVisibleItemById,
+ * and moveScopedItem — immutable functions that translate dnd-kit active/over
+ * ids into reordered arrays, including filtered-subset reordering that splices
+ * results back into the full source list. Consumed by SortableRearrangeList
+ * onReorder handlers.
+ */
 export const moveItem = (items, fromIndex, toIndex) => {
   if (!Array.isArray(items)) return items;
   if (

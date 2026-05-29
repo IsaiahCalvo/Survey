@@ -1,3 +1,10 @@
+/**
+ * OneDriveFileSaveModal.jsx — modal for naming an .xlsx export and picking a OneDrive/SharePoint destination.
+ *
+ * Default-exports OneDriveFileSaveModal. Validates the filename (required, no invalid
+ * chars, enforces .xlsx) and embeds OneDriveFolderBrowser for destination selection, then
+ * calls onSave({ fileName, folder }). Used by the Excel export flow to save to OneDrive.
+ */
 import { useState, useEffect } from 'react';
 import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
 import OneDriveFolderBrowser from './OneDriveFolderBrowser';

@@ -1,3 +1,12 @@
+/**
+ * historyStacks.js — orders undo/redo between the local Fabric history and the
+ * legacy (Syncfusion) history so the two stacks interleave correctly.
+ *
+ * Exports getHistoryOrder (reads checkpointId/createdAt/timestamp from an entry's
+ * __historyMeta) and shouldUndoLocalBeforeLegacy / shouldRedoLocalBeforeLegacy,
+ * which compare ordering keys to pick which stack to pop next. Used by the undo/
+ * redo coordinator.
+ */
 export function getHistoryOrder(entry) {
   const meta = entry?.__historyMeta || entry;
   if (!meta || typeof meta !== 'object') return -1;

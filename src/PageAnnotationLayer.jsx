@@ -1,3 +1,14 @@
+/**
+ * PageAnnotationLayer.jsx (PAL) — the per-page Fabric.js canvas overlay (~10k lines).
+ *
+ * Mounted once per visible PDF page. Owns the Fabric canvas that draws and edits
+ * annotations on top of the Syncfusion page div: pen/eraser/shape/callout/counter
+ * tooling, hit-testing, context menus, and the commit-up path via onSaveAnnotations.
+ * HIGH-RISK / load-bearing — touch only when the task requires it, keep diffs minimal,
+ * and run `npm test` after. Canvas sizing MUST be container-aware (measure
+ * containerEl.offsetWidth / pageSize.width), never pageSize * scale — see CLAUDE.md.
+ * For how annotations flow end-to-end, see docs/ANNOTATION-CONTRACT.md.
+ */
 import { useEffect, useLayoutEffect, useRef, memo, useState, useCallback } from 'react';
 import { debugMark } from './utils/debugBridge';
 import * as contextMenuBridge from './utils/contextMenuBridge';

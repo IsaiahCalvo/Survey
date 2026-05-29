@@ -1,3 +1,12 @@
+/**
+ * SortableRearrangeList.jsx — @dnd-kit vertical drag-to-reorder list primitives.
+ *
+ * Exports SortableRearrangeList (DndContext wrapper with vertical-axis
+ * restriction, clamped drag bounds, and variableHeight collision tuning) and
+ * SortableRearrangeRow (useSortable row with transform/opacity styling). Calls
+ * onReorder via flushSync on drop and emits [SortableRearrange] drag-diagnostic
+ * logs. Used wherever survey lists/rows are reordered by drag.
+ */
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import {

@@ -1,3 +1,12 @@
+/**
+ * useSubscriptionLimits.js — tier-based quota checks against current usage.
+ *
+ * Exports TIER_LIMITS (free/pro/enterprise/developer caps + feature lists) and
+ * useSubscriptionLimits(): reads the user's tier from useAuth, fetches project/
+ * document/storage usage from Supabase, and returns guard helpers
+ * (canCreateProject, canUploadDocument, canCreateTemplate/Region, hasFeatureAccess)
+ * plus usage-percentage / remaining-quota / formatBytes utilities.
+ */
 import { useState, useEffect, useCallback } from 'react';
 import { supabase, isSupabaseAvailable } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';

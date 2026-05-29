@@ -1,3 +1,13 @@
+/**
+ * pdfAppAnnotationMetadata.js — serializes/parses the app's own annotation metadata
+ * embedded in exported PDFs (the "survey-app-annotation" and "SurveyAppLayerState" blobs).
+ *
+ * Exports build/serialize/parse/applyPdfAppAnnotationMetadata for per-object round-trip
+ * (style, geometry, ownership, data allowlists) and build/serialize/parsePdfAppLayerStateMetadata
+ * plus readSurveyMarkerLayer for the document-level layer state. Handles the legacy
+ * highlightAnnotations → surveyMarkers rename on both read and write.
+ * Part of the separate survey-marker pipeline — see docs/ANNOTATION-CONTRACT.md.
+ */
 import { SURVEY_MARKER_TYPE, isSurveyMarkerType } from './surveyMarkerType.js';
 
 export const PDF_APP_ANNOTATION_METADATA_KEY = 'SurveyAppAnnotation';

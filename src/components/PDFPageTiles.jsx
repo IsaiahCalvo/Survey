@@ -1,3 +1,11 @@
+/**
+ * PDFPageTiles.jsx — tiled canvas renderer for a single pdf.js page.
+ *
+ * Default export: memoized PDFPageTiles, which splits a page's viewport into
+ * 512px <Tile> canvases (also memoized) and renders each via pdf.js
+ * page.render(). The OffscreenCanvas/worker path is currently disabled
+ * (`if (false && ...)`); every tile uses the 2D-context fallback at devicePixelRatio.
+ */
 import { useEffect, useRef, memo, useMemo } from 'react';
 import { pdfWorkerManager } from '../utils/PDFWorkerManager';
 

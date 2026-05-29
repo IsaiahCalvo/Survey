@@ -1,3 +1,12 @@
+/**
+ * PDFPageList.jsx — virtualized vertical page list for the PDF viewer.
+ *
+ * Default export: a forwardRef React component wrapping react-window's
+ * VariableSizeList. Per-page heights derive from `pageHeights[pageNum] * scale`,
+ * and `resetAfterIndex(0)` re-measures when scale/pageHeights/items change.
+ * Exposes scrollToItem / scrollTo / resetAfterIndex via the ref; renders each
+ * page through the `renderPageContent` prop with overscanCount=20.
+ */
 import React, { forwardRef, useEffect, useRef } from 'react';
 import { VariableSizeList as List } from 'react-window';
 

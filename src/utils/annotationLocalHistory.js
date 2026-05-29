@@ -1,3 +1,12 @@
+/**
+ * annotationLocalHistory.js — pure undo/redo diff engine for Fabric annotations.
+ *
+ * Diffs previous vs next page object lists into history actions
+ * (fabric:create/delete/update/batch), inverts them for undo
+ * (invertAnnotationHistoryAction), filters by owner, and applies them back to an
+ * annotations-by-page map. Keyed by getAnnotationHistoryId; supports both precise
+ * (explicit changed/created/deleted ids) and full-diff builders.
+ */
 export function getAnnotationHistoryId(annotation) {
   return annotation?.data?.id
     || annotation?.data?.annoId

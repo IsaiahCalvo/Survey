@@ -1,3 +1,12 @@
+/**
+ * LightweightAnnotationOverlay.jsx — read-only SVG/div preview overlay for a single PDF page.
+ *
+ * Default-exports a memoized component that renders fast, non-interactive previews of
+ * Fabric annotation objects (paths, lines, arrows, polygons, shapes, text, counters)
+ * and callout connectors for one page, filtered via isAnnotationVisibleInContext and
+ * scaled by `scale`. Used as a placeholder layer during interaction/zoom before the
+ * full per-page canvas/SVG layers mount.
+ */
 import { memo, useEffect, useMemo } from 'react';
 import { calculateCalloutConnection } from '../utils/calloutGeometry';
 import { isAnnotationVisibleInContext } from '../utils/annotationVisibilityRules';

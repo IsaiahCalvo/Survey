@@ -1,3 +1,11 @@
+/**
+ * PagesPanel.jsx — sidebar thumbnail strip for page navigation and page operations.
+ *
+ * Default export PagesPanel renders lazy (IntersectionObserver) page thumbnails
+ * rendered via pdf.js (fast low-res then crisp upgrade through a LIFO queue), plus
+ * click-to-navigate, drag reorder (onReorderPages), and a right-click context menu
+ * for cut/copy/paste/duplicate/rotate/mirror/reset/delete. Honors pageTransformations.
+ */
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Icon from '../Icons';
 

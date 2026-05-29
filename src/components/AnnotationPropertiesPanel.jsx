@@ -1,3 +1,13 @@
+/**
+ * AnnotationPropertiesPanel.jsx — floating, draggable live-edit panel for a selected annotation/callout.
+ *
+ * Default-export component (portaled to document.body) opened from the
+ * right-click context menu; per-type bodies (rect/ellipse/triangle/line/arrow/
+ * path/text/polygon/polyline/counter/callout) expose Fill/Stroke/Width, Border
+ * Style (incl. cloud bump size), arrowhead, and text styling. Edits apply live
+ * via onUpdate(patch); closes on outside-pointerdown/Escape/X. Font options are
+ * single-name only per the Fabric.js measurement gotcha (CLAUDE.md 2026-04-08).
+ */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import CompactColorPicker from './CompactColorPicker';

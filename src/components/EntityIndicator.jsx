@@ -1,3 +1,12 @@
+/**
+ * EntityIndicator.jsx — small circular colour swatch for an Entity's status.
+ *
+ * Default-exports the EntityIndicator component: renders a circle filled with the
+ * exact entity.color (passed verbatim via the `color` prop, no transformation) over
+ * a white backing so transparent/rgba colours stay visible (mixBlendMode: multiply).
+ * Shows a fixed-position tooltip with tooltipText on hover and supports an optional
+ * onClick. Renders null when no color is given.
+ */
 import { useState, useRef, useEffect } from 'react';
 import { COLORS, TYPOGRAPHY, SHADOWS, Z_INDEX, TRANSITIONS } from '../theme';
 

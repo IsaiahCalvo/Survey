@@ -1,3 +1,12 @@
+/**
+ * TextLayer.jsx — selectable PDF text overlay rendered via pdf.js.
+ *
+ * Default export is a memo-wrapped TextLayer that, for a given pdf.js `page`
+ * and `scale`, calls page.getTextContent() + pdfjsLib.renderTextLayer() into
+ * an absolutely-positioned div sized to the page. Toggles pointer-events with
+ * `isSelectionMode` and surfaces selection via the onTextSelected mouse-up
+ * handler. Sets the `--scale-factor` CSS var the pdf.js text layer requires.
+ */
 import { useEffect, useRef, memo } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 

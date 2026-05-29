@@ -1,3 +1,16 @@
+/**
+ * SyncfusionPDFContainer.jsx — forwardRef wrapper around Syncfusion's
+ * PdfViewerComponent that hides all built-in chrome and exposes a curated
+ * imperative API to App.
+ *
+ * Default export SyncfusionPDFContainer injects the Magnification/Navigation/
+ * BookmarkView/TextSelection/TextSearch/Annotation/Print/LinkAnnotation/
+ * FormFields/FormDesigner modules, then bridges them via useImperativeHandle:
+ * page nav, zoom, thumbnails, bookmark extraction/navigation, text search,
+ * text-markup hit-testing/erase, and KAL-47 form-designer ops. Handles the
+ * Windows ".has is not a function" form-field crash by pdf-lib sanitize-and-
+ * retry, and tracks per-page DOM containers for the overlay annotation layers.
+ */
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import {
   PdfViewerComponent,

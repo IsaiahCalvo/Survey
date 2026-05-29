@@ -1,3 +1,11 @@
+/**
+ * StripeCheckout.jsx — subscription checkout button.
+ *
+ * Default export StripeCheckout: a button that invokes the Supabase
+ * `create-checkout-session` edge function with the requested tier/billingPeriod,
+ * then opens the returned Stripe URL via window.electronAPI.openExternal (or
+ * window.open as a web fallback). Tracks loading/error state inline.
+ */
 import { useState } from 'react';
 import { supabase } from '../supabaseClient';
 

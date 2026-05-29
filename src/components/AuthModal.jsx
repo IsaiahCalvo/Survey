@@ -1,3 +1,11 @@
+/**
+ * AuthModal.jsx — sign-in / sign-up / SSO / password-reset modal.
+ *
+ * Named export `AuthModal` ({ isOpen, onClose, onDismiss }); a single-form modal
+ * with a `mode` switch (login / signup / sso / reset) wired to useAuth
+ * (signIn, signUp, signInWithGoogle, signInWithSSO, resetPassword). onDismiss
+ * (when present) lets unauthenticated users continue without an account.
+ */
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import './AuthModal.css';

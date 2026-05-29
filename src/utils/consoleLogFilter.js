@@ -1,3 +1,12 @@
+/**
+ * consoleLogFilter.js — filters and trims captured console output before it is
+ * saved with a report, dropping high-frequency render/zoom diagnostic lines.
+ *
+ * Exports shouldCaptureConsoleLine (keeps noisy lines only when __SAVE_VERBOSE_CONSOLE_LOGS
+ * is set) and sanitizeConsoleLogText (strips noisy patterns, caps line/total length,
+ * and preserves [LOCATE-DBG]/survey_locate_ lines ahead of the trim). Used by the
+ * save-log path that bundles console output into saved diagnostics.
+ */
 const NOISY_LOG_PATTERNS = [
   /^\[SVG p\d+\] render\b/,
   /^\[SVG p\d+\] MOUNT\b/,

@@ -1,3 +1,12 @@
+/**
+ * CopyCategoryModal.jsx — modal for copying/moving categories between modules.
+ *
+ * Default-exports the CopyCategoryModal component: lets the user pick Copy or Move,
+ * choose a destination module (existing, the current one, or "Create New Module"),
+ * and name the new module. On confirm it calls onConfirm({ type, targetModuleId,
+ * newModuleName, action }) where type is 'new' | 'current' | 'existing'. Renders
+ * null unless isOpen.
+ */
 import { useState, useEffect } from 'react';
 
 const FONT_FAMILY = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";

@@ -1,3 +1,12 @@
+/**
+ * fabricCustomization.js — installs the app's custom Fabric.js selection-control
+ * look (Drawboard-style pill/corner/rotation handles) globally.
+ *
+ * Exports configureFabricOverrides, which sets fabric.Object.prototype defaults
+ * (dashed blue border, white-fill/blue-ring circular corners) and replaces the
+ * mt/mb/ml/mr corner and mtr rotation controls' render functions with pill,
+ * shadowed-circle, and SVG-rotate-icon renderers. Called once at app init.
+ */
 import { fabric } from 'fabric';
 import rotateIconSvg from '../assets/rotate-icon.svg';
 import { HANDLE_FILL, HANDLE_RING } from './handleStyle';

@@ -1,3 +1,11 @@
+/**
+ * OneDriveFolderBrowser.jsx — folder picker for My OneDrive and SharePoint document libraries.
+ *
+ * Default-exports OneDriveFolderBrowser. Drives navigation via excelGraphService
+ * (listFolders / listDriveItems / listSharePointSites / listSiteDocumentLibraries),
+ * with tabbed My-Drive vs SharePoint browsing, breadcrumbs, and loading/error states,
+ * reporting the chosen destination through onFolderSelect. Embedded in OneDriveFileSaveModal.
+ */
 import React, { useState, useEffect, useCallback } from 'react';
 import { COLORS, TYPOGRAPHY, BORDERS } from '../theme';
 import {

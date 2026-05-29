@@ -1,3 +1,13 @@
+/**
+ * annotationSyncType.js — decides whether a Fabric object is dispatchable to the
+ * CRDT fan-out and resolves its annotation type.
+ *
+ * Exports CRDT_FAN_OUT_EXCLUDED_TYPES (highlight, survey-marker, callout — handled
+ * by their own pipelines), getRawAnnotationTypeForFanOut, and
+ * resolveCrdtFanOutAnnotationType (maps a Fabric object to a supported DB type via
+ * fabricObjectToDbType, returning dispatchable + reason). Excludes survey-marker
+ * and callout, which belong to the separate pipelines — see docs/ANNOTATION-CONTRACT.md.
+ */
 import { fabricObjectToDbType } from '../services/annotationTypeSerializers.js';
 
 export const CRDT_FAN_OUT_EXCLUDED_TYPES = new Set(['highlight', 'survey-marker', 'callout']);

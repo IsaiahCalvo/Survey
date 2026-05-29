@@ -1,3 +1,11 @@
+/**
+ * hooks.js — small general-purpose React hooks shared across the app.
+ *
+ * Exports useDebounce (debounced value), useDebouncedCallback (debounced fn with
+ * cleanup), useLocalStorage (state persisted to window.localStorage), and
+ * useKeyPress (global keydown listener for a target key). Plain utility hooks
+ * with no app-specific or annotation-pipeline coupling.
+ */
 import { useEffect, useRef, useState, useCallback } from 'react';
 
 /**

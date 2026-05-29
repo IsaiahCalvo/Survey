@@ -1,3 +1,12 @@
+/**
+ * NewColumnsModal.jsx — modal shown when an imported Excel file's columns differ from the saved template.
+ *
+ * Default-exports the NewColumnsModal component. Summarizes added/removed/reordered
+ * columns per category and asks the user to either create a new template (with name
+ * validation against existingTemplateNames) or modify the current one. Modification is
+ * blocked when getOtherSurveysUsingTemplate reports other surveys depend on the template;
+ * calls onConfirm(option, newTemplateName) or onClose (Skip Import).
+ */
 import { useState, useEffect, useMemo } from 'react';
 import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
 import { getOtherSurveysUsingTemplate } from '../hooks/useDatabase';

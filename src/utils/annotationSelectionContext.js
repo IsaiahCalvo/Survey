@@ -1,3 +1,12 @@
+/**
+ * annotationSelectionContext.js — builds a stable key for the current annotation
+ * selection context (survey panel + module/space/region selection state).
+ *
+ * Exports buildAnnotationSelectionContextKey (normalizes the context fields into
+ * a deterministic JSON string) and didAnnotationSelectionContextChange (compares
+ * a prior key to a new one). Used to detect when selection context changes so
+ * annotation behavior can react only on real transitions.
+ */
 const normalizeContextValue = (value) => {
   if (value === undefined || value === '') return null;
   if (typeof value === 'boolean') return value;

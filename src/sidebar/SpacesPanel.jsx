@@ -1,3 +1,13 @@
+/**
+ * SpacesPanel.jsx — sidebar panel for managing "Spaces" (named page groups with
+ * regions and per-page annotation visibility).
+ *
+ * Default-exports the SpacesPanel component; internal SpaceSortableCard renders
+ * each card with expand, rename, toggle, page-range add (parsePageRangeInput),
+ * region rename/edit, CSV/PDF export, and canvas/survey annotation-visibility
+ * toggles (gated on the Pro `features` flags). Cards reorder via dnd-kit
+ * SortableRearrangeList with optimistic ordering and frame-capture debug hooks.
+ */
 import React, { useState, useCallback, useRef } from 'react';
 import Icon from '../Icons';
 import { parsePageRangeInput, formatPageList } from '../utils/pageRangeParser';

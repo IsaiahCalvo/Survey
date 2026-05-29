@@ -1,3 +1,12 @@
+/**
+ * annotationHydrationGate.js — pure rules for whether to gate/cover a page's
+ * annotation layer while cloud sync hydrates.
+ *
+ * Exports hydration-state constants, resolveFirstVisibleAnnotationPage,
+ * isInitialAnnotationHydrationReady, and shouldGate/CoverFirstVisibleAnnotationPage.
+ * Cloud-backed documents now never gate (last-good layer stays visible); only
+ * local docs gate the first visible page until hydration is ready.
+ */
 export const ANNOTATION_HYDRATION_PENDING = Object.freeze({
   ready: false,
   source: 'pending',

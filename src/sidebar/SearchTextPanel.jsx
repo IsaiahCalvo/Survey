@@ -1,3 +1,12 @@
+/**
+ * SearchTextPanel.jsx — sidebar full-text search over the loaded PDF with match highlighting.
+ *
+ * Default export SearchTextPanel extracts/caches per-page text via pdf.js, finds
+ * query matches, and computes highlight rectangles using pdf.js text-layer DOM
+ * ranges refined against the rendered page image's ink (falling back to native
+ * onFindTextMatches bounds or metric estimates). Drives navigation via
+ * onNavigateToMatch/onNavigateToPage and emits diagnostics through textSearchDiag.
+ */
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import Icon from '../Icons';

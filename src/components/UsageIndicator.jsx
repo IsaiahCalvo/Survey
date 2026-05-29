@@ -1,3 +1,13 @@
+/**
+ * UsageIndicator.jsx — subscription usage panel showing projects/documents/
+ * storage consumption against the current tier's limits.
+ *
+ * Default export UsageIndicator reads useSubscriptionLimits() and useAuth();
+ * renders a tier badge plus MetricRow progress bars (purple→orange→red as
+ * usage climbs), treating ≥999999 / ≥1TB limits as unlimited (∞). Free-tier
+ * users at ≥75% on any metric see an upgrade-to-Pro nudge. Hidden when no user
+ * or while loading.
+ */
 import { useSubscriptionLimits } from '../hooks/useSubscriptionLimits';
 import { useAuth } from '../contexts/AuthContext';
 

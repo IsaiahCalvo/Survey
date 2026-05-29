@@ -1,3 +1,11 @@
+/**
+ * UserMenu.jsx — avatar-button dropdown for the signed-in user.
+ *
+ * Named export UserMenu reads useAuth() for `user`/`signOut`, shows initials
+ * (from user_metadata.full_name or email), and on click opens a dropdown with
+ * the user's name/email, an optional Settings item (via onOpenSettings), and
+ * Sign Out. Closes on outside-click. Returns null when no user is signed in.
+ */
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import './UserMenu.css';

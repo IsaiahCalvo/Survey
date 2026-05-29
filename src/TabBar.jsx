@@ -1,3 +1,13 @@
+/**
+ * TabBar.jsx — horizontal browser-style tab strip for the Home tab + open PDF documents.
+ *
+ * Default-export component built on @dnd-kit for drag-to-reorder of PDF tabs
+ * (Home tab is pinned, non-draggable); calls onTabClick / onTabClose /
+ * onTabReorder and accepts cross-tab page drops via `application/pdf-page`.
+ * Each tab shows an unsaved-annotation dot and a red dual-write-pending dot
+ * sourced from a single useDocsPendingDualWrite() Set (called once, never in
+ * the .map loop, to keep React hook counts stable when a tab closes).
+ */
 import { useState, useRef, useCallback, useMemo } from 'react';
 import { flushSync } from 'react-dom';
 import {

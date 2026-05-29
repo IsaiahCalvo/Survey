@@ -1,3 +1,14 @@
+/**
+ * SyncStatusChip.jsx — cloud-sync status pill (green "Up to date" / orange
+ * "Syncing…" / red "Offline · N saved locally").
+ *
+ * Default export SyncStatusChip derives its visual state via
+ * getSyncStatusViewModel(status, queueSize, manualSyncing); renders either
+ * CompactSyncStatusChip (icon-only, collapsed sidebar rail) or
+ * ExpandedSyncStatusChip. Clicking runs onRetry with exponential-backoff
+ * attempts and dispatches a `crdt:manual-retry-failed` window event on
+ * exhaustion. Returns null when `enabled` is false (local-only/free tier).
+ */
 import { useState, useRef } from 'react';
 import { getSyncStatusViewModel } from '../utils/syncStatusViewModel.js';
 

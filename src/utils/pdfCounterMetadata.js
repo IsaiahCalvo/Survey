@@ -1,3 +1,11 @@
+/**
+ * pdfCounterMetadata.js — serializes/parses counter-stamp annotation metadata
+ * embedded in exported PDFs under the "survey-counter" subject.
+ *
+ * Exports build/serialize/parsePdfCounterMetadata plus the PDF_COUNTER_* key/subject/
+ * version constants. Captures a counter's display number, color, radius, center/pointer
+ * geometry, and series/group identity so counters round-trip through PDF export/import.
+ */
 export const PDF_COUNTER_METADATA_KEY = 'SurveyApp';
 export const PDF_COUNTER_SUBJECT = 'survey-counter';
 export const PDF_COUNTER_METADATA_VERSION = 1;

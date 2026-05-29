@@ -1,3 +1,12 @@
+/**
+ * PDFSidebar.jsx — collapsible left rail for the PDF viewer.
+ *
+ * Default-export forwardRef component that hosts the Pages / Search Text /
+ * Bookmarks / Spaces tab panels plus a Version History panel, and anchors the
+ * collaboration footer (SyncStatusChip + PresenceAvatars) at the bottom.
+ * Publishes its width as the `--app-sidebar-width` CSS var; exposes an
+ * `openSearchPanel` imperative handle. Rendered by App into the chrome host.
+ */
 import React, { useState, useCallback, useImperativeHandle } from 'react';
 import Icon from './Icons';
 import PagesPanel from './sidebar/PagesPanel';

@@ -1,3 +1,12 @@
+/**
+ * KeyboardShortcutsOverlay.jsx — self-toggling keyboard-shortcuts reference modal.
+ *
+ * Default-exports the KeyboardShortcutsOverlay component: holds its own open state,
+ * toggled by '?' and closed by Escape (via useKeyPress). When open, renders an
+ * overlay listing shortcuts grouped by Navigation/Actions/Interface, with the Find
+ * modifier shown as ⌘ on Mac and Ctrl elsewhere. Stops wheel/touch events from
+ * reaching the PDF handler so the list scrolls natively. Renders null when closed.
+ */
 import React from 'react';
 import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
 import Icon from '../Icons';

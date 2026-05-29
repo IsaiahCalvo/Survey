@@ -1,3 +1,12 @@
+/**
+ * pdfDebug.js — module-level debug instrumentation hub for the PDF viewer.
+ *
+ * Holds a singleton state object (counters, rolling event timestamps, presence
+ * status, last error) and exports toggles/loggers/counter helpers plus
+ * getEventRate(s) for windowed event-rate measurement and getDebugSnapshot.
+ * Also wires a window.pdfDebug console handle (enable/disable/dump/clear/rates)
+ * when running in a browser. Default export bundles the named functions.
+ */
 const DEFAULT_RATE_WINDOW_MS = 2000;
 
 const state = {

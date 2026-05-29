@@ -1,3 +1,11 @@
+/**
+ * pageRangeParser.js — parses and formats human-typed PDF page-range strings.
+ *
+ * Exports parsePageRangeInput (turns "1,3,5-7" into a sorted unique page array
+ * plus validation errors, clamped to {min,max}) and formatPageList (the inverse,
+ * collapsing a page array back into compact "1, 3, 5-7" range notation).
+ * Used by print/export dialogs that accept a page-selection field.
+ */
 export const parsePageRangeInput = (input, options = {}) => {
   const { min = 1, max = Infinity } = options;
   const pages = new Set();

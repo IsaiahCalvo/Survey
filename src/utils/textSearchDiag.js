@@ -1,3 +1,11 @@
+/**
+ * textSearchDiag.js — lightweight diagnostic logger for the PDF text-search feature.
+ *
+ * Exports emitTextSearchDiag(event, detail) which appends a timestamped JSON line to a
+ * capped (200-line) window.__textSearchDiagBuffer ring buffer and console.logs it, and
+ * buildTextSearchDiagLogSection(limit) which formats the recent buffer for inclusion in
+ * exported diagnostic/log dumps.
+ */
 const TEXT_SEARCH_DIAG_MAX_LINES = 200;
 
 const getTextSearchDiagBuffer = () => {

@@ -1,3 +1,12 @@
+/**
+ * SearchContext.jsx — React context for full-text search across the open PDF.
+ *
+ * Exports SearchProvider (takes a pdfjs `pdfDoc`) + useSearch(). Extracts and
+ * caches per-page text via pdfjs, pre-caches pages in the background, runs a
+ * cancellable progressive search, and converts character matches into page-space
+ * highlight rectangles/bounds. Provides match navigation (next/prev/goTo) and
+ * results grouped by page for the search UI.
+ */
 import { createContext, useContext, useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 

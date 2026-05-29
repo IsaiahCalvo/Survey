@@ -1,3 +1,13 @@
+/**
+ * selectionHandleVisibility.js — computes which selection handles to show and at what
+ * size based on a selected object's screen-space bounding box.
+ *
+ * Exports the handle-name constants (CORNER/SIDE/ALL_RESIZE_HANDLES),
+ * getSelectionHandleVisualMetrics (sizes scaled by sqrt(inverseScale) so handles stay
+ * constant on screen across zoom), and getAdaptiveSelectionHandleSpec, which picks the
+ * 'all' / 'corners' / 'single' tier and rotation offset that fit the box. Used by the
+ * SVG/Fabric selection overlays.
+ */
 import { HANDLE_RADIUS } from './handleStyle.js';
 
 export const CORNER_RESIZE_HANDLES = ['tl', 'tr', 'bl', 'br'];

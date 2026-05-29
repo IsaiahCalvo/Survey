@@ -1,3 +1,10 @@
+/**
+ * OneDriveConnectButton.jsx — OneDrive sign-in / status button backed by MSGraphContext.
+ *
+ * Named-exports OneDriveConnectButton. Reads auth state from useMSGraph and renders one
+ * of three states: a disabled "Loading…" button, a connected row (account name + "Select
+ * File" → onConnect + "Disconnect" → logout), or the OneDrive logo button that triggers login.
+ */
 import { useMSGraph } from '../contexts/MSGraphContext';
 
 import oneDriveLogo from '../assets/brand/onedrive-logo.png';

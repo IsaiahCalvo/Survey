@@ -1,3 +1,14 @@
+/**
+ * annotationSyncDelta.js — computes minimal upsert/delete deltas for annotation
+ * sync (CRDT/Supabase fan-out) from current vs prior state.
+ *
+ * Exports buildFabricSyncDelta and buildCalloutSyncDelta (fingerprint-diff each
+ * item by id to find changed/deleted ids and the pages/callouts to upsert), plus
+ * resolveFabricDeletedIds / isExplicitFabricDeleteAction / shouldSuppressStaleCacheShrink
+ * (guard against large non-explicit shrinks from stale caches). Falls back to a
+ * full fan-out when idless objects are present. The callout path is part of the
+ * separate callout pipeline — see docs/ANNOTATION-CONTRACT.md.
+ */
 function getFabricAnnotationId(obj) {
   return obj?.annotationId
     || obj?.id

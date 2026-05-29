@@ -1,3 +1,12 @@
+/**
+ * ExcelSyncConfirmModal.jsx — asks whether a save should also update linked Excel.
+ *
+ * Default-exports the ExcelSyncConfirmModal component: presents three selectable
+ * options — 'no' (save in Survey only), 'once' (update Excel this time), 'always'
+ * (update and remember) — and calls onConfirm(choice) with the picked id. Continue
+ * is disabled until an option is selected. Renders null unless isOpen. Part of the
+ * Excel two-way sync flow.
+ */
 import { useState } from 'react';
 import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
 

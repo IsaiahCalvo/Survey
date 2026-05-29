@@ -1,3 +1,13 @@
+/**
+ * pdfCalloutMetadata.js — serializes/parses callout annotation metadata embedded
+ * in exported PDFs under the "survey-callout" subject.
+ *
+ * Exports build/serialize/parsePdfCalloutMetadata plus the PDF_CALLOUT_* key/subject/
+ * version constants. Captures the full callout geometry (arrowTip, knee, textBox
+ * position/size), text, style, and layer scoping (module/region/space/group ids)
+ * so callouts round-trip through PDF export/import.
+ * Part of the separate callout pipeline — see docs/ANNOTATION-CONTRACT.md.
+ */
 export const PDF_CALLOUT_METADATA_KEY = 'SurveyAppCallout';
 export const PDF_CALLOUT_SUBJECT = 'survey-callout';
 export const PDF_CALLOUT_METADATA_VERSION = 1;

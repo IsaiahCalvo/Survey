@@ -1,3 +1,11 @@
+/**
+ * eraserHitTest.js — determines which annotations an eraser stroke touches.
+ *
+ * Exports getEraserStrokeBounds, sampleEraserStroke (densifies the stroke path),
+ * eraserStrokeTouchesObject (samples the stroke and hit-tests each point via
+ * geometryHitTest's isPointOnObject), getEraserCandidateId, and
+ * getEraserDeleteDiagnostics. Used by the eraser tool to find delete candidates.
+ */
 import { isPointOnObject } from './geometryHitTest.js';
 import { getAnnotationHistoryId } from './annotationLocalHistory.js';
 

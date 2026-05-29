@@ -1,3 +1,11 @@
+/**
+ * ConfirmDialog.jsx — reusable modal confirmation dialog.
+ *
+ * Default-exports the ConfirmDialog component: a fixed-overlay modal with a title,
+ * message, and Cancel/Confirm buttons styled by theme tokens. Renders null unless
+ * isOpen. Supports 'danger' | 'warning' | 'info' variants and calls onConfirm then
+ * onClose on confirm. Used for destructive/important confirmations across the app.
+ */
 import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
 import Icon from '../Icons';
 

@@ -1,3 +1,12 @@
+/**
+ * TemplateOverwriteWarningModal.jsx — confirmation modal shown before
+ * overwriting a saved file that was created from a different template.
+ *
+ * Default export TemplateOverwriteWarningModal renders a fixed overlay (when
+ * `isOpen`) comparing the existing file's template name against the user's
+ * current template, warning the overwrite is irreversible. Calls onConfirm /
+ * onCancel; cancels on overlay-backdrop click. Styled from the shared theme.
+ */
 import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
 
 const TemplateOverwriteWarningModal = ({

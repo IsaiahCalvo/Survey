@@ -1,3 +1,11 @@
+/**
+ * BookmarksPanel.jsx — sidebar panel for the PDF bookmark tree (create, rename, reorder, navigate).
+ *
+ * Default export BookmarksPanel renders a @dnd-kit sortable, nestable tree
+ * (BookmarkTreeRow rows) with folders/bookmarks, drag-to-reparent with projection,
+ * auto-expand-on-hover, and group/page navigation via onNavigateToPage. Calls
+ * onBookmarkCreate/Update/Delete to mutate the flat bookmarks array owned by App.
+ */
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
   DndContext,

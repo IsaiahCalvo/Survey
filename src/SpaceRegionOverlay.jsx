@@ -1,3 +1,12 @@
+/**
+ * SpaceRegionOverlay.jsx — SVG dimming mask that highlights a space's selected regions on a page.
+ *
+ * Default-export component that unions/subtracts a page's region polygons (via
+ * martinez-polygon-clipping) into a cutout path, then renders a semi-opaque
+ * grey + hatch overlay everywhere EXCEPT inside those regions. Uses an SVG
+ * `viewBox="0 0 width height"` so the overlay scales with zoom; pointer-events
+ * are disabled (visual only). Rendered per page when a space is active.
+ */
 import { useId, useLayoutEffect, useMemo, useRef } from 'react';
 import { union, diff } from 'martinez-polygon-clipping';
 

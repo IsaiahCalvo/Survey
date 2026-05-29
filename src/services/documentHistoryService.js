@@ -1,3 +1,13 @@
+/**
+ * documentHistoryService.js — document activity-history recording/reading service.
+ *
+ * Maps debug/checkpoint events into human-readable summaries and persists them
+ * to the Supabase `document_history_events` table with a localStorage fallback
+ * (LOCAL_HISTORY_STORAGE_KEY) when the table is missing/offline. Exports
+ * buildHistoryEventRowFromDebugEvent, recordDocumentHistoryEvent,
+ * recordDocumentHistoryDebugEvent, and listDocumentHistoryEvents; classifies
+ * callout/space/survey-marker actions for the activity feed.
+ */
 import { supabase } from '../supabaseClient.js';
 
 const HISTORY_EVENT_LIMIT = 200;

@@ -1,3 +1,11 @@
+/**
+ * DraggableBookmarkFolder.jsx — sortable folder/group row in the bookmarks sidebar.
+ *
+ * Default export DraggableBookmarkFolder is a @dnd-kit useSortable folder header
+ * with an expand/collapse chevron that renders its `children` (nested bookmarks)
+ * when expanded; in edit mode it inline-renames (onRename) and exposes
+ * add-to-group/delete/drag-handle controls. Companion to DraggableBookmark.
+ */
 import { useState, useEffect, useRef } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';

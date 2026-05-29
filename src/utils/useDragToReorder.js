@@ -1,3 +1,11 @@
+/**
+ * useDragToReorder.js — React hook implementing smooth pointer-driven list reordering.
+ *
+ * Exports useDragToReorder(items, onReorder, options) returning {draggingState, virtualOrder,
+ * handleGrab, registerItemRef, containerRef}. Renders a fixed-position drag ghost, locks the
+ * X axis, swaps neighbors via midpoint collision detection with rAF-driven transform animations,
+ * and calls onReorder with the final item order only when it actually changed.
+ */
 import { useState, useRef, useCallback, useEffect } from 'react';
 
 /**

@@ -1,3 +1,11 @@
+/**
+ * UnsupportedAnnotationsNotice.jsx — bottom-right toast warning that a PDF
+ * contains annotation types the editor cannot modify.
+ *
+ * Default export UnsupportedAnnotationsNotice lists up to 3 of the supplied
+ * `unsupportedTypes` (plus "and N more"), auto-dismisses after 8s with a fade/
+ * slide exit, and calls onDismiss after the exit animation or on click.
+ */
 import { useEffect, useState } from 'react';
 
 /**

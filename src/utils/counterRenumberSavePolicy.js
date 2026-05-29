@@ -1,3 +1,13 @@
+/**
+ * counterRenumberSavePolicy.js — decides whether counter annotations must be
+ * renumbered on save, and preserves existing counter numbering when they must not.
+ *
+ * Exports shouldRenumberCountersForSave (classifies a save by source/action and
+ * local-history diff), preserveExistingCountersOnPage (restores prior
+ * displayNumber/seriesStart on counters not intentionally changed), and
+ * summarizeCounterRenumberEffect. Used by the save pipeline to keep counter
+ * series numbering stable across non-numbering edits.
+ */
 function getCounterId(counter) {
   return counter?.data?.id
     || counter?.data?.annoId

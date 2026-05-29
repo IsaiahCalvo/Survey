@@ -1,3 +1,12 @@
+/**
+ * TextLayer.jsx — invisible selectable text overlay for a single PDF page.
+ *
+ * Default-export memoized component that reads pdf.js `page.getTextContent()`
+ * and positions transparent <span>s so users can select page text; on mouseup
+ * it converts selection client rects into page-space surveyMarkers (divided by
+ * `scale`) and reports them via onTextSelected(pageNumber, text, surveyMarkers).
+ * Sits at zIndex 8, between the page canvas and the annotation layer.
+ */
 import { useEffect, useRef, memo } from 'react';
 
 const TextLayer = memo(({

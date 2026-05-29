@@ -1,3 +1,12 @@
+/**
+ * ErrorBoundary.jsx — top-level React error boundary with a fallback screen.
+ *
+ * Default-exports the ErrorBoundary class component: catches render errors in its
+ * children via getDerivedStateFromError/componentDidCatch, logs a serialized error,
+ * and renders a full-height fallback UI with "Reload Page" and "Try Again" actions
+ * (the latter resets the boundary). Wraps the app so crashes show a recovery screen
+ * instead of a blank page.
+ */
 import React from 'react';
 import { COLORS, TYPOGRAPHY, BORDERS } from '../theme';
 import Icon from '../Icons';

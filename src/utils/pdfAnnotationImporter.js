@@ -1,3 +1,15 @@
+/**
+ * pdfAnnotationImporter.js — reads native PDF annotations and converts them into
+ * editable Fabric.js object specs for import into the app.
+ *
+ * Exports importAnnotationsFromPdf, convertPdfAnnotationToFabric, categorizeAnnotations,
+ * extractAnnotationsFromPage, convertInkToFabricPath, pdfHasAnnotations, and
+ * buildCloudPathCommands (scalloped revision-cloud edges, also reused by the SVG
+ * renderer for live cloud resizing). Parses /AP appearance streams, DA/DS/RC text
+ * styling, and recovers app-owned annotations via the counter/callout/app-annotation
+ * metadata parsers.
+ * Part of the separate callout pipeline — see docs/ANNOTATION-CONTRACT.md.
+ */
 import { makeInternalPenPathSpec } from './nativeShapeFactory.js';
 import {
   PDF_COUNTER_METADATA_KEY,

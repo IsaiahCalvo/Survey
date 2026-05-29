@@ -1,3 +1,13 @@
+/**
+ * excelSyncDirtyState.js — computes a fingerprint of the template's Excel-sync
+ * identity plus survey markers to detect pending changes against a baseline.
+ *
+ * Exports computeExcelSyncFingerprint (FNV-1a hash of template link identity +
+ * surveyMarkers) and computeHasPendingExcelSyncChanges (true when a linked Excel
+ * exists and the current hash differs from baselineHash). Used to drive the
+ * Excel-link dirty/save state.
+ * Part of the separate survey-marker pipeline — see docs/ANNOTATION-CONTRACT.md.
+ */
 const hashString = (value = '') => {
   let hash = 2166136261;
   for (let i = 0; i < value.length; i += 1) {

@@ -1,3 +1,11 @@
+/**
+ * supabaseClient.js — singleton Supabase client plus auth-session helpers.
+ *
+ * Exports `supabase` (null when VITE_SUPABASE_* env is absent → offline mode),
+ * isSupabaseAvailable, refresh-token recovery (recoverSupabaseAuthSession,
+ * clearSupabaseAuthStorage), getSupabaseSession/getAuthSnapshot, and the
+ * connected-services availability flag. Used app-wide for cloud sync + auth.
+ */
 import { createClient } from '@supabase/supabase-js';
 
 const env = import.meta.env || {};

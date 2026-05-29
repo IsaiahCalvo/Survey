@@ -1,3 +1,11 @@
+/**
+ * pdfRender.worker.js — Web Worker that loads PDFs and rasterizes page tiles via pdfjs-dist.
+ *
+ * Handles two postMessage commands: LOAD_DOCUMENT (getDocument from an ArrayBuffer, cached by
+ * docId in loadedDocs) and RENDER_TILE (renders a page region at a given scale into an
+ * OffscreenCanvas transferred from the main thread, translated to the tile origin). Replies with
+ * DOC_LOADED or ERROR. Offloads PDF rendering off the main thread.
+ */
 import * as pdfjsLib from 'pdfjs-dist';
 
 // Note: We are INSIDE a worker, so we don't need to configure workerSrc

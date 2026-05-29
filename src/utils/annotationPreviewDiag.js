@@ -1,3 +1,12 @@
+/**
+ * annotationPreviewDiag.js — opt-in, no-op-by-default diagnostics for annotation
+ * gesture lifecycles (preview frames, commits, sync/backup writes).
+ *
+ * Enabled via window flag, localStorage, or ?annotationPreviewDiag=1. Exports
+ * beginAnnotationGesture + per-event recorders (markPreviewFrame, pointerRelease,
+ * recordCommit/SyncAttempt/SyncPush/BackupWrite/UndoRedo) and a settled summary.
+ * Tracks state on window; designed to never affect annotation behavior.
+ */
 const FLAG_NAME = '__ANNOTATION_PREVIEW_DIAG';
 const STATE_NAME = '__annotationPreviewDiagState';
 const SUMMARY_DELAY_MS = 1400;

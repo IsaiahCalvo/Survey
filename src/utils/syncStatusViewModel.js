@@ -1,3 +1,10 @@
+/**
+ * syncStatusViewModel.js — maps raw sync state to the {state, label} shown in the sync indicator.
+ *
+ * Exports getSyncStatusViewModel(status, queueSize, manualSyncing), a pure function translating
+ * the sync engine's stage (idle/pending/hydrating/migrating/syncing/queued/error) plus queue depth
+ * into a UI state ('syncing' | 'offline' | 'synced') and human label. Pairs with syncStatusTiming.
+ */
 export function getSyncStatusViewModel(status, queueSize = 0, manualSyncing = false) {
   const stage = status?.stage || 'idle';
 

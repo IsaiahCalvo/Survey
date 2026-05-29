@@ -1,3 +1,11 @@
+/**
+ * dedupeResyncSafety.js — guards against a resync wrongly shrinking the annotation
+ * set during startup or beyond what dedupe actually removed.
+ *
+ * Exports shouldApplyDedupeResync, which compares current vs resync counts against
+ * the removedCount and startup/hydration flags and returns { apply, reason, shrink }.
+ * Used to decide whether to accept a dedupe-driven resync that lowers the count.
+ */
 export function shouldApplyDedupeResync({
   currentCount = 0,
   resyncCount = 0,

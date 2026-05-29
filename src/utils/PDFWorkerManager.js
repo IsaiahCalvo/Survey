@@ -1,3 +1,11 @@
+/**
+ * PDFWorkerManager.js — singleton wrapper around the pdfRender web worker.
+ *
+ * Exports `pdfWorkerManager`, a single PDFWorkerManager instance. loadDocument()
+ * transfers a PDF ArrayBuffer to the worker; renderTile() transfers an
+ * OffscreenCanvas for tiled page rendering off the main thread. Part of the
+ * custom (non-Syncfusion) PDF rendering path.
+ */
 import PDFWorker from '../workers/pdfRender.worker.js?worker';
 
 class PDFWorkerManager {

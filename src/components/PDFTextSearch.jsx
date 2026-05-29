@@ -1,3 +1,12 @@
+/**
+ * PDFTextSearch.jsx — pdf.js full-text search hook for the viewer.
+ *
+ * Exports usePDFTextSearch(pdfDoc) (also default): scans every page's text
+ * content for a query, returning per-match snippets plus page-space highlight
+ * rectangles (built from each text item's viewport transform). Caches page text
+ * per pdfDoc; surfaces searchText / clearSearch / results / resultsByPage /
+ * isSearching / lastQuery. The rectangles feed SearchHighlightLayer.
+ */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 

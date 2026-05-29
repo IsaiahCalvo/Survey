@@ -1,3 +1,11 @@
+/**
+ * DraggableBookmark.jsx — single sortable bookmark row inside the bookmarks sidebar.
+ *
+ * Default export DraggableBookmark wires a @dnd-kit useSortable row that, in edit
+ * mode, inline-edits the bookmark name and page number (onRename/onUpdate) and
+ * shows delete/drag-handle controls; in view mode it navigates via onNavigate.
+ * Used by the legacy/flat bookmark list rendering path.
+ */
 import { useRef, useEffect, useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';

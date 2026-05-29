@@ -1,3 +1,11 @@
+/**
+ * templateReorderUtils.js — pure helpers for reordering template structures.
+ *
+ * Exports restrictSortableToVerticalAxis (dnd-kit modifier locking drag to Y),
+ * reorderItemsByActiveOver (moves an item by active/over id via moveItemById),
+ * and reorderCategoriesByActiveOver (reorders categories within one module).
+ * Consumed by the template reorder UI (e.g. TemplateReorderRows).
+ */
 import { moveItemById } from '../reorder/flatReorderUtils.js';
 
 export const restrictSortableToVerticalAxis = ({ transform }) => ({

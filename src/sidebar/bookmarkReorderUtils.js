@@ -1,3 +1,10 @@
+/**
+ * bookmarkReorderUtils.js — pure helpers for drag-to-reorder + nesting of the bookmark tree.
+ *
+ * Exports array-move, depth/projection (getBookmarkProjection), flatten/rebuild
+ * (flattenBookmarkTreeForSort / buildSortableBookmarkTree), auto-expand targeting,
+ * and applyBookmarkTreeProjection. Drives the bookmark sidebar's dnd-kit sortable tree.
+ */
 export const BOOKMARK_INDENTATION_WIDTH = 24;
 export const GROUP_AUTO_EXPAND_OFFSET_PX = 18;
 

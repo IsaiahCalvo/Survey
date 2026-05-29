@@ -1,3 +1,12 @@
+/**
+ * ExcelLockedModal.jsx — modal shown when the linked Excel file can't be written.
+ *
+ * Default-exports the ExcelLockedModal component: a warning modal telling the user
+ * the Excel file is open and must be closed, with Cancel (onCancel) and Try Again
+ * (onRetry) buttons. Formats the displayed path for OneDrive vs local based on the
+ * isOneDrive/filePath props. Renders null unless isOpen. Part of the Excel two-way
+ * sync flow.
+ */
 import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
 
 const ExcelLockedModal = ({

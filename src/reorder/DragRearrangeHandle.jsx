@@ -1,3 +1,11 @@
+/**
+ * DragRearrangeHandle.jsx — grip-icon drag handle for rearrangeable list rows.
+ *
+ * Default-exports DragRearrangeHandle, a <span> rendering the "grip" Icon with
+ * grab/grabbing cursor states and hover color feedback. Supports native HTML5
+ * drag (setDragImage from the closest [data-drag-rearrange-row]) and stops
+ * click/dragstart propagation. Used as the drag affordance in reorder lists.
+ */
 import Icon from '../Icons';
 
 const handleStyle = (isDragging, style = {}) => ({

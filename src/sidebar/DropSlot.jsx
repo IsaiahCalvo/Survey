@@ -1,3 +1,10 @@
+/**
+ * DropSlot.jsx — thin @dnd-kit drop target rendered between bookmark rows.
+ *
+ * Default export DropSlot registers a useDroppable zone (carrying parentId/index/
+ * isInsideFolder in its data) and paints a highlight when hovered, marking where a
+ * dragged bookmark would land in the bookmarks sidebar reorder/reparent flow.
+ */
 import { useDroppable } from '@dnd-kit/core';
 
 const DropSlot = ({

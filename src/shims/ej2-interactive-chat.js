@@ -1,3 +1,10 @@
+/**
+ * ej2-interactive-chat.js — drop-in shim for Syncfusion's @syncfusion/ej2-interactive-chat.
+ *
+ * Exports a minimal AIAssistView class that mimics the prompt/response API
+ * (appendTo, executePrompt, addPromptResponse, destroy) by building plain DOM,
+ * so the bundle can stand in for the real EJ2 package without pulling it in.
+ */
 export class AIAssistView {
   constructor(options = {}) {
     this.options = options;

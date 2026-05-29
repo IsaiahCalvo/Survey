@@ -1,3 +1,12 @@
+/**
+ * calloutBlankCommit.js — rules for committing callout text and handling blanks.
+ *
+ * Exports normalizeCalloutText / isBlankCalloutText, shouldDeleteBlankCalloutOnCommit
+ * (a brand-new callout left blank should be deleted on commit), and
+ * resolveCommittedCalloutText (preserves prior text when an existing callout is
+ * blanked or untouched). Used by the callout edit/commit flow.
+ * Part of the separate callout pipeline — see docs/ANNOTATION-CONTRACT.md.
+ */
 export function normalizeCalloutText(value) {
   return typeof value === 'string' ? value : '';
 }

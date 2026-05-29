@@ -1,3 +1,10 @@
+/**
+ * useDocumentPresenceList.js — hook exposing the live viewer list for a document.
+ *
+ * Exports useDocumentPresenceList({ documentId, enabled }); subscribes via
+ * subscribeToDocumentPresence + initial getDocumentPresence, with a 30s backup
+ * poll so unclean disconnects age out. Powers the stacked-avatars row by the sync chip.
+ */
 import { useEffect, useState } from 'react';
 import {
   getDocumentPresence,

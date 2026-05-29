@@ -1,3 +1,11 @@
+/**
+ * safeSnapshot.js — guards against cloud-backed state being wiped by an empty incoming snapshot.
+ *
+ * Exports countSnapshotItems (counts object-map entries, arrays, or 'annotation-pages'
+ * objects) and resolveSafeSnapshot, which keeps the current value instead of an empty
+ * incoming one when the source is cloudBacked, currently has data, and the emptiness
+ * isn't confirmed. Returns {value, preserved, currentCount, incomingCount, context}.
+ */
 export function countSnapshotItems(value, kind = 'object-map') {
   if (!value) return 0;
   if (kind === 'annotation-pages') {

@@ -1,3 +1,11 @@
+/**
+ * MSGraphContext.jsx — React context for Microsoft Graph / OneDrive authentication.
+ *
+ * Exports MSGraphProvider + useMSGraph(). Runs a direct PKCE OAuth flow against
+ * Azure (login/logout, refresh-token rotation with cooldown/hard-block state),
+ * persists tokens in the Supabase `connected_services` table, and exposes
+ * graphClient + ensureFreshToken() for callers making Graph API calls.
+ */
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { Client } from '@microsoft/microsoft-graph-client';
 import { useAuth } from './AuthContext';

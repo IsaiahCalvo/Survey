@@ -1,3 +1,12 @@
+/**
+ * useDatabase.js — Supabase-backed CRUD hooks for the app's core entities.
+ *
+ * Exports useUserSettings, useProjects, useDocuments (owned + collaborator rows,
+ * provenance stamping), useTemplates, useSpaces, useStorage (file up/download),
+ * useConnectedServices, and useDocumentToolPreferences (localStorage + Supabase),
+ * plus getOtherSurveysUsingTemplate and DEFAULT_TOOL_PREFERENCES / tool capability
+ * tables. Each hook returns data + loading/error + create/update/delete + refetch.
+ */
 import { useState, useEffect, useCallback } from 'react';
 import { supabase, isSupabaseAvailable, isSchemaError, isConnectedServicesAvailable, setConnectedServicesAvailable } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';

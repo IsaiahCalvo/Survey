@@ -1,3 +1,13 @@
+/**
+ * calloutSyncPayload.js — normalizes callouts into a deterministic shape for sync
+ * fingerprinting, stripping transient UI fields and rounding numbers.
+ *
+ * Exports normalizeCalloutForSync / normalizeCalloutsForSync (deep key-sort, drop
+ * transient/__-prefixed keys, round numbers, sort callouts by id) and
+ * getCalloutSyncFingerprint (stable JSON string for change detection). Used to
+ * decide whether callout state actually changed before pushing a sync update.
+ * Part of the separate callout pipeline — see docs/ANNOTATION-CONTRACT.md.
+ */
 const TRANSIENT_KEYS = new Set([
   'isSelected',
   'selected',

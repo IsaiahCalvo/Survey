@@ -1,3 +1,13 @@
+/**
+ * calloutHistoryScope.js — scopes undo/redo history restores so they only affect
+ * the callouts named in the history entry and only the current user's own callouts.
+ *
+ * Exports getCalloutHistoryId / getCalloutHistoryAuthorId, getCalloutIdsFromHistoryMeta,
+ * scopeCalloutsForHistoryRestore (merges target callouts back into current state for
+ * the scoped ids, preserving other users' callouts), and scopeHistoryStateForCalloutRestore
+ * (wraps a full history state's callouts array). Used by the callout history/restore flow.
+ * Part of the separate callout pipeline — see docs/ANNOTATION-CONTRACT.md.
+ */
 export function getCalloutHistoryId(callout) {
   return callout?.id || callout?.annotationId || callout?.data?.id || null;
 }

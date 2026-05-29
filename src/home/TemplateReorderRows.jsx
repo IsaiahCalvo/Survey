@@ -1,3 +1,11 @@
+/**
+ * TemplateReorderRows.jsx — dnd-kit sortable row components for the template editor.
+ *
+ * Exports three memoized rows: TemplateModuleSortableRow, TemplateCategorySortableRow
+ * (drag handle + select checkbox + inline name input) and EntitySortableRow
+ * (drag handle + color/opacity swatch + name input + delete). Each uses useSortable
+ * for drag-to-reorder; rendered by the template reorder/management UI under src/home.
+ */
 import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';

@@ -1,3 +1,12 @@
+/**
+ * AccountSettings.jsx — modal for profile, connected services, and subscription management.
+ *
+ * Named export `AccountSettings` ({ isOpen, onClose }); a tabbed modal driven
+ * by useAuth + useMSGraph. General tab edits name/password and deletes account;
+ * Connected Services links Microsoft/Google; Subscription shows Free/Pro/
+ * Enterprise plans, reads `user_subscriptions` from Supabase, and launches
+ * StripeCheckout / the billing portal. Embeds <UsageIndicator/> on the Usage tab.
+ */
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useMSGraph } from '../contexts/MSGraphContext';

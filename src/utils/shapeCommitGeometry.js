@@ -1,3 +1,12 @@
+/**
+ * shapeCommitGeometry.js — pure geometry helpers for drawn boundary shapes (rect/ellipse/circle).
+ *
+ * Exports tagDrawnCenteredStrokeGeometry (tags shape JSON with the
+ * DRAWN_CENTERED_STROKE_CONTRACT marker), normalizeDrawnBoundaryShapeCommitGeometry
+ * (re-derives Fabric props from outer bounds at commit time), and
+ * computeDrawnBoundaryShapePreviewGeometry (live preview geometry with stroke inset).
+ * Used by the drawing/edit canvas pipeline to keep stroke-centered shapes consistent.
+ */
 const finiteNumber = (value, fallback = 0) => {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : fallback;

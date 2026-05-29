@@ -1,3 +1,12 @@
+/**
+ * documentSurveyMarkerMapper.js — survey-marker <-> Supabase row mappers.
+ *
+ * Exports buildSurveyMarkerRow (local annotation -> DB row) and
+ * mapSurveyMarkerRowToLocalAnnotation (DB row -> local annotation). Resolves
+ * Module/Region visibility scope, keeps stored color in step with entityColor,
+ * and enforces that survey markers carry no standalone space_id.
+ * Part of the separate survey-marker pipeline — see docs/ANNOTATION-CONTRACT.md.
+ */
 import { ANNOTATION_VISIBILITY_SCOPE, getAnnotationVisibilityScope } from '../utils/annotationVisibilityRules.js';
 import { SURVEY_MARKER_TYPE } from '../utils/surveyMarkerType.js';
 

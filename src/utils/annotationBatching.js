@@ -1,3 +1,10 @@
+/**
+ * annotationBatching.js — splits annotation rows into fixed-size upsert batches.
+ *
+ * Exports DEFAULT_ANNOTATION_UPSERT_BATCH_SIZE (250) and chunkRowsForAnnotationUpsert(),
+ * which slices an array of rows into chunks so Supabase upserts stay under payload
+ * limits during annotation cloud sync.
+ */
 export const DEFAULT_ANNOTATION_UPSERT_BATCH_SIZE = 250;
 
 export function chunkRowsForAnnotationUpsert(rows, batchSize = DEFAULT_ANNOTATION_UPSERT_BATCH_SIZE) {

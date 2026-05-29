@@ -1,3 +1,13 @@
+/**
+ * RegionSelectionTool.jsx — interactive overlay for drawing/editing space regions on a PDF page.
+ *
+ * Default-export component that lets the user draw rectangular or freehand
+ * regions and switch to a move/resize/vertex-edit mode, with add/subtract
+ * boolean ops via martinez-polygon-clipping and a per-(space,page) undo/redo
+ * history. Locates its target page via `[data-region-selection-target]` and
+ * maps client coords to page space using container-measured display scale.
+ * Drives the Spaces region-editing flow; commits via `onRegionComplete`.
+ */
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import Icon from './Icons';
 import { diff, union, intersection } from 'martinez-polygon-clipping';
