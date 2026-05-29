@@ -105,8 +105,6 @@ import {
   INTERACTION_PERF_SCROLL_HOLD_MS,
   MANUAL_ZOOM_SESSION_KEY,
   NATIVE_TEXT_MARKUP_TOOLS,
-  OVERLAY_LAG_RECORDER_ATTRIBUTION_MIN_FRAME_RATIO,
-  OVERLAY_LAG_RECORDER_ATTRIBUTION_MIN_MS,
   OVERLAY_LAG_RECORDER_AUTO_MAX_SAMPLES,
   OVERLAY_LAG_RECORDER_AUTO_SAMPLE_INTERVAL_MS,
   OVERLAY_LAG_RECORDER_AUTO_SAMPLE_PAGE_LIMIT,
@@ -208,7 +206,6 @@ import {
   normalizeInteractionMeasuredScale,
   normalizeSurveyMarkerColor,
   parseCssTransformScaleX,
-  percentileOverlayRecorder,
   readDocumentSyncStructuralDisabled,
   readHistoryDebugConsoleEnabled,
   readOverlayLagRecorderAutoEnabled,
@@ -233,6 +230,12 @@ import {
   writeOverlayLagRecorderAutoEnabled,
   writeSyncfusionDualLayerEnabled
 } from './viewerShared';
+import { getBoundsCenter, hasValidRegionAreas, resolvePageContentElement, sortSyncfusionPagesByDistance } from './utils/regionGeometry';
+import { composeColorForPatch, materializeFabricAnnotationFromYMap } from './utils/annotationData';
+import { generateBookmarkId, resolvePdfOutlinePageNumber } from './utils/bookmarkOutline';
+import { getCounterRenderGeometry, removeCounterDragPreview } from './utils/counterGeometry';
+import { getExportErrorMessage, isFileLocked } from './utils/exportHelpers';
+import { buildTrackpadInteractionDebugSummaryText, summarizeOverlayLagSamples } from './utils/overlayDebug';
 
 export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, isActive, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
@@ -647,40 +650,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       sessions,
       events
     });
-  }, []);
-
-  const buildTrackpadInteractionDebugSummaryText = useCallback((trackpadDump) => {
-    const summaryLines = [];
-    summaryLines.push(`# Trackpad Interaction Debug - ${trackpadDump?.metadata?.capturedAt || new Date().toISOString()}`);
-    summaryLines.push(`events=${trackpadDump?.summary?.eventCount ?? 0}`);
-    summaryLines.push(`sessions=${trackpadDump?.summary?.sessionCount ?? 0}`);
-    summaryLines.push(`rawWheel=${trackpadDump?.summary?.totals?.rawWheel ?? 0}`);
-    summaryLines.push(`rawZoomWheel=${trackpadDump?.summary?.totals?.rawZoomWheel ?? 0}`);
-    summaryLines.push(`rawScrollWheel=${trackpadDump?.summary?.totals?.rawScrollWheel ?? 0}`);
-    summaryLines.push(`processedZoom=${trackpadDump?.summary?.totals?.processedZoom ?? 0}`);
-    summaryLines.push(`skippedZoom=${trackpadDump?.summary?.totals?.skippedZoom ?? 0}`);
-    summaryLines.push(`processedScroll=${trackpadDump?.summary?.totals?.processedScroll ?? 0}`);
-    summaryLines.push(`nativeScroll=${trackpadDump?.summary?.totals?.nativeScroll ?? 0}`);
-    summaryLines.push(`pointerPanMoves=${trackpadDump?.summary?.totals?.pointerPanMoves ?? 0}`);
-    summaryLines.push(`zoomAvgLatencyMs=${trackpadDump?.summary?.zoomAvgLatencyMs ?? 'n/a'}`);
-    summaryLines.push(`zoomMaxLatencyMs=${trackpadDump?.summary?.zoomMaxLatencyMs ?? 'n/a'}`);
-    summaryLines.push(`zoomAvgRequestedDeltaPct=${trackpadDump?.summary?.zoomAvgRequestedDeltaPct ?? 'n/a'}`);
-    summaryLines.push(`zoomAvgActualDeltaPct=${trackpadDump?.summary?.zoomAvgActualDeltaPct ?? 'n/a'}`);
-    summaryLines.push(`scrollAvgLatencyMs=${trackpadDump?.summary?.scrollAvgLatencyMs ?? 'n/a'}`);
-    summaryLines.push(`scrollMaxLatencyMs=${trackpadDump?.summary?.scrollMaxLatencyMs ?? 'n/a'}`);
-    summaryLines.push('');
-    summaryLines.push('## Recent sessions');
-    (trackpadDump?.summary?.recentSessions || []).forEach((session) => {
-      summaryLines.push(
-        `- #${session.id} ${session.family}/${session.direction || 'unknown'} ` +
-        `events=${session.eventCount} raw=${session.rawWheelCount} processed=${session.processedCount} ignored=${session.ignoredCount} ` +
-        `rawAbs=(${roundOverlayRecorderValue(session.rawAbsX, 2)},${roundOverlayRecorderValue(session.rawAbsY, 2)}) ` +
-        `scrollAbs=(${roundOverlayRecorderValue(session.actualScrollAbsX, 2)},${roundOverlayRecorderValue(session.actualScrollAbsY, 2)}) ` +
-        `zoomReq=${roundOverlayRecorderValue(session.zoomRequestedAbs, 3)} zoomActual=${roundOverlayRecorderValue(session.zoomActualAbs, 3)} ` +
-        `maxLatency=${roundOverlayRecorderValue(session.maxLatencyMs, 3)}ms`
-      );
-    });
-    return summaryLines.join('\n');
   }, []);
 
   const getTrackpadInteractionDebugSavePayload = useCallback(() => {
@@ -1126,15 +1095,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     .map((pageKey) => Number(pageKey))
     .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0 && isSyncfusionPageEligible(pageNumber))
     .sort((left, right) => left - right), [isSyncfusionPageEligible]);
-
-  const sortSyncfusionPagesByDistance = useCallback((pages, originPage) => [...pages]
-    .filter((pageNumber) => Number.isFinite(pageNumber) && pageNumber > 0)
-    .sort((left, right) => {
-      const leftDistance = Math.abs(left - originPage);
-      const rightDistance = Math.abs(right - originPage);
-      if (leftDistance !== rightDistance) return leftDistance - rightDistance;
-      return left - right;
-    }), []);
 
   const computeSyncfusionInteractionResidentPages = useCallback(() => {
     const eligiblePages = listSyncfusionEligibleContainerPages();
@@ -3071,25 +3031,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // }
   const counterDragRef = useRef(null);
 
-  const getCounterRenderGeometry = useCallback((bodyX, bodyY, radius, pointerAngleDeg) => {
-    const angleRad = (pointerAngleDeg * Math.PI) / 180;
-    const tipExtension = Math.max(5, radius * 0.5);
-    const tipDistance = radius + tipExtension;
-    const tipX = bodyX + Math.cos(angleRad) * tipDistance;
-    const tipY = bodyY + Math.sin(angleRad) * tipDistance;
-    const tangentHalfAngle = Math.acos(radius / tipDistance);
-    const t1Angle = angleRad + tangentHalfAngle;
-    const t2Angle = angleRad - tangentHalfAngle;
-    const t1x = bodyX + Math.cos(t1Angle) * radius;
-    const t1y = bodyY + Math.sin(t1Angle) * radius;
-    const t2x = bodyX + Math.cos(t2Angle) * radius;
-    const t2y = bodyY + Math.sin(t2Angle) * radius;
-    return {
-      pathD: `M ${tipX},${tipY} L ${t1x},${t1y} A ${radius},${radius} 0 1 1 ${t2x},${t2y} Z`,
-      fontSize: Math.max(11, radius * 1.05),
-    };
-  }, []);
-
   const updateCounterDragPreview = useCallback((drag) => {
     if (!drag?.previewPath || !drag?.previewText) return;
     const geometry = getCounterRenderGeometry(drag.bodyX, drag.bodyY, drag.radius, drag.angle);
@@ -3100,12 +3041,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     drag.previewText.setAttribute('font-size', String(geometry.fontSize));
     drag.previewText.textContent = String(drag.displayNumber ?? 1);
   }, [getCounterRenderGeometry]);
-
-  const removeCounterDragPreview = useCallback((drag) => {
-    if (drag?.previewSvg?.parentNode) {
-      drag.previewSvg.parentNode.removeChild(drag.previewSvg);
-    }
-  }, []);
 
   const createCounterDragPreview = useCallback((overlayEl, drag) => {
     if (!overlayEl || !drag) return;
@@ -6763,17 +6698,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => { strokeOpacityStateRef.current = strokeOpacity; }, [strokeOpacity]);
   useEffect(() => { fillColorStateRef.current = fillColor; }, [fillColor]);
   useEffect(() => { fillOpacityStateRef.current = fillOpacity; }, [fillOpacity]);
-  const composeColorForPatch = useCallback((hex, opacityPct) => {
-    if (!hex || hex === 'transparent') return 'transparent';
-    const alpha = Math.max(0, Math.min(1, (opacityPct ?? 100) / 100));
-    if (/^#[0-9a-fA-F]{6}$/.test(hex)) {
-      const r = parseInt(hex.slice(1, 3), 16);
-      const g = parseInt(hex.slice(3, 5), 16);
-      const b = parseInt(hex.slice(5, 7), 16);
-      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-    }
-    return hex;
-  }, []);
   const getSelectedShapeMeta = () => {
     const sel = selectedToolbarAnnotationRef.current;
     const annotation = sel?.annotation;
@@ -7318,10 +7242,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [pdfOutlinePageLookup, setPdfOutlinePageLookup] = useState(null);
   const [hasImportedPdfBookmarks, setHasImportedPdfBookmarks] = useState(false);
   const pdfjsBookmarkAttemptRef = useRef(null);
-  const generateBookmarkId = useCallback(
-    () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-    []
-  );
   const [spaces, setSpaces] = useState([]); // Array of { id, name, assignedPages: [{ pageId, wholePageIncluded, regions: [] }] }
   const [activeSpaceId, setActiveSpaceId] = useState(null); // Currently active space for filtering
   useEffect(() => {
@@ -7546,348 +7466,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         longTaskEntries: longTaskEntries.length,
         eventEntries: eventEntries.length
       }
-    };
-  }, []);
-
-  const summarizeOverlayLagSamples = useCallback((samples = []) => {
-    if (!Array.isArray(samples) || samples.length === 0) {
-      return {
-        sampleCount: 0
-      };
-    }
-
-    const frameDurations = samples.map((sample) => sample.frameMs).filter((value) => Number.isFinite(value) && value > 0);
-    const driftValues = samples.map((sample) => sample.worstDriftPx).filter((value) => Number.isFinite(value));
-    const scaleMismatchValues = samples.map((sample) => sample.worstScaleMismatch).filter((value) => Number.isFinite(value));
-    const missingOverlayCounts = samples.map((sample) => sample.missingOverlayCount).filter((value) => Number.isFinite(value) && value >= 0);
-    const sampleCaptureCosts = samples.map((sample) => sample.sampleCaptureCostMs).filter((value) => Number.isFinite(value) && value >= 0);
-    const longTaskCounts = samples.map((sample) => sample.longTaskCount).filter((value) => Number.isFinite(value) && value >= 0);
-    const longTaskTotals = samples.map((sample) => sample.longTaskTotalMs).filter((value) => Number.isFinite(value) && value >= 0);
-    const eventTimingTotals = samples.map((sample) => sample.eventTimingTotalMs).filter((value) => Number.isFinite(value) && value >= 0);
-    const visiblePresentationGapCounts = samples.map((sample) => sample.visiblePresentationGapCount).filter((value) => Number.isFinite(value) && value >= 0);
-    const viewportPresentationGapCounts = samples.map((sample) => sample.viewportPresentationGapCount).filter((value) => Number.isFinite(value) && value >= 0);
-    const samplesWithMissingOverlay = missingOverlayCounts.filter((count) => count > 0).length;
-    const samplesWithVisiblePresentationGap = visiblePresentationGapCounts.filter((count) => count > 0).length;
-    const samplesWithViewportPresentationGap = viewportPresentationGapCounts.filter((count) => count > 0).length;
-    const jankThresholdMs = 32;
-    const sampleJankFrames = frameDurations.filter((frameMs) => frameMs > jankThresholdMs).length;
-    const samplesWithLongTasks = longTaskCounts.filter((count) => count > 0).length;
-    const jankSamples = samples.filter((sample) => Number(sample.frameMs) > jankThresholdMs);
-    const jankSamplesWithLongTasks = jankSamples.filter((sample) => Number(sample.longTaskCount) > 0).length;
-    const lastSample = samples[samples.length - 1] || null;
-    const rafFrameCount = Number(lastSample?.rafFrameCount) || frameDurations.length;
-    const rafJankFrameCount = Number(lastSample?.rafJankFrameCount) || sampleJankFrames;
-    const rafFrameMsAvg = Number(lastSample?.rafFrameMsAvg);
-    const rafFrameMsMax = Number(lastSample?.rafFrameMsMax);
-
-    const interactionEventTotals = {};
-    samples.forEach((sample) => {
-      if (!sample?.interactionEventDeltas || typeof sample.interactionEventDeltas !== 'object') return;
-      Object.entries(sample.interactionEventDeltas).forEach(([key, value]) => {
-        const numeric = Number(value);
-        if (!Number.isFinite(numeric) || numeric === 0) return;
-        interactionEventTotals[key] = (interactionEventTotals[key] || 0) + numeric;
-      });
-    });
-    const interactionEventHotspots = Object.entries(interactionEventTotals)
-      .sort((left, right) => right[1] - left[1])
-      .slice(0, 6)
-      .map(([eventType, count]) => ({ eventType, count }));
-
-    const wheelPerfTotals = {};
-    samples.forEach((sample) => {
-      if (!sample?.wheelPerfDeltas || typeof sample.wheelPerfDeltas !== 'object') return;
-      Object.entries(sample.wheelPerfDeltas).forEach(([key, value]) => {
-        const numeric = Number(value);
-        if (!Number.isFinite(numeric) || numeric === 0) return;
-        wheelPerfTotals[key] = (wheelPerfTotals[key] || 0) + numeric;
-      });
-    });
-    const scrollRawAbsTotal = (Number(wheelPerfTotals.scrollRawAbsX) || 0) + (Number(wheelPerfTotals.scrollRawAbsY) || 0);
-    const scrollClippedAbsTotal = (Number(wheelPerfTotals.scrollClippedAbsX) || 0) + (Number(wheelPerfTotals.scrollClippedAbsY) || 0);
-    const scrollAppliedAbsTotal = (Number(wheelPerfTotals.scrollAppliedAbsX) || 0) + (Number(wheelPerfTotals.scrollAppliedAbsY) || 0);
-    const scrollActualAbsTotal = (Number(wheelPerfTotals.scrollActualAbsX) || 0) + (Number(wheelPerfTotals.scrollActualAbsY) || 0);
-    const zoomEvents = Number(wheelPerfTotals.zoomEvents) || 0;
-    const scrollEvents = Number(wheelPerfTotals.scrollEvents) || 0;
-    const wheelMotionSummary = {
-      scrollEvents,
-      scrollPreventedEvents: Number(wheelPerfTotals.scrollPreventedEvents) || 0,
-      scrollClippedEvents: Number(wheelPerfTotals.scrollClippedEvents) || 0,
-      scrollDiagonalEvents: Number(wheelPerfTotals.scrollDiagonalEvents) || 0,
-      scrollRawAbsTotal: roundOverlayRecorderValue(scrollRawAbsTotal, 3),
-      scrollClippedAbsTotal: roundOverlayRecorderValue(scrollClippedAbsTotal, 3),
-      scrollAppliedAbsTotal: roundOverlayRecorderValue(scrollAppliedAbsTotal, 3),
-      scrollActualAbsTotal: roundOverlayRecorderValue(scrollActualAbsTotal, 3),
-      scrollClippedVsRawRatio: scrollRawAbsTotal > 0
-        ? roundOverlayRecorderValue(scrollClippedAbsTotal / scrollRawAbsTotal, 4)
-        : null,
-      scrollAppliedVsRawRatio: scrollRawAbsTotal > 0
-        ? roundOverlayRecorderValue(scrollAppliedAbsTotal / scrollRawAbsTotal, 4)
-        : null,
-      scrollActualVsRawRatio: scrollRawAbsTotal > 0
-        ? roundOverlayRecorderValue(scrollActualAbsTotal / scrollRawAbsTotal, 4)
-        : null,
-      scrollActualVsAppliedRatio: scrollAppliedAbsTotal > 0
-        ? roundOverlayRecorderValue(scrollActualAbsTotal / scrollAppliedAbsTotal, 4)
-        : null,
-      zoomEvents,
-      zoomRawDeltaAbsTotal: roundOverlayRecorderValue(Number(wheelPerfTotals.zoomRawDeltaAbs) || 0, 3),
-      zoomRequestedDeltaAbsTotal: roundOverlayRecorderValue(Number(wheelPerfTotals.zoomRequestedDeltaAbs) || 0, 3),
-      zoomAvgRequestedDelta: zoomEvents > 0
-        ? roundOverlayRecorderValue((Number(wheelPerfTotals.zoomRequestedDeltaAbs) || 0) / zoomEvents, 3)
-        : null,
-      zoomMaxRequestedDelta: roundOverlayRecorderValue(Number(wheelPerfTotals.zoomRequestedDeltaMax) || 0, 3),
-      zoomAvgReportedLag: zoomEvents > 0
-        ? roundOverlayRecorderValue((Number(wheelPerfTotals.zoomReportedLagAbs) || 0) / zoomEvents, 3)
-        : null,
-      zoomMaxReportedLag: roundOverlayRecorderValue(Number(wheelPerfTotals.zoomReportedLagMax) || 0, 3),
-      zoomBigJumpEvents: Number(wheelPerfTotals.zoomBigJumpEvents) || 0
-    };
-    const idleWorkTotals = {};
-    samples.forEach((sample) => {
-      if (!sample?.idleWorkDeltas || typeof sample.idleWorkDeltas !== 'object') return;
-      Object.entries(sample.idleWorkDeltas).forEach(([key, value]) => {
-        const numeric = Number(value);
-        if (!Number.isFinite(numeric) || numeric <= 0) return;
-        idleWorkTotals[key] = (idleWorkTotals[key] || 0) + numeric;
-      });
-    });
-    const idleWorkHotspots = Object.entries(idleWorkTotals)
-      .filter(([key]) => key.endsWith('Ms'))
-      .sort((left, right) => right[1] - left[1])
-      .slice(0, 8)
-      .map(([workType, durationMs]) => ({
-        workType,
-        durationMs: roundOverlayRecorderValue(durationMs, 3),
-        count: roundOverlayRecorderValue(idleWorkTotals[workType.replace(/Ms$/, 'Count')] || 0, 3)
-      }));
-    const rawZoomSignalCount = (Number(interactionEventTotals.overlayWheelZoom) || 0) +
-      (Number(interactionEventTotals.syncfusionWheelZoom) || 0);
-    const workReductionSummary = {
-      rawZoomSignalCount,
-      pdfZoomWorkCount: zoomEvents,
-      zoomSignalsCombined: rawZoomSignalCount > zoomEvents ? rawZoomSignalCount - zoomEvents : 0,
-      zoomWorkReductionPct: rawZoomSignalCount > 0
-        ? roundOverlayRecorderValue(((rawZoomSignalCount - zoomEvents) / rawZoomSignalCount) * 100, 2)
-        : null
-    };
-
-    const slowFrameBuckets = {};
-    jankSamples.forEach((sample) => {
-      const phase = sample?.interactionPhase || 'unknown';
-      const reason = sample?.interactionReason || 'idle';
-      const key = `${phase}:${reason}`;
-      const frameMs = Number(sample?.frameMs);
-      if (!Number.isFinite(frameMs)) return;
-      const bucket = slowFrameBuckets[key] || {
-        phase,
-        reason,
-        count: 0,
-        frameMsTotal: 0,
-        frameMsMax: 0
-      };
-      bucket.count += 1;
-      bucket.frameMsTotal += frameMs;
-      bucket.frameMsMax = Math.max(bucket.frameMsMax, frameMs);
-      slowFrameBuckets[key] = bucket;
-    });
-    const slowFrameHotspots = Object.values(slowFrameBuckets)
-      .sort((left, right) => {
-        if (right.frameMsTotal !== left.frameMsTotal) return right.frameMsTotal - left.frameMsTotal;
-        return right.frameMsMax - left.frameMsMax;
-      })
-      .slice(0, 6)
-      .map((bucket) => ({
-        phase: bucket.phase,
-        reason: bucket.reason,
-        count: bucket.count,
-        frameMsAvg: roundOverlayRecorderValue(bucket.frameMsTotal / bucket.count, 3),
-        frameMsMax: roundOverlayRecorderValue(bucket.frameMsMax, 3),
-        frameMsTotal: roundOverlayRecorderValue(bucket.frameMsTotal, 3)
-      }));
-    const classifySlowFrameWork = (sample) => {
-      const idleWork = sample?.idleWorkDeltas || {};
-      const events = sample?.interactionEventDeltas || {};
-      const wheel = sample?.wheelPerfDeltas || {};
-      const frameMs = Number(sample?.frameMs) || 0;
-      if (Number(sample?.longTaskTotalMs) > 0) return 'longTask';
-      const measuredWork = [
-        ['annotationRestoration', Number(idleWork.annotationRestorationMs) || 0],
-        ['pageRenderCatchup', Number(idleWork.pageRenderCatchupMs) || 0],
-        ['syncfusionInternals', Number(idleWork.syncfusionInternalsMs) || 0],
-        ['measurementWork', Math.max(Number(idleWork.measurementWorkMs) || 0, Number(sample?.sampleCaptureCostMs) || 0)]
-      ].sort((left, right) => right[1] - left[1]);
-      const strongestMeasuredMs = measuredWork[0]?.[1] || 0;
-      const measuredFrameRatio = frameMs > 0 ? strongestMeasuredMs / frameMs : 0;
-      if (
-        strongestMeasuredMs >= OVERLAY_LAG_RECORDER_ATTRIBUTION_MIN_MS ||
-        measuredFrameRatio >= OVERLAY_LAG_RECORDER_ATTRIBUTION_MIN_FRAME_RATIO
-      ) {
-        return measuredWork[0][0];
-      }
-      if (
-        Number(events.syncfusionContainerMutation) > 0 ||
-        Number(events.syncfusionContainerMapChange) > 0 ||
-        Number(events.syncfusionPageChange) > 0
-      ) return 'pageRenderCatchup';
-      if (
-        Number(wheel.scrollEvents) > 0 ||
-        Number(wheel.zoomEvents) > 0 ||
-        Number(events.syncfusionWheelScroll) > 0 ||
-        Number(events.syncfusionScroll) > 0 ||
-        Number(events.syncfusionZoomChange) > 0 ||
-        Number(events.overlayWheelZoom) > 0
-      ) return 'syncfusionInternals';
-      return 'unattributedRafPause';
-    };
-    const slowFrameAttributionBuckets = {};
-    jankSamples.forEach((sample) => {
-      const workType = classifySlowFrameWork(sample);
-      const frameMs = Number(sample?.frameMs);
-      if (!Number.isFinite(frameMs)) return;
-      const bucket = slowFrameAttributionBuckets[workType] || {
-        workType,
-        count: 0,
-        frameMsTotal: 0,
-        frameMsMax: 0
-      };
-      bucket.count += 1;
-      bucket.frameMsTotal += frameMs;
-      bucket.frameMsMax = Math.max(bucket.frameMsMax, frameMs);
-      slowFrameAttributionBuckets[workType] = bucket;
-    });
-    const slowFrameAttributionHotspots = Object.values(slowFrameAttributionBuckets)
-      .sort((left, right) => {
-        if (right.frameMsTotal !== left.frameMsTotal) return right.frameMsTotal - left.frameMsTotal;
-        return right.frameMsMax - left.frameMsMax;
-      })
-      .slice(0, 6)
-      .map((bucket) => ({
-        workType: bucket.workType,
-        count: bucket.count,
-        frameMsAvg: roundOverlayRecorderValue(bucket.frameMsTotal / bucket.count, 3),
-        frameMsMax: roundOverlayRecorderValue(bucket.frameMsMax, 3),
-        frameMsTotal: roundOverlayRecorderValue(bucket.frameMsTotal, 3)
-      }));
-
-    const worstFrameSample = samples.reduce((worst, sample) => {
-      const frameMs = Number(sample?.frameMs);
-      if (!Number.isFinite(frameMs)) return worst;
-      if (!worst || frameMs > Number(worst.frameMs)) return sample;
-      return worst;
-    }, null);
-    const worstFrameContext = worstFrameSample
-      ? {
-        tMs: worstFrameSample.tMs,
-        frameMs: worstFrameSample.frameMs,
-        currentPage: worstFrameSample.currentPage,
-        appScale: worstFrameSample.appScale,
-        viewerScale: worstFrameSample.viewerScale,
-        interactionReason: worstFrameSample.interactionReason,
-        interactionPhase: worstFrameSample.interactionPhase,
-        scrollLeft: worstFrameSample.scrollLeft,
-        scrollTop: worstFrameSample.scrollTop,
-        wheelPerfDeltas: worstFrameSample.wheelPerfDeltas || {},
-        idleWorkDeltas: worstFrameSample.idleWorkDeltas || {},
-        interactionEventDeltas: worstFrameSample.interactionEventDeltas || {},
-        longTaskCount: worstFrameSample.longTaskCount,
-        longTaskTotalMs: worstFrameSample.longTaskTotalMs,
-        eventTimingTotalMs: worstFrameSample.eventTimingTotalMs,
-        missingOverlayCount: worstFrameSample.missingOverlayCount,
-        visiblePresentationGapCount: worstFrameSample.visiblePresentationGapCount,
-        viewportPresentationGapCount: worstFrameSample.viewportPresentationGapCount,
-        sampledPageCount: worstFrameSample.sampledPageCount,
-        pageModeCounts: worstFrameSample.pageModeCounts
-      }
-      : null;
-
-    const longTaskSourceTotals = {};
-    samples.forEach((sample) => {
-      if (!Array.isArray(sample?.longTaskTopSources)) return;
-      sample.longTaskTopSources.forEach((bucket) => {
-        const source = String(bucket?.source || '');
-        const durationMs = Number(bucket?.durationMs);
-        if (!source || !Number.isFinite(durationMs) || durationMs <= 0) return;
-        longTaskSourceTotals[source] = (longTaskSourceTotals[source] || 0) + durationMs;
-      });
-    });
-    const longTaskHotspots = Object.entries(longTaskSourceTotals)
-      .sort((left, right) => right[1] - left[1])
-      .slice(0, 6)
-      .map(([source, durationMs]) => ({
-        source,
-        durationMs: roundOverlayRecorderValue(durationMs, 3)
-      }));
-
-    const avg = (values) => {
-      if (values.length === 0) return null;
-      return values.reduce((sum, value) => sum + value, 0) / values.length;
-    };
-
-    return {
-      sampleCount: samples.length,
-      durationMs: roundOverlayRecorderValue((samples[samples.length - 1]?.tMs || 0) - (samples[0]?.tMs || 0), 1),
-      frameMsAvg: roundOverlayRecorderValue(avg(frameDurations), 3),
-      frameMsP95: roundOverlayRecorderValue(percentileOverlayRecorder(frameDurations, 0.95), 3),
-      frameMsMax: roundOverlayRecorderValue(frameDurations.length ? Math.max(...frameDurations) : null, 3),
-      fpsAvg: roundOverlayRecorderValue(frameDurations.length ? 1000 / avg(frameDurations) : null, 2),
-      fpsAtP95Frame: roundOverlayRecorderValue(frameDurations.length ? 1000 / percentileOverlayRecorder(frameDurations, 0.95) : null, 2),
-      fpsAtWorstFrame: roundOverlayRecorderValue(frameDurations.length ? 1000 / Math.max(...frameDurations) : null, 2),
-      jankFrames: rafJankFrameCount,
-      jankFrameRatePct: rafFrameCount > 0
-        ? roundOverlayRecorderValue((rafJankFrameCount / rafFrameCount) * 100, 2)
-        : null,
-      sampleJankFrames,
-      sampleJankFrameRatePct: frameDurations.length > 0
-        ? roundOverlayRecorderValue((sampleJankFrames / frameDurations.length) * 100, 2)
-        : null,
-      rafFrameCount,
-      rafFrameMsAvg: Number.isFinite(rafFrameMsAvg) ? rafFrameMsAvg : null,
-      rafFrameMsMax: Number.isFinite(rafFrameMsMax) ? rafFrameMsMax : null,
-      worstDriftPxMax: roundOverlayRecorderValue(driftValues.length ? Math.max(...driftValues) : null, 3),
-      worstDriftPxP95: roundOverlayRecorderValue(percentileOverlayRecorder(driftValues, 0.95), 3),
-      scaleMismatchMax: roundOverlayRecorderValue(scaleMismatchValues.length ? Math.max(...scaleMismatchValues) : null, 5),
-      scaleMismatchP95: roundOverlayRecorderValue(percentileOverlayRecorder(scaleMismatchValues, 0.95), 5),
-      missingOverlayCountAvg: roundOverlayRecorderValue(avg(missingOverlayCounts), 3),
-      missingOverlayCountMax: roundOverlayRecorderValue(missingOverlayCounts.length ? Math.max(...missingOverlayCounts) : null, 3),
-      samplesWithMissingOverlay,
-      samplesWithMissingOverlayPct: missingOverlayCounts.length > 0
-        ? roundOverlayRecorderValue((samplesWithMissingOverlay / missingOverlayCounts.length) * 100, 2)
-        : null,
-      visiblePresentationGapMax: roundOverlayRecorderValue(visiblePresentationGapCounts.length ? Math.max(...visiblePresentationGapCounts) : null, 3),
-      samplesWithVisiblePresentationGap,
-      samplesWithVisiblePresentationGapPct: visiblePresentationGapCounts.length > 0
-        ? roundOverlayRecorderValue((samplesWithVisiblePresentationGap / visiblePresentationGapCounts.length) * 100, 2)
-        : null,
-      viewportPresentationGapMax: roundOverlayRecorderValue(viewportPresentationGapCounts.length ? Math.max(...viewportPresentationGapCounts) : null, 3),
-      samplesWithViewportPresentationGap,
-      samplesWithViewportPresentationGapPct: viewportPresentationGapCounts.length > 0
-        ? roundOverlayRecorderValue((samplesWithViewportPresentationGap / viewportPresentationGapCounts.length) * 100, 2)
-        : null,
-      sampleCaptureCostMsAvg: roundOverlayRecorderValue(avg(sampleCaptureCosts), 3),
-      sampleCaptureCostMsP95: roundOverlayRecorderValue(percentileOverlayRecorder(sampleCaptureCosts, 0.95), 3),
-      longTaskCountTotal: longTaskCounts.length ? longTaskCounts.reduce((sum, value) => sum + value, 0) : 0,
-      longTaskCountAvg: roundOverlayRecorderValue(avg(longTaskCounts), 3),
-      longTaskTotalMs: roundOverlayRecorderValue(longTaskTotals.length ? longTaskTotals.reduce((sum, value) => sum + value, 0) : 0, 3),
-      longTaskMsP95: roundOverlayRecorderValue(percentileOverlayRecorder(longTaskTotals, 0.95), 3),
-      samplesWithLongTasks,
-      samplesWithLongTasksPct: longTaskCounts.length > 0
-        ? roundOverlayRecorderValue((samplesWithLongTasks / longTaskCounts.length) * 100, 2)
-        : null,
-      jankSamplesWithLongTasks,
-      jankSamplesWithLongTasksPct: jankSamples.length > 0
-        ? roundOverlayRecorderValue((jankSamplesWithLongTasks / jankSamples.length) * 100, 2)
-        : null,
-      eventTimingTotalMs: roundOverlayRecorderValue(eventTimingTotals.length ? eventTimingTotals.reduce((sum, value) => sum + value, 0) : 0, 3),
-      eventTimingMsP95: roundOverlayRecorderValue(percentileOverlayRecorder(eventTimingTotals, 0.95), 3),
-      interactionEventHotspots,
-      wheelMotionSummary,
-      idleWorkHotspots,
-      workReductionSummary,
-      slowFrameHotspots,
-      slowFrameAttributionHotspots,
-      worstFrameContext,
-      longTaskHotspots
     };
   }, []);
 
@@ -10654,40 +10232,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return true;
   }, [pushHistoryDebugEvent, user?.id, yjsUndoCtx?.userId]);
 
-  const materializeFabricAnnotationFromYMap = useCallback((annoYMap, fallbackId = null) => {
-    if (!annoYMap || typeof annoYMap.get !== 'function') return null;
-    const fabricYMap = annoYMap.get('fabric');
-    let fabricObj = null;
-    if (fabricYMap?.toJSON) {
-      try { fabricObj = fabricYMap.toJSON(); } catch (_err) { fabricObj = null; }
-    }
-    if (!fabricObj && fabricYMap?.forEach) {
-      fabricObj = {};
-      fabricYMap.forEach((value, key) => { fabricObj[key] = value; });
-    }
-    if (!fabricObj) return null;
-    const id = annoYMap.get('id') || fallbackId || fabricObj?.data?.id || fabricObj?.id;
-    if (!fabricObj.data || typeof fabricObj.data !== 'object') fabricObj.data = {};
-    if (id && !fabricObj.data.id) fabricObj.data.id = id;
-    if (id && !fabricObj.id) fabricObj.id = id;
-    const pageNumber = annoYMap.get('pageNumber') ?? fabricObj?.data?.pageNumber ?? fabricObj?.pageNumber ?? 1;
-    fabricObj.data.pageNumber = pageNumber;
-    try {
-      const metaYMap = annoYMap.get('meta');
-      if (metaYMap && typeof metaYMap.get === 'function') {
-        const authorId = metaYMap.get('authorId');
-        if (authorId) {
-          fabricObj.meta = { ...(fabricObj.meta || {}), authorId: fabricObj.meta?.authorId || authorId };
-        }
-        const lastEditorId = metaYMap.get('lastEditorId');
-        if (lastEditorId) fabricObj.lastEditorId = fabricObj.lastEditorId || lastEditorId;
-      }
-    } catch (_err) {
-      // Best-effort attribution hydration for local materialization only.
-    }
-    return { fabricObj, id, pageNumber };
-  }, []);
-
   const refreshYjsHistoryTargetFromDoc = useCallback((target, reason = 'yjs-history-pop') => {
     if (!yjsDoc || !target?.id) return false;
     const annotationId = target.id;
@@ -13420,40 +12964,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const isExportInProgressRef = useRef(false);
 
   // Helper to get user-friendly error messages
-  const getExportErrorMessage = (error) => {
-    const msg = error?.message?.toLowerCase() || '';
-
-    if (msg.includes('name already exists') || msg.includes('409')) {
-      return 'A file with this name already exists and may be open in another application. Please close the file and try again.';
-    }
-    if (msg.includes('locked') || msg.includes('in use')) {
-      return 'The file is currently open in another application. Please close it and try again.';
-    }
-    if (msg.includes('authentication') || msg.includes('unauthorized') || msg.includes('401')) {
-      return 'Your session has expired. Please reconnect your Microsoft account.';
-    }
-    if (msg.includes('forbidden') || msg.includes('403')) {
-      return 'You don\'t have permission to save to this location. Please check your OneDrive access.';
-    }
-    if (msg.includes('not found') || msg.includes('404')) {
-      return 'The destination folder could not be found in OneDrive.';
-    }
-    if (msg.includes('network') || msg.includes('timeout') || msg.includes('offline')) {
-      return 'Network connection issue. Please check your internet connection and try again.';
-    }
-    if (msg.includes('quota') || msg.includes('storage')) {
-      return 'Your OneDrive storage is full. Please free up space and try again.';
-    }
-
-    return 'Unable to save to OneDrive. Please try again or save to your computer instead.';
-  };
-
   // Check if error is a file locked error (423)
-  const isFileLocked = (error) => {
-    const msg = error?.message?.toLowerCase() || '';
-    return msg.includes('locked') || msg.includes('423') || msg.includes('in use');
-  };
-
   // Push survey data to linked Excel with retry logic for locked files
   const pushToExcelWithRetry = useCallback(async (isRetry = false) => {
     if (!selectedTemplate?.linkedExcelPath) return;
@@ -16655,20 +16166,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [activeSpaceId, selectedSpaceId, clearAnnotationSelectionForContextChange]);
 
   // Helper to check if a region has valid areas (reused from SpaceRegionOverlay logic)
-  const hasValidRegionAreas = useCallback((page) => {
-    if (!page || !Array.isArray(page.regions) || page.regions.length === 0) {
-      return false;
-    }
-    return page.regions.some(region => {
-      if (!region || !Array.isArray(region.coordinates)) {
-        return false;
-      }
-      const coords = region.coordinates;
-      return (region.shapeType === 'rectangular' && coords.length >= 8) ||
-        (region.shapeType === 'polygon' && coords.length >= 6);
-    });
-  }, []);
-
   // Toggle region overlay visibility
   const handleToggleRegionOverlay = useCallback((spaceId, pageId) => {
     debugLog('[REGION TOGGLE] Called:', { spaceId, pageId, activeSpaceId });
@@ -18239,38 +17736,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, [selectedTemplate, pdfId]); // Only run when template changes
 
-  const resolvePdfOutlinePageNumber = useCallback(async (pdf, destination) => {
-    if (!pdf || destination === null || destination === undefined) return null;
-
-    let resolvedDestination = destination;
-    try {
-      if (typeof resolvedDestination === 'string') {
-        resolvedDestination = await pdf.getDestination(resolvedDestination);
-      }
-    } catch (error) {
-      return null;
-    }
-
-    if (!Array.isArray(resolvedDestination) || resolvedDestination.length === 0) {
-      return null;
-    }
-
-    const pageRef = resolvedDestination[0];
-    try {
-      if (typeof pageRef === 'number') {
-        return coercePageNumber(pageRef + 1, pdf.numPages);
-      }
-      if (pageRef && typeof pageRef === 'object') {
-        const pageIndex = await pdf.getPageIndex(pageRef);
-        return coercePageNumber(pageIndex + 1, pdf.numPages);
-      }
-    } catch (error) {
-      return null;
-    }
-
-    return null;
-  }, []);
-
   const extractPdfOutlineBookmarks = useCallback(async (pdf) => {
     if (!pdf?.getOutline) return [];
 
@@ -19350,49 +18815,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       perfZoom.end(safeScale);
     });
   }, [beginSyncfusionScaleConfirmPending, captureSyncfusionZoomSnapshots, clearSyncfusionZoomSnapshots, markSyncfusionInteractionActive, resetSyncfusionOverlayTransformStyles, setScale, setAnchor, updateSyncfusionZoomSnapshots, useSyncfusionRenderer]);
-
-  const resolvePageContentElement = useCallback((pageContainerNode) => {
-    if (!pageContainerNode || typeof pageContainerNode.querySelector !== 'function') {
-      return pageContainerNode;
-    }
-
-    const syncfusionPageCanvas = pageContainerNode.querySelector('.e-pv-page-canvas');
-    if (syncfusionPageCanvas) return syncfusionPageCanvas;
-
-    const canvasNodes = Array.from(pageContainerNode.querySelectorAll('canvas'));
-    if (canvasNodes.length === 0) return pageContainerNode;
-
-    return canvasNodes.reduce((bestCanvas, canvasNode) => {
-      const canvasArea = (Number(canvasNode.clientWidth) || Number(canvasNode.width) || 0) *
-        (Number(canvasNode.clientHeight) || Number(canvasNode.height) || 0);
-      const bestArea = bestCanvas
-        ? (Number(bestCanvas.clientWidth) || Number(bestCanvas.width) || 0) *
-          (Number(bestCanvas.clientHeight) || Number(bestCanvas.height) || 0)
-        : -1;
-      return canvasArea > bestArea ? canvasNode : bestCanvas;
-    }, null) || pageContainerNode;
-  }, []);
-
-  const getBoundsCenter = useCallback((bounds) => {
-    if (!bounds || typeof bounds !== 'object') return null;
-    const x = Number(bounds.x ?? bounds.left);
-    const y = Number(bounds.y ?? bounds.top);
-    const width = Number(bounds.width ?? (
-      bounds.right !== undefined && Number.isFinite(x) ? Number(bounds.right) - x : 0
-    ));
-    const height = Number(bounds.height ?? (
-      bounds.bottom !== undefined && Number.isFinite(y) ? Number(bounds.bottom) - y : 0
-    ));
-    const centerX = Number.isFinite(Number(bounds.centerX)) ? Number(bounds.centerX) : x + width / 2;
-    const centerY = Number.isFinite(Number(bounds.centerY)) ? Number(bounds.centerY) : y + height / 2;
-    if (!Number.isFinite(centerX) || !Number.isFinite(centerY)) return null;
-    return {
-      centerX,
-      centerY,
-      width: Number.isFinite(width) ? Math.max(width, 1) : 1,
-      height: Number.isFinite(height) ? Math.max(height, 1) : 1
-    };
-  }, []);
 
   const centerPageBoundsInViewer = useCallback((pageNumber, bounds, options = {}) => {
     const targetPage = Number(pageNumber);

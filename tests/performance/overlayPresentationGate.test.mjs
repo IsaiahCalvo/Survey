@@ -3,7 +3,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 const APP_SOURCE = readFileSync(new URL('../../src/viewerShared.js', import.meta.url), 'utf8')
-  + '\n' + readFileSync(new URL('../../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  + '\n' + readFileSync(new URL('../../src/PDFViewer.jsx', import.meta.url), 'utf8')
+  // overlay-lag recorder summary logic was lifted into its own module (2026-05-29);
+  // keep it in the scanned source so the guard still verifies the relocated code.
+  + '\n' + readFileSync(new URL('../../src/utils/overlayDebug.js', import.meta.url), 'utf8');
 
 test('overlay recorder samples include PDF/annotation presentation-gap metrics', () => {
   assert.match(APP_SOURCE, /const visiblePresentationGapPages = \[\];/);
