@@ -26,13 +26,17 @@ Syncfusion-and-zoom replacement feasible. Full motive in `HANDOFF.md`.
 - **Entry:** `src/main.jsx` imports the default from `./AppShell`
   (`import App from './AppShell'`, main.jsx:223). `src/DevTestRoute.jsx` also
   imports the default from AppShell. **`AppShell.jsx` is the real application
-  root**, not `App.jsx`.
-- **`src/App.jsx` is MISNAMED.** Per its own header (App.jsx:1-20) it is no
-  longer the app — it is a shared module of constants + helper functions
-  (Supabase/auth helpers, annotation↔Fabric conversion, page/scale math,
-  persistence, survey-marker helpers, UI constants) imported by `PDFViewer.jsx`
-  and `AppShell.jsx`. Rename candidate: `src/shared/viewerShared.js`. Do not
-  assume "App = the app".
+  root.**
+- **`src/viewerShared.js` is a shared helpers/constants module** (Supabase/auth
+  helpers, annotation↔Fabric conversion, page/scale math, persistence,
+  survey-marker helpers, UI constants), imported by `PDFViewer.jsx` and
+  `AppShell.jsx`. It was renamed from the misleading `App.jsx` on 2026-05-29 —
+  it is NOT the app root and has no JSX. It is a leaf (imports none of the big
+  three; no cycles).
+- **Annotation behavior:** how every annotation type flows from creation to
+  export — and where callouts/survey-markers diverge from the shared contract —
+  is documented in `docs/ANNOTATION-CONTRACT.md`. Read it before touching
+  annotation state, sync, undo, edit, delete, or export.
 
 ---
 
@@ -45,7 +49,7 @@ Syncfusion-and-zoom replacement feasible. Full motive in `HANDOFF.md`.
 | `AppShell.jsx` | ~2,850 | **App root.** Tabs, auth/entity state, chrome host divs, top-right zoom/page pill, router between `Dashboard` (home) and `PDFViewer` (open doc). Receives the panel APIs. |
 | `PDFViewer.jsx` | ~34,000 (1.5MB) | **The document viewer** — bulk of the app. Syncfusion canvas, annotation overlays, zoom/scroll lifecycle, save/sync, history. HIGH-RISK. |
 | `Dashboard.jsx` | ~3,900 | **Home screen** — project tree, document grid, template management, SurveyHub host. Talks to shell via props + forwarded ref only. |
-| `App.jsx` | ~2,360 | **Shared helpers/constants module** (misnamed — see §1). |
+| `viewerShared.js` | ~2,360 | **Shared helpers/constants module** (misnamed — see §1). |
 | `SurveySpacesRail.jsx` | ~3,000 | **Survey right rail** (module/category controls, survey-marker toolbar, export block). Publishes `rightRailApi`. Renders NO Spaces UI — the Spaces panel is the LEFT rail (`PDFSidebar`). Rename candidate: `SurveyRail.jsx`. |
 | `PageAnnotationLayer.jsx` | 408KB (~10k lines) | Per-page Fabric.js canvas overlay. HIGH-RISK; touch only when required. (A dead stub `src/components/PageAnnotationLayer.jsx` was deleted 2026-05-28 — do not recreate.) |
 | `RegionSelectionTool.jsx`, `SpaceRegionOverlay.jsx`, `TextLayer.jsx`, `PDFSidebar.jsx`, `TabBar.jsx`, `Icons.jsx` | — | Viewer/shell sub-pieces (region select, region overlay, text layer, left rail, tab bar, icon set). |
@@ -84,17 +88,17 @@ DevTestRoute.jsx ──▶ AppShell.jsx
 AppShell.jsx ──▶ PDFViewer.jsx              (import { PDFViewer })
 AppShell.jsx ──▶ Dashboard.jsx              (default)
 AppShell.jsx ──▶ SurveySpacesRail.jsx       (default)
-AppShell.jsx ──▶ App.jsx (shared helpers)   (FONT_FAMILY, hexToRgba, …)
+AppShell.jsx ──▶ viewerShared.js (shared helpers)   (FONT_FAMILY, hexToRgba, …)
 
-PDFViewer.jsx ──▶ App.jsx (shared helpers)  (large named import block)
+PDFViewer.jsx ──▶ viewerShared.js (shared helpers)  (large named import block)
 ```
 
-- `App.jsx` imports **none** of AppShell / PDFViewer / Dashboard (verified: 0 hits).
+- `viewerShared.js` imports **none** of AppShell / PDFViewer / Dashboard (verified: 0 hits).
 - `PDFViewer.jsx` imports **neither** AppShell nor Dashboard (0 hits).
-- `Dashboard.jsx` imports **neither** AppShell, PDFViewer, nor App (0 hits) —
+- `Dashboard.jsx` imports **neither** AppShell, PDFViewer, nor viewerShared (0 hits) —
   it depends only on `home/`, `hooks/`, `services/`, `utils/`, contexts.
 
-**The graph is one-directional with no cycles among these five.** App.jsx is a
+**The graph is one-directional with no cycles among these five.** viewerShared.js is a
 pure leaf in this subgraph (both PDFViewer and AppShell depend on it; it depends
 on neither).
 
@@ -186,9 +190,11 @@ The four Fabric/SVG files all exist under `src/components/`:
 `FabricDrawingCanvas.jsx`, `FabricEditCanvas.jsx`, `FabricEraserCanvas.jsx`,
 `SVGAnnotationLayer.jsx`.
 
-`src/App.jsx` and `src/PDFViewer.jsx` are HIGH-RISK: minimum-viable diffs,
-`npm test` after every touch (standing waiver granted 2026-04-29 lets you edit
-them without per-edit approval, but the invariants above still bind).
+`src/PDFViewer.jsx` and `src/PageAnnotationLayer.jsx` are HIGH-RISK: minimum-viable
+diffs, `npm test` after every touch (standing waiver granted 2026-04-29 lets you
+edit the protected set without per-edit approval, but the invariants above still
+bind). `src/viewerShared.js` is a shared leaf — not fragile itself, but both
+PDFViewer and AppShell import it, so build + test after any change.
 
 ---
 
@@ -206,10 +212,10 @@ look (`npm run dev`, logged-in account).
 **Helper scripts (use them for any extraction):**
 - `scripts/check-undef.mjs <file.jsx>` — scope-aware unresolved-identifier
   checker (Babel `scope.globals`). A freshly extracted module must produce ZERO
-  globals outside the App.jsx baseline. Diff the sets with **Python, not shell
+  globals outside the viewerShared.js baseline. Diff the sets with **Python, not shell
   `comm`** (comm mis-sorts case → false positives).
 - `scripts/derive-slice-deps.mjs <startLine> <endLine>` — reconstructs the exact
-  import statements + App.jsx module-symbol deps a slice needs (classifies each
+  import statements + viewerShared.js module-symbol deps a slice needs (classifies each
   free identifier as IMPORTS / MODULE / GLOBALS / UNKNOWN). Derive deps
   mechanically — do not trust prose dependency analysis.
 
@@ -229,13 +235,14 @@ the live Locate dialog is inline JSX in PDFViewer.jsx via `showLocateModal`.)
   `Dashboard.jsx`, `SurveySpacesRail.jsx`, `PDFViewer.jsx`, a `components/`
   subtree, etc. **concurrently** without merge collisions.
 - **Extractions out of a SINGLE file must be sequential.** Two agents both
-  slicing `PDFViewer.jsx` (or both editing `App.jsx`) will collide — coordinate
+  slicing `PDFViewer.jsx` (or both editing `viewerShared.js`) will collide — coordinate
   so only one agent mutates a given big file at a time.
 - **NO-GO zones (§5) are never extraction targets** in any parallel plan.
 - Cross-cutting work that touches a published API (`leftRailApi` /
   `rightRailApi` / `bottomToolbarApi`) spans both `PDFViewer.jsx` (publisher)
   and `AppShell.jsx` (receiver) — treat those two as a coordinated pair and keep
   the identity-churn guard intact on every edit.
-- Recommended low-risk next extractions (HANDOFF.md): rename/clean `App.jsx`
-  into `shared/`; lift PDFViewer's undo/redo engine into
-  `src/hooks/useAnnotationHistory.js`. Each must pass check-undef + build + test.
+- Recommended next work (see `docs/ANNOTATION-CONTRACT.md` remediation plan and
+  `HANDOFF.md`): the safest-first cleanups that bring divergent annotation types
+  onto the shared contract, and (longer-term) the staged callout-unification
+  migration. Each change must pass check-undef + build + test.
