@@ -260,4 +260,34 @@ Bring the accidental divergences onto the contract in this order. Each item is o
 
 ---
 
-_Generated 2026-05-29 from a 9-dimension parallel audit (10 agents) of how every annotation type behaves across its lifecycle. See `HANDOFF.md` for session context._
+## Addendum — callout text-style flags & context menu (for KAL-80 / KAL-86)
+
+Two callout-specific divergences that the ownership audit (KAL-80) and pipeline map (KAL-86) explicitly require, verified 2026-05-29:
+
+**Text-style flags.** Callouts store text styling as four plain booleans —
+`bold`, `italic`, `underline`, `strikethrough` — defined on the callout shape in
+`src/components/Callout/types.js` (~lines 44-47, defaults ~138-141). Regular text
+annotations instead use the Fabric-native fields the rest of the pipeline speaks:
+`fontWeight` (`'normal'` / `700`), `fontStyle` (`'normal'` / `'italic'`),
+`underline` (bool), and `linethrough` (bool), which the SVG text renderer maps to
+CSS `textDecoration` (`svgAnnotationRenderers.jsx` ~1067-1082, KAL-34). So a
+unification must MAP callout `{bold, italic, underline, strikethrough}` →
+`{fontWeight, fontStyle, underline, linethrough}` (note `strikethrough` →
+`linethrough`, `bold` → `fontWeight:700`, `italic` → `fontStyle:'italic'`) and
+keep a compatibility reader for already-saved callouts. Dropping any of the four
+during migration is an explicit guardrail violation.
+
+**Context menu & clipboard.** The right-click menu is dispatched through ONE
+shared state object (`annotationContextMenu` in `PDFViewer.jsx`, opened via
+`window.__onAnnotationContextMenu` with a `kind: 'callout' | 'fabric'`
+discriminator + `calloutId`). But the ACTIONS fork: callout entries route to
+`onCutCallout` / `onCopyCallout` / `onPasteCallout` (a separate `clipboardCallout`
+buffer) and a delete that does `setCallouts(prev => prev.filter(...))`
+(`PageAnnotationLayer.jsx` ~4313-4345) — the same ungated delete flagged in the
+catalogue (divergence #5). Regular annotations use a different action set on the
+same menu. Unification target: callouts share the regular annotation menu actions
+(plus any genuinely callout-only items), one clipboard, and the gated delete.
+
+---
+
+_Generated 2026-05-29 from a 9-dimension parallel audit (10 agents) of how every annotation type behaves across its lifecycle, plus a callout text-style/context-menu addendum. See `HANDOFF.md` for session context._
