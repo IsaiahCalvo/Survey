@@ -6,7 +6,7 @@ import { isAuthRefreshTokenError } from '../src/supabaseClient.js';
 
 const AUTH_CONTEXT_SOURCE = readFileSync(new URL('../src/contexts/AuthContext.jsx', import.meta.url), 'utf8');
 const SUPABASE_CLIENT_SOURCE = readFileSync(new URL('../src/supabaseClient.js', import.meta.url), 'utf8');
-const APP_SOURCE = readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
+const DASHBOARD_SOURCE = readFileSync(new URL('../src/Dashboard.jsx', import.meta.url), 'utf8');
 const YDOC_PROVIDER_SOURCE = readFileSync(new URL('../src/components/collab/YDocProvider.jsx', import.meta.url), 'utf8');
 
 test('detects Supabase invalid refresh token errors', () => {
@@ -32,7 +32,8 @@ test('AuthProvider recovers corrupted refresh-token state before dev auto-login'
 });
 
 test('direct session readers use the recoverable session helper', () => {
-  assert.match(APP_SOURCE, /getSupabaseSession\('kal49Harness'\)/);
+  // kal49Harness lives in Dashboard.jsx since the Dashboard was extracted from App.jsx.
+  assert.match(DASHBOARD_SOURCE, /getSupabaseSession\('kal49Harness'\)/);
   assert.match(YDOC_PROVIDER_SOURCE, /getSupabaseSession\('YDocProvider\.undoManager'\)/);
   assert.match(YDOC_PROVIDER_SOURCE, /getSupabaseSession\('YDocProvider\.cleanupAudit'\)/);
 });
