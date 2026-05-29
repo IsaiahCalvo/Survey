@@ -5,6 +5,11 @@
 // Extracted from App.jsx. Imports PDFViewer + shared module helpers from
 // ./App (one-directional — App.jsx never imports AppShell, so no cycle).
 // The entry point (main.jsx) and DevTestRoute import the default from here.
+//
+// INVARIANT: the API-publisher effects that republish a panel's handler bundle
+// up to App state MUST keep the 2026-05-13 identity-churn guard (compare next
+// vs previous; treat function-only identity changes as "unchanged"), or they
+// trigger a max-update-depth render loop. See CLAUDE.md (Gotchas).
 
 import CompactColorPicker from './components/CompactColorPicker';
 import Dashboard from './Dashboard';

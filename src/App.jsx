@@ -1,4 +1,23 @@
-// App.jsx - PDF Management Dashboard
+/**
+ * App.jsx — !!! MISNAMED: this is NOT the application root. !!!
+ *
+ * Despite the filename (and the old "PDF Management Dashboard" comment that used
+ * to sit here), this file is now a SHARED MODULE of constants and helper
+ * functions imported by the viewer (PDFViewer.jsx) and the app shell
+ * (AppShell.jsx). The real application root is AppShell.jsx.
+ * Rename candidate: src/shared/viewerShared.js (see HANDOFF.md).
+ *
+ * What lives here:
+ *   - Supabase client + auth/session helpers
+ *   - annotation <-> Fabric.js object conversion
+ *   - page/screen coordinate + scale math (pure helpers)
+ *   - annotation persistence (local storage + cloud)
+ *   - survey-marker helpers
+ *   - shared UI constants (fonts, colors, defaults)
+ *
+ * Import direction: this file does NOT import AppShell.jsx, PDFViewer.jsx, or
+ * Dashboard.jsx, so there are no import cycles among the top-level files.
+ */
 import React, { useRef, useState, useEffect, useLayoutEffect, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import * as pdfjsLib from 'pdfjs-dist';

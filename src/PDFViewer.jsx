@@ -5,6 +5,12 @@
 // (one-directional; App.jsx never imports this file, so there is no cycle).
 // The zoom/scale lifecycle and per-page overlay portal loop are unchanged —
 // this was a relocation, not a refactor.
+//
+// Those two zones carry the four CLAUDE.md invariants (container-aware canvas
+// sizing, the SVG viewBox owns all zoom scaling, never remove the
+// zoomGeneration signal, single-name Fabric fontFamily) and are flagged with
+// NO-GO banners in the code below — never relocate or rewrite them.
+// HIGH-RISK FILE: keep diffs minimal and run `npm test` after every change.
 
 import * as pdfjsLib from 'pdfjs-dist';
 import AnnotationPropertiesPanel from './components/AnnotationPropertiesPanel';

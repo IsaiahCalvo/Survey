@@ -1,3 +1,14 @@
+// SurveySpacesRail — the survey right rail. Renders the Survey panel docked on
+// the right side of the viewer: the module/category controls, the survey-marker
+// toolbar, and the export block (Open / Push / Pull / Live Sync). Published to
+// the app shell via the rightRailApi object (mirrors the leftRailApi pattern);
+// it talks to the shell purely through props, so it can be developed on its own.
+//
+// NAME NOTE: "Spaces" in the filename refers to the module/space data duality and
+// the "Copy to Spaces" survey-marker action — this component renders NO Spaces
+// tab or Spaces UI. The Spaces panel lives in the LEFT rail (PDFSidebar).
+// Accurate rename candidate: SurveyRail.jsx.
+
 import React, { useEffect, useState } from 'react';
 import Icon from './Icons';
 import EntityIndicator from './components/EntityIndicator';
