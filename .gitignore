@@ -80,3 +80,6 @@ audit/**/logs/
 audit/**/screenshots/
 audit/**/artifacts/
 audit/**/*.log
+
+# Dev-only test fixture for ?testPdf= route (do not commit)
+public/debug-fixtures/

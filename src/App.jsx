@@ -47284,6 +47284,208 @@ export default function App() {
             zIndex: 5500
           }}
         >
+          {/* UX 2026-05-29 (right-rail redesign): page / zoom / fit controls
+              relocated out of the old 48px right strip into a compact horizontal
+              pill pinned to the TOP-RIGHT corner. This is a faithful copy of
+              Walkthrough's expanded (railOpen) zoom-controls layout:
+              [ − %% + ] | [ ‹ n · N › ] | [ Fit ▾ ]. Every handler still comes
+              from bottomToolbarApi (published by PDFViewer), so the zoom
+              invariants — zoomGeneration, container-aware canvas sizing, the
+              Syncfusion scale-confirm pipeline — are completely untouched; only
+              the buttons moved. The fit popup opens DOWNWARD now (top:100%). */}
+          {bottomToolbarApi && (
+            <div style={{
+              position: 'absolute',
+              right: '12px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              border: '1px solid #3a3a3a',
+              background: '#232323',
+              borderRadius: '3px',
+              padding: '4px',
+              zIndex: 1
+            }}>
+              {/* Zoom group: − value + */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px', height: '32px', padding: '0 4px' }}>
+                <button
+                  onClick={bottomToolbarApi.zoomOut}
+                  title="Zoom out"
+                  style={{ height: '28px', width: '28px', display: 'grid', placeItems: 'center', border: 'none', background: 'transparent', color: '#cfcfcf', borderRadius: '4px', fontSize: '14px', lineHeight: 1, cursor: 'pointer' }}
+                >−</button>
+                {isEditingRailZoom ? (
+                  <input
+                    ref={bottomToolbarApi.zoomInputRef}
+                    type="text"
+                    autoFocus
+                    value={bottomToolbarApi.zoomInputValue}
+                    onChange={bottomToolbarApi.handleZoomInputChange}
+                    onKeyDown={(e) => {
+                      bottomToolbarApi.handleZoomInputKeyDown(e);
+                      if (e.key === 'Enter' || e.key === 'Escape') setIsEditingRailZoom(false);
+                    }}
+                    onBlur={(e) => {
+                      bottomToolbarApi.handleZoomInputBlur(e);
+                      setIsEditingRailZoom(false);
+                    }}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    aria-label="Zoom percentage"
+                    style={{ width: '5ch', background: 'transparent', color: '#cfcfcf', border: 'none', padding: 0, margin: 0, fontSize: '11px', fontFamily: FONT_FAMILY, fontVariantNumeric: 'tabular-nums', textAlign: 'center', outline: 'none', lineHeight: 1 }}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingRailZoom(true)}
+                    onDoubleClick={() => setIsEditingRailZoom(true)}
+                    aria-label="Edit zoom percentage"
+                    title="Click to type a zoom percentage"
+                    style={{ minWidth: '5ch', textAlign: 'center', background: 'transparent', border: 'none', color: '#cfcfcf', fontSize: '11px', fontFamily: FONT_FAMILY, fontVariantNumeric: 'tabular-nums', padding: '0 2px', cursor: 'pointer', lineHeight: 1 }}
+                  >
+                    {bottomToolbarApi.zoomInputValue || Math.round((bottomToolbarApi.manualZoomScale || 1) * 100)}%
+                  </button>
+                )}
+                <button
+                  onClick={bottomToolbarApi.zoomIn}
+                  title="Zoom in"
+                  style={{ height: '28px', width: '28px', display: 'grid', placeItems: 'center', border: 'none', background: 'transparent', color: '#cfcfcf', borderRadius: '4px', fontSize: '14px', lineHeight: 1, cursor: 'pointer' }}
+                >+</button>
+              </div>
+
+              <div style={{ width: '1px', height: '24px', background: '#3a3a3a' }} />
+
+              {/* Page group: ‹ n · N › */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px', height: '32px', padding: '0 4px' }}>
+                <button
+                  onClick={bottomToolbarApi.goToPreviousPage}
+                  disabled={bottomToolbarApi.pageNum <= 1}
+                  title="Previous page"
+                  style={{ height: '24px', width: '24px', display: 'grid', placeItems: 'center', border: 'none', background: 'transparent', color: '#cfcfcf', borderRadius: '4px', cursor: bottomToolbarApi.pageNum <= 1 ? 'not-allowed' : 'pointer', opacity: bottomToolbarApi.pageNum <= 1 ? 0.35 : 1 }}
+                >
+                  <Icon name="chevronLeft" size={14} />
+                </button>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '11px', fontFamily: FONT_FAMILY, fontVariantNumeric: 'tabular-nums' }}>
+                  {isEditingRailPage ? (
+                    <input
+                      ref={bottomToolbarApi.pageInputRef}
+                      type="text"
+                      data-page-number-input
+                      autoFocus
+                      value={bottomToolbarApi.pageInputValue}
+                      onChange={bottomToolbarApi.handlePageInputChange}
+                      onKeyDown={(e) => {
+                        bottomToolbarApi.handlePageInputKeyDown(e);
+                        if (e.key === 'Enter' || e.key === 'Escape') setIsEditingRailPage(false);
+                      }}
+                      onBlur={(e) => {
+                        bottomToolbarApi.handlePageInputBlur(e);
+                        setIsEditingRailPage(false);
+                      }}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      aria-label="Current page"
+                      style={{ width: '3ch', padding: 0, background: 'transparent', color: '#4A90E2', border: 'none', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', textAlign: 'center', outline: 'none', lineHeight: 1 }}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingRailPage(true)}
+                      onDoubleClick={() => setIsEditingRailPage(true)}
+                      aria-label="Edit page number"
+                      title="Click to jump to a page"
+                      style={{ background: 'transparent', border: 'none', color: '#4A90E2', fontSize: '11px', fontFamily: FONT_FAMILY, fontWeight: '600', fontVariantNumeric: 'tabular-nums', padding: '0 2px', cursor: 'pointer', lineHeight: 1 }}
+                    >
+                      {bottomToolbarApi.pageNum}
+                    </button>
+                  )}
+                  <span aria-hidden="true" style={{ color: '#888' }}>·</span>
+                  <span style={{ color: '#888' }}>{bottomToolbarApi.numPages}</span>
+                </span>
+                <button
+                  onClick={bottomToolbarApi.goToNextPage}
+                  disabled={bottomToolbarApi.pageNum >= bottomToolbarApi.numPages}
+                  title="Next page"
+                  style={{ height: '24px', width: '24px', display: 'grid', placeItems: 'center', border: 'none', background: 'transparent', color: '#cfcfcf', borderRadius: '4px', cursor: bottomToolbarApi.pageNum >= bottomToolbarApi.numPages ? 'not-allowed' : 'pointer', opacity: bottomToolbarApi.pageNum >= bottomToolbarApi.numPages ? 0.35 : 1 }}
+                >
+                  <Icon name="chevronRight" size={14} />
+                </button>
+              </div>
+
+              <div style={{ width: '1px', height: '24px', background: '#3a3a3a' }} />
+
+              {/* Fit group: single button + downward dropdown */}
+              {(() => {
+                const mode = bottomToolbarApi.zoomMode;
+                const iconMode = (mode === ZOOM_MODES.FIT_WIDTH || mode === ZOOM_MODES.FIT_HEIGHT) ? mode : ZOOM_MODES.FIT_PAGE;
+                const renderFitIcon = (m) => {
+                  const stroke = { fill: 'none', stroke: 'currentColor', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 1.7 };
+                  if (m === ZOOM_MODES.FIT_WIDTH) {
+                    return (
+                      <svg viewBox="0 0 24 24" aria-hidden="true" style={{ width: '15px', height: '15px' }}>
+                        <rect x="4" y="5" width="16" height="14" rx="1.5" {...stroke} />
+                        <path d="M7 12h10M7 12l3-3M7 12l3 3M17 12l-3-3M17 12l-3 3" {...stroke} />
+                      </svg>
+                    );
+                  }
+                  if (m === ZOOM_MODES.FIT_HEIGHT) {
+                    return (
+                      <svg viewBox="0 0 24 24" aria-hidden="true" style={{ width: '15px', height: '15px' }}>
+                        <rect x="5" y="4" width="14" height="16" rx="1.5" {...stroke} />
+                        <path d="M12 7v10M12 7l-3 3M12 7l3 3M12 17l-3-3M12 17l3-3" {...stroke} />
+                      </svg>
+                    );
+                  }
+                  return (
+                    <svg viewBox="0 0 24 24" aria-hidden="true" style={{ width: '15px', height: '15px' }}>
+                      <rect x="6" y="3" width="12" height="18" rx="1.5" {...stroke} />
+                      <path d="M9 7h6M9 11h6M9 15h4" {...stroke} />
+                    </svg>
+                  );
+                };
+                return (
+                  <div ref={bottomToolbarApi.zoomMenuRef} style={{ position: 'relative' }}>
+                    <button
+                      onClick={bottomToolbarApi.toggleZoomMenu}
+                      aria-haspopup="listbox"
+                      aria-expanded={bottomToolbarApi.isZoomMenuOpen}
+                      aria-label="Fit options"
+                      data-active={mode !== ZOOM_MODES.MANUAL}
+                      title={`Page fit: ${bottomToolbarApi.zoomDropdownLabel}`}
+                      style={{ height: '30px', display: 'flex', alignItems: 'center', gap: '6px', padding: '0 10px', border: 'none', background: 'transparent', color: mode !== ZOOM_MODES.MANUAL ? '#e0e0e0' : '#cfcfcf', borderRadius: '4px', fontSize: '11px', fontFamily: FONT_FAMILY, cursor: 'pointer' }}
+                    >
+                      {renderFitIcon(iconMode)}
+                      <span>{bottomToolbarApi.zoomDropdownLabel}</span>
+                      <svg viewBox="0 0 12 12" aria-hidden="true" style={{ width: '11px', height: '11px', fill: 'none', stroke: 'currentColor', strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 1.8 }}>
+                        <path d={bottomToolbarApi.isZoomMenuOpen ? 'M2.5 7.5 6 4 9.5 7.5' : 'M2.5 4.5 6 8 9.5 4.5'} />
+                      </svg>
+                    </button>
+                    {bottomToolbarApi.isZoomMenuOpen && (
+                      <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '6px', background: 'rgb(30, 30, 30)', border: '1px solid #3a3a3a', borderRadius: '2px', boxShadow: '0 10px 24px rgba(0,0,0,0.45)', width: '144px', zIndex: 6000, padding: '2px' }}>
+                        {ZOOM_MODE_OPTIONS.map((option) => {
+                          if (option.id === ZOOM_MODES.MANUAL) return null;
+                          const isActive = option.id === bottomToolbarApi.zoomMode;
+                          return (
+                            <button
+                              key={option.id}
+                              onClick={() => bottomToolbarApi.handleZoomModeSelect(option.id)}
+                              data-active={isActive}
+                              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 8px', background: 'transparent', border: 'none', borderRadius: '2px', textAlign: 'left', cursor: 'pointer', color: isActive ? '#e0e0e0' : '#bbb', fontSize: '11px', fontFamily: FONT_FAMILY }}
+                            >
+                              {renderFitIcon(option.id)}
+                              <span>{option.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
           {/* UX 2026-05-14: Undo + Redo pinned to the LEFT via absolute
               positioning so the rest of the toolbar can center cleanly
               with justifyContent: 'center'. This mirrors the old bottom
@@ -48647,7 +48849,7 @@ export default function App() {
                 and a middle dot between current page and total instead of
                 a slash. Tighter overall to fit the 48px-wide rail more
                 neatly. */}
-            {bottomToolbarApi && (
+            {false /* UX 2026-05-29: page/zoom/fit moved to the top-right pill above; this vertical strip is retired and chrome-right-host becomes the Survey/Spaces rail in the next step. */ && bottomToolbarApi && (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
                 {/* Page previous — chevron up because vertical layout */}
                 <button
