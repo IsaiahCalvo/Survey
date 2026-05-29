@@ -84,6 +84,9 @@ import { pdfWorkerManager } from './utils/PDFWorkerManager';
 import Icon from './Icons';
 import CompactColorPicker from './components/CompactColorPicker';
 import PDFSidebar from './PDFSidebar';
+// Right-rail redesign (2026-05-29): the Survey panel now hosts a Spaces tab,
+// reusing the exact same SpacesPanel the left rail renders.
+import SpacesPanel from './sidebar/SpacesPanel';
 import RegionSelectionTool from './RegionSelectionTool';
 import SpaceRegionOverlay from './SpaceRegionOverlay';
 import TabBar from './TabBar';
@@ -13637,6 +13640,11 @@ function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, i
   const [activeCategoryDropdown, setActiveCategoryDropdown] = useState(null); // 'draw' | 'shape' | 'review' | 'survey'
   const [showSurveyPanel, setShowSurveyPanel] = useState(false);
   const [isSurveyPanelCollapsed, setIsSurveyPanelCollapsed] = useState(false);
+  // Right-rail redesign (2026-05-29): the right rail now has two tabs — Survey
+  // and Spaces. surveyRailTab tracks which is showing; railIconHover drives the
+  // hover tooltips shown on the collapsed (icons-only) strip.
+  const [surveyRailTab, setSurveyRailTab] = useState('survey');
+  const [railIconHover, setRailIconHover] = useState(null);
   const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(true);
 
   // Region annotation visibility state
@@ -41014,7 +41022,9 @@ ${pageBlocks}
               style={{
                 position: 'fixed',
                 top: `${middleAreaBounds.top + (activeCategoryDropdown ? 35 : 0)}px`,
-                right: '48px',
+                // UX 2026-05-29: flush to the viewport edge now that the old 48px
+                // strip is collapsed; this is the Survey/Spaces right rail.
+                right: '0px',
                 height: `${middleAreaBounds.height - (activeCategoryDropdown ? 35 : 0)}px`,
                 width: isSurveyPanelCollapsed ? '48px' : '320px',
                 background: '#181c24',
@@ -41027,42 +41037,48 @@ ${pageBlocks}
                 transition: 'width 0.2s ease, right 0.2s ease, top 0.2s ease, height 0.2s ease'
               }}
             >
-              {/* Collapse/Expand Button */}
+              {/* Collapsed strip — icons only (no text labels), with hover
+                  tooltips. UX 2026-05-29: mirrors the left rail's collapsed
+                  strip but on the right edge, so the tooltip appears to the
+                  LEFT of each icon. Clicking Survey/Spaces expands the rail
+                  straight to that tab; the chevron just expands. */}
               {isSurveyPanelCollapsed && (
-                <div
-                  style={{
-                    padding: '8px',
-                    borderBottom: '1px solid #3a3a3a',
-                    display: 'flex',
-                    justifyContent: 'flex-start',
-                    background: '#181c24'
-                  }}
-                >
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', padding: '8px 6px', background: '#181c24' }}>
                   <button
                     onClick={() => {
-                      setIsSurveyPanelCollapsed(prev => !prev);
-                      requestAnimationFrame(() => {
-                        applyLayoutDrivenZoom();
-                      });
+                      setIsSurveyPanelCollapsed(false);
+                      requestAnimationFrame(() => { applyLayoutDrivenZoom(); });
                     }}
-                    aria-label="Expand Survey panel"
-                    style={{
-                      background: 'rgb(51, 51, 51)',
-                      border: 'none',
-                      color: 'rgb(153, 153, 153)',
-                      cursor: 'pointer',
-                      padding: '4px',
-                      borderRadius: '4px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      transition: 'background 0.15s'
-                    }}
+                    aria-label="Expand panel"
+                    style={{ background: 'transparent', border: 'none', color: '#999', cursor: 'pointer', padding: '6px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }}
                     onMouseEnter={(e) => e.currentTarget.style.background = '#333'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'rgb(51, 51, 51)'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                   >
-                    <Icon name="chevronLeft" size={16} color="#999" />
+                    <Icon name="chevronLeft" size={18} color="#999" />
                   </button>
+                  {[{ id: 'survey', label: 'Survey', icon: 'survey' }, { id: 'spaces', label: 'Spaces', icon: 'folder' }].map(tab => (
+                    <div key={tab.id} style={{ position: 'relative', width: '100%', display: 'flex', justifyContent: 'center' }}>
+                      <button
+                        onClick={() => {
+                          setSurveyRailTab(tab.id);
+                          setIsSurveyPanelCollapsed(false);
+                          requestAnimationFrame(() => { applyLayoutDrivenZoom(); });
+                        }}
+                        onMouseEnter={() => setRailIconHover(tab.id)}
+                        onMouseLeave={() => setRailIconHover(null)}
+                        aria-label={tab.label}
+                        title={tab.label}
+                        style={{ background: surveyRailTab === tab.id ? '#2b2b2b' : 'transparent', border: 'none', color: '#999', cursor: 'pointer', padding: '8px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }}
+                      >
+                        <Icon name={tab.icon} size={20} color={surveyRailTab === tab.id ? '#4A90E2' : '#999'} />
+                      </button>
+                      {railIconHover === tab.id && (
+                        <div style={{ position: 'absolute', right: '100%', top: '50%', transform: 'translateY(-50%)', marginRight: '8px', background: '#1a1a1a', color: '#ddd', padding: '6px 10px', fontSize: '12px', borderRadius: '4px', border: '1px solid #3a3a3a', whiteSpace: 'nowrap', fontFamily: FONT_FAMILY, pointerEvents: 'none', zIndex: 10000 }}>
+                          {tab.label}
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
 
@@ -41176,6 +41192,50 @@ ${pageBlocks}
                     </button>
                   </div>
 
+                  {/* Survey / Spaces tab bar — same box metrics as the left
+                      rail's expanded tabs (10px 8px padding, 16px icon, 11px
+                      label, flex column) so the height matches exactly. Active =
+                      accent-colored icon + brighter, bolder label; the 2px
+                      bottom border is reserved transparent for height parity but
+                      kept invisible (no chunky underline, per the approved
+                      mockup). */}
+                  {[{ id: 'survey', label: 'Survey', icon: 'survey' }, { id: 'spaces', label: 'Spaces', icon: 'folder' }].length > 0 && (
+                    <div style={{ display: 'flex', borderBottom: '1px solid #444', background: '#333' }}>
+                      {[{ id: 'survey', label: 'Survey', icon: 'survey' }, { id: 'spaces', label: 'Spaces', icon: 'folder' }].map(tab => {
+                        const isActive = surveyRailTab === tab.id;
+                        return (
+                          <button
+                            key={tab.id}
+                            onClick={() => setSurveyRailTab(tab.id)}
+                            style={{
+                              flex: 1,
+                              minWidth: '70px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '10px 8px',
+                              background: 'transparent',
+                              border: 'none',
+                              borderBottom: '2px solid transparent',
+                              color: isActive ? '#ddd' : '#999',
+                              fontWeight: isActive ? 500 : 400,
+                              fontSize: '11px',
+                              fontFamily: FONT_FAMILY,
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease'
+                            }}
+                          >
+                            <Icon name={tab.icon} size={16} color={isActive ? '#4A90E2' : '#999'} />
+                            {tab.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {surveyRailTab === 'survey' ? (
+                  <>
                   {/* Modules Tabs */}
                   {((selectedTemplate.modules || selectedTemplate.spaces) || []).length > 0 && (
                     <div style={{
@@ -43229,13 +43289,48 @@ ${pageBlocks}
                       </div>
                     )}
                   </div>
+                  </>
+                  ) : (
+                    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                      <SpacesPanel
+                        spaces={spaces}
+                        activeSpaceId={activeSpaceId}
+                        onSpaceCreate={handleSpaceCreate}
+                        onSpaceUpdate={handleSpaceUpdate}
+                        onSpaceDelete={handleSpaceDelete}
+                        onSetActiveSpace={handleSetActiveSpace}
+                        onExitSpaceMode={handleExitSpaceMode}
+                        onRequestRegionEdit={handleRequestRegionEdit}
+                        onCancelRegionEdit={handleCancelRegionEdit}
+                        onSpaceAssignPages={handleSpaceAssignPages}
+                        onSpaceRenamePage={handleSpaceRenamePage}
+                        onSpaceRemovePage={handleSpaceRemovePage}
+                        onReorderSpaces={handleReorderSpaces}
+                        onExportSpaceCSV={handleExportSpaceToCSV}
+                        onExportSpacePDF={handleExportSpaceToPDF}
+                        isRegionSelectionActive={showRegionSelection}
+                        numPages={numPages}
+                        features={features}
+                        getCanvasAnnotationVisibilityState={getCanvasAnnotationVisibilityState}
+                        onToggleCanvasAnnotations={handleToggleCanvasAnnotations}
+                        getSurveyAnnotationVisibilityState={getSurveyAnnotationVisibilityState}
+                        onToggleSurveyAnnotations={handleToggleSurveyAnnotations}
+                        externalSelectedSpaceId={selectedSpaceId}
+                        onToggleRegionOverlay={handleToggleRegionOverlay}
+                        getRegionOverlayEnabled={isRegionOverlayEnabled}
+                        isRegionOverlayToggleEnabled={isRegionOverlayToggleEnabled}
+                        showSurveyPanel={showSurveyPanel}
+                        selectedModuleId={selectedModuleId}
+                      />
+                    </div>
+                  )}
 
 
                 </>
               )}
 
               {/* Microsoft Reconnect Banner */}
-              {!isSurveyPanelCollapsed && msNeedsReconnect && selectedTemplate?.isOneDrive && (
+              {surveyRailTab === 'survey' && !isSurveyPanelCollapsed && msNeedsReconnect && selectedTemplate?.isOneDrive && (
                 <div style={{
                   padding: '10px 12px',
                   borderTop: '1px solid #3a3a3a',
@@ -43282,7 +43377,7 @@ ${pageBlocks}
               )}
 
               {/* Export / Sync Button at Bottom */}
-              {!isSurveyPanelCollapsed && selectedTemplate && (
+              {surveyRailTab === 'survey' && !isSurveyPanelCollapsed && selectedTemplate && (
                 <div style={{
                   padding: '12px',
                   borderTop: '1px solid #3a3a3a',
@@ -48824,9 +48919,14 @@ export default function App() {
           <div
             id="chrome-right-host"
             style={{
+              // UX 2026-05-29: page/zoom/fit moved to the top-right pill, so this
+              // App-shell strip no longer holds anything visible. Collapsed to 0
+              // width (kept in the tree for the chrome height-tracking effect) so
+              // the Survey/Spaces rail can sit flush against the viewport edge.
               display: isViewerVisible ? 'flex' : 'none',
               flexShrink: 0,
-              width: '48px',
+              width: '0px',
+              overflow: 'hidden',
               alignSelf: 'stretch',
               background: '#181c24',
               color: '#ddd',
