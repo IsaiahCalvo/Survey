@@ -220,7 +220,7 @@ import { sanitizeConsoleLogText, shouldCaptureConsoleLine } from './utils/consol
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { registerLicense } from '@syncfusion/ej2-base';
-import App from './App';
+import App from './AppShell';
 import ErrorBoundary from './components/ErrorBoundary';
 // KeyboardShortcutsOverlay moved into App so it only renders on the home tab — UX 2026-05-13.
 import { AuthProvider } from './contexts/AuthContext';

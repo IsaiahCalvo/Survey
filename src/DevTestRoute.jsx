@@ -6,7 +6,7 @@ import { AuthContext } from './contexts/AuthContext';
 import { MSGraphContext } from './contexts/MSGraphContext';
 import ErrorBoundary from './components/ErrorBoundary';
 import KeyboardShortcutsOverlay from './components/KeyboardShortcutsOverlay';
-import App from './App';
+import App from './AppShell';
 
 const noop = () => {};
 const asyncNoop = async () => {};
