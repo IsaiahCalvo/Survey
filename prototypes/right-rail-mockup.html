@@ -1,0 +1,550 @@
+<!doctype html>
+<!--
+  THROWAWAY PROTOTYPE — PDF viewer right-rail redesign mockup.
+  Question it answers: "Does the new layout feel right — left rail, page/zoom/fit
+  moved to the top-right corner, and a new collapsible right rail with Survey +
+  Spaces tabs (survey panel folded into the Survey tab, export pinned at bottom)?"
+  Grounded in: current top toolbar + left sidebar + SpacesPanel, the archived
+  Survey-BetaSafeS right-rail survey panel, and the Walkthrough right rail.
+  Not production. Static HTML/CSS/JS, no build, no data. Delete or fold in when decided.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PDF Viewer — right-rail redesign mockup</title>
+<style>
+  :root {
+    --bg-app: #1c1c1c;
+    --bg-canvas: #2a2a2a;
+    --bg-topbar: #2b2b2b;
+    --bg-tabbar: #1e1e1e;
+    --bg-rail: #2b2b2b;
+    --bg-rail-header: #333;
+    --bg-export: #252525;
+    --btn: #3a3a3a;
+    --btn-hover: #444;
+    --border-1: #444;
+    --border-2: #3a3a3a;
+    --accent: #4a90e2;
+    --text: #ffffff;
+    --text-2: #dddddd;
+    --text-muted: #999999;
+    --danger: #e2554a;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg-app);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 13px;
+    overflow: hidden;
+  }
+  button { font-family: inherit; cursor: pointer; }
+  .app { display: flex; flex-direction: column; height: 100vh; }
+
+  /* ---------- top file-tab row ---------- */
+  .tabbar {
+    height: 40px; flex: 0 0 40px;
+    background: var(--bg-tabbar);
+    display: flex; align-items: stretch;
+    border-bottom: 1px solid #111;
+  }
+  .tabbar .home {
+    display: flex; align-items: center; gap: 8px;
+    padding: 0 16px; color: var(--text-2);
+    border-right: 1px solid #111; width: 200px;
+  }
+  .tabbar .filetab {
+    display: flex; align-items: center; gap: 10px;
+    padding: 0 14px; background: #2b2b2b; color: var(--text);
+    border-right: 1px solid #111; max-width: 260px;
+  }
+  .tabbar .filetab .x { color: var(--text-muted); margin-left: 6px; }
+
+  /* ---------- toolbar row ---------- */
+  .toolbar {
+    height: 48px; flex: 0 0 48px;
+    background: var(--bg-topbar);
+    display: flex; align-items: center; gap: 10px;
+    padding: 0 12px; border-bottom: 1px solid #111;
+    position: relative;
+  }
+  .tool-group { display: flex; align-items: center; gap: 6px; }
+  .toolbar .center {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .toolbar .right { margin-left: auto; }
+  .tbtn {
+    width: 34px; height: 34px; display: grid; place-items: center;
+    background: transparent; border: 1px solid transparent; border-radius: 7px;
+    color: var(--text-2);
+  }
+  .tbtn:hover { background: var(--btn); }
+  .tbtn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .swatch { width: 30px; height: 20px; border-radius: 4px; background: #e53935; border: 1px solid #222; }
+  .width-chip {
+    min-width: 30px; height: 24px; padding: 0 8px; border-radius: 5px;
+    background: var(--btn); color: var(--text-2); display: grid; place-items: center; font-weight: 600;
+  }
+  .vdiv { width: 1px; height: 24px; background: #555; }
+
+  /* ---------- corner controls: faithful copy of Walkthrough's horizontal zoom/page/fit pill ---------- */
+  .zoomctl {
+    display: flex; align-items: center; gap: 4px;
+    border: 1px solid var(--border-2); background: #232323;
+    border-radius: 3px; padding: 4px;
+  }
+  .zc-group { display: flex; align-items: center; justify-content: center; gap: 2px; height: 32px; padding: 0 4px; }
+  .zc-btn { height: 28px; width: 28px; display: grid; place-items: center; border: none; background: transparent; color: #cfcfcf; border-radius: 4px; font-size: 14px; }
+  .zc-btn:hover { background: #383838; }
+  .zc-pct { min-width: 5ch; text-align: center; font-size: 11px; color: #cfcfcf; font-variant-numeric: tabular-nums; }
+  .zc-div { width: 1px; height: 24px; background: var(--border-2); }
+  .zc-icon { height: 24px; width: 24px; display: grid; place-items: center; border: none; background: transparent; color: #cfcfcf; border-radius: 4px; }
+  .zc-icon:hover { background: #383838; }
+  .zc-page { display: flex; align-items: center; gap: 3px; font-size: 11px; font-variant-numeric: tabular-nums; }
+  .zc-page .pg { color: var(--accent); font-weight: 600; }
+  .zc-page .mid, .zc-page .cnt { color: var(--text-muted); }
+  .zc-fit { position: relative; }
+  .zc-fitbtn { height: 30px; display: flex; align-items: center; gap: 6px; padding: 0 10px; border: none; background: transparent; color: #cfcfcf; border-radius: 4px; font-size: 11px; }
+  .zc-fitbtn:hover { background: #383838; }
+  .zc-fitmenu { display: none; position: absolute; top: calc(100% + 6px); right: 0; min-width: 132px; background: #1e1e1e; border: 1px solid var(--border-2); border-radius: 3px; padding: 3px; box-shadow: 0 10px 24px rgba(0,0,0,.45); z-index: 50; }
+  .zc-fitmenu.open { display: block; }
+  .zc-fititem { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border-radius: 4px; color: #cfcfcf; font-size: 11px; background: transparent; border: none; width: 100%; text-align: left; }
+  .zc-fititem:hover { background: #383838; }
+  .zc-fititem.active { color: #fff; }
+
+  /* ---------- body ---------- */
+  .body { flex: 1; display: flex; min-height: 0; }
+
+  /* ---------- left rail ---------- */
+  .left-rail {
+    flex: 0 0 48px; width: 48px; background: var(--bg-rail);
+    border-right: 1px solid var(--border-1);
+    display: flex; flex-direction: column; transition: width .18s ease, flex-basis .18s ease;
+  }
+  .left-rail[data-expanded="true"] { flex-basis: 240px; width: 240px; }
+  .rail-strip { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 0; }
+  .rail-icon {
+    width: 34px; height: 34px; display: grid; place-items: center; border-radius: 8px;
+    background: transparent; border: none; color: var(--text-muted);
+  }
+  .rail-icon:hover { background: var(--btn); color: var(--text-2); }
+  .rail-icon.active { background: var(--btn); color: var(--accent); }
+  .left-panel { display: none; flex: 1; min-height: 0; flex-direction: column; }
+  .left-rail[data-expanded="true"] .left-panel { display: flex; }
+  .left-rail[data-expanded="true"] .rail-strip { flex-direction: row; justify-content: flex-start; padding: 6px 8px; border-bottom: 1px solid var(--border-1); }
+  .left-panel .lp-title { padding: 10px 12px 6px; color: var(--text-muted); font-weight: 600; font-size: 12px; }
+  .thumb { margin: 6px 12px; height: 80px; background: #f4f4f4; border-radius: 4px; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+  .thumb.sel { outline: 2px solid var(--accent); }
+
+  /* ---------- canvas ---------- */
+  .canvas { flex: 1; min-width: 0; background: var(--bg-canvas); overflow: auto; display: flex; justify-content: center; padding: 28px 0; }
+  .page {
+    width: 520px; min-height: 680px; background: #fff; color: #1a1a1a;
+    border-radius: 2px; box-shadow: 0 6px 24px rgba(0,0,0,.5); padding: 38px 44px;
+  }
+  .page h1 { color: #25406b; font-size: 16px; margin: 0 0 14px; }
+  .page .row { letter-spacing: 1px; font-size: 17px; color: #222; margin: 8px 0; }
+  .page p { color: #333; line-height: 1.5; }
+  .page .pin { display: inline-block; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 10px; font-weight: 700; text-align: center; line-height: 22px; }
+
+  /* ---------- right rail ---------- */
+  .right-rail {
+    flex: 0 0 48px; width: 48px; background: var(--bg-rail);
+    border-left: 1px solid var(--border-1);
+    display: flex; flex-direction: column; transition: width .2s ease, flex-basis .2s ease;
+    box-shadow: -4px 0 20px rgba(0,0,0,.35);
+  }
+  .right-rail[data-expanded="true"] { flex-basis: 332px; width: 332px; }
+
+  /* collapsed strip (vertical) */
+  .rr-collapsed { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 8px 0; }
+  .right-rail[data-expanded="true"] .rr-collapsed { display: none; }
+  .rr-chev {
+    width: 34px; height: 30px; display: grid; place-items: center; border-radius: 7px;
+    background: transparent; border: none; color: var(--text-muted);
+  }
+  .rr-chev:hover { background: var(--btn); color: var(--text-2); }
+  .rr-collapsed .rr-tabicon {
+    width: 36px; height: 44px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    background: transparent; border: none; color: var(--text-muted); border-radius: 8px; font-size: 9px;
+  }
+  .rr-collapsed .rr-tabicon:hover { background: var(--btn); color: var(--text-2); }
+
+  /* expanded panel */
+  .rr-expanded { display: none; flex: 1; min-height: 0; flex-direction: column; }
+  .right-rail[data-expanded="true"] .rr-expanded { display: flex; }
+  .rr-header { display: flex; align-items: center; height: 40px; padding: 0 6px; border-bottom: 1px solid var(--border-1); background: var(--bg-rail-header); }
+  .rr-header .title { flex: 1; font-weight: 600; padding-left: 6px; }
+  .rr-tabs { display: flex; border-bottom: 1px solid var(--border-1); background: var(--bg-rail-header); }
+  .rr-tab {
+    flex: 1; min-width: 70px; display: flex; flex-direction: column; align-items: center; gap: 3px;
+    padding: 8px 8px; background: transparent; border: none;
+    color: var(--text-muted); font-size: 11px; font-weight: 400; transition: all .15s ease;
+  }
+  .rr-tab svg { color: var(--text-muted); }
+  .rr-tab:hover { background: rgba(255,255,255,.04); }
+  .rr-tab.active { color: #fff; font-weight: 500; }
+  .rr-tab.active svg { color: var(--accent); }
+  .rr-body { flex: 1; min-height: 0; overflow-y: auto; padding: 12px; }
+  .tabpane { display: none; }
+  .tabpane.active { display: block; }
+
+  /* survey tab insides */
+  .module-bar { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 10px; border-bottom: 1px solid var(--border-1); margin-bottom: 12px; }
+  .mod {
+    flex: 0 0 auto; padding: 6px 12px; border-radius: 6px; white-space: nowrap;
+    background: var(--btn); border: 1px solid var(--border-1); color: var(--text-2); font-size: 12px;
+  }
+  .mod.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .actions { display: flex; gap: 8px; margin-bottom: 12px; }
+  .act { flex: 1; padding: 8px; border-radius: 6px; background: var(--btn); border: 1px solid var(--border-1); color: var(--text-2); font-size: 12px; }
+  .act.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .cat-head { font-size: 12px; font-weight: 600; color: var(--text); margin: 4px 0 10px; }
+  .cat {
+    display: flex; align-items: center; gap: 10px; padding: 9px 8px; margin-bottom: 8px;
+    border: 1px solid var(--border-1); border-radius: 6px; background: #2f2f2f;
+  }
+  .cat:hover { border-color: #5a5a5a; }
+  .cat.sel { border-color: var(--accent); }
+  .glyph { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 11px; flex: 0 0 auto; }
+  .cat .nm { flex: 1; color: var(--text-2); }
+  .cat .cnt { color: var(--text-muted); font-size: 11px; }
+  .cat .arrow { color: var(--text-muted); }
+  .hl-list { margin: -2px 0 10px 36px; }
+  .hl { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-left: 2px solid var(--border-1); color: var(--text-muted); font-size: 12px; }
+  .hl .sw { width: 12px; height: 12px; border-radius: 3px; }
+
+  /* export footer */
+  .export {
+    border-top: 1px solid var(--border-2); background: var(--bg-export); padding: 12px; position: relative;
+  }
+  .export-row { display: flex; gap: 0; }
+  .export-main {
+    flex: 1; padding: 11px; background: var(--accent); color: #fff; border: none;
+    border-radius: 6px 0 0 6px; font-weight: 700; letter-spacing: .08em; font-size: 13px;
+  }
+  .export-caret { width: 42px; background: #3f73b3; color: #fff; border: none; border-radius: 0 6px 6px 0; border-left: 1px solid rgba(255,255,255,.2); }
+  .export-menu {
+    display: none; position: absolute; left: 12px; right: 12px; bottom: calc(100% + 6px);
+    background: #333; border: 1px solid var(--border-1); border-radius: 6px; overflow: hidden;
+    box-shadow: 0 8px 24px rgba(0,0,0,.5);
+  }
+  .export-menu.open { display: block; }
+  .em-item { display: flex; align-items: center; gap: 10px; padding: 11px 14px; color: var(--text); border-bottom: 1px solid var(--border-1); }
+  .em-item:last-child { border-bottom: none; }
+  .em-item:hover { background: var(--btn-hover); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+
+  /* spaces tab insides */
+  .space-input { display: flex; gap: 8px; margin-bottom: 14px; }
+  .space-input input {
+    flex: 1; padding: 9px 10px; border-radius: 6px; border: 1px solid var(--border-1);
+    background: #141414; color: var(--text); outline: none; font-family: inherit;
+  }
+  .space-add { width: 40px; border: none; border-radius: 6px; background: var(--accent); color: #fff; font-size: 18px; }
+  .space {
+    display: flex; align-items: center; gap: 10px; padding: 11px; margin-bottom: 8px;
+    border: 1px solid var(--border-1); border-radius: 6px; background: #2f2f2f;
+  }
+  .space .nm { flex: 1; }
+  .space .pages { color: var(--text-muted); font-size: 11px; }
+
+  .stamp { position: fixed; bottom: 8px; left: 50%; transform: translateX(-50%); font-size: 11px; color: #666; pointer-events: none; }
+  svg { display: block; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- file tab row -->
+  <div class="tabbar">
+    <div class="home">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>
+      Home
+    </div>
+    <div class="filetab">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2h9l5 5v15H6z"/><path d="M15 2v5h5"/></svg>
+      text-search-glyph-lab.pdf
+      <span class="x">×</span>
+    </div>
+  </div>
+
+  <!-- toolbar row -->
+  <div class="toolbar">
+    <div class="tool-group">
+      <button class="tbtn" title="Undo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 010 10h-3"/></svg></button>
+      <button class="tbtn" title="Redo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 14l5-5-5-5"/><path d="M20 9H9a5 5 0 000 10h3"/></svg></button>
+    </div>
+
+    <div class="center" id="tools">
+      <button class="tbtn active" data-tool="move" title="Move"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20M12 2l-3 3M12 2l3 3M12 22l-3-3M12 22l3-3M2 12l3-3M2 12l3 3M22 12l-3-3M22 12l-3 3"/></svg></button>
+      <button class="tbtn" data-tool="select" title="Select"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M5 3l14 7-6 2-2 6z"/></svg></button>
+      <button class="tbtn" data-tool="pen" title="Pen"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3l5 5L8 21H3v-5z"/></svg></button>
+      <button class="tbtn" data-tool="rect" title="Rectangle"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="6" width="16" height="12" rx="1"/></svg></button>
+      <button class="tbtn" data-tool="text" title="Text"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5h14M12 5v14"/></svg></button>
+      <div class="vdiv"></div>
+      <div class="swatch" title="Color"></div>
+      <div class="width-chip" title="Stroke width">3</div>
+    </div>
+
+    <!-- relocated page / zoom / fit, pinned top-right — copies Walkthrough's horizontal pill -->
+    <div class="right">
+      <div class="zoomctl">
+        <div class="zc-group">
+          <button class="zc-btn" title="Zoom out">−</button>
+          <span class="zc-pct">60%</span>
+          <button class="zc-btn" title="Zoom in">+</button>
+        </div>
+        <span class="zc-div"></span>
+        <div class="zc-group">
+          <button class="zc-icon" title="Previous page"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 2.5 4 6l3.5 3.5"/></svg></button>
+          <span class="zc-page"><span class="pg">1</span><span class="mid">·</span><span class="cnt">3</span></span>
+          <button class="zc-icon" title="Next page"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 2.5 8 6l-3.5 3.5"/></svg></button>
+        </div>
+        <span class="zc-div"></span>
+        <div class="zc-fit">
+          <button class="zc-fitbtn" id="fitBtn" title="Fit options">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="2" width="10" height="12" rx="1"/></svg>
+            <span id="fitLabel">Fit Page</span>
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4.5 6 8 9.5 4.5"/></svg>
+          </button>
+          <div class="zc-fitmenu" id="fitMenu">
+            <button class="zc-fititem active" data-fit="Fit Page"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="2" width="10" height="12" rx="1"/></svg> Fit Page</button>
+            <button class="zc-fititem" data-fit="Fit Width"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 8h12M5 5 2 8l3 3M11 5l3 3-3 3"/></svg> Fit Width</button>
+            <button class="zc-fititem" data-fit="Fit Height"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2v12M5 5 8 2l3 3M5 11l3 3 3-3"/></svg> Fit Height</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- body -->
+  <div class="body">
+
+    <!-- LEFT RAIL -->
+    <aside class="left-rail" id="leftRail" data-expanded="false">
+      <div class="rail-strip">
+        <button class="rail-icon" id="leftChev" title="Expand">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
+        <button class="rail-icon active" title="Pages"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M12 4v16"/></svg></button>
+        <button class="rail-icon" title="Search"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg></button>
+        <button class="rail-icon" title="Bookmarks"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12v18l-6-4-6 4z"/></svg></button>
+      </div>
+      <div class="left-panel">
+        <div class="lp-title">PAGES</div>
+        <div class="thumb sel"></div>
+        <div class="thumb"></div>
+        <div class="thumb"></div>
+      </div>
+    </aside>
+
+    <!-- PAGE CANVAS -->
+    <main class="canvas">
+      <div class="page">
+        <h1>Text Search Glyph Lab — Core Alphabet</h1>
+        <div class="row">ABCDEFGHIJKLMNOPQRSTUVWXYZ</div>
+        <div class="row">abcdefghijklmnopqrstuvwxyz</div>
+        <div class="row">0123456789</div>
+        <p style="margin-top:24px;">Sync Test Fresh — Page 1</p>
+        <p>The quick brown fox jumps over lazy glyphs. <span class="pin">FS</span></p>
+        <p>Single letters: S T A V W Y g j p q s t f i l</p>
+      </div>
+    </main>
+
+    <!-- RIGHT RAIL -->
+    <aside class="right-rail" id="rightRail" data-expanded="false" data-tab="survey">
+
+      <!-- collapsed vertical strip -->
+      <div class="rr-collapsed">
+        <button class="rr-chev" id="rrChev" title="Expand">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg>
+        </button>
+        <button class="rr-tabicon" data-tab="survey">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg>
+          Survey
+        </button>
+        <button class="rr-tabicon" data-tab="spaces">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7h6l2 2h10v10H3z"/></svg>
+          Spaces
+        </button>
+      </div>
+
+      <!-- expanded panel -->
+      <div class="rr-expanded">
+        <div class="rr-header">
+          <button class="rr-chev" id="rrChevClose" title="Collapse">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+          </button>
+          <span class="title">Security Template</span>
+        </div>
+
+        <div class="rr-tabs" id="rrTabs">
+          <button class="rr-tab active" data-tab="survey">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg>
+            Survey
+          </button>
+          <button class="rr-tab" data-tab="spaces">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7h6l2 2h10v10H3z"/></svg>
+            Spaces
+          </button>
+        </div>
+
+        <!-- SURVEY pane -->
+        <div class="rr-body" id="surveyBody">
+          <div class="tabpane active" data-pane="survey">
+            <div class="module-bar">
+              <button class="mod active">Building A</button>
+              <button class="mod">Building B</button>
+              <button class="mod">Roof</button>
+            </div>
+            <div class="actions">
+              <button class="act primary">Select Category</button>
+              <button class="act">Create Category</button>
+            </div>
+            <div class="cat-head">Select Category to Highlight</div>
+
+            <div class="cat sel">
+              <span class="glyph" style="background:#e0524a">FS</span>
+              <span class="nm">Fire Safety</span>
+              <span class="cnt">3</span>
+              <span class="arrow">▾</span>
+            </div>
+            <div class="hl-list">
+              <div class="hl"><span class="sw" style="background:#e0524a"></span> Extinguisher — p.1</div>
+              <div class="hl"><span class="sw" style="background:#e0524a"></span> Exit sign — p.2</div>
+              <div class="hl"><span class="sw" style="background:#e0524a"></span> Alarm panel — p.3</div>
+            </div>
+
+            <div class="cat">
+              <span class="glyph" style="background:#4a90e2">EL</span>
+              <span class="nm">Electrical</span>
+              <span class="cnt">2</span>
+              <span class="arrow">▸</span>
+            </div>
+            <div class="cat">
+              <span class="glyph" style="background:#43a047">PL</span>
+              <span class="nm">Plumbing</span>
+              <span class="cnt">0</span>
+              <span class="arrow">▸</span>
+            </div>
+            <div class="cat">
+              <span class="glyph" style="background:#f59e0b">ST</span>
+              <span class="nm">Structural</span>
+              <span class="cnt">5</span>
+              <span class="arrow">▸</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- export footer (survey only) -->
+        <div class="export" id="exportFooter">
+          <div class="export-menu" id="exportMenu">
+            <div class="em-item"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2h9l5 5v15H6z"/></svg> Open Excel</div>
+            <div class="em-item"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg> Push to Excel</div>
+            <div class="em-item"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg> Pull from Excel</div>
+            <div class="em-item"><span class="dot"></span> Live Sync</div>
+          </div>
+          <div class="export-row">
+            <button class="export-main">EXPORT</button>
+            <button class="export-caret" id="exportCaret">▴</button>
+          </div>
+        </div>
+
+        <!-- SPACES pane (uses same body region; toggled) -->
+        <div class="rr-body" id="spacesBody" style="display:none;">
+          <div class="tabpane active" data-pane="spaces">
+            <div class="space-input">
+              <input placeholder="New space name" />
+              <button class="space-add">+</button>
+            </div>
+            <div class="space"><span class="nm">Level 1</span><span class="pages">pp. 1–4</span></div>
+            <div class="space"><span class="nm">Level 2</span><span class="pages">pp. 5–9</span></div>
+            <div class="space"><span class="nm">Mechanical</span><span class="pages">pp. 10–12</span></div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<div class="stamp">Prototype — right-rail redesign · click the chevron to expand · switch Survey / Spaces tabs</div>
+
+<script>
+  // ---- right rail expand / collapse ----
+  const rightRail = document.getElementById('rightRail');
+  function setRightExpanded(v) { rightRail.dataset.expanded = v ? 'true' : 'false'; }
+  document.getElementById('rrChev').addEventListener('click', () => setRightExpanded(true));
+  document.getElementById('rrChevClose').addEventListener('click', () => setRightExpanded(false));
+
+  // ---- right rail tab switching ----
+  const surveyBody = document.getElementById('surveyBody');
+  const spacesBody = document.getElementById('spacesBody');
+  const exportFooter = document.getElementById('exportFooter');
+  function setTab(tab) {
+    rightRail.dataset.tab = tab;
+    document.querySelectorAll('.rr-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+    const isSurvey = tab === 'survey';
+    surveyBody.style.display = isSurvey ? '' : 'none';
+    spacesBody.style.display = isSurvey ? 'none' : '';
+    exportFooter.style.display = isSurvey ? '' : 'none';
+  }
+  document.querySelectorAll('.rr-tab').forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
+  // collapsed icons: expand + select that tab
+  document.querySelectorAll('.rr-tabicon').forEach(b => b.addEventListener('click', () => { setTab(b.dataset.tab); setRightExpanded(true); }));
+
+  // ---- left rail expand / collapse ----
+  const leftRail = document.getElementById('leftRail');
+  document.getElementById('leftChev').addEventListener('click', () => {
+    leftRail.dataset.expanded = leftRail.dataset.expanded === 'true' ? 'false' : 'true';
+  });
+
+  // ---- module tabs (visual) ----
+  document.querySelectorAll('.mod').forEach(m => m.addEventListener('click', () => {
+    document.querySelectorAll('.mod').forEach(x => x.classList.remove('active'));
+    m.classList.add('active');
+  }));
+
+  // ---- top toolbar tools (visual) ----
+  document.querySelectorAll('#tools .tbtn').forEach(t => t.addEventListener('click', () => {
+    document.querySelectorAll('#tools .tbtn').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+  }));
+
+  // ---- fit buttons (visual) ----
+  document.querySelectorAll('.fit-btn').forEach(f => f.addEventListener('click', () => {
+    document.querySelectorAll('.fit-btn').forEach(x => x.classList.remove('active'));
+    f.classList.add('active');
+  }));
+
+  // ---- export dropdown ----
+  const exportMenu = document.getElementById('exportMenu');
+  document.getElementById('exportCaret').addEventListener('click', (e) => { e.stopPropagation(); exportMenu.classList.toggle('open'); });
+  document.addEventListener('click', () => exportMenu.classList.remove('open'));
+
+  // ---- fit dropdown (top-right control) ----
+  const fitMenu = document.getElementById('fitMenu');
+  const fitLabel = document.getElementById('fitLabel');
+  document.getElementById('fitBtn').addEventListener('click', (e) => { e.stopPropagation(); fitMenu.classList.toggle('open'); });
+  document.querySelectorAll('.zc-fititem').forEach(it => it.addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.querySelectorAll('.zc-fititem').forEach(x => x.classList.remove('active'));
+    it.classList.add('active');
+    fitLabel.textContent = it.dataset.fit;
+    fitMenu.classList.remove('open');
+  }));
+  document.addEventListener('click', () => fitMenu.classList.remove('open'));
+
+  // ---- category expand (visual) ----
+  document.querySelectorAll('.cat').forEach(c => c.addEventListener('click', () => {
+    document.querySelectorAll('.cat').forEach(x => x.classList.remove('sel'));
+    c.classList.add('sel');
+  }));
+</script>
+</body>
+</html>
