@@ -19,7 +19,7 @@ self.onmessage = async (e) => {
         if (type === 'LOAD_DOCUMENT') {
             const { docId, data } = payload;
             // data is an ArrayBuffer
-            const loadingTask = pdfjsLib.getDocument({
+            const loadingTask = pdfjsLib.getDocument({ isEvalSupported: false,
                 data,
                 verbosity: pdfjsLib.VerbosityLevel.ERRORS
             });

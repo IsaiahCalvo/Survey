@@ -76,7 +76,7 @@ export default function RendererSpike() {
   const loadDoc = useCallback(async (src, name) => {
     try {
       if (renderTaskRef.current) { try { renderTaskRef.current.cancel(); } catch {} }
-      const task = pdfjsLib.getDocument(src);
+      const task = pdfjsLib.getDocument({ url: src, isEvalSupported: false });
       const pdf = await task.promise;
       pdfRef.current = pdf;
       setNumPages(pdf.numPages);

@@ -567,14 +567,14 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
               let pdfDoc;
               try {
                 // Clone buffer since PDF.js may detach it when transferring to worker
-                pdfDoc = await pdfjsLib.getDocument({
+                pdfDoc = await pdfjsLib.getDocument({ isEvalSupported: false,
                   data: arrayBuffer.slice(0),
                   verbosity: pdfjsLib.VerbosityLevel.ERRORS
                 }).promise;
               } catch (firstError) {
                 console.warn('Standard PDF load failed during upload, trying recovery mode:', firstError.message);
                 // Try recovery mode with fresh buffer clone
-                pdfDoc = await pdfjsLib.getDocument({
+                pdfDoc = await pdfjsLib.getDocument({ isEvalSupported: false,
                   data: arrayBuffer.slice(0),
                   verbosity: pdfjsLib.VerbosityLevel.ERRORS,
                   stopAtErrors: false,
@@ -692,14 +692,14 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
               let pdfDoc;
               try {
                 // Clone buffer since PDF.js may detach it when transferring to worker
-                pdfDoc = await pdfjsLib.getDocument({
+                pdfDoc = await pdfjsLib.getDocument({ isEvalSupported: false,
                   data: arrayBuffer.slice(0),
                   verbosity: pdfjsLib.VerbosityLevel.ERRORS
                 }).promise;
               } catch (firstError) {
                 console.warn('Standard PDF load failed, trying recovery mode:', firstError.message);
                 // Try recovery mode with fresh buffer clone
-                pdfDoc = await pdfjsLib.getDocument({
+                pdfDoc = await pdfjsLib.getDocument({ isEvalSupported: false,
                   data: arrayBuffer.slice(0),
                   verbosity: pdfjsLib.VerbosityLevel.ERRORS,
                   stopAtErrors: false,
@@ -856,14 +856,14 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
             let pdfDoc;
             try {
               // Clone buffer since PDF.js may detach it when transferring to worker
-              pdfDoc = await pdfjsLib.getDocument({
+              pdfDoc = await pdfjsLib.getDocument({ isEvalSupported: false,
                 data: arrayBuffer.slice(0),
                 verbosity: pdfjsLib.VerbosityLevel.ERRORS
               }).promise;
             } catch (firstError) {
               console.warn(`Standard PDF load failed for ${file.name}, trying recovery mode:`, firstError.message);
               // Try recovery mode with fresh buffer clone
-              pdfDoc = await pdfjsLib.getDocument({
+              pdfDoc = await pdfjsLib.getDocument({ isEvalSupported: false,
                 data: arrayBuffer.slice(0),
                 verbosity: pdfjsLib.VerbosityLevel.ERRORS,
                 stopAtErrors: false,

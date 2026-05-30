@@ -17339,7 +17339,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         try {
           // First attempt: standard loading
           // Clone buffer since PDF.js may detach it when transferring to worker
-          const loadingTask = pdfjsLib.getDocument({
+          const loadingTask = pdfjsLib.getDocument({ isEvalSupported: false,
             data: arrayBuffer.slice(0),
             verbosity: pdfjsLib.VerbosityLevel.ERRORS
           });
@@ -17350,7 +17350,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           // Second attempt: recovery mode with lenient options
           try {
             // Use fresh buffer clone for recovery attempt
-            const recoveryTask = pdfjsLib.getDocument({
+            const recoveryTask = pdfjsLib.getDocument({ isEvalSupported: false,
               data: arrayBuffer.slice(0),
               verbosity: pdfjsLib.VerbosityLevel.ERRORS,
               stopAtErrors: false,
@@ -17372,7 +17372,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                 ignoreEncryption: true,
               });
               const rewritten = await rewriteDoc.save({ useObjectStreams: false });
-              const rewriteTask = pdfjsLib.getDocument({
+              const rewriteTask = pdfjsLib.getDocument({ isEvalSupported: false,
                 data: rewritten.buffer.slice(0),
                 verbosity: pdfjsLib.VerbosityLevel.ERRORS,
                 stopAtErrors: false,

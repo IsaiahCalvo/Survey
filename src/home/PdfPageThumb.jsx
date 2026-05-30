@@ -88,12 +88,12 @@ const renderFirstPage = async (arrayBuffer) => {
   let pdf;
   try {
     // Clone the buffer — pdf.js detaches it when transferring to the worker.
-    pdf = await pdfjsLib.getDocument({
+    pdf = await pdfjsLib.getDocument({ isEvalSupported: false,
       data: arrayBuffer.slice(0),
       verbosity: pdfjsLib.VerbosityLevel.ERRORS,
     }).promise;
   } catch {
-    pdf = await pdfjsLib.getDocument({
+    pdf = await pdfjsLib.getDocument({ isEvalSupported: false,
       data: arrayBuffer.slice(0),
       verbosity: pdfjsLib.VerbosityLevel.ERRORS,
       stopAtErrors: false,
