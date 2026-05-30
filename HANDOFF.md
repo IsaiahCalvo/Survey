@@ -23,8 +23,8 @@
 
 ### 1. OWNER actions (only Isaiah can — live & exploitable; do first)
 - **GitHub token — DONE 2026-05-29.** Old `gho_` token revoked; replaced with a new fine-grained PAT (Survey repo, Contents R/W) in `.env.local`; verified end-to-end (auth 200 + real test push to the `logs` branch + cleanup). NOTE: the new token still bakes into future builds the same way — the real long-term fix (stop baking it / move log-push server-side, or the build-time env-key guard) is in the audit backlog.
-- **Change the dev-login password** for `isaiahcalvo123@gmail.com` (baked into local/mobile builds). STILL PENDING.
-- **Rotate the Syncfusion license key** + scrub from git history (lower urgency). STILL PENDING.
+- **Dev-login password — DONE 2026-05-29.** Old exposed password replaced via the recovery-link session (the email reset redirect points at `localhost:3000` which isn't the running dev port — that redirect URL is worth fixing in Supabase Auth URL config someday). New strong password set + verified (sign-in 200), stored in `.env.local` for auto-login (git-ignored). Same re-bake caveat as the GitHub token — proper fix (don't bake / build-time env guard) is in the backlog.
+- **Syncfusion key — not a credential.** It's a license-validation string (can't access data/accounts), still a hardcoded fallback in source + in git history (commit `991b1e2e`). Lower priority, OUR-side cleanup only (move to env, then drop the fallback, optionally scrub history). No owner action needed. STILL PENDING.
 
 ### 2. Test the renderer spike
 Isaiah runs the dev server, opens `?spike=renderer`, loads his heaviest sheet, zooms to 400%/1600%. Record the verdict in `src/prototype/NOTES.md`. If pdf.js stays crisp+smooth → commit to the pdf.js path. If it blurs/janks → wire Arm B (EmbedPDF: `npm i @embedpdf/core @embedpdf/engines`) for the head-to-head.
