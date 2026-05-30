@@ -21,6 +21,7 @@ import PdfjsArm from './PdfjsArm';
 import EmbedpdfArm from './EmbedpdfArm';
 import { makeDefaultAnnotations } from './InteractiveOverlay';
 import { useFrameMeter } from './spikeMetrics';
+import { createSpikeLog } from './spikeLogger';
 
 const FIXTURES = [
   { label: '120-page (scroll test)', url: '/debug-fixtures/spike-120-pages.pdf' },
@@ -40,6 +41,20 @@ export default function RendererSpike() {
   const [armMetrics, setArmMetrics] = useState({ pdfjs: {}, embedpdf: {} });
   const { perf, bumpActivity } = useFrameMeter();
 
+  // ---- comparison logger (tagged by tab + file) -----------------------------
+  const logRef = useRef(null);
+  if (!logRef.current) logRef.current = createSpikeLog();
+  const log = logRef.current;
+  const [logCount, setLogCount] = useState(0);
+  const [savedMsg, setSavedMsg] = useState('');
+  const cursorRef = useRef({ x: 0, y: 0 });
+  const zoomRef = useRef(0);
+  const perfRef = useRef(perf);
+  const armRef = useRef('pdfjs');
+  const armMetricsRef = useRef({});
+  const lastActivityRef = useRef(-1e9); // start idle (no samples until first interaction)
+  const lastDragRef = useRef(0);
+
   // shared, page-locked annotations (identical in both arms — PDF points are
   // renderer-independent), keyed by page index.
   const [annsByPage, setAnnsByPage] = useState({});
@@ -52,7 +67,9 @@ export default function RendererSpike() {
   }, []);
   const onAnnsChange = useCallback((idx, next) => {
     setAnnsByPage((prev) => ({ ...prev, [idx]: next }));
-  }, []);
+    const now = performance.now();
+    if (now - lastDragRef.current > 400) { lastDragRef.current = now; log.event('drag', { page: idx + 1 }); setLogCount(log.count()); }
+  }, [log]);
 
   // revoke the previous local blob URL so picking file after file doesn't leak
   const objUrlRef = useRef(null);
@@ -75,21 +92,74 @@ export default function RendererSpike() {
   const onMetricsPdf = useCallback((m) => setArmMetrics((prev) => ({ ...prev, pdfjs: { ...prev.pdfjs, ...m } })), []);
   const onMetricsEmbed = useCallback((m) => setArmMetrics((prev) => ({ ...prev, embedpdf: { ...prev.embedpdf, ...m } })), []);
 
-  // mark "gesture active" windows for the worst-frame meter
+  const m = armMetrics[arm] || {};
+
+  // keep live refs current for the logger/sampler (avoids stale closures)
+  useEffect(() => { perfRef.current = perf; }, [perf]);
+  useEffect(() => { zoomRef.current = m.zoomPct || 0; armMetricsRef.current = m; }, [m]);
+  useEffect(() => { armRef.current = arm; log.setContext({ tab: arm }); log.event('tab', { to: arm }); setLogCount(log.count()); }, [arm, log]);
   useEffect(() => {
-    const bump = () => bumpActivity();
-    window.addEventListener('wheel', bump, { passive: true });
-    window.addEventListener('pointermove', bump, { passive: true });
-    return () => { window.removeEventListener('wheel', bump); window.removeEventListener('pointermove', bump); };
-  }, [bumpActivity]);
+    const fileKind = file.src.startsWith('blob:') ? 'local desktop' : 'fixture';
+    log.setContext({ file: file.name, fileKind });
+    log.event('file', { file: file.name, fileKind });
+    setLogCount(log.count());
+  }, [file.key, log]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // cursor tracking + trackpad zoom-gesture aggregation
+  useEffect(() => {
+    const gesture = { current: null };
+    let flushTimer = null;
+    const flush = () => {
+      const g = gesture.current; gesture.current = null;
+      if (!g || g.ticks < 1) return;
+      const durS = Math.max(0.001, (g.lastPerf - g.startPerf) / 1000);
+      const endZoom = zoomRef.current;
+      log.gesture({
+        tab: g.tab, cursorX: g.cursorX, cursorY: g.cursorY,
+        ticks: g.ticks, durationS: Number(durS.toFixed(2)),
+        ticksPerSec: Math.round(g.ticks / durS), deltaPerSec: Math.round(g.totalDeltaY / durS),
+        startZoomPct: g.startZoom, endZoomPct: endZoom,
+        zoomPctPerSec: Math.round((endZoom - g.startZoom) / durS),
+        worstFrameMs: Math.round(g.worst),
+      });
+      setLogCount(log.count());
+    };
+    const onPointer = (e) => { cursorRef.current = { x: Math.round(e.clientX), y: Math.round(e.clientY) }; lastActivityRef.current = performance.now(); bumpActivity(); };
+    const onWheel = (e) => {
+      lastActivityRef.current = performance.now(); bumpActivity();
+      if (!(e.ctrlKey || e.metaKey)) return; // only ctrl/⌘+wheel is a zoom input
+      const now = performance.now();
+      if (!gesture.current) gesture.current = { tab: armRef.current, ticks: 0, totalDeltaY: 0, startPerf: now, lastPerf: now, startZoom: zoomRef.current, cursorX: Math.round(e.clientX), cursorY: Math.round(e.clientY), worst: 0 };
+      const g = gesture.current;
+      g.ticks += 1; g.totalDeltaY += e.deltaY; g.lastPerf = now;
+      g.worst = Math.max(g.worst, perfRef.current.worstFrame || 0);
+      if (flushTimer) clearTimeout(flushTimer);
+      flushTimer = setTimeout(flush, 220);
+    };
+    window.addEventListener('pointermove', onPointer, { passive: true });
+    window.addEventListener('wheel', onWheel, { passive: true });
+    return () => { window.removeEventListener('pointermove', onPointer); window.removeEventListener('wheel', onWheel); if (flushTimer) clearTimeout(flushTimer); };
+  }, [bumpActivity, log]);
+
+  // periodic timeline sampler — only while the user is actively interacting
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (performance.now() - lastActivityRef.current > 1200) return;
+      const a = armMetricsRef.current || {};
+      log.sample({ zoomPct: zoomRef.current, cursorX: cursorRef.current.x, cursorY: cursorRef.current.y, fps: perfRef.current.fps, worstFrameMs: perfRef.current.worstFrame, mounted: a.mounted, rasterMs: a.rasterMs, clamped: !!a.clamped });
+      setLogCount(log.count());
+    }, 250);
+    return () => clearInterval(id);
+  }, [log]);
 
   const doQuick = (val) => {
     if (arm === 'pdfjs') window.__spikePdfjs?.zoomTo(val === 'fit' ? 'fitw' : val);
     else if (val === 'fit') window.__spikeEmbed?.fit?.();
     else window.__spikeEmbed?.set?.(val);
+    log.event('quickzoom', { label: String(val) }); setLogCount(log.count());
   };
 
-  const m = armMetrics[arm] || {};
+  const saveLog = () => { const fn = log.save(); setSavedMsg(`saved "${fn}"`); setTimeout(() => setSavedMsg(''), 6000); };
   const C = { text: '#9aa0a6', good: '#30d158', warn: '#ffd60a', bad: '#ff453a', white: '#fff' };
 
   return (
@@ -150,7 +220,7 @@ export default function RendererSpike() {
               style={{ background: '#333', color: '#ddd', border: '1px solid #555', borderRadius: 4, padding: '4px 9px', cursor: 'pointer' }}>{label}</button>
           ))}
           {arm === 'pdfjs' && (
-            <button onClick={() => window.__spikePdfjs?.rotate?.()}
+            <button onClick={() => { window.__spikePdfjs?.rotate?.(); log.event('rotate', {}); setLogCount(log.count()); }}
               style={{ background: '#333', color: '#ddd', border: '1px solid #555', borderRadius: 4, padding: '4px 9px', cursor: 'pointer' }}>Rotate</button>
           )}
         </div>
@@ -170,6 +240,14 @@ export default function RendererSpike() {
           <span style={{ color: C.text }}>page <strong style={{ color: C.white }}>{m.currentPage ?? '—'}{m.totalPages ? ` / ${m.totalPages}` : ''}</strong> <span style={{ opacity: 0.6 }}>(tiling = crisp deep zoom)</span></span>
         )}
         {perf.heapMB ? <span style={{ color: C.text }}>heap <strong style={{ color: C.white }}>{perf.heapMB}MB</strong></span> : null}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+          {savedMsg ? <span style={{ color: C.good, fontSize: 12 }}>{savedMsg}</span> : null}
+          <span style={{ color: C.text, fontSize: 12 }}>log <strong style={{ color: C.white }}>{logCount}</strong></span>
+          <button onClick={saveLog}
+            style={{ background: '#2e7d32', color: '#fff', border: 'none', borderRadius: 5, padding: '5px 12px', cursor: 'pointer', fontWeight: 600 }}>
+            💾 Save log
+          </button>
+        </div>
       </div>
     </div>
   );

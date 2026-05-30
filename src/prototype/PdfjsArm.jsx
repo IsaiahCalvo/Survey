@@ -30,7 +30,8 @@ const GAP = 16;
 const PAD = 20;
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 40;
-const SETTLE_MS = 180;
+const SETTLE_MS = 150;          // commit the gesture this long after the last wheel tick
+const WHEEL_GAIN = 0.01;        // matches EmbedPDF: factor = 1 - deltaY * WHEEL_GAIN
 const DPR = Math.min(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1, 2);
 
 // --- one mounted page: double-buffered, DPR-correct, cancellable raster -------
@@ -96,8 +97,8 @@ export default function PdfjsArm({ fileSrc, fileKey, annsByPage, ensureSeed, onA
   const pdfRef = useRef(null);
   const [numPages, setNumPages] = useState(0);
   const [pageSizes, setPageSizes] = useState([]); // [{w,h}] in PDF points
-  const [scale, setScale] = useState(1);          // live committed display scale
-  const [renderScale, setRenderScale] = useState(1); // debounced raster scale
+  const [scale, setScale] = useState(1);          // committed (rasterized) scale
+  const [liveZoom, setLiveZoom] = useState(1);    // transient gesture multiplier (CSS transform only)
   const [rotation, setRotation] = useState(0);
   const [range, setRange] = useState([0, -1]);    // [firstMounted, lastMounted]
   const [containerW, setContainerW] = useState(800);
@@ -106,8 +107,9 @@ export default function PdfjsArm({ fileSrc, fileKey, annsByPage, ensureSeed, onA
   useEffect(() => { scaleRef.current = scale; }, [scale]);
   const settleTimerRef = useRef(null);
   const pendingAnchorRef = useRef(null);
-  const wheelAccumRef = useRef(0);
   const wheelRafRef = useRef(0);
+  const liveZoomRef = useRef(1);                  // accumulated gesture multiplier
+  const gestureRef = useRef(null);                // { originCursorX/Y (viewport px), originContentX/Y }
   const lastCursorRef = useRef({ x: 0, y: 0 });
   const rasterInfoRef = useRef({ ms: 0, clamped: false, backingW: 0, backingH: 0 });
   // live layout snapshot so the stable (memo-free) zoom callbacks can anchor
@@ -140,7 +142,7 @@ export default function PdfjsArm({ fileSrc, fileKey, annsByPage, ensureSeed, onA
         const el = scrollerRef.current;
         const cw = el ? el.clientWidth : 800;
         const fit = Math.max(0.2, Math.min(2, (cw - 2 * PAD) / (sizes[0]?.w || 612)));
-        setScale(fit); setRenderScale(fit); scaleRef.current = fit;
+        setScale(fit); scaleRef.current = fit; setLiveZoom(1); liveZoomRef.current = 1;
         onStatus?.(`${pdf.numPages} pages`);
       } catch (e) {
         onStatus?.(`ERROR: ${e?.message || e}`);
@@ -290,20 +292,25 @@ export default function PdfjsArm({ fileSrc, fileKey, annsByPage, ensureSeed, onA
     setScale(newScale);
   }, []);
 
-  // ---- cursor-anchored wheel zoom -------------------------------------------
+  // ---- cursor zoom: instant CSS-transform preview, commit on settle ----------
+  // During the gesture the WHOLE page-stack scales as one rigid unit about the
+  // cursor (content + overlay locked together, no per-frame re-layout = buttery
+  // and perfectly pinned). On settle we commit to the real layout at the new
+  // scale (re-raster) and reset the transform. Gain matches EmbedPDF exactly.
   const applyWheelZoom = useCallback(() => {
     wheelRafRef.current = 0;
-    const el = scrollerRef.current;
-    if (!el) return;
-    const accum = wheelAccumRef.current;
-    wheelAccumRef.current = 0;
-    const rect = el.getBoundingClientRect();
-    const cursorX = lastCursorRef.current.x - rect.left;
-    const cursorY = lastCursorRef.current.y - rect.top;
-    applyAnchoredScale(scaleRef.current * Math.exp(-accum * 0.0015), cursorX, cursorY);
+    setLiveZoom(liveZoomRef.current); // one transform update per frame
+  }, []);
 
-    if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
-    settleTimerRef.current = setTimeout(() => setRenderScale(scaleRef.current), SETTLE_MS);
+  const commitGesture = useCallback(() => {
+    const g = gestureRef.current;
+    const lz = liveZoomRef.current;
+    gestureRef.current = null;
+    liveZoomRef.current = 1;
+    if (!g || Math.abs(lz - 1) < 1e-4) { setLiveZoom(1); return; }
+    // commit: real layout at committed*lz, cursor anchored at the gesture origin
+    applyAnchoredScale(scaleRef.current * lz, g.originCursorX, g.originCursorY);
+    setLiveZoom(1);
   }, [applyAnchoredScale]);
 
   useEffect(() => {
@@ -312,13 +319,29 @@ export default function PdfjsArm({ fileSrc, fileKey, annsByPage, ensureSeed, onA
     const onWheel = (e) => {
       if (!(e.ctrlKey || e.metaKey)) return; // plain wheel = native scroll/pan
       e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const cursorX = e.clientX - rect.left;
+      const cursorY = e.clientY - rect.top;
       lastCursorRef.current = { x: e.clientX, y: e.clientY };
-      wheelAccumRef.current += e.deltaY;
+      if (!gestureRef.current) {
+        gestureRef.current = {
+          originCursorX: cursorX,
+          originCursorY: cursorY,
+          originContentX: el.scrollLeft + cursorX,
+          originContentY: el.scrollTop + cursorY,
+        };
+      }
+      const committed = scaleRef.current;
+      let lz = liveZoomRef.current * (1 - e.deltaY * WHEEL_GAIN);
+      lz = Math.max(MIN_SCALE / committed, Math.min(MAX_SCALE / committed, lz));
+      liveZoomRef.current = lz;
       if (!wheelRafRef.current) wheelRafRef.current = requestAnimationFrame(applyWheelZoom);
+      if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+      settleTimerRef.current = setTimeout(commitGesture, SETTLE_MS);
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => { el.removeEventListener('wheel', onWheel); if (wheelRafRef.current) cancelAnimationFrame(wheelRafRef.current); };
-  }, [applyWheelZoom]);
+  }, [applyWheelZoom, commitGesture]);
 
   // ---- quick zoom / rotate (anchored to viewport center) --------------------
   const zoomTo = useCallback((target) => {
@@ -334,18 +357,17 @@ export default function PdfjsArm({ fileSrc, fileKey, annsByPage, ensureSeed, onA
       newScale = target === 'fitw' ? fw : Math.min(fw, (el.clientHeight - 2 * PAD) / ph);
     }
     applyAnchoredScale(newScale, el.clientWidth / 2, el.clientHeight / 2);
-    setRenderScale(scaleRef.current);
   }, [pageSizes, range, rotation, applyAnchoredScale]);
 
   // ---- metrics reporting ----------------------------------------------------
   const onRaster = useCallback((idx, info) => {
     rasterInfoRef.current = info;
-    onMetrics?.({ zoomPct: Math.round(scaleRef.current * 100), mounted: Math.max(0, range[1] - range[0] + 1), rasterMs: info.ms, clamped: info.clamped, backingW: info.backingW, backingH: info.backingH });
+    onMetrics?.({ zoomPct: Math.round(scaleRef.current * liveZoomRef.current * 100), mounted: Math.max(0, range[1] - range[0] + 1), rasterMs: info.ms, clamped: info.clamped, backingW: info.backingW, backingH: info.backingH });
   }, [onMetrics, range]);
 
   useEffect(() => {
-    onMetrics?.({ zoomPct: Math.round(scale * 100), mounted: Math.max(0, range[1] - range[0] + 1), rasterMs: rasterInfoRef.current.ms, clamped: rasterInfoRef.current.clamped, backingW: rasterInfoRef.current.backingW, backingH: rasterInfoRef.current.backingH });
-  }, [scale, range, onMetrics]);
+    onMetrics?.({ zoomPct: Math.round(scale * liveZoom * 100), mounted: Math.max(0, range[1] - range[0] + 1), rasterMs: rasterInfoRef.current.ms, clamped: rasterInfoRef.current.clamped, backingW: rasterInfoRef.current.backingW, backingH: rasterInfoRef.current.backingH });
+  }, [scale, liveZoom, range, onMetrics]);
 
   // ---- expose controls to parent via window (simple for a throwaway) --------
   useEffect(() => {
@@ -366,7 +388,14 @@ export default function PdfjsArm({ fileSrc, fileKey, annsByPage, ensureSeed, onA
           Loading pdf.js document…
         </div>
       ) : (
-        <div style={{ position: 'relative', width: layout.contentW, height: layout.totalH }}>
+        <div
+          style={{
+            position: 'relative', width: layout.contentW, height: layout.totalH,
+            transform: liveZoom !== 1 ? `scale(${liveZoom})` : 'none',
+            transformOrigin: gestureRef.current ? `${gestureRef.current.originContentX}px ${gestureRef.current.originContentY}px` : '0 0',
+            willChange: liveZoom !== 1 ? 'transform' : 'auto',
+          }}
+        >
           {pageSizes.map((s, i) => {
             const dim = layout.dims[i];
             const left = (layout.contentW - dim.w * scale) / 2;
@@ -385,7 +414,7 @@ export default function PdfjsArm({ fileSrc, fileKey, annsByPage, ensureSeed, onA
                       pageIndex={i}
                       pageW={s.w}
                       pageH={s.h}
-                      renderScale={renderScale}
+                      renderScale={scale}
                       rotation={rotation}
                       onRaster={onRaster}
                     />

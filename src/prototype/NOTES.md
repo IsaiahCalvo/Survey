@@ -39,12 +39,22 @@ Supabase, no Syncfusion, no touching `PDFViewer.jsx`.
 
 - **Arm A — pdf.js (`PdfjsArm.jsx`)**: built directly on `pdfjs-dist`. Cumulative
   page-offset layout + per-page placeholders (stable scrollbar for 100+ pages);
-  only pages within ~1.2 viewports mount a canvas. Cursor-anchored zoom via
-  `new_scroll = (old_scroll + cursor)·ratio − cursor`; committed scale persists.
-  Render-on-settle (CSS-upscale during the gesture, crisp DPR-correct re-raster
-  ~180ms after). Double-buffered, cancellable renders with a generation guard.
-  A canvas-budget **CLAMP** makes the pdf.js-direct deep-zoom **crispness cliff**
-  visible (when "canvas" turns red, that bitmap is capped and CSS-upscaled = blur).
+  only pages within ~1.2 viewports mount a canvas. **Zoom matches EmbedPDF**: same
+  gain (`factor = 1 − deltaY·0.01`) and the same gesture model — during a ctrl/⌘
+  +wheel gesture the whole page-stack scales as ONE rigid CSS-transformed unit
+  about the cursor (content + overlay locked together, frame-perfect pinning, no
+  per-frame re-layout), then commits to the real layout + DPR-correct re-raster
+  ~150ms after the last tick, anchored so the cursor point holds. Double-buffered,
+  cancellable renders with a generation guard. A canvas-budget **CLAMP** makes the
+  pdf.js-direct deep-zoom **crispness cliff** visible (when "canvas" turns red, that
+  bitmap is capped and CSS-upscaled = blur).
+
+- **Comparison logger (`spikeLogger.js`)**: every entry is tagged by tab (pdf.js /
+  EmbedPDF) and file (bundled fixture vs a local desktop file). Captures the
+  trackpad zoom-input rate (ticks/s + Δ/s), the actual PDF zoom rate (%/s), cursor
+  position, fps + worst frame, mounted-page count, and raster ms. **💾 Save log**
+  downloads `PDF render comparison <YYYY-MM-DD HH-MM-SS>.log` — drop it in the Logs
+  folder and share it back to compare rounds / catch regressions.
 - **Arm B — EmbedPDF (`EmbedpdfArm.jsx`)**: plug-and-play the open-source plugins —
   `engines` (PDFium-WASM), `viewport`+`scroll` (continuous virtualized scroll),
   `render` (base raster), **`tiling`** (hi-res tiles over the visible area = crisp
