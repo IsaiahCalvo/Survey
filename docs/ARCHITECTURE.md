@@ -100,6 +100,17 @@ relocations): `sanitizeTemplateConfig` and `boundsMatch` are identity-sensitive
 in `Dashboard.jsx`), so moving them would change render/memoization timing — they
 need a deliberate, separately-tested change, not a verbatim lift.
 
+### Viewer stateful concerns → hooks (extracted from `PDFViewer.jsx`, 2026-05-29)
+
+Phase 2 of the viewer break-up lifts cohesive *stateful* concerns (state + their
+effects) into custom hooks so agents can own them without colliding in the one
+big component closure. Each is a verbatim relocation gated on check-undef
+set-diff (zero new unresolved) + `vite build` + `npm test` 834/0/6.
+
+| Hook / module | Owns | Notes |
+|---|---|---|
+| `src/hooks/useAnnotationContextMenu.jsx` | the annotation right-click / second-tap menu: its `annotationContextMenu` state, the always-on global registration effect (`window.__onAnnotationContextMenu`, invoked by `src/utils/contextMenuDiagnostics.js`), and the outside-click/Escape dismiss effect | Returns `{ annotationContextMenu, openAnnotationContextMenu, closeAnnotationContextMenu }` (open/close are `useCallback`-stable so external callers keep referential identity). The menu's render builder ships as the separate `renderAnnotationContextMenu(menu, close, actions)` export — a pure view the viewer calls in its JSX return, passing the action handlers (save / reorder / clipboard / callout cut-copy-paste) in there where they're defined, which keeps the hook free of the component's handler graph and free of ordering hazards. Removed ~447 lines from the viewer. |
+
 ---
 
 ## 3. Import hierarchy (top-five modules)
