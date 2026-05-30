@@ -26,8 +26,13 @@
 - **Dev-login password — DONE 2026-05-29.** Old exposed password replaced via the recovery-link session (the email reset redirect points at `localhost:3000` which isn't the running dev port — that redirect URL is worth fixing in Supabase Auth URL config someday). New strong password set + verified (sign-in 200), stored in `.env.local` for auto-login (git-ignored). Same re-bake caveat as the GitHub token — proper fix (don't bake / build-time env guard) is in the backlog.
 - **Syncfusion key — not a credential.** It's a license-validation string (can't access data/accounts), still a hardcoded fallback in source + in git history (commit `991b1e2e`). Lower priority, OUR-side cleanup only (move to env, then drop the fallback, optionally scrub history). No owner action needed. STILL PENDING.
 
-### 2. Test the renderer spike
-Isaiah runs the dev server, opens `?spike=renderer`, loads his heaviest sheet, zooms to 400%/1600%. Record the verdict in `src/prototype/NOTES.md`. If pdf.js stays crisp+smooth → commit to the pdf.js path. If it blurs/janks → wire Arm B (EmbedPDF: `npm i @embedpdf/core @embedpdf/engines`) for the head-to-head.
+### 2. REBUILD the renderer spike — v1 was too thin to test (Isaiah's feedback)
+The current `?spike=renderer` is a single-page, flatten-only proof-of-concept and does NOT represent the real workload, so it can't answer the question. Isaiah's required test conditions (build these before judging pdf.js vs EmbedPDF):
+- **Continuous multi-page scroll** of a 100+ page doc with virtualization (mount/unmount page canvases on scroll) — this is THE hard part, not single-page render.
+- **Real, INTERACTIVE annotations on top** (reuse the app's SVG/Fabric overlay, selectable/movable) — a flattened PDF with baked annotations is trivial and proves nothing.
+- **Cursor-centric zoom that HOLDS the level** — current zoom snaps back to 100% (real bug) and isn't anchored to the pointer. Fix: pointer-anchored zoom, persist the committed scale, keep scroll position around the cursor.
+- **Arm B (EmbedPDF) actually running** — `npm i @embedpdf/core @embedpdf/engines`, its headless scroller + tiling/zoom plugins, same overlay + same metrics. Today it's a placeholder.
+Only once those four hold is the crispness/frame-time/memory comparison meaningful. This is a real mini-viewer build (do it WITH Isaiah testing iteratively, not blind). Record the verdict in `src/prototype/NOTES.md`.
 
 ### 3. Finish the annotation-data-loss fix (needs owner verification)
 Wire `reindexAnnotationModel` into each `usePageOperations` handler so annotations follow page moves. **Risk**: the wiring must land the reindexed state into the refs the pdfFile-change hydration effect (`PDFViewer.jsx` ~16461) captures as "previous" — timing/effect-ordering sensitive, only validatable by running the app. Verify by deleting a page on a THROWAWAY copy and confirming annotations follow. Local files also need a stable id (today `getPDFId` = name+size → wipes annotations on any page op); that touches shared identity, do it carefully. Duplicate/paste copying annotations onto the new page is a flagged follow-up (needs marker/callout id regeneration).
