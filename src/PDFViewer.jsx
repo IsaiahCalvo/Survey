@@ -43,7 +43,7 @@ import { BORDERS, COLORS, SHADOWS, TYPOGRAPHY } from './theme';
 import { ConfirmDeleteModal } from './components/collab/ConfirmDeleteModal.jsx';
 import { DEFAULT_ZOOM_PREFERENCES, ZOOM_MODES, clampScale, createZoomController, loadZoomPreferences, saveZoomPreferences } from './utils/zoomController';
 import { FORM_TOOLS as FORM_DESIGNER_TOOLS, getFormFieldTypeForTool, isFormTool } from './components/formDesignerTools';
-import { PDFDocument, degrees } from 'pdf-lib';
+import { PDFDocument } from 'pdf-lib';
 import { PageRenderCache } from './utils/pdfCache';
 import { UndoToast } from './components/collab/UndoToast.jsx';
 import { applyAnnotationGroupId, findGroupMembers, generateGroupId, getAnnotationGroupId, getCalloutGroupId } from './utils/annotationGroups';
@@ -93,6 +93,7 @@ import { useUndoToast } from './hooks/useUndoToast.js';
 import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
+import { usePageOperations } from './hooks/usePageOperations.js';
 import { userRedo, userUndo } from './lib/collab/crdtUndoManager.js';
 
 import {
@@ -10575,325 +10576,42 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
 
 
-  // Sidebar handlers
-  const handleDuplicatePage = useCallback(async (pageNumber) => {
-    if (!pdfFile || !onUpdatePDFFile) {
-      alert('PDF file not available for manipulation');
-      return;
-    }
-
-    try {
-      const arrayBuffer = await pdfFile.arrayBuffer();
-      const pdfDoc = await PDFDocument.load(arrayBuffer);
-
-      // Get the page to duplicate (convert from 1-based to 0-based)
-      const pages = pdfDoc.getPages();
-      const pageToDuplicate = pages[pageNumber - 1];
-
-      if (!pageToDuplicate) {
-        alert(`Page ${pageNumber} not found`);
-        return;
-      }
-
-      // Copy the page and insert it directly after the original
-      const [copiedPage] = await pdfDoc.copyPages(pdfDoc, [pageNumber - 1]);
-      pdfDoc.insertPage(pageNumber, copiedPage); // Insert after original (pageNumber is 1-based, insertPage uses 0-based)
-
-      // Save the modified PDF
-      const pdfBytes = await pdfDoc.save();
-      const newFile = new File([pdfBytes], pdfFile.name, { type: 'application/pdf' });
-      // 2026-04-30 fix: preserve all Supabase metadata across page-mutation
-      // round-trips so the per-user delete authority gate keeps resolving
-      // documentOwnerId on the next render. Pre-fix, every page op (duplicate
-      // / delete / paste / reorder) reconstructed the File without these
-      // fields, leaving pdfFile.user_id null and silently blocking deletes.
-      newFile.id = pdfFile.id;
-      newFile.projectId = pdfFile.projectId;
-      newFile.supabaseFilePath = pdfFile.supabaseFilePath;
-      newFile.user_id = pdfFile.user_id || null;
-
-      // Update the PDF file
-      onUpdatePDFFile(newFile);
-    } catch (error) {
-      console.error('Error duplicating page:', error);
-      alert(`Error duplicating page: ${error.message}`);
-    }
-  }, [pdfFile, onUpdatePDFFile]);
-
-  const handleRenamePage = useCallback((pageNumber, newName) => {
-    setPageNames(prev => ({ ...prev, [pageNumber]: newName }));
-  }, []);
-
-  const handleDeletePage = useCallback(async (pageNumber) => {
-    if (!pdfFile || !onUpdatePDFFile) {
-      alert('PDF file not available for manipulation');
-      return;
-    }
-
-    try {
-      const arrayBuffer = await pdfFile.arrayBuffer();
-      const pdfDoc = await PDFDocument.load(arrayBuffer);
-
-      // Remove the page (convert from 1-based to 0-based)
-      pdfDoc.removePage(pageNumber - 1);
-
-      // Save the modified PDF
-      const pdfBytes = await pdfDoc.save();
-      const newFile = new File([pdfBytes], pdfFile.name, { type: 'application/pdf' });
-      // 2026-04-30 fix: preserve all Supabase metadata across page-mutation
-      // round-trips so the per-user delete authority gate keeps resolving
-      // documentOwnerId on the next render. Pre-fix, every page op (duplicate
-      // / delete / paste / reorder) reconstructed the File without these
-      // fields, leaving pdfFile.user_id null and silently blocking deletes.
-      newFile.id = pdfFile.id;
-      newFile.projectId = pdfFile.projectId;
-      newFile.supabaseFilePath = pdfFile.supabaseFilePath;
-      newFile.user_id = pdfFile.user_id || null;
-
-      // Update the PDF file
-      onUpdatePDFFile(newFile);
-    } catch (error) {
-      console.error('Error deleting page:', error);
-      alert(`Error deleting page: ${error.message}`);
-    }
-  }, [pdfFile, onUpdatePDFFile]);
-
-  const handleCutPage = useCallback((pageNumber) => {
-    setClipboardPage(pageNumber);
-    setClipboardType('cut');
-  }, []);
-
-  const handleCopyPage = useCallback((pageNumber) => {
-    setClipboardPage(pageNumber);
-    setClipboardType('copy');
-  }, []);
-
-  const handlePastePage = useCallback(async (targetPageNumber, sourcePageNumber, pasteType) => {
-    if (!pdfFile || !onUpdatePDFFile) {
-      alert('PDF file not available for manipulation');
-      return;
-    }
-
-    try {
-      const arrayBuffer = await pdfFile.arrayBuffer();
-      const pdfDoc = await PDFDocument.load(arrayBuffer);
-
-      // Copy the source page
-      const [copiedPage] = await pdfDoc.copyPages(pdfDoc, [sourcePageNumber - 1]);
-
-      // Insert after target page (convert from 1-based to 0-based)
-      const insertIndex = targetPageNumber; // Insert after targetPageNumber
-      pdfDoc.insertPage(insertIndex, copiedPage);
-
-      // If it was a cut operation, remove the source page
-      if (pasteType === 'cut') {
-        // After inserting, the source page index may have shifted
-        const sourceIndex = sourcePageNumber - 1;
-        if (sourceIndex < insertIndex) {
-          // Source was before insert point, so it's still at the same index
-          pdfDoc.removePage(sourceIndex);
-        } else {
-          // Source was after insert point, so it shifted by 1
-          pdfDoc.removePage(sourceIndex + 1);
-        }
-        setClipboardPage(null);
-        setClipboardType(null);
-      }
-
-      // Save the modified PDF
-      const pdfBytes = await pdfDoc.save();
-      const newFile = new File([pdfBytes], pdfFile.name, { type: 'application/pdf' });
-      // 2026-04-30 fix: preserve all Supabase metadata across page-mutation
-      // round-trips so the per-user delete authority gate keeps resolving
-      // documentOwnerId on the next render. Pre-fix, every page op (duplicate
-      // / delete / paste / reorder) reconstructed the File without these
-      // fields, leaving pdfFile.user_id null and silently blocking deletes.
-      newFile.id = pdfFile.id;
-      newFile.projectId = pdfFile.projectId;
-      newFile.supabaseFilePath = pdfFile.supabaseFilePath;
-      newFile.user_id = pdfFile.user_id || null;
-
-      // Update the PDF file
-      onUpdatePDFFile(newFile);
-    } catch (error) {
-      console.error('Error pasting page:', error);
-      alert(`Error pasting page: ${error.message}`);
-    }
-  }, [pdfFile, onUpdatePDFFile]);
-
-  const pageClipboardPayload = useMemo(() => (
-    clipboardPage ? { pageNumber: clipboardPage, type: clipboardType } : null
-  ), [clipboardPage, clipboardType]);
-
-  const handlePastePageHere = useCallback((targetPageNumber) => (
-    handlePastePage(targetPageNumber, clipboardPage, clipboardType)
-  ), [clipboardPage, clipboardType, handlePastePage]);
-
-  const handleReorderPages = useCallback((sourcePageNumber, targetPageNumber) => {
-    // Reorder pages by swapping their positions
-    // Note: This is a simplified implementation - actual PDF reordering would require PDF manipulation
-    // For now, we'll update page names to reflect the new order
-    const newPageNames = { ...pageNames };
-    const sourceName = pageNames[sourcePageNumber] || `Page ${sourcePageNumber}`;
-    const targetName = pageNames[targetPageNumber] || `Page ${targetPageNumber}`;
-
-    newPageNames[sourcePageNumber] = targetName;
-    newPageNames[targetPageNumber] = sourceName;
-
-    setPageNames(newPageNames);
-
-    // If we're on one of the reordered pages, navigate to maintain context
-    if (pageNum === sourcePageNumber) {
-      setPageNum(targetPageNumber);
-    } else if (pageNum === targetPageNumber) {
-      setPageNum(sourcePageNumber);
-    }
-  }, [pageNames, pageNum]);
-
-  const handleRotatePage = useCallback((pageNumber) => {
-    setPageTransformations(prev => {
-      const current = prev[pageNumber] || { rotation: 0, mirrorH: false, mirrorV: false };
-      const newRotation = (current.rotation + 90) % 360;
-      return {
-        ...prev,
-        [pageNumber]: {
-          ...current,
-          rotation: newRotation
-        }
-      };
-    });
-  }, []);
-
-  const handleMirrorPage = useCallback((pageNumber, direction) => {
-    setPageTransformations(prev => {
-      const current = prev[pageNumber] || { rotation: 0, mirrorH: false, mirrorV: false };
-      return {
-        ...prev,
-        [pageNumber]: {
-          ...current,
-          [direction === 'horizontal' ? 'mirrorH' : 'mirrorV']: !current[direction === 'horizontal' ? 'mirrorH' : 'mirrorV']
-        }
-      };
-    });
-  }, []);
-
-  const handleResetPage = useCallback((pageNumber) => {
-    setPageTransformations(prev => {
-      const newTransformations = { ...prev };
-      delete newTransformations[pageNumber];
-      return newTransformations;
-    });
-  }, []);
-
-  // PDF-lib based rotation handlers (persistent - modifies actual PDF)
-  const handleRotatePageCW = useCallback(async (pageNumber) => {
-    if (!pdfFile || !onUpdatePDFFile) {
-      alert('PDF file not available for manipulation');
-      return;
-    }
-
-    try {
-      const arrayBuffer = await pdfFile.arrayBuffer();
-      const pdfDoc = await PDFDocument.load(arrayBuffer);
-      const page = pdfDoc.getPage(pageNumber - 1);
-
-      // Get current rotation and add 90 degrees clockwise
-      const currentRotation = page.getRotation().angle;
-      const newRotation = (currentRotation + 90) % 360;
-      page.setRotation(degrees(newRotation));
-
-      // Save the modified PDF
-      const pdfBytes = await pdfDoc.save();
-      const newFile = new File([pdfBytes], pdfFile.name, { type: 'application/pdf' });
-      // 2026-04-30 fix: preserve all Supabase metadata across page-mutation
-      // round-trips so the per-user delete authority gate keeps resolving
-      // documentOwnerId on the next render. Pre-fix, every page op (duplicate
-      // / delete / paste / reorder) reconstructed the File without these
-      // fields, leaving pdfFile.user_id null and silently blocking deletes.
-      newFile.id = pdfFile.id;
-      newFile.projectId = pdfFile.projectId;
-      newFile.supabaseFilePath = pdfFile.supabaseFilePath;
-      newFile.user_id = pdfFile.user_id || null;
-
-      onUpdatePDFFile(newFile);
-    } catch (error) {
-      console.error('Error rotating page clockwise:', error);
-      alert(`Error rotating page: ${error.message}`);
-    }
-  }, [pdfFile, onUpdatePDFFile]);
-
-  const handleRotatePageCCW = useCallback(async (pageNumber) => {
-    if (!pdfFile || !onUpdatePDFFile) {
-      alert('PDF file not available for manipulation');
-      return;
-    }
-
-    try {
-      const arrayBuffer = await pdfFile.arrayBuffer();
-      const pdfDoc = await PDFDocument.load(arrayBuffer);
-      const page = pdfDoc.getPage(pageNumber - 1);
-
-      // Get current rotation and subtract 90 degrees (counter-clockwise)
-      const currentRotation = page.getRotation().angle;
-      const newRotation = (currentRotation - 90 + 360) % 360;
-      page.setRotation(degrees(newRotation));
-
-      // Save the modified PDF
-      const pdfBytes = await pdfDoc.save();
-      const newFile = new File([pdfBytes], pdfFile.name, { type: 'application/pdf' });
-      // 2026-04-30 fix: preserve all Supabase metadata across page-mutation
-      // round-trips so the per-user delete authority gate keeps resolving
-      // documentOwnerId on the next render. Pre-fix, every page op (duplicate
-      // / delete / paste / reorder) reconstructed the File without these
-      // fields, leaving pdfFile.user_id null and silently blocking deletes.
-      newFile.id = pdfFile.id;
-      newFile.projectId = pdfFile.projectId;
-      newFile.supabaseFilePath = pdfFile.supabaseFilePath;
-      newFile.user_id = pdfFile.user_id || null;
-
-      onUpdatePDFFile(newFile);
-    } catch (error) {
-      console.error('Error rotating page counter-clockwise:', error);
-      alert(`Error rotating page: ${error.message}`);
-    }
-  }, [pdfFile, onUpdatePDFFile]);
-
-  const handleInsertBlankPage = useCallback(async (afterPageNumber) => {
-    if (!pdfFile || !onUpdatePDFFile) {
-      alert('PDF file not available for manipulation');
-      return;
-    }
-
-    try {
-      const arrayBuffer = await pdfFile.arrayBuffer();
-      const pdfDoc = await PDFDocument.load(arrayBuffer);
-
-      // Get dimensions from the reference page
-      const refPage = pdfDoc.getPage(afterPageNumber - 1);
-      const { width, height } = refPage.getSize();
-
-      // Insert blank page after the specified page (afterPageNumber is 1-based)
-      pdfDoc.insertPage(afterPageNumber, [width, height]);
-
-      // Save the modified PDF
-      const pdfBytes = await pdfDoc.save();
-      const newFile = new File([pdfBytes], pdfFile.name, { type: 'application/pdf' });
-      // 2026-04-30 fix: preserve all Supabase metadata across page-mutation
-      // round-trips so the per-user delete authority gate keeps resolving
-      // documentOwnerId on the next render. Pre-fix, every page op (duplicate
-      // / delete / paste / reorder) reconstructed the File without these
-      // fields, leaving pdfFile.user_id null and silently blocking deletes.
-      newFile.id = pdfFile.id;
-      newFile.projectId = pdfFile.projectId;
-      newFile.supabaseFilePath = pdfFile.supabaseFilePath;
-      newFile.user_id = pdfFile.user_id || null;
-
-      onUpdatePDFFile(newFile);
-    } catch (error) {
-      console.error('Error inserting blank page:', error);
-      alert(`Error inserting page: ${error.message}`);
-    }
-  }, [pdfFile, onUpdatePDFFile]);
+  // Sidebar handlers — page add / delete / duplicate / reorder / rotate /
+  // mirror / reset / cut-copy-paste / insert-blank. Extracted to the
+  // usePageOperations hook; the four state cells stay here (they are
+  // co-serialized with bookmarks + spaces in the sidebar localStorage
+  // effects, out of this concern) and are passed in. Returned handlers keep
+  // their names so the leftRail publisher + PageAnnotationLayer render sites
+  // below are unchanged.
+  const {
+    handleDuplicatePage,
+    handleRenamePage,
+    handleDeletePage,
+    handleCutPage,
+    handleCopyPage,
+    handlePastePage,
+    pageClipboardPayload,
+    handlePastePageHere,
+    handleReorderPages,
+    handleRotatePage,
+    handleMirrorPage,
+    handleResetPage,
+    handleRotatePageCW,
+    handleRotatePageCCW,
+    handleInsertBlankPage,
+  } = usePageOperations({
+    pdfFile,
+    onUpdatePDFFile,
+    pageNames,
+    setPageNames,
+    setPageTransformations,
+    clipboardPage,
+    setClipboardPage,
+    clipboardType,
+    setClipboardType,
+    pageNum,
+    setPageNum,
+  });
 
   const importPdfBookmarksIntoSidebar = useCallback((incomingBookmarks = []) => {
     if (!Array.isArray(incomingBookmarks) || incomingBookmarks.length === 0) {
