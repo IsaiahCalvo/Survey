@@ -291,6 +291,17 @@ if (import.meta.env.DEV) {
       createRoot(document.getElementById('root')).render(<HubPreview />);
     });
   }
+
+  // DEV-ONLY PROTOTYPE: `?spike=renderer` renders the throwaway PDF-renderer
+  // spike (pdf.js vs EmbedPDF) in isolation — no auth, no Supabase, no
+  // Syncfusion. See src/prototype/RendererSpike.jsx + src/prototype/NOTES.md.
+  const spike = params.get('spike');
+  if (!devRouteActive && spike === 'renderer') {
+    devRouteActive = true;
+    import('./prototype/RendererSpike').then(({ default: RendererSpike }) => {
+      createRoot(document.getElementById('root')).render(<RendererSpike />);
+    });
+  }
 }
 
 // KAL-31 Phase D: `/invite/<token>` landing page. Rendered inside AuthProvider
