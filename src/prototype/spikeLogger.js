@@ -113,6 +113,7 @@ export function createSpikeLog() {
 
     filename() { return `PDF render comparison ${stamp(new Date())}.log`; },
 
+    // Browser download (fallback). Goes to the OS Downloads folder.
     save() {
       const text = this.build();
       const blob = new Blob([text], { type: 'text/plain' });
@@ -125,6 +126,23 @@ export function createSpikeLog() {
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       return this.filename();
+    },
+
+    // Dev-server save: POST the log to the Vite middleware, which writes it into
+    // the project's Logs/ folder with the same chronological filename scheme. A
+    // browser can't write to a project path directly, so this is the only way to
+    // land logs in Logs/. Returns the saved relative path (e.g. "Logs/PDF render …").
+    async saveToServer() {
+      const filename = this.filename();
+      const text = this.build();
+      const res = await fetch('/__save-spike-log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename, text }),
+      });
+      if (!res.ok) throw new Error(`server save failed: ${res.status}`);
+      const data = await res.json().catch(() => ({}));
+      return data.path || `Logs/${filename}`;
     },
   };
 }

@@ -19,7 +19,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import PdfjsArm from './PdfjsArm';
 import EmbedpdfArm from './EmbedpdfArm';
-import { makeDefaultAnnotations } from './InteractiveOverlay';
 import { useFrameMeter } from './spikeMetrics';
 import { createSpikeLog } from './spikeLogger';
 
@@ -61,10 +60,9 @@ export default function RendererSpike() {
   const annsRef = useRef(annsByPage);
   useEffect(() => { annsRef.current = annsByPage; }, [annsByPage]);
 
-  const ensureSeed = useCallback((idx, w, h) => {
-    if (annsRef.current[idx]) return;
-    setAnnsByPage((prev) => (prev[idx] ? prev : { ...prev, [idx]: makeDefaultAnnotations(w, h, idx) }));
-  }, []);
+  // Synthetic test shapes removed — the pdf.js arm now shows the PDF's OWN imported
+  // markups instead. Kept as a no-op so the (deprecated) EmbedPDF arm's calls are inert.
+  const ensureSeed = useCallback(() => {}, []);
   const onAnnsChange = useCallback((idx, next) => {
     setAnnsByPage((prev) => ({ ...prev, [idx]: next }));
     const now = performance.now();
@@ -159,7 +157,31 @@ export default function RendererSpike() {
     log.event('quickzoom', { label: String(val) }); setLogCount(log.count());
   };
 
-  const saveLog = () => { const fn = log.save(); setSavedMsg(`saved "${fn}"`); setTimeout(() => setSavedMsg(''), 6000); };
+  // Save the comparison log into the project's Logs/ folder via the dev-server
+  // endpoint; fall back to a browser download if that's unavailable (e.g. built).
+  const saveLog = useCallback(async () => {
+    try {
+      const savedPath = await log.saveToServer();
+      setSavedMsg(`saved → ${savedPath}`);
+    } catch {
+      const fn = log.save();
+      setSavedMsg(`downloaded "${fn}" (Logs/ save unavailable)`);
+    }
+    setTimeout(() => setSavedMsg(''), 6000);
+  }, [log]);
+
+  // Cmd/Ctrl + Shift + L saves the log (same as the 💾 button).
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'l' || e.key === 'L')) {
+        e.preventDefault();
+        saveLog();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [saveLog]);
+
   const C = { text: '#9aa0a6', good: '#30d158', warn: '#ffd60a', bad: '#ff453a', white: '#fff' };
 
   return (
@@ -231,9 +253,9 @@ export default function RendererSpike() {
         {arm === 'pdfjs' ? (
           <>
             <span style={{ color: C.text }}>raster <strong style={{ color: C.white }}>{m.rasterMs ?? '—'}ms</strong></span>
-            <span style={{ color: m.clamped ? C.bad : C.text }}>
+            <span style={{ color: m.clamped ? C.good : C.text }}>
               canvas <strong>{m.backingW || 0}×{m.backingH || 0}</strong> ({Math.round(((m.backingW || 0) * (m.backingH || 0)) / 1048576)}MP)
-              {m.clamped ? ' ⚠ CLAMPED (blurred — tiling needed)' : ''}
+              {m.clamped ? ' · base clamped → tiled (crisp)' : ''}
             </span>
           </>
         ) : (
@@ -243,9 +265,9 @@ export default function RendererSpike() {
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
           {savedMsg ? <span style={{ color: C.good, fontSize: 12 }}>{savedMsg}</span> : null}
           <span style={{ color: C.text, fontSize: 12 }}>log <strong style={{ color: C.white }}>{logCount}</strong></span>
-          <button onClick={saveLog}
+          <button onClick={saveLog} title="Save to Logs/ (⌘⇧L)"
             style={{ background: '#2e7d32', color: '#fff', border: 'none', borderRadius: 5, padding: '5px 12px', cursor: 'pointer', fontWeight: 600 }}>
-            💾 Save log
+            💾 Save log <span style={{ opacity: 0.7, fontWeight: 400, fontSize: 11 }}>⌘⇧L</span>
           </button>
         </div>
       </div>

@@ -19,6 +19,47 @@ const APP_VERSION = (() => {
   }
 })();
 
+/**
+ * Dev-only Vite plugin: writes a renderer-spike comparison log into the project's
+ * Logs/ folder. The spike's "Save log" button (and Cmd+Shift+L) POST the log here
+ * because a browser download can only reach the OS Downloads folder, not a project
+ * path. Filename is validated to the spike's own scheme — no path traversal.
+ */
+function spikeLogSavePlugin() {
+  return {
+    name: 'save-spike-log',
+    configureServer(server) {
+      server.middlewares.use('/__save-spike-log', (req, res) => {
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method Not Allowed'); return; }
+        let body = '';
+        req.on('data', (chunk) => { body += chunk; });
+        req.on('end', () => {
+          try {
+            const { filename, text } = JSON.parse(body || '{}');
+            const safe = String(filename || '').replace(/[/\\]/g, '');
+            if (!/^PDF render comparison .+\.log$/.test(safe)) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: 'bad filename' }));
+              return;
+            }
+            const dir = path.join(__dirname, 'Logs');
+            fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(path.join(dir, safe), String(text ?? ''), 'utf8');
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ ok: true, path: `Logs/${safe}` }));
+          } catch (e) {
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: String((e && e.message) || e) }));
+          }
+        });
+      });
+    }
+  };
+}
+
 /** Dev-only Vite plugin: serves files from debug/fixtures/ at /debug-fixtures/ */
 function debugFixturesPlugin() {
   return {
@@ -48,7 +89,8 @@ export default defineConfig({
       // Whether to polyfill `node:` protocol imports.
       protocolImports: true,
     }),
-    debugFixturesPlugin()
+    debugFixturesPlugin(),
+    spikeLogSavePlugin()
   ],
   server: {
     // Port is set via CLI flag from find-port.js

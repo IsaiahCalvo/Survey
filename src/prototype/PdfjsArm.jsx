@@ -14,14 +14,17 @@
 //     visible page re-rasters crisply at the new scale.
 //   • DPR-correct, double-buffered rasters with RenderTask cancellation + a
 //     generation guard so stale renders never paint.
-//   • A deliberate canvas-budget CLAMP that makes the pdf.js-direct deep-zoom
-//     "crispness cliff" visible (the exact point tiling becomes necessary).
-//   • Interactive, page-locked annotation overlay on every mounted page.
+//   • DEEP-ZOOM TILING — when a full-page raster would exceed the canvas budget
+//     (the "crispness cliff"), a DetailTile renders just the VISIBLE slice of the
+//     page at full DPR over the soft base, so deep zoom stays sharp. Pixel count
+//     is bounded by the viewport, never the (huge) page, so it can't clamp.
+//   • IMPORTED ANNOTATIONS — the page's real ink/shape/text markups render via
+//     pdf.js's own appearance streams (true smoothing + semi-transparent fills),
+//     kept crisp at deep zoom by the same DetailTile re-raster (read-only display).
 // ============================================================================
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.js?url';
-import InteractiveOverlay from './InteractiveOverlay';
 import { clampToBudget } from './spikeMetrics';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
@@ -30,7 +33,14 @@ const GAP = 16;
 const PAD = 20;
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 40;
-const SETTLE_MS = 150;          // commit the gesture this long after the last wheel tick
+// Above this committed scale the full-page base canvas STOPS rendering crisp and
+// becomes a cheap low-res backdrop (rendered at most at BASE_MAX_SCALE), while the
+// viewport-sized DetailTile owns sharpness. 2.5 keeps the frozen backdrop reasonably
+// sharp during deep-zoom panning. (NOTE: the dominant render cost is executing the
+// page's ~400 ink appearance streams, which is resolution-independent — so lowering
+// this cap barely speeds the raster; the real lever is a separate annotation layer.)
+const BASE_MAX_SCALE = 2.5;
+const SETTLE_MS = 110;          // commit the gesture this long after the last wheel tick
 const WHEEL_GAIN = 0.01;        // matches EmbedPDF: factor = 1 - deltaY * WHEEL_GAIN
 const DPR = Math.min(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1, 2);
 
@@ -44,6 +54,12 @@ function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, on
   const canvasRef = useRef(null);
   const taskRef = useRef(null);
   const genRef = useRef(0);
+  // Above BASE_MAX_SCALE the base is a fixed cheap backdrop: it renders ONCE at the
+  // cap and does NOT re-raster as you zoom/pan deeper (the effect keys on baseScale,
+  // which stops changing past the cap). DetailTile owns sharpness up there, so deep
+  // zoom only pays for the small tile and the crisp result lands fast.
+  const baseScale = Math.min(renderScale, BASE_MAX_SCALE);
+  const tiled = renderScale > BASE_MAX_SCALE;
 
   // Crisp raster, debounced via renderScale (committed scale). Renders into an
   // offscreen canvas, then blits to the visible one on success → no white flash.
@@ -54,12 +70,18 @@ function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, on
       const page = await pdf.getPage(pageIndex + 1);
       if (cancelled || myGen !== genRef.current) return;
 
-      const want = renderScale * DPR;
+      // clampToBudget kept as a final safety net for very large pages.
+      const want = baseScale * DPR;
       const backingW = pageW * want;
       const backingH = pageH * want;
-      const { factor, clamped } = clampToBudget(backingW, backingH);
+      const { factor } = clampToBudget(backingW, backingH);
       const rasterScale = want * factor;
-      const viewport = page.getViewport({ scale: rasterScale, rotation });
+      // Bake the page's intrinsic /Rotate (page.rotate) PLUS the user's manual
+      // rotate-button rotation. pdf.js normalizes the sum mod 360, so a /Rotate-270
+      // page renders displayed-landscape at rest, and each manual rotate adds 90°
+      // on top of that. The pageW/pageH (rotation-baked) and this viewport stay in
+      // the same displayed frame, so the canvas + overlay box agree.
+      const viewport = page.getViewport({ scale: rasterScale, rotation: page.rotate + rotation });
 
       const off = document.createElement('canvas');
       off.width = Math.max(1, Math.floor(viewport.width));
@@ -68,6 +90,11 @@ function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, on
 
       if (taskRef.current) { try { taskRef.current.cancel(); } catch {} }
       const t0 = performance.now();
+      // Render WITH the PDF's embedded annotation appearances (pdf.js executes each
+      // markup's appearance stream → real smooth pen strokes + true semi-transparent
+      // fills, exactly like the source). Deep-zoom crispness comes from DetailTile
+      // re-rastering the visible slice at full DPR — not from rebuilt vectors, which
+      // lost the smoothing and opacity.
       const task = page.render({ canvasContext: ctx, viewport });
       taskRef.current = task;
       try {
@@ -84,15 +111,101 @@ function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, on
       c.height = off.height;
       c.getContext('2d', { alpha: false }).drawImage(off, 0, 0);
       const ms = Math.round(performance.now() - t0);
-      onRaster?.(pageIndex, { ms, clamped, backingW: off.width, backingH: off.height });
+      onRaster?.(pageIndex, { ms, clamped: tiled, backingW: off.width, backingH: off.height });
     })();
     return () => { cancelled = true; if (taskRef.current) { try { taskRef.current.cancel(); } catch {} } };
-  }, [pdf, pageIndex, pageW, pageH, renderScale, rotation]);
+  }, [pdf, pageIndex, pageW, pageH, baseScale, rotation]);
 
   return <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%', background: '#fff', boxShadow: '0 2px 14px rgba(0,0,0,0.45)' }} />;
 }
 
-export default function PdfjsArm({ fileSrc, fileKey, annsByPage, ensureSeed, onAnnsChange, onMetrics, onStatus }) {
+// --- DEEP-ZOOM DETAIL TILE ----------------------------------------------------
+// When the full-page raster would clamp (deep zoom → blur), render ONLY the slice
+// of this page currently inside the scroller viewport, at full DPR, and lay it
+// over the soft base canvas. The slice can never be bigger than the viewport, so
+// the pixel count is bounded and never hits the canvas budget = crisp deep zoom.
+// Re-renders on settle (committed scale) and on scroll; idle during a live gesture
+// (the base canvas CSS-scales meanwhile, then this re-sharpens on settle).
+function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, scrollerRef }) {
+  const hostRef = useRef(null);
+  const canvasRef = useRef(null);
+  const taskRef = useRef(null);
+  const genRef = useRef(0);
+  const [tile, setTile] = useState(null); // { left, top, w, h } CSS within wrapper
+
+  const render = useCallback(async () => {
+    const host = hostRef.current;
+    const scroller = scrollerRef.current;
+    const canvas = canvasRef.current;
+    if (!host || !scroller || !canvas || !pdf || liveZoom !== 1) return;
+
+    const hr = host.getBoundingClientRect();
+    const sr = scroller.getBoundingClientRect();
+    // Tile whenever the base has dropped to its cheap backdrop (committed scale past
+    // the cap); below that the base is already crisp, so no tile needed.
+    if (scale <= BASE_MAX_SCALE) { setTile(null); return; }
+
+    // Visible slice of this page, in the page's own (already-scaled) CSS px.
+    const vx = Math.max(0, sr.left - hr.left);
+    const vy = Math.max(0, sr.top - hr.top);
+    const vw = Math.min(hr.width, sr.right - hr.left) - vx;
+    const vh = Math.min(hr.height, sr.bottom - hr.top) - vy;
+    if (vw <= 1 || vh <= 1) { setTile(null); return; }
+
+    const myGen = ++genRef.current;
+    const page = await pdf.getPage(pageIndex + 1);
+    if (myGen !== genRef.current) return;
+
+    const viewport = page.getViewport({ scale, rotation: page.rotate + rotation });
+    const cw = Math.max(1, Math.round(vw * DPR));
+    const ch = Math.max(1, Math.round(vh * DPR));
+    const off = document.createElement('canvas');
+    off.width = cw; off.height = ch;
+    const ctx = off.getContext('2d', { alpha: false });
+
+    if (taskRef.current) { try { taskRef.current.cancel(); } catch {} }
+    // Shift the page output so the visible slice lands at the canvas origin, at DPR.
+    // Renders WITH annotation appearances (default), so the markups in the visible
+    // slice come back crisp at the current zoom instead of upscaled-and-blurry.
+    const transform = [DPR, 0, 0, DPR, -vx * DPR, -vy * DPR];
+    const task = page.render({ canvasContext: ctx, viewport, transform });
+    taskRef.current = task;
+    try { await task.promise; } catch (e) { if (e?.name === 'RenderingCancelledException') return; throw e; }
+    if (myGen !== genRef.current) return;
+
+    const c = canvasRef.current;
+    if (!c) return;
+    c.width = cw; c.height = ch;
+    c.getContext('2d', { alpha: false }).drawImage(off, 0, 0);
+    setTile({ left: vx, top: vy, w: vw, h: vh });
+  }, [pdf, pageIndex, scale, rotation, liveZoom, scrollerRef]);
+
+  // re-render on scale / rotation / settle
+  useEffect(() => { render(); }, [render]);
+
+  // re-render on scroll (debounced), only meaningful while settled
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    let t;
+    const onScroll = () => { clearTimeout(t); t = setTimeout(() => render(), 70); };
+    scroller.addEventListener('scroll', onScroll, { passive: true });
+    return () => { scroller.removeEventListener('scroll', onScroll); clearTimeout(t); };
+  }, [render, scrollerRef]);
+
+  useEffect(() => () => { if (taskRef.current) { try { taskRef.current.cancel(); } catch {} } }, []);
+
+  return (
+    <div ref={hostRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+      <canvas
+        ref={canvasRef}
+        style={{ position: 'absolute', left: tile ? tile.left : 0, top: tile ? tile.top : 0, width: tile ? tile.w : 0, height: tile ? tile.h : 0, display: tile ? 'block' : 'none' }}
+      />
+    </div>
+  );
+}
+
+export default function PdfjsArm({ fileSrc, fileKey, onMetrics, onStatus }) {
   const scrollerRef = useRef(null);
   const pdfRef = useRef(null);
   const [numPages, setNumPages] = useState(0);
@@ -133,7 +246,11 @@ export default function PdfjsArm({ fileSrc, fileKey, annsByPage, ensureSeed, onA
         for (let i = 1; i <= pdf.numPages; i++) {
           const pg = await pdf.getPage(i);
           if (cancelled) return;
-          const vp = pg.getViewport({ scale: 1, rotation: 0 });
+          // No rotation arg → pdf.js defaults to the page's intrinsic /Rotate, so
+          // these dims are already rotation-baked (a /Rotate-270 page reports its
+          // displayed landscape size). This is how the Walkthrough production
+          // renderer gets mixed orientations right: trust pdf.js, no manual swap.
+          const vp = pg.getViewport({ scale: 1 });
           sizes.push({ w: vp.width, h: vp.height });
         }
         if (cancelled) return;
@@ -216,15 +333,6 @@ export default function PdfjsArm({ fileSrc, fileKey, annsByPage, ensureSeed, onA
 
   // recompute window whenever layout changes (scale/sizes/rotation)
   useEffect(() => { recomputeWindow(); }, [recomputeWindow]);
-
-  // seed default annotations for pages as they enter the mounted window
-  useEffect(() => {
-    if (range[1] < range[0]) return;
-    for (let i = range[0]; i <= range[1]; i++) {
-      const dim = layout.dims[i];
-      if (dim) ensureSeed(i, dim.w, dim.h);
-    }
-  }, [range, layout, ensureSeed]);
 
   // ---- apply the cursor anchor AFTER the new scale lays out ------------------
   useLayoutEffect(() => {
@@ -418,11 +526,13 @@ export default function PdfjsArm({ fileSrc, fileKey, annsByPage, ensureSeed, onA
                       rotation={rotation}
                       onRaster={onRaster}
                     />
-                    <InteractiveOverlay
-                      pageWidth={dim.w}
-                      pageHeight={dim.h}
-                      annotations={annsByPage[i]}
-                      onChange={(next) => onAnnsChange(i, next)}
+                    <DetailTile
+                      pdf={pdfRef.current}
+                      pageIndex={i}
+                      scale={scale}
+                      rotation={rotation}
+                      liveZoom={liveZoom}
+                      scrollerRef={scrollerRef}
                     />
                   </>
                 ) : (
