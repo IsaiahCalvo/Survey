@@ -15,9 +15,21 @@ interactive overlay, live metrics, and a "Save log" button that downloads
 
 ## Read these first (researched this session — concrete facts)
 - `.planning/spike-pdf-analysis.md` — the real file's exact page geometry + annotations.
-- `.planning/spike-walkthrough-study.md` — how Isaiah's working repos render rotation
-  and import annotations (the "Walkthrough" repo doesn't exist; the real ones are
-  `takeoff` for rendering and `Survey` for annotation import).
+- `.planning/spike-walkthrough-study.md` — how Isaiah's **`IsaiahCalvo/Walkthrough`**
+  repo (PRIVATE — clone with his git creds: `git clone https://github.com/IsaiahCalvo/Walkthrough`;
+  an UNauthenticated check 404s, which earlier misled me) renders rotation + pins
+  overlays + imports annotations. Key facts from it: production renders with **pdf.js
+  (react-pdf)**, NOT EmbedPDF (EmbedPDF is a dev-only bake-off there too). It gets
+  rotation right by **letting pdf.js bake each page's intrinsic `/Rotate`** (no rotation
+  passed to getViewport; `onLoadSuccess` reports already-rotated dims; pages self-size,
+  centered flex column). Pinning = ONE outer `transform: translate() scale()` zoom layer
+  (origin 0 0); pages stay at scale 1; overlays live INSIDE each page wrapper positioned
+  by PERCENT; screen↔page mapping uses the wrapper's `getBoundingClientRect()`, NEVER
+  `pageSize*scale`. Its EmbedPDF prototype sizes the overlay to the engine's
+  `rotatedWidth/rotatedHeight` and feeds rotation into `renderPage({options:{rotation}})`.
+  Annotation import = `getAnnotations({intent:'display'})` mapped via
+  `viewport.convertToViewportRectangle/Point` (pdf.js does the y-flip + rotation), Ink →
+  non-scaling-stroke SVG polylines, each subtype an editable overlay object.
 
 ## The 3 tasks Isaiah asked for (this is the next session's work)
 
@@ -61,7 +73,11 @@ values are stored un-normalized (x0 > x1) — normalize first.
 ## Warnings / what NOT to re-derive
 - Don't re-investigate the EmbedPDF overlay on the *test fixture* — it's provably pinned
   there. The bug is real-file + rotation. Test with the real file.
-- The "Walkthrough" repo is a mis-remembered name — use `takeoff` + `Survey` (see study doc).
+- The `IsaiahCalvo/Walkthrough` repo IS real (private). Clone it with Isaiah's git
+  credentials — do NOT trust an unauthenticated existence check (it 404s and misled me
+  this session). It's the authoritative reference for all three tasks; the study doc
+  summarizes it but read the repo's `pdf-renderer.tsx`, `pin-layer/pin-coords.ts`,
+  `dev/embedpdf-prototype.tsx`, and `packages/shared/src/coords.ts` directly.
 - Keep changes inside `src/prototype/` — this is throwaway and must not touch the real
   viewer (`PDFViewer.jsx`) or the v2.0 invariants.
 - Run `npm run build` + `npm test` after changes (baseline 840/0/6). Direct-to-main; don't

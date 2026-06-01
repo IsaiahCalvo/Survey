@@ -1,347 +1,339 @@
-# Spike: "Walkthrough" repo study — renderer + annotation-import
+# Walkthrough reference repo study — PDF rendering, rotation, overlay pinning, annotation import
 
-_Date: 2026-05-31. Read-only study. No changes made to our app._
+Repo (READ-ONLY, cloned): `/tmp/walkthrough-ref` — Isaiah's private "Walkthrough" monorepo.
+Studied 2026-05-31. This OVERWRITES the prior (wrong) version that concluded the repo didn't
+exist. The repo exists at `/tmp/walkthrough-ref` and was read in full.
 
-## TL;DR — the named repo does not exist
+Bottom line up front: **the production viewer renders with pdf.js (react-pdf), NOT EmbedPDF.**
+EmbedPDF/PDFium exists only as a dev-only prototype under `app/dev/embedpdf/*`. Two
+fundamentally different overlay-pinning strategies live in this repo, and both matter for our
+two-arm prototype:
 
-`https://github.com/IsaiahCalvo/Walkthrough` returns **HTTP 404** in every casing
-(`Walkthrough`, `walkthrough`, `WalkThrough`). The user `IsaiahCalvo` exists and has
-exactly **4 public repos** — none named Walkthrough:
-
-| Repo | Description | Size | Created | Relevance |
-|------|-------------|------|---------|-----------|
-| `Clip` | Windows clipboard app | — | — | none |
-| `hermes-agent` | fork | — | — | none |
-| **`Survey`** | "PDF Annotator" | ~120 MB | 2025-11-25 | **the full app — does annotation import** |
-| **`takeoff`** | (no desc) "Takeoff — Plan Measurement Tool" | ~1 MB | 2026-05-27 | **the throwaway renderer prototype** |
-
-Verification:
-```
-IsaiahCalvo/Walkthrough -> HTTP 404
-IsaiahCalvo/walkthrough -> HTTP 404
-IsaiahCalvo/WalkThrough -> HTTP 404
-GET /users/IsaiahCalvo -> public_repos: 4  (Clip, hermes-agent, Survey, takeoff)
-```
-
-So "Walkthrough" is either private, renamed, or a mis-remembered name. The task's two
-claimed capabilities are actually split across **two different repos**:
-
-- **Multi-orientation / multi-size PDF rendering** with zoom-pinned overlay → lives in
-  **`takeoff`** (the lightweight PDF.js prototype). This is the "throwaway renderer
-  prototype" the task describes.
-- **Importing the PDF's embedded annotations as interactive (selectable/editable)** →
-  lives in **`Survey`** (the full Syncfusion/Fabric.js React app — i.e. the parent of
-  *this* project). `takeoff` has **zero** embedded-annotation import.
-
-Both findings are documented below since together they answer the brief.
+- **pdf.js arm (production):** percent-of-page overlays portalled INTO each page wrapper, all
+  scaling done by a single outer CSS `transform: scale()` zoom layer. Pages render at their
+  natural (intrinsic-rotation-baked) size; no rotation math in the render path.
+- **EmbedPDF arm (dev prototype):** PDFium renders each page to a PNG blob `<img>`; overlays
+  mount per-page inside `Scroller`'s `renderPage`, sized to EmbedPDF's `rotatedWidth/rotatedHeight`,
+  using percent-of-page coords so rotation is handled by the engine's already-rotated layout box.
 
 ---
 
-## PART A — `takeoff`: rendering + rotation + mixed-size + zoom pinning
+## 1. ENGINE — pdf.js in production, EmbedPDF only in /dev
 
-Plain ES modules under `src/app/*.js` (browser globals, see `docs/adr/0001-browser-global-modules.md`),
-bundled by Vite. Only devDependency is `vite` — **no PDF lib in package.json**.
-
-### A1. PDF engine: PDF.js 3.11.174 via CDN
-
-`index.html`:
-```html
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+**Production = pdf.js via `react-pdf`.**
+`apps/web/src/components/viewer/pdf-renderer.tsx:14`:
+```ts
+import { Document, Page, pdfjs } from "react-pdf";
+pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 ```
-`src/main.js`:
-```js
-const pdfjsLib = window.pdfjsLib;
-if (!pdfjsLib) throw new Error('PDF.js failed to load.');
-pdfjsLib.GlobalWorkerOptions.workerSrc =
-  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+Production chain: `walkthrough-viewer.tsx` → `AssetCanvas` (`asset-canvas.tsx`) → `PdfRenderer`
+(dynamic import, `ssr:false`, `asset-canvas.tsx:12`). `AssetCanvas` only ever mounts `<PdfRenderer>`
+for PDFs and `<ImageRenderer>` for images (`asset-canvas.tsx:90`). `floor-rail.tsx` and
+`upload/walkthrough-thumbnail.tsx` also use raw pdf.js (`getDocument`/`getViewport`/`getTextContent`)
+for thumbnails + search text. **No EmbedPDF import anywhere in the production viewer path.**
+
+**EmbedPDF = PDFium, dev-only.** `@embedpdf/*` is imported ONLY by
+`components/dev/embedpdf-prototype.tsx` (and its harness `embedpdf-tab-cache-harness.tsx`),
+reachable ONLY from `app/dev/embedpdf/{sample,[id],asset/[assetId]}/page.tsx`. It spins up a
+PDFium WASM engine (`embedpdf-prototype.tsx:177-179`):
+```ts
+? await import("@embedpdf/engines/pdfium-worker-engine")
+: await import("@embedpdf/engines/pdfium-direct-engine");
+const nextEngine = await pdfiumModule.createPdfiumEngine(wasmUrl);  // /embedpdf/pdfium.wasm
 ```
-Document load:
-```js
-await pdfjsLib.getDocument({ data: buf }).promise   // src/main.js ~L585
-```
-
-### A2. Per-page ROTATION (`/Rotate 90/180/270`) — handled implicitly by PDF.js
-
-This is the crux and it is *deliberately simple*. `renderPageToCanvas` calls
-`page.getViewport({ scale })` **without** passing a `rotation` option:
-
-`src/main.js` `renderPageToCanvas` (~L639):
-```js
-async function renderPageToCanvas(pageNum, requestedScale = state.minPdfRenderScale) {
-  const page = await state.pdf.getPage(pageNum);
-  const baseViewport = page.getViewport({ scale: 1 });          // rotation NOT passed
-  const maxScaleForPage = Math.min(
-    state.maxPdfRenderScale,
-    state.maxPdfBitmapEdge / Math.max(baseViewport.width, baseViewport.height)
-  );
-  const renderScale = Math.max(state.minPdfRenderScale, Math.min(requestedScale, maxScaleForPage));
-  const viewport_ = page.getViewport({ scale: renderScale });   // rotation still implicit
-  const c = document.createElement('canvas');
-  c.width  = Math.max(1, Math.ceil(viewport_.width));
-  c.height = Math.max(1, Math.ceil(viewport_.height));
-  await page.render({ canvasContext: c.getContext('2d'), viewport: viewport_ }).promise;
-  return {
-    canvas: c,
-    cssWidth:  baseViewport.width,   // already rotation-corrected by PDF.js
-    cssHeight: baseViewport.height,  // already rotation-corrected by PDF.js
-    renderScale,
-  };
-}
-```
-
-Why this "just works":
-- PDF.js `getViewport()` defaults `rotation` to the **page's own `/Rotate`** value. The
-  returned `viewport.width/height` are *already swapped* for 90/270 pages and the
-  viewport's internal transform rotates the rendered content. The canvas is sized from
-  `viewport_.width/height`, so a landscape-rotated page produces a landscape canvas with
-  upright content — no manual matrix math anywhere in the prototype.
-- The CSS layout size (`cssWidth/cssHeight`) is taken from the **scale:1** viewport, again
-  rotation-corrected, so DOM layout matches orientation automatically.
-
-There is a *separate, user-facing* "Rotate" tool in the UI (`index.html` rotation pill /
-`data-action="rotate"`, and `state.rotateModeId` / `createRotationFrame` in `main.js`),
-but that rotates an individual **measurement annotation**, NOT the PDF page. Page `/Rotate`
-is purely PDF.js-driven.
-
-### A3. MIXED PAGE SIZES — per-page measured size, never `pageSize * scale`
-
-Each page is rendered independently and its true rotated dimensions are read from its own
-viewport (`baseViewport.width/height` above). For multi-page continuous view, a layout is
-built that **center-aligns each page at its own width** and stacks with a gap:
-
-`src/app/continuous-renderer.js` `buildContinuousPageLayout`:
-```js
-function buildContinuousPageLayout(entries, { pageGap = DEFAULT_PAGE_GAP } = {}) {
-  const pages = [];
-  const width = Math.max(...entries.map(e => e.cssWidth), 1);   // widest page sets stack width
-  let y = 0;
-  for (const entry of entries) {
-    const x = (width - entry.cssWidth) / 2;                     // center each page horizontally
-    pages.push({ page: entry.page, x, y, width: entry.cssWidth, height: entry.cssHeight });
-    y += entry.cssHeight + pageGap;                             // stack by each page's own height
-  }
-  return { width, height: Math.max(1, y - pageGap), pageGap, pages };
-}
-```
-So a doc mixing Letter-portrait, Letter-landscape, and 11×17 stacks correctly because every
-`pageBox` carries that page's individual `width/height/x/y`. Hit-testing and measurement
-placement use `stackPointToPagePoint` / `pagePointToStackPoint` against these per-page boxes.
-
-### A4. ZOOM PINNING — single CSS transform on a `viewport` element + SVG `viewBox`
-
-There is **no per-point rescaling** of annotations on zoom. The architecture:
-
-1. One `#viewport` DOM element is sized to the page (or the continuous stack) in **CSS px**
-   equal to the unscaled page size. Zoom/pan is applied as a single CSS transform on it:
-   `src/main.js` `applyTransform`:
-   ```js
-   viewport.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.zoom})`;
-   ```
-2. The annotation overlay is an **SVG whose `viewBox` equals the page size**, sized to the
-   same CSS px as the page. Because it lives inside `#viewport`, it inherits the same
-   `scale(zoom)` transform — annotations stay pinned for free:
-   `src/main.js` `configureDrawCanvas`:
-   ```js
-   configureViewportCssSize(state.baseW, state.baseH);
-   drawSvg.setAttribute('width', state.baseW);
-   drawSvg.setAttribute('height', state.baseH);
-   drawSvg.setAttribute('viewBox', `0 0 ${state.baseW} ${state.baseH}`);   // 1 SVG unit == 1 page px
-   configureCanvasCssSize(drawSvg, state.baseW, state.baseH);
-   ```
-   Annotations are stored in **page-space coordinates** and drawn with those raw numbers
-   (`svg-renderer.js` writes `x`/`y`/`d` directly). They scale with the page because the
-   container scales. (This is the same "SVG viewBox owns all zoom scaling, zero JS zoom
-   coordination" invariant our own CLAUDE.md enforces for `SVGAnnotationLayer.jsx`.)
-3. Chrome that must stay a constant *screen* size (labels, dots, handle radii, stroke
-   widths) is the only thing that compensates for zoom, via `overlayPageSize`:
-   ```js
-   function overlayScreenScale() {
-     return Math.min(1.55, Math.max(0.38, Math.pow(Math.max(state.zoom, 0.05), 0.42)));
-   }
-   function overlayPageSize(screenPx) {              // screen px -> page units
-     return (screenPx * overlayScreenScale()) / Math.max(state.zoom, 0.05);
-   }
-   ```
-   Every dimension in `svg-renderer.js` (font size, padding, dot radius, stroke width) is
-   wrapped in `overlayPageSize(...)` so it reads the same on screen at any zoom, while the
-   *geometry* itself is plain page-space coordinates that scale with the viewBox.
-4. Screen↔page mapping is **measured from the live rect, not computed from scale** — the
-   same container-aware lesson in our CLAUDE.md:
-   `src/app/viewer.js`:
-   ```js
-   function screenToImagePoint({ clientX, clientY, viewportRect, baseWidth, baseHeight }) {
-     return {
-       x: ((clientX - viewportRect.left) / viewportRect.width)  * baseWidth,
-       y: ((clientY - viewportRect.top)  / viewportRect.height) * baseHeight,
-     };
-   }
-   ```
-   It divides by the *measured* `viewportRect.width/height` (a `getBoundingClientRect()`),
-   so any DPR / browser-zoom mismatch cancels out.
-
-### A5. Render-resolution strategy (bonus, relevant to "near-zero-lag zoom" north star)
-- `pdf-page-cache.js` keeps an LRU of rendered page canvases keyed by page; `desiredRenderScale`
-  targets `zoom * min(devicePixelRatio, 2)` capped by `maxBitmapEdge`. Zoom uses the cached
-  bitmap immediately (CSS scale) and re-renders crisper in the background; pages are
-  pre-rendered around the current page (`planPreRenderPages`).
-- A `navToken` guards against stale async renders when the user navigates mid-render.
-
-**Net for our prototype:** to render multi-orientation/multi-size pages correctly you do
-*nothing special* — let PDF.js `getViewport()` apply `/Rotate`, size the canvas + CSS box +
-SVG `viewBox` from that viewport, stack per-page boxes by their own measured width/height,
-and pin annotations with a single CSS `scale()` on the container while compensating only the
-constant-screen-size chrome via an `overlayPageSize`-style helper.
+So **EmbedPDF is a throwaway engine spike, not production.** The thing that "correctly renders
+multi-orientation/multi-size PDFs and keeps annotations pinned through zoom" in production is the
+pdf.js arm. The EmbedPDF prototype is the comparison arm being evaluated (it tracks FPS, worst-frame
+spikes, render-cache size — it's an engine bake-off).
 
 ---
 
-## PART B — `Survey`: importing embedded PDF annotations as interactive
+## 2. ROTATION + MIXED SIZES
 
-`Survey` is the full app (React + Syncfusion + Fabric.js). Relevant deps:
-`pdfjs-dist@3.11.174`, `pdf-lib@1.17.1`, `annotpdf`, `fabric@5.5.2`,
-`@syncfusion/ej2-react-pdfviewer`. Import pipeline files:
-`src/utils/pdfAnnotationImporter.js`, `src/utils/pdfAnnotationsPdfLib.js`,
-`src/utils/pdfAnnotations.js`, plus the SVG/Fabric overlay layers
-(`src/components/SVGAnnotationLayer.jsx`, `src/PageAnnotationLayer.jsx`).
+### pdf.js arm — rely on pdf.js baking intrinsic /Rotate; per-page natural size from onLoadSuccess
 
-### B1. Reading native annotations — pdf.js `getAnnotations()` (+ pdf-lib for raw dict fields)
+The production renderer does **NOT** pass a rotation to `getViewport`, and applies **NO** CSS
+rotation transform for page orientation. It trusts pdf.js to bake the page's intrinsic `/Rotate`
+into both the rendered bitmap and the reported page dimensions.
 
-`src/utils/pdfAnnotationImporter.js`:
-```js
-export async function extractAnnotationsFromPage(page) {
-  try {
-    const annotations = await page.getAnnotations();   // pdf.js high-level API
-    return annotations;
-  } catch (error) {
-    console.error('Error extracting annotations from page:', error);
-    return [];
-  }
-}
+Per-page size is captured per page from `<Page onLoadSuccess>` (`pdf-renderer.tsx:2100-2134`):
+```ts
+onLoadSuccess={(p) => {
+  pdfPageRef.current = p as PdfPageWithAnnotations;
+  setNaturalSize((prev) => prev ?? {
+    width:  p.originalWidth  * PDF_DPI_FACTOR,   // 96/72 DPI inflation, PDF_DPI_FACTOR = 96/72
+    height: p.originalHeight * PDF_DPI_FACTOR,
+  });
+  setOriginalSize((prev) => prev ?? { width: p.originalWidth, height: p.originalHeight });
+  ...
+}}
 ```
-For raw dictionary fields pdf.js doesn't surface (interior color, fill opacity `ca`,
-border-effect cloud intensity `/BE /I`, `/AP /N /Matrix`, app-owned metadata), it ALSO opens
-the bytes with **pdf-lib** low-level API and walks `rawPdfDoc.getPages()` reading `PDFName`
-keys (e.g. `dict.get(PDFName.of('FillOpacity'))`, dash arrays, border-effect dict). So:
-**pdf.js for the annotation list + geometry, pdf-lib for raw dictionary recovery.**
+`originalWidth/originalHeight` from react-pdf's `PageCallback` are the **rotation-applied** scale=1
+dims (pdf.js reports the rotated viewport size), so a landscape or 90°-rotated page reports the
+correct (already-swapped) width/height. Mixed sizes "just work" because each `<BaseScalePage>` stores
+its OWN `naturalSize` — there is no shared/global page size.
 
-Each annotation is then turned into a **Fabric.js object spec** by
-`convertPdfAnnotationToFabric` and mounted on the per-page Fabric/SVG overlay, which makes
-them selectable/movable/editable. Supported → editable subtypes:
+Per-page layout box is computed entirely from that per-page `naturalSize` (`pdf-renderer.tsx:1191-1205`,
+rendered wrapper at `:1967-2014`):
+```ts
+const outerWidth  = (naturalSize?.width  ?? SHIMMER_WIDTH_PX)  * userScale; // userScale = PAGE_LAYOUT_SCALE = 1
+const outerHeight = (naturalSize?.height ?? SHIMMER_HEIGHT_PX) * userScale;
+// outer wrapper: width/height = outerWidth/outerHeight, position:relative, overflow:hidden, mx-auto
+//   inner wrapper: width=naturalW*rasterScale, height=naturalH*rasterScale,
+//                  transform: scale(userScale / rasterScale), transform-origin: top left
+//     <Page scale={rasterScale * PDF_DPI_FACTOR} .../>   // hi-res bitmap, CSS-downscaled to natural box
 ```
-Ink → Fabric Path | Highlight → Rect(fill) | FreeText → Textbox |
-Square → Rect | Circle → Circle | Line/PolyLine/Polygon → Line/Polyline/Polygon |
-Text/Underline/StrikeOut/Squiggly/Caret
+Pages are stacked in a `flex flex-col items-center gap-6` column (`pdf-renderer.tsx:935`), each
+centered with `mx-auto` — mixed orientations/sizes lay out as a centered vertical stack, each at its
+own natural box. Layout offset = normal document flow (no manual offset math).
+
+**`getViewport({ scale })` is used only for annotation/text mapping and rasterization, never with a
+rotation arg:** `pdf-renderer.tsx:517` `getViewport({ scale: PDF_DPI_FACTOR })`, `:1525`/`:1760` for
+tile/full-page raster. None pass `rotation` — pdf.js applies intrinsic page rotation automatically.
+
+The canonical-coords helper (`packages/shared/src/coords.ts`) DOES have full rotation-aware math
+(`toCanonical`/`fromCanonical` with a `0|90|180|270` switch + y-flip), but the production render path
+deliberately bypasses it (see §3). It's kept "for callers that need rotation-aware math"
+(`pin-coords.ts:5`) but isn't on the hot path.
+
+### EmbedPDF arm — engine owns rotation; consumer reads `page.rotatedWidth/rotatedHeight`
+
+PDFium computes the rotated layout box. The prototype page sizes itself from EmbedPDF's
+`RenderPageProps.rotatedWidth/rotatedHeight` and never does its own rotation geometry
+(`embedpdf-prototype.tsx:2107-2118`):
+```tsx
+<div style={{ width: page.rotatedWidth, height: page.rotatedHeight,
+              contain: "layout paint style", contentVisibility: "auto",
+              containIntrinsicSize: `${page.rotatedWidth}px ${page.rotatedHeight}px` }}>
 ```
-Unsupported (Stamp, Link, Widget, Popup, FileAttachment, 3D, Redact, RichMedia…) are
-**preserved but not imported** as editable (shown via `UnsupportedAnnotationsNotice.jsx`).
-
-### B2. Coordinate mapping — PDF bottom-left origin → top-left overlay, rotation-aware
-
-The importer prefers the **pdf.js viewport's own converters** (which bake in page rotation
-AND the y-flip), with a manual `pageHeight - y` fallback:
-
-`src/utils/pdfAnnotationImporter.js` (~L1655):
-```js
-// PDF coordinates have origin at bottom-left, Fabric.js at top-left
-function convertPdfPointToViewport(x, y, viewport, scale = 1) {
-  if (viewport && typeof viewport.convertToViewportPoint === 'function') {
-    const [viewportX, viewportY] = viewport.convertToViewportPoint(x, y);  // rotation + flip baked in
-    return { x: viewportX * scale, y: viewportY * scale };
-  }
-  const pageHeight = Number.isFinite(viewport?.height) ? viewport.height : 0;
-  return { x: x * scale, y: (pageHeight - y) * scale };          // manual y-flip fallback
-}
-
-function convertPdfRectToViewportRect(rect, viewport, scale = 1) {
-  let x1, y1, x2, y2;
-  if (viewport && typeof viewport.convertToViewportRectangle === 'function') {
-    [x1, y1, x2, y2] = viewport.convertToViewportRectangle(rect);      // /Rect -> viewport rect
-  } else {
-    const pageHeight = Number.isFinite(viewport?.height) ? viewport.height : 0;
-    x1 = rect[0]; y1 = pageHeight - rect[3];                           // flip top/bottom
-    x2 = rect[2]; y2 = pageHeight - rect[1];
-  }
-  const left = Math.min(x1, x2) * scale, right = Math.max(x1, x2) * scale;
-  const top  = Math.min(y1, y2) * scale, bottom = Math.max(y1, y2) * scale;
-  return { left, right, top, bottom, width: right - left, height: bottom - top };
-}
+Rotation is fed to the renderer as an int and combined with any document-level rotation
+(`:2031-2033`):
+```ts
+const pageRotation     = documentPage?.rotation ?? 0;     // per-page intrinsic, 0..3 quarter-turns
+const documentRotation = documentState?.rotation ?? 0;    // user "Rotate" button
+const effectiveRotation = (pageRotation + documentRotation) % 4;
 ```
-Note the `* scale` and `Math.min/Math.max` normalization — `/Rect` corner order isn't
-guaranteed, so it normalizes to top-left + width/height for Fabric placement.
-
-### B3. Annotation-level rotation (rotated shapes/text) — recovered from `/AP /N /Matrix`
-
-Beyond *page* rotation, individual shapes can be rotated by the authoring tool (Drawboard
-etc.) by baking a rotation into the appearance-stream matrix while `/Rect` stays the
-axis-aligned bounding box. `computeAppearanceRotationTransform` reads that matrix, converts
-PDF's CCW-in-y-up angle into the on-screen (y-flipped) angle that matches Fabric's `angle`,
-and emits the **un-rotated** `/BBox` width/height + a center-pivot placement:
-
-`src/utils/pdfAnnotationImporter.js` (~L2486+):
-```js
-// θ in /AP /N /Matrix encodes a CCW rotation in PDF y-up space. Screen y is
-// flipped, so on-screen rotation is the negative of that — matches Fabric's angle.
-function computeAppearanceRotationTransform(annotation, scale = 1) { ... }
-// callers:
-const rotationTransform = computeAppearanceRotationTransform(annotation, scale);
-const useRotation = !!rotationTransform;
-const outWidth  = useRotation ? rotationTransform.bboxWidth  : viewportRect.width;
-const outHeight = useRotation ? rotationTransform.bboxHeight : viewportRect.height;
-// ... fabric spec gets { angle: rotationTransform.angleDeg } and a center-pivot left/top
-```
-If the matrix is identity/near-identity it falls back to the plain `/Rect` viewport rect.
-
-### B4. Making them interactive + provenance, parity with internally-drawn shapes
-
-- Each imported object is tagged with provenance metadata only — `isPdfImported: true`,
-  `pdfAnnotationId`, `pdfAnnotationType` — which **must not gate rendering/editing behavior**.
-- Imported Ink is normalized to be *field-for-field identical* to an internally-drawn pen
-  stroke (`makeInternalPenPathSpec`), including intentionally **omitting `strokeUniform`**,
-  because a mismatch there made the SVG renderer emit `vectorEffect="non-scaling-stroke"`
-  on imports only, producing a visible hairline split at 200% zoom. (Mirrors our own
-  CLAUDE.md gotchas about SVG vs canvas stroke behavior.)
-- `left/top/width/height` are written explicitly onto the Fabric spec so Fabric's resize
-  handler doesn't re-derive `left` from path bounds and double-apply the offset.
-- The objects are mounted on the per-page Fabric/SVG overlay → selectable, movable,
-  editable, erasable like any user-drawn annotation. Export back to PDF goes through
-  `pdfAnnotationsPdfLib.js` (pdf-lib low-level, PDF 1.7 spec) — edited imported copies are
-  re-exported and the original native copy removed to avoid duplicates.
-
-### B5. Pinning through zoom in Survey (same contract as `takeoff`)
-Survey's `SVGAnnotationLayer.jsx` uses `viewBox="0 0 pageWidth pageHeight"` and lets the SVG
-viewBox own all zoom scaling (no JS zoom coordination) — identical philosophy to `takeoff`.
-Canvas-based tools (pen/eraser/edit, Fabric) use a `zoomGeneration` signal to auto-commit
-before the container resizes. (These are documented invariants in this project's CLAUDE.md.)
+passed into the raster call (`:1461-1469`):
+`renderPage({ pageIndex, options: { scaleFactor, dpr, rotation, withAnnotations } })`. Rotation is part
+of the render-cache key (`getRenderCacheKey`, `:294-317`), so rotating re-renders rather than
+CSS-rotating. Mixed sizes are inherent — each page's `rotatedWidth/Height` comes from the engine.
 
 ---
 
-## What to replicate in our throwaway renderer prototype
+## 3. OVERLAY PINNING THROUGH ZOOM (production pdf.js arm) — THE KEY TECHNIQUE
 
-1. **Engine:** PDF.js (`pdfjs-dist`, or CDN global). `getDocument` → `getPage` → `getViewport`.
-2. **Rotation:** do nothing manual — call `page.getViewport({ scale })` and let it apply
-   `/Rotate`. Size canvas + CSS box + SVG `viewBox` from `viewport.width/height`.
-3. **Mixed sizes:** render each page independently; build a per-page layout where every
-   page box stores its own measured width/height/x/y; center-align by widest page; stack
-   by each page's own height + a gap.
-4. **Pinning:** one container element, page-space coordinates for annotations, a single CSS
-   `transform: scale(zoom)` on the container, SVG `viewBox` == page size. Compensate only
-   constant-screen-size chrome via an `overlayPageSize(screenPx)` helper.
-   Screen↔page mapping divides by the **measured** `getBoundingClientRect()`, never `pageSize*scale`.
-5. **Annotation import (if needed):** `page.getAnnotations()` for the list + geometry;
-   `viewport.convertToViewportPoint` / `convertToViewportRectangle` to map PDF bottom-left
-   `/Rect` and points into top-left overlay space (rotation + flip free); pdf-lib low-level
-   to recover raw dict fields (fill opacity, `/AP /N /Matrix`, border effects); read shape
-   rotation from `/AP /N /Matrix` and convert to a y-flipped Fabric-style `angle` with the
-   un-rotated `/BBox` size; mount as Fabric/SVG objects tagged `isPdfImported` (provenance
-   only — never gate behavior on it).
+This is the part to copy. Contract: **"percent-of-page coords + single outer CSS transform:
+scale() owns all zoom; overlays live INSIDE the page wrapper, so they inherit the transform for
+free."** No per-point screen math on the hot path, no viewBox tricks for pins.
 
-## Source links (raw)
-- takeoff index.html: https://raw.githubusercontent.com/IsaiahCalvo/takeoff/main/index.html
-- takeoff main.js: https://raw.githubusercontent.com/IsaiahCalvo/takeoff/main/src/main.js
-- takeoff continuous-renderer.js: https://raw.githubusercontent.com/IsaiahCalvo/takeoff/main/src/app/continuous-renderer.js
-- takeoff svg-renderer.js: https://raw.githubusercontent.com/IsaiahCalvo/takeoff/main/src/app/svg-renderer.js
-- takeoff viewer.js: https://raw.githubusercontent.com/IsaiahCalvo/takeoff/main/src/app/viewer.js
-- takeoff pdf-page-cache.js: https://raw.githubusercontent.com/IsaiahCalvo/takeoff/main/src/app/pdf-page-cache.js
-- takeoff document-adapters.js: https://raw.githubusercontent.com/IsaiahCalvo/takeoff/main/src/app/document-adapters.js
-- Survey pdfAnnotationImporter.js: https://raw.githubusercontent.com/IsaiahCalvo/Survey/main/src/utils/pdfAnnotationImporter.js
-- Survey pdfAnnotationsPdfLib.js: https://raw.githubusercontent.com/IsaiahCalvo/Survey/main/src/utils/pdfAnnotationsPdfLib.js
-- Survey package.json: https://raw.githubusercontent.com/IsaiahCalvo/Survey/main/package.json
+**(a) One outer zoom layer is the single source of truth for scale + pan**
+(`walkthrough-viewer.tsx:1650-1660`):
+```tsx
+<div ref={zoomLayerRef} style={{
+  position: "absolute", top: 0, left: 0,
+  transform: `translate(${transform.tx}px, ${transform.ty}px) scale(${transform.scale})`,
+  transformOrigin: "0 0",
+  willChange: "transform",   // own GPU compositor layer — wheel-zoom/pan are GPU-only, no layout/paint
+}}>
+```
+Pages render at `PAGE_LAYOUT_SCALE = 1` (natural size); the OUTER transform is the only thing that
+scales. `walkthrough-viewer.tsx:102-106` is explicit: *"the OUTER zoom layer transform is the single
+source of truth for user-visible scale."*
+
+**(b) Both the AssetCanvas (pages) AND the PinLayer are children of that same zoom layer**
+(`walkthrough-viewer.tsx:1671` AssetCanvas, `:1690` PinLayer) — so pins scale/pan in lockstep with
+pages because they share the one transform.
+
+**(c) PinLayer portals each page's overlay INTO that page's `[data-page-key]` wrapper.**
+`PortalToPageWrapper` (`pin-layer.tsx:688-726`) continuously rAF-re-queries
+`[data-page-key="${floorId}:${pageIndex}"]` and `createPortal(children, target)` into it. The rAF loop
+re-anchors if the renderer swaps the wrapper element during a settle re-rasterize (`:679-687`) — their
+fix for "pins disappear after re-rasterize." The `<PdfRenderer>` page wrapper carries
+`data-page-key={`${floorId}:${pageIndex}`}` (`pdf-renderer.tsx:1980`); image/HEIC floors carry
+`data-page-key={`${floorId}:0`}` (`asset-canvas.tsx:109`) so the same overlay code works across formats.
+
+**(d) Each pin is positioned by pure percent-of-page** (`pinScreenStyle`, `pin-coords.ts:55-57`):
+```ts
+export function pinScreenStyle(coord) { return { left: `${coord.xPct*100}%`, top: `${coord.yPct*100}%` }; }
+```
+Because the pin lives inside the page wrapper, `left: xPct*100%` resolves against the wrapper's
+PRE-transform width, and the outer `transform: scale()` then scales it visually — pin stays locked to
+the same page point at every zoom. Documented in `pin-coords.ts:26-30` as "RESEARCH.md Pattern 1 —
+render uses pure percent-of-page."
+
+**(e) Screen→page mapping uses `getBoundingClientRect()`, NOT pageSize*scale.** `tapToCanonical`
+(`pin-coords.ts:32-52`):
+```ts
+const hit = document.elementFromPoint(clientX, clientY);
+const wrapper = hit?.closest("[data-page-key]");
+const rect = wrapper.getBoundingClientRect();      // already includes the zoom transform
+const xPct = clamp01((clientX - rect.left) / rect.width);
+const yPct = clamp01((clientY - rect.top)  / rect.height);
+```
+Comment (`pin-coords.ts:47-48`): *"rect.{width,height} already includes the zoom transform via
+getBoundingClientRect."* They never reconstruct `pageSize * scale`; they let the browser's
+post-transform rect do it. This sidesteps the "Electron zoom-factor mismatch" class of bugs that
+forces the Survey app's container-aware-measurement rule.
+
+**(f) Drag math divides screen delta by zoom** (`pin.tsx:140-151`): pointer dx/dy arrive in screen-px,
+but the pin's inline `left/top` are in pre-transform px, so
+`left = calc(${xPct*100}% + ${dx/safeZoom}px)`. `dx/zoom` converts screen delta → pre-transform delta
+so the pin tracks the cursor 1:1 at any zoom. Persisted coords from rect:
+`rawXPct = clamp01(xPct + dx/rect.width)` (`pin.tsx:167-168` — rect is post-transform, no zoom division
+needed there).
+
+Net: **no viewBox for pins, no per-point matrix; page-wrapper-relative percent + one shared CSS
+transform does all the work.** (SVG `viewBox` IS used — but only for stroke geometry inside an
+annotation's own box, see §4/§5: `pdf-renderer.tsx:2558`, `embedpdf-prototype.tsx:1996`.)
+
+---
+
+## 4. EMBEDPDF OVERLAY SPECIFICALLY (dev prototype)
+
+**Where the overlay mounts:** inside `Scroller`'s `renderPage` callback. The page render prop returns
+`<PrototypePage>` (`embedpdf-prototype.tsx:2430-2443`):
+```tsx
+<Scroller documentId={documentId} className="relative"
+  renderPage={(page) => (
+    <PrototypePage ... page={page as RenderPageProps} key={`${documentId}:${page.pageIndex}`} />
+  )} />
+```
+`<PrototypePage>` (`:2107-2145`) is a `position:relative` box sized to
+`page.rotatedWidth × page.rotatedHeight`, containing:
+1. `<PrototypeRenderLayer>` — the rendered page as a PNG blob `<img>`, `absolute inset-0 h-full w-full`
+   (`:1738-1793`). PDFium → PNG blob via `renderPage({ scaleFactor, dpr, rotation, withAnnotations })` →
+   objectURL → `<img>`. (Preview + full-fidelity tiers, render queue, LRU cache — perf scaffolding.)
+2. `<PagePointerProvider>` wrapping `<PrototypeAnnotationLayer>` — the editable overlay, gated behind
+   zoom/distance/idle conditions (`:2127-2143`).
+
+**Overlay coordinate space = displayed/ROTATED dims** (`page.rotatedWidth/rotatedHeight`), NOT the
+unrotated page-point dims. Both the page box (`:2113-2114`) and the `PagePointerProvider` box
+(`:2131-2134`) are sized to `rotatedWidth/rotatedHeight`. The custom stroke overlay then uses
+percent-of-box coords — identical pattern to production:
+```tsx
+// embedpdf-prototype.tsx:1994-2011
+<svg className="pointer-events-none absolute inset-0 h-full w-full"
+     viewBox="0 0 100 100" preserveAspectRatio="none">
+  {strokes.map((s) => (
+    <polyline points={s.points.map(p => `${p.xPct*100},${p.yPct*100}`).join(" ")}
+              vectorEffect="non-scaling-stroke" ... />
+  ))}
+</svg>
+```
+Strokes captured as percent via `pointFromEvent` (`:1875-1888`):
+```ts
+const rect = layer.getBoundingClientRect();
+xPct: clampNumber((event.clientX - rect.left) / rect.width, 0, 1)
+yPct: clampNumber((event.clientY - rect.top)  / rect.height, 0, 1)
+```
+Same `getBoundingClientRect()` screen→page trick as production.
+
+**Pinning on ROTATED pages:** because the overlay box is sized to the engine's already-rotated layout
+dims, percent-of-box coords are automatically in the rotated visual frame. The overlay is a sibling of
+the rendered `<img>` inside the same `rotatedWidth × rotatedHeight` box, so when EmbedPDF re-renders
+the page rotated (rotation is in the render-cache key `:294-317`, and the box dims swap to the new
+`rotatedWidth/Height`), the overlay box swaps with it and the percent coords still land on the same
+visual point. **No manual rotation/y-flip in the overlay for hand-drawn strokes** — the engine's
+rotated layout box absorbs it. (Contrast: the production arm's IMPORTED annotations DO need y-flip
+handling — §5 — because those come from raw PDF coords, not from pointer events on an already-rotated box.)
+
+**Zoom on the EmbedPDF arm is genuinely different from production:** there is NO single CSS transform.
+Zoom is handled by the EmbedPDF ZoomPlugin re-laying-out + re-rendering at the new scale
+(`PrototypeSmoothZoomGesture`, `:942-1072`, calls `scope.requestZoomBy(delta, {vx,vy})` on
+ctrl/pinch-wheel via rAF; `stabilizePageDuringZoom` holds the "current page" steady for 450ms so
+page-number telemetry doesn't thrash). The EmbedPDF overlay stays pinned because the whole page box
+(img + overlay) is re-measured/re-rendered together at the new zoom and the overlay's percent coords
+are resolution-independent — NOT because of a shared transform.
+
+---
+
+## 5. ANNOTATION IMPORT (embedded PDF annotations)
+
+### pdf.js arm — full Ink/Square/FreeText import with y-flip via convertToViewport* (production)
+
+This is the substantive annotation-import implementation. `loadPdfAnnotations`
+(`pdf-renderer.tsx:1208-1245`) calls `page.getAnnotations({ intent: "display" })`, maps each through
+`mapPdfAnnotation` (`:510-547`):
+```ts
+const viewport = page.getViewport({ scale: PDF_DPI_FACTOR });          // NO rotation arg
+const [x1, y1, x2, y2] = viewport.convertToViewportRectangle(annotation.rect);  // PDF rect → viewport px (y-flip here)
+const left = Math.min(x1, x2);  const top = Math.min(y1, y2);
+const width = Math.abs(x2 - x1); const height = Math.abs(y2 - y1);
+```
+**Y-flip + rotation are delegated to pdf.js's `convertToViewportRectangle` / `convertToViewportPoint`.**
+PDF user-space has origin bottom-left (Y up); viewport space is top-left (Y down). Converting the raw
+`/Rect` (and ink points) through the viewport applies the bottom-left→top-left flip and any intrinsic
+page rotation — the consumer never writes a manual `h - y` flip for imported annotations (the manual
+flip lives only in `packages/shared/src/coords.ts`, which imported annotations don't use).
+
+**Ink import** (`mapInkPaths`, `:472-508`): reads `annotation.inkLists`, converts each point via
+`viewport.convertToViewportPoint(x, y)` (falls back to `[x,y]`), then stores points relative to the
+annotation box (`viewportPoint[0] - left`, `viewportPoint[1] - top`). Rendered as an SVG `<polyline>`
+in a box-local `viewBox="0 0 width height"` with `vectorEffect="non-scaling-stroke"`
+(`pdf-renderer.tsx:2555-2581`). Subtype switch on `annotation.subtype.toLowerCase() === "ink"`.
+
+Imported annotations become editable overlay objects (`PdfImportedAnnotation`, `:151-171`):
+`left/top/width/height` in natural-px plus `rotation` (starts 0, user-rotatable). The overlay
+(`PdfImportedAnnotationOverlay`, `:2234-2721`) positions each at `left*userScale, top*userScale` inside
+the page wrapper and applies `transform: rotate(${rotation}deg)` for USER-applied rotation (`:2550`).
+Move/resize/rotate handles convert screen delta → local via `rect.width / width` scale factors
+(`localDelta`, `:2289-2308`) — again `getBoundingClientRect`-based. Edit support per subtype
+(`importedAnnotationEditSupport`, `:449-459`): FreeText/Text/Popup/Stamp text-editable; all
+move/resizable. Color (`:440-447`), border width, flags carried as metadata.
+
+### EmbedPDF arm — engine owns import; prototype PURGES baked annotations from the overlay
+
+The PDFium engine parses embedded annotations natively and bakes them into the rendered page
+(`withAnnotations: true`, `:1461-1469`). The prototype does NOT re-map them into a custom overlay.
+On the annotation "loaded" event it purges synced (baked) annotations from the editable overlay so they
+aren't double-drawn (`embedpdf-prototype.tsx:676-707`):
+```ts
+const bakedAnnotations = scope.getAnnotations().filter((a) => a.commitState === "synced");
+for (const a of bakedAnnotations)
+  scope.purgeAnnotation(a.object.pageIndex, String(a.object.id));
+// logs "baked-pdf-annotations" { total, purgedFromOverlay }
+```
+So the EmbedPDF arm has **no manual Ink/y-flip mapping at all** — imported annotations are part of the
+rasterized page image; the editable `AnnotationLayer` (`@embedpdf/plugin-annotation`) handles NEW
+ink/highlight creation. The only custom overlay strokes are the prototype's own pen/highlight polylines
+(§4), which are pointer-captured percent coords, not imported PDF annotations.
+
+---
+
+## What to copy into our two-arm prototype
+
+**pdf.js arm:**
+- Render each `<Page>` at a hi-res `rasterScale * (96/72)` bitmap inside an inner wrapper that
+  CSS-downscales (`transform: scale(userScale/rasterScale)`) to a natural-size outer box; keep pages at
+  `PAGE_LAYOUT_SCALE = 1` and let ONE outer `transform: scale()` zoom layer own all zoom.
+- Do NOT pass rotation to `getViewport` for rendering — let pdf.js bake intrinsic `/Rotate`. Capture
+  per-page `originalWidth/Height` from `onLoadSuccess` so mixed sizes self-size.
+- Pin overlays via percent-of-page `left:${xPct*100}% / top:${yPct*100}%`, portalled INTO each
+  `[data-page-key]` wrapper so they inherit the zoom transform. Screen→page via the wrapper's
+  `getBoundingClientRect()` (post-transform), never `pageSize*scale`.
+- Drag: convert screen dx/dy → pre-transform via `dx/zoom` for inline `left/top`; persist via
+  `dx/rect.width` (rect already post-transform).
+- Import annotations through `getAnnotations({intent:"display"})` + `viewport.convertToViewportRectangle`
+  / `convertToViewportPoint` to get y-flip + rotation for free; render Ink as box-local SVG polylines
+  with `vectorEffect="non-scaling-stroke"`.
+
+**EmbedPDF arm:**
+- Mount overlays inside `Scroller`'s `renderPage`, sized to `page.rotatedWidth/rotatedHeight` (engine's
+  rotated layout box), using percent-of-box coords + `getBoundingClientRect`.
+- Combine `documentPage.rotation + documentState.rotation` → `effectiveRotation`, pass into
+  `renderPage({ options: { rotation } })`, and key the render cache on rotation.
+- Purge engine-"synced" baked annotations from the editable overlay to avoid double-draw; let the engine
+  bake imported annotations into the page image.
+
+## File references
+- Production renderer: `/tmp/walkthrough-ref/apps/web/src/components/viewer/pdf-renderer.tsx`
+- Production viewer (zoom layer + nesting): `/tmp/walkthrough-ref/apps/web/src/components/viewer/walkthrough-viewer.tsx:1650-1706`
+- Production renderer mount: `/tmp/walkthrough-ref/apps/web/src/components/viewer/asset-canvas.tsx`
+- Pin percent coords + tap mapping: `/tmp/walkthrough-ref/apps/web/src/components/viewer/pin-layer/pin-coords.ts`
+- Rotation-aware canonical math (off hot path): `/tmp/walkthrough-ref/packages/shared/src/coords.ts`
+- Pin portal-into-wrapper: `/tmp/walkthrough-ref/apps/web/src/components/viewer/pin-layer/pin-layer.tsx:688-726`
+- Pin positioning + drag/zoom: `/tmp/walkthrough-ref/apps/web/src/components/viewer/pin-layer/pin.tsx:140-168`
+- Pin overlay: `/tmp/walkthrough-ref/apps/web/src/components/viewer/pin-layer/pin-overlay.tsx`
+- EmbedPDF prototype (dev only): `/tmp/walkthrough-ref/apps/web/src/components/dev/embedpdf-prototype.tsx`
+- EmbedPDF dev routes: `/tmp/walkthrough-ref/apps/web/src/app/dev/embedpdf/{sample,[id],asset/[assetId]}/page.tsx`
+- pdf.js thumbnails/search: `/tmp/walkthrough-ref/apps/web/src/components/viewer/floor-rail.tsx:340-409`
