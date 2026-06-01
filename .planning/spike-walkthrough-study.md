@@ -1,8 +1,8 @@
 # Walkthrough reference repo study — PDF rendering, rotation, overlay pinning, annotation import
 
-Repo (READ-ONLY, cloned): `/tmp/walkthrough-ref` — Isaiah's private "Walkthrough" monorepo.
+Repo (READ-ONLY, cloned): `/Users/isaiahcalvo/Projects/Walkthru` — Isaiah's private "Walkthrough" monorepo.
 Studied 2026-05-31. This OVERWRITES the prior (wrong) version that concluded the repo didn't
-exist. The repo exists at `/tmp/walkthrough-ref` and was read in full.
+exist. The repo exists at `/Users/isaiahcalvo/Projects/Walkthru` and was read in full.
 
 Bottom line up front: **the production viewer renders with pdf.js (react-pdf), NOT EmbedPDF.**
 EmbedPDF/PDFium exists only as a dev-only prototype under `app/dev/embedpdf/*`. Two
@@ -326,14 +326,14 @@ ink/highlight creation. The only custom overlay strokes are the prototype's own 
   bake imported annotations into the page image.
 
 ## File references
-- Production renderer: `/tmp/walkthrough-ref/apps/web/src/components/viewer/pdf-renderer.tsx`
-- Production viewer (zoom layer + nesting): `/tmp/walkthrough-ref/apps/web/src/components/viewer/walkthrough-viewer.tsx:1650-1706`
-- Production renderer mount: `/tmp/walkthrough-ref/apps/web/src/components/viewer/asset-canvas.tsx`
-- Pin percent coords + tap mapping: `/tmp/walkthrough-ref/apps/web/src/components/viewer/pin-layer/pin-coords.ts`
-- Rotation-aware canonical math (off hot path): `/tmp/walkthrough-ref/packages/shared/src/coords.ts`
-- Pin portal-into-wrapper: `/tmp/walkthrough-ref/apps/web/src/components/viewer/pin-layer/pin-layer.tsx:688-726`
-- Pin positioning + drag/zoom: `/tmp/walkthrough-ref/apps/web/src/components/viewer/pin-layer/pin.tsx:140-168`
-- Pin overlay: `/tmp/walkthrough-ref/apps/web/src/components/viewer/pin-layer/pin-overlay.tsx`
-- EmbedPDF prototype (dev only): `/tmp/walkthrough-ref/apps/web/src/components/dev/embedpdf-prototype.tsx`
-- EmbedPDF dev routes: `/tmp/walkthrough-ref/apps/web/src/app/dev/embedpdf/{sample,[id],asset/[assetId]}/page.tsx`
-- pdf.js thumbnails/search: `/tmp/walkthrough-ref/apps/web/src/components/viewer/floor-rail.tsx:340-409`
+- Production renderer: `/Users/isaiahcalvo/Projects/Walkthru/apps/web/src/components/viewer/pdf-renderer.tsx`
+- Production viewer (zoom layer + nesting): `/Users/isaiahcalvo/Projects/Walkthru/apps/web/src/components/viewer/walkthrough-viewer.tsx:1650-1706`
+- Production renderer mount: `/Users/isaiahcalvo/Projects/Walkthru/apps/web/src/components/viewer/asset-canvas.tsx`
+- Pin percent coords + tap mapping: `/Users/isaiahcalvo/Projects/Walkthru/apps/web/src/components/viewer/pin-layer/pin-coords.ts`
+- Rotation-aware canonical math (off hot path): `/Users/isaiahcalvo/Projects/Walkthru/packages/shared/src/coords.ts`
+- Pin portal-into-wrapper: `/Users/isaiahcalvo/Projects/Walkthru/apps/web/src/components/viewer/pin-layer/pin-layer.tsx:688-726`
+- Pin positioning + drag/zoom: `/Users/isaiahcalvo/Projects/Walkthru/apps/web/src/components/viewer/pin-layer/pin.tsx:140-168`
+- Pin overlay: `/Users/isaiahcalvo/Projects/Walkthru/apps/web/src/components/viewer/pin-layer/pin-overlay.tsx`
+- EmbedPDF prototype (dev only): `/Users/isaiahcalvo/Projects/Walkthru/apps/web/src/components/dev/embedpdf-prototype.tsx`
+- EmbedPDF dev routes: `/Users/isaiahcalvo/Projects/Walkthru/apps/web/src/app/dev/embedpdf/{sample,[id],asset/[assetId]}/page.tsx`
+- pdf.js thumbnails/search: `/Users/isaiahcalvo/Projects/Walkthru/apps/web/src/components/viewer/floor-rail.tsx:340-409`

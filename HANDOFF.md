@@ -16,8 +16,9 @@ interactive overlay, live metrics, and a "Save log" button that downloads
 ## Read these first (researched this session — concrete facts)
 - `.planning/spike-pdf-analysis.md` — the real file's exact page geometry + annotations.
 - `.planning/spike-walkthrough-study.md` — how Isaiah's **`IsaiahCalvo/Walkthrough`**
-  repo (PRIVATE — clone with his git creds: `git clone https://github.com/IsaiahCalvo/Walkthrough`;
-  an UNauthenticated check 404s, which earlier misled me) renders rotation + pins
+  repo (PRIVATE; **already cloned locally at `/Users/isaiahcalvo/Projects/Walkthru`** —
+  read it there, do NOT re-clone; an UNauthenticated existence check 404s, which earlier
+  misled me) renders rotation + pins
   overlays + imports annotations. Key facts from it: production renders with **pdf.js
   (react-pdf)**, NOT EmbedPDF (EmbedPDF is a dev-only bake-off there too). It gets
   rotation right by **letting pdf.js bake each page's intrinsic `/Rotate`** (no rotation
@@ -73,11 +74,13 @@ values are stored un-normalized (x0 > x1) — normalize first.
 ## Warnings / what NOT to re-derive
 - Don't re-investigate the EmbedPDF overlay on the *test fixture* — it's provably pinned
   there. The bug is real-file + rotation. Test with the real file.
-- The `IsaiahCalvo/Walkthrough` repo IS real (private). Clone it with Isaiah's git
-  credentials — do NOT trust an unauthenticated existence check (it 404s and misled me
-  this session). It's the authoritative reference for all three tasks; the study doc
-  summarizes it but read the repo's `pdf-renderer.tsx`, `pin-layer/pin-coords.ts`,
-  `dev/embedpdf-prototype.tsx`, and `packages/shared/src/coords.ts` directly.
+- The `IsaiahCalvo/Walkthrough` repo IS real (private) and is **already cloned locally
+  at `/Users/isaiahcalvo/Projects/Walkthru`** — read it there, do NOT re-clone, and do
+  NOT trust an unauthenticated existence check (it 404s and misled me this session). It's
+  the authoritative reference for all three tasks; the study doc summarizes it but read
+  the repo's `apps/web/src/components/viewer/pdf-renderer.tsx`,
+  `.../viewer/pin-layer/pin-coords.ts`, `.../dev/embedpdf-prototype.tsx`, and
+  `packages/shared/src/coords.ts` directly.
 - Keep changes inside `src/prototype/` — this is throwaway and must not touch the real
   viewer (`PDFViewer.jsx`) or the v2.0 invariants.
 - Run `npm run build` + `npm test` after changes (baseline 840/0/6). Direct-to-main; don't
