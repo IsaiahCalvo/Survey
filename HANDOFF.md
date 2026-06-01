@@ -1,57 +1,75 @@
-# Handoff — Survey app (2026-05-29, late session)
+# Handoff — Renderer spike round 3 (2026-05-31)
 
-**Branch**: `main`, working tree CLEAN. **16 commits ahead of `origin/main`, nothing pushed** (Isaiah's direct-to-main workflow: he tests on his dev server, pushes on his own cadence). Starting a fresh session loses nothing — all work is committed.
+**Branch**: `main`, local-only (direct-to-main; nothing pushed). Two spike commits
+landed this session: `fdbf63a3` (real two-arm mini-viewer) and `54ea7478` (EmbedPDF
+zoom-feel match + comparison logger). Build + `npm test` green (840 pass / 0 fail /
+6 skip). Dev server runs on **5173** (Isaiah's) and **5199** (the one I used);
+open the spike at `…:5199/?spike=renderer`.
 
-**Context for the new session**: read `.planning/AUDIT-2026-05-29.md` (full health audit) and the session-moments log for 2026-05-29 (decisions + rationale).
+**The spike** is a throwaway two-arm PDF mini-viewer at `?spike=renderer`
+(`src/prototype/` — RendererSpike, PdfjsArm, EmbedpdfArm, InteractiveOverlay,
+spikeMetrics, spikeLogger). Arm A = pdf.js we own; Arm B = EmbedPDF plugins. Both
+do continuous virtualized scroll, cursor-anchored zoom (matched gains), a shared
+interactive overlay, live metrics, and a "Save log" button that downloads
+`PDF render comparison <timestamp>.log`.
 
----
+## Read these first (researched this session — concrete facts)
+- `.planning/spike-pdf-analysis.md` — the real file's exact page geometry + annotations.
+- `.planning/spike-walkthrough-study.md` — how Isaiah's working repos render rotation
+  and import annotations (the "Walkthrough" repo doesn't exist; the real ones are
+  `takeoff` for rendering and `Survey` for annotation import).
 
-## What got done this session (all committed to local `main`)
+## The 3 tasks Isaiah asked for (this is the next session's work)
 
-- **Viewer break-up, phase 2** — extracted two stateful concerns out of the 32k-line viewer into hooks, each a verbatim, gated relocation (build + `npm test` 840/0/6):
-  - the annotation right-click menu → `src/hooks/useAnnotationContextMenu.jsx`
-  - page operations (add/delete/rotate/reorder/etc.) → `src/hooks/usePageOperations.js`
-  - Viewer is now ~32,489 lines (down ~730 today).
-- **Renderer spike (throwaway)** — `?spike=renderer` dev route (`src/prototype/RendererSpike.jsx` + `NOTES.md`). Arm A (pdf.js) fully wired with a smoothness meter + a visible "crispness cliff" clamp; Arm B (EmbedPDF) is a placeholder. **Awaiting Isaiah's test on his heaviest CAD/survey sheet.**
-- **Health audit** (32-agent read-only sweep) → `.planning/AUDIT-2026-05-29.md`. Overall 5/10. Strong DB/RLS + secret hygiene; the serious items are below.
-- **Safe fixes shipped**: disabled the pdf.js eval path at all 13 PDF-open sites (CVSS-8.8 mitigation); deleted two dead files.
-- **Annotation-fix core (test-first)**: `src/utils/pageAnnotationReindex.js` + 6 passing tests — the pure logic that shifts annotations when pages move. **NOT yet wired** (see below).
+### 1. Pages must render at the CORRECT orientation + size on real imports (root cause found)
+The real file (`…/PDFs from Desktop/Package 2 - Rev 4 -- IC.pdf`) is **36 pages, 3
+geometry combos**: 28 landscape `1224×792` /Rotate 0; **6 pages (indices 5–10) are
+`792×1224` /Rotate 270** (display landscape); 2 portrait `612×792` /Rotate 0. The 6
+rotated pages are the ONLY non-zero rotation **and they carry ALL 3056 annotations.**
 
----
+Our pdf.js arm assumes rotation 0 — it sizes layout from `pageSizes` measured at
+`getViewport({ scale:1, rotation:0 })` and only swaps dims for the manual Rotate
+button. So pages 5–10 come in mis-oriented. **Fix (per the `takeoff` repo): let
+pdf.js bake each page's intrinsic `/Rotate` — call `page.getViewport({ scale })`
+WITHOUT forcing rotation:0, and size the canvas + CSS box + overlay `viewBox` from
+that rotation-corrected viewport (its width/height are already swapped).** Keep the
+manual Rotate button as an *additional* user rotation layered on top. EmbedPDF/PDFium
+already honors `/Rotate` for the page image — but see task 2.
 
-## NEXT — prioritized
+### 2. EmbedPDF annotations not staying pinned on zoom (likely the SAME rotation issue)
+On the uniform test fixture the EmbedPDF overlay is **perfectly pinned** (I measured
+overlay-vs-render = 0px at rest, mid-zoom, and after — so it's not a general bug).
+The drift Isaiah sees is almost certainly on the **rotated pages of his real file**:
+our overlay takes EmbedPDF's `renderPage` width/height (the *displayed*, rotated dims)
+and treats them as the `viewBox` page space. For /Rotate 270 pages the true annotation/
+page space is the UNROTATED `792×1224` box, so the overlay's coordinate basis is rotated
+relative to the page → annotations land wrong and mis-track on zoom. **Reproduce with
+the real file on Arm B, then make the overlay use unrotated page-point dims and apply
+the page rotation consistently for both arms.** (Annotation coords in the PDF are in
+unrotated page space — confirmed.)
 
-### 1. OWNER actions (only Isaiah can — live & exploitable; do first)
-- **GitHub token — DONE 2026-05-29.** Old `gho_` token revoked; replaced with a new fine-grained PAT (Survey repo, Contents R/W) in `.env.local`; verified end-to-end (auth 200 + real test push to the `logs` branch + cleanup). NOTE: the new token still bakes into future builds the same way — the real long-term fix (stop baking it / move log-push server-side, or the build-time env-key guard) is in the audit backlog.
-- **Dev-login password — DONE 2026-05-29.** Old exposed password replaced via the recovery-link session (the email reset redirect points at `localhost:3000` which isn't the running dev port — that redirect URL is worth fixing in Supabase Auth URL config someday). New strong password set + verified (sign-in 200), stored in `.env.local` for auto-login (git-ignored). Same re-bake caveat as the GitHub token — proper fix (don't bake / build-time env guard) is in the backlog.
-- **Syncfusion key — not a credential.** It's a license-validation string (can't access data/accounts), still a hardcoded fallback in source + in git history (commit `991b1e2e`). Lower priority, OUR-side cleanup only (move to env, then drop the fallback, optionally scrub history). No owner action needed. STILL PENDING.
+### 3. Import the PDF's real annotations as interactive (new feature)
+Currently the overlay only shows synthetic seed shapes. Import the file's actual
+annotations: **3049 Ink, 6 Square, 1 FreeText**, all on pages 5–10. Approach (from the
+`Survey` repo): `page.getAnnotations()` (pdf.js) for geometry + types, map PDF
+bottom-left coords via `viewport.convertToViewportRectangle` (handles rotation + y-flip),
+render each in the overlay in page space, make them selectable/movable like the seed
+shapes. **Gotchas:** the 6 Square annotations have NO `/AP` appearance stream (3050/3056
+do) — render them from geometry, not by replaying /AP, or they vanish; and Square `/Rect`
+values are stored un-normalized (x0 > x1) — normalize first.
 
-### 2. REBUILD the renderer spike — v1 was too thin to test (Isaiah's feedback)
-The current `?spike=renderer` is a single-page, flatten-only proof-of-concept and does NOT represent the real workload, so it can't answer the question. Isaiah's required test conditions (build these before judging pdf.js vs EmbedPDF):
-- **Continuous multi-page scroll** of a 100+ page doc with virtualization (mount/unmount page canvases on scroll) — this is THE hard part, not single-page render.
-- **Real, INTERACTIVE annotations on top** (reuse the app's SVG/Fabric overlay, selectable/movable) — a flattened PDF with baked annotations is trivial and proves nothing.
-- **Cursor-centric zoom that HOLDS the level** — current zoom snaps back to 100% (real bug) and isn't anchored to the pointer. Fix: pointer-anchored zoom, persist the committed scale, keep scroll position around the cursor.
-- **Arm B (EmbedPDF) actually running** — `npm i @embedpdf/core @embedpdf/engines`, its headless scroller + tiling/zoom plugins, same overlay + same metrics. Today it's a placeholder.
-Only once those four hold is the crispness/frame-time/memory comparison meaningful. This is a real mini-viewer build (do it WITH Isaiah testing iteratively, not blind). Record the verdict in `src/prototype/NOTES.md`.
-
-### 3. Finish the annotation-data-loss fix (needs owner verification)
-Wire `reindexAnnotationModel` into each `usePageOperations` handler so annotations follow page moves. **Risk**: the wiring must land the reindexed state into the refs the pdfFile-change hydration effect (`PDFViewer.jsx` ~16461) captures as "previous" — timing/effect-ordering sensitive, only validatable by running the app. Verify by deleting a page on a THROWAWAY copy and confirming annotations follow. Local files also need a stable id (today `getPDFId` = name+size → wipes annotations on any page op); that touches shared identity, do it carefully. Duplicate/paste copying annotations onto the new page is a flagged follow-up (needs marker/callout id regeneration).
-
-### 4. Audit backlog (`.planning/AUDIT-2026-05-29.md`, ranked)
-Excel two-way sync last-write-wins clobber → add change-conflict guard (live verify); MS Graph tokens plaintext at rest → encrypt; CRDT callout delete authority client-side-only → server guard; survey-marker cascade-delete suppressor; then big owner-tested milestones: pdf.js 3→5, Electron upgrade, the stamp tool (renders nothing — decide scope).
-
-### 5. Standing/older threads
-- Keyboard copy/cut for annotations (Command+C/X) were never wired — small feature, needs the selection layer (deferred).
-- Browser-level workflow tests — Isaiah asked; none exist today; worth adding to catch page-op/annotation regressions.
-- Continue the viewer break-up (history/undo or Excel-sync concerns next, per the coupling map).
-
----
-
-## Warnings / invariants (unchanged)
-- NO-GO in the viewer: the Syncfusion zoom/scale lifecycle and the per-page overlay portal loop. The four CLAUDE.md invariants are law (container-aware canvas sizing; SVG viewBox owns zoom; never remove the zoom-generation signal; single-name Fabric fonts).
-- Every viewer edit is gated: `node scripts/check-undef.mjs` set-diff (zero new unresolved) + `vite build` + `npm test` (currently **840 pass / 0 fail / 6 skip**). One concern → one commit. Don't push without Isaiah's say-so.
+## Warnings / what NOT to re-derive
+- Don't re-investigate the EmbedPDF overlay on the *test fixture* — it's provably pinned
+  there. The bug is real-file + rotation. Test with the real file.
+- The "Walkthrough" repo is a mis-remembered name — use `takeoff` + `Survey` (see study doc).
+- Keep changes inside `src/prototype/` — this is throwaway and must not touch the real
+  viewer (`PDFViewer.jsx`) or the v2.0 invariants.
+- Run `npm run build` + `npm test` after changes (baseline 840/0/6). Direct-to-main; don't
+  push without Isaiah's say-so.
 
 ## Resume
-1. `git status` (expect clean) + `npm test` (expect 840/0/6). If not green, stop and investigate.
-2. Read `.planning/AUDIT-2026-05-29.md` + this file.
-3. Recommend to Isaiah: do the three credential rotations, then test the renderer spike, then finish + verify the annotation fix.
+1. Read the two `.planning/spike-*.md` docs + `src/prototype/NOTES.md`.
+2. Open `…:5199/?spike=renderer`, load the real file on BOTH arms, reproduce the rotated-page
+   mis-orientation + annotation drift (use the Save-log button to capture a baseline).
+3. Fix orientation first (task 1) on both arms — that likely fixes most of task 2 — then
+   verify the overlay basis on rotated pages, then build annotation import (task 3).
