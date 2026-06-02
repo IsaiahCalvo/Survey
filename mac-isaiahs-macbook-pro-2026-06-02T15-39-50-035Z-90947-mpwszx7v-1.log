@@ -1,0 +1,16 @@
+===== SurveyApp Save Log =====
+version:   0.1.46
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1512x833
+locale:    en-US
+timestamp: 2026-06-02T15:39:50.034Z (6/2/2026, 11:39:50 AM)
+==============================
+console.error @ [CloudSync][push] upsertAnnotationsByPage failed {"elapsedMs":87,"pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","documentId":"00e1cde9-449b-4771-9743-37bd604557a9","totalRows":2,"userDrawnObjects":2,"importedObjects":0,"error":"ON CONFLICT DO UPDATE command cannot affect row a second time"}
+console.error @ [CloudSync][push] upsertAnnotationsByPage failed {"elapsedMs":108,"pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","documentId":"00e1cde9-449b-4771-9743-37bd604557a9","totalRows":2,"userDrawnObjects":2,"importedObjects":0,"error":"ON CONFLICT DO UPDATE command cannot affect row a second time"}
+console.warn @ [CloudSync][source-of-truth] cutover initial hydrate kept Y.Doc snapshot {"documentId":"00e1cde9-449b-4771-9743-37bd604557a9","pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","cutoverTs":"2026-05-29T13:14:41.426+00:00","ydocFabricCount":531,"ydocCalloutCount":0,"supabaseFabricCount":540,"supabaseCalloutCount":1,"cloudError":null,"legacyQueueSize":4,"dualWriteQueueSize":0,"rule":"Y.Doc used temporarily because local writes are still queued"}
+console.error @ [CloudSync][push] upsertAnnotationsByPage failed {"elapsedMs":140,"pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","documentId":"00e1cde9-449b-4771-9743-37bd604557a9","totalRows":2,"userDrawnObjects":2,"importedObjects":0,"error":"ON CONFLICT DO UPDATE command cannot affect row a second time"}
+console.error @ [CloudSync][push] upsertAnnotationsByPage failed {"elapsedMs":47,"pdfId":"SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080","documentId":"00e1cde9-449b-4771-9743-37bd604557a9","totalRows":2,"userDrawnObjects":2,"importedObjects":0,"error":"ON CONFLICT DO UPDATE command cannot affect row a second time"}
