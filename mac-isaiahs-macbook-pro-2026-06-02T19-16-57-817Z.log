@@ -1,0 +1,45 @@
+===== SurveyApp Save Log =====
+version:   0.1.46
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1203x833
+locale:    en-US
+timestamp: 2026-06-02T19:16:57.814Z (6/2/2026, 3:16:57 PM)
+==============================
+console.error @ Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s 
+    at PDFViewer (http://localhost:5173/src/PDFViewer.jsx?t=1780427410268:255:29)
+    at YDocProviderInner (http://localhost:5173/src/components/collab/YDocProvider.jsx?t=1780427410268:134:30)
+    at YDocProvider (http://localhost:5173/src/components/collab/YDocProvider.jsx?t=1780427410268:118:32)
+    at div
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/AppShell.jsx?t=1780427410268:51:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:49:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:31:5)
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 5000ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 5000ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+console.error @ [CloudSync][hydrate] loadAllNonSurveyMarkerAnnotations failed {"elapsedMs":49710,"error":"canceling statement due to statement timeout"}
+console.error @ [AnnotationSync] Error fetching annotations: {"code":"57014","details":null,"hint":null,"message":"canceling statement due to statement timeout"}
+console.error @ [DocumentSync] Error loading annotations: {"code":"57014","details":null,"hint":null,"message":"canceling statement due to statement timeout"}
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 5000ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 5000ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 5000ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 5000ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 5000ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 5000ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 5000ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 5000ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 5000ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 5000ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 5000ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 5000ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 5000ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 5000ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 5000ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 5000ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
