@@ -1,0 +1,15 @@
+===== SurveyApp Save Log =====
+version:   0.1.46
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1203x833
+locale:    en-US
+timestamp: 2026-06-02T18:35:27.981Z (6/2/2026, 2:35:27 PM)
+==============================
+console.error @ [CloudSync][hydrate] loadAllNonSurveyMarkerAnnotations failed {"elapsedMs":9321,"error":"canceling statement due to statement timeout"}
+console.warn @ [CloudSync][source-of-truth] cutover initial hydrate kept Y.Doc snapshot {"documentId":"5fa31b86-a0ce-481d-b20c-66be5f2f30fc","pdfId":"Package 2 - Rev 4 -- IC.pdf-6311068","cutoverTs":"2026-05-17T15:55:28.374+00:00","ydocFabricCount":2805,"ydocCalloutCount":0,"supabaseFabricCount":0,"supabaseCalloutCount":0,"cloudError":"canceling statement due to statement timeout","legacyQueueSize":0,"dualWriteQueueSize":0,"rule":"Y.Doc used because Supabase durable snapshot could not be read"}
+console.error @ [CloudSync][hydrate] loadAllNonSurveyMarkerAnnotations failed {"elapsedMs":37169,"error":"canceling statement due to statement timeout"}
+console.warn @ [CloudSync][cutover-recovery] Supabase durable snapshot failed {"contextLabel":"cutover-post-subscribe-empty-view-recovery","documentId":"5fa31b86-a0ce-481d-b20c-66be5f2f30fc","error":"canceling statement due to statement timeout"}
