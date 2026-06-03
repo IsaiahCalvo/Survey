@@ -243,11 +243,9 @@ export async function recordDocumentHistoryEvent(row) {
   cacheLocalHistoryRow(row);
   if (!supabase) return { data: null, error: null };
   const { id: _localId, __local: _localOnly, ...dbRow } = row;
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from('document_history_events')
-    .upsert(dbRow, { onConflict: 'document_id,client_event_id', ignoreDuplicates: true })
-    .select()
-    .maybeSingle();
+    .upsert(dbRow, { onConflict: 'document_id,client_event_id', ignoreDuplicates: true });
   if (error) {
     if (isMissingHistoryTableError(error)) {
       if (!warnedMissingTable) {
@@ -258,7 +256,7 @@ export async function recordDocumentHistoryEvent(row) {
     }
     console.error('[DocumentHistory] record failed:', error);
   }
-  return { data, error };
+  return { data: null, error };
 }
 
 export async function recordDocumentHistoryDebugEvent(event, context) {
