@@ -64,6 +64,14 @@ export const MSGraphProvider = ({ children }) => {
     const [connectionRestored, setConnectionRestored] = useState(false);
     const [needsReconnect, setNeedsReconnect] = useState(false);
     const tokenRef = useRef(null);
+    // In-memory cache of the connected_services token metadata + account fields.
+    // Populated once on restore (and on each refresh/store success) so that
+    // ensureFreshToken() — called before every Graph operation, including during
+    // 5s live-sync polling — does NOT re-read connected_services from the DB on
+    // every invocation. Shape mirrors the fetchStoredTokens() row subset we use:
+    //   { refresh_token, access_token, expires_at, tenant_id, account_id,
+    //     account_email, account_name }
+    const tokenMetadataRef = useRef(null);
     const oauthProcessing = useRef(false); // Prevent duplicate OAuth callback processing
     const refreshStateRef = useRef({
         inFlight: null,
@@ -86,6 +94,25 @@ export const MSGraphProvider = ({ children }) => {
         });
         setGraphClient(client);
         return client;
+    }, []);
+
+    // Populate the in-memory token metadata cache from a freshly read/written
+    // token + account snapshot. Always called alongside a DB read or write so
+    // the cache stays the source of truth for ensureFreshToken().
+    const setTokenMetadataCache = useCallback((tokens, accountFields) => {
+        if (!tokens?.refresh_token) {
+            tokenMetadataRef.current = null;
+            return;
+        }
+        tokenMetadataRef.current = {
+            refresh_token: tokens.refresh_token,
+            access_token: tokens.access_token,
+            expires_at: tokens.expires_at,
+            tenant_id: accountFields?.tenant_id ?? null,
+            account_id: accountFields?.account_id ?? null,
+            account_email: accountFields?.account_email ?? null,
+            account_name: accountFields?.account_name ?? null,
+        };
     }, []);
 
     // Store tokens in Supabase database
@@ -113,11 +140,21 @@ export const MSGraphProvider = ({ children }) => {
                     last_used_at: new Date().toISOString(),
                 }, { onConflict: 'user_id,service_name' });
 
+            if (!error) {
+                // Keep the in-memory cache in lockstep with the persisted row so
+                // ensureFreshToken() can read it without another DB round-trip.
+                setTokenMetadataCache(tokens, {
+                    tenant_id: accountInfo.tenantId,
+                    account_id: accountInfo.homeAccountId,
+                    account_email: accountInfo.username,
+                    account_name: accountInfo.name,
+                });
+            }
             return !error;
         } catch (err) {
             return false;
         }
-    }, [user]);
+    }, [user, setTokenMetadataCache]);
 
     // Fetch stored tokens from database
     const fetchStoredTokens = useCallback(async () => {
@@ -203,6 +240,7 @@ export const MSGraphProvider = ({ children }) => {
                         setIsAuthenticated(false);
                         setGraphClient(null);
                         tokenRef.current = null;
+                        tokenMetadataRef.current = null;
 
                         if (user && isSupabaseAvailable()) {
                             try {
@@ -309,6 +347,14 @@ export const MSGraphProvider = ({ children }) => {
 
                 const { metadata, account_email, account_name, account_id } = storedData;
                 const { access_token, refresh_token, expires_at } = metadata;
+                // Seed the in-memory cache from this one restore read so subsequent
+                // ensureFreshToken() calls don't have to re-read connected_services.
+                setTokenMetadataCache(metadata, {
+                    tenant_id: metadata.tenant_id,
+                    account_id,
+                    account_email,
+                    account_name,
+                });
                 const refreshState = refreshStateRef.current;
                 const nowMs = Date.now();
                 const persistedBlockedUntil = readRefreshBlockUntil();
@@ -375,7 +421,7 @@ export const MSGraphProvider = ({ children }) => {
 
         restoreConnection();
         return () => { isMounted = false; };
-    }, [user, fetchStoredTokens, storeTokens, refreshAccessToken, initializeGraphClient]);
+    }, [user, fetchStoredTokens, storeTokens, refreshAccessToken, initializeGraphClient, setTokenMetadataCache]);
 
     // Periodic token refresh - refresh every 10 minutes to stay ahead of expiry
     // Microsoft access tokens typically last 60-90 minutes, but can be revoked anytime
@@ -433,8 +479,25 @@ export const MSGraphProvider = ({ children }) => {
             return false;
         }
 
-        const storedData = await fetchStoredTokens();
-        if (!storedData?.metadata?.refresh_token) {
+        // Read token metadata from the in-memory cache. Only fall back to a DB
+        // read when the cache is cold (never populated this session) — this
+        // eliminates the per-operation connected_services read that otherwise
+        // fired on every ensureFreshToken() call (~12/min during live-sync).
+        let metadata = tokenMetadataRef.current;
+        if (!metadata) {
+            const storedData = await fetchStoredTokens();
+            if (storedData?.metadata) {
+                setTokenMetadataCache(storedData.metadata, {
+                    tenant_id: storedData.metadata.tenant_id,
+                    account_id: storedData.account_id,
+                    account_email: storedData.account_email,
+                    account_name: storedData.account_name,
+                });
+                metadata = tokenMetadataRef.current;
+            }
+        }
+
+        if (!metadata?.refresh_token) {
             setNeedsReconnect(true);
             setIsAuthenticated(false);
             setGraphClient(null);
@@ -442,7 +505,6 @@ export const MSGraphProvider = ({ children }) => {
             return false;
         }
 
-        const { metadata } = storedData;
         const now = Math.floor(Date.now() / 1000);
 
         // Refresh if token expires within 10 minutes
@@ -451,9 +513,9 @@ export const MSGraphProvider = ({ children }) => {
             if (newTokens) {
                 tokenRef.current = newTokens.access_token;
                 await storeTokens(newTokens, {
-                    homeAccountId: storedData.account_id,
-                    username: storedData.account_email,
-                    name: storedData.account_name,
+                    homeAccountId: metadata.account_id,
+                    username: metadata.account_email,
+                    name: metadata.account_name,
                     tenantId: metadata.tenant_id,
                 });
                 setNeedsReconnect(false);
@@ -474,7 +536,7 @@ export const MSGraphProvider = ({ children }) => {
             tokenRef.current = metadata.access_token;
         }
         return true;
-    }, [user, needsReconnect, fetchStoredTokens, refreshAccessToken, storeTokens]);
+    }, [user, needsReconnect, fetchStoredTokens, refreshAccessToken, storeTokens, setTokenMetadataCache]);
 
     const clearOAuthSession = useCallback(() => {
         sessionStorage.removeItem('ms_pkce_verifier');
@@ -681,6 +743,7 @@ export const MSGraphProvider = ({ children }) => {
             setGraphClient(null);
             setNeedsReconnect(false);
             tokenRef.current = null;
+            tokenMetadataRef.current = null;
             refreshStateRef.current.cooldownUntil = 0;
             refreshStateRef.current.hardBlockedUntil = 0;
             refreshStateRef.current.lastErrorCode = null;
