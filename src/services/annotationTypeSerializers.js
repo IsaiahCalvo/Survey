@@ -70,7 +70,8 @@ const SUPPORTED_DB_TYPES = new Set([
   'sticky_note',
   'callout',
   'counter',
-  'eraser'
+  'eraser',
+  'form-field'
 ]);
 
 function hasFabricObjectPayload(row) {
@@ -146,6 +147,7 @@ export function fabricObjectToDbType(fabricObj) {
   if (dataKind === 'callout') return 'callout';
   if (dataKind === 'sticky_note' || dataKind === 'sticky-note') return 'sticky_note';
   if (dataKind === 'eraser') return 'eraser';
+  if (dataKind === 'form-field') return 'form-field';
 
   const fabricType = String(fabricObj.type || '').toLowerCase();
   return FABRIC_TYPE_TO_DB_TYPE[fabricType] || null;

@@ -35,7 +35,12 @@ import {
   // this hook's behavior is byte-identical to pre-Phase-30 (legacy-only path).
   dualWriteFabricCommit,
   dualWriteFabricDelete,
-  NON_HIGHLIGHT_TYPES
+  NON_HIGHLIGHT_TYPES,
+  // DB-sync audit #1 — fast-open skip of the ~25-trip durable re-read. The cheap,
+  // delete-safe, size-independent path reads the per-document change marker; the
+  // bounded count probe is the fallback for snapshots written before the marker.
+  loadAllTypesOwnedWatermark,
+  loadDocumentAnnotationsChangedAt
 } from '../services/annotationCloudSync.js';
 import { migrateLocalAnnotationsToCloud, hasMigrationRun } from '../services/cloudSyncMigration.js';
 import {
@@ -82,6 +87,13 @@ import {
 } from '../utils/annotationSyncDelta.js';
 import { shouldApplyDedupeResync } from '../utils/dedupeResyncSafety.js';
 import { resolveSafeSnapshot } from '../utils/safeSnapshot.js';
+import { isSnapshotEnabled } from '../lib/collab/snapshotFeatureFlag.js';
+import {
+  writeByPageSnapshot,
+  readByPageSnapshot,
+  computeRowsWatermark,
+  isSnapshotWatermarkCurrent,
+} from '../lib/collab/snapshotStore.js';
 
 const DEFAULT_DEBOUNCE_MS = 800; // mid-drag pushes are coalesced into one upsert
 const CALLOUT_WIPE_GRACE_MS = 2500;
@@ -253,6 +265,85 @@ function hasQueuedLocalAnnotationWrites(documentId, userId) {
     legacyQueueSize,
     dualWriteQueueSize,
   };
+}
+
+// DB-sync audit #1 — fast-open skip of the ~25-trip durable re-read.
+//
+// Cap on the owned-row set we'll attempt the exact-count watermark probe for.
+// Above this, the count scan risks the Postgres statement timeout under RLS, so
+// we fall back to the durable read instead (see tryWatermarkSkipDurableRead).
+// Lifts once the cheap server-side change marker replaces the count probe.
+const WATERMARK_PROBE_MAX_ROWS = 5000;
+//
+// When the snapshot we just painted carries a complete watermark AND no local
+// writes are queued AND a cheap 2-trip probe confirms document_annotations is
+// unchanged since the snapshot was built, we return a SYNTHETIC durable result
+// sourced from the snapshot itself. Because a matching (rowCount, maxUpdatedAt)
+// proves the row set is identical, this synthetic result is byte-equivalent to
+// what loadCloudWithEmptyVerify would have read — so every downstream guard,
+// the Y.Doc reshape, and the source-of-truth/wrong-page heal behave exactly as
+// today, just without the ~25 sequential SELECTs.
+//
+// Returns null (caller runs the real durable read) on ANY uncertainty: snapshot
+// disabled, no/partial snapshot meta, queued local writes, probe error, or
+// watermark mismatch. Conservative by construction — it can only ever AVOID a
+// read it would otherwise have made redundantly.
+function watermarkSkipResult(paintedSnapshot) {
+  return {
+    annotationsByPage: paintedSnapshot.byPage || {},
+    callouts: Array.isArray(paintedSnapshot.callouts) ? paintedSnapshot.callouts : [],
+    error: null,
+    __watermarkSkipped: true,
+  };
+}
+
+async function tryWatermarkSkipDurableRead(documentId, paintedSnapshot, queuedHasPending, liveChangedAt, label) {
+  if (!isSnapshotEnabled()) return null;
+  const meta = paintedSnapshot?.meta;
+  if (!meta || meta.calloutsComplete !== true) return null;
+  if (queuedHasPending) return null;
+
+  // PREFERRED PATH — the per-document change marker (documents.annotations_changed_at).
+  // One cheap single-row read, works on ANY doc size, and catches deletes. We skip
+  // only on an exact match: any insert/update/delete moves the marker.
+  if (meta.changedAt != null && liveChangedAt != null) {
+    const match = Date.parse(meta.changedAt) === Date.parse(liveChangedAt);
+    if (match) {
+      cloudSyncHookDebug('[CloudSync][watermark] durable re-read SKIPPED via change marker ' +
+        JSON.stringify({ documentId, label, changedAt: liveChangedAt }));
+      return watermarkSkipResult(paintedSnapshot);
+    }
+    return null; // marker present and moved → something changed → durable read
+  }
+
+  // FALLBACK PATH — snapshot predates the marker (or the column is not live yet).
+  // Use the (rowCount, maxUpdatedAt) probe, but only when the row set is small
+  // enough to COUNT cheaply: the exact count scans every owned row under RLS and
+  // can hit the Postgres statement timeout (57014) on large docs (~3.7s at 22k).
+  // Above the cap, fall through to the durable read (today's behavior, no
+  // regression); these docs get the marker path on their next open after a write.
+  if (typeof meta.sourceRowCount === 'number' && meta.sourceRowCount > WATERMARK_PROBE_MAX_ROWS) {
+    cloudSyncHookDebug('[CloudSync][watermark] no marker + row set too large for a cheap count — durable read ' +
+      JSON.stringify({ documentId, label, rows: meta.sourceRowCount, threshold: WATERMARK_PROBE_MAX_ROWS }));
+    return null;
+  }
+  let live;
+  try {
+    live = await loadAllTypesOwnedWatermark(documentId);
+  } catch (err) {
+    cloudSyncHookDebug('[CloudSync][watermark] count probe threw — running durable read ' +
+      JSON.stringify({ documentId, label, err: err?.message || String(err) }));
+    return null;
+  }
+  if (!live || live.error) return null;
+  if (!isSnapshotWatermarkCurrent(meta, live)) return null;
+  cloudSyncHookDebug('[CloudSync][watermark] durable re-read SKIPPED via count probe ' + JSON.stringify({
+    documentId,
+    label,
+    rowCount: live.rowCount,
+    maxUpdatedAt: live.maxUpdatedAt,
+  }));
+  return watermarkSkipResult(paintedSnapshot);
 }
 // 2026-04-26 — How long to wait before re-asking the cloud when the first read
 // came back empty but the device still shows annotations. Long enough for a
@@ -650,9 +741,17 @@ export function useAnnotationCloudSync({
     const __resolvedTypeBreakdown = {};
     const __skipReasons = {};
     const __skipSamples = [];
-    for (const page of Object.values(annotationsByPageArg || {})) {
+    for (const [pageKey, page] of Object.entries(annotationsByPageArg || {})) {
       if (!page || !Array.isArray(page.objects)) continue;
       for (const fabricObj of page.objects) {
+        // The page lives only as the byPage KEY here. Stamp it onto the object
+        // (only when missing) so the bridge records pageNumber on the Y.Map;
+        // without it a later re-hydrate defaults the page to 1 and collapses
+        // every annotation onto the first page. Mirrors crdtBackfill's stamping.
+        if (fabricObj && fabricObj.pageNumber == null) {
+          const __pn = Number(pageKey);
+          if (Number.isFinite(__pn)) fabricObj.pageNumber = __pn;
+        }
         __detected++;
         const resolved = resolveCrdtFanOutAnnotationType(fabricObj, NON_HIGHLIGHT_TYPES);
         summarizeTypeBreakdownValue(__rawTypeBreakdown, resolved.rawType || 'unknown');
@@ -965,6 +1064,50 @@ export function useAnnotationCloudSync({
         setStatus({ stage: 'hydrating' });
         cloudSyncHookDebug('[CloudSync][hook] stage=hydrating');
 
+        // Phase 32 — snapshot-first paint (fast open). DEFAULT OFF.
+        // If a row-sourced snapshot exists, paint the (heavy) annotations
+        // immediately so the page is not blank during the slow durable read.
+        // The durable read + source-of-truth gate below run UNCHANGED and
+        // REPLACE this paint with the authoritative, complete result (which also
+        // brings callouts) — so the wrong-page heal is fully preserved. When no
+        // snapshot exists, readByPageSnapshot returns null and behavior is
+        // byte-identical to today.
+        // DB-sync audit #1 — hold the painted snapshot (with its embedded
+        // watermark) so the durable re-read below can be skipped when the snapshot
+        // is provably current.
+        let paintedSnapshot = null;
+        if (isSnapshotEnabled()) {
+          try {
+            const snap = await readByPageSnapshot(documentId, supabase);
+            if (!cancelled && snap && Object.keys(snap.byPage).length > 0) {
+              paintedSnapshot = snap;
+              const snapCount = countFabricObjects(snap.byPage);
+              setAnnotationsByPage(() => {
+                lastByPageRef.current = snap.byPage;
+                return snap.byPage;
+              });
+              hydratedRef.current = true;
+              markInitialHydration({ ready: true, source: 'snapshot-prefetch', count: snapCount });
+              setStatus({ stage: 'synced', count: snapCount, source: 'snapshot-prefetch' });
+              cloudSyncHookDebug('[CloudSync][snapshot] prefetch painted ' + JSON.stringify({ documentId, snapCount }));
+            }
+          } catch (snapErr) {
+            console.warn('[CloudSync][snapshot] prefetch failed, continuing with durable read: ' +
+              (snapErr?.message || String(snapErr)));
+          }
+        }
+
+        // DB-sync audit #1 — read the per-document change marker ONCE per open
+        // (cheap single-row read, captured BEFORE the durable read so it is a
+        // conservative "as of before the read" stamp). Used both to DECIDE the
+        // fast-open skip and to STAMP any freshly-written snapshot. Null when the
+        // marker column is not live yet → callers fall back to the count probe.
+        let liveChangedAt = null;
+        if (isSnapshotEnabled()) {
+          liveChangedAt = await loadDocumentAnnotationsChangedAt(documentId);
+          if (cancelled) return;
+        }
+
         // Phase 31 Plan 04 — cutover-aware hydrate branch.
         //
         // If documents.cutover_completed_at is NOT NULL, the doc has been
@@ -1124,11 +1267,18 @@ export function useAnnotationCloudSync({
               (__diagErr?.message || String(__diagErr)));
           }
           const queuedLocalWrites = hasQueuedLocalAnnotationWrites(documentId, userId);
-          const durableCloud = await loadCloudWithEmptyVerify(documentId, {
-            localFabricCount: __ydocCount,
-            localCalloutCount: calloutsFromYDoc.length,
-            contextLabel: 'cutover-source-of-truth'
-          });
+          // DB-sync audit #1 — skip the ~25-trip durable sweep when the painted
+          // snapshot is provably current; else read durably exactly as before.
+          let durableCloud = await tryWatermarkSkipDurableRead(
+            documentId, paintedSnapshot, queuedLocalWrites.hasPending, liveChangedAt, 'cutover-source-of-truth'
+          );
+          if (!durableCloud) {
+            durableCloud = await loadCloudWithEmptyVerify(documentId, {
+              localFabricCount: __ydocCount,
+              localCalloutCount: calloutsFromYDoc.length,
+              contextLabel: 'cutover-source-of-truth'
+            });
+          }
           lastCloudRefreshAtRef.current = Date.now();
           if (cancelled) {
             cloudSyncHookDebug('[CloudSync][source-of-truth] cutover source check cancelled mid-flight');
@@ -1136,6 +1286,21 @@ export function useAnnotationCloudSync({
           }
           const durableByPage = durableCloud?.annotationsByPage || {};
           const durableCallouts = Array.isArray(durableCloud?.callouts) ? durableCloud.callouts : [];
+          // Phase 32 — refresh the row-sourced snapshot from this authoritative
+          // (complete) durable result so the NEXT open is fast. Fire-and-forget.
+          // Skipped when we served from the snapshot (it is already current and
+          // already carries a watermark — rewriting would be a redundant write).
+          if (isSnapshotEnabled() && !durableCloud?.error && !durableCloud?.__watermarkSkipped
+            && (Object.keys(durableByPage).length > 0 || durableCallouts.length > 0)) {
+            const wm = computeRowsWatermark(durableCloud.rawRows);
+            writeByPageSnapshot(documentId, durableByPage, durableCallouts, supabase, {
+              changedAt: liveChangedAt,
+              sourceMaxUpdatedAt: wm.maxUpdatedAt,
+              sourceRowCount: wm.rowCount,
+              calloutsComplete: true,
+              schema: 1,
+            });
+          }
           const safeDurableByPage = resolveSafeSnapshot({
             current: lastByPageRef.current || {},
             incoming: durableByPage,
@@ -1441,11 +1606,18 @@ export function useAnnotationCloudSync({
         // values React handed us when the effect committed.
         const localFabricAtHydrate = countFabricObjects(annotationsByPage);
         const localCalloutAtHydrate = calloutCountSafe(callouts);
-        cloud = await loadCloudWithEmptyVerify(documentId, {
-          localFabricCount: localFabricAtHydrate,
-          localCalloutCount: localCalloutAtHydrate,
-          contextLabel: 'initial-hydrate'
-        });
+        // DB-sync audit #1 — same fast-open skip on the legacy/cold path.
+        const coldQueuedWrites = hasQueuedLocalAnnotationWrites(documentId, userId);
+        cloud = await tryWatermarkSkipDurableRead(
+          documentId, paintedSnapshot, coldQueuedWrites.hasPending, liveChangedAt, 'initial-hydrate'
+        );
+        if (!cloud) {
+          cloud = await loadCloudWithEmptyVerify(documentId, {
+            localFabricCount: localFabricAtHydrate,
+            localCalloutCount: localCalloutAtHydrate,
+            contextLabel: 'initial-hydrate'
+          });
+        }
         lastCloudRefreshAtRef.current = Date.now();
         if (cancelled) {
           cloudSyncHookDebug('[CloudSync][hook] hydrate cancelled mid-flight');
@@ -1486,6 +1658,19 @@ export function useAnnotationCloudSync({
             ? Object.keys(cloud.annotationsByPage).length : 0;
           const cloudCalloutCount = Array.isArray(cloud.callouts)
             ? cloud.callouts.length : 0;
+          // Phase 32 — refresh the row-sourced snapshot from this authoritative
+          // legacy-path result so the NEXT open is fast. Fire-and-forget. Skipped
+          // when served from the snapshot (already current + already watermarked).
+          if (isSnapshotEnabled() && !cloud.__watermarkSkipped && (cloudFabricPages > 0 || cloudCalloutCount > 0)) {
+            const wm = computeRowsWatermark(cloud.rawRows);
+            writeByPageSnapshot(documentId, cloud.annotationsByPage || {}, cloud.callouts || [], supabase, {
+              changedAt: liveChangedAt,
+              sourceMaxUpdatedAt: wm.maxUpdatedAt,
+              sourceRowCount: wm.rowCount,
+              calloutsComplete: true,
+              schema: 1,
+            });
+          }
           const replaceFabric = migrationDone || cloudFabricPages > 0;
           const replaceCallouts = migrationDone || cloudCalloutCount > 0;
           if (replaceFabric) {

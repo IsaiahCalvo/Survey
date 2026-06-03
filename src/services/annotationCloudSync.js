@@ -13,6 +13,7 @@
  */
 
 import { supabase } from '../supabaseClient.js';
+import { collectKeysetRows } from './annotationReadPagination.js';
 import {
   serializeFabricObjectToRow,
   deserializeRowToFabricObject,
@@ -49,12 +50,24 @@ import {
 
 export const NON_HIGHLIGHT_TYPES = [
   'ink', 'freetext', 'square', 'circle', 'line', 'polyline', 'polygon',
-  'stamp', 'sticky_note', 'callout', 'counter', 'eraser'
+  'stamp', 'sticky_note', 'callout', 'counter', 'eraser', 'form-field'
 ];
 
 const SUPABASE_PAGE_SIZE = 1000;
 const UPSERT_BATCH_SIZE = 250;
-const SUPABASE_READ_PAGE_CONCURRENCY = 4;
+
+// Hydrate read projection (KAL-241). The durable read only needs the columns the
+// deserializers + raw-row consumers actually touch:
+//   - annotation_data: the JSONB payload every shape/callout is rebuilt from
+//   - page_number / annotation_type / annotation_id: routing + identity
+//   - user_id / updated_at / created_at: author attribution + last-write-wins
+//   - id: the keyset pagination cursor (primary key, stable + unique)
+// Projecting away the duplicate `bounds` geometry blob, `checklist_responses`,
+// and ~15 unused scalar columns keeps the JSONB heap fetch lean. SELECT('*') was
+// pulling all of them on a multi-thousand-row document and helped blow the
+// Postgres statement timeout.
+const ANNOTATION_READ_COLUMNS =
+  'id, user_id, annotation_id, annotation_type, page_number, annotation_data, created_at, updated_at';
 
 function cloudSyncDebug(message) {
   if (typeof window === 'undefined' || window.__CLOUD_SYNC_DEBUG !== true) return;
@@ -67,28 +80,36 @@ function isAllTypesOwnedRow(row) {
   return isSurveyMarkerType(row.annotation_type) && !!row.annotation_data?.fabricObject;
 }
 
+// Keyset (seek) pagination on the primary key (KAL-241). The previous reader used
+// OFFSET pagination (`.range(from, to)` with 4 concurrent windows). OFFSET forces
+// Postgres to read + RLS-check + discard every row before the window on each
+// deeper page, so the per-statement cost grew with depth and — combined with the
+// per-row `user_can_access_document` RLS check and the full JSONB payload — pushed
+// the big document past the statement timeout (Postgres 57014). The read failing
+// is exactly what keeps the source-of-truth gate on the page-collapsed Y.Doc.
+//
+// Seeking by `id > cursor` instead lets the `(document_id, id)` index jump
+// straight to the next slice: each statement reads only its own rows, RLS runs
+// once per returned row (never on discarded rows), and there is no re-scan. The
+// loop is sequential because each page depends on the previous page's last id;
+// the primary key is unique + non-null, so the cursor can never skip or duplicate
+// a row.
 async function loadPagedAnnotationRows(documentId, applyFilters) {
-  const rows = [];
-  for (let base = 0; ; base += SUPABASE_PAGE_SIZE * SUPABASE_READ_PAGE_CONCURRENCY) {
-    const batch = Array.from({ length: SUPABASE_READ_PAGE_CONCURRENCY }, (_, index) => {
-      const from = base + index * SUPABASE_PAGE_SIZE;
-      const to = from + SUPABASE_PAGE_SIZE - 1;
+  return collectKeysetRows({
+    pageSize: SUPABASE_PAGE_SIZE,
+    fetchPage: async (cursorId) => {
       let query = supabase
         .from('document_annotations')
-        .select('*')
+        .select(ANNOTATION_READ_COLUMNS)
         .eq('document_id', documentId)
-        .order('page_number', { ascending: true });
+        .order('id', { ascending: true })
+        .limit(SUPABASE_PAGE_SIZE);
+      if (cursorId !== null) query = query.gt('id', cursorId);
       query = applyFilters ? applyFilters(query) : query;
-      return query.range(from, to);
-    });
-    const results = await Promise.all(batch);
-    for (const result of results) {
-      if (result.error) return { rows, error: result.error };
-      rows.push(...(result.data || []));
-    }
-    if (results.some((result) => !result.data || result.data.length < SUPABASE_PAGE_SIZE)) break;
-  }
-  return { rows, error: null };
+      const { data, error } = await query;
+      return { data, error };
+    },
+  });
 }
 
 async function loadAllTypesOwnedRowsForDocument(documentId) {
@@ -114,6 +135,74 @@ async function loadAllTypesOwnedRowsForDocument(documentId) {
       legacyFabricSurveyMarkers: legacyFabricSurveyMarkers.rows.length
     }
   };
+}
+
+// KAL-241 fast-open watermark (DB-sync audit #1). Returns the freshness signal
+// of the SAME owned row set loadAllTypesOwnedRowsForDocument materializes — but
+// as two cheap aggregate queries (count + newest updated_at) instead of the
+// ~25-trip keyset sweep. The open path compares this to the snapshot's embedded
+// watermark; a match proves the durable rows are unchanged so the full re-read
+// can be skipped without regressing the wrong-page source-of-truth heal.
+//
+// Each `select('updated_at', { count: 'exact' })` ordered DESC limit 1 returns
+// BOTH the newest row and the exact count of the filtered set in one round-trip,
+// so this is exactly two trips total, matching the two filters the loader uses.
+export async function loadAllTypesOwnedWatermark(documentId) {
+  if (!supabase) return { rowCount: 0, maxUpdatedAt: null, error: new Error('Supabase unavailable') };
+  if (!documentId) return { rowCount: 0, maxUpdatedAt: null, error: null };
+
+  const part = async (applyFilters) => {
+    let query = supabase
+      .from('document_annotations')
+      .select('updated_at', { count: 'exact' })
+      .eq('document_id', documentId)
+      .order('updated_at', { ascending: false })
+      .limit(1);
+    query = applyFilters(query);
+    const { data, count, error } = await query;
+    return { count: count || 0, maxUpdatedAt: data?.[0]?.updated_at ?? null, error };
+  };
+
+  const nonSurveyMarker = await part((query) => query.in('annotation_type', NON_HIGHLIGHT_TYPES));
+  if (nonSurveyMarker.error) return { rowCount: 0, maxUpdatedAt: null, error: nonSurveyMarker.error };
+
+  const legacyFabricSurveyMarkers = await part((query) => query
+    .in('annotation_type', SURVEY_MARKER_TYPE_VALUES)
+    .not('annotation_data->fabricObject', 'is', null));
+  if (legacyFabricSurveyMarkers.error) return { rowCount: 0, maxUpdatedAt: null, error: legacyFabricSurveyMarkers.error };
+
+  const maxUpdatedAt = [nonSurveyMarker.maxUpdatedAt, legacyFabricSurveyMarkers.maxUpdatedAt]
+    .filter((x) => typeof x === 'string')
+    .sort((x, y) => Date.parse(y) - Date.parse(x))[0] ?? null;
+
+  return {
+    rowCount: nonSurveyMarker.count + legacyFabricSurveyMarkers.count,
+    maxUpdatedAt,
+    error: null,
+  };
+}
+
+// DB-sync audit #1 (marker fix) — read the denormalized per-document change
+// marker `documents.annotations_changed_at` (maintained by a trigger on every
+// annotation insert/update/delete). One cheap single-row read (~200ms), so the
+// fast-open skip works on ANY doc size and catches deletes — unlike the exact
+// COUNT, which scans all rows under RLS and times out on large docs.
+//
+// Returns the ISO string, or null when absent / errored (e.g. the migration is
+// not yet applied) so the caller falls back to the bounded count probe.
+export async function loadDocumentAnnotationsChangedAt(documentId) {
+  if (!supabase || !documentId) return null;
+  try {
+    const { data, error } = await supabase
+      .from('documents')
+      .select('annotations_changed_at')
+      .eq('id', documentId)
+      .maybeSingle();
+    if (error || !data) return null;
+    return data.annotations_changed_at ?? null;
+  } catch (_e) {
+    return null;
+  }
 }
 
 /**
@@ -366,13 +455,31 @@ export async function deleteAnnotations(documentId, annotationIds) {
  * SurveyMarkers are intentionally skipped — they have their own loader in
  * documentAnnotationService.js and own their own state slice in App.jsx.
  */
-export async function loadAllNonSurveyMarkerAnnotations(documentId) {
+// Single-flight (KAL-241): one document open fires this hydrate read from
+// multiple effects at once (initial hydrate + realtime catch-up). Each ran a
+// full keyset sweep of the SAME rows, so a heavily-annotated document read all
+// of its rows TWICE concurrently — the bulk of a ~25s open. Collapse overlapping
+// reads for the same document onto a single in-flight promise. Only concurrent
+// reads are deduped; a read started after the prior one resolves still runs
+// fresh, so post-change refetches stay correct.
+const inFlightHydrateReads = new Map();
+
+export function loadAllNonSurveyMarkerAnnotations(documentId) {
   if (!supabase) {
-    return { annotationsByPage: {}, callouts: [], error: new Error('Supabase unavailable') };
+    return Promise.resolve({ annotationsByPage: {}, callouts: [], error: new Error('Supabase unavailable') });
   }
   if (!documentId) {
-    return { annotationsByPage: {}, callouts: [], error: null };
+    return Promise.resolve({ annotationsByPage: {}, callouts: [], error: null });
   }
+  const inFlight = inFlightHydrateReads.get(documentId);
+  if (inFlight) return inFlight;
+  const promise = loadAllNonSurveyMarkerAnnotationsUncached(documentId)
+    .finally(() => { inFlightHydrateReads.delete(documentId); });
+  inFlightHydrateReads.set(documentId, promise);
+  return promise;
+}
+
+async function loadAllNonSurveyMarkerAnnotationsUncached(documentId) {
   const t0 = Date.now();
   cloudSyncDebug('[CloudSync][hydrate] loadAllNonSurveyMarkerAnnotations start ' + JSON.stringify({ documentId }));
   const { rows: allRows, error, scanned } = await loadAllTypesOwnedRowsForDocument(documentId);
