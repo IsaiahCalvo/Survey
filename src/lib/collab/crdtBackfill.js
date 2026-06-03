@@ -186,6 +186,12 @@ function buildBackfillOrigin({ originPayloadFactory, userId, deviceId, sessionId
  * @param {string} [args.sessionId] - per-mount session UUID
  * @param {number} [args.clientID] - per-mount Yjs clientID
  * @param {function} [args.originPayloadFactory] - optional; takes ({source, userId, deviceId, sessionId, clientID}), returns frozen origin object
+ * @param {Array<object>} [args.existingHydrateRows] - DB-sync audit #6. Raw legacy
+ *   rows already read by the YDocProvider hydrate (annotationCloudSync
+ *   loadAllNonSurveyMarkerAnnotations.rawRows). When present, the independent
+ *   backfill SELECT loop is skipped and these rows (re-filtered to
+ *   NON_HIGHLIGHT_TYPES_FOR_BACKFILL) are imported instead — eliminating the
+ *   second full cold-open read of the same row set.
  * @returns {Promise<{ranAs: string, count?: number, imported?: number, skipped?: number, error?: any}>}
  */
 export async function runBackfill(args) {
@@ -484,6 +490,45 @@ async function runBackfillUnlocked(args) {
     return { ranAs: 'already_done', count: 0 };
   }
 
+  // DB-sync audit #6 — reuse the hydrate keyset rows. On a cold open the
+  // YDocProvider hydrate read (annotationCloudSync.loadAllNonSurveyMarkerAnnotations)
+  // already keyset-paginated the SAME owned row set with the lean
+  // ANNOTATION_READ_COLUMNS projection. When the caller threads those rows in
+  // as args.existingHydrateRows we skip the independent backfill SELECT loop
+  // entirely — killing the second full cold-open read of a multi-thousand-row
+  // document.
+  //
+  // Completeness invariant: the hydrate raw rows are filtered by
+  // isAllTypesOwnedRow (which also admits 'form-field' + legacy surveyMarker
+  // rows that carry a fabricObject). Backfill only ever imports
+  // NON_HIGHLIGHT_TYPES_FOR_BACKFILL, so we re-apply that exact type filter
+  // here. The resulting row set is identical to what the SELECT loop's
+  // `.in('annotation_type', NON_HIGHLIGHT_TYPES_FOR_BACKFILL)` would have
+  // produced — same idempotency keys, same imported set.
+  //
+  // When the caller does NOT thread rows in (tests, any non-YDocProvider
+  // caller) we fall through to the SELECT loop below, byte-identical to the
+  // prior behavior. The loop is kept on OFFSET `.range()` pagination so the
+  // existing Phase 31 pagination assertions (crdtBackfill.test.mjs #6) stay
+  // green; production now standardizes on the hydrate's keyset rows instead.
+  let rows = [];
+  let queryError = null;
+  let pagesFetched = 0;
+
+  const existingHydrateRows = Array.isArray(args.existingHydrateRows)
+    ? args.existingHydrateRows
+    : null;
+
+  if (existingHydrateRows) {
+    rows = existingHydrateRows.filter(
+      (r) => r && NON_HIGHLIGHT_TYPES_FOR_BACKFILL.includes(r.annotation_type)
+    );
+    crdtBackfillDebug('[Phase31 UAT] backfill:reused-hydrate-rows ' + JSON.stringify({
+      documentId, userId,
+      hydrateRowsIn: existingHydrateRows.length,
+      backfillRowsAfterTypeFilter: rows.length,
+    }));
+  } else {
   // Read legacy rows. PAGINATED with `.range()` so the PostgREST max_rows cap
   // (1000) does not silently truncate large docs. Pre-2026-05-03 hotfix this
   // was a bare `.select('*')` and any doc with >1000 non-surveyMarker rows sealed
@@ -498,9 +543,6 @@ async function runBackfillUnlocked(args) {
   // is the natural index ordering. Backfill creation-order preservation was a
   // soft preference for the Phase 33 activity log; bridge idempotency makes
   // any stable ordering correctness-preserving across re-runs.
-  let rows = [];
-  let queryError = null;
-  let pagesFetched = 0;
   crdtBackfillDebug('[Phase31 UAT] backfill:select-loop start ' + JSON.stringify({
     documentId, userId, pageSize: BACKFILL_PAGE_SIZE,
   }));
@@ -539,6 +581,7 @@ async function runBackfillUnlocked(args) {
     console.warn('[Phase31 UAT] backfill:select-loop THREW ' + JSON.stringify({
       documentId, pagesFetched, message: err?.message || String(err),
     }));
+  }
   }
 
   if (queryError) {

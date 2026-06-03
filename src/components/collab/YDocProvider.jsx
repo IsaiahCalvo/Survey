@@ -772,6 +772,47 @@ function YDocProviderInner({ docId, children, closeDocument }) {
       }
       if (cancelled) return;
       try {
+        // DB-sync audit #6 — reuse the hydrate keyset rows for backfill.
+        // The hydrate read is single-flighted per documentId (inFlightHydrateReads
+        // in annotationCloudSync.js), so this shares the SAME in-flight keyset
+        // sweep the Phase 35 cleanup audit / state hydrate already fires on a
+        // cold open instead of issuing a second independent full SELECT inside
+        // runBackfill. We pass the resolved rawRows straight through; runBackfill
+        // re-applies the NON_HIGHLIGHT_TYPES_FOR_BACKFILL type filter so the
+        // imported set stays byte-identical to the prior SELECT-loop behavior.
+        // On read failure rawRows is absent → runBackfill falls back to its own
+        // SELECT loop, preserving the silent-retry path.
+        let existingHydrateRows = null;
+        // Only prefetch the hydrate rows when runBackfill will actually consume
+        // them. On an already-sealed (cutover_completed_at NOT NULL) doc,
+        // runBackfill short-circuits via the dedupe-anchor / health gates and
+        // never reaches the import loop — so prefetching rows there would add a
+        // NEW full read on every repeated open of a sealed doc (the exact waste
+        // commit #2 removed). resolveDocumentMetadata is cached + shared with
+        // runBackfill's own cutover check, so this gate is not an extra trip.
+        let sealedSkip = false;
+        try {
+          const meta = await resolveDocumentMetadata(docId, { supabase });
+          sealedSkip = !!meta?.cutoverCompletedAt;
+        } catch {
+          // Metadata read failed — be conservative and prefetch (matches
+          // runBackfill's own silent fall-through to the full flow).
+          sealedSkip = false;
+        }
+        if (cancelled) return;
+        if (!sealedSkip) {
+          try {
+            const hydrate = await loadAllNonSurveyMarkerAnnotations(docId);
+            if (!cancelled && hydrate && !hydrate.error && Array.isArray(hydrate.rawRows)) {
+              existingHydrateRows = hydrate.rawRows;
+            }
+          } catch (hydrateErr) {
+            // Silent — runBackfill falls back to its own SELECT loop.
+            // eslint-disable-next-line no-console
+            console.warn('[YDocProvider] backfill hydrate-row reuse read failed', hydrateErr?.message);
+          }
+        }
+        if (cancelled) return;
         await runBackfill({
           ydoc,
           supabase,
@@ -780,6 +821,7 @@ function YDocProviderInner({ docId, children, closeDocument }) {
           sessionId,
           clientID: ydoc.clientID,
           originPayloadFactory,
+          existingHydrateRows,
           // Phase 31 Plan 04 — request the cutover seal. After the legacy
           // SELECT + import loop completes, crdtBackfill writes
           // documents.cutover_completed_at = NOW() ONLY if the imported count
