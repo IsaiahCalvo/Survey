@@ -32,6 +32,15 @@ const authDebug = (...args) => {
   try { console.debug(...args); } catch { /* ignore debug logging failures */ }
 };
 
+// In-flight subscription-tier reads keyed by userId. The two BOOT paths
+// (finishAuthBoot + onAuthStateChange) can fire fetchSubscriptionTier for the
+// same user within ~2ms of each other — this collapses that pair into one
+// network read. Deliberate refreshes (window focus, 5-min interval, manual
+// refreshSubscriptionTier) do NOT coalesce, so a mid-session Stripe upgrade is
+// always picked up. In-flight only: the entry is removed as soon as the read
+// settles, so nothing stale is ever cached. See KAL-251.
+const inFlightTierByUser = new Map();
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [session, setSession] = useState(null);
@@ -121,8 +130,35 @@ export const AuthProvider = ({ children }) => {
     return session;
   };
 
-  // Fetch subscription tier from database
-  const fetchSubscriptionTier = async (userId) => {
+  // Resolve the effective tier string for a user. Returns 'free' on no-row /
+  // canceled / error; the active tier on active|trialing. Never throws on a
+  // Supabase error (logs + returns 'free'); only an unexpected throw rejects.
+  const resolveSubscriptionTier = async (userId) => {
+    const { data, error } = await supabase
+      .from('user_subscriptions')
+      .select('tier, status')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error fetching subscription tier:', error);
+      return 'free';
+    }
+    if (data && ['active', 'trialing'].includes(data.status)) {
+      // Only allow Pro/Enterprise if subscription is active or trialing.
+      return data.tier;
+    }
+    // No subscription row (free tier — maybeSingle returns null with NO error,
+    // unlike .single() which raised PGRST116 and used to log a false "Error
+    // fetching subscription tier" on every free-tier boot/focus/5-min refresh),
+    // or a canceled/past_due/incomplete subscription -> fall back to free.
+    return 'free';
+  };
+
+  // Fetch subscription tier from database. `coalesce:true` (the two boot paths)
+  // shares a single in-flight read per userId; the focus/interval/manual
+  // refreshes call with the default (a fresh read) so Stripe upgrades land.
+  const fetchSubscriptionTier = async (userId, { coalesce = false } = {}) => {
     if (!userId || !isSupabaseAvailable()) {
       setSubscriptionTier('free');
       setLoadingTier(false);
@@ -130,25 +166,23 @@ export const AuthProvider = ({ children }) => {
     }
 
     try {
-      const { data, error } = await supabase
-        .from('user_subscriptions')
-        .select('tier, status')
-        .eq('user_id', userId)
-        .single();
-
-      if (error) {
-        console.error('Error fetching subscription tier:', error);
-        setSubscriptionTier('free');
+      let tierPromise;
+      if (coalesce && inFlightTierByUser.has(userId)) {
+        // Join the boot read already in flight for this user.
+        tierPromise = inFlightTierByUser.get(userId);
       } else {
-        // Only allow Pro/Enterprise if subscription is active or trialing
-        const activeStatuses = ['active', 'trialing'];
-        if (activeStatuses.includes(data.status)) {
-          setSubscriptionTier(data.tier);
-        } else {
-          // Canceled, past_due, incomplete -> fall back to free
-          setSubscriptionTier('free');
+        tierPromise = resolveSubscriptionTier(userId);
+        if (coalesce) {
+          inFlightTierByUser.set(userId, tierPromise);
+          const done = () => {
+            if (inFlightTierByUser.get(userId) === tierPromise) {
+              inFlightTierByUser.delete(userId);
+            }
+          };
+          tierPromise.then(done, done);
         }
       }
+      setSubscriptionTier(await tierPromise);
     } catch (err) {
       console.error('Error:', err);
       setSubscriptionTier('free');
@@ -185,7 +219,7 @@ export const AuthProvider = ({ children }) => {
 
       // Fetch subscription tier
       if (session?.user) {
-        fetchSubscriptionTier(session.user.id);
+        fetchSubscriptionTier(session.user.id, { coalesce: true });
       } else {
         setLoadingTier(false);
       }
@@ -226,7 +260,7 @@ export const AuthProvider = ({ children }) => {
 
       // Fetch subscription tier when user changes
       if (session?.user) {
-        fetchSubscriptionTier(session.user.id);
+        fetchSubscriptionTier(session.user.id, { coalesce: true });
       } else {
         setSubscriptionTier('free');
         setLoadingTier(false);

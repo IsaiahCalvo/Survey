@@ -10,6 +10,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase, isSupabaseAvailable } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
+import { coalesceRead } from './requestCoalescer.js';
 
 /**
  * Subscription tier limits
@@ -75,8 +76,12 @@ export const useSubscriptionLimits = () => {
     }
   }, [userTier]);
 
-  // Fetch current usage from database
-  const fetchUsage = useCallback(async () => {
+  // Fetch current usage from database. `coalesce:true` (boot) shares the
+  // project-count + document-count + storage trio across the multiple live
+  // useSubscriptionLimits consumers (Dashboard + UsageIndicator). The exposed
+  // `refetch` calls with the default (bypass) so a deliberate refresh always
+  // hits the network. See KAL-251.
+  const fetchUsage = useCallback(async ({ coalesce = false } = {}) => {
     if (!user || !isSupabaseAvailable()) {
       setLoading(false);
       return;
@@ -85,37 +90,44 @@ export const useSubscriptionLimits = () => {
     try {
       setLoading(true);
 
-      // Fetch project count
-      const { count: projectCount, error: projectError } = await supabase
-        .from('projects')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id);
+      const runUsageQuery = async () => {
+        // Fetch project count
+        const { count: projectCount, error: projectError } = await supabase
+          .from('projects')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', user.id);
 
-      if (projectError) throw projectError;
+        if (projectError) throw projectError;
 
-      // Fetch document count
-      const { count: documentCount, error: documentError } = await supabase
-        .from('documents')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id);
+        // Fetch document count
+        const { count: documentCount, error: documentError } = await supabase
+          .from('documents')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', user.id);
 
-      if (documentError) throw documentError;
+        if (documentError) throw documentError;
 
-      // Fetch storage usage from user_subscriptions table
-      const { data: subData, error: subError } = await supabase
-        .from('user_subscriptions')
-        .select('storage_used_bytes')
-        .eq('user_id', user.id)
-        .single();
+        // Fetch storage usage from user_subscriptions table
+        const { data: subData, error: subError } = await supabase
+          .from('user_subscriptions')
+          .select('storage_used_bytes')
+          .eq('user_id', user.id)
+          .single();
 
-      if (subError && subError.code !== 'PGRST116') throw subError;
+        if (subError && subError.code !== 'PGRST116') throw subError;
 
-      setUsage({
-        projects: projectCount || 0,
-        documents: documentCount || 0,
-        storage: subData?.storage_used_bytes || 0,
-      });
+        return {
+          projects: projectCount || 0,
+          documents: documentCount || 0,
+          storage: subData?.storage_used_bytes || 0,
+        };
+      };
 
+      const next = coalesce
+        ? await coalesceRead(`usage:${user.id}`, runUsageQuery)
+        : await runUsageQuery();
+
+      setUsage(next);
       setError(null);
     } catch (err) {
       console.error('Error fetching usage:', err);
@@ -126,7 +138,7 @@ export const useSubscriptionLimits = () => {
   }, [user]);
 
   useEffect(() => {
-    fetchUsage();
+    fetchUsage({ coalesce: true });
   }, [fetchUsage]);
 
   /**
@@ -256,7 +268,10 @@ export const useSubscriptionLimits = () => {
     getUsagePercentage,
     formatBytes,
     getRemainingQuota,
-    refetch: fetchUsage,
+    // Zero-arg wrapper (matches useDocuments/useTemplates) so a deliberate
+    // refetch always bypasses the coalescer and no caller can pass coalesce:true
+    // through the public surface.
+    refetch: () => fetchUsage(),
     tier: userTier || 'free',
   };
 };

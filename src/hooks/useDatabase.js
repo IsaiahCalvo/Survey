@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase, isSupabaseAvailable, isSchemaError, isConnectedServicesAvailable, setConnectedServicesAvailable } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import { buildDocumentProvenance } from '../utils/documentProvenance.js';
+import { coalesceRead } from './requestCoalescer.js';
 
 const isSupabaseNotFoundError = (error) => {
   if (!error) return false;
@@ -202,65 +203,85 @@ export const useDocuments = (projectId = null) => {
       return;
     }
 
-    fetchDocuments();
+    // Boot/dep-change load goes through the coalescer so the simultaneous burst
+    // from the multiple live useDocuments instances (Dashboard x2 + one per open
+    // PDFViewer tab) collapses to ONE round-trip. See KAL-251.
+    loadDocuments({ coalesce: true });
   }, [user, projectId]);
 
-  const fetchDocuments = async () => {
+  // Pure query worker: runs the owned + collaborator-probe + conditional id=in
+  // sequence as ONE unit and RETURNS the merged array (no setState here), so it
+  // can be shared verbatim across instances by the coalescer.
+  const runDocumentsQuery = async () => {
+    let query = supabase
+      .from('documents')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('archived', false)
+      .order('updated_at', { ascending: false });
+
+    if (projectId) {
+      query = query.eq('project_id', projectId);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    let collaboratorDocuments = [];
+    const collaboratorRows = await supabase
+      .from('document_collaborators')
+      .select('document_id')
+      .eq('user_id', user.id)
+      .eq('status', 'active');
+
+    if (!collaboratorRows.error) {
+      const collaboratorIds = [...new Set((collaboratorRows.data || [])
+        .map((row) => row.document_id)
+        .filter(Boolean))];
+      const ownIds = new Set((data || []).map((doc) => doc.id));
+      const missingIds = collaboratorIds.filter((id) => !ownIds.has(id));
+      if (missingIds.length > 0) {
+        let collaboratorQuery = supabase
+          .from('documents')
+          .select('*')
+          .in('id', missingIds)
+          .eq('archived', false)
+          .order('updated_at', { ascending: false });
+        if (projectId) {
+          collaboratorQuery = collaboratorQuery.eq('project_id', projectId);
+        }
+        const collaboratorResult = await collaboratorQuery;
+        if (collaboratorResult.error) throw collaboratorResult.error;
+        collaboratorDocuments = collaboratorResult.data || [];
+      }
+    } else {
+      console.warn('Error fetching collaborator documents:', collaboratorRows.error);
+    }
+
+    const byId = new Map();
+    for (const doc of [...(data || []), ...collaboratorDocuments]) {
+      byId.set(doc.id, doc);
+    }
+    return [...byId.values()];
+  };
+
+  // Loader owns this instance's loading/error/state. `coalesce:true` shares the
+  // in-flight read across instances (boot burst); the exposed `refetch` calls
+  // with `coalesce:false` so a deliberate post-mutation refetch ALWAYS hits the
+  // network and is never served a coalesced promise that predates the mutation.
+  const loadDocuments = async ({ coalesce = false } = {}) => {
+    if (!user || !isSupabaseAvailable()) return [];
     try {
       setLoading(true);
-      let query = supabase
-        .from('documents')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('archived', false)
-        .order('updated_at', { ascending: false });
-
-      if (projectId) {
-        query = query.eq('project_id', projectId);
-      }
-
-      const { data, error } = await query;
-
-      if (error) throw error;
-
-      let collaboratorDocuments = [];
-      const collaboratorRows = await supabase
-        .from('document_collaborators')
-        .select('document_id')
-        .eq('user_id', user.id)
-        .eq('status', 'active');
-
-      if (!collaboratorRows.error) {
-        const collaboratorIds = [...new Set((collaboratorRows.data || [])
-          .map((row) => row.document_id)
-          .filter(Boolean))];
-        const ownIds = new Set((data || []).map((doc) => doc.id));
-        const missingIds = collaboratorIds.filter((id) => !ownIds.has(id));
-        if (missingIds.length > 0) {
-          let collaboratorQuery = supabase
-            .from('documents')
-            .select('*')
-            .in('id', missingIds)
-            .eq('archived', false)
-            .order('updated_at', { ascending: false });
-          if (projectId) {
-            collaboratorQuery = collaboratorQuery.eq('project_id', projectId);
-          }
-          const collaboratorResult = await collaboratorQuery;
-          if (collaboratorResult.error) throw collaboratorResult.error;
-          collaboratorDocuments = collaboratorResult.data || [];
-        }
-      } else {
-        console.warn('Error fetching collaborator documents:', collaboratorRows.error);
-      }
-
-      const byId = new Map();
-      for (const doc of [...(data || []), ...collaboratorDocuments]) {
-        byId.set(doc.id, doc);
-      }
-      setDocuments([...byId.values()]);
+      const key = `documents:${user.id}:${projectId ?? 'null'}`;
+      const merged = coalesce
+        ? await coalesceRead(key, runDocumentsQuery)
+        : await runDocumentsQuery();
+      setDocuments(merged);
+      return merged;
     } catch (err) {
       setError(err.message);
+      return [];
     } finally {
       setLoading(false);
     }
@@ -349,7 +370,7 @@ export const useDocuments = (projectId = null) => {
     updateDocument,
     deleteDocument,
     updateLastOpened,
-    refetch: fetchDocuments,
+    refetch: () => loadDocuments({ coalesce: false }),
   };
 };
 
@@ -369,22 +390,34 @@ export const useTemplates = () => {
       return;
     }
 
-    fetchTemplates();
+    // Coalesced so the always-mounted Dashboard + AppShell (+ per-tab) template
+    // consumers share one boot read. See KAL-251.
+    loadTemplates({ coalesce: true });
   }, [user]);
 
-  const fetchTemplates = async () => {
+  const runTemplatesQuery = async () => {
+    const { data, error } = await supabase
+      .from('templates')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  };
+
+  const loadTemplates = async ({ coalesce = false } = {}) => {
+    if (!user || !isSupabaseAvailable()) return [];
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('templates')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setTemplates(data || []);
+      const key = `templates:${user.id}`;
+      const rows = coalesce
+        ? await coalesceRead(key, runTemplatesQuery)
+        : await runTemplatesQuery();
+      setTemplates(rows);
+      return rows;
     } catch (err) {
       setError(err.message);
+      return [];
     } finally {
       setLoading(false);
     }
@@ -446,7 +479,7 @@ export const useTemplates = () => {
     createTemplate,
     updateTemplate,
     deleteTemplate,
-    refetch: fetchTemplates,
+    refetch: () => loadTemplates({ coalesce: false }),
   };
 };
 

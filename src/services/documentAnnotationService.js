@@ -672,59 +672,6 @@ export function subscribeToDocumentPresence(documentId, onPresenceChange) {
 // ============================================
 
 /**
- * Get a user's subscription tier
- * @returns {Promise<{tier: string, error: any}>}
- */
-export async function getUserSubscriptionTier(userId) {
-  if (!userId) return { tier: 'free', error: null };
-
-  const { data, error } = await supabase
-    .from('user_subscriptions')
-    .select('tier, status')
-    .eq('user_id', userId)
-    .single();
-
-  if (error) {
-    // If no subscription found, default to free
-    if (error.code === 'PGRST116') {
-      return { tier: 'free', error: null };
-    }
-    console.error('[AnnotationSync] Error fetching user subscription:', error);
-    return { tier: 'free', error };
-  }
-
-  // Only return active subscriptions as their tier
-  if (data.status !== 'active' && data.status !== 'trialing') {
-    return { tier: 'free', error: null };
-  }
-
-  return { tier: data.tier || 'free', error: null };
-}
-
-/**
- * Check if a user can be added as a collaborator
- * Free tier users cannot be collaborators
- * @returns {Promise<{allowed: boolean, reason?: string, tier?: string}>}
- */
-export async function canUserBeCollaborator(userId) {
-  const { tier, error } = await getUserSubscriptionTier(userId);
-
-  if (error) {
-    return { allowed: false, reason: 'Unable to verify user subscription status.' };
-  }
-
-  if (tier === 'free') {
-    return {
-      allowed: false,
-      tier: 'free',
-      reason: 'This user is on the Free plan and cannot be added as a collaborator. They need to upgrade to Pro or higher to collaborate on documents.'
-    };
-  }
-
-  return { allowed: true, tier };
-}
-
-/**
  * Get collaborators for a document
  */
 export async function getDocumentCollaborators(documentId) {
