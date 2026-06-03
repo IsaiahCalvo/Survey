@@ -34,6 +34,7 @@
 
 import { applyFabricCreate } from './crdtAnnotationBridge.js';
 import { buildOrigin } from './originBuilder.js';
+import { resolveDocumentMetadata, invalidateDocumentMetadata } from '../../services/documentMetadataResolver.js';
 
 const crdtBackfillDebug = (...args) => {
   if (typeof window === 'undefined' || window.__CRDT_BACKFILL_DEBUG !== true) return;
@@ -232,11 +233,8 @@ export async function runBackfill(args) {
   // races during boot are normal and should not surface a console error.
   if (args.markCutoverComplete) {
     try {
-      const { data: docRow } = await supabase
-        .from('documents')
-        .select('cutover_completed_at')
-        .eq('id', documentId)
-        .maybeSingle();
+      const meta = await resolveDocumentMetadata(documentId, { supabase });
+      const docRow = meta.cutoverCompletedAt ? { cutover_completed_at: meta.cutoverCompletedAt } : null;
       if (docRow?.cutover_completed_at) {
         // Phase 31 hotfix (2026-05-03 second iteration) — Y.Map degeneracy
         // probe before the cheap-out short-circuit. If local IndexedDB lost
@@ -654,6 +652,9 @@ async function runBackfillUnlocked(args) {
           console.warn('[crdtBackfill] cutover_completed_at write failed', updateError?.message);
         } else {
           cutoverCompleted = true;
+          // The seal just advanced cutover_completed_at; drop the cached
+          // documents-row metadata so a same-open read sees the sealed value.
+          invalidateDocumentMetadata(documentId);
         }
       } catch (err) {
         // eslint-disable-next-line no-console

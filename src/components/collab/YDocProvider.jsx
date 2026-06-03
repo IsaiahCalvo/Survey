@@ -33,6 +33,7 @@
 import { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Y from 'yjs';
 import { getOrCreateYDoc, releaseYDoc } from '../../lib/collab/ydocRegistry.js';
+import { resolveDocumentMetadata } from '../../services/documentMetadataResolver.js';
 import { attachLifecycle } from '../../lib/collab/ydocLifecycle.js';
 import { isCRDTEnabled } from '../../lib/collab/crdtFeatureFlag.js';
 import StorageFailureBanner from './StorageFailureBanner.jsx';
@@ -988,18 +989,9 @@ function YDocProviderInner({ docId, children, closeDocument }) {
       let documentOwnerId = null;
       let cutoverCompletedAt = null;
       try {
-        const { data, error } = await supabase
-          .from('documents')
-          .select('user_id, cutover_completed_at')
-          .eq('id', docId)
-          .maybeSingle();
-        if (error) {
-          // eslint-disable-next-line no-console
-          console.warn('[Phase35][cleanup] documents owner lookup failed', error?.message);
-        } else {
-          documentOwnerId = data?.user_id ?? null;
-          cutoverCompletedAt = data?.cutover_completed_at ?? null;
-        }
+        const meta = await resolveDocumentMetadata(docId, { supabase });
+        documentOwnerId = meta.userId;
+        cutoverCompletedAt = meta.cutoverCompletedAt;
       } catch (err) {
         // eslint-disable-next-line no-console
         console.warn('[Phase35][cleanup] documents owner lookup threw', err?.message);

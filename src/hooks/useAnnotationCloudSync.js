@@ -42,6 +42,7 @@ import {
   loadAllTypesOwnedWatermark,
   loadDocumentAnnotationsChangedAt
 } from '../services/annotationCloudSync.js';
+import { resolveDocumentMetadata } from '../services/documentMetadataResolver.js';
 import { migrateLocalAnnotationsToCloud, hasMigrationRun } from '../services/cloudSyncMigration.js';
 import {
   enqueueSync,
@@ -1132,12 +1133,8 @@ export function useAnnotationCloudSync({
         let cutoverTs = null;
         try {
           if (supabase) {
-            const { data: docRow } = await supabase
-              .from('documents')
-              .select('cutover_completed_at')
-              .eq('id', documentId)
-              .maybeSingle();
-            cutoverTs = docRow?.cutover_completed_at ?? null;
+            const meta = await resolveDocumentMetadata(documentId, { supabase });
+            cutoverTs = meta.cutoverCompletedAt;
           }
         } catch (cutoverErr) {
           console.warn('[CloudSync][hook] cutover_completed_at lookup failed: ' +

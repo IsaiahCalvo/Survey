@@ -13,6 +13,7 @@
 // frozen. Never trust the client.
 
 import { supabase } from '../supabaseClient';
+import { resolveDocumentMetadata } from './documentMetadataResolver.js';
 
 /**
  * Read the lock columns off a document by id. Returns nulls when the document
@@ -26,18 +27,11 @@ export async function fetchDocumentLockState(documentId) {
   if (!documentId) {
     return { lockedAt: null, lockedBy: null, lockedLabel: null };
   }
-  const { data, error } = await supabase
-    .from('documents')
-    .select('locked_at, locked_by, locked_label')
-    .eq('id', documentId)
-    .maybeSingle();
-  if (error || !data) {
-    return { lockedAt: null, lockedBy: null, lockedLabel: null };
-  }
+  const meta = await resolveDocumentMetadata(documentId);
   return {
-    lockedAt: data.locked_at ?? null,
-    lockedBy: data.locked_by ?? null,
-    lockedLabel: data.locked_label ?? null,
+    lockedAt: meta.lockedAt,
+    lockedBy: meta.lockedBy,
+    lockedLabel: meta.lockedLabel,
   };
 }
 

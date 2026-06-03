@@ -14,6 +14,7 @@
 
 import { supabase } from '../supabaseClient.js';
 import { collectKeysetRows } from './annotationReadPagination.js';
+import { resolveDocumentMetadata } from './documentMetadataResolver.js';
 import {
   serializeFabricObjectToRow,
   deserializeRowToFabricObject,
@@ -193,13 +194,8 @@ export async function loadAllTypesOwnedWatermark(documentId) {
 export async function loadDocumentAnnotationsChangedAt(documentId) {
   if (!supabase || !documentId) return null;
   try {
-    const { data, error } = await supabase
-      .from('documents')
-      .select('annotations_changed_at')
-      .eq('id', documentId)
-      .maybeSingle();
-    if (error || !data) return null;
-    return data.annotations_changed_at ?? null;
+    const meta = await resolveDocumentMetadata(documentId);
+    return meta.annotationsChangedAt;
   } catch (_e) {
     return null;
   }

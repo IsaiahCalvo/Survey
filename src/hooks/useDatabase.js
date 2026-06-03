@@ -12,6 +12,7 @@ import { supabase, isSupabaseAvailable, isSchemaError, isConnectedServicesAvaila
 import { useAuth } from '../contexts/AuthContext';
 import { buildDocumentProvenance } from '../utils/documentProvenance.js';
 import { coalesceRead } from './requestCoalescer.js';
+import { resolveDocumentMetadata } from '../services/documentMetadataResolver.js';
 
 const isSupabaseNotFoundError = (error) => {
   if (!error) return false;
@@ -971,20 +972,11 @@ export const useDocumentToolPreferences = (documentId, supabaseDocId = null) => 
 
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('documents')
-        .select('tool_preferences')
-        .eq('id', supabaseDocId)
-        .single();
+      const meta = await resolveDocumentMetadata(supabaseDocId);
 
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error fetching tool preferences from Supabase:', error);
-        return;
-      }
-
-      if (data?.tool_preferences) {
+      if (meta.toolPreferences) {
         // Merge with defaults to ensure all tools have preferences
-        const merged = { ...DEFAULT_TOOL_PREFERENCES, ...data.tool_preferences };
+        const merged = { ...DEFAULT_TOOL_PREFERENCES, ...meta.toolPreferences };
         setToolPreferences(merged);
         // Also save to localStorage for offline access
         if (documentId) {
