@@ -742,6 +742,18 @@ export function useAnnotationCloudSync({
     const __resolvedTypeBreakdown = {};
     const __skipReasons = {};
     const __skipSamples = [];
+    // Perf (open-time stall): batch ALL per-annotation Y.Doc writes into ONE
+    // outer transaction. applyFabricCommit (via dualWriteFabricCommit) opens its
+    // own ydoc.transact() per call, so a large hydrate fired one update/observer
+    // cycle PER annotation (~22k) — and those downstream reactions (SVG layer
+    // re-render, persistence) were the ~2.4s main-thread freeze on open. Yjs
+    // merges nested transactions into the outermost, collapsing them to a single
+    // update with byte-identical final state (only display-only meta timestamps
+    // coalesce). Equivalence + single-fire verified in agent-cli/bench-fanout.mjs
+    // (22000 -> 1 afterTransaction events, identical map). skipLegacy:true below
+    // means the bridge call does NO async work, so this synchronous transact
+    // callback is safe — the awaits it replaces were already no-ops on this path.
+    phase30Ydoc.transact(() => {
     for (const [pageKey, page] of Object.entries(annotationsByPageArg || {})) {
       if (!page || !Array.isArray(page.objects)) continue;
       for (const fabricObj of page.objects) {
@@ -780,7 +792,11 @@ export function useAnnotationCloudSync({
         }
         const annotation_type = resolved.annotationType;
         try {
-          await dualWriteFabricCommit(fabricObj, {
+          // No await: with skipLegacy:true the bridge write is synchronous (see
+          // dualWriteFabricCommit), and we are inside the synchronous transact()
+          // callback opened above. The bridge catches its own errors and never
+          // throws/rejects, so the surrounding try/catch is belt-and-suspenders.
+          dualWriteFabricCommit(fabricObj, {
             ...(opts || {}),
             ydoc: phase30Ydoc,
             yMapAnnotations,
@@ -795,6 +811,7 @@ export function useAnnotationCloudSync({
         }
       }
     }
+    }, originPayload);
     let __yMapSize = -1;
     try { __yMapSize = yMapAnnotations.size; } catch (_e) { /* fall through */ }
     cloudSyncHookDebug('[Phase31 UAT] save:fan-out done ' + JSON.stringify({
