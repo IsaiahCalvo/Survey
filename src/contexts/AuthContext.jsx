@@ -470,7 +470,15 @@ export const AuthProvider = ({ children }) => {
   const value = {
     user,
     session,
-    loading: loading || loadingTier,
+    // db-sync #8: first paint gates on auth readiness ONLY, never the
+    // subscription-tier SELECT. `subscriptionTier` initializes to the safe
+    // 'free' default (above) and the tier SELECT resolves asynchronously,
+    // upgrading gated features when it lands. This removes one round-trip from
+    // the critical boot path on cold connections. Consumers that read `tier`
+    // (useSubscriptionLimits, useDatabase) already fall back to 'free' until
+    // resolved; the developer-mode effect still waits on `loadingTier`.
+    loading,
+    loadingTier,
     signUp,
     signIn,
     signInWithGoogle,
