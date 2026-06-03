@@ -639,9 +639,15 @@ export async function removeDocumentPresence(documentId, userId, clientType = 'a
 }
 
 /**
- * Subscribe to presence changes for a document
+ * Subscribe to presence changes for a document.
+ *
+ * Forwards each WAL event as a delta — { type, row, prevRow } — instead of
+ * re-SELECTing the whole roster on every event (that re-fetch was audit #4's
+ * presence chatter). The caller applies deltas incrementally (see
+ * presenceRoster.js) and seeds the initial roster via getDocumentPresence in the
+ * onSubscribed callback, which also fires on every reconnect.
  */
-export function subscribeToDocumentPresence(documentId, onPresenceChange) {
+export function subscribeToDocumentPresence(documentId, onPresenceEvent, { onSubscribed } = {}) {
   const channel = supabase
     .channel(`document-presence:${documentId}`)
     .on(
@@ -652,15 +658,15 @@ export function subscribeToDocumentPresence(documentId, onPresenceChange) {
         table: 'document_presence',
         filter: `document_id=eq.${documentId}`
       },
-      async () => {
-        // Fetch updated presence list
-        const { data } = await getDocumentPresence(documentId);
-        if (onPresenceChange) {
-          onPresenceChange(data);
-        }
+      (payload) => {
+        const newRow = payload?.new && Object.keys(payload.new).length ? payload.new : null;
+        const oldRow = payload?.old && Object.keys(payload.old).length ? payload.old : null;
+        onPresenceEvent?.({ type: payload?.eventType, row: newRow, prevRow: oldRow });
       }
     )
-    .subscribe();
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') onSubscribed?.();
+    });
 
   return () => {
     supabase.removeChannel(channel);
