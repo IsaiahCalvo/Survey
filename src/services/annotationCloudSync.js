@@ -113,27 +113,31 @@ async function loadPagedAnnotationRows(documentId, applyFilters) {
   });
 }
 
-async function loadAllTypesOwnedRowsForDocument(documentId) {
-  const nonSurveyMarker = await loadPagedAnnotationRows(
-    documentId,
-    (query) => query.in('annotation_type', NON_HIGHLIGHT_TYPES)
-  );
-  if (nonSurveyMarker.error) return nonSurveyMarker;
+// DB-sync audit #2 — the two owned categories (non-surveyMarker types, and
+// legacy surveyMarker rows that still carry a fabricObject) are an OR over the
+// SAME document_id + keyset cursor, so they fold into ONE keyset sweep instead
+// of two sequential ones. PostgREST `.or()` builds the disjunction server-side:
+//   annotation_type IN (non-marker types)
+//   OR (annotation_type IN (marker types) AND annotation_data->fabricObject IS NOT NULL)
+// Client-side routing (isAllTypesOwnedRow) is unchanged — this only collapses
+// round-trips; the materialized row set is byte-identical to the two-sweep union.
+const ALL_TYPES_OWNED_OR_FILTER = [
+  `annotation_type.in.(${NON_HIGHLIGHT_TYPES.join(',')})`,
+  `and(annotation_type.in.(${SURVEY_MARKER_TYPE_VALUES.join(',')}),annotation_data->fabricObject.not.is.null)`,
+].join(',');
 
-  const legacyFabricSurveyMarkers = await loadPagedAnnotationRows(
+async function loadAllTypesOwnedRowsForDocument(documentId) {
+  const owned = await loadPagedAnnotationRows(
     documentId,
-    (query) => query
-      .in('annotation_type', SURVEY_MARKER_TYPE_VALUES)
-      .not('annotation_data->fabricObject', 'is', null)
+    (query) => query.or(ALL_TYPES_OWNED_OR_FILTER)
   );
-  if (legacyFabricSurveyMarkers.error) return legacyFabricSurveyMarkers;
+  if (owned.error) return owned;
 
   return {
-    rows: [...nonSurveyMarker.rows, ...legacyFabricSurveyMarkers.rows],
+    rows: owned.rows,
     error: null,
     scanned: {
-      nonSurveyMarker: nonSurveyMarker.rows.length,
-      legacyFabricSurveyMarkers: legacyFabricSurveyMarkers.rows.length
+      owned: owned.rows.length
     }
   };
 }
@@ -145,40 +149,27 @@ async function loadAllTypesOwnedRowsForDocument(documentId) {
 // watermark; a match proves the durable rows are unchanged so the full re-read
 // can be skipped without regressing the wrong-page source-of-truth heal.
 //
-// Each `select('updated_at', { count: 'exact' })` ordered DESC limit 1 returns
-// BOTH the newest row and the exact count of the filtered set in one round-trip,
-// so this is exactly two trips total, matching the two filters the loader uses.
+// DB-sync audit #2 — the watermark covers the SAME owned set as the loader, so
+// the two filters fold into one OR-filtered aggregate. A single
+// `select('updated_at', { count: 'exact' })` ordered DESC limit 1 returns BOTH
+// the combined exact count and the newest updated_at across both branches in one
+// round-trip, halving this probe from two trips to one.
 export async function loadAllTypesOwnedWatermark(documentId) {
   if (!supabase) return { rowCount: 0, maxUpdatedAt: null, error: new Error('Supabase unavailable') };
   if (!documentId) return { rowCount: 0, maxUpdatedAt: null, error: null };
 
-  const part = async (applyFilters) => {
-    let query = supabase
-      .from('document_annotations')
-      .select('updated_at', { count: 'exact' })
-      .eq('document_id', documentId)
-      .order('updated_at', { ascending: false })
-      .limit(1);
-    query = applyFilters(query);
-    const { data, count, error } = await query;
-    return { count: count || 0, maxUpdatedAt: data?.[0]?.updated_at ?? null, error };
-  };
-
-  const nonSurveyMarker = await part((query) => query.in('annotation_type', NON_HIGHLIGHT_TYPES));
-  if (nonSurveyMarker.error) return { rowCount: 0, maxUpdatedAt: null, error: nonSurveyMarker.error };
-
-  const legacyFabricSurveyMarkers = await part((query) => query
-    .in('annotation_type', SURVEY_MARKER_TYPE_VALUES)
-    .not('annotation_data->fabricObject', 'is', null));
-  if (legacyFabricSurveyMarkers.error) return { rowCount: 0, maxUpdatedAt: null, error: legacyFabricSurveyMarkers.error };
-
-  const maxUpdatedAt = [nonSurveyMarker.maxUpdatedAt, legacyFabricSurveyMarkers.maxUpdatedAt]
-    .filter((x) => typeof x === 'string')
-    .sort((x, y) => Date.parse(y) - Date.parse(x))[0] ?? null;
+  const { data, count, error } = await supabase
+    .from('document_annotations')
+    .select('updated_at', { count: 'exact' })
+    .eq('document_id', documentId)
+    .or(ALL_TYPES_OWNED_OR_FILTER)
+    .order('updated_at', { ascending: false })
+    .limit(1);
+  if (error) return { rowCount: 0, maxUpdatedAt: null, error };
 
   return {
-    rowCount: nonSurveyMarker.count + legacyFabricSurveyMarkers.count,
-    maxUpdatedAt,
+    rowCount: count || 0,
+    maxUpdatedAt: data?.[0]?.updated_at ?? null,
     error: null,
   };
 }
