@@ -269,6 +269,66 @@ export async function runBackfill(args) {
           }
         }
         const yMapSize = probedSize;
+        // 2026-06-03 — Defer the exact-count probe behind the cheap,
+        // zero-network health signals. The HEAD count below is a full
+        // count(*) over document_annotations and measured ~7.4s on large
+        // sealed docs; paying it on every open of an already-deduped,
+        // repeatedly-opened doc is pure waste because the dedupe-anchor
+        // early-return discards `legacyCount` (returns null) anyway. So we
+        // evaluate the dedupe marker, last-good-size anchor, and the hard
+        // floor FIRST — all read from the in-memory Y.Doc meta map with no
+        // network — and only fire the count for the genuinely ambiguous
+        // paths that still need the exact legacy magnitude. The wipe-recovery
+        // guards are preserved: every short-circuit below proves health from
+        // a signal at least as strong as before, and the hard-floor wipe
+        // forces recovery WITHOUT the count.
+        const __ymapMeta = ydoc.getMap('meta');
+        const dedupeRan = !!__ymapMeta.get('dedupe_pdf_imports_v1_done');
+        const lastGoodSize = __ymapMeta.get('dedupe_pdf_imports_v1_last_good_size') || 0;
+        const dedupeAnchorOk = lastGoodSize > 0
+          ? yMapSize >= Math.floor(lastGoodSize * 0.7)
+          : yMapSize > 0;
+        // 2026-05-05 — Once PDF-import dedupe has recorded a healthy Y.Doc
+        // size, do not compare the sealed Y.Doc to legacy rows again. The
+        // legacy table intentionally still contains duplicate Drawboard/PDF
+        // imports; re-reading it can repaint jagged duplicate shapes over the
+        // smoothed Y.Doc state and makes startup crawl through 20k+ rows.
+        // 2026-06-03 — Hoisted ABOVE the count probe. This gate fires for the
+        // ~70% common case (sealed + deduped + healthy anchor + non-trivial
+        // Y.Map) and used to discard the count result anyway (legacyCount:
+        // null). Running it first lets us skip the ~7.4s count entirely.
+        if (dedupeRan && dedupeAnchorOk && yMapSize >= 50) {
+          crdtBackfillDebug('[Phase31 UAT] backfill:cutover-dedupe-anchor-skip ' + JSON.stringify({
+            documentId, userId, yMapSize, lastGoodSize,
+          }));
+          return {
+            ranAs: 'cutover_already_complete_dedupe_anchor',
+            cutoverCompleted: true,
+            cutoverAt: docRow.cutover_completed_at,
+            yMapSize,
+            legacyCount: null,
+          };
+        }
+        // 2026-06-03 — Zero-network hard-floor wipe gate. The hard floor
+        // (below, lines now ~360) forces recovery whenever the doc is known
+        // to have held real-scale data AND the Y.Map is now catastrophically
+        // small (<50). When that "known large data" fact comes from the
+        // dedupe last-good-size anchor (lastGoodSize >= 50) rather than the
+        // legacy count, we already have everything we need to declare a wipe
+        // — no count required. Fall through to the recovery loop WITHOUT the
+        // probe. This preserves the hard floor exactly for the lastGoodSize
+        // limb while letting the count be skipped. (The legacyCount limb of
+        // hadLargeKnownData is still honored by the probe path below for docs
+        // that have no dedupe anchor.)
+        if (lastGoodSize >= 50 && yMapSize < 50) {
+          crdtBackfillDebug('[Phase31 UAT] backfill:cutover-hardfloor-wipe-no-probe ' + JSON.stringify({
+            documentId, userId, yMapSize, lastGoodSize,
+          }));
+          // eslint-disable-next-line no-console
+          console.warn('[crdtBackfill] cutover sealed but Y.Map < hard floor vs last-good anchor — re-running import loop to recover ' +
+            JSON.stringify({ yMapSize, lastGoodSize }));
+          // Intentional fall-through to the lock/import path below.
+        } else {
         let legacyCount = null;
         let probeOk = false;
         try {
@@ -294,29 +354,6 @@ export async function runBackfill(args) {
         // legacy count." When the marker is set we trust Y.Map outright,
         // skipping the recovery loop that would otherwise re-import the
         // duplicates and undo the dedupe on every doc open.
-        const __ymapMeta = ydoc.getMap('meta');
-        const dedupeRan = !!__ymapMeta.get('dedupe_pdf_imports_v1_done');
-        const lastGoodSize = __ymapMeta.get('dedupe_pdf_imports_v1_last_good_size') || 0;
-        const dedupeAnchorOk = lastGoodSize > 0
-          ? yMapSize >= Math.floor(lastGoodSize * 0.7)
-          : yMapSize > 0;
-        // 2026-05-05 — Once PDF-import dedupe has recorded a healthy Y.Doc
-        // size, do not compare the sealed Y.Doc to legacy rows again. The
-        // legacy table intentionally still contains duplicate Drawboard/PDF
-        // imports; re-reading it can repaint jagged duplicate shapes over the
-        // smoothed Y.Doc state and makes startup crawl through 20k+ rows.
-        if (dedupeRan && dedupeAnchorOk && yMapSize >= 50) {
-          crdtBackfillDebug('[Phase31 UAT] backfill:cutover-dedupe-anchor-skip ' + JSON.stringify({
-            documentId, userId, yMapSize, lastGoodSize,
-          }));
-          return {
-            ranAs: 'cutover_already_complete_dedupe_anchor',
-            cutoverCompleted: true,
-            cutoverAt: docRow.cutover_completed_at,
-            yMapSize,
-            legacyCount: null,
-          };
-        }
         // 2026-05-04 — Tighter dedupe-aware health check. After dedupe, we
         // know roughly how many entries should be in Y.Map (lastGoodSize).
         // Recovery should re-run if Y.Map has dropped well below that
@@ -365,6 +402,7 @@ export async function runBackfill(args) {
         // eslint-disable-next-line no-console
         console.warn('[crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover ' +
           JSON.stringify({ yMapSize, legacyCount }));
+        } // end else (count-probe path)
       }
     } catch (err) {
       // Silent fall-through. eslint-disable to allow the diagnostic warn.
