@@ -1,0 +1,20 @@
+===== SurveyApp Save Log =====
+version:   0.1.46
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1203x833
+locale:    en-US
+timestamp: 2026-06-04T12:42:36.829Z (6/4/2026, 8:42:36 AM)
+==============================
+[OpenTiming] doc-click @ 7839ms Package 2 - Rev 4 -- IC.pdf
+[OpenTiming] pdfid-resolve @ 8041ms Package 2 - Rev 4 -- IC.pdf-6311068
+[OpenTiming] hydrate-start @ 8099ms 5fa31b86-a0ce-481d-b20c-66be5f2f30fc
+[OpenTiming] first-marks-painted @ 8422ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[OpenTiming] snapshot-fetch-done @ 9080ms pages=7
+[OpenTiming] crdt-hydrate-done @ 38770ms pages=7
+[OpenTiming] pdfid-resolve @ 168546ms Package 2 - Rev 4 -- IC.pdf-6311068
+[OpenTiming] first-marks-painted @ 168723ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[PreviewDiag] sync push {"kind":"fabric","count":0,"changedObjectCount":0,"deletedCount":0,"pageCount":0}
