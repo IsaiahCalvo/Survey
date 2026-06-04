@@ -1,0 +1,266 @@
+===== SurveyApp Save Log =====
+version:   0.1.46
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1203x833
+locale:    en-US
+timestamp: 2026-06-04T23:49:55.654Z (6/4/2026, 7:49:55 PM)
+==============================
+[2026-06-04T04:46:12.328Z] [info] main:0 === APP LAUNCH ===
+[2026-06-04T04:46:13.626Z] [verbose] http://localhost:5173/@vite/client:495 [vite] connecting...
+[2026-06-04T04:46:13.642Z] [verbose] http://localhost:5173/@vite/client:618 [vite] connected.
+[2026-06-04T04:46:16.603Z] [info] http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=195de826:28429 %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+[2026-06-04T04:46:17.281Z] [info] main:0 === did-finish-load (navigation) http://localhost:5173/ ===
+[2026-06-04T04:47:37.743Z] [info] main:0 === APP LAUNCH ===
+[2026-06-04T04:47:38.813Z] [verbose] http://localhost:5173/@vite/client:495 [vite] connecting...
+[2026-06-04T04:47:39.318Z] [verbose] http://localhost:5173/@vite/client:618 [vite] connected.
+[2026-06-04T04:47:42.436Z] [info] http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=195de826:28429 %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+[2026-06-04T04:47:43.000Z] [info] main:0 === did-finish-load (navigation) http://localhost:5173/ ===
+[2026-06-04T04:49:03.312Z] [info] http://localhost:5173/src/lib/collab/SupabaseYjsProvider.js:213 [SupabaseYjsProvider] large local Y.Doc update kept out of realtime broadcast [object Object]
+[2026-06-04T04:49:28.996Z] [warning] http://localhost:5173/src/main.jsx:83 [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[2026-06-04T04:49:35.506Z] [info] http://localhost:5173/src/lib/collab/SupabaseYjsProvider.js:213 [SupabaseYjsProvider] large local Y.Doc update kept out of realtime broadcast [object Object]
+[2026-06-04T04:49:39.024Z] [warning] http://localhost:5173/src/main.jsx:83 [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[2026-06-04T04:49:50.489Z] [info] :67 [preload] menu:save-log received, forwarding to renderer
+[2026-06-04T04:49:50.679Z] [info] http://localhost:5173/src/main.jsx:83 [SaveLog] wrote 2 lines locally
+[2026-06-04T04:49:51.948Z] [info] http://localhost:5173/src/main.jsx:83 [SaveLog] local snapshot saved at /Users/isaiahcalvo/Documents/Projects/Active/Survey-BetaSafeS2/Logs/2026-06-04_04-49-50
+[2026-06-04T04:49:57.471Z] [info] http://localhost:5173/src/main.jsx:83 [SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"hasGhTokenEnv":true,"payloadLength":555}
+[2026-06-04T04:49:57.425Z] [info] http://localhost:5173/src/main.jsx:83 [SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"hasGhTokenEnv":true,"payloadLength":555}
+[2026-06-04T04:49:57.494Z] [info] http://localhost:5173/src/main.jsx:83 [SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"hasGhTokenEnv":true,"payloadLength":555}
+[2026-06-04T04:49:57.547Z] [info] http://localhost:5173/src/main.jsx:83 [SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"hasGhTokenEnv":true,"payloadLength":555}
+[2026-06-04T04:50:01.496Z] [info] http://localhost:5173/src/main.jsx:83 [SaveLogBanner] GitHub push OK [object Object]
+[2026-06-04T04:50:03.471Z] [info] http://localhost:5173/src/main.jsx:83 [SaveLogBanner] GitHub push OK [object Object]
+[2026-06-04T04:50:05.357Z] [info] http://localhost:5173/src/main.jsx:83 [SaveLogBanner] GitHub push OK [object Object]
+[2026-06-04T04:50:07.607Z] [info] http://localhost:5173/src/main.jsx:83 [SaveLogBanner] GitHub push OK [object Object]
+[2026-06-04T04:55:58.646Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/AppShell.jsx
+[2026-06-04T04:56:05.337Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/AppShell.jsx
+[2026-06-04T04:56:09.726Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/AppShell.jsx
+[2026-06-04T04:56:33.437Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/Dashboard.jsx
+[2026-06-04T04:56:39.333Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/PDFViewer.jsx
+[2026-06-04T04:56:39.869Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] hydrate-start @ 542096ms 00e1cde9-449b-4771-9743-37bd604557a9
+[2026-06-04T04:56:44.883Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/PDFViewer.jsx
+[2026-06-04T04:56:45.375Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] hydrate-start @ 547590ms 00e1cde9-449b-4771-9743-37bd604557a9
+[2026-06-04T04:56:46.241Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] snapshot-fetch-done @ 548492ms pages=1
+[2026-06-04T04:56:57.388Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/PDFViewer.jsx
+[2026-06-04T04:56:57.809Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] hydrate-start @ 560034ms 00e1cde9-449b-4771-9743-37bd604557a9
+[2026-06-04T04:56:58.787Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] snapshot-fetch-done @ 561042ms pages=1
+[2026-06-04T04:56:58.914Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] crdt-hydrate-done @ 561168ms pages=1
+[2026-06-04T04:57:20.720Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/PDFViewer.jsx
+[2026-06-04T04:57:20.956Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 583208ms Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T04:57:21.311Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 583527ms Isaiah Calvo Construction Project Manager.pdf-67930
+[2026-06-04T04:57:21.311Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 583542ms SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080
+[2026-06-04T04:57:21.311Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] hydrate-start @ 583541ms 00e1cde9-449b-4771-9743-37bd604557a9
+[2026-06-04T04:57:23.283Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] snapshot-fetch-done @ 585532ms pages=1
+[2026-06-04T04:57:23.435Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] crdt-hydrate-done @ 585688ms pages=1
+[2026-06-04T04:57:47.723Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/PDFViewer.jsx
+[2026-06-04T04:57:47.762Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] first-marks-painted @ 610015ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T04:57:47.865Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 610120ms Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T04:57:48.266Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 610494ms Isaiah Calvo Construction Project Manager.pdf-67930
+[2026-06-04T04:57:48.267Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] hydrate-start @ 610499ms 00e1cde9-449b-4771-9743-37bd604557a9
+[2026-06-04T04:57:48.267Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 610500ms SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080
+[2026-06-04T04:57:48.899Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] snapshot-fetch-done @ 611153ms pages=1
+[2026-06-04T04:57:48.991Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] crdt-hydrate-done @ 611246ms pages=1
+[2026-06-04T04:57:54.362Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/PDFViewer.jsx
+[2026-06-04T04:57:54.534Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 616789ms Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T04:57:54.827Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 617045ms Isaiah Calvo Construction Project Manager.pdf-67930
+[2026-06-04T04:57:54.827Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 617048ms SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080
+[2026-06-04T04:57:54.827Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] hydrate-start @ 617048ms 00e1cde9-449b-4771-9743-37bd604557a9
+[2026-06-04T04:57:55.542Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] first-marks-painted @ 617796ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T04:57:55.699Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] snapshot-fetch-done @ 617954ms pages=1
+[2026-06-04T04:57:55.794Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] crdt-hydrate-done @ 618047ms pages=1
+[2026-06-04T05:04:23.568Z] [warning] http://localhost:5173/src/main.jsx:83 GoTrueClient@sb-cvamwtpsuvxvjdnotbeg-auth-token:1 (2.104.0) 2026-06-04T05:04:23.562Z Multiple GoTrueClient instances detected in the same browser context. It is not an error, but this should be avoided as it may produce undefined behavior when used concurrently under the same storage key.
+[2026-06-04T05:04:23.718Z] [verbose] http://localhost:5173/@vite/client:64 [vite] invalidate /src/contexts/AuthContext.jsx: Could not Fast Refresh ("AuthContext" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2026-06-04T05:04:23.718Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/contexts/AuthContext.jsx
+[2026-06-04T05:04:23.722Z] [verbose] http://localhost:5173/@vite/client:64 [vite] invalidate /src/contexts/MSGraphContext.jsx: Could not Fast Refresh ("MSGraphContext" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2026-06-04T05:04:23.722Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/contexts/MSGraphContext.jsx
+[2026-06-04T05:04:23.722Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/AppShell.jsx
+[2026-06-04T05:04:23.722Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/Dashboard.jsx
+[2026-06-04T05:04:23.723Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/PDFViewer.jsx
+[2026-06-04T05:04:23.723Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/home/DocumentsLedger.jsx
+[2026-06-04T05:04:23.723Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/components/NewColumnsModal.jsx
+[2026-06-04T05:04:23.723Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/components/DocumentLockBanner.jsx
+[2026-06-04T05:04:23.724Z] [verbose] http://localhost:5173/@vite/client:64 [vite] invalidate /src/components/collab/YDocProvider.jsx: Could not Fast Refresh ("YDocContext" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2026-06-04T05:04:23.724Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/components/collab/YDocProvider.jsx
+[2026-06-04T05:04:23.725Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/components/UsageIndicator.jsx
+[2026-06-04T05:04:23.725Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/home/AccessManagementModal.jsx
+[2026-06-04T05:04:23.726Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/TabBar.jsx
+[2026-06-04T05:04:23.726Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/components/revisions/RevisionsPanel.jsx
+[2026-06-04T05:04:23.727Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/components/AccountSettings.jsx
+[2026-06-04T05:04:23.727Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/home/ShareModal.jsx
+[2026-06-04T05:04:23.727Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/components/StripeCheckout.jsx
+[2026-06-04T05:04:23.885Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 1006119ms Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T05:04:24.069Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 1006301ms Isaiah Calvo Construction Project Manager.pdf-67930
+[2026-06-04T05:04:24.069Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 1006303ms SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf-26261080
+[2026-06-04T05:04:24.122Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] first-marks-painted @ 1006355ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T05:04:24.545Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/AppShell.jsx
+[2026-06-04T05:04:24.545Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/PDFViewer.jsx
+[2026-06-04T05:04:24.545Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/components/collab/ReadOnlyGate.jsx
+[2026-06-04T05:04:24.545Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/components/collab/YDocProvider.jsx
+[2026-06-04T05:04:24.545Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/components/FabricEditCanvas.jsx
+[2026-06-04T05:04:25.433Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] sync push [object Object]
+[2026-06-04T05:04:25.553Z] [error] http://localhost:5173/src/main.jsx:83 [AnnotationSync] Error removing presence: [object Object]
+[2026-06-04T05:04:25.554Z] [error] http://localhost:5173/src/main.jsx:83 [AnnotationSync] Error removing presence: [object Object]
+[2026-06-04T05:04:25.554Z] [error] http://localhost:5173/src/main.jsx:83 [AnnotationSync] Error removing presence: [object Object]
+[2026-06-04T05:04:26.949Z] [verbose] http://localhost:5173/@vite/client:495 [vite] connecting...
+[2026-06-04T05:04:27.002Z] [verbose] http://localhost:5173/@vite/client:618 [vite] connected.
+[2026-06-04T05:04:31.265Z] [info] http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=802fa090:28429 %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+[2026-06-04T05:04:31.393Z] [warning] http://localhost:5173/node_modules/.vite/deps/chunk-VQVWSUKH.js?v=802fa090:2876 GoTrueClient@sb-cvamwtpsuvxvjdnotbeg-auth-token:1 (2.104.0) 2026-06-04T05:04:31.393Z Multiple GoTrueClient instances detected in the same browser context. It is not an error, but this should be avoided as it may produce undefined behavior when used concurrently under the same storage key.
+[2026-06-04T05:04:31.826Z] [info] main:0 === did-finish-load (navigation) http://localhost:5173/ ===
+[2026-06-04T11:59:46.981Z] [error] http://localhost:5173/src/main.jsx?t=1780549462309:83 Error fetching subscription tier: [object Object]
+[2026-06-04T12:32:56.191Z] [info] main:0 === APP LAUNCH ===
+[2026-06-04T12:32:56.982Z] [verbose] http://localhost:5173/@vite/client:495 [vite] connecting...
+[2026-06-04T12:32:57.018Z] [verbose] http://localhost:5173/@vite/client:618 [vite] connected.
+[2026-06-04T12:32:59.310Z] [info] http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=802fa090:28429 %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+[2026-06-04T12:32:59.883Z] [info] main:0 === did-finish-load (navigation) http://localhost:5173/ ===
+[2026-06-04T12:33:35.499Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] doc-click @ 39305ms Package 2 - Rev 4 -- IC.pdf
+[2026-06-04T12:33:35.706Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 39513ms Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T12:33:35.784Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] hydrate-start @ 39591ms 5fa31b86-a0ce-481d-b20c-66be5f2f30fc
+[2026-06-04T12:33:36.122Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] first-marks-painted @ 39928ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T12:33:47.274Z] [info] http://localhost:5173/src/lib/collab/SupabaseYjsProvider.js:213 [SupabaseYjsProvider] large local Y.Doc update kept out of realtime broadcast [object Object]
+[2026-06-04T12:33:50.065Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] snapshot-fetch-done @ 53867ms pages=7
+[2026-06-04T12:33:51.584Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] crdt-hydrate-done @ 55388ms pages=7
+[2026-06-04T12:38:24.204Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 327886ms Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T12:38:24.269Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] first-marks-painted @ 327953ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T12:39:28.982Z] [info] main:0 === APP LAUNCH ===
+[2026-06-04T12:39:29.660Z] [verbose] http://localhost:5173/@vite/client:495 [vite] connecting...
+[2026-06-04T12:39:29.695Z] [verbose] http://localhost:5173/@vite/client:618 [vite] connected.
+[2026-06-04T12:39:31.878Z] [info] http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=802fa090:28429 %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+[2026-06-04T12:39:32.246Z] [info] main:0 === did-finish-load (navigation) http://localhost:5173/ ===
+[2026-06-04T12:39:36.825Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] doc-click @ 7839ms Package 2 - Rev 4 -- IC.pdf
+[2026-06-04T12:39:37.027Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 8041ms Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T12:39:37.084Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] hydrate-start @ 8099ms 5fa31b86-a0ce-481d-b20c-66be5f2f30fc
+[2026-06-04T12:39:37.407Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] first-marks-painted @ 8422ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T12:39:38.065Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] snapshot-fetch-done @ 9080ms pages=7
+[2026-06-04T12:39:48.724Z] [info] http://localhost:5173/src/lib/collab/SupabaseYjsProvider.js:213 [SupabaseYjsProvider] large local Y.Doc update kept out of realtime broadcast [object Object]
+[2026-06-04T12:40:07.759Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] crdt-hydrate-done @ 38770ms pages=7
+[2026-06-04T12:42:17.537Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 168546ms Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T12:42:17.711Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] first-marks-painted @ 168723ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T12:42:18.825Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] sync push [object Object]
+[2026-06-04T12:42:31.831Z] [info] http://localhost:5173/src/main.jsx:83 [SaveLog] bulletproof local snapshot saved at /Users/isaiahcalvo/Documents/Projects/Active/Survey-BetaSafeS2/Logs/2026-06-04_12-42-31
+[2026-06-04T12:42:36.829Z] [info] http://localhost:5173/src/main.jsx:83 [SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"hasGhTokenEnv":true,"payloadLength":934}
+[2026-06-04T12:42:36.839Z] [info] http://localhost:5173/src/main.jsx:83 [SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"hasGhTokenEnv":true,"payloadLength":934}
+[2026-06-04T12:42:37.763Z] [info] http://localhost:5173/src/main.jsx:83 [SaveLogBanner] GitHub push OK [object Object]
+[2026-06-04T12:42:38.885Z] [info] http://localhost:5173/src/main.jsx:83 [SaveLogBanner] GitHub push OK [object Object]
+[2026-06-04T12:59:11.067Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/PDFViewer.jsx
+[2026-06-04T12:59:11.498Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 1182504ms Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T12:59:11.621Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] hydrate-start @ 1182627ms 5fa31b86-a0ce-481d-b20c-66be5f2f30fc
+[2026-06-04T12:59:12.027Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] first-marks-painted @ 1183032ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T12:59:13.033Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] snapshot-fetch-done @ 1184038ms pages=7
+[2026-06-04T12:59:13.455Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] crdt-hydrate-done @ 1184458ms pages=7
+[2026-06-04T12:59:17.586Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/PDFViewer.jsx
+[2026-06-04T12:59:18.462Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] hydrate-start @ 1189467ms 5fa31b86-a0ce-481d-b20c-66be5f2f30fc
+[2026-06-04T12:59:18.463Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 1189469ms Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T12:59:18.995Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] first-marks-painted @ 1190000ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T12:59:19.430Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] snapshot-fetch-done @ 1190435ms pages=7
+[2026-06-04T12:59:19.805Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] crdt-hydrate-done @ 1190808ms pages=7
+[2026-06-04T12:59:52.546Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/PDFViewer.jsx
+[2026-06-04T12:59:53.459Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 1224464ms Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T12:59:53.510Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] hydrate-start @ 1224515ms 5fa31b86-a0ce-481d-b20c-66be5f2f30fc
+[2026-06-04T12:59:53.970Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] first-marks-painted @ 1224976ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T12:59:54.303Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] snapshot-fetch-done @ 1225308ms pages=7
+[2026-06-04T12:59:54.727Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] crdt-hydrate-done @ 1225729ms pages=7
+[2026-06-04T13:00:40.533Z] [verbose] http://localhost:5173/@vite/client:64 [vite] invalidate /src/components/collab/YDocProvider.jsx: Could not Fast Refresh ("YDocContext" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2026-06-04T13:00:40.533Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/components/collab/YDocProvider.jsx
+[2026-06-04T13:00:40.783Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/AppShell.jsx
+[2026-06-04T13:00:40.783Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/components/collab/YDocProvider.jsx
+[2026-06-04T13:00:40.784Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/components/collab/ReadOnlyGate.jsx
+[2026-06-04T13:00:40.784Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/PDFViewer.jsx
+[2026-06-04T13:00:40.785Z] [verbose] http://localhost:5173/@vite/client:223 [vite] hot updated: /src/components/FabricEditCanvas.jsx
+[2026-06-04T13:00:41.480Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 1272485ms Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T13:00:41.529Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] hydrate-start @ 1272534ms 5fa31b86-a0ce-481d-b20c-66be5f2f30fc
+[2026-06-04T13:00:42.072Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] first-marks-painted @ 1273077ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T13:00:42.633Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] snapshot-fetch-done @ 1273638ms pages=7
+[2026-06-04T13:00:43.108Z] [info] http://localhost:5173/src/lib/collab/SupabaseYjsProvider.js:213 [SupabaseYjsProvider] large local Y.Doc update kept out of realtime broadcast [object Object]
+[2026-06-04T13:00:43.111Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] crdt-hydrate-done @ 1274115ms pages=7
+[2026-06-04T13:31:49.256Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 3140222ms Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T13:31:49.302Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] first-marks-painted @ 3140272ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T13:31:50.558Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] sync push [object Object]
+[2026-06-04T14:30:49.285Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 6680271ms Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T14:30:49.378Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] first-marks-painted @ 6680369ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T14:30:50.540Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] sync push [object Object]
+[2026-06-04T15:29:49.291Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 10220272ms Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T15:29:49.336Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] first-marks-painted @ 10220322ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T15:29:50.534Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] sync push [object Object]
+[2026-06-04T16:28:49.256Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 13760201ms Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T16:28:49.382Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] first-marks-painted @ 13760336ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T16:28:50.565Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] sync push [object Object]
+[2026-06-04T17:27:49.180Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 17300164ms Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T17:27:49.221Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] first-marks-painted @ 17300210ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T17:27:50.530Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] sync push [object Object]
+[2026-06-04T18:26:49.214Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 20840154ms Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T18:26:49.317Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] first-marks-painted @ 20840262ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T18:26:50.671Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] sync push [object Object]
+[2026-06-04T19:14:34.945Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 23705888ms Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T19:14:35.054Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] first-marks-painted @ 23706002ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T19:14:36.054Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] sync push [object Object]
+[2026-06-04T19:23:45.508Z] [error] http://localhost:5173/src/main.jsx:83 Error fetching subscription tier: [object Object]
+[2026-06-04T19:26:37.500Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-04T19:27:37.527Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-04T19:28:37.547Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-04T19:29:37.570Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-04T19:30:37.590Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-04T19:31:37.614Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-04T19:32:37.640Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-04T19:33:37.663Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-04T19:34:37.683Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-04T19:35:37.706Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-04T19:36:37.732Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-04T19:37:37.759Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-04T19:38:37.782Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-04T19:39:37.811Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-04T19:40:37.835Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-04T19:41:37.858Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-04T19:42:37.885Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-04T19:43:37.905Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-04T19:44:37.926Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-04T19:45:37.953Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-04T19:46:37.977Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-04T19:47:38.000Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-04T19:48:38.028Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-04T19:49:38.053Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-04T19:50:38.077Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-04T19:51:38.104Z] [error] http://localhost:5173/src/main.jsx:83 Error fetching subscription tier: [object Object]
+[2026-06-04T19:51:38.106Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-04T19:52:38.131Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-04T19:53:38.152Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-04T19:54:38.171Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-04T19:55:17.022Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-04T19:55:17.824Z] [error] http://localhost:5173/src/main.jsx:83 TypeError: Failed to fetch
+[2026-06-04T19:55:19.791Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 26150741ms Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T19:55:19.934Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] first-marks-painted @ 26150884ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T19:55:21.547Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] sync push [object Object]
+[2026-06-04T20:54:49.370Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 29720300ms Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T20:54:49.427Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] first-marks-painted @ 29720360ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T20:54:50.673Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] sync push [object Object]
+[2026-06-04T21:53:49.297Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 33260195ms Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T21:53:49.339Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] first-marks-painted @ 33260242ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T21:53:50.749Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] sync push [object Object]
+[2026-06-04T22:52:49.177Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 36800128ms Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T22:52:49.225Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] first-marks-painted @ 36800178ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T22:52:50.558Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] sync push [object Object]
+[2026-06-04T23:42:28.643Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 39779541ms Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T23:42:28.752Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] first-marks-painted @ 39779652ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T23:42:29.798Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] sync push [object Object]
+[2026-06-04T23:43:25.517Z] [verbose] http://localhost:5173/@vite/client:495 [vite] connecting...
+[2026-06-04T23:43:25.539Z] [verbose] http://localhost:5173/@vite/client:618 [vite] connected.
+[2026-06-04T23:43:26.795Z] [info] http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=802fa090:28429 %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+[2026-06-04T23:43:27.274Z] [info] main:0 === did-finish-load (navigation) http://localhost:5173/ ===
+[2026-06-04T23:45:16.586Z] [info] main:0 === APP LAUNCH ===
+[2026-06-04T23:45:17.307Z] [verbose] http://localhost:5173/@vite/client:495 [vite] connecting...
+[2026-06-04T23:45:17.446Z] [verbose] http://localhost:5173/@vite/client:618 [vite] connected.
+[2026-06-04T23:45:19.416Z] [info] http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=802fa090:28429 %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+[2026-06-04T23:45:19.854Z] [info] main:0 === did-finish-load (navigation) http://localhost:5173/ ===
+[2026-06-04T23:45:42.468Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] doc-click @ 25879ms Package 2 - Rev 4 -- IC.pdf
+[2026-06-04T23:45:42.671Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 26082ms Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T23:45:42.730Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] hydrate-start @ 26141ms 5fa31b86-a0ce-481d-b20c-66be5f2f30fc
+[2026-06-04T23:45:43.062Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] first-marks-painted @ 26473ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T23:45:56.757Z] [info] http://localhost:5173/src/lib/collab/SupabaseYjsProvider.js:213 [SupabaseYjsProvider] large local Y.Doc update kept out of realtime broadcast [object Object]
+[2026-06-04T23:45:56.977Z] [warning] http://localhost:5173/src/main.jsx:83 @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 2500ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+[2026-06-04T23:45:57.298Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] snapshot-fetch-done @ 40709ms pages=7
+[2026-06-04T23:45:57.814Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] crdt-hydrate-done @ 41225ms pages=7
+[2026-06-04T23:48:32.933Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] pdfid-resolve @ 196343ms Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T23:48:33.079Z] [info] http://localhost:5173/src/main.jsx:83 [OpenTiming] first-marks-painted @ 196489ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[2026-06-04T23:49:23.051Z] [info] http://localhost:5173/src/main.jsx:83 [PreviewDiag] sync push [object Object]
+[2026-06-04T23:49:50.611Z] [info] :67 [preload] menu:save-log received, forwarding to renderer
