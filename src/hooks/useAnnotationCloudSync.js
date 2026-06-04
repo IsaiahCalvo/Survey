@@ -42,7 +42,7 @@ import {
   loadAllTypesOwnedWatermark,
   loadDocumentAnnotationsChangedAt
 } from '../services/annotationCloudSync.js';
-import { resolveDocumentMetadata } from '../services/documentMetadataResolver.js';
+import { resolveDocumentMetadata, invalidateDocumentMetadata } from '../services/documentMetadataResolver.js';
 import { migrateLocalAnnotationsToCloud, hasMigrationRun } from '../services/cloudSyncMigration.js';
 import {
   enqueueSync,
@@ -296,6 +296,17 @@ function watermarkSkipResult(paintedSnapshot) {
     error: null,
     __watermarkSkipped: true,
   };
+}
+
+async function resolveStampChangedAt(documentId, liveChangedAt) {
+  if (liveChangedAt != null) return liveChangedAt;
+  try {
+    invalidateDocumentMetadata(documentId);
+    const m = await resolveDocumentMetadata(documentId, { supabase });
+    return m?.annotationsChangedAt ?? null;
+  } catch {
+    return null;
+  }
 }
 
 async function tryWatermarkSkipDurableRead(documentId, paintedSnapshot, queuedHasPending, liveChangedAt, label) {
@@ -1307,8 +1318,10 @@ export function useAnnotationCloudSync({
           if (isSnapshotEnabled() && !durableCloud?.error && !durableCloud?.__watermarkSkipped
             && (Object.keys(durableByPage).length > 0 || durableCallouts.length > 0)) {
             const wm = computeRowsWatermark(durableCloud.rawRows);
+            const stampChangedAt = await resolveStampChangedAt(documentId, liveChangedAt);
+            if (cancelled) return;
             writeByPageSnapshot(documentId, durableByPage, durableCallouts, supabase, {
-              changedAt: liveChangedAt,
+              changedAt: stampChangedAt,
               sourceMaxUpdatedAt: wm.maxUpdatedAt,
               sourceRowCount: wm.rowCount,
               calloutsComplete: true,
@@ -1677,8 +1690,10 @@ export function useAnnotationCloudSync({
           // when served from the snapshot (already current + already watermarked).
           if (isSnapshotEnabled() && !cloud.__watermarkSkipped && (cloudFabricPages > 0 || cloudCalloutCount > 0)) {
             const wm = computeRowsWatermark(cloud.rawRows);
+            const stampChangedAt = await resolveStampChangedAt(documentId, liveChangedAt);
+            if (cancelled) return;
             writeByPageSnapshot(documentId, cloud.annotationsByPage || {}, cloud.callouts || [], supabase, {
-              changedAt: liveChangedAt,
+              changedAt: stampChangedAt,
               sourceMaxUpdatedAt: wm.maxUpdatedAt,
               sourceRowCount: wm.rowCount,
               calloutsComplete: true,
