@@ -15,9 +15,6 @@ import { useMSGraph } from './contexts/MSGraphContext';
 import { useDocuments, useProjects, useStorage, useTemplates } from './hooks/useDatabase';
 import { useSubscriptionLimits } from './hooks/useSubscriptionLimits';
 import { getSupabaseSession, supabase } from './supabaseClient';
-import { isSnapshotEnabled } from './lib/collab/snapshotFeatureFlag.js';
-import { readByPageSnapshot } from './lib/collab/snapshotStore.js';
-import { prefetchSnapshot } from './lib/snapshotPrefetchCache.js';
 import { isStorageFileNotFoundError, isSupabaseRowNotFoundError } from './utils/storageErrors';
 import { countSurveyMarkersReferencingChecklistItem } from './services/documentAnnotationService';
 import { lockDocument, unlockDocument } from './services/documentLockService.js';
@@ -1871,16 +1868,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   }, [deleteSupabaseDocument]);
 
   const handleDocumentClick = async (doc) => {
-    // LEVER A (fast open) — warm the per-page snapshot read at SELECT time so the
-    // ~1.2s download overlaps the ~1.5s viewer init instead of serializing after
-    // the cloud-sync hook mounts. One-shot per documentId; the hydrate effect
-    // consumes it exactly once and falls back to a fresh read if it's missing.
-    const warmSnapshotPrefetch = (documentId) => {
-      try {
-        if (!documentId || !isSnapshotEnabled()) return;
-        prefetchSnapshot(documentId, (id) => readByPageSnapshot(id, supabase));
-      } catch { /* fail-open: viewer will read fresh */ }
-    };
     try {
       // 1. Check if we have a local file object (e.g. from optimistic upload)
       if (doc.file) {
@@ -1893,7 +1880,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           // documents-table lookup (the documents array is Dashboard-scoped).
           doc.file.user_id = doc.user_id || doc.userId || null;
         }
-        warmSnapshotPrefetch(doc.file.id || doc.id);
         onDocumentSelect(doc.file);
         return;
       }
@@ -1923,7 +1909,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         // gate (resolved in PDFViewer's documentOwnerId useMemo).
         file.user_id = doc.user_id || doc.userId || null;
 
-        warmSnapshotPrefetch(file.id || doc.id);
         onDocumentSelect(file);
       } else if (doc.dataUrl) {
         // Legacy: Convert dataUrl back to blob, then to File
@@ -1937,7 +1922,6 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         // Phase 35 Plan 03 — owner identity for delete authority gate.
         file.user_id = doc.user_id || doc.userId || null;
 
-        warmSnapshotPrefetch(file.id || doc.id);
         onDocumentSelect(file);
       } else {
         console.error('Document structure:', doc);
