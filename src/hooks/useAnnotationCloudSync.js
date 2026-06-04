@@ -89,6 +89,7 @@ import {
 import { shouldApplyDedupeResync } from '../utils/dedupeResyncSafety.js';
 import { resolveSafeSnapshot } from '../utils/safeSnapshot.js';
 import { isSnapshotEnabled } from '../lib/collab/snapshotFeatureFlag.js';
+import { consumePrefetch } from '../lib/snapshotPrefetchCache.js';
 import {
   writeByPageSnapshot,
   readByPageSnapshot,
@@ -1107,7 +1108,16 @@ export function useAnnotationCloudSync({
         let paintedSnapshot = null;
         if (isSnapshotEnabled()) {
           try {
-            const snap = await readByPageSnapshot(documentId, supabase);
+            // LEVER A (fast open) — consume the snapshot read the dashboard
+            // kicked off at document-SELECT time so the ~1.2s download overlaps
+            // viewer init instead of serializing after it. Fail-open: when no
+            // prefetch was warmed (or it's still mid-flight and unavailable), read
+            // fresh. The prefetch is consumed exactly once and is NOT used by any
+            // deliberate-refetch path, so the refetch-bypass-caches invariant holds.
+            const prefetched = consumePrefetch(documentId);
+            const snap = prefetched
+              ? (await prefetched) || (await readByPageSnapshot(documentId, supabase))
+              : await readByPageSnapshot(documentId, supabase);
             if (!cancelled && snap && Object.keys(snap.byPage).length > 0) {
               paintedSnapshot = snap;
               const snapCount = countFabricObjects(snap.byPage);
