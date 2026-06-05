@@ -1,0 +1,461 @@
+===== SurveyApp Save Log =====
+version:   0.1.46
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1203x833
+locale:    en-US
+timestamp: 2026-06-05T00:42:49.667Z (6/4/2026, 8:42:49 PM)
+==============================
+[PreviewDiag] preview {"id":"gesture-1","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 33405ms tool=pen
+[PreviewDiag] pointer release {"id":"gesture-1","frames":1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"052fdf77-a078-4cf0-9246-560748eac201"}
+[PreviewDiag] final commit {"id":"gesture-1","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"052fdf77-a078-4cf0-9246-560748eac201","source":"path:created","objectDelta":1,"previousObjectCount":7,"nextObjectCount":8,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[DrawCanvas p1] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p2] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p3] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p4] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p5] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p6] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p7] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p8] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p9] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p10] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p11] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p12] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p13] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p14] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p15] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p16] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p17] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p18] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p19] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p20] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p21] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p22] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p23] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p24] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p25] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p26] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p27] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p28] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p29] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p30] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p31] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p32] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p33] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p34] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p35] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p36] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[InteractionDiag] tool-changed @ 33547ms from=pen to=highlighter
+[InteractionDiag] viewer-pointer-down @ 33549ms tool=highlighter button=0 target=canvas
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"highlighter","type":"highlighter","action":"highlight-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-2","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"highlighter","type":"highlighter","action":"highlight-stroke","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 33550ms tool=highlighter
+[PreviewDiag] pointer release {"id":"gesture-2","frames":1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"highlighter","type":"highlighter","action":"highlight-stroke","pageNumber":1,"annotationId":"4ad965ed-083f-42ac-9880-010e21f76f1e"}
+[PreviewDiag] final commit {"id":"gesture-2","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"highlighter","type":"highlighter","action":"path:created","pageNumber":1,"annotationId":"4ad965ed-083f-42ac-9880-010e21f76f1e","source":"path:created","objectDelta":1,"previousObjectCount":8,"nextObjectCount":9,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[FabricEraserCanvas p1] enliven — input=9 enlivenable=9 unsupported=0 output=9 nulls=0 types={"circle":1,"path":5,"line":2,"textbox":1}→{"circle":1,"path":5,"line":2,"textbox":1}
+[FabricEraserCanvas p6] enliven — input=410 enlivenable=410 unsupported=0 output=410 nulls=0 types={"path":408,"rect":1,"textbox":1}→{"path":408,"rect":1,"textbox":1}
+[FabricEraserCanvas p7] enliven — input=146 enlivenable=146 unsupported=0 output=146 nulls=0 types={"path":145,"rect":1}→{"path":145,"rect":1}
+[FabricEraserCanvas p8] enliven — input=393 enlivenable=393 unsupported=0 output=393 nulls=0 types={"path":392,"rect":1}→{"path":392,"rect":1}
+[FabricEraserCanvas p9] enliven — input=1520 enlivenable=1520 unsupported=0 output=1520 nulls=0 types={"path":1519,"rect":1}→{"path":1519,"rect":1}
+[FabricEraserCanvas p10] enliven — input=330 enlivenable=330 unsupported=0 output=330 nulls=0 types={"path":329,"rect":1}→{"path":329,"rect":1}
+[FabricEraserCanvas p11] enliven — input=257 enlivenable=257 unsupported=0 output=257 nulls=0 types={"path":256,"rect":1}→{"path":256,"rect":1}
+[InteractionDiag] tool-changed @ 35029ms from=highlighter to=eraser (eraser-active → FabricEraserCanvas mounts)
+[InteractionDiag] viewer-pointer-down @ 35034ms tool=eraser button=0 target=eraser-canvas
+[InteractionDiag] eraser-down @ 35036ms page=1 mode=entire
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricEraserCanvas","tool":"eraser","type":"annotation","action":"eraser-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-3","frames":1,"pointerDown":true,"surface":"FabricEraserCanvas","tool":"eraser","type":"annotation","action":"eraser-stroke","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 35039ms tool=eraser
+[PreviewDiag] pointer release {"id":"gesture-3","frames":1,"pointerDown":false,"surface":"FabricEraserCanvas","tool":"eraser","type":"annotation","action":"eraser-stroke","pageNumber":1,"annotationId":null}
+[EraserHitTest] {"pageNumber":1,"gestureId":"gesture-3","pointerBounds":{"left":299.0737502308869,"top":321.19423215859774,"right":453.0226353112819,"bottom":364.5407076004385,"width":153.94888508039497,"height":43.34647544184076},"candidateAnnotationIds":["25f69246-2f8a-4f67-b4c0-af12d6735060","762fd2d2-efbb-49a7-9bf6-4037e3f309c5","deaf404e-5ffb-4f42-985d-0c678c5cbdda","e5adf73b-983e-40e8-be79-8a4cd5985e1d","14bfae46-8520-4d47-b0ef-8e63d15a8518","ca6fbdb3-b1d5-49e4-ade6-171cb39d4ab7","ink-1779033329740-giqrs58lm","052fdf77-a078-4cf0-9246-560748eac201","4ad965ed-083f-42ac-9880-010e21f76f1e"],"rejectedAnnotations":[{"id":"25f69246-2f8a-4f67-b4c0-af12d6735060","reason":"geometry-miss"},{"id":"762fd2d2-efbb-49a7-9bf6-4037e3f309c5","reason":"geometry-miss"},{"id":"deaf404e-5ffb-4f42-985d-0c678c5cbdda","reason":"geometry-miss"},{"id":"e5adf73b-983e-40e8-be79-8a4cd5985e1d","reason":"geometry-miss"},{"id":"14bfae46-8520-4d47-b0ef-8e63d15a8518","reason":"geometry-miss"},{"id":"ca6fbdb3-b1d5-49e4-ade6-171cb39d4ab7","reason":"geometry-miss"},{"id":"ink-1779033329740-giqrs58lm","reason":"geometry-miss"},{"id":"052fdf77-a078-4cf0-9246-560748eac201","reason":"geometry-miss"}],"touchedAnnotationIds":["4ad965ed-083f-42ac-9880-010e21f76f1e"],"finalDeletedAnnotationIds":["4ad965ed-083f-42ac-9880-010e21f76f1e"],"finalChangedAnnotationIds":[],"objectDelta":-1,"changedObjectsCount":1}
+[InteractionDiag] eraser-apply @ 35048ms page=1 mode=entire candidates=9 deleted=1 changed=0 callouts=0 rejected=8 COMMIT
+[PreviewDiag] final commit {"id":"gesture-3","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"eraser","type":"annotation","action":"eraser:apply","pageNumber":1,"annotationId":null,"source":"eraser:commit","objectDelta":-1,"previousObjectCount":9,"nextObjectCount":8,"changedObjectsCount":3,"checkpointPolicy":"normal"}
+[InteractionDiag] viewer-pointer-down @ 35234ms tool=eraser button=0 target=eraser-canvas
+[InteractionDiag] eraser-down @ 35234ms page=1 mode=entire
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricEraserCanvas","tool":"eraser","type":"annotation","action":"eraser-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-4","frames":1,"pointerDown":true,"surface":"FabricEraserCanvas","tool":"eraser","type":"annotation","action":"eraser-stroke","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 35235ms tool=eraser
+[PreviewDiag] pointer release {"id":"gesture-4","frames":1,"pointerDown":false,"surface":"FabricEraserCanvas","tool":"eraser","type":"annotation","action":"eraser-stroke","pageNumber":1,"annotationId":null}
+[EraserHitTest] {"pageNumber":1,"gestureId":"gesture-4","pointerBounds":{"left":334.88786382813305,"top":320.1408758763258,"right":453.0226353112819,"bottom":360.3272824713507,"width":118.13477148314882,"height":40.186406595024884},"candidateAnnotationIds":["25f69246-2f8a-4f67-b4c0-af12d6735060","762fd2d2-efbb-49a7-9bf6-4037e3f309c5","deaf404e-5ffb-4f42-985d-0c678c5cbdda","e5adf73b-983e-40e8-be79-8a4cd5985e1d","14bfae46-8520-4d47-b0ef-8e63d15a8518","ca6fbdb3-b1d5-49e4-ade6-171cb39d4ab7","ink-1779033329740-giqrs58lm","052fdf77-a078-4cf0-9246-560748eac201"],"rejectedAnnotations":[{"id":"25f69246-2f8a-4f67-b4c0-af12d6735060","reason":"geometry-miss"},{"id":"762fd2d2-efbb-49a7-9bf6-4037e3f309c5","reason":"geometry-miss"},{"id":"deaf404e-5ffb-4f42-985d-0c678c5cbdda","reason":"geometry-miss"},{"id":"e5adf73b-983e-40e8-be79-8a4cd5985e1d","reason":"geometry-miss"},{"id":"14bfae46-8520-4d47-b0ef-8e63d15a8518","reason":"geometry-miss"},{"id":"ca6fbdb3-b1d5-49e4-ade6-171cb39d4ab7","reason":"geometry-miss"},{"id":"ink-1779033329740-giqrs58lm","reason":"geometry-miss"},{"id":"052fdf77-a078-4cf0-9246-560748eac201","reason":"geometry-miss"}],"touchedAnnotationIds":[],"finalDeletedAnnotationIds":[],"finalChangedAnnotationIds":[],"objectDelta":0,"changedObjectsCount":0}
+[InteractionDiag] eraser-apply @ 35236ms page=1 mode=entire candidates=8 deleted=0 changed=0 callouts=0 rejected=8 NO-OP (had targets, removed nothing)
+[InteractionDiag] viewer-pointer-down @ 35238ms tool=eraser button=0 target=eraser-canvas
+[InteractionDiag] eraser-down @ 35238ms page=1 mode=entire
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricEraserCanvas","tool":"eraser","type":"annotation","action":"eraser-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-5","frames":1,"pointerDown":true,"surface":"FabricEraserCanvas","tool":"eraser","type":"annotation","action":"eraser-stroke","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 35239ms tool=eraser
+[PreviewDiag] pointer release {"id":"gesture-5","frames":1,"pointerDown":false,"surface":"FabricEraserCanvas","tool":"eraser","type":"annotation","action":"eraser-stroke","pageNumber":1,"annotationId":null}
+[EraserHitTest] {"pageNumber":1,"gestureId":"gesture-5","pointerBounds":{"left":256.9394989400091,"top":268.5264180450005,"right":300.2859743818498,"bottom":388.76790209269325,"width":43.3464754418407,"height":120.24148404769272},"candidateAnnotationIds":["25f69246-2f8a-4f67-b4c0-af12d6735060","762fd2d2-efbb-49a7-9bf6-4037e3f309c5","deaf404e-5ffb-4f42-985d-0c678c5cbdda","e5adf73b-983e-40e8-be79-8a4cd5985e1d","14bfae46-8520-4d47-b0ef-8e63d15a8518","ca6fbdb3-b1d5-49e4-ade6-171cb39d4ab7","ink-1779033329740-giqrs58lm","052fdf77-a078-4cf0-9246-560748eac201"],"rejectedAnnotations":[{"id":"25f69246-2f8a-4f67-b4c0-af12d6735060","reason":"geometry-miss"},{"id":"762fd2d2-efbb-49a7-9bf6-4037e3f309c5","reason":"geometry-miss"},{"id":"deaf404e-5ffb-4f42-985d-0c678c5cbdda","reason":"geometry-miss"},{"id":"e5adf73b-983e-40e8-be79-8a4cd5985e1d","reason":"geometry-miss"},{"id":"14bfae46-8520-4d47-b0ef-8e63d15a8518","reason":"geometry-miss"},{"id":"ca6fbdb3-b1d5-49e4-ade6-171cb39d4ab7","reason":"geometry-miss"},{"id":"ink-1779033329740-giqrs58lm","reason":"geometry-miss"}],"touchedAnnotationIds":["052fdf77-a078-4cf0-9246-560748eac201"],"finalDeletedAnnotationIds":["052fdf77-a078-4cf0-9246-560748eac201"],"finalChangedAnnotationIds":[],"objectDelta":-1,"changedObjectsCount":1}
+[InteractionDiag] eraser-apply @ 35243ms page=1 mode=entire candidates=8 deleted=1 changed=0 callouts=0 rejected=7 COMMIT
+[PreviewDiag] final commit {"id":"gesture-5","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"eraser","type":"annotation","action":"eraser:apply","pageNumber":1,"annotationId":null,"source":"eraser:commit","objectDelta":-1,"previousObjectCount":8,"nextObjectCount":7,"changedObjectsCount":2,"checkpointPolicy":"normal"}
+[InteractionDiag] tool-changed @ 35405ms from=eraser to=counter
+[PreviewDiag] final commit {"id":"gesture-5","commits":2,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"eraser","type":"annotation","action":"counter:create","pageNumber":1,"annotationId":null,"source":"counter:create","objectDelta":1,"previousObjectCount":7,"nextObjectCount":8,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] final commit {"id":"gesture-5","commits":3,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"eraser","type":"annotation","action":"counter:create","pageNumber":1,"annotationId":null,"source":"counter:create","objectDelta":1,"previousObjectCount":8,"nextObjectCount":9,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] final commit {"id":"gesture-5","commits":4,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"eraser","type":"annotation","action":"counter:create","pageNumber":1,"annotationId":null,"source":"counter:create","objectDelta":1,"previousObjectCount":9,"nextObjectCount":10,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[InteractionDiag] tool-changed @ 36131ms from=counter to=callout
+[DrawCanvas p1] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p2] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p3] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p4] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p4] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p5] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p5] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p6] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p6] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p7] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p7] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p8] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p8] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p9] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p9] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p10] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p10] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p11] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p11] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p12] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p12] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p13] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p13] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p14] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p14] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p15] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p15] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p16] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p16] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p17] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p17] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p18] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p18] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p19] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p19] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p20] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p20] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p21] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p21] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p22] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p22] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p23] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p23] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p24] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p24] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p25] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p25] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p26] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p26] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p27] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p27] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p28] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p28] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p29] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p29] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p30] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p30] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p31] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p31] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p32] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p32] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p33] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p33] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p34] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p34] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p35] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p35] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p36] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p36] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-changed @ 36736ms from=callout to=arrow
+[InteractionDiag] viewer-pointer-down @ 36738ms tool=arrow button=0 target=canvas
+[DrawCanvas p1] shape mousedown at (205.4, 322.3), tool=arrow
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"arrow","type":"arrow","action":"arrow-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] arrow created — start=(205.4, 322.3), color=rgba(255, 0, 0, 1), sw=3
+[PreviewDiag] preview {"id":"gesture-6","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"arrow","type":"arrow","action":"arrow-draw","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 36744ms tool=arrow
+[PreviewDiag] pointer release {"id":"gesture-6","frames":1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"arrow","type":"arrow","action":"arrow-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] arrow mouseup — hasSize=true {"fabricObj":{"type":"line","left":"205.4","top":"303.4","x1":"205.4","y1":"322.3","x2":"301.3","y2":"303.4","width":"95.9","height":"19.0"}}
+[PreviewDiag] final commit {"id":"gesture-6","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"arrow","type":"arrow","action":"path:created","pageNumber":1,"annotationId":"a182d161-6d3a-4163-847d-3e4b086307dc","source":"path:created","objectDelta":1,"previousObjectCount":10,"nextObjectCount":11,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[DrawCanvas p1] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p4] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p5] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p6] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p7] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p8] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p9] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p10] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p11] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p12] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p13] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p14] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p15] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p16] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p17] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p18] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p19] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p20] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p21] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p22] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p23] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p24] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p25] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p26] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p27] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p28] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p29] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p30] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p31] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p32] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p33] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p34] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p35] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p36] shape effect — tool=line, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-changed @ 36924ms from=arrow to=line
+[InteractionDiag] viewer-pointer-down @ 36925ms tool=line button=0 target=canvas
+[DrawCanvas p1] shape mousedown at (301.3, 303.4), tool=line
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"line","type":"line","action":"line-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] line created — start=(301.3, 303.4), color=rgba(255, 0, 0, 1), sw=3
+[PreviewDiag] preview {"id":"gesture-7","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"line","type":"line","action":"line-draw","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 36927ms tool=line
+[PreviewDiag] pointer release {"id":"gesture-7","frames":1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"line","type":"line","action":"line-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] line mouseup — hasSize=true {"fabricObj":{"type":"line","left":"301.3","top":"202.2","x1":"301.3","y1":"303.4","x2":"323.4","y2":"202.2","width":"22.1","height":"101.1"}}
+[PreviewDiag] final commit {"id":"gesture-7","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"line","type":"line","action":"path:created","pageNumber":1,"annotationId":"08a291c3-b0b6-4fe2-ae00-697c401a78f3","source":"path:created","objectDelta":1,"previousObjectCount":11,"nextObjectCount":12,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[InteractionDiag] viewer-pointer-down @ 37043ms tool=line button=0 target=canvas
+[DrawCanvas p1] shape mousedown at (323.4, 202.2), tool=line
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"line","type":"line","action":"line-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] line created — start=(323.4, 202.2), color=rgba(255, 0, 0, 1), sw=3
+[InteractionDiag] pointer-end @ 37044ms tool=line
+[PreviewDiag] pointer release {"id":"gesture-8","frames":0,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"line","type":"line","action":"line-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] line mouseup — hasSize=false {"fabricObj":{"type":"line","left":"323.4","top":"202.2","x1":"323.4","y1":"202.2","x2":"323.4","y2":"202.2","width":"0.0","height":"0.0"}}
+[DrawCanvas p1] shape too small, discarded
+[InteractionDiag] viewer-pointer-down @ 37045ms tool=line button=0 target=canvas
+[DrawCanvas p1] shape mousedown at (323.4, 202.2), tool=line
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"line","type":"line","action":"line-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] line created — start=(323.4, 202.2), color=rgba(255, 0, 0, 1), sw=3
+[InteractionDiag] pointer-end @ 37046ms tool=line
+[PreviewDiag] pointer release {"id":"gesture-9","frames":0,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"line","type":"line","action":"line-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] line mouseup — hasSize=false {"fabricObj":{"type":"line","left":"323.4","top":"202.2","x1":"323.4","y1":"202.2","x2":"323.4","y2":"202.2","width":"0.0","height":"0.0"}}
+[DrawCanvas p1] shape too small, discarded
+[InteractionDiag] tool-changed @ 37066ms from=line to=pan (pan-active → Syncfusion interactionMode=Pan)
+[InteractionDiag] viewer-pan-start @ 37069ms tool=pan button=0 target=syncfusion-page scrollTop=0 scrollLeft=0
+[InteractionDiag] pan-drag @ 37070ms pointerDelta=(0,-26) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-end @ 37070ms totalScrollDelta=(0,0) [PAN DID NOTHING]
+[DrawCanvas p1] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p2] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p3] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p4] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p4] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p5] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p5] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p6] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p6] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p7] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p7] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p8] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p8] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p9] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p9] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p10] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p10] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p11] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p11] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p12] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p12] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p13] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p13] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p14] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p14] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p15] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p15] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p16] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p16] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p17] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p17] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p18] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p18] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p19] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p19] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p20] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p20] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p21] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p21] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p22] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p22] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p23] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p23] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p24] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p24] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p25] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p25] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p26] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p26] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p27] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p27] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p28] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p28] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p29] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p29] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p30] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p30] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p31] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p31] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p32] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p32] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p33] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p33] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p34] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p34] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p35] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p35] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p36] MOUNT — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p36] shape effect — tool=line, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-changed @ 37576ms from=pan to=line
+[InteractionDiag] viewer-pointer-down @ 37581ms tool=line button=0 target=canvas
+[DrawCanvas p1] shape mousedown at (323.4, 167.5), tool=line
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"line","type":"line","action":"line-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] line created — start=(323.4, 167.5), color=rgba(255, 0, 0, 1), sw=3
+[PreviewDiag] preview {"id":"gesture-10","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"line","type":"line","action":"line-draw","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 37590ms tool=line
+[PreviewDiag] pointer release {"id":"gesture-10","frames":1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"line","type":"line","action":"line-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] line mouseup — hasSize=true {"fabricObj":{"type":"line","left":"318.1","top":"82.2","x1":"323.4","y1":"167.5","x2":"318.1","y2":"82.2","width":"5.3","height":"85.3"}}
+[PreviewDiag] final commit {"id":"gesture-10","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"line","type":"line","action":"path:created","pageNumber":1,"annotationId":"1ef67b74-405d-40d1-ac59-ea096e889014","source":"path:created","objectDelta":1,"previousObjectCount":12,"nextObjectCount":13,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[InteractionDiag] tool-intent @ 37785ms requested=select from=line
+[InteractionDiag] tool-changed @ 37811ms from=line to=select
+[InteractionDiag] tool-intent @ 37813ms requested=select from=select
+[InteractionDiag] tool-intent @ 37816ms requested=select from=select
+[PHASE35][marquee.filter][pdf=Package 2 - Rev 4 -- IC.pdf] {"stage":"empty-or-noop","viewerId":"170d915c-5741-4e0b-b03f-deaeedae27bd","documentOwnerId":"170d915c-5741-4e0b-b03f-deaeedae27bd","hitsIn":0,"hitsOut":0}
+[InteractionDiag] tool-intent @ 37833ms requested=eraser from=select
+[FabricEraserCanvas p1] enliven — input=13 enlivenable=13 unsupported=0 output=13 nulls=0 types={"circle":4,"path":3,"line":5,"textbox":1}→{"circle":4,"path":3,"line":5,"textbox":1}
+[FabricEraserCanvas p6] enliven — input=410 enlivenable=410 unsupported=0 output=410 nulls=0 types={"path":408,"rect":1,"textbox":1}→{"path":408,"rect":1,"textbox":1}
+[FabricEraserCanvas p7] enliven — input=146 enlivenable=146 unsupported=0 output=146 nulls=0 types={"path":145,"rect":1}→{"path":145,"rect":1}
+[FabricEraserCanvas p8] enliven — input=393 enlivenable=393 unsupported=0 output=393 nulls=0 types={"path":392,"rect":1}→{"path":392,"rect":1}
+[FabricEraserCanvas p9] enliven — input=1520 enlivenable=1520 unsupported=0 output=1520 nulls=0 types={"path":1519,"rect":1}→{"path":1519,"rect":1}
+[FabricEraserCanvas p10] enliven — input=330 enlivenable=330 unsupported=0 output=330 nulls=0 types={"path":329,"rect":1}→{"path":329,"rect":1}
+[FabricEraserCanvas p11] enliven — input=257 enlivenable=257 unsupported=0 output=257 nulls=0 types={"path":256,"rect":1}→{"path":256,"rect":1}
+[InteractionDiag] tool-changed @ 38600ms from=select to=eraser (eraser-active → FabricEraserCanvas mounts)
+[InteractionDiag] tool-intent @ 38615ms requested=counter from=eraser
+[InteractionDiag] tool-changed @ 38649ms from=eraser to=counter
+[InteractionDiag] tool-intent @ 38654ms requested=counter from=counter
+[InteractionDiag] tool-intent @ 38657ms requested=callout from=counter
+[InteractionDiag] tool-changed @ 38666ms from=counter to=callout
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":3063,"legacyCount":22093}
+[PreviewDiag] summary path:created started, 2 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-1","durationMs":5325.9,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"052fdf77-a078-4cf0-9246-560748eac201","source":"path:created","objectDelta":1,"previousObjectCount":7,"nextObjectCount":8,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[PreviewDiag] summary path:created started, 2 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-2","durationMs":5177,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"highlighter","type":"highlighter","action":"path:created","pageNumber":1,"annotationId":"4ad965ed-083f-42ac-9880-010e21f76f1e","source":"path:created","objectDelta":1,"previousObjectCount":8,"nextObjectCount":9,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 2500ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 2500ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+[PreviewDiag] summary eraser:apply started, 1 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-3","durationMs":3689.7,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"eraser","type":"annotation","action":"eraser:apply","pageNumber":1,"annotationId":null,"source":"eraser:commit","objectDelta":-1,"previousObjectCount":9,"nextObjectCount":8,"changedObjectsCount":3,"checkpointPolicy":"normal","reason":"settled"}
+[PreviewDiag] summary eraser-stroke started, 1 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 0 commits on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-4","durationMs":3492.1,"pointerDown":false,"surface":"FabricEraserCanvas","tool":"eraser","type":"annotation","action":"eraser-stroke","pageNumber":1,"annotationId":null,"reason":"settled"}
+[PreviewDiag] summary counter:create started, 1 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 4 commits on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-5","durationMs":3488.2,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"eraser","type":"annotation","action":"counter:create","pageNumber":1,"annotationId":null,"source":"counter:create","objectDelta":1,"previousObjectCount":9,"nextObjectCount":10,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 2500ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 2500ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+[PreviewDiag] summary path:created started, 1 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-6","durationMs":1988.3,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"arrow","type":"arrow","action":"path:created","pageNumber":1,"annotationId":"a182d161-6d3a-4163-847d-3e4b086307dc","source":"path:created","objectDelta":1,"previousObjectCount":10,"nextObjectCount":11,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 2500ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+[PreviewDiag] summary path:created started, 1 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-7","durationMs":1801.1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"line","type":"line","action":"path:created","pageNumber":1,"annotationId":"08a291c3-b0b6-4fe2-ae00-697c401a78f3","source":"path:created","objectDelta":1,"previousObjectCount":11,"nextObjectCount":12,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 2500ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+[PreviewDiag] summary line-draw started, 0 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 0 commits on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-8","durationMs":1683.3,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"line","type":"line","action":"line-draw","pageNumber":1,"annotationId":null,"reason":"settled"}
+[PreviewDiag] summary line-draw started, 0 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 0 commits on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-9","durationMs":1681.7,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"line","type":"line","action":"line-draw","pageNumber":1,"annotationId":null,"reason":"settled"}
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 2500ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+[PreviewDiag] summary path:created started, 1 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-10","durationMs":1665,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"line","type":"line","action":"path:created","pageNumber":1,"annotationId":"1ef67b74-405d-40d1-ac59-ea096e889014","source":"path:created","objectDelta":1,"previousObjectCount":12,"nextObjectCount":13,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[PreviewDiag] sync push {"gestureId":"gesture-10","totalAfterRelease":1,"kind":"fabric","count":1,"changedObjectCount":1,"deletedCount":0,"pageCount":1}
+[InteractionDiag] tool-intent @ 43391ms requested=select from=callout
+[InteractionDiag] tool-changed @ 43407ms from=callout to=select
+[InteractionDiag] tool-changed @ 45907ms from=select to=pan (pan-active → Syncfusion interactionMode=Pan)
+[InteractionDiag] viewer-pan-start @ 46206ms tool=pan button=0 target=syncfusion-page scrollTop=2023 scrollLeft=0
+[InteractionDiag] pan-drag @ 46352ms pointerDelta=(0,0) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 46452ms pointerDelta=(7,117) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 46577ms pointerDelta=(20,177) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-end @ 46635ms totalScrollDelta=(0,0) [PAN DID NOTHING]
+[InteractionDiag] viewer-pan-start @ 46928ms tool=pan button=0 target=syncfusion-page scrollTop=2023 scrollLeft=0
+[InteractionDiag] pan-drag @ 47030ms pointerDelta=(0,0) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 47127ms pointerDelta=(0,79) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 47227ms pointerDelta=(0,88) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-end @ 47239ms totalScrollDelta=(0,0) [PAN DID NOTHING]
+[InteractionDiag] tool-changed @ 47326ms from=pan to=select
+[InteractionDiag] tool-changed @ 48036ms from=select to=pan (pan-active → Syncfusion interactionMode=Pan)
+[InteractionDiag] viewer-pan-start @ 48283ms tool=pan button=0 target=syncfusion-page scrollTop=0 scrollLeft=0
+[InteractionDiag] pan-drag @ 48295ms pointerDelta=(0,0) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 48419ms pointerDelta=(0,-1) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 48518ms pointerDelta=(0,-114) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 48618ms pointerDelta=(-9,4) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 48717ms pointerDelta=(-9,76) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 48817ms pointerDelta=(-5,2) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 48919ms pointerDelta=(-8,31) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-end @ 48969ms totalScrollDelta=(0,0) [PAN DID NOTHING]
+[InteractionDiag] tool-changed @ 49072ms from=pan to=select
+[InteractionDiag] tool-changed @ 49230ms from=select to=pan (pan-active → Syncfusion interactionMode=Pan)
+[InteractionDiag] viewer-pan-start @ 49306ms tool=pan button=0 target=syncfusion-page scrollTop=0 scrollLeft=0
+[InteractionDiag] pan-drag @ 49318ms pointerDelta=(0,0) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 49427ms pointerDelta=(0,0) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 49526ms pointerDelta=(8,-87) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 49626ms pointerDelta=(11,-57) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 49726ms pointerDelta=(11,52) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 49826ms pointerDelta=(27,-39) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 49927ms pointerDelta=(29,9) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 50027ms pointerDelta=(30,16) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-end @ 50072ms totalScrollDelta=(0,0) [PAN DID NOTHING]
+[InteractionDiag] tool-changed @ 50159ms from=pan to=select
+[InteractionDiag] tool-changed @ 175791ms from=select to=pan (pan-active → Syncfusion interactionMode=Pan)
+[InteractionDiag] viewer-pan-start @ 175931ms tool=pan button=0 target=syncfusion-page scrollTop=0 scrollLeft=0
+[InteractionDiag] pan-drag @ 176034ms pointerDelta=(0,-1) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 176134ms pointerDelta=(0,-95) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 176234ms pointerDelta=(0,-84) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 176335ms pointerDelta=(-2,23) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-end @ 176420ms totalScrollDelta=(0,0) [PAN DID NOTHING]
+[InteractionDiag] viewer-pan-start @ 176572ms tool=pan button=0 target=syncfusion-page scrollTop=0 scrollLeft=0
+[InteractionDiag] pan-drag @ 176718ms pointerDelta=(0,0) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 176818ms pointerDelta=(0,-40) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-end @ 176855ms totalScrollDelta=(0,0) [PAN DID NOTHING]
+[InteractionDiag] viewer-pan-start @ 177004ms tool=pan button=0 target=syncfusion-page scrollTop=0 scrollLeft=0
+[InteractionDiag] pan-drag @ 177093ms pointerDelta=(0,0) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 177194ms pointerDelta=(0,45) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-end @ 177272ms totalScrollDelta=(0,0) [PAN DID NOTHING]
+[InteractionDiag] viewer-pan-start @ 177387ms tool=pan button=0 target=syncfusion-page scrollTop=0 scrollLeft=0
+[InteractionDiag] pan-drag @ 177502ms pointerDelta=(0,0) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 177601ms pointerDelta=(0,-62) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-end @ 177663ms totalScrollDelta=(0,0) [PAN DID NOTHING]
+[InteractionDiag] tool-changed @ 177826ms from=pan to=select
+[InteractionDiag] tool-changed @ 188566ms from=select to=pan (pan-active → Syncfusion interactionMode=Pan)
+[InteractionDiag] viewer-pan-start @ 189061ms tool=pan button=0 target=syncfusion-page scrollTop=2870 scrollLeft=0
+[InteractionDiag] pan-drag @ 189067ms pointerDelta=(0,40) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 189392ms pointerDelta=(2,51) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 189495ms pointerDelta=(2,42) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-end @ 189495ms totalScrollDelta=(0,0) [PAN DID NOTHING]
+[InteractionDiag] viewer-pan-start @ 189588ms tool=pan button=0 target=syncfusion-page scrollTop=2870 scrollLeft=0
+[InteractionDiag] pan-drag @ 189740ms pointerDelta=(0,-2) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 189852ms pointerDelta=(0,-28) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 190057ms pointerDelta=(5,8) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-end @ 190057ms totalScrollDelta=(0,0) [PAN DID NOTHING]
+[InteractionDiag] viewer-pan-start @ 190480ms tool=pan button=0 target=syncfusion-page scrollTop=2870 scrollLeft=0
+[InteractionDiag] pan-drag @ 190630ms pointerDelta=(0,0) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 190727ms pointerDelta=(0,-33) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 190826ms pointerDelta=(0,-5) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 190928ms pointerDelta=(1,19) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-end @ 190934ms totalScrollDelta=(0,0) [PAN DID NOTHING]
+[InteractionDiag] tool-changed @ 191147ms from=pan to=select
+[SaveLog] bulletproof local snapshot saved at /Users/isaiahcalvo/Documents/Projects/Active/Survey-BetaSafeS2/Logs/2026-06-05_00-42-29
+[SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"hasGhTokenEnv":true,"payloadLength":54076}
+[SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"hasGhTokenEnv":true,"payloadLength":54076}
+[SaveLogBanner] GitHub push OK {"url":"https://github.com/IsaiahCalvo/Survey/blob/logs/mac-mac-2026-06-05T00-42-35-082Z.log","filename":"mac-mac-2026-06-05T00-42-35-082Z.log"}
+[SaveLogBanner] GitHub push OK {"url":"https://github.com/IsaiahCalvo/Survey/blob/logs/mac-mac-2026-06-05T00-42-35-096Z-15760-mq079lze-1.log","filename":"mac-mac-2026-06-05T00-42-35-096Z-15760-mq079lze-1.log"}
+[PHASE35][marquee.filter][pdf=Package 2 - Rev 4 -- IC.pdf] {"stage":"empty-or-noop","viewerId":"170d915c-5741-4e0b-b03f-deaeedae27bd","documentOwnerId":"170d915c-5741-4e0b-b03f-deaeedae27bd","hitsIn":0,"hitsOut":0}
+[InteractionDiag] tool-changed @ 203825ms from=select to=pan (pan-active → Syncfusion interactionMode=Pan)
+[InteractionDiag] viewer-pan-start @ 203939ms tool=pan button=0 target=syncfusion-page scrollTop=5035 scrollLeft=0
+[InteractionDiag] pan-drag @ 204020ms pointerDelta=(-2,-46) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-end @ 204346ms totalScrollDelta=(0,0) [PAN DID NOTHING]
+[InteractionDiag] tool-changed @ 204571ms from=pan to=select
+[InteractionDiag] tool-changed @ 204950ms from=select to=pan (pan-active → Syncfusion interactionMode=Pan)
+[InteractionDiag] viewer-pan-start @ 205062ms tool=pan button=0 target=syncfusion-page scrollTop=5035 scrollLeft=0
+[InteractionDiag] pan-drag @ 205205ms pointerDelta=(0,0) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 205300ms pointerDelta=(-59,24) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 205412ms pointerDelta=(-80,43) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 205515ms pointerDelta=(-2,31) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 205612ms pointerDelta=(24,4) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 205707ms pointerDelta=(3,13) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-end @ 205746ms totalScrollDelta=(0,0) [PAN DID NOTHING]
+[InteractionDiag] tool-changed @ 205938ms from=pan to=select
