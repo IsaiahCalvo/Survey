@@ -1,0 +1,70 @@
+===== SurveyApp Save Log =====
+version:   0.1.46
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1512x833
+locale:    en-US
+timestamp: 2026-06-05T01:17:03.980Z (6/4/2026, 9:17:03 PM)
+==============================
+[OpenTiming] doc-click @ 5985ms Package 2 - Rev 4 -- IC.pdf
+[OpenTiming] pdfid-resolve @ 6242ms Package 2 - Rev 4 -- IC.pdf-6311068
+[OpenTiming] hydrate-start @ 6303ms 5fa31b86-a0ce-481d-b20c-66be5f2f30fc
+[InteractionDiag] interactive-ready @ 6720ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 6727ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[InteractionDiag] viewer-pan-start @ 7298ms tool=pan button=0 target=syncfusion-page scrollTop=0 scrollLeft=0
+[InteractionDiag] pan-drag @ 7513ms pointerDelta=(0,-27) scrollDelta=(0,30) MOVED
+[InteractionDiag] pan-drag @ 7613ms pointerDelta=(8,-123) scrollDelta=(0,125) MOVED
+[InteractionDiag] pan-drag @ 7757ms pointerDelta=(9,-133) scrollDelta=(0,129) MOVED
+[OpenTiming] snapshot-fetch-done @ 7815ms pages=7
+[InteractionDiag] pan-end @ 7819ms totalScrollDelta=(0,129)
+[InteractionDiag] viewer-pan-start @ 7945ms tool=pan button=0 target=syncfusion-page scrollTop=129 scrollLeft=0
+[InteractionDiag] pan-drag @ 8067ms pointerDelta=(0,1) scrollDelta=(0,-1) MOVED
+[InteractionDiag] pan-drag @ 8162ms pointerDelta=(0,105) scrollDelta=(0,-108) MOVED
+[InteractionDiag] pan-drag @ 8268ms pointerDelta=(0,147) scrollDelta=(0,-128) MOVED
+[InteractionDiag] pan-end @ 8321ms totalScrollDelta=(0,-127)
+[InteractionDiag] viewer-pan-start @ 42670ms tool=pan button=0 target=syncfusion-page scrollTop=795 scrollLeft=1276
+[InteractionDiag] pan-drag @ 42700ms pointerDelta=(-1,128) scrollDelta=(1,-128) MOVED
+[InteractionDiag] pan-end @ 42705ms totalScrollDelta=(1,-128)
+[InteractionDiag] viewer-pan-start @ 42713ms tool=pan button=0 target=syncfusion-page scrollTop=667 scrollLeft=1277
+[InteractionDiag] pan-end @ 42736ms totalScrollDelta=(-11,243)
+[InteractionDiag] viewer-pan-start @ 42743ms tool=pan button=0 target=syncfusion-page scrollTop=910 scrollLeft=1266
+[InteractionDiag] pan-end @ 42761ms totalScrollDelta=(-8,149)
+[InteractionDiag] viewer-pan-start @ 42767ms tool=pan button=0 target=syncfusion-page scrollTop=1059 scrollLeft=1258
+[InteractionDiag] pan-end @ 42784ms totalScrollDelta=(2,-122)
+[InteractionDiag] viewer-pan-start @ 42788ms tool=pan button=0 target=syncfusion-page scrollTop=936 scrollLeft=1260
+[InteractionDiag] pan-drag @ 42798ms pointerDelta=(10,-135) scrollDelta=(-10,135) MOVED
+[InteractionDiag] pan-end @ 42805ms totalScrollDelta=(-10,135)
+[InteractionDiag] viewer-pan-start @ 42811ms tool=pan button=0 target=syncfusion-page scrollTop=1071 scrollLeft=1250
+[InteractionDiag] pan-end @ 42827ms totalScrollDelta=(-8,-120)
+[InteractionDiag] tool-intent @ 42904ms requested=select from=pan
+[InteractionDiag] tool-changed @ 43087ms from=pan to=select
+[InteractionDiag] tool-intent @ 43092ms requested=select from=select
+[InteractionDiag] tool-intent @ 43096ms requested=select from=select
+[PHASE35][marquee.filter][pdf=Package 2 - Rev 4 -- IC.pdf] {"stage":"empty-or-noop","viewerId":"170d915c-5741-4e0b-b03f-deaeedae27bd","documentOwnerId":"170d915c-5741-4e0b-b03f-deaeedae27bd","hitsIn":0,"hitsOut":0}
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":22094}
+[PHASE35][marquee.filter][pdf=Package 2 - Rev 4 -- IC.pdf] {"stage":"empty-or-noop","viewerId":"170d915c-5741-4e0b-b03f-deaeedae27bd","documentOwnerId":"170d915c-5741-4e0b-b03f-deaeedae27bd","hitsIn":0,"hitsOut":0}
+[InteractionDiag] viewer-pointer-down @ 71071ms tool=select button=0 target=div
+[InteractionDiag] pointer-end @ 71179ms tool=select
+[InteractionDiag] tool-intent @ 71550ms requested=pan from=select
+[InteractionDiag] tool-changed @ 71570ms from=select to=pan (pan-active → Syncfusion interactionMode=Pan)
+[InteractionDiag] viewer-pan-start @ 71872ms tool=pan button=0 target=syncfusion-page scrollTop=0 scrollLeft=0
+[InteractionDiag] pan-drag @ 71877ms pointerDelta=(0,1) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 71995ms pointerDelta=(0,1) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 72094ms pointerDelta=(14,-120) scrollDelta=(0,119) MOVED
+[InteractionDiag] pan-drag @ 72237ms pointerDelta=(20,-169) scrollDelta=(0,164) MOVED
+[InteractionDiag] pan-end @ 72250ms totalScrollDelta=(0,164)
+[InteractionDiag] viewer-pan-start @ 72474ms tool=pan button=0 target=syncfusion-page scrollTop=164 scrollLeft=0
+[InteractionDiag] pan-drag @ 72487ms pointerDelta=(0,1) scrollDelta=(0,-1) MOVED
+[InteractionDiag] pan-drag @ 72585ms pointerDelta=(0,3) scrollDelta=(0,-4) MOVED
+[InteractionDiag] pan-drag @ 72687ms pointerDelta=(0,81) scrollDelta=(0,-84) MOVED
+[InteractionDiag] pan-drag @ 72787ms pointerDelta=(0,89) scrollDelta=(0,-93) MOVED
+[InteractionDiag] pan-drag @ 72886ms pointerDelta=(10,26) scrollDelta=(0,-32) MOVED
+[InteractionDiag] pan-end @ 73017ms totalScrollDelta=(0,0) [PAN DID NOTHING]
+[InteractionDiag] viewer-pan-start @ 73405ms tool=pan button=0 target=syncfusion-page scrollTop=164 scrollLeft=0
+[InteractionDiag] pan-drag @ 73412ms pointerDelta=(0,0) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 73537ms pointerDelta=(0,1) scrollDelta=(0,-1) MOVED
+[InteractionDiag] pan-drag @ 73637ms pointerDelta=(0,81) scrollDelta=(0,-85) MOVED
+[InteractionDiag] pan-end @ 73697ms totalScrollDelta=(0,-88)
