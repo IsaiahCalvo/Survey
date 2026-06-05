@@ -301,7 +301,7 @@ export default function ProjectsFolderTree({
     if (ownerId != null) ids.push(ownerId);
     projMembers.forEach((id) => { if (id != null && !ids.includes(id)) ids.push(id); });
     return ids;
-  }, [user]);
+  }, [user?.id]);
 
   // Real team-member records for the Manage Team modal — the project's team
   // resolved against the directory. No invented people: today this is just the

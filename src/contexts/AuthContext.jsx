@@ -356,7 +356,7 @@ export const AuthProvider = ({ children }) => {
     }, 300_000); // 5 minutes
 
     return () => clearInterval(intervalId);
-  }, [user]);
+  }, [user?.id]);
 
   // Sign up with email and password
   const signUp = async (email, password, metadata = {}) => {

@@ -91,30 +91,22 @@ export const useSubscriptionLimits = () => {
       setLoading(true);
 
       const runUsageQuery = async () => {
-        // Fetch project count
-        const { count: projectCount, error: projectError } = await supabase
-          .from('projects')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', user.id);
+        // These three reads are independent — run them concurrently instead of
+        // as a 3-round-trip waterfall. Supabase resolves (never rejects) with
+        // {data,error}, so error checks below preserve the original throw order.
+        const [projectRes, documentRes, subRes] = await Promise.all([
+          supabase.from('projects').select('*', { count: 'exact', head: true }).eq('user_id', user.id),
+          supabase.from('documents').select('*', { count: 'exact', head: true }).eq('user_id', user.id),
+          supabase.from('user_subscriptions').select('storage_used_bytes').eq('user_id', user.id).single(),
+        ]);
 
-        if (projectError) throw projectError;
+        if (projectRes.error) throw projectRes.error;
+        if (documentRes.error) throw documentRes.error;
+        if (subRes.error && subRes.error.code !== 'PGRST116') throw subRes.error;
 
-        // Fetch document count
-        const { count: documentCount, error: documentError } = await supabase
-          .from('documents')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', user.id);
-
-        if (documentError) throw documentError;
-
-        // Fetch storage usage from user_subscriptions table
-        const { data: subData, error: subError } = await supabase
-          .from('user_subscriptions')
-          .select('storage_used_bytes')
-          .eq('user_id', user.id)
-          .single();
-
-        if (subError && subError.code !== 'PGRST116') throw subError;
+        const projectCount = projectRes.count;
+        const documentCount = documentRes.count;
+        const subData = subRes.data;
 
         return {
           projects: projectCount || 0,
