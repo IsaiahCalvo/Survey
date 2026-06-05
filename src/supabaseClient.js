@@ -7,8 +7,37 @@
  * connected-services availability flag. Used app-wide for cloud sync + auth.
  */
 import { createClient } from '@supabase/supabase-js';
+import { navigatorLock } from '@supabase/auth-js';
 
 const env = import.meta.env || {};
+
+// 2026-06-04 — Auth-token lock acquire-timeout clamp.
+// supabase-js v2.104.0 calls the auth client's `lock` as
+// `lock(name, lockAcquireTimeout, fn)` with lockAcquireTimeout defaulting to
+// 5000ms. That `lockAcquireTimeout` option is NOT plumbed through
+// createClient({ auth }) in this version (_initSupabaseAuthClient only forwards
+// `lock`, not `lockAcquireTimeout`), so the only supported override is a custom
+// `lock`. During cold document-open a stalled/orphaned navigator.locks
+// "lock:sb-<ref>-auth-token" lock serializes every authed DB request behind it
+// for the full 5s before auth-js's built-in steal-on-timeout recovery fires.
+// We wrap the built-in navigatorLock and clamp the acquire timeout to 2500ms so
+// recovery (lock stealing) kicks in sooner. This preserves cross-tab/window auth
+// sync (still navigator.locks + steal recovery) — it is pure timeout tuning, not
+// a no-op lock. Falls back to the original callback if navigatorLock is missing.
+const AUTH_LOCK_ACQUIRE_TIMEOUT_MS = 2500;
+const clampedAuthLock = (name, acquireTimeout, fn) => {
+  const lockImpl = typeof navigatorLock === 'function' ? navigatorLock : null;
+  if (!lockImpl) {
+    // No custom lock available; run inline (matches auth-js lockNoOp behavior).
+    return fn();
+  }
+  // Only clamp the default-positive acquire timeout. Preserve sentinel values
+  // (e.g. 0 = no wait, negative = wait forever) that auth-js may pass.
+  const nextTimeout = acquireTimeout > AUTH_LOCK_ACQUIRE_TIMEOUT_MS
+    ? AUTH_LOCK_ACQUIRE_TIMEOUT_MS
+    : acquireTimeout;
+  return lockImpl(name, nextTimeout, fn);
+};
 const supabaseUrl = env.VITE_SUPABASE_URL;
 const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY;
 const supabaseProjectRef = (() => {
@@ -32,6 +61,7 @@ export const supabase = supabaseUrl && supabaseAnonKey
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: true,
+        lock: clampedAuthLock,
         ...(SUPABASE_AUTH_STORAGE_KEY ? { storageKey: SUPABASE_AUTH_STORAGE_KEY } : {}),
       },
     })
