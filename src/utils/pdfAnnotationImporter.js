@@ -3143,7 +3143,20 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
   let appCalloutAnnotationsImported = 0;
   let appCalloutPiecesSkipped = 0;
 
-  for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+  // Pages are independent: each writes only its own page-keyed slots, and the
+  // cross-page counters/Set are commutative. Process pages concurrently (bounded
+  // so a large doc does not spike pdf.js worker memory) instead of paying one
+  // serial getPage+getAnnotations round-trip per page, then fold results in page
+  // order so the returned maps are identical to the old sequential loop.
+  const processPage = async (pageNum) => {
+    const localUnsupported = new Set();
+    const counts = {
+      counterAnnotationsImported: 0,
+      plainCirclesImported: 0,
+      counterMetadataParseFailures: 0,
+      appCalloutAnnotationsImported: 0,
+      appCalloutPiecesSkipped: 0,
+    };
     try {
       const page = await pdfDoc.getPage(pageNum);
       const viewport = page.getViewport({ scale: 1 });
@@ -3158,7 +3171,7 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
       // Track unsupported types
       unsupported.forEach(ann => {
         if (ann.subtype) {
-          unsupportedTypes.add(ann.subtype);
+          localUnsupported.add(ann.subtype);
         }
       });
 
@@ -3198,7 +3211,7 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
           const appCallout = normalizeImportedAppCallout(normalized.calloutMetadata);
           if (appCallout) {
             appCalloutsById.set(appCallout.id, appCallout);
-            appCalloutPiecesSkipped++;
+            counts.appCalloutPiecesSkipped++;
             importedDiag.push({
               status: 'app-callout-piece-grouped',
               reason: 'survey-app-callout-metadata',
@@ -3217,7 +3230,7 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
           normalized.subject === PDF_COUNTER_SUBJECT &&
           !normalized.counterMetadata
         ) {
-          counterMetadataParseFailures++;
+          counts.counterMetadataParseFailures++;
           console.warn('[PDFCounterImport] counter marker found but metadata was not parseable', {
             id: normalized.id || normalized.name || null,
             metadataKey: PDF_COUNTER_METADATA_KEY
@@ -3230,9 +3243,9 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
             fabricObjects.push(fabricObj);
           }
           if (fabricObj?.data?.type === 'counter') {
-            counterAnnotationsImported++;
+            counts.counterAnnotationsImported++;
           } else if (fabricObj?.pdfAnnotationType === 'Circle' || fabricObj?.type === 'circle') {
-            plainCirclesImported++;
+            counts.plainCirclesImported++;
           }
           importedDiag.push(summarizeFabricImportForDiag(fabricObj, annotation));
         } else {
@@ -3260,14 +3273,14 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
       const nativeOnly = renderableNative.filter((annotation) => !importedIds.has(annotation.id || annotation.name));
       const hideNativeLayer = renderableNative.length > 0 && nativeOnly.length === 0;
 
-      diagnosticsByPage[pageNum] = {
+      const diag = {
         pageNumber: pageNum,
         rawAnnotations: rawDiag,
         importedAnnotations: importedDiag,
         nativeRenderableAnnotationIds: renderableNative.map((annotation) => annotation.id || annotation.name || null).filter(Boolean),
         nativeOnlyAnnotationIds: nativeOnly.map((annotation) => annotation.id || annotation.name || null).filter(Boolean),
       };
-      nativeLayerPolicyByPage[pageNum] = {
+      const policy = {
         pageNumber: pageNum,
         hideNativeLayer,
         reason: hideNativeLayer
@@ -3276,27 +3289,60 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
               ? 'no-renderable-native-annotations'
               : 'renderable-native-annotations-not-imported'),
         importedIds: Array.from(importedIds),
-        nativeRenderableAnnotationIds: diagnosticsByPage[pageNum].nativeRenderableAnnotationIds,
-        nativeOnlyAnnotationIds: diagnosticsByPage[pageNum].nativeOnlyAnnotationIds,
+        nativeRenderableAnnotationIds: diag.nativeRenderableAnnotationIds,
+        nativeOnlyAnnotationIds: diag.nativeOnlyAnnotationIds,
       };
 
+      let annot = null;
       if (fabricObjects.length > 0) {
-        annotationsByPage[pageNum] = {
-          objects: fabricObjects
-        };
+        annot = { objects: fabricObjects };
       }
+      let callouts = null;
       if (appCalloutsById.size > 0) {
         const calloutEntries = Array.from(appCalloutsById.values());
-        calloutsByPage[pageNum] = calloutEntries;
-        appCalloutAnnotationsImported += calloutEntries.length;
+        callouts = calloutEntries;
+        counts.appCalloutAnnotationsImported += calloutEntries.length;
       }
+
+      return { pageNum, annot, callouts, diag, policy, unsupported: localUnsupported, counts };
     } catch (error) {
       console.error(
         `Error importing annotations from page ${pageNum}:`,
         error && (error.stack || error.message || error),
         error
       );
+      return null;
     }
+  };
+
+  // Bounded fan-out: at most CONCURRENCY pages decode at once; a shared cursor
+  // hands the next page to whichever worker frees up first.
+  const CONCURRENCY = 8;
+  const pageResults = new Array(numPages);
+  let cursor = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, numPages) }, async () => {
+      while (cursor < numPages) {
+        const idx = cursor++;
+        pageResults[idx] = await processPage(idx + 1);
+      }
+    })
+  );
+
+  // Fold in strict page order so every map and counter is identical to the old
+  // sequential loop (addition is commutative; order kept for determinism).
+  for (const r of pageResults) {
+    if (!r) continue;
+    if (r.annot) annotationsByPage[r.pageNum] = r.annot;
+    if (r.callouts) calloutsByPage[r.pageNum] = r.callouts;
+    diagnosticsByPage[r.pageNum] = r.diag;
+    nativeLayerPolicyByPage[r.pageNum] = r.policy;
+    r.unsupported.forEach((t) => unsupportedTypes.add(t));
+    counterAnnotationsImported += r.counts.counterAnnotationsImported;
+    plainCirclesImported += r.counts.plainCirclesImported;
+    counterMetadataParseFailures += r.counts.counterMetadataParseFailures;
+    appCalloutAnnotationsImported += r.counts.appCalloutAnnotationsImported;
+    appCalloutPiecesSkipped += r.counts.appCalloutPiecesSkipped;
   }
 
   if (typeof window !== 'undefined') {
