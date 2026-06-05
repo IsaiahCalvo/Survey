@@ -148,11 +148,6 @@ const SurveySpacesRail = ({
     return map;
   }, [items]);
 
-  const entitiesMap = useMemo(() => {
-    const entities = selectedTemplate?.entities || [];
-    return new Map(entities.map(e => [e.id, e]));
-  }, [selectedTemplate?.entities]);
-
   return (
           <>
             {/* Panel */}
@@ -1590,7 +1585,8 @@ const SurveySpacesRail = ({
                                                           }
 
                                                           if (entityId) {
-                                                            const entity = entitiesMap.get(entityId);
+                                                            const entities = selectedTemplate?.entities || [];
+                                                            const entity = entities.find(e => e.id === entityId);
                                                             if (entity) {
                                                               // Use the exact color from entity.color without transformation
                                                               indicatorColor = entity.color;
