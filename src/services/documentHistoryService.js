@@ -163,7 +163,7 @@ function cacheLocalHistoryRow(row) {
     nextRow,
     ...existing.filter((entry) => entry?.client_event_id !== row.client_event_id),
   ]
-    .sort((a, b) => new Date(b.occurred_at || b.created_at || 0) - new Date(a.occurred_at || a.created_at || 0))
+    .sort((a, b) => (Date.parse(b.occurred_at || b.created_at || 0) || 0) - (Date.parse(a.occurred_at || a.created_at || 0) || 0))
     .slice(0, 500);
   store[row.document_id] = deduped;
   writeLocalHistoryStore(store);
@@ -185,7 +185,7 @@ function mergeHistoryRows(primaryRows = [], fallbackRows = [], limit = HISTORY_E
     byClientId.set(key, row);
   });
   return Array.from(byClientId.values())
-    .sort((a, b) => new Date(b.occurred_at || b.created_at || 0) - new Date(a.occurred_at || a.created_at || 0))
+    .sort((a, b) => (Date.parse(b.occurred_at || b.created_at || 0) || 0) - (Date.parse(a.occurred_at || a.created_at || 0) || 0))
     .slice(0, limit);
 }
 
