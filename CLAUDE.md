@@ -62,6 +62,25 @@ and is auto-created at session start.
 
 - **NEVER remove the zoomGeneration signal.** `setZoomGeneration(prev => prev + 1)` fires at zoom-start inside `beginSyncfusionScaleConfirmPending`. All mounted Canvas components (FabricDrawingCanvas, FabricEraserCanvas, FabricEditCanvas) watch this signal to auto-commit in-progress work before the container resizes.
 
+## Codebase Hygiene — Fallow Audit (standing practice)
+
+Run the fallow audit periodically on your own judgment (after landing a sizeable
+chunk of code, around big refactors, when starting the Syncfusion removal, or as
+a session winds down) — `npm run audit:code | audit:dead | audit:dupes | audit:health`.
+A committed `.fallowrc.jsonc` declares the real entry points; keep it current.
+
+Fallow's raw findings are mostly false positives here — it's blind to
+vite-alias wiring, dynamic/lazy imports, feature flags, and CSS classes used by
+live code. NEVER auto-delete. Resolve real importers, check git history for prior
+wiring, confirm the feature is unreachable, and for anything ambiguous run an
+investigate + adversarial-verify agent pass. Gate every deletion behind
+`npx vite build` + `node scripts/run-node-tests.mjs` and commit in small batches.
+Intentional keeps fallow will keep flagging: the parked Microsoft/MSAL sign-in
+config (Microsoft auth is staying), the Phase-28 collab fallback provider, two
+kept stylesheets, and WIP pdf.js cutover files. Leave the unused `@syncfusion/ej2-*`
+sub-packages for the deliberate Syncfusion-removal migration. Full record:
+`debug/fallow-audit/REPORT.md`.
+
 ## Gotchas & Lessons Learned
 
 - **2026-05-13 — App-shell chrome publish effects must suppress identity-only API churn:** Lifting PDF chrome out of `PDFViewer` by publishing a large API object to App can create a maximum-update-depth loop if the effect calls an App `setState` every render. The left-rail lift hit this after moving `<PDFSidebar>` to `#chrome-left-host`. Fix: compare the next API against the previous one before returning a new state object, and treat function-only callback identity churn as unchanged; also no-op collapse notifications when the collapsed value is already current. This preserves current callbacks on real state/data changes without republishing on every render.
