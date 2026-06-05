@@ -7,7 +7,7 @@
 // without binding to Y.Doc events or showing the banner.
 
 import { useContext } from 'react';
-import { YDocContext } from '../components/collab/YDocProvider.jsx';
+import { YDocContext } from '../components/collab/YDocContext.js';
 
 const NULL_VALUE = Object.freeze({
   ydoc: null,

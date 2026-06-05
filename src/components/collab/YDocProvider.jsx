@@ -30,8 +30,9 @@
 // invariant (Pitfall 5) is grep-asserted by tests/phase27/applyUpdateOnlyInvariant.test.mjs
 // — the only allowed Y.Doc constructor site is src/lib/collab/ydocRegistry.js.
 
-import { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Y from 'yjs';
+import { YDocContext } from './YDocContext.js';
 import { getOrCreateYDoc, releaseYDoc } from '../../lib/collab/ydocRegistry.js';
 import { resolveDocumentMetadata } from '../../services/documentMetadataResolver.js';
 import { attachLifecycle } from '../../lib/collab/ydocLifecycle.js';
@@ -170,8 +171,6 @@ const NULL_CTX_DISABLED = Object.freeze({
   undoManager: null,
   undoCtx: null,
 });
-
-export const YDocContext = createContext(null);
 
 export function YDocProvider({ docId, children, closeDocument }) {
   const enabled = isCRDTEnabled();
