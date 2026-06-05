@@ -19,6 +19,35 @@ import RevisionsPanel from './components/revisions/RevisionsPanel';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
+// Module scope so it keeps a stable component identity across PDFSidebar renders.
+const HistoryButton = ({ isActive, onClick }) => (
+  <button
+    type="button"
+    title="Version History"
+    aria-label="Version History"
+    onClick={onClick}
+    style={{
+      width: '28px',
+      height: '28px',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: 'transparent',
+      border: 0,
+      color: isActive ? '#4A90E2' : '#ddd',
+      borderRadius: '6px',
+      cursor: 'pointer',
+      fontSize: '12px',
+      fontFamily: FONT_FAMILY,
+      fontWeight: 500,
+      padding: 0,
+      whiteSpace: 'nowrap'
+    }}
+  >
+    <Icon name="history" size={17} color="currentColor" />
+  </button>
+);
+
 const PDFSidebar = React.forwardRef(({
   pdfDoc,
   pdfDocumentKey,
@@ -157,37 +186,6 @@ const PDFSidebar = React.forwardRef(({
     setIsCollapsed(false);
     setActiveTab('history');
   }, []);
-
-  const HistoryButton = () => {
-    const isActive = activeTab === 'history';
-    return (
-      <button
-        type="button"
-        title="Version History"
-        aria-label="Version History"
-        onClick={openHistoryPanel}
-        style={{
-          width: '28px',
-          height: '28px',
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: 'transparent',
-          border: 0,
-          color: isActive ? '#4A90E2' : '#ddd',
-          borderRadius: '6px',
-          cursor: 'pointer',
-          fontSize: '12px',
-          fontFamily: FONT_FAMILY,
-          fontWeight: 500,
-          padding: 0,
-          whiteSpace: 'nowrap'
-        }}
-      >
-        <Icon name="history" size={17} color="currentColor" />
-      </button>
-    );
-  };
 
   return (
     <div style={{
@@ -562,7 +560,7 @@ const PDFSidebar = React.forwardRef(({
             compact={isCollapsed}
             onRetry={cloudSyncOnRetry}
           />
-          {documentId && <HistoryButton />}
+          {documentId && <HistoryButton isActive={activeTab === 'history'} onClick={openHistoryPanel} />}
           <PresenceAvatars
             presence={presence}
             currentUserId={currentUserId}

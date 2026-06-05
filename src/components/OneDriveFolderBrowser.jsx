@@ -22,6 +22,59 @@ const SOURCE_TYPES = {
   SHARED: 'shared'
 };
 
+// Icons and back button live at module scope so they keep a stable component
+// identity across OneDriveFolderBrowser renders (defining them inside the body
+// gave React a new type every render, remounting the whole tree).
+const FolderIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={COLORS.text.muted} strokeWidth="2">
+    <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
+const SiteIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={COLORS.text.muted} strokeWidth="2">
+    <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" strokeLinecap="round" strokeLinejoin="round"/>
+    <polyline points="9,22 9,12 15,12 15,22" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
+const LibraryIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={COLORS.text.muted} strokeWidth="2">
+    <path d="M4 19.5A2.5 2.5 0 016.5 17H20" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
+const BackButton = ({ onClick, label }) => (
+  <button
+    onClick={onClick}
+    onMouseEnter={(e) => {
+      e.currentTarget.style.color = COLORS.modal.borderActive;
+    }}
+    onMouseLeave={(e) => {
+      e.currentTarget.style.color = COLORS.modal.textMuted;
+    }}
+    style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: '6px',
+      padding: '6px 12px',
+      background: 'transparent',
+      border: 'none',
+      color: COLORS.modal.textMuted,
+      fontSize: TYPOGRAPHY.fontSize.sm,
+      fontFamily: TYPOGRAPHY.fontFamily.default,
+      cursor: 'pointer',
+      marginBottom: '8px',
+    }}
+  >
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M19 12H5M12 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+    {label}
+  </button>
+);
+
 const OneDriveFolderBrowser = ({
   graphClient,
   onFolderSelect,
@@ -307,60 +360,6 @@ const OneDriveFolderBrowser = ({
     setLibraryFolders([]);
     setLibraryPath([]);
   };
-
-  // Render folder icon
-  const FolderIcon = () => (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={COLORS.text.muted} strokeWidth="2">
-      <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-
-  // Render site icon
-  const SiteIcon = () => (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={COLORS.text.muted} strokeWidth="2">
-      <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" strokeLinecap="round" strokeLinejoin="round"/>
-      <polyline points="9,22 9,12 15,12 15,22" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-
-  // Render library icon
-  const LibraryIcon = () => (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={COLORS.text.muted} strokeWidth="2">
-      <path d="M4 19.5A2.5 2.5 0 016.5 17H20" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-
-  // Render back button
-  const BackButton = ({ onClick, label }) => (
-    <button
-      onClick={onClick}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.color = COLORS.modal.borderActive;
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.color = COLORS.modal.textMuted;
-      }}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '6px',
-        padding: '6px 12px',
-        background: 'transparent',
-        border: 'none',
-        color: COLORS.modal.textMuted,
-        fontSize: TYPOGRAPHY.fontSize.sm,
-        fontFamily: TYPOGRAPHY.fontFamily.default,
-        cursor: 'pointer',
-        marginBottom: '8px',
-      }}
-    >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M19 12H5M12 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round"/>
-      </svg>
-      {label}
-    </button>
-  );
 
   return (
     <div style={{

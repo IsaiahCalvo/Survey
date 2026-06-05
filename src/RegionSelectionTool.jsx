@@ -428,7 +428,7 @@ const RegionSelectionTool = ({
       resizeObserver.observe(targetElement);
     }
 
-    window.addEventListener('scroll', measureRect, true);
+    window.addEventListener('scroll', measureRect, { capture: true, passive: true });
     window.addEventListener('resize', measureRect);
 
     return () => {

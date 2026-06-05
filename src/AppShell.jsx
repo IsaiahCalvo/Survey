@@ -446,7 +446,7 @@ export default function App() {
     setAppTemplates(normalized);
   }, []);
 
-  const [entities, setEntities] = useState([
+  const [entities, setEntities] = useState(() => [
     { id: `entity-${Date.now()}-1`, name: 'GC', color: '#E3D1FB' },
     { id: `entity-${Date.now()}-2`, name: 'Subcontractor', color: '#FFF5C3' },
     { id: `entity-${Date.now()}-3`, name: 'My Company', color: '#CBDCFF' },

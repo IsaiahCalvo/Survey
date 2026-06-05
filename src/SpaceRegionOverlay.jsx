@@ -222,8 +222,8 @@ const SpaceRegionOverlay = ({
     return regionPaths;
   }, [height, regions, width]);
 
-  const hatchId = useMemo(() => `space-hatch-${pageNumber}-${instanceId}`, [instanceId, pageNumber]);
-  const maskId = useMemo(() => `space-mask-${pageNumber}-${instanceId}`, [instanceId, pageNumber]);
+  const hatchId = `space-hatch-${pageNumber}-${instanceId}`;
+  const maskId = `space-mask-${pageNumber}-${instanceId}`;
 
   const canRender =
     !!regionCutoutPath &&

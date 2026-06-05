@@ -3131,8 +3131,10 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
   const calloutsByPage = {};
   const unsupportedTypes = new Set();
   const numPages = pdfDoc.numPages;
-  const rawMetadataById = await buildRawAnnotationMetadataById(options.rawPdfBytes);
-  const appLayerState = await readAppLayerStateFromPdf(options.rawPdfBytes);
+  const [rawMetadataById, appLayerState] = await Promise.all([
+    buildRawAnnotationMetadataById(options.rawPdfBytes),
+    readAppLayerStateFromPdf(options.rawPdfBytes),
+  ]);
   const diagnosticsByPage = {};
   const nativeLayerPolicyByPage = {};
   let counterAnnotationsImported = 0;

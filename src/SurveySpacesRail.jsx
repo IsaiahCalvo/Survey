@@ -1246,27 +1246,31 @@ const SurveySpacesRail = ({
                                                   transition: 'background 0.2s ease, border-color 0.2s ease'
                                                 }}
                                               >
-                                                <svg
-                                                  width="16"
-                                                  height="16"
-                                                  viewBox="0 0 24 24"
-                                                  fill="none"
-                                                  xmlns="http://www.w3.org/2000/svg"
+                                                <span
                                                   style={{
-                                                    width: '14px',
-                                                    height: '14px',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
                                                     transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
                                                     transition: 'transform 0.2s ease'
                                                   }}
                                                 >
-                                                  <path
-                                                    d="M6 9L12 15L18 9"
-                                                    stroke={isArrowActive ? "#4A90E2" : "#fff"}
-                                                    strokeWidth="2.5"
-                                                    strokeLinecap="round"
-                                                    strokeLinejoin="round"
-                                                  />
-                                                </svg>
+                                                  <svg
+                                                    width="16"
+                                                    height="16"
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    xmlns="http://www.w3.org/2000/svg"
+                                                    style={{ width: '14px', height: '14px' }}
+                                                  >
+                                                    <path
+                                                      d="M6 9L12 15L18 9"
+                                                      stroke={isArrowActive ? "#4A90E2" : "#fff"}
+                                                      strokeWidth="2.5"
+                                                      strokeLinecap="round"
+                                                      strokeLinejoin="round"
+                                                    />
+                                                  </svg>
+                                                </span>
                                               </button>
                                             )}
                                           </div>

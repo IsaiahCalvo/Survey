@@ -11,6 +11,56 @@
 import { useSubscriptionLimits } from '../hooks/useSubscriptionLimits';
 import { useAuth } from '../contexts/AuthContext';
 
+// Module scope so these keep stable component identity across UsageIndicator
+// renders (defining them in the body remounted every metric row each render).
+const getProgressBarColor = (percentage) => {
+  if (percentage >= 90) return '#ef4444'; // Red
+  if (percentage >= 75) return '#f59e0b'; // Orange
+  return '#8b5cf6'; // Purple
+};
+
+const ProgressBar = ({ percentage, color }) => (
+  <div style={{
+    width: '100%',
+    height: '6px',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: '3px',
+    overflow: 'hidden',
+    marginTop: '4px'
+  }}>
+    <div style={{
+      width: `${Math.min(100, percentage)}%`,
+      height: '100%',
+      backgroundColor: color,
+      transition: 'width 0.3s ease, background-color 0.3s ease',
+      borderRadius: '3px'
+    }} />
+  </div>
+);
+
+const MetricRow = ({ label, current, limit, unlimited, percentage, showBar = true }) => (
+  <div style={{ marginBottom: '12px' }}>
+    <div style={{
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      fontSize: '13px',
+      color: 'rgba(255, 255, 255, 0.9)'
+    }}>
+      <span style={{ fontWeight: 500 }}>{label}</span>
+      <span style={{
+        fontWeight: 600,
+        color: percentage >= 90 ? '#ef4444' : 'rgba(255, 255, 255, 0.95)'
+      }}>
+        {current} / {unlimited ? '∞' : limit}
+      </span>
+    </div>
+    {showBar && !unlimited && (
+      <ProgressBar percentage={percentage} color={getProgressBarColor(percentage)} />
+    )}
+  </div>
+);
+
 const UsageIndicator = () => {
   const { usage, limits, loading, formatBytes, getUsagePercentage, tier } = useSubscriptionLimits();
   const { user } = useAuth();
@@ -24,54 +74,6 @@ const UsageIndicator = () => {
   const storagePercentage = getUsagePercentage('storage');
   const projectsPercentage = getUsagePercentage('projects');
   const documentsPercentage = getUsagePercentage('documents');
-
-  const getProgressBarColor = (percentage) => {
-    if (percentage >= 90) return '#ef4444'; // Red
-    if (percentage >= 75) return '#f59e0b'; // Orange
-    return '#8b5cf6'; // Purple
-  };
-
-  const ProgressBar = ({ percentage, color }) => (
-    <div style={{
-      width: '100%',
-      height: '6px',
-      backgroundColor: 'rgba(255, 255, 255, 0.1)',
-      borderRadius: '3px',
-      overflow: 'hidden',
-      marginTop: '4px'
-    }}>
-      <div style={{
-        width: `${Math.min(100, percentage)}%`,
-        height: '100%',
-        backgroundColor: color,
-        transition: 'width 0.3s ease, background-color 0.3s ease',
-        borderRadius: '3px'
-      }} />
-    </div>
-  );
-
-  const MetricRow = ({ label, current, limit, unlimited, percentage, showBar = true }) => (
-    <div style={{ marginBottom: '12px' }}>
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        fontSize: '13px',
-        color: 'rgba(255, 255, 255, 0.9)'
-      }}>
-        <span style={{ fontWeight: 500 }}>{label}</span>
-        <span style={{
-          fontWeight: 600,
-          color: percentage >= 90 ? '#ef4444' : 'rgba(255, 255, 255, 0.95)'
-        }}>
-          {current} / {unlimited ? '∞' : limit}
-        </span>
-      </div>
-      {showBar && !unlimited && (
-        <ProgressBar percentage={percentage} color={getProgressBarColor(percentage)} />
-      )}
-    </div>
-  );
 
   return (
     <div style={{

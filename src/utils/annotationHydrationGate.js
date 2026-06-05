@@ -30,7 +30,7 @@ export function resolveFirstVisibleAnnotationPage({
     }
   }
   if (candidates.length > 0) {
-    return candidates.sort((a, b) => a - b)[0];
+    return Math.min(...candidates);
   }
   const current = Number(currentPage);
   if (Number.isFinite(current) && current > 0) return current;
