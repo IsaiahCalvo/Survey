@@ -8,6 +8,55 @@ const os = require('os');
 
 const DEV_PORT = process.env.DEV_PORT || '5173';
 
+// 2026-06-04 — Continuous main-process renderer console capture.
+// The in-page console buffer (window.__consoleLogBuffer in src/main.jsx) lives in
+// a single renderer JS realm and is re-created empty on every full page reload
+// (engine toggle, sign-out, YDoc banner, ErrorBoundary, chunk re-eval during a
+// heavy PDF open). Its sessionStorage rehydrate is debounced and frequently
+// loses the just-seen lines when a renderer-initiated location.reload() tears the
+// realm down before the persist commits — so Cmd+Shift+L saves an empty log even
+// though DevTools (Chromium's own sink) still shows the lines. The Electron main
+// process is the ONLY process that sees EVERY renderer console message from
+// launch through every reload/realm with no debounce. We append every message to
+// one continuous file on disk; main.jsx reads it at capture time and prefers it
+// over the fragile in-page buffer. Everything here is fire-and-forget + try/catch
+// so logging can never crash main.
+const CONTINUOUS_LOG_PATH = path.join(app.getAppPath(), 'Logs', 'renderer-console.continuous.log');
+const CONTINUOUS_LOG_MAX_BYTES = 5 * 1024 * 1024; // 5MB cap
+const CONTINUOUS_LOG_KEEP_BYTES = 2 * 1024 * 1024; // truncate down to last ~2MB
+let _continuousLogDirReady = false;
+function continuousLevelName(level) {
+  // Electron numeric levels: 0 verbose, 1 info, 2 warning, 3 error.
+  switch (level) {
+    case 0: return 'verbose';
+    case 1: return 'info';
+    case 2: return 'warning';
+    case 3: return 'error';
+    default: return (typeof level === 'string' && level) ? level : 'info';
+  }
+}
+function appendContinuous(level, message, lineNo, sourceId) {
+  try {
+    if (!_continuousLogDirReady) {
+      try { fs.mkdirSync(path.dirname(CONTINUOUS_LOG_PATH), { recursive: true }); } catch (_e) { /* swallow */ }
+      _continuousLogDirReady = true;
+    }
+    // Opportunistic size cap so the file can't grow unbounded across long sessions.
+    try {
+      const st = fs.statSync(CONTINUOUS_LOG_PATH);
+      if (st && st.size > CONTINUOUS_LOG_MAX_BYTES) {
+        const buf = fs.readFileSync(CONTINUOUS_LOG_PATH);
+        const sliced = buf.slice(buf.length - CONTINUOUS_LOG_KEEP_BYTES);
+        fs.writeFileSync(CONTINUOUS_LOG_PATH, sliced);
+      }
+    } catch (_e) { /* file may not exist yet, or stat failed — ignore */ }
+    const levelName = continuousLevelName(level);
+    const src = `${sourceId == null ? '' : sourceId}:${lineNo == null ? '' : lineNo}`;
+    const line = `[${new Date().toISOString()}] [${levelName}] ${src} ${message == null ? '' : String(message)}\n`;
+    fs.appendFile(CONTINUOUS_LOG_PATH, line, (_err) => { /* fire-and-forget */ });
+  } catch (_e) { /* logging must never crash main */ }
+}
+
 // Suppress security warnings in development
 if (process.env.NODE_ENV === 'development') {
   process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
@@ -223,6 +272,23 @@ function createWindow() {
       zoomFactor: 1.0,
     },
   });
+
+  // 2026-06-04 — Continuous renderer console capture (the robust logging floor).
+  // Fires for the top frame on every renderer console.* call regardless of in-page
+  // realm resets, so it survives every reload (engine toggle, sign-out, PDF open
+  // chunk re-eval). did-finish-load writes a navigation boundary marker so reloads
+  // are visible in the one continuous file rather than silently truncating it.
+  try {
+    appendContinuous('info', '=== APP LAUNCH ===', 0, 'main');
+    win.webContents.on('console-message', (_event, level, message, lineNo, sourceId) => {
+      appendContinuous(level, message, lineNo, sourceId);
+    });
+    win.webContents.on('did-finish-load', () => {
+      try {
+        appendContinuous('info', `=== did-finish-load (navigation) ${win.webContents.getURL()} ===`, 0, 'main');
+      } catch (_e) { /* swallow */ }
+    });
+  } catch (_e) { /* never let logging wiring block window creation */ }
 
   // Intercept Ctrl/Cmd+Plus/Minus/0 — prevent Electron UI zoom, forward to in-app PDF zoom
   win.webContents.on('before-input-event', (event, input) => {
@@ -1180,6 +1246,18 @@ ipcMain.handle('logs:pushToGithub', async (event, payload = {}) => {
 // creates a dated subfolder under <project-root>/Logs/ containing console.log,
 // network.json, and summary.json. After writing, prunes the Logs folder to the
 // 20 most-recent snapshots — older folders get fully removed (recursive rmSync).
+// 2026-06-04 — Renderer pulls the continuous main-process console log at
+// Cmd+Shift+L time. This is the robust source of truth: it spans launch through
+// every reload/realm, unlike the in-page buffer which resets on navigation.
+ipcMain.handle('logs:readContinuous', async () => {
+  try {
+    const txt = await fs.promises.readFile(CONTINUOUS_LOG_PATH, 'utf8');
+    return { ok: true, text: txt };
+  } catch (e) {
+    return { ok: false, text: '', error: e?.message || String(e) };
+  }
+});
+
 ipcMain.handle('logs:saveSnapshot', async (event, payload = {}) => {
   const MAX_SNAPSHOTS = 20;
   try {

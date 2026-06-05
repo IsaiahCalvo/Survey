@@ -1869,6 +1869,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
   const handleDocumentClick = async (doc) => {
     try {
+      // [OpenTiming] BUG#2 — first open milestone: user clicked a document.
+      try { console.log('[OpenTiming] doc-click @ ' + Math.round(performance.now()) + 'ms', doc?.name || doc?.file?.name || doc?.id || ''); } catch (_e) { /* swallow */ }
       // 1. Check if we have a local file object (e.g. from optimistic upload)
       if (doc.file) {
         // Attach Supabase metadata to the file for sync

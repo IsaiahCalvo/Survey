@@ -93,6 +93,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // path math + prune-to-20 cleanup. Returns { ok, dir, error }.
   saveLogSnapshot: (payload) => ipcRenderer.invoke('logs:saveSnapshot', payload),
 
+  // 2026-06-04 — Read the continuous main-process renderer-console log. Main
+  // captures every renderer console message from launch through every reload, so
+  // this is the robust source of truth for Cmd+Shift+L when the fragile in-page
+  // buffer has been reset by a navigation. Returns { ok, text, error? }.
+  readContinuousLog: () => ipcRenderer.invoke('logs:readContinuous'),
+
   // UX 2026-04-23: Custom Print Panel — list installed printers and fire a
   // real print job with the panel's settings. `printJob` forwards the
   // renderer's webContents.print() options (deviceName, copies, duplex, etc.)

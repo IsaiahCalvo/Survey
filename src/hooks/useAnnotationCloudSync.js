@@ -1092,6 +1092,8 @@ export function useAnnotationCloudSync({
       try {
         setStatus({ stage: 'hydrating' });
         cloudSyncHookDebug('[CloudSync][hook] stage=hydrating');
+        // [OpenTiming] BUG#2 — hydrate begins (CRDT/snapshot read about to start).
+        try { console.log('[OpenTiming] hydrate-start @ ' + Math.round(performance.now()) + 'ms', String(documentId || '')); } catch (_e) { /* swallow */ }
 
         // Phase 32 — snapshot-first paint (fast open). DEFAULT OFF.
         // If a row-sourced snapshot exists, paint the (heavy) annotations
@@ -1108,6 +1110,8 @@ export function useAnnotationCloudSync({
         if (isSnapshotEnabled()) {
           try {
             const snap = await readByPageSnapshot(documentId, supabase);
+            // [OpenTiming] BUG#2 — snapshot prefetch read resolved.
+            try { console.log('[OpenTiming] snapshot-fetch-done @ ' + Math.round(performance.now()) + 'ms', snap ? ('pages=' + Object.keys(snap.byPage || {}).length) : 'null'); } catch (_e) { /* swallow */ }
             if (!cancelled && snap && Object.keys(snap.byPage).length > 0) {
               paintedSnapshot = snap;
               const snapCount = countFabricObjects(snap.byPage);
@@ -1386,6 +1390,8 @@ export function useAnnotationCloudSync({
                 error: reshapeErr?.message || String(reshapeErr),
               }));
             }
+            // [OpenTiming] BUG#2 — durable CRDT hydrate applied to UI state.
+            try { console.log('[OpenTiming] crdt-hydrate-done @ ' + Math.round(performance.now()) + 'ms', 'pages=' + Object.keys(safeDurableByPage.value || {}).length); } catch (_e) { /* swallow */ }
             setAnnotationsByPage(() => {
               lastByPageRef.current = safeDurableByPage.value;
               return safeDurableByPage.value;

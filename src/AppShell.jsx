@@ -173,6 +173,35 @@ export default function App() {
 	        : rawConsoleText;
 	      const consoleText = sanitizeConsoleLogText(builtConsoleText, window);
 
+      // 2026-06-04 — BUG#1 fix: the menu path is the one that actually runs for
+      // the saved bundle, but it was building console text purely from the
+      // fragile in-page buffer (`buf`), which gets reset by navigations
+      // (engine toggle, sign-out, PDF-open chunk re-eval). The Electron main
+      // process keeps a continuous log of EVERY renderer console message across
+      // the whole session, so prefer that here (exactly like the main.jsx
+      // bulletproof keydown handler) and fall back to the in-page buffer only
+      // when the continuous file is empty/unavailable. Best-effort + try/catch
+      // so logging can never break the save.
+      let finalConsoleText = consoleText;
+      let finalLineCount = Array.isArray(buf) ? buf.length : 0;
+      let consoleSource = 'in-page-buffer';
+      try {
+        if (typeof api?.readContinuousLog === 'function') {
+          const mainRes = await api.readContinuousLog().catch(() => null);
+          const mainText = (mainRes && mainRes.ok && typeof mainRes.text === 'string') ? mainRes.text : '';
+          if (mainText && mainText.length) {
+            const builtMain = typeof window.__buildSaveLogConsoleText === 'function'
+              ? window.__buildSaveLogConsoleText(mainText)
+              : mainText;
+            finalConsoleText = sanitizeConsoleLogText(builtMain, window);
+            finalLineCount = finalConsoleText
+              ? finalConsoleText.split('\n').filter((l) => l.length > 0).length
+              : 0;
+            consoleSource = 'main-process-continuous';
+          }
+        }
+      } catch (_e) { /* fall back to the in-page buffer text */ }
+
       // Local save first so a failed GitHub push still leaves the user with a
       // copy on disk.
       if (typeof api?.writeFile === 'function') {
@@ -181,9 +210,9 @@ export default function App() {
           const header = `===== SaveLog (global) @ ${ts} =====\n`;
           await api.writeFile(
             '/Users/isaiahcalvo/Desktop/Survey-BetaSafeS2/1.log',
-            header + consoleText + '\n'
+            header + finalConsoleText + '\n'
           );
-          console.log(`[SaveLog] wrote ${Array.isArray(buf) ? buf.length : 0} lines locally`);
+          console.log(`[SaveLog] wrote ${finalLineCount} lines locally (source: ${consoleSource})`);
         } catch (wErr) {
           console.warn('[SaveLog] local write failed:', wErr?.message || wErr);
         }
@@ -194,14 +223,15 @@ export default function App() {
         try {
           const trackpadSave = getWindowTrackpadInteractionDebugSavePayload();
           const res = await api.saveLogSnapshot({
-            consoleText,
+            consoleText: finalConsoleText,
             network: getNetworkLogSnapshot(),
             extraFiles: trackpadSave.extraFiles,
             summary: {
               triggeredBy: 'menu',
               userAgent: navigator?.userAgent || null,
               screen: { w: window.innerWidth, h: window.innerHeight },
-              consoleLineCount: Array.isArray(buf) ? buf.length : 0,
+              consoleLineCount: finalLineCount,
+              consoleSource,
               overlayPerformance: typeof window.pdfOverlayRecorder?.summary === 'function'
                 ? window.pdfOverlayRecorder.summary()
                 : null,
@@ -229,7 +259,7 @@ export default function App() {
       // already finished above, so cancelling only skips the GitHub push.
       if (typeof api?.pushLogToGithub === 'function') {
         window.dispatchEvent(new CustomEvent('save-log-banner-start', {
-          detail: { consoleText }
+          detail: { consoleText: finalConsoleText }
         }));
       } else {
         // Web build / no Electron shell — local save wasn't possible either.
