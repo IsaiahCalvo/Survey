@@ -761,6 +761,10 @@ const PagesPanel = ({
           const thumbnailSrc = typeof thumbnailMeta === 'string' ? thumbnailMeta : thumbnailMeta?.src;
           const rawRatio = pageAspectRatios[pageNumber] || 129;
           const displayRatio = getDisplayAspectRatio(pageNumber, rawRatio);
+          // Off-screen thumbnail rows skip layout/paint; estimate each row's
+          // height from the same per-page aspect ratio that drives the live
+          // thumbnail box so the scrollbar geometry stays stable.
+          const estimatedRowHeight = Math.round(8 + (150 * displayRatio) / 100);
           const transformState = pageTransformations[pageNumber] || { rotation: 0, mirrorH: false, mirrorV: false };
           const rotationDelta = getRotationDelta(pageNumber);
           const transforms = [];
@@ -803,7 +807,9 @@ const PagesPanel = ({
                 cursor: draggedPage === pageNumber ? 'grabbing' : 'grab',
                 opacity: draggedPage === pageNumber ? 0.82 : 1,
                 zIndex: draggedPage === pageNumber ? 1 : 'auto',
-                transition: draggedPage === pageNumber ? 'none' : 'background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease'
+                transition: draggedPage === pageNumber ? 'none' : 'background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease',
+                contentVisibility: 'auto',
+                containIntrinsicSize: `0 ${estimatedRowHeight}px`
               }}
               onMouseEnter={(e) => {
                 if (!isSelected) {

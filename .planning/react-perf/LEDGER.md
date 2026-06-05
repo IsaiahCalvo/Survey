@@ -67,6 +67,10 @@ two save/sync parallelizations (sequential short-circuit is load-bearing).
   viewer is now its own ~10,306 kB (gzip ~3,513) chunk fetched on first PDF open.
   Tests 888 pass, build OK. NEEDS a live open test (Suspense fallback null +
   first-open toolbar-API publish timing) before push.
+- [APPLIED 2026-06-04] content-visibility on the page-thumbnail list and the
+  text-search results list so off-screen rows skip layout/paint. Thumbnail row
+  height estimated from per-page aspect ratio; search rows use 'auto 56px'.
+  Tests pass, build OK. Live-test: scroll big lists + scroll-to-active still land.
 - Survey-rail marker matching via a lookup map (first-match + key-collision nuance).
 - Region cursor glyph driven by a ref instead of state (per-move re-render win,
   but a first-frame position nuance).
