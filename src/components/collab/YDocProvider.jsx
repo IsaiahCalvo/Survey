@@ -457,6 +457,38 @@ function YDocProviderInner({ docId, children, closeDocument }) {
     };
   }, [clearTransportOfflineBannerTimer, docId, scheduleTransportOfflineBanner, ydoc]);
 
+  // Sleep/wake revive — when the display sleeps, the OS suspends the realtime
+  // websocket and its sockets go stale; on a naive wake the channel can stay
+  // dead, so remote updates (and the sync_request handshake that re-pulls
+  // missed state) never resume. On wake (regained visibility, focus, or
+  // network online) nudge the Supabase realtime client to reconnect. This is
+  // idempotent: if the socket is already healthy, connect() is a no-op; if it
+  // was suspended, it re-opens and the channel re-subscribes, which re-fires
+  // onTransportState('online') → the provider's sync_request handshake →
+  // reviving the Y.Doc connection rather than leaving it dead.
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const reviveTransport = () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      try {
+        // supabase.realtime.connect() reconnects the underlying socket if it
+        // dropped; channels auto-rejoin on reconnect.
+        supabase?.realtime?.connect?.();
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        ydocTransportDebug('[YDocProvider] wake revive connect failed: ' + (err?.message || String(err)));
+      }
+    };
+    window.addEventListener('focus', reviveTransport);
+    window.addEventListener('online', reviveTransport);
+    document.addEventListener('visibilitychange', reviveTransport);
+    return () => {
+      window.removeEventListener('focus', reviveTransport);
+      window.removeEventListener('online', reviveTransport);
+      document.removeEventListener('visibilitychange', reviveTransport);
+    };
+  }, []);
+
   // Phase 29 — Per-user UndoManager mount effect (additive — Plan 29-04 narrow waiver).
   //
   // Reads userId via the existing supabase import (line 49). Builds the manager via

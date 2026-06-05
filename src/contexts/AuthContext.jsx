@@ -9,7 +9,7 @@
  * updatePassword/updateProfile plus derived `tier`/`features` gating flags.
  * Also pushes developer-mode state to the Electron main process.
  */
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import {
   supabase,
   isSupabaseAvailable,
@@ -47,6 +47,48 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [subscriptionTier, setSubscriptionTier] = useState('free');
   const [loadingTier, setLoadingTier] = useState(true);
+
+  // KAL-token-refresh: the live `user` object reference, kept in a ref so the
+  // onAuthStateChange handler (created once, no deps) can compare an incoming
+  // session's user against what's already in state WITHOUT re-subscribing.
+  //
+  // Why this exists: Supabase auto-refreshes the JWT roughly every hour and
+  // fires TOKEN_REFRESHED with a brand-new session object whose `user` is a
+  // fresh reference but identical in content (same id/email/metadata). If we
+  // blindly setUser() on every such event, the context value gets a new `user`
+  // reference, which propagates as a new prop to PDFViewer and re-runs the
+  // document open/hydrate path on an already-open doc (re-resolve + re-paint +
+  // "sync push count:0") — the user sees the viewer reload for no reason.
+  // Adobe keeps the loaded PDF in memory across token refresh; so should we.
+  // We only swap `user` when its identity actually changes; the JWT itself
+  // lives on `session`, which we keep fresh below.
+  const userRef = useRef(null);
+
+  // Returns true when the incoming auth user differs from the one already in
+  // state in any way a consumer keys on (id / email / user_metadata). A pure
+  // JWT refresh leaves all three unchanged, so it returns false → no setUser.
+  const userIdentityChanged = (prev, next) => {
+    if (!prev || !next) return prev !== next; // null<->user transitions matter
+    if (prev.id !== next.id) return true;
+    if (prev.email !== next.email) return true;
+    try {
+      if (JSON.stringify(prev.user_metadata) !== JSON.stringify(next.user_metadata)) {
+        return true;
+      }
+    } catch {
+      return true; // if metadata can't be compared, be safe and update
+    }
+    return false;
+  };
+
+  const setUserIfIdentityChanged = (nextUser) => {
+    if (userIdentityChanged(userRef.current, nextUser)) {
+      userRef.current = nextUser ?? null;
+      setUser(nextUser ?? null);
+    }
+    // else: pure token refresh — keep the stable `user` reference so an
+    // already-open document does not re-resolve / re-download.
+  };
 
   const getDevAutoLoginCredentials = () => {
     const devOverride = (() => {
@@ -214,7 +256,7 @@ export const AuthProvider = ({ children }) => {
       session = await runDevAutoLoginIfNeeded(session);
 
       setSession(session);
-      setUser(session?.user ?? null);
+      setUserIfIdentityChanged(session?.user ?? null);
       setLoading(false);
 
       // Fetch subscription tier
@@ -254,8 +296,13 @@ export const AuthProvider = ({ children }) => {
       if (event === 'INITIAL_SESSION') {
         return;
       }
+      // Always keep `session` fresh so the latest JWT is available to anything
+      // that reads it. But only swap the `user` reference when the user's
+      // identity actually changed — a TOKEN_REFRESHED event carries a new
+      // session object with an identical user, and churning `user` would
+      // re-resolve / re-download an already-open document for no reason.
       setSession(session);
-      setUser(session?.user ?? null);
+      setUserIfIdentityChanged(session?.user ?? null);
       setLoading(false);
 
       // Fetch subscription tier when user changes
@@ -408,6 +455,7 @@ export const AuthProvider = ({ children }) => {
     }
 
     // Always clear local state and refresh, even if API call failed
+    userRef.current = null;
     setUser(null);
     setSession(null);
 
