@@ -1,0 +1,57 @@
+{
+  // Fallow config — teaches the analyzer this repo's real entry points so its
+  // "unused" reports reflect genuine dead code, not test files / standalone
+  // tools that have no importers by design. See https://docs.fallow.tools/configuration
+  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+
+  "entry": [
+    // App — web (Vite) + Electron desktop
+    "index.html",
+    "src/main.jsx",
+    "src/electron-main.js",
+    "src/preload.js",
+    // Browser workers / paint worklets loaded by URL, not import
+    "src/workers/*.js",
+    "src/pdf.worker.js.js",
+    "public/*.js",
+    // Supabase edge functions (each folder's index is a deploy root)
+    "supabase/functions/**/index.ts",
+    // Test suites — run by the node test runner / playwright, never imported
+    "tests/**/*.mjs",
+    "src/**/*.test.mjs",
+    "src/**/__tests__/**",
+    "debug/**/*.spec.mjs",
+    "debug/**/*.test.mjs",
+    // Standalone tooling executed directly via node, not imported
+    "agent-cli/**/*.mjs",
+    "scripts/**/*.{mjs,cjs,js}",
+    "debug/verify-*.mjs",
+    // Syncfusion shims — wired via vite.config alias, not imports
+    "src/shims/*.js"
+  ],
+
+  "ignorePatterns": [
+    // Build output / vendored / generated — not source under our control
+    "build/**",
+    "dist/**",
+    "android/**",
+    "ios/**",
+    "public/ej2-pdfviewer-lib/**",
+    "landing/**",
+    "docs/**",
+    "skills/**",
+    "Logs/**",
+    "TestLogs/**",
+    // Throwaway one-off audit scripts (import runtime-generated JSON logs)
+    "audit/**",
+    "scripts/kal31/**",
+    // Agent worktrees — transient copies of the repo
+    "**/.claude/**"
+  ],
+
+  "ignoreUnresolvedImports": [
+    // Vite dev-server virtual module ids — only resolvable at runtime
+    "/@id/react",
+    "/@id/react-dom/client"
+  ]
+}
