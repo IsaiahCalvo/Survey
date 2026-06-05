@@ -31,13 +31,16 @@ import { createPortal } from 'react-dom';
 import { getNetworkLogSnapshot } from './utils/networkLogger';
 import { sanitizeConsoleLogText } from './utils/consoleLogFilter';
 import { useAuth } from './contexts/AuthContext';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useMSGraph } from './contexts/MSGraphContext';
 import { useOptionalAuth } from './components/OptionalAuthPrompt';
 import { useTemplates } from './hooks/useDatabase';
 
 import { FONT_FAMILY, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScrollMode, ensureRgbaOpacity, getWindowTrackpadInteractionDebugSavePayload, hexToRgba, writeSaveLogExtraFiles } from './viewerShared';
-import { PDFViewer } from './PDFViewer';
+// Lazy boundary: the dashboard paints without pulling in the viewer (and its
+// fabric / annotation / Excel weight). The viewer chunk fetches the first time
+// a PDF tab is opened.
+const PDFViewer = lazy(() => import('./PDFViewer').then((m) => ({ default: m.PDFViewer })));
 
 export default function App() {
   // Microsoft Graph authentication hook
@@ -2386,6 +2389,7 @@ export default function App() {
                       documentId={tab.file?.id || null}
                       viewerUserId={user?.id || null}
                     />
+                    <Suspense fallback={null}>
                     <PDFViewer
                       pdfFile={tab.file}
                       pdfFilePath={tab.filePath}
@@ -2417,6 +2421,7 @@ export default function App() {
                       entities={entities}
                       setEntities={setEntities}
                     />
+                    </Suspense>
                   </YDocProvider>
                 </div>
               );

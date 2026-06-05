@@ -61,10 +61,12 @@ Rejected (correctly): focus-effect dep (user ref is already churn-guarded),
 search-highlight default array (component never mounts in the empty case),
 two save/sync parallelizations (sequential short-circuit is load-bearing).
 
-### Held for sign-off (real, but behavioral/visual nuance — NOT applied)
-- Lazy-load the entire PDF viewer so first paint (dashboard) skips the heavy
-  viewer/annotation/fabric weight — biggest startup win, but changes first-open
-  timing and how the viewer publishes its toolbar APIs. Needs a live open test.
+### Held for sign-off (real, but behavioral/visual nuance)
+- [APPLIED 2026-06-04, user-approved] Lazy-load the entire PDF viewer. Initial
+  JS chunk dropped from ~14,700 kB (gzip ~4,662) to ~2,884 kB (gzip ~817); the
+  viewer is now its own ~10,306 kB (gzip ~3,513) chunk fetched on first PDF open.
+  Tests 888 pass, build OK. NEEDS a live open test (Suspense fallback null +
+  first-open toolbar-API publish timing) before push.
 - Survey-rail marker matching via a lookup map (first-match + key-collision nuance).
 - Region cursor glyph driven by a ref instead of state (per-move re-render win,
   but a first-frame position nuance).
