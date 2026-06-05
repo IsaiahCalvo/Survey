@@ -78,7 +78,7 @@ const RegionSelectionTool = ({
   const [currentRect, setCurrentRect] = useState(null);
   const [polygonPoints, setPolygonPoints] = useState([]);
   const [regions, setRegions] = useState(() => []);
-  const [selectedRegionIds, setSelectedRegionIds] = useState(new Set());
+  const [selectedRegionIds, setSelectedRegionIds] = useState(() => new Set());
   const [interactionState, setInteractionState] = useState(null);
   const containerRef = useRef(null);
   const [targetElement, setTargetElement] = useState(null);
