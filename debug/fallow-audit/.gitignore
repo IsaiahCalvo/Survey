@@ -1,0 +1,4 @@
+# generated scan artifacts — not source
+*.json
+*.err
+*.log
