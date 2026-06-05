@@ -79,3 +79,56 @@ two save/sync parallelizations (sequential short-circuit is load-bearing).
 
 ### Pass 3 — pending
 Safe auto-apply pool is thinning; remaining gains are the held items above.
+
+### Pass 4 — DONE (2026-06-04, commit 673aea62)
+15 candidates → 7 applied safe, 5 surfaced risky, 3 rejected. Tests 888 pass, build OK (17.8s).
+
+Applied (safe):
+- AppShell now imports ARROWHEAD_STYLE_LABELS from the fabric-free Callout/types
+  leaf instead of PageAnnotationLayer. This was the only first-paint static edge
+  into the ~10k-line PAL module + fabric.js. Entry chunk ~2.88MB → ~2.34MB;
+  fabric markers in entry chunk now 0 (lives only in the lazy viewer chunk).
+  Values byte-identical; PAL and PDFViewer untouched. (biggest win of the pass)
+- svgAnnotationRenderers renderPolygon + renderPolyline: single-pass bbox min/max
+  instead of two throwaway .map arrays + four spread calls per shape per render
+  (kills call-stack-blowup risk on many-vertex cloud polygons too).
+- DocumentsLedger: id→name lookup Map for project names (was O(docs×projects) find per row).
+- PrintPanel: Math.min over the included-page set instead of Array.from+sort()[0].
+- TemplatesEditor: two dismiss-on-scroll capturing listeners marked passive.
+
+Rejected (correctly): Dashboard + PdfPageThumb dynamic pdfjs import (zero benefit —
+pdfjs already eager via viewerShared, and the suggested fix referenced a non-existent
+worker-config module); pdfHasAnnotations parallel loop (dead code, breaks early-exit).
+
+### Held for sign-off (pass 4 — real, need human call + live test)
+1. **Drop pdfjs out of the first-paint entry chunk** (HIGH). viewerShared.js eagerly
+   imports the whole pdfjs-dist lib + worker URL just to run one module-level side
+   effect (GlobalWorkerOptions.workerSrc=). That keeps ~1MB+ of pdfjs in the entry
+   chunk. Fix = move the worker-config side effect into a tiny idempotent leaf module
+   and `await import()` it before the first getDocument in EVERY consumer (Dashboard,
+   PdfPageThumb, PDFViewer). RISKY: viewerShared.js is protected/load-bearing, the
+   side effect is a global singleton multiple getDocument callers depend on by import
+   order; must re-home all three or pdf.js silently falls back to a fake worker.
+   Full corrected step-by-step in the pass-4 workflow output. The biggest remaining
+   bundle win after the fabric one.
+2. **PDFViewer scroll listener passive** (LOW). One scroll listener at ~4720 lacks
+   {passive:true}; handler only debounces a timeout. Trivially correct but in the
+   highest-risk file, so surfaced.
+3. **PdfjsViewerContainer startTransition on the virtualized range update** (LOW).
+   Wrapping the per-frame setRange in startTransition could defer page mounts under
+   fast scroll → blank-frame risk on the core renderer. Behavioral tradeoff on WIP
+   cutover code (Phase 37, off by default). Needs measured judgment, not auto-apply.
+4. **Parallelize the per-page annotation import** (HIGH). importAnnotationsFromPdf
+   imports pages strictly sequentially (~450ms warm on a 36-page doc). Pages are
+   independent; a bounded-concurrency rewrite (cap ~8) with careful counter/Set
+   folding is the fix. RISKY: non-mechanical, import-coupled to PDFViewer; the naive
+   diff drops a Set + 3 counters. Note pdf.js engine already skips the hottest caller.
+5. **content-visibility on the documents-ledger rows** (MEDIUM). Additive CSS so
+   off-screen rows skip layout/paint; matches the existing pass-3 pattern. Low risk
+   but only pays off with large document counts; intrinsic size should be ~50px
+   (two-line "last edited" cell), not 42px.
+
+### Pass 5 — pending
+Safe auto-apply pool is now essentially dry. Remaining wins are the 5 held items
+above (1 and 4 are the high-value ones) plus the still-open pass-2 held items
+(survey-rail marker map, region cursor ref). All need a human call / live test.
