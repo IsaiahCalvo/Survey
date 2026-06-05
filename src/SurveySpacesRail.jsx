@@ -9,7 +9,7 @@
 // tab or Spaces UI. The Spaces panel lives in the LEFT rail (PDFSidebar).
 // Accurate rename candidate: SurveyRail.jsx.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Icon from './Icons';
 import EntityIndicator from './components/EntityIndicator';
 import { COLORS } from './theme';
@@ -138,15 +138,6 @@ const SurveySpacesRail = ({
       onCollapseChange(isSurveyPanelCollapsed);
     }
   }, [isSurveyPanelCollapsed, onCollapseChange]);
-
-  const itemsByNameAndType = useMemo(() => {
-    const map = new Map();
-    Object.values(items).forEach(item => {
-      const key = `${item.name}::${item.itemType}`;
-      map.set(key, item);
-    });
-    return map;
-  }, [items]);
 
   return (
           <>
@@ -1568,8 +1559,10 @@ const SurveySpacesRail = ({
                                                           const surveyMarkerData = surveyMarkers[annotationId];
                                                           const categoryName = getCategoryName(selectedTemplate, selectedModuleId, category.id);
                                                           const surveyMarkerName = surveyMarkerData?.name || surveyMarker.name || '';
-                                                          const key = `${surveyMarkerName}::${categoryName}`;
-                                                          const matchingItem = itemsByNameAndType.get(key) || null;
+                                                          const matchingItem = Object.values(items).find(item =>
+                                                            item.name === surveyMarkerName &&
+                                                            item.itemType === categoryName
+                                                          );
 
                                                           // Try to get entityId from item's module data first, then from surveyMarkerData
                                                           let entityId = null;
@@ -1860,8 +1853,10 @@ const SurveySpacesRail = ({
                                                     const surveyMarkerData = surveyMarkers[annotationId];
                                                     const categoryName = getCategoryName(selectedTemplate, selectedModuleId, category.id);
                                                     const surveyMarkerName = surveyMarkerData?.name || surveyMarker.name || '';
-                                                    const key = `${surveyMarkerName}::${categoryName}`;
-                                                    const matchingItem = itemsByNameAndType.get(key) || null;
+                                                    const matchingItem = Object.values(items).find(item =>
+                                                      item.name === surveyMarkerName &&
+                                                      item.itemType === categoryName
+                                                    );
 
                                                     // Get module-specific data
                                                     const moduleName = getModuleName(selectedTemplate, selectedModuleId);
