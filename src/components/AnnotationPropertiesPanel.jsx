@@ -185,7 +185,7 @@ const AnnotationPropertiesPanel = ({
   }, [ctx.kind, annotation]);
 
   // Readable label for the header — "Properties · Rectangle" etc.
-  const typeLabel = useMemo(() => {
+  const typeLabel = (() => {
     switch (targetKind) {
       case 'callout': return 'Callout';
       case 'counter': return 'Counter Pin';
@@ -200,7 +200,7 @@ const AnnotationPropertiesPanel = ({
       case 'polyline': return 'Polyline';
       default: return 'Annotation';
     }
-  }, [targetKind]);
+  })();
 
   // Current values — read from annotation/callout. Defaults mirror what the
   // renderers assume so the panel never shows "undefined" on first open.
