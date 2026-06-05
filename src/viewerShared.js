@@ -18,8 +18,10 @@
  * Import direction: this file does NOT import AppShell.jsx, PDFViewer.jsx, or
  * Dashboard.jsx, so there are no import cycles among the top-level files.
  */
-import * as pdfjsLib from 'pdfjs-dist';
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.js?url';
+// pdf.js is NOT imported here anymore. It used to be pulled in eagerly just to
+// set GlobalWorkerOptions.workerSrc at module load, which forced pdf.js into the
+// first-paint entry chunk. Worker config now happens lazily via
+// utils/pdfWorkerConfig.loadPdfjs(), called right before each getDocument.
 import { recordAnnotationBackupWrite } from './utils/annotationPreviewDiag';
 import { normalizeCalloutsForSync } from './utils/calloutSyncPayload';
 import { getCalloutIdsFromHistoryMeta } from './utils/calloutHistoryScope';
@@ -313,11 +315,8 @@ export const hasVisibleSyncfusionSpinner = (host) => {
   });
 };
 
-// Set up the PDF.js worker
-// Set up the PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
-// Note: verbosity cannot be set directly on imports in ES modules
-// PDF.js will use default verbosity level
+// PDF.js worker setup moved to utils/pdfWorkerConfig.loadPdfjs() (lazy, so pdf.js
+// stays out of the first-paint bundle). Verbosity stays at the pdf.js default.
 
 // Consistent font stack for the entire application
 export const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';

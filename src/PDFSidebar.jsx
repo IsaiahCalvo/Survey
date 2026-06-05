@@ -7,10 +7,12 @@
  * Publishes its width as the `--app-sidebar-width` CSS var; exposes an
  * `openSearchPanel` imperative handle. Rendered by App into the chrome host.
  */
-import React, { useState, useCallback, useImperativeHandle } from 'react';
+import React, { useState, useCallback, useImperativeHandle, lazy, Suspense } from 'react';
 import Icon from './Icons';
 import PagesPanel from './sidebar/PagesPanel';
-import SearchTextPanel from './sidebar/SearchTextPanel';
+// Lazy so pdf.js (statically imported by SearchTextPanel for text-layer rendering)
+// stays out of the first-paint bundle; it loads when the viewer's rail mounts.
+const SearchTextPanel = lazy(() => import('./sidebar/SearchTextPanel'));
 import BookmarksPanel from './sidebar/BookmarksPanel';
 import SpacesPanel from './sidebar/SpacesPanel';
 import SyncStatusChip from './components/SyncStatusChip';
@@ -355,6 +357,7 @@ const PDFSidebar = React.forwardRef(({
 
             {/* Search Panel */}
             <div style={{ display: activeTab === 'search' ? 'flex' : 'none', flex: 1, flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+              <Suspense fallback={null}>
               <SearchTextPanel
                 pdfDoc={pdfDoc}
                 pdfDocumentKey={pdfDocumentKey}
@@ -371,6 +374,7 @@ const PDFSidebar = React.forwardRef(({
                 focusRequestToken={searchFocusRequestToken}
                 selectOnFocus={searchSelectOnFocus}
               />
+              </Suspense>
             </div>
 
             {/* Bookmarks Panel */}

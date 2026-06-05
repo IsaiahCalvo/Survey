@@ -18,7 +18,7 @@
    When a document has no usable source (or rendering fails) the `fallback`
    node is rendered instead — the existing stylised placeholder. */
 import { useState, useEffect } from 'react';
-import * as pdfjsLib from 'pdfjs-dist';
+import { loadPdfjs } from '../utils/pdfWorkerConfig';
 
 /* Rendered thumbnails cached by document id for the lifetime of the page, so
    each PDF is rendered at most once (no re-render on search keystrokes or
@@ -85,6 +85,7 @@ const resolvePdfBytes = async (doc, downloadDocument, getDocumentUrl) => {
    Recovery-mode fallback matches App.jsx for slightly corrupt PDFs. */
 const TARGET = 1500;
 const renderFirstPage = async (arrayBuffer) => {
+  const pdfjsLib = await loadPdfjs();
   let pdf;
   try {
     // Clone the buffer — pdf.js detaches it when transferring to the worker.

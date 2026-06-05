@@ -6,7 +6,7 @@
 // pdfjs worker is configured once at App.jsx module load; pdfjsLib is a shared
 // singleton in the Vite module graph, so no re-init is needed here.
 
-import * as pdfjsLib from 'pdfjs-dist';
+import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import SurveyHub from './home/SurveyHub';
@@ -564,6 +564,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
             const pageCountPromise = (async () => {
               const arrayBuffer = await file.arrayBuffer();
               perfUpload.mark(file.name, 'ArrayBuffer ready for page count');
+              const pdfjsLib = await loadPdfjs();
               let pdfDoc;
               try {
                 // Clone buffer since PDF.js may detach it when transferring to worker
@@ -689,6 +690,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           const pageCountPromise = (async () => {
             try {
               const arrayBuffer = await file.arrayBuffer();
+              const pdfjsLib = await loadPdfjs();
               let pdfDoc;
               try {
                 // Clone buffer since PDF.js may detach it when transferring to worker
@@ -853,6 +855,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         const pageCountPromise = (async () => {
           try {
             const arrayBuffer = await file.arrayBuffer();
+            const pdfjsLib = await loadPdfjs();
             let pdfDoc;
             try {
               // Clone buffer since PDF.js may detach it when transferring to worker

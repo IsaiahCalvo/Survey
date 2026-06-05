@@ -13,6 +13,7 @@
 // HIGH-RISK FILE: keep diffs minimal and run `npm test` after every change.
 
 import * as pdfjsLib from 'pdfjs-dist';
+import { loadPdfjs } from './utils/pdfWorkerConfig';
 import AnnotationPropertiesPanel from './components/AnnotationPropertiesPanel';
 import CalloutOverlay from './components/Callout';
 // ExcelJS (~1MB) is loaded on demand inside the three async export/sync handlers
@@ -17647,6 +17648,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         } catch (e) { console.error('Error checking header', e); }
 
         let pdf;
+        // Ensure the pdf.js worker is configured (no longer set globally at boot).
+        await loadPdfjs();
         perfLoad.mark(docName, 'Starting PDF.js getDocument');
         try {
           // First attempt: standard loading
