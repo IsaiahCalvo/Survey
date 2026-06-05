@@ -744,6 +744,11 @@ function CustomSelect({ value, options, onChange, placeholder = 'Select…', dis
   );
 }
 
+const PALETTE = [
+  '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e', '#10b981', '#14b8a6',
+  '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#ec4899', '#f43f5e', '#64748b',
+];
+
 export default function TemplatesEditor({
   templates = [],
   user = null,
@@ -855,11 +860,6 @@ export default function TemplatesEditor({
     const toHex = (v) => Math.round(v * 255).toString(16).padStart(2, '0');
     return `#${toHex(f(0))}${toHex(f(8))}${toHex(f(4))}`;
   };
-
-  const PALETTE = [
-    '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e', '#10b981', '#14b8a6',
-    '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#ec4899', '#f43f5e', '#64748b',
-  ];
 
   /* Default the open template to the first one once data arrives, and keep
      `selectedId` valid if the open template gets deleted. */
