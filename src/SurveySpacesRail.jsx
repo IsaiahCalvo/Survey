@@ -1418,7 +1418,8 @@ const SurveySpacesRail = ({
                                                   });
 
                                                   // Clear selection and exit item select mode if no items left
-                                                  const remainingItems = categorySurveyMarkers.filter(h => !selectedItemIds.includes(h.id));
+                                                  const selectedSet = new Set(selectedItemIds);
+                                                  const remainingItems = categorySurveyMarkers.filter(h => !selectedSet.has(h.id));
                                                   if (remainingItems.length === 0) {
                                                     setItemSelectModeActive(prev => {
                                                       const updated = { ...prev };
