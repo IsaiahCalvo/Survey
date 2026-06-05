@@ -15,6 +15,7 @@ const MAX_PREVIEW_OBJECTS = 420;
 const MAX_PREVIEW_CALLOUTS = 140;
 const DEFAULT_CALLOUT_COLOR = '#4A90E2';
 const DEFAULT_CALLOUT_FILL = 'rgba(255,255,255,0.22)';
+const EMPTY_ARR = [];
 
 const toNumber = (value, fallback = 0) => {
   const numeric = Number(value);
@@ -48,14 +49,14 @@ const LightweightAnnotationOverlay = memo(({
   proxyObjects = null,
   proxyCallouts = null,
   annotations,
-  callouts = [],
+  callouts = EMPTY_ARR,
   selectedModuleId = null,
   showSurveyPanel = false,
   selectedSpaceId = null,
   activeSpaceId = null,
   activeRegions = null,
   activeRegionId = null,
-  spaces = [],
+  spaces = EMPTY_ARR,
   getCanvasAnnotationVisibilityState = null,
   getSurveyAnnotationVisibilityState = null,
   isRegionOverlayEnabled = null,
