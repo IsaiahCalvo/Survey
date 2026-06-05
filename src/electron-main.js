@@ -681,6 +681,132 @@ let chokidar = null;
   }
 })();
 
+// ─── IPC Filesystem Path Allowlist (KAL-259) ────────────────────────────────
+// Purpose: prevent a compromised renderer from supplying arbitrary host paths
+// to the fs/fileWatcher/shell IPC handlers. Every renderer-supplied path must
+// either live inside a static trusted root OR have been returned by a native
+// OS dialog (user explicitly chose it).
+//
+// Design:
+//  - dialogAllowedPaths: Set of paths (and their parent dirs) the user has
+//    explicitly chosen via dialog:openFile / dialog:saveFile. Populated by
+//    recordDialogPath() immediately after each dialog resolves.
+//  - buildAllowedRoots(): static trusted directories computed once per call
+//    (returns fresh strings; safe to call multiple times).
+//  - assertAllowedPath(p, { forWrite }): resolves p then throws EPERM if it
+//    is not inside any allowed root / dialog path. Call this as the FIRST
+//    statement inside every handler that accepts a renderer-supplied path.
+//
+// Cross-restart trust: dialog-picked paths are persisted to userData and
+// reloaded on startup (see loadPersistedDialogPaths below), so a locally-stored
+// Excel the user linked in a prior session — anywhere on disk, not just the
+// CloudStorage/OneDrive roots — stays trusted after an app restart without
+// forcing a fresh dialog pick. Only paths the user actually chose via a dialog
+// are persisted, so this never widens the allowlist to arbitrary renderer input.
+
+/** Paths (and their parent dirs) that the user explicitly picked via a dialog. */
+const dialogAllowedPaths = new Set();
+
+/**
+ * Register a user-chosen path so subsequent reads/writes/watches succeed
+ * without requiring another dialog. Adds both the resolved path and its
+ * parent directory so sibling writes (e.g. .tmp / .bak) are also covered.
+ */
+function recordDialogPath(filePath) {
+  if (!filePath || typeof filePath !== 'string') return;
+  const resolved = path.resolve(filePath);
+  dialogAllowedPaths.add(resolved);
+  dialogAllowedPaths.add(path.dirname(resolved));
+  persistDialogPaths();
+}
+
+/**
+ * Persist user-chosen paths to userData and reload them on the next launch, so a
+ * previously-linked local Excel (anywhere on disk) stays trusted across restarts.
+ * Best-effort; only ever stores paths the user picked via a dialog.
+ */
+function dialogAllowStorePath() {
+  try { return path.join(app.getPath('userData'), 'allowed-file-paths.json'); }
+  catch (_) { return null; }
+}
+function persistDialogPaths() {
+  const store = dialogAllowStorePath();
+  if (!store) return;
+  try { fs.writeFile(store, JSON.stringify([...dialogAllowedPaths]), () => {}); }
+  catch (_) { /* best-effort; never crash on persistence */ }
+}
+function loadPersistedDialogPaths() {
+  const store = dialogAllowStorePath();
+  if (!store) return;
+  try {
+    const arr = JSON.parse(fs.readFileSync(store, 'utf8'));
+    if (Array.isArray(arr)) {
+      for (const p of arr) {
+        if (typeof p === 'string') dialogAllowedPaths.add(p);
+      }
+    }
+  } catch (_) { /* no store yet, or unreadable — fine */ }
+}
+loadPersistedDialogPaths();
+
+/**
+ * Return the list of static trusted root directories. Called fresh each time
+ * so app.getPath() / os calls are never invoked before app is ready.
+ */
+function buildAllowedRoots() {
+  return [
+    path.resolve(app.getAppPath()),
+    path.resolve(app.getPath('userData')),
+    path.resolve(os.tmpdir()),
+    // macOS iCloud Drive / OneDrive via CloudStorage mount point
+    path.resolve(path.join(os.homedir(), 'Library', 'CloudStorage')),
+    // Windows / cross-platform OneDrive top-level folder
+    path.resolve(path.join(os.homedir(), 'OneDrive')),
+  ];
+}
+
+/**
+ * Assert that `p` is an allowed filesystem path.
+ *
+ * Permitted if the resolved path equals or is a child of (using strict
+ * path.sep prefix, NOT substring) any of:
+ *   1. A static trusted root from buildAllowedRoots()
+ *   2. A path in dialogAllowedPaths (user explicitly chose it via a dialog)
+ *
+ * Throws an Error with .code='EPERM' on rejection.
+ *
+ * @param {string} p - The renderer-supplied path to validate.
+ * @param {{ forWrite?: boolean }} [opts]
+ */
+function assertAllowedPath(p, { forWrite = false } = {}) {
+  if (!p || typeof p !== 'string') {
+    const err = new Error(`fs allowlist: invalid path argument (${JSON.stringify(p)})`);
+    err.code = 'EPERM';
+    throw err;
+  }
+  const resolved = path.resolve(p);
+
+  // Check dialog-chosen paths (exact match or child).
+  for (const allowed of dialogAllowedPaths) {
+    if (resolved === allowed || resolved.startsWith(allowed + path.sep)) {
+      return; // permitted
+    }
+  }
+
+  // Check static trusted roots.
+  for (const root of buildAllowedRoots()) {
+    if (resolved === root || resolved.startsWith(root + path.sep)) {
+      return; // permitted
+    }
+  }
+
+  const err = new Error(
+    `fs allowlist: path not in allowed roots${forWrite ? ' (write)' : ''}: ${resolved}`
+  );
+  err.code = 'EPERM';
+  throw err;
+}
+// ────────────────────────────────────────────────────────────────────────────
 
 ipcMain.handle('dialog:openFile', async (event, options = {}) => {
   const { canceled, filePaths } = await dialog.showOpenDialog({
@@ -695,6 +821,10 @@ ipcMain.handle('dialog:openFile', async (event, options = {}) => {
   }
 
   const filePath = filePaths[0];
+
+  // Register the user-chosen path so future reads/writes/watches are permitted
+  // without requiring another dialog (covers the file and its parent dir).
+  recordDialogPath(filePath);
 
   try {
     // Read async (fs.promises) so a large PDF doesn't block the main-process event
@@ -728,6 +858,10 @@ ipcMain.handle('dialog:saveFile', async (event, { title, defaultPath, filters, d
     return { canceled: true };
   }
 
+  // Register the user-chosen save path so future writes to the same location
+  // (e.g. re-export, overwrite) are permitted without another dialog.
+  recordDialogPath(filePath);
+
   try {
     // data is expected to be a Buffer or Uint8Array sent from renderer
     fs.writeFileSync(filePath, Buffer.from(data));
@@ -742,6 +876,7 @@ ipcMain.handle('shell:openPath', async (event, filePath) => {
   if (typeof filePath !== 'string' || !filePath) {
     return 'Invalid file path';
   }
+  assertAllowedPath(filePath);
   // On macOS, use the native 'open' command which works more reliably than shell.openPath.
   // Use spawn with shell:false so the path is passed as a literal argv element — the shell
   // never interprets it, so backticks, $(), ;, newlines etc. in the path can't run commands.
@@ -781,6 +916,7 @@ ipcMain.handle('shell:openExternal', async (event, url) => {
 });
 
 ipcMain.handle('fs:readFile', async (event, path) => {
+  assertAllowedPath(path);
   try {
     const data = await fs.promises.readFile(path);
     return data; // Returns Buffer (Uint8Array on the renderer)
@@ -791,6 +927,7 @@ ipcMain.handle('fs:readFile', async (event, path) => {
 });
 
 ipcMain.handle('fs:writeFile', async (event, { path: filePath, data }) => {
+  assertAllowedPath(filePath, { forWrite: true });
   try {
     const dir = path.dirname(filePath);
     if (dir) {
@@ -805,6 +942,7 @@ ipcMain.handle('fs:writeFile', async (event, { path: filePath, data }) => {
 });
 
 ipcMain.handle('fs:appendFile', async (event, { path: filePath, data }) => {
+  assertAllowedPath(filePath, { forWrite: true });
   try {
     const dir = path.dirname(filePath);
     if (dir) {
@@ -819,12 +957,13 @@ ipcMain.handle('fs:appendFile', async (event, { path: filePath, data }) => {
 });
 
 // Diagnostics: clear a folder's contents (files + subfolders), recreating the folder.
-// Guarded to paths containing "Testing Logs" so we can't accidentally nuke anything else.
+// Guarded by the path allowlist (assertAllowedPath) so only trusted roots are writable.
+// The old includes('TestLogs') substring check was bypassable (e.g. a path containing
+// "TestLogs" anywhere in it, even in unrelated segments); replaced with the strict
+// allowlist guard per KAL-259.
 ipcMain.handle('fs:clearDir', async (event, dirPath) => {
+  assertAllowedPath(dirPath, { forWrite: true });
   try {
-    if (!dirPath || typeof dirPath !== 'string' || !dirPath.includes('TestLogs')) {
-      throw new Error(`fs:clearDir refused path (must contain "TestLogs"): ${dirPath}`);
-    }
     if (fs.existsSync(dirPath)) {
       fs.rmSync(dirPath, { recursive: true, force: true });
     }
@@ -850,6 +989,12 @@ ipcMain.handle('screenshot:capturePage', async (event) => {
 
 ipcMain.handle('fs:fileExists', async (event, filePath) => {
   try {
+    assertAllowedPath(filePath);
+  } catch (err) {
+    if (err.code === 'EPERM') return false; // not in allowlist — treat as non-existent
+    throw err;
+  }
+  try {
     return fs.existsSync(filePath);
   } catch (error) {
     return false;
@@ -857,6 +1002,7 @@ ipcMain.handle('fs:fileExists', async (event, filePath) => {
 });
 
 ipcMain.handle('fs:getFileStats', async (event, filePath) => {
+  assertAllowedPath(filePath);
   try {
     const stats = fs.statSync(filePath);
     return {
@@ -876,6 +1022,7 @@ ipcMain.handle('os:getHomeDir', async () => {
 });
 
 ipcMain.handle('fs:listDir', async (event, dirPath) => {
+  assertAllowedPath(dirPath);
   try {
     if (!fs.existsSync(dirPath)) {
       return [];
@@ -889,6 +1036,8 @@ ipcMain.handle('fs:listDir', async (event, dirPath) => {
 
 // Atomic file write - ensures crash-safe saves by writing to temp file first
 ipcMain.handle('fs:writeFileAtomic', async (event, { path: filePath, data }) => {
+  // Guard before any sibling paths (.tmp / .bak) are derived from filePath.
+  assertAllowedPath(filePath, { forWrite: true });
   const tempPath = filePath + '.tmp';
   const backupPath = filePath + '.bak';
 
@@ -941,6 +1090,7 @@ ipcMain.handle('fs:writeFileAtomic', async (event, { path: filePath, data }) => 
 
 // File watcher handlers
 ipcMain.handle('fileWatcher:start', async (event, { filePath, watchId }) => {
+  assertAllowedPath(filePath);
   try {
     if (!chokidar) {
       throw new Error('File watcher not initialized');
