@@ -7,7 +7,6 @@
  * graphClient + ensureFreshToken() for callers making Graph API calls.
  */
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { Client } from '@microsoft/microsoft-graph-client';
 import { useAuth } from './AuthContext';
 import { supabase, isSupabaseAvailable } from '../supabaseClient';
 
@@ -81,8 +80,9 @@ export const MSGraphProvider = ({ children }) => {
     });
 
     // Initialize Graph client
-    const initializeGraphClient = useCallback((accessToken) => {
+    const initializeGraphClient = useCallback(async (accessToken) => {
         tokenRef.current = accessToken;
+        const { Client } = await import('@microsoft/microsoft-graph-client');
         const client = Client.init({
             authProvider: (done) => {
                 if (tokenRef.current) {
