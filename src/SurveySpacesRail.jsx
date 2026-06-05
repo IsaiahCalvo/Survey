@@ -146,6 +146,19 @@ const SurveySpacesRail = ({
     return new Map(entities.map((e) => [e.id, e]));
   }, [selectedTemplate?.entities]);
 
+  // O(1) item-by-name+type lookup for the per-marker render loop below.
+  // Replaces repeated O(|items|) Object.values(items).find(name && itemType)
+  // scans. Names+itemType pairs are unique per item, so Map.get matches the
+  // old find first-and-only result.
+  const itemsByNameType = useMemo(() => {
+    const m = new Map();
+    Object.values(items).forEach(item => {
+      if (item?.name != null && item?.itemType != null)
+        m.set(`${item.name}\0${item.itemType}`, item);
+    });
+    return m;
+  }, [items]);
+
   return (
           <>
             {/* Panel */}
@@ -721,10 +734,7 @@ const SurveySpacesRail = ({
 
                                     // Find associated item by matching name and category
                                     const categoryName = getCategoryName(selectedTemplate, surveyMarker.moduleId, surveyMarker.categoryId);
-                                    const matchingItem = Object.values(items).find(item =>
-                                      item.name === surveyMarker.name &&
-                                      item.itemType === categoryName
-                                    );
+                                    const matchingItem = itemsByNameType.get(`${surveyMarker.name}\0${categoryName}`);
 
                                     if (matchingItem) {
                                       // Find and delete annotations for this item in this space
@@ -1566,10 +1576,7 @@ const SurveySpacesRail = ({
                                                           const surveyMarkerData = surveyMarkers[annotationId];
                                                           const categoryName = getCategoryName(selectedTemplate, selectedModuleId, category.id);
                                                           const surveyMarkerName = surveyMarkerData?.name || surveyMarker.name || '';
-                                                          const matchingItem = Object.values(items).find(item =>
-                                                            item.name === surveyMarkerName &&
-                                                            item.itemType === categoryName
-                                                          );
+                                                          const matchingItem = itemsByNameType.get(`${surveyMarkerName}\0${categoryName}`);
 
                                                           // Try to get entityId from item's module data first, then from surveyMarkerData
                                                           let entityId = null;
@@ -1859,10 +1866,7 @@ const SurveySpacesRail = ({
                                                     const surveyMarkerData = surveyMarkers[annotationId];
                                                     const categoryName = getCategoryName(selectedTemplate, selectedModuleId, category.id);
                                                     const surveyMarkerName = surveyMarkerData?.name || surveyMarker.name || '';
-                                                    const matchingItem = Object.values(items).find(item =>
-                                                      item.name === surveyMarkerName &&
-                                                      item.itemType === categoryName
-                                                    );
+                                                    const matchingItem = itemsByNameType.get(`${surveyMarkerName}\0${categoryName}`);
 
                                                     // Get module-specific data
                                                     const moduleName = getModuleName(selectedTemplate, selectedModuleId);
@@ -2080,10 +2084,7 @@ const SurveySpacesRail = ({
                                                                       const surveyMarkerData = updated[annotationId];
                                                                       const categoryName = getCategoryName(selectedTemplate, selectedModuleId, category.id);
                                                                       const surveyMarkerName = surveyMarkerData?.name || surveyMarker.name || '';
-                                                                      const matchingItem = Object.values(items).find(item =>
-                                                                        item.name === surveyMarkerName &&
-                                                                        item.itemType === categoryName
-                                                                      );
+                                                                      const matchingItem = itemsByNameType.get(`${surveyMarkerName}\0${categoryName}`);
 
                                                                       // Get module-specific data
                                                                       const moduleName = getModuleName(selectedTemplate, selectedModuleId);
