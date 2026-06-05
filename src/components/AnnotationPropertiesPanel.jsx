@@ -35,6 +35,8 @@ const AnnotationPropertiesPanel = ({
 }) => {
   const panelRef = useRef(null);
   const [position, setPosition] = useState({ x: ctx.x, y: ctx.y });
+  const positionRef = useRef(position);
+  positionRef.current = position;
   const dragStateRef = useRef(null);
   const [showFillPicker, setShowFillPicker] = useState(false);
   const [showStrokePicker, setShowStrokePicker] = useState(false);
@@ -137,11 +139,11 @@ const AnnotationPropertiesPanel = ({
     dragStateRef.current = {
       startClientX: e.clientX,
       startClientY: e.clientY,
-      startPanelX: position.x,
-      startPanelY: position.y,
+      startPanelX: positionRef.current.x,
+      startPanelY: positionRef.current.y,
       pointerId: e.pointerId,
     };
-  }, [position.x, position.y]);
+  }, []);
 
   const onHeaderPointerMove = useCallback((e) => {
     const drag = dragStateRef.current;
