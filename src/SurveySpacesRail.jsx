@@ -153,8 +153,12 @@ const SurveySpacesRail = ({
   const itemsByNameType = useMemo(() => {
     const m = new Map();
     Object.values(items).forEach(item => {
-      if (item?.name != null && item?.itemType != null)
-        m.set(`${item.name}\0${item.itemType}`, item);
+      if (item?.name != null && item?.itemType != null) {
+        const k = `${item.name}\0${item.itemType}`;
+        // First-match wins, exactly like the original Object.values(items).find():
+        // if two items share name+type, keep the earliest (do not overwrite).
+        if (!m.has(k)) m.set(k, item);
+      }
     });
     return m;
   }, [items]);
