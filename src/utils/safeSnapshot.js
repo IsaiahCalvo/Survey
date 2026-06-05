@@ -19,6 +19,45 @@ export function countSnapshotItems(value, kind = 'object-map') {
   return 0;
 }
 
+/**
+ * Preserve file-derived (PDF-imported) annotations across a cloud hydrate.
+ *
+ * The cloud only owns user-drawn marks; annotations imported from the PDF file
+ * itself (`isPdfImported`) are re-derived from the file and must never be deleted
+ * just because the cloud copy lacks them. Without this, a cloud hydrate that
+ * returns an empty OR partial annotation set wholesale-replaces page state and the
+ * imported marks visibly vanish a moment after they render.
+ *
+ * Returns `incoming` unchanged (same identity) when there is nothing to preserve,
+ * so the no-op common case keeps the caller's identity checks intact.
+ *
+ * @param {Record<string, {objects?: any[]}>} prev - current page state
+ * @param {Record<string, {objects?: any[]}>} incoming - the cloud/hydrated set
+ * @returns {Record<string, {objects?: any[]}>}
+ */
+export function mergePreservingImportedMarks(prev, incoming) {
+  if (!prev || typeof prev !== 'object') return incoming;
+  const idOf = (o) => o?.id ?? o?.data?.id ?? o?.pdfAnnotationId ?? null;
+  let next = null; // lazily clone `incoming` only if we actually preserve something
+  for (const [pageKey, prevPage] of Object.entries(prev)) {
+    const prevObjects = Array.isArray(prevPage?.objects) ? prevPage.objects : [];
+    const importedPrev = prevObjects.filter((o) => o?.isPdfImported);
+    if (importedPrev.length === 0) continue;
+    const base = next || incoming || {};
+    const incomingPage = base[pageKey] || { objects: [] };
+    const incomingObjects = Array.isArray(incomingPage.objects) ? incomingPage.objects : [];
+    const haveIds = new Set(incomingObjects.map(idOf).filter((v) => v != null));
+    const toAdd = importedPrev.filter((o) => {
+      const id = idOf(o);
+      return id == null || !haveIds.has(id);
+    });
+    if (toAdd.length === 0) continue;
+    if (!next) next = { ...(incoming || {}) };
+    next[pageKey] = { ...incomingPage, objects: [...incomingObjects, ...toAdd] };
+  }
+  return next || incoming;
+}
+
 export function resolveSafeSnapshot({
   current,
   incoming,

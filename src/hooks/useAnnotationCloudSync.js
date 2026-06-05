@@ -87,7 +87,7 @@ import {
   shouldSuppressStaleCacheShrink,
 } from '../utils/annotationSyncDelta.js';
 import { shouldApplyDedupeResync } from '../utils/dedupeResyncSafety.js';
-import { resolveSafeSnapshot } from '../utils/safeSnapshot.js';
+import { resolveSafeSnapshot, mergePreservingImportedMarks } from '../utils/safeSnapshot.js';
 import { isSnapshotEnabled } from '../lib/collab/snapshotFeatureFlag.js';
 import {
   writeByPageSnapshot,
@@ -1104,9 +1104,10 @@ export function useAnnotationCloudSync({
             if (!cancelled && snap && Object.keys(snap.byPage).length > 0) {
               paintedSnapshot = snap;
               const snapCount = countFabricObjects(snap.byPage);
-              setAnnotationsByPage(() => {
-                lastByPageRef.current = snap.byPage;
-                return snap.byPage;
+              setAnnotationsByPage((prev) => {
+                const nextMerged = mergePreservingImportedMarks(prev, snap.byPage);
+                lastByPageRef.current = nextMerged;
+                return nextMerged;
               });
               hydratedRef.current = true;
               markInitialHydration({ ready: true, source: 'snapshot-prefetch', count: snapCount });
@@ -1411,9 +1412,10 @@ export function useAnnotationCloudSync({
             }
             // [OpenTiming] BUG#2 — durable CRDT hydrate applied to UI state.
             try { console.log('[OpenTiming] crdt-hydrate-done @ ' + Math.round(performance.now()) + 'ms', 'pages=' + Object.keys(safeDurableByPage.value || {}).length); } catch (_e) { /* swallow */ }
-            setAnnotationsByPage(() => {
-              lastByPageRef.current = safeDurableByPage.value;
-              return safeDurableByPage.value;
+            setAnnotationsByPage((prev) => {
+              const nextMerged = mergePreservingImportedMarks(prev, safeDurableByPage.value);
+              lastByPageRef.current = nextMerged;
+              return nextMerged;
             });
             setCallouts(() => {
               lastCalloutsRef.current = safeDurableCallouts.value;
@@ -1489,9 +1491,10 @@ export function useAnnotationCloudSync({
               const nextCallouts = Array.isArray(fallbackCloud.callouts) ? fallbackCloud.callouts : [];
               console.warn('[CloudSync][hook] cutover empty-Y.Doc fallback restored legacy cloud rows ' +
                 JSON.stringify({ documentId, fallbackCount, callouts: nextCallouts.length }));
-              setAnnotationsByPage(() => {
-                lastByPageRef.current = nextByPage;
-                return nextByPage;
+              setAnnotationsByPage((prev) => {
+                const nextMerged = mergePreservingImportedMarks(prev, nextByPage);
+                lastByPageRef.current = nextMerged;
+                return nextMerged;
               });
               setCallouts(() => {
                 lastCalloutsRef.current = nextCallouts;
@@ -1546,13 +1549,15 @@ export function useAnnotationCloudSync({
               incomingCalloutCount: safeYDocCallouts.incomingCount,
             }));
           }
-          setAnnotationsByPage(() => {
+          setAnnotationsByPage((prev) => {
             // Update lastByPageRef.current synchronously inside the setter so
             // the push useEffect's identity check (state === lastRef) returns
             // true and we don't echo the Y.Doc snapshot right back out as if
-            // it were a local change.
-            lastByPageRef.current = safeYDocByPage.value;
-            return safeYDocByPage.value;
+            // it were a local change. Preserve file-derived imported marks so a
+            // partial/empty Y.Doc snapshot can't wipe them.
+            const nextMerged = mergePreservingImportedMarks(prev, safeYDocByPage.value);
+            lastByPageRef.current = nextMerged;
+            return nextMerged;
           });
           setCallouts(() => {
             lastCalloutsRef.current = safeYDocCallouts.value;
@@ -1600,9 +1605,10 @@ export function useAnnotationCloudSync({
             const nextCallouts = Array.isArray(fallbackCloud.callouts) ? fallbackCloud.callouts : [];
             console.warn('[CloudSync][hook] awaiting-Y.Doc fallback painted cloud rows immediately ' +
               JSON.stringify({ documentId, fallbackCount, callouts: nextCallouts.length, cutoverTs }));
-            setAnnotationsByPage(() => {
-              lastByPageRef.current = nextByPage;
-              return nextByPage;
+            setAnnotationsByPage((prev) => {
+              const nextMerged = mergePreservingImportedMarks(prev, nextByPage);
+              lastByPageRef.current = nextMerged;
+              return nextMerged;
             });
             setCallouts(() => {
               lastCalloutsRef.current = nextCallouts;
