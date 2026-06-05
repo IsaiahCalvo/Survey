@@ -234,20 +234,23 @@ export default function ProjectsFolderTree({
   });
   const selCount = selProj.size;
 
-  const filtered = useMemo(() => {
+  const filteredProjects = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const list = localProjects.filter((p) => !q || (p.name || '').toLowerCase().includes(q));
+    return localProjects.filter((p) => !q || (p.name || '').toLowerCase().includes(q));
+  }, [localProjects, search]);
+
+  const filtered = useMemo(() => (
     // Pinned projects float to the TOP; relative order within each group
     // (pinned / unpinned) is preserved via a stable sort.
-    return list
+    filteredProjects
       .map((p, i) => ({ p, i }))
       .sort((a, b) => {
         const ap = pinnedIds.has(a.p.id) ? 0 : 1;
         const bp = pinnedIds.has(b.p.id) ? 0 : 1;
         return ap - bp || a.i - b.i;
       })
-      .map((x) => x.p);
-  }, [localProjects, search, pinnedIds]);
+      .map((x) => x.p)
+  ), [filteredProjects, pinnedIds]);
 
   useEffect(() => {
     if (filtered.length && !filtered.some((p) => p.id === openId)) setOpenId(filtered[0].id);
