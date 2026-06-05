@@ -298,17 +298,6 @@ function watermarkSkipResult(paintedSnapshot) {
   };
 }
 
-async function resolveStampChangedAt(documentId, liveChangedAt) {
-  if (liveChangedAt != null) return liveChangedAt;
-  try {
-    invalidateDocumentMetadata(documentId);
-    const m = await resolveDocumentMetadata(documentId, { supabase });
-    return m?.annotationsChangedAt ?? null;
-  } catch {
-    return null;
-  }
-}
-
 async function tryWatermarkSkipDurableRead(documentId, paintedSnapshot, queuedHasPending, liveChangedAt, label) {
   if (!isSnapshotEnabled()) return null;
   const meta = paintedSnapshot?.meta;
@@ -1135,10 +1124,34 @@ export function useAnnotationCloudSync({
         // conservative "as of before the read" stamp). Used both to DECIDE the
         // fast-open skip and to STAMP any freshly-written snapshot. Null when the
         // marker column is not live yet → callers fall back to the count probe.
+        //
+        // DATA-SAFETY invariant (2026-06-04): the marker used to STAMP the
+        // snapshot MUST be read at or before the durable read begins, so the
+        // stamp is always <= the freshness of the rows the snapshot carries.
+        // A marker re-read AFTER the durable read could read a value bumped by a
+        // mark that landed durably in the window between the durable read and
+        // the re-read — a mark NOT in the snapshot rows — yielding a stamp that
+        // matches the live marker on the next open and SKIPS the durable
+        // re-read, silently dropping that mark. So we resolve a robust (non-null
+        // when the doc is healthy) marker HERE, before the durable read, and
+        // never re-read it afterwards. A transient null first read is retried
+        // once cache-bypassed — still before the durable read — so a healthy doc
+        // lands a non-null, rows-consistent stamp and takes the fast skip next
+        // open, without ever stamping a marker newer than its own rows.
         let liveChangedAt = null;
         if (isSnapshotEnabled()) {
           liveChangedAt = await loadDocumentAnnotationsChangedAt(documentId);
           if (cancelled) return;
+          if (liveChangedAt == null) {
+            try {
+              invalidateDocumentMetadata(documentId);
+              const retryMeta = await resolveDocumentMetadata(documentId, { supabase });
+              liveChangedAt = retryMeta?.annotationsChangedAt ?? null;
+            } catch {
+              liveChangedAt = null;
+            }
+            if (cancelled) return;
+          }
         }
 
         // Phase 31 Plan 04 — cutover-aware hydrate branch.
@@ -1322,8 +1335,14 @@ export function useAnnotationCloudSync({
           if (isSnapshotEnabled() && !durableCloud?.error && !durableCloud?.__watermarkSkipped
             && (Object.keys(durableByPage).length > 0 || durableCallouts.length > 0)) {
             const wm = computeRowsWatermark(durableCloud.rawRows);
-            const stampChangedAt = await resolveStampChangedAt(documentId, liveChangedAt);
-            if (cancelled) return;
+            // DATA-SAFETY: stamp with the marker captured BEFORE the durable
+            // read (liveChangedAt), never a re-read after it. This keeps the
+            // stamp <= the freshness of durableCloud.rawRows, so any mark that
+            // lands durably after these rows moves the live marker PAST the
+            // stamp and forces a durable re-read on the next open instead of a
+            // lossy skip. A null stamp (transient marker read failure) simply
+            // disables the fast skip next open (durable read), which is safe.
+            const stampChangedAt = liveChangedAt;
             writeByPageSnapshot(documentId, durableByPage, durableCallouts, supabase, {
               changedAt: stampChangedAt,
               sourceMaxUpdatedAt: wm.maxUpdatedAt,
@@ -1696,8 +1715,11 @@ export function useAnnotationCloudSync({
           // when served from the snapshot (already current + already watermarked).
           if (isSnapshotEnabled() && !cloud.__watermarkSkipped && (cloudFabricPages > 0 || cloudCalloutCount > 0)) {
             const wm = computeRowsWatermark(cloud.rawRows);
-            const stampChangedAt = await resolveStampChangedAt(documentId, liveChangedAt);
-            if (cancelled) return;
+            // DATA-SAFETY: stamp with the pre-durable-read marker only (see the
+            // cutover branch above for the full rationale). Never re-read the
+            // marker after the durable read — that window is where a freshly
+            // saved mark gets a stamp newer than the rows it is absent from.
+            const stampChangedAt = liveChangedAt;
             writeByPageSnapshot(documentId, cloud.annotationsByPage || {}, cloud.callouts || [], supabase, {
               changedAt: stampChangedAt,
               sourceMaxUpdatedAt: wm.maxUpdatedAt,
