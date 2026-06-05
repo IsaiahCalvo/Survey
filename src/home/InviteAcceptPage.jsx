@@ -15,7 +15,7 @@
  * flow. We carry the token through localStorage so the user lands back on
  * the same invite after auth.
  */
-import { useContext, useEffect, useMemo, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 import { acceptDocumentInvite } from '../services/documentInviteService';
 import { supabase } from '../supabaseClient';
@@ -93,7 +93,7 @@ export default function InviteAcceptPage() {
     return () => { cancelled = true; };
   }, [token, user?.id]); // re-run when user signs in
 
-  const heading = useMemo(() => {
+  const heading = (() => {
     if (phase === 'loading') return 'Checking invite…';
     if (phase === 'needs-auth') return 'Sign in to accept this invite';
     if (!result) return 'Invite';
@@ -106,9 +106,9 @@ export default function InviteAcceptPage() {
       case 'invalid':
       default: return 'Invite link looks invalid';
     }
-  }, [phase, result]);
+  })();
 
-  const description = useMemo(() => {
+  const description = (() => {
     if (phase === 'loading') return 'Validating your invite. One moment…';
     if (phase === 'needs-auth') return 'Sign in or create a free Survey account to accept this invite.';
     if (!result) return '';
@@ -131,14 +131,14 @@ export default function InviteAcceptPage() {
       default:
         return 'We couldn\'t find that invite. The link may be mistyped or the invite was deleted.';
     }
-  }, [phase, result]);
+  })();
 
-  const accent = useMemo(() => {
+  const accent = (() => {
     if (!result) return C.gold;
     if (result.status === 'accepted') return C.good;
     if (result.status === 'wrong_account' || result.status === 'expired' || result.status === 'revoked' || result.status === 'invalid') return C.danger;
     return C.gold;
-  }, [result]);
+  })();
 
   const openDocument = async () => {
     if (!result?.documentId) { goHome(); return; }
