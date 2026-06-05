@@ -225,15 +225,22 @@ export const useDocuments = (projectId = null) => {
       query = query.eq('project_id', projectId);
     }
 
-    const { data, error } = await query;
+    // The owned-documents read and the collaborator probe are independent —
+    // run them concurrently instead of as a 2-step waterfall. Supabase resolves
+    // (never rejects) with {data,error}, so the throw-on-owned-error semantics
+    // below are preserved (the dependent missingIds query stays sequential).
+    const [ownedRes, collaboratorRows] = await Promise.all([
+      query,
+      supabase
+        .from('document_collaborators')
+        .select('document_id')
+        .eq('user_id', user.id)
+        .eq('status', 'active'),
+    ]);
+    const { data, error } = ownedRes;
     if (error) throw error;
 
     let collaboratorDocuments = [];
-    const collaboratorRows = await supabase
-      .from('document_collaborators')
-      .select('document_id')
-      .eq('user_id', user.id)
-      .eq('status', 'active');
 
     if (!collaboratorRows.error) {
       const collaboratorIds = [...new Set((collaboratorRows.data || [])

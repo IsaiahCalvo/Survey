@@ -72,6 +72,12 @@ const svgAnnotationDebug = (...args) => {
 
 const SELECT_DELETE_ONLY_PDF_TEXT_MARKUP_TYPES = new Set(['Underline', 'StrikeOut', 'Squiggly']);
 
+// Module-scope Sets so the per-annotation render loop does O(1) membership
+// checks with zero per-object allocation (was re-creating two arrays per object
+// per render — the hottest loop in the app during zoom/scroll).
+const EDIT_IN_PLACE_TYPES = new Set(['rect', 'circle', 'ellipse', 'triangle', 'textbox', 'i-text', 'text']);
+const TEXT_EDIT_TYPES = new Set(['textbox', 'i-text', 'text']);
+
 const hasVisiblePaint = (value) => {
   if (value == null) return false;
   const normalized = String(value).trim().toLowerCase();
@@ -3389,9 +3395,7 @@ const SVGAnnotationLayer = memo(({
     // a follow-up step so only the caret shows; for now both layers may
     // visually overlap while we confirm the swap is structurally safe.
     const objTypeForEdit = String(obj.type || '').toLowerCase();
-    const EDIT_IN_PLACE_TYPES = ['rect', 'circle', 'ellipse', 'triangle', 'textbox', 'i-text', 'text'];
-    const TEXT_EDIT_TYPES = ['textbox', 'i-text', 'text'];
-    const isInPlaceEdit = isBeingEdited && EDIT_IN_PLACE_TYPES.includes(objTypeForEdit);
+    const isInPlaceEdit = isBeingEdited && EDIT_IN_PLACE_TYPES.has(objTypeForEdit);
     const hideForEdit = isBeingEdited && !isInPlaceEdit && !isBboxEdit;
 
     // UX 2026-04-20 (revised): SVG paints the text during edit AND view so
@@ -3401,7 +3405,7 @@ const SVGAnnotationLayer = memo(({
     // and selection surveyMarker come from Fabric. liveTextEditBounds feeds
     // per-keystroke width/height/text so the SVG box grows with Fabric's
     // wrap as the user types.
-    if (isBeingEdited && TEXT_EDIT_TYPES.includes(objTypeForEdit)) {
+    if (isBeingEdited && TEXT_EDIT_TYPES.has(objTypeForEdit)) {
       renderElement = renderText(renderObj, i, liveTextEditBounds || null, false);
     }
 
@@ -3795,10 +3799,17 @@ const SVGAnnotationLayer = memo(({
             // rotCenter (scaled, pathOffset-adjusted centroid of the point
             // array) the shape renderer uses so the glow traces the rotated
             // shape exactly.
-            const shapePointXs = renderObj.points.map((p) => (typeof p?.x === 'number' ? p.x : 0));
-            const shapePointYs = renderObj.points.map((p) => (typeof p?.y === 'number' ? p.y : 0));
-            const shapeRawCenterX = (Math.min(...shapePointXs) + Math.max(...shapePointXs)) / 2;
-            const shapeRawCenterY = (Math.min(...shapePointYs) + Math.max(...shapePointYs)) / 2;
+            let shapeMinX = Infinity, shapeMaxX = -Infinity, shapeMinY = Infinity, shapeMaxY = -Infinity;
+            for (const p of renderObj.points) {
+              const px = typeof p?.x === 'number' ? p.x : 0;
+              const py = typeof p?.y === 'number' ? p.y : 0;
+              if (px < shapeMinX) shapeMinX = px;
+              if (px > shapeMaxX) shapeMaxX = px;
+              if (py < shapeMinY) shapeMinY = py;
+              if (py > shapeMaxY) shapeMaxY = py;
+            }
+            const shapeRawCenterX = (shapeMinX + shapeMaxX) / 2;
+            const shapeRawCenterY = (shapeMinY + shapeMaxY) / 2;
             const shapeRotCenterX = shapeSx * (shapeRawCenterX - shapePathOffsetX);
             const shapeRotCenterY = shapeSy * (shapeRawCenterY - shapePathOffsetY);
             let shapeTransform = `translate(${shapeLeft}, ${shapeTop})`;

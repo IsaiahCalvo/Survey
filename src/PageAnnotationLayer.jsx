@@ -5517,7 +5517,8 @@ const PageAnnotationLayer = memo(({
 
         if (calloutIds.size > 0) {
           const allObjects = canvas.getObjects();
-          const missingParts = allObjects.filter(o => calloutIds.has(o.calloutId) && !selected.includes(o));
+          const selectedSet = new Set(selected);
+          const missingParts = allObjects.filter(o => calloutIds.has(o.calloutId) && !selectedSet.has(o));
 
           if (missingParts.length > 0) {
             // Re-select with all parts included
@@ -5588,7 +5589,8 @@ const PageAnnotationLayer = memo(({
 
         if (calloutIds.size > 0) {
           const allObjects = canvas.getObjects();
-          const missingParts = allObjects.filter(o => calloutIds.has(o.calloutId) && !selected.includes(o));
+          const selectedSet = new Set(selected);
+          const missingParts = allObjects.filter(o => calloutIds.has(o.calloutId) && !selectedSet.has(o));
 
           if (missingParts.length > 0) {
             setTimeout(() => {

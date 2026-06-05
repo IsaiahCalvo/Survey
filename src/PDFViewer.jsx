@@ -15,7 +15,8 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import AnnotationPropertiesPanel from './components/AnnotationPropertiesPanel';
 import CalloutOverlay from './components/Callout';
-import ExcelJS from 'exceljs';
+// ExcelJS (~1MB) is loaded on demand inside the three async export/sync handlers
+// below — see `await import('exceljs')` — so it stays out of the main viewer chunk.
 import ExcelLockedModal from './components/ExcelLockedModal';
 import ExcelSyncConfirmModal from './components/ExcelSyncConfirmModal';
 import FabricDrawingCanvas from './components/FabricDrawingCanvas';
@@ -33,8 +34,11 @@ import RegionSelectionTool from './RegionSelectionTool';
 import SVGAnnotationLayer from './components/SVGAnnotationLayer';
 import SaveLogBanner from './components/SaveLogBanner';
 import SearchHighlightLayer from './components/SearchHighlightLayer';
+import PdfjsLinkLayer from './components/PdfjsLinkLayer';
+import PdfjsFormLayer from './components/PdfjsFormLayer';
+import PdfjsTextLayer from './components/PdfjsTextLayer';
 import SpaceRegionOverlay from './SpaceRegionOverlay';
-import SyncfusionPDFContainer from './components/SyncfusionPDFContainer';
+import PDFViewerEngineSelector from './components/PDFViewerEngineSelector';
 import TemplateOverwriteWarningModal from './components/TemplateOverwriteWarningModal';
 import TextLayer from './TextLayer';
 import UnsupportedAnnotationsNotice from './components/UnsupportedAnnotationsNotice';
@@ -193,6 +197,8 @@ import {
   isPointOnSelectDeleteOnlyTextMarkup,
   isSelectDeleteOnlyImportedTextMarkupType,
   isSuspiciousWheelZoomPercent,
+  getPDFViewerEngine,
+  PDF_VIEWER_ENGINE_PDFJS,
   loadAnnotationsByPage,
   loadCallouts,
   loadCloudRenderAnnotationsByPage,
@@ -345,7 +351,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     summary: null
   });
   const trackpadInteractionDebugRef = useRef({
-    enabled: true,
+    // Off by default: when enabled, recordTrackpadInteractionEvent runs forced
+    // layout twice per wheel tick (getBoundingClientRect + querySelectorAll +
+    // per-form getComputedStyle/ancestor walk + elementFromPoint) — a major
+    // scroll/zoom lag source in the real app that the demos do not have. Opt in
+    // for a capture via ?trackpadDebug=1, window.__TRACKPAD_DEBUG = true, or the
+    // runtime trackpad-debug enable() API. overlayPerformance still records
+    // either way, so frame-rate captures keep working with this off.
+    enabled: (() => {
+      try {
+        if (typeof window === 'undefined') return false;
+        if (window.__TRACKPAD_DEBUG === true) return true;
+        return new URLSearchParams(window.location.search).get('trackpadDebug') === '1';
+      } catch { return false; }
+    })(),
     startedAtIso: new Date().toISOString(),
     startedAtMs: (typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now(),
     seq: 0,
@@ -475,6 +494,53 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       interactionPhase: syncfusionInteractionPhaseRef.current,
       snapshotPages: typeof document !== 'undefined'
         ? document.querySelectorAll('[data-syncfusion-zoom-snapshot-page]').length
+        : 0,
+      // pdf.js form-widget visibility probe (Stage 4.3 zoom-disappearance debug).
+      // Captured before/after every zoom event so a real reproduction shows
+      // exactly whether the form field/checkbox (or an ancestor) is hidden or
+      // covered during a gesture, and whether a snapshot is up.
+      pdfjsForms: (typeof document !== 'undefined' && typeof window !== 'undefined' && window.getComputedStyle)
+        ? Array.from(document.querySelectorAll('.pdfjsFormLayer')).slice(0, 6).map((el) => {
+            const cs = window.getComputedStyle(el);
+            const b = el.getBoundingClientRect();
+            let ancestorHiddenBy = null;
+            let p = el;
+            for (let i = 0; i < 10 && p; i += 1) {
+              const ps = window.getComputedStyle(p);
+              if (ps.visibility === 'hidden' || ps.display === 'none' || Number(ps.opacity) === 0) {
+                ancestorHiddenBy = (p === el ? 'self' : (p.getAttribute?.('data-overlay-page')
+                  ? `overlay-page=${p.getAttribute('data-overlay-page')}`
+                  : (p.getAttribute?.('data-scale-pending-hidden') ? 'scale-pending-hidden'
+                    : (typeof p.className === 'string' ? p.className.slice(0, 24) : p.tagName))));
+                break;
+              }
+              p = p.parentElement;
+            }
+            // what element is painted on top at the field's centre?
+            let topAtCentre = null;
+            if (b.width > 0 && b.height > 0) {
+              const t = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+              topAtCentre = t ? `${t.tagName}.${(typeof t.className === 'string' ? t.className.split(' ')[0] : '')}` : null;
+            }
+            return {
+              page: el.getAttribute('data-pdfjs-form-layer'),
+              kids: el.childElementCount,
+              visibility: cs.visibility,
+              display: cs.display,
+              opacity: cs.opacity,
+              transform: el.style.transform || 'none',
+              w: roundOverlayRecorderValue(b.width, 1),
+              x: roundOverlayRecorderValue(b.left, 1),
+              ancestorHiddenBy,
+              topAtCentre,
+            };
+          })
+        : [],
+      snapshotVisible: typeof document !== 'undefined'
+        ? document.querySelectorAll('[data-snapshot-visible="true"]').length
+        : 0,
+      liveHidden: typeof document !== 'undefined'
+        ? document.querySelectorAll('[data-scale-pending-hidden="true"]').length
         : 0
     };
   }, []);
@@ -815,6 +881,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // pdf-lib rewrite/retry path or Syncfusion render path can't recover.
   const [pdfLoadError, setPdfLoadError] = useState(null);
   const [loadRetryToken, setLoadRetryToken] = useState(0);
+  // KAL-46 / sleep-wake: bounds how many times the load watchdog will silently
+  // auto-retry a hung download (dead socket after display sleep/wake) before it
+  // gives up and surfaces the retryable error screen. Reset whenever a fresh
+  // pdfFile arrives so each document gets its own budget.
+  const loadWatchdogRetryCountRef = useRef(0);
   const syncfusionPageContainersStateRef = useRef({});
   const syncfusionCommittedPageScalesRef = useRef({});
   const syncfusionInteractionActiveRef = useRef(false);
@@ -1575,6 +1646,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const captureSyncfusionZoomSnapshots = useCallback((baseScale) => {
     if (typeof document === 'undefined') return;
+    // The owned pdf.js engine repaints fast and owns its own zoom, so the
+    // Syncfusion-era zoom snapshot (a DOM clone of the annotation surfaces shown
+    // over the page during a gesture) is unnecessary AND harmful here: the clone
+    // captures SVG markups but NOT the live HTML form widgets, so it covers the
+    // form field + checkbox and they appear to vanish mid-zoom. Skip it entirely
+    // under pdf.js — the live overlay stays visible and resyncs each zoom step.
+    if (getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS) return;
     clearSyncfusionZoomSnapshots();
     const layer = ensureSyncfusionZoomSnapshotLayer();
     if (!layer) return;
@@ -1749,6 +1827,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // Users can still toggle to Canvas mode via Ctrl+Shift+V but zoom behavior
     // is intentionally degraded (Phase 8 decision: "Canvas mode zoom not worth fixing").
     console.warn('[Zoom] Canvas mode zoom coordination removed in Phase 11. Use SVG mode for correct zoom behavior.');
+  }, []);
+
+  // Stage 3 (pdf.js cutover): the owned pdf.js engine fires onZoomPhase at the
+  // start of a zoom gesture ('gesture-start') and at commit ('settle'). On
+  // gesture-start we bump the EXISTING zoomGeneration signal so mounted Canvas
+  // tools (FabricDrawingCanvas/Eraser/Edit) auto-commit in-progress work before
+  // the pdf.js page hosts re-layout — the same contract Syncfusion gets via
+  // beginSyncfusionScaleConfirmPending. Engine-gated: only runs under pdf.js;
+  // under Syncfusion this is never wired (the prop is undefined), so it is inert.
+  const handlePdfjsZoomPhase = useCallback((phase) => {
+    if (getPDFViewerEngine() !== PDF_VIEWER_ENGINE_PDFJS) return;
+    // INVARIANT: keep this bump — Canvas tools (Fabric draw/eraser/edit) watch
+    // zoomGeneration to auto-commit in-progress work before the host re-layouts.
+    // The overlay no longer needs a per-frame zoom signal: it now lives INSIDE the
+    // engine's transformed content node (see attachOverlayToPageDiv), so it rides the
+    // page's own zoom transform as one piece, exactly like the demo.
+    if (phase === 'gesture-start') setZoomGeneration((prev) => prev + 1);
   }, []);
 
   const clearSyncfusionInteractionTimer = useCallback(() => {
@@ -2215,7 +2310,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // Defer CSS transform removal until Fabric.js confirms it rendered at the new scale.
     // This prevents the visual flicker between CSS transform removal and canvas re-render.
     // Skip during active overlay zoom — the zoom settle timer handles cleanup.
-    if (!overlayZoomInProgress) {
+    // `&& useSyncfusionRenderer` (hardcoded true today, so byte-for-byte unchanged)
+    // keeps this shared zoomGeneration bump off the pdf.js path, where the engine's
+    // own onZoomPhase drives the signal — Stage 3 made zoomGeneration cross-engine.
+    if (!overlayZoomInProgress && useSyncfusionRenderer) {
       beginSyncfusionScaleConfirmPending('finalize_idle');
     }
     if (wasActive) {
@@ -2555,6 +2653,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [finalizeSyncfusionInteractionIdle]);
 
   const scheduleSyncfusionVisiblePagesRefresh = useCallback(() => {
+    // Syncfusion visible-page tracking is meaningless under the owned pdf.js
+    // engine (pdf.js owns page visibility); the version bump only re-renders broad
+    // subtrees for nothing. Bail under pdf.js.
+    if (getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS) return;
     const state = syncfusionVisiblePagesRefreshRef.current;
     const now = Date.now();
     const elapsed = now - (Number(state.lastAt) || 0);
@@ -2580,6 +2682,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, []);
 
   const markSyncfusionInteractionActive = useCallback((reason = 'interaction', holdMs = SYNCFUSION_INTERACTION_SETTLE_MS) => {
+    // Under the owned pdf.js engine, the engine owns overlay positioning, scroll
+    // and zoom natively — overlays ride the engine transform with zero drift. The
+    // entire legacy Syncfusion interaction session (per-frame overlay transform
+    // rAF loop, visible-pages version bumps, settle bookkeeping) is pure wasted
+    // forced-layout + setState churn here. Bail before starting any of it so the
+    // pdf.js path matches the stripped demo's scroll/zoom feel. Zoom is unaffected:
+    // it runs in performSyncfusionCursorWheelZoom, which already bails under pdf.js.
+    if (getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS) return;
     if (!useSyncfusionRenderer || !syncfusionLiveStableOverlayEnabled || !syncfusionDualLayerEnabled) {
       return;
     }
@@ -2758,6 +2868,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Annotation tools state
   const [activeTool, setActiveTool] = useState('pan');
   const activeToolRef = useRef('pan');
+  // [InteractionDiag] last observed active tool, used to log real transitions.
+  const interactionDiagPrevToolRef = useRef('pan');
+  // [InteractionDiag] throttle timestamp for continuous zoom-intent logging.
+  const interactionDiagZoomLogAtRef = useRef(0);
 
   // KAL-47 Forms mode state.
   // - `formMode` toggles Syncfusion's `designerMode`. When true, the
@@ -2863,6 +2977,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setSelectedFormField(null);
   }, [selectedFormField]);
   useEffect(() => {
+    // [InteractionDiag] tool-switch RESPONSE: the active tool actually changed.
+    // Pairs with the tool-switch INTENT log inside the logged setActiveTool
+    // wrapper exposed to the toolbar. A gap (intent with no response) means a
+    // tool click was ignored/blocked.
+    try {
+      const prevTool = interactionDiagPrevToolRef.current;
+      if (prevTool !== activeTool) {
+        console.log(`[InteractionDiag] tool-changed @ ${Math.round(performance.now())}ms from=${prevTool} to=${activeTool}` + (activeTool === 'pan' ? ' (pan-active → Syncfusion interactionMode=Pan)' : '') + (activeTool === 'eraser' ? ' (eraser-active → FabricEraserCanvas mounts)' : ''));
+        interactionDiagPrevToolRef.current = activeTool;
+      }
+    } catch (_e) { /* swallow */ }
     activeToolRef.current = activeTool;
     // Force cursor re-evaluation on tool switch.
     // Browsers only recalculate CSS cursor on real mouse movement. Directly
@@ -2895,6 +3020,47 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setEditingAnnotation(null);
     }
   }, [activeTool]);
+
+  // [InteractionDiag] INTERACTIVITY-READY gate.
+  // `isLoadingPDF` is the loading curtain shown over the viewer (see the
+  // `!pdfDoc || isLoadingPDF` early-return near the render root). While true,
+  // the user sees the spinner and the toolbar/page are not yet interactive —
+  // this is the "dead first few seconds" the user reports. Mirror it into a
+  // ref so the logged setActiveTool wrapper can flag tool input that arrives
+  // while still gated, and emit a one-shot `interactive-ready` marker the
+  // moment the curtain lifts.
+  const interactionDiagLoadingRef = useRef(true);
+  const interactionDiagReadyLoggedRef = useRef(false);
+  useEffect(() => {
+    interactionDiagLoadingRef.current = isLoadingPDF;
+    try {
+      if (!isLoadingPDF && !interactionDiagReadyLoggedRef.current) {
+        interactionDiagReadyLoggedRef.current = true;
+        console.log(`[InteractionDiag] interactive-ready @ ${Math.round(performance.now())}ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)`);
+      }
+      if (isLoadingPDF) {
+        // Re-arm for the next open of a different document.
+        interactionDiagReadyLoggedRef.current = false;
+      }
+    } catch (_e) { /* swallow */ }
+  }, [isLoadingPDF]);
+
+  // [InteractionDiag] tool-switch INTENT wrapper. The toolbar (AppShell),
+  // SurveySpacesRail, dropdowns, and keyboard shortcuts all route tool
+  // selection through setActiveTool. Wrapping it here captures EVERY intent in
+  // one place — which tool was requested, what it was before, and whether the
+  // viewer was still gated (input-while-gated) when the request arrived. The
+  // matching RESPONSE is logged in the activeToolRef sync effect above; an
+  // intent with no following tool-changed line means the switch was a no-op.
+  const setActiveToolLogged = useCallback((next) => {
+    try {
+      const requested = typeof next === 'function' ? '(updater-fn)' : String(next);
+      const from = activeToolRef.current;
+      const gated = interactionDiagLoadingRef.current === true;
+      console.log(`[InteractionDiag] tool-intent @ ${Math.round(performance.now())}ms requested=${requested} from=${from}` + (gated ? ' [BLOCKED? viewer still gated: isLoadingPDF=true]' : ''));
+    } catch (_e) { /* swallow */ }
+    setActiveTool(next);
+  }, []);
 
   const [strokeColor, setStrokeColor] = useState('#ff0000');
   const [strokeOpacity, setStrokeOpacity] = useState(100);
@@ -4624,9 +4790,30 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, []);
 
   const performSyncfusionCursorWheelZoom = useCallback((event, viewerContainer, reason = 'overlay-wheel-zoom') => {
+    // Under the owned pdf.js engine, let the engine's OWN cursor-anchored smooth
+    // wheel zoom (CSS transform during gesture + re-raster on settle) own the
+    // gesture. Bail BEFORE the preventDefault/stopPropagation below so the
+    // ctrl/meta wheel event keeps propagating in the capture phase down to the
+    // engine's scroller listener (PdfjsViewerContainer's onWheel). The engine
+    // still preventDefaults native pinch-zoom itself and fires
+    // onZoomPhase('gesture-start') -> handlePdfjsZoomPhase -> zoomGeneration bump,
+    // so the Canvas auto-commit invariant is preserved. This covers both wheel
+    // entry paths (the document capture listener and handleSyncfusionWrapperWheel)
+    // because neither calls preventDefault itself. See HANDOFF.md "make pdf.js zoom smooth".
+    if (getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS) return false;
     if (!event || !viewerContainer || !(event.ctrlKey || event.metaKey)) return false;
     if (event.__surveyCursorZoomHandled) return true;
     event.__surveyCursorZoomHandled = true;
+    // [InteractionDiag] ZOOM intent via Ctrl/Cmd+wheel / pinch, throttled to
+    // ~150ms so a continuous pinch gesture does not flood the log.
+    try {
+      const nowMs = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+      if (nowMs - (interactionDiagZoomLogAtRef.current || 0) >= 150) {
+        interactionDiagZoomLogAtRef.current = nowMs;
+        const dir = (Number(event.deltaY) || 0) < 0 ? 'in' : 'out';
+        console.log(`[InteractionDiag] zoom-intent @ ${Math.round(nowMs)}ms dir=${dir} via=ctrl-wheel/pinch (cursor-zoom path)`);
+      }
+    } catch (_e) { /* swallow */ }
 
     event.preventDefault?.();
     event.stopPropagation?.();
@@ -4821,7 +5008,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return;
       }
 
-      if (!zoomOverlayTransformActiveRef.current) {
+      // Under pdf.js, never enter the snapshot/overlay-preview mode (see
+      // captureSyncfusionZoomSnapshots) — it hides/covers the live form widgets
+      // mid-zoom. Leave the overlay live; it resyncs on each committed step.
+      if (getPDFViewerEngine() !== PDF_VIEWER_ENGINE_PDFJS && !zoomOverlayTransformActiveRef.current) {
         zoomOverlayBaseScaleRef.current = currentZoom / 100;
         captureSyncfusionZoomSnapshots(currentZoom / 100);
         zoomOverlayTransformActiveRef.current = true;
@@ -4853,7 +5043,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const scrollLeftAtEvent = (anchor && Number.isFinite(anchor.scrollLeftAtEvent)) ? anchor.scrollLeftAtEvent : viewerContainer.scrollLeft;
       const scrollTopAtEvent = (anchor && Number.isFinite(anchor.scrollTopAtEvent)) ? anchor.scrollTopAtEvent : viewerContainer.scrollTop;
       const ratio = nextZoom > 0 && currentZoom > 0 ? (nextZoom / currentZoom) : 1;
-      updateSyncfusionZoomSnapshots(nextZoom / 100);
+      if (getPDFViewerEngine() !== PDF_VIEWER_ENGINE_PDFJS) updateSyncfusionZoomSnapshots(nextZoom / 100);
       const targetScrollLeft = (scrollLeftAtEvent + cursorX) * ratio - cursorX;
       const targetScrollTop = (scrollTopAtEvent + cursorY) * ratio - cursorY;
 
@@ -5071,6 +5261,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
 
     const onScroll = () => {
+      // KAL-241 lag fix — under pdf.js this scroll handler is pure legacy
+      // Syncfusion overhead that fires on EVERY native scroll frame: it reads
+      // layout (readTrackpadDebugState does getBoundingClientRect + querySelectorAll
+      // + elementFromPoint), queues an interaction mark that cascades into React
+      // state updates, and pokes the zoom-snapshot machinery. The pdf.js engine
+      // owns scroll natively and the overlay rides the transformed page host, so
+      // none of this is needed and all of it forces synchronous layout the stripped
+      // demo never pays. Bail immediately. Zoom is unaffected — it runs in the
+      // separate document-level ctrl/meta wheel handler. Syncfusion path unchanged.
+      if (getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS) return;
       const beforeLeft = Number(trackpadInteractionDebugRef.current.lastScrollLeft);
       const beforeTop = Number(trackpadInteractionDebugRef.current.lastScrollTop);
       const nextLeft = Number(viewerContainer.scrollLeft) || 0;
@@ -5235,6 +5435,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         queueInteractionMark('wheel-zoom', 'syncfusion-wheel-zoom', INTERACTION_PERF_SCROLL_HOLD_MS);
         return;
       }
+      // KAL-241 lag fix — under pdf.js, plain (non-zoom) wheel scroll is owned by
+      // the engine's own scroll container and rides the compositor natively
+      // (mirrors PdfjsArm). The JS-driven path below preventDefaults the event and
+      // re-drives scrollTop on a batched timer, which forces synchronous layout
+      // twice per tick and starves the page raster. Bail before any of that so the
+      // browser scrolls the pdf.js content natively. The Syncfusion path is
+      // unchanged; the ctrl/meta zoom branch already returned above.
+      if (getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS) return;
       const wheelDelta = getNormalizedWheelDeltas(event);
       trackpadInteractionDebugRef.current.totals.rawWheel += 1;
       trackpadInteractionDebugRef.current.totals.rawScrollWheel += 1;
@@ -5329,6 +5537,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     const onPointerDown = (event) => {
       pointerDown = true;
+      // [InteractionDiag] POINTER on the viewer container. This is the
+      // Syncfusion scroll/pan surface; pan is delegated to Syncfusion via
+      // interactionMode="Pan" (set when activeTool==='pan'). Log the gesture
+      // start with the active tool, target layer, and gated state so a
+      // swallowed / dead pan or click is visible. Move logging is throttled
+      // to the existing ~96ms drag gate below.
+      try {
+        const tool = activeToolRef.current;
+        const gated = interactionDiagLoadingRef.current === true;
+        const tgt = event.target;
+        const layer = tgt && tgt.closest
+          ? (tgt.closest('[data-diag-eraser-wrapper]') ? 'eraser-canvas'
+            : tgt.closest('.e-pv-text-layer') ? 'syncfusion-text-layer'
+            : tgt.closest('svg') ? 'svg-annotation-layer'
+            : tgt.closest('.e-pv-page-div') ? 'syncfusion-page'
+            : (tgt.tagName || 'unknown').toLowerCase())
+          : 'unknown';
+        const family = tool === 'pan' ? 'pan-start' : 'pointer-down';
+        console.log(`[InteractionDiag] viewer-${family} @ ${Math.round(performance.now())}ms tool=${tool} button=${event.button} target=${layer}` + (gated ? ' [viewer still gated: isLoadingPDF=true]' : '') + (tool === 'pan' ? ` scrollTop=${Math.round(viewerContainer.scrollTop)} scrollLeft=${Math.round(viewerContainer.scrollLeft)}` : ''));
+      } catch (_e) { /* swallow */ }
       trackpadInteractionDebugRef.current.pointerPanStart = {
         clientX: event.clientX,
         clientY: event.clientY,
@@ -5375,9 +5603,39 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         ? INTERACTION_PERF_SCROLL_HOLD_MS
         : INTERACTION_PERF_DRAW_HOLD_MS;
       markSyncfusionInteraction('syncfusion-pointer-drag', holdMs);
+      // [InteractionDiag] PAN drag (throttled to the 96ms drag gate above).
+      // When pan is the active tool, log the pointer delta vs the actual
+      // scroll delta. If pointer moves but scrollDelta stays 0, the pan
+      // gesture is dying — Syncfusion's Pan interactionMode is not scrolling
+      // the container. This is the smoking gun for the "Pan does nothing" bug.
+      try {
+        if (activeToolRef.current === 'pan' && start) {
+          const pdx = Math.round(event.clientX - start.clientX);
+          const pdy = Math.round(event.clientY - start.clientY);
+          const sdx = Math.round(viewerContainer.scrollLeft - start.scrollLeft);
+          const sdy = Math.round(viewerContainer.scrollTop - start.scrollTop);
+          const moved = sdx !== 0 || sdy !== 0;
+          console.log(`[InteractionDiag] pan-drag @ ${Math.round(performance.now())}ms pointerDelta=(${pdx},${pdy}) scrollDelta=(${sdx},${sdy}) ${moved ? 'MOVED' : 'NO-SCROLL (pan gesture not moving container)'}`);
+        }
+      } catch (_e) { /* swallow */ }
     };
 
     const onPointerEnd = () => {
+      // [InteractionDiag] gesture end. For pan, report the total scroll
+      // achieved so a zero-movement pan is unambiguous end-to-end.
+      try {
+        if (pointerDown) {
+          const tool = activeToolRef.current;
+          const start = trackpadInteractionDebugRef.current.pointerPanStart || null;
+          if (tool === 'pan' && start) {
+            const sdx = Math.round(viewerContainer.scrollLeft - start.scrollLeft);
+            const sdy = Math.round(viewerContainer.scrollTop - start.scrollTop);
+            console.log(`[InteractionDiag] pan-end @ ${Math.round(performance.now())}ms totalScrollDelta=(${sdx},${sdy})` + (sdx === 0 && sdy === 0 ? ' [PAN DID NOTHING]' : ''));
+          } else {
+            console.log(`[InteractionDiag] pointer-end @ ${Math.round(performance.now())}ms tool=${tool}`);
+          }
+        }
+      } catch (_e) { /* swallow */ }
       pointerDown = false;
       recordTrackpadInteractionEvent('pointer-up', {
         family: 'pan',
@@ -5672,12 +5930,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       syncfusionAppOverlayRootRef.current = overlayRoot;
     }
 
-    const stableHostStyle = window.getComputedStyle(stableViewerHost);
-    if (stableHostStyle.position === 'static') {
-      stableViewerHost.style.position = 'relative';
+    // Under the owned pdf.js engine, host the overlay INSIDE the engine's transformed
+    // content (its stable overlay slot) so every layer rides the page's own zoom/scroll
+    // transform as one piece — the demo's structure, no per-frame chase. Under Syncfusion,
+    // keep the legacy stable-host placement (Syncfusion churns its page DOM during zoom).
+    const isPdfjsEngine = getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS;
+    const engineOverlayHost = isPdfjsEngine
+      ? (syncfusionViewerRef.current?.getOverlayHost?.() || null)
+      : null;
+    const overlayParentHost = engineOverlayHost?.isConnected ? engineOverlayHost : stableViewerHost;
+
+    const overlayParentStyle = window.getComputedStyle(overlayParentHost);
+    if (overlayParentStyle.position === 'static') {
+      overlayParentHost.style.position = 'relative';
     }
-    if (overlayRoot.parentElement !== stableViewerHost) {
-      stableViewerHost.appendChild(overlayRoot);
+    if (overlayRoot.parentElement !== overlayParentHost) {
+      overlayParentHost.appendChild(overlayRoot);
     }
 
     let overlayDiv = overlayDivsRef.current[safePageNumber];
@@ -5707,20 +5975,45 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return overlayDiv;
     }
 
-    const pageRect = pageDiv.getBoundingClientRect?.();
-    const rootRect = overlayRoot?.getBoundingClientRect?.();
-    const left = pageRect && rootRect
-      ? pageRect.left - rootRect.left
-      : (Number(pageDiv.offsetLeft) || 0);
-    const top = pageRect && rootRect
-      ? pageRect.top - rootRect.top
-      : (Number(pageDiv.offsetTop) || 0);
-    const width = Number(pageRect?.width) || Number(pageDiv.offsetWidth) || 0;
-    const height = Number(pageRect?.height) || Number(pageDiv.offsetHeight) || 0;
-    overlayDiv.style.left = `${left}px`;
-    overlayDiv.style.top = `${top}px`;
-    if (width > 0) overlayDiv.style.width = `${width}px`;
-    if (height > 0) overlayDiv.style.height = `${height}px`;
+    let left;
+    let top;
+    let width;
+    let height;
+    if (engineOverlayHost?.isConnected) {
+      // Overlay rides inside the transformed content node, so position it in the page's
+      // LAYOUT (offset) coordinates — these are independent of the live CSS zoom
+      // transform, so reading them during or after a gesture is always correct, and the
+      // overlay scales with the page automatically.
+      left = Number(pageDiv.offsetLeft) || 0;
+      top = Number(pageDiv.offsetTop) || 0;
+      width = Number(pageDiv.offsetWidth) || 0;
+      height = Number(pageDiv.offsetHeight) || 0;
+    } else {
+      const pageRect = pageDiv.getBoundingClientRect?.();
+      const rootRect = overlayRoot?.getBoundingClientRect?.();
+      left = pageRect && rootRect
+        ? pageRect.left - rootRect.left
+        : (Number(pageDiv.offsetLeft) || 0);
+      top = pageRect && rootRect
+        ? pageRect.top - rootRect.top
+        : (Number(pageDiv.offsetTop) || 0);
+      width = Number(pageRect?.width) || Number(pageDiv.offsetWidth) || 0;
+      height = Number(pageRect?.height) || Number(pageDiv.offsetHeight) || 0;
+    }
+    // PERF (2026-06-03): this runs during render for every visible page. Writing
+    // these positions unconditionally dirties layout, so the next page's offset
+    // reads force a fresh reflow — layout thrash that stutters scroll on heavier
+    // hardware. The page's layout position only changes on zoom-commit / rotate /
+    // resize, NOT on scroll, so skip the writes when nothing moved: identical-value
+    // writes are a no-op for correctness but keep layout clean and reads cheap.
+    const prevGeom = overlayDiv.__lastOverlayGeom;
+    if (!prevGeom || prevGeom.left !== left || prevGeom.top !== top || prevGeom.width !== width || prevGeom.height !== height) {
+      overlayDiv.style.left = `${left}px`;
+      overlayDiv.style.top = `${top}px`;
+      if (width > 0) overlayDiv.style.width = `${width}px`;
+      if (height > 0) overlayDiv.style.height = `${height}px`;
+      overlayDiv.__lastOverlayGeom = { left, top, width, height };
+    }
     overlayDiv.setAttribute('data-source-page-connected', 'true');
 
     if (!zoomOverlayTransformActiveRef.current) {
@@ -8583,7 +8876,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, []);
 
   useEffect(() => {
-    if (!useSyncfusionRenderer || !overlayLagAutoRecordEnabled) {
+    // PERF (2026-06-03): the overlay-lag recorder is a Syncfusion-era debug tool.
+    // Its guard checked the hardcoded legacy `useSyncfusionRenderer` constant (always
+    // true), NOT the engine flag — so under the owned pdf.js engine it still auto-started
+    // whenever its localStorage key was set, running a continuous per-frame rAF loop +
+    // a longtask PerformanceObserver that starved the main thread (the real session's
+    // ~5fps / 21s "unattributedRafPause"). pdf.js glues overlays via CSS transform and
+    // needs no per-frame drift sampling. Hard-gate it OFF under pdf.js.
+    if (!useSyncfusionRenderer || !overlayLagAutoRecordEnabled || getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS) {
       return;
     }
 
@@ -11469,6 +11769,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
 
     try {
+      const ExcelJS = (await import('exceljs')).default;
       const workbook = new ExcelJS.Workbook();
 
       // Add hidden metadata sheet for template tracking
@@ -13876,6 +14177,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           // Use local filesystem
           fileData = await window.electronAPI.readFile(selectedTemplate.linkedExcelPath);
         }
+        const ExcelJS = (await import('exceljs')).default;
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.load(fileData);
 
@@ -14046,6 +14348,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         } else {
           fileData = await window.electronAPI.readFile(selectedTemplate.linkedExcelPath);
         }
+        const ExcelJS = (await import('exceljs')).default;
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.load(fileData);
 
@@ -16549,6 +16852,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
 
     const id = getPDFId(pdfFile);
+    // [OpenTiming] BUG#2 — PDF identity resolved; viewer is mounting for this doc.
+    // Re-arm the one-shot first-paint marker so it logs once for THIS open.
+    try { window.__openTimingFirstPaintLogged = false; } catch (_e) { /* swallow */ }
+    // Fresh document → fresh load-watchdog auto-retry budget (KAL-46 / sleep-wake).
+    loadWatchdogRetryCountRef.current = 0;
+    try { console.log('[OpenTiming] pdfid-resolve @ ' + Math.round(performance.now()) + 'ms', String(id || '')); } catch (_e) { /* swallow */ }
     activePdfIdentityRef.current = nextPdfIdentity;
     activeCloudDocumentIdRef.current = pdfFile?.id || null;
     setPdfId(id);
@@ -17176,6 +17485,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   useEffect(() => {
     if (!pdfDoc) return undefined;
+    // Under pdf.js the engine extracts the outline on document load and reports it via
+    // onPDFBookmarksAvailable, so this 3.2s fallback would redundantly re-extract.
+    if (getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS) return undefined;
     if (Array.isArray(pdfBookmarks) && pdfBookmarks.length > 0) return undefined;
 
     const attemptKey = pdfId || `${pdfFile?.name || 'document'}:${pdfDoc?.numPages || 0}`;
@@ -17468,6 +17780,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           appDebug('[PDFImport] skipped embedded PDF annotation import — cloud/Y.Doc is authoritative ' + JSON.stringify({
             documentId: pdfFile.id,
           }));
+          // PERF (2026-06-03): The diagnosticsOnly importAnnotationsFromPdf pass
+          // scans the WHOLE document (pdf-lib raw-bytes parse + getAnnotations on
+          // every page ≈ 450ms warm on a 36-page / 3k-native-annot doc) ONLY to
+          // compute nativeLayerPolicyByPage, whose sole consumers are a debug
+          // global and CSS that hides Syncfusion's native annotation canvas. Under
+          // the pdf.js engine Syncfusion is unmounted, so that work produces a
+          // value nothing uses — pure dead weight on every cloud-doc open. Skip it
+          // and set the empty policy (already the catch-branch fallback below).
+          if (getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS) {
+            setPdfNativeAnnotationLayerPolicyByPage({});
+          } else {
           try {
             const { nativeLayerPolicyByPage } = await importAnnotationsFromPdf(pdf, {
               rawPdfBytes: arrayBuffer,
@@ -17489,6 +17812,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           } catch (diagError) {
             console.warn('[PDFImport] embedded PDF annotation diagnostics failed:', diagError);
             setPdfNativeAnnotationLayerPolicyByPage({});
+          }
           }
         } else {
         try {
@@ -17754,6 +18078,69 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       isCancelled = true;
     };
   }, [pdfFile, loadRetryToken]);
+
+  // KAL-46 / sleep-wake recovery watchdog.
+  //
+  // When the display sleeps, the OS suspends network sockets. On wake the
+  // viewer re-resolves its pdfFile (fresh reference) and re-runs the loadPDF
+  // effect above: setIsLoadingPDF(true) fires, then `await downloadFromStorage`
+  // can HANG forever on the stale pre-sleep socket — it neither resolves nor
+  // rejects, so neither setIsLoadingPDF(false) nor the catch's setPdfLoadError
+  // is ever reached. The `!pdfDoc || isLoadingPDF` gate then renders a
+  // permanent "Loading..." that only an app restart clears (the exact hang the
+  // KAL-46 comment on the error screen's Back button documents).
+  //
+  // This watchdog guarantees the loading gate can never hang forever: while a
+  // load is in flight it arms a timer. If loading hasn't cleared in time, it
+  // first silently auto-retries the load a couple of times (bumping
+  // loadRetryToken re-runs loadPDF with a fresh fetch — which succeeds the
+  // moment the network is genuinely back), then, if still stuck, surfaces the
+  // existing retryable error screen so the user always has a "Try again" and is
+  // never trapped on a dead spinner.
+  useEffect(() => {
+    if (!isLoadingPDF || !pdfFile) return undefined;
+    // Generous: a real heavy-doc download+parse can take many seconds. This
+    // only fires for a TRULY hung load (dead-socket wake), not a slow-but-live
+    // open.
+    const HANG_TIMEOUT_MS = 20000;
+    const MAX_AUTO_RETRIES = 2;
+    const timer = setTimeout(() => {
+      if (loadWatchdogRetryCountRef.current < MAX_AUTO_RETRIES) {
+        loadWatchdogRetryCountRef.current += 1;
+        try {
+          console.warn('[PDFViewer] load watchdog — load still pending after ' +
+            HANG_TIMEOUT_MS + 'ms; auto-retrying (' +
+            loadWatchdogRetryCountRef.current + '/' + MAX_AUTO_RETRIES + ') ' +
+            '[wake-recover]');
+        } catch (_e) { /* swallow */ }
+        // Re-run the loadPDF effect with a fresh download/parse.
+        setLoadRetryToken((t) => t + 1);
+      } else {
+        try {
+          console.warn('[PDFViewer] load watchdog — load still pending after ' +
+            'auto-retries; surfacing recoverable error screen [wake-recover]');
+        } catch (_e) { /* swallow */ }
+        // Never leave the gate stuck on a permanent spinner: flip to the
+        // retryable error screen (its "Try again" bumps loadRetryToken).
+        setIsLoadingPDF(false);
+        setPdfLoadError({
+          kind: 'parse',
+          message: 'The document took too long to load — the connection may have dropped (e.g. after sleep). Try again.',
+        });
+      }
+    }, HANG_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [isLoadingPDF, pdfFile, loadRetryToken]);
+
+  // KAL-token-refresh — the former focus/online/visibilitychange "wake-kick"
+  // that bumped loadRetryToken to re-run loadPDF on wake was REMOVED here.
+  // It was wrong-direction: it re-ran the document download on a wake signal,
+  // compounding the token-refresh re-resolve it was meant to paper over. A wake
+  // (and the auth token refresh it forces) must be INVISIBLE to an already-open
+  // document — the loaded PDF stays in memory, exactly like Adobe. The load
+  // watchdog above remains as a PURE safety net: it only ever acts while
+  // isLoadingPDF is already true (a genuinely hung first-open after a dead
+  // socket), so it can never re-download a doc that is already rendered.
 
   // Memoized render page function with caching
   // NOTE: Rendering is now handled by PDFPageCanvas. This function is kept for compatibility
@@ -18720,20 +19107,32 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const zoomIn = useCallback(() => {
     const controller = zoomControllerRef.current;
+    // [InteractionDiag] ZOOM intent (zoom-in button / Cmd+= ). Logs whether a
+    // controller exists to apply it, and the resulting scale.
+    try {
+      const gated = interactionDiagLoadingRef.current === true;
+      console.log(`[InteractionDiag] zoom-intent @ ${Math.round(performance.now())}ms dir=in hasController=${!!controller}` + (gated ? ' [viewer still gated]' : ''));
+    } catch (_e) { /* swallow */ }
     if (!controller) return;
     const measuredScale = reconcileSyncfusionScaleFromRenderedPage('manual-zoom');
     const basisScale = measuredScale || scaleRef.current || manualZoomScaleRef.current || 1.0;
     const nextScale = clampScale(basisScale * TOOLBAR_ZOOM_STEP_FACTOR);
     controller.setScale(nextScale);
+    try { console.log(`[InteractionDiag] zoom-applied @ ${Math.round(performance.now())}ms dir=in from=${basisScale.toFixed(3)} to=${nextScale.toFixed(3)}`); } catch (_e) { /* swallow */ }
   }, [reconcileSyncfusionScaleFromRenderedPage]);
 
   const zoomOut = useCallback(() => {
     const controller = zoomControllerRef.current;
+    try {
+      const gated = interactionDiagLoadingRef.current === true;
+      console.log(`[InteractionDiag] zoom-intent @ ${Math.round(performance.now())}ms dir=out hasController=${!!controller}` + (gated ? ' [viewer still gated]' : ''));
+    } catch (_e) { /* swallow */ }
     if (!controller) return;
     const measuredScale = reconcileSyncfusionScaleFromRenderedPage('manual-zoom');
     const basisScale = measuredScale || scaleRef.current || manualZoomScaleRef.current || 1.0;
     const nextScale = clampScale(basisScale / TOOLBAR_ZOOM_STEP_FACTOR);
     controller.setScale(nextScale);
+    try { console.log(`[InteractionDiag] zoom-applied @ ${Math.round(performance.now())}ms dir=out from=${basisScale.toFixed(3)} to=${nextScale.toFixed(3)}`); } catch (_e) { /* swallow */ }
   }, [reconcileSyncfusionScaleFromRenderedPage]);
 
   const resetZoom = useCallback(() => {
@@ -19296,7 +19695,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pageNum,
       pageInputValue,
       numPages,
-      setActiveTool,
+      // [InteractionDiag] route toolbar tool selection through the logged
+      // wrapper so every tool-button click emits a tool-intent marker.
+      setActiveTool: setActiveToolLogged,
       setActiveCategoryDropdown,
       setTooltip,
       setShowAnnotationColorPicker,
@@ -21058,6 +21459,100 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       tick: Date.now(),
     });
   }, [handleSaveAnnotations]);
+
+  // ---------------------------------------------------------------------------
+  // pdf.js form-field value persistence (Stage 4.3). A filled form value is
+  // modeled as a NON-VISUAL 'form-field' annotation that rides the existing
+  // annotationsByPage → handleSaveAnnotations → Yjs/Supabase pipeline. The form
+  // WIDGET (rendered by PdfjsFormLayer) shows the value; this carrier only
+  // persists it. Keyed by page+fieldId so re-edits upsert the same row.
+  // SVGAnnotationLayer's type dispatch ignores 'form-field' (no branch → never
+  // drawn, no hit-area), so no SVG-layer change is needed.
+  // ---------------------------------------------------------------------------
+  const formFieldSaveTimersRef = useRef(new Map());
+
+  const commitPdfjsFormField = useCallback((pageNumber, payload) => {
+    const fieldId = payload?.fieldId;
+    if (pageNumber == null || fieldId == null) return;
+    const page = annotationsByPageRef.current?.[pageNumber];
+    const next = page ? JSON.parse(JSON.stringify(page)) : { objects: [] };
+    if (!Array.isArray(next.objects)) next.objects = [];
+    const dataId = `form-field:${pageNumber}:${fieldId}`;
+    const rect = Array.isArray(payload.rect) ? payload.rect : null;
+    const left = rect ? Math.min(rect[0], rect[2]) : 0;
+    const top = rect ? Math.min(rect[1], rect[3]) : 0;
+    const width = rect ? Math.abs(rect[2] - rect[0]) : 0;
+    const height = rect ? Math.abs(rect[3] - rect[1]) : 0;
+    const idx = next.objects.findIndex((o) => o?.data?.id === dataId);
+    // Preserve the original author on re-edits (write-once-on-create, mirrors
+    // the serializer's author-attribution invariant).
+    const existingAuthorId = idx >= 0 ? next.objects[idx]?.meta?.authorId : null;
+    const formObj = {
+      type: 'form-field',
+      data: {
+        id: dataId,
+        type: 'form-field',
+        fieldId,
+        fieldName: payload.fieldName ?? null,
+        fieldType: payload.fieldType ?? null,
+        value: payload.value,
+        pageNumber,
+        rect,
+      },
+      pageNumber,
+      left,
+      top,
+      width,
+      height,
+      meta: { authorId: existingAuthorId || user?.id || null },
+    };
+    if (idx >= 0) next.objects[idx] = formObj;
+    else next.objects.push(formObj);
+    handleSaveAnnotations(pageNumber, next, {
+      source: 'form-field',
+      action: 'form-field:edit',
+      checkpointPolicy: 'normal',
+    });
+  }, [handleSaveAnnotations, user?.id]);
+
+  const handlePdfjsFormFieldChange = useCallback((pageNumber, payload) => {
+    const fieldId = payload?.fieldId;
+    if (pageNumber == null || fieldId == null) return;
+    const key = `${pageNumber}:${fieldId}`;
+    const timers = formFieldSaveTimersRef.current;
+    const existing = timers.get(key);
+    if (existing) clearTimeout(existing);
+    // Debounce typing so a name entered character-by-character lands as one save.
+    const timer = setTimeout(() => {
+      timers.delete(key);
+      commitPdfjsFormField(pageNumber, payload);
+    }, 400);
+    timers.set(key, timer);
+  }, [commitPdfjsFormField]);
+
+  const handlePdfjsFormFieldBlur = useCallback((pageNumber, payload) => {
+    const fieldId = payload?.fieldId;
+    if (pageNumber == null || fieldId == null) return;
+    const key = `${pageNumber}:${fieldId}`;
+    const timers = formFieldSaveTimersRef.current;
+    const existing = timers.get(key);
+    if (existing) { clearTimeout(existing); timers.delete(key); }
+    // Flush immediately when leaving the field so nothing is lost on a quick reload.
+    commitPdfjsFormField(pageNumber, payload);
+  }, [commitPdfjsFormField]);
+
+  // Cancel any pending form-field debounce timers when the viewer itself tears
+  // down (document close / unmount), so a late save never fires into a disposed
+  // component. NOTE: this runs only on full unmount — page navigation does NOT
+  // clear timers, because an out-of-view page's pending edit must still flush via
+  // its own timer (the field's blur may not fire when its DOM node is removed).
+  useEffect(() => {
+    const timers = formFieldSaveTimersRef.current;
+    return () => {
+      timers.forEach((timer) => clearTimeout(timer));
+      timers.clear();
+    };
+  }, []);
 
   // UX: Shared annotation z-order reorder handler. Called by the right-click
   // menu's Bring to Front / Forward / Send Backward / to Back items and by
@@ -23046,6 +23541,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   useEffect(() => {
     if (!useSyncfusionRenderer) return;
+    // KAL-241 lag fix — under pdf.js the overlay host is a child of the engine's
+    // transformed/scrolled content, so each page overlay already rides the page
+    // through every scroll and zoom (live dumps show worstDriftPx=0). The
+    // per-frame re-attach below re-reads offsetLeft/offsetTop/getBoundingClientRect
+    // for every resident page on every scroll frame — a forced synchronous layout
+    // that the engine does NOT need and that the stripped demo never runs. New
+    // pages scrolling in are still attached by the Phase 1 effect above
+    // (syncfusionPageContainers change), and zoom settle re-attaches as well, so
+    // skipping the scroll-driven loop here is alignment-safe for pdf.js.
+    if (getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS) return;
     const viewerContainer = containerRef.current;
     if (!viewerContainer) return;
 
@@ -24341,7 +24846,9 @@ ${pageBlocks}
       selectedSpaceId,
       selectedTemplate,
       setActiveCategoryDropdown,
-      setActiveTool,
+      // [InteractionDiag] route rail-driven tool selection through the logged
+      // wrapper so survey-rail tool changes also emit a tool-intent marker.
+      setActiveTool: setActiveToolLogged,
       setAnnotations,
       setAnnotationsByPage,
       setCategorySelectModeActive,
@@ -25009,7 +25516,7 @@ ${pageBlocks}
                     inset: 0
                   }}
                 >
-                  <SyncfusionPDFContainer
+                  <PDFViewerEngineSelector
                     id={syncfusionViewerElementId}
                     ref={syncfusionViewerRef}
                     className={`survey-syncfusion-viewer ${activeTool === 'select' ? 'survey-syncfusion-select-mode' : 'survey-syncfusion-standard-mode'}`}
@@ -25034,11 +25541,12 @@ ${pageBlocks}
                     onDocumentLoaded={handleSyncfusionDocumentLoad}
                     onDocumentLoadFailed={handleSyncfusionDocumentLoadFailed}
                     onPageChanged={handleSyncfusionPageChange}
-                    onZoomChanged={handleSyncfusionZoomChange}
+                    onZoomChanged={getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS ? undefined : handleSyncfusionZoomChange}
+                    onZoomPhase={handlePdfjsZoomPhase}
                     onPageRendered={handleSyncfusionPageRenderComplete}
                     onTextSelectionEnd={handleSyncfusionTextSelectionEnd}
                     onPDFBookmarksAvailable={handlePDFBookmarksAvailable}
-                    onPageContainersChange={handleSyncfusionPageContainersChange}
+                    onPageContainersChange={getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS ? undefined : handleSyncfusionPageContainersChange}
                     onDebugEvent={handleSyncfusionDebugEvent}
                     onDocumentUnload={handleDocumentUnload}
                     formDesignerEnabled={formModeActive}
@@ -25092,6 +25600,15 @@ ${pageBlocks}
                   return contentPageNumbers
                     .filter(pageNumber => {
                       if (!shouldShowPage(pageNumber)) return false;
+                      // Under pdf.js, give every page the engine has rendered an overlay
+                      // portal — even with no app annotations — so the link, form, and
+                      // text layers mount on clean / link-only / pure-form pages too.
+                      if (
+                        getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS &&
+                        syncfusionPageContainers[pageNumber]?.isConnected
+                      ) {
+                        return true;
+                      }
                       const isActiveRegionSelectionPage = showRegionSelection && regionSelectionPage === pageNumber;
                       if (isActiveRegionSelectionPage) {
                         return true;
@@ -25131,11 +25648,25 @@ ${pageBlocks}
                       if (!pageSize) return null;  // Page size not yet known -- skip this render
                       const pagePdfReadyState = readSyncfusionPageVisitState(pageNumber);
                       const pageAnnotationObjects = Array.isArray(pageAnnotations?.objects) ? pageAnnotations.objects : [];
+                      // Persisted form-field values for this page (pdf.js engine
+                      // only). Fed to PdfjsFormLayer so reloaded widgets restore
+                      // their saved value. Cheap filter — forms are rare.
+                      const pageFormFieldValues = getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS
+                        ? pageAnnotationObjects
+                            .filter((o) => o?.data?.type === 'form-field')
+                            .map((o) => ({ fieldId: o.data.fieldId, value: o.data.value }))
+                        : null;
                       if (pagePdfReadyState.ready) {
                         syncfusionPagePdfEverReadyRef.current.add(pageNumber);
                       }
                       const pagePdfHasEverBeenReady = syncfusionPagePdfEverReadyRef.current.has(pageNumber);
-                      const hideOverlayUntilPdfReady = pageAnnotationObjects.length > 0 &&
+                      // Under the owned pdf.js engine the Syncfusion page-surface
+                      // readiness probe never flips ready (it only matches Syncfusion's
+                      // own page surfaces), which would hide the entire overlay on any
+                      // page that has annotations. pdf.js rasters its own pages quickly,
+                      // so this load-flash gate does not apply there.
+                      const hideOverlayUntilPdfReady = getPDFViewerEngine() !== PDF_VIEWER_ENGINE_PDFJS &&
+                        pageAnnotationObjects.length > 0 &&
                         !pagePdfHasEverBeenReady &&
                         !pagePdfReadyState.ready;
                       const hasSurveyMarkers = (newSurveyMarkersByPage[pageNumber]?.length ?? 0) > 0;
@@ -25326,7 +25857,20 @@ ${pageBlocks}
                               {nativePdfAnnotationLayerHideCss}
                             </style>
                           )}
-                          {!useSyncfusionRenderer && searchResultsByPage[pageNumber] && searchResultsByPage[pageNumber].length > 0 && (
+                          {getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS && pdfDoc && activeTool === 'text-select' && (
+                            // Build the selectable text layer ONLY while the text tool is
+                            // active. renderTextLayer + getTextContent per page is costly;
+                            // mounting it on every page during normal viewing/zoom starves
+                            // the page raster. Text selection is an explicit mode, so this
+                            // is the right time to pay for it.
+                            <PdfjsTextLayer
+                              pdf={pdfDoc}
+                              pageNumber={pageNumber}
+                              scale={layerScale}
+                              interactive
+                            />
+                          )}
+                          {getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS && searchResultsByPage[pageNumber] && searchResultsByPage[pageNumber].length > 0 && (
                             <SearchHighlightLayer
                               pageNumber={pageNumber}
                               width={resolvedPageSize.width}
@@ -25337,6 +25881,25 @@ ${pageBlocks}
                               isActiveMatchOnThisPage={currentMatch?.pageNumber === pageNumber}
                               activeGlowOnly
                               fillContainer
+                            />
+                          )}
+                          {getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS && pdfDoc && (
+                            <PdfjsLinkLayer
+                              pdf={pdfDoc}
+                              pageNumber={pageNumber}
+                              interactive={activeTool === 'pan' || activeTool === 'select'}
+                              onInternalNavigate={(targetPage) => goToPage(targetPage, { fallback: 'nearest' })}
+                            />
+                          )}
+                          {getPDFViewerEngine() === PDF_VIEWER_ENGINE_PDFJS && pdfDoc && (
+                            <PdfjsFormLayer
+                              pdf={pdfDoc}
+                              pageNumber={pageNumber}
+                              scale={layerScale}
+                              interactive={activeTool === 'pan' || activeTool === 'select'}
+                              persistedValues={pageFormFieldValues}
+                              onFieldChange={(payload) => handlePdfjsFormFieldChange(pageNumber, payload)}
+                              onFieldBlur={(payload) => handlePdfjsFormFieldBlur(pageNumber, payload)}
                             />
                           )}
                           <div
@@ -25544,6 +26107,17 @@ ${pageBlocks}
                           {/* SVG layer + Drawing Canvas: inside the Syncfusion overlay-content
                               transform path so zoom uses the same smooth CSS scale as the PDF. */}
                           {!requiresLegacyAnnotationLayer && (() => {
+                            // [OpenTiming] BUG#2 — first visible marks painted: page 1's
+                            // SVG annotation layer is rendering for the first time after open.
+                            // Guarded by a per-open window flag so it logs once, not per render.
+                            if (pageNumber === 1) {
+                              try {
+                                if (!window.__openTimingFirstPaintLogged) {
+                                  window.__openTimingFirstPaintLogged = true;
+                                  console.log('[OpenTiming] first-marks-painted @ ' + Math.round(performance.now()) + 'ms', 'pdfId=' + String(pdfId || ''));
+                                }
+                              } catch (_e) { /* swallow */ }
+                            }
                             const svgInteractive = activeTool === 'select' || activeTool === 'text-select';
                             const isTextTool = activeTool === 'text';
                             const isDrawingTool = activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'rect' || activeTool === 'ellipse' || activeTool === 'line' || activeTool === 'arrow' || activeTool === 'survey-marker';

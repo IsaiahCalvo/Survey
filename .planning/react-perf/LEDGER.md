@@ -39,5 +39,37 @@ Surfaced — RISKY, need sign-off (not applied):
 4. content-visibility on the page-thumbnail list (interacts with existing lazy-thumbnail observer).
 5. content-visibility on the text-search results list (variable row height).
 
-### Pass 2 — pending
-Re-run with the pass-1 findings excluded to surface anything new.
+### Pass 2 — DONE (2026-06-04)
+16 candidates → 4 safe applied (one search-list item kept on hold, see below),
+3 more applied under the high-risk standing waiver, 5 rejected. Tests 888 pass, build OK.
+
+Applied (safe, non-protected files):
+- Narrowed two effect/callback deps to user?.id (auth tier poll, project team).
+- Parallelized three independent usage reads (was a 3-round-trip wait).
+
+Applied under standing waiver (protected files, minimal + verified + tests green):
+- SVG annotation layer: two per-object render-loop lookups now use module-level
+  Sets (zero per-object allocation in the hot zoom/scroll loop); polygon centroid
+  computed in a single pass instead of four.
+- Page annotation layer: callout-selection scan uses a Set instead of a linear
+  scan (both selection handlers).
+- Main viewer: the Excel library now loads on demand (split into its own ~270KB
+  gzip chunk) instead of riding in the main bundle.
+- Owned-docs + collaborator reads run concurrently in the documents query.
+
+Rejected (correctly): focus-effect dep (user ref is already churn-guarded),
+search-highlight default array (component never mounts in the empty case),
+two save/sync parallelizations (sequential short-circuit is load-bearing).
+
+### Held for sign-off (real, but behavioral/visual nuance — NOT applied)
+- Lazy-load the entire PDF viewer so first paint (dashboard) skips the heavy
+  viewer/annotation/fabric weight — biggest startup win, but changes first-open
+  timing and how the viewer publishes its toolbar APIs. Needs a live open test.
+- Survey-rail marker matching via a lookup map (first-match + key-collision nuance).
+- Region cursor glyph driven by a ref instead of state (per-move re-render win,
+  but a first-frame position nuance).
+- content-visibility on the page-thumbnail and text-search lists (variable row
+  heights interact with existing scroll/observer behavior).
+
+### Pass 3 — pending
+Safe auto-apply pool is thinning; remaining gains are the held items above.
