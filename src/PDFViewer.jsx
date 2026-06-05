@@ -9355,6 +9355,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // caller takes a single pre-mutation checkpoint, sets this to the number of
   // downstream checkpoints to ignore, then runs the individual mutations.
   const suppressBatchCheckpointsRef = useRef(0);
+  // Self-heal guard: tracks which cloud document we've already run the
+  // empty-cloud embedded-annotation import fallback for, so it fires at most once
+  // per document open (see the fallback effect near the fix19 import harness).
+  const embeddedImportFallbackDoneRef = useRef(null);
   const annotationsByPageRef = useRef(annotationsByPage);
   const surveyMarkersRef = useRef(surveyMarkers);
   const spacesRef = useRef(spaces);
@@ -20597,6 +20601,79 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
     return { ok: true, pageNumber };
   }, [handleSaveAnnotations]);
+
+  // Self-heal: when a cloud document finishes hydrating with ZERO annotations but
+  // the underlying PDF carries embedded annotations (e.g. the file got linked to an
+  // empty duplicate cloud record), import the PDF's embedded annotations so the page
+  // isn't blank. Gated on the hydration "ready + count===0" signal so it never races
+  // a still-loading cloud doc, and on a per-document ref so it runs at most once.
+  useEffect(() => {
+    const hydration = normalAnnotationHydration;
+    const documentId = pdfFile?.id || null;
+    if (!documentId || !pdfDoc) return undefined;
+    if (!hydration || hydration.ready !== true) return undefined;
+    if (hydration.count !== 0) return undefined;
+    if (hydration.documentId && hydration.documentId !== documentId) return undefined;
+    if (embeddedImportFallbackDoneRef.current === documentId) return undefined;
+    embeddedImportFallbackDoneRef.current = documentId;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        // Skip if state already has marks — another path may have populated it
+        // between the hydration signal firing and this effect running.
+        const liveCount = Object.values(annotationsByPageRef.current || {})
+          .reduce((n, pg) => n + (Array.isArray(pg?.objects) ? pg.objects.length : 0), 0);
+        if (liveCount > 0) return;
+
+        const rawPdfBytes = typeof pdfFile.arrayBuffer === 'function'
+          ? await pdfFile.arrayBuffer()
+          : null;
+        const { annotationsByPage: importedAnnotations, nativeLayerPolicyByPage } =
+          await importAnnotationsFromPdf(pdfDoc, { rawPdfBytes });
+        if (cancelled) return;
+
+        const totalImported = Object.values(importedAnnotations || {})
+          .reduce((n, pg) => n + (Array.isArray(pg?.objects) ? pg.objects.length : 0), 0);
+        if (totalImported === 0) return; // genuinely-empty doc — nothing to heal
+
+        // Re-check emptiness right before committing so we never duplicate marks
+        // if the cloud populated state during the async import above.
+        const liveCountAfter = Object.values(annotationsByPageRef.current || {})
+          .reduce((n, pg) => n + (Array.isArray(pg?.objects) ? pg.objects.length : 0), 0);
+        if (liveCountAfter > 0) return;
+
+        setPdfNativeAnnotationLayerPolicyByPage(nativeLayerPolicyByPage || {});
+        Object.entries(importedAnnotations || {}).forEach(([pageKey, pageData]) => {
+          const pageNumber = Number(pageKey);
+          const objects = Array.isArray(pageData?.objects) ? pageData.objects : [];
+          if (objects.length === 0) return;
+          const current = annotationsByPageRef.current?.[pageKey]
+            || annotationsByPageRef.current?.[pageNumber]
+            || { objects: [] };
+          const currentObjects = Array.isArray(current.objects) ? current.objects : [];
+          const stamped = objects.map((obj) => {
+            const stableId = obj.id || obj.data?.id || obj.pdfAnnotationId;
+            return { ...obj, id: stableId, data: { ...(obj.data || {}), id: stableId } };
+          });
+          handleSaveAnnotations(pageNumber, { ...current, objects: [...currentObjects, ...stamped] }, {
+            source: 'embedded-import-empty-cloud-fallback',
+            action: 'import-pdf-annotations',
+            checkpointPolicy: 'skip',
+          });
+        });
+        appDebug('[PDFImport] empty-cloud fallback imported embedded PDF annotations ' + JSON.stringify({
+          documentId,
+          pages: Object.keys(importedAnnotations || {}).length,
+          totalImported,
+        }));
+      } catch (fallbackError) {
+        console.warn('[PDFImport] empty-cloud embedded fallback failed:', fallbackError);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [normalAnnotationHydration, pdfFile, pdfDoc, handleSaveAnnotations]);
 
   useEffect(() => {
     if (!import.meta.env.DEV || typeof window === 'undefined') return undefined;
