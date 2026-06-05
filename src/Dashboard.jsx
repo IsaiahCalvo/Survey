@@ -1838,7 +1838,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       filtered = projects.filter(p => p.name.toLowerCase().includes(lq));
     }
     // Default sort by created_at desc (Supabase uses snake_case)
-    return [...filtered].sort((a, b) => new Date(b.created_at || b.createdAt || 0) - new Date(a.created_at || a.createdAt || 0));
+    return [...filtered]
+      .map(p => ({ p, ms: Date.parse(p.created_at || p.createdAt || '') || 0 }))
+      .sort((a, b) => b.ms - a.ms)
+      .map(x => x.p);
   }, [projects, searchQuery]);
 
   const sortedTemplates = useMemo(() => {
@@ -1847,7 +1850,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       const lq = searchQuery.toLowerCase();
       filtered = templates.filter(t => (t.name || '').toLowerCase().includes(lq));
     }
-    return [...filtered].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    return [...filtered]
+      .map(t => ({ t, ms: Date.parse(t.createdAt || '') || 0 }))
+      .sort((a, b) => b.ms - a.ms)
+      .map(x => x.t);
   }, [templates, searchQuery]);
 
   // Derived state for selection mode availability
