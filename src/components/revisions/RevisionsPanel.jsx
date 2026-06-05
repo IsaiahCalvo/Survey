@@ -754,6 +754,8 @@ export default function RevisionsPanel({
                   background: isSelected ? '#243044' : '#202020',
                   cursor: 'pointer',
                   outline: 'none',
+                  contentVisibility: 'auto',
+                  containIntrinsicSize: '0 60px',
                 }}
                 title={event.page_number ? `Go to page ${event.page_number}` : 'History item'}
               >
@@ -841,6 +843,8 @@ export default function RevisionsPanel({
                 border: '1px solid #3c4b3c',
                 background: '#222820',
                 cursor: busy ? 'wait' : 'pointer',
+                contentVisibility: 'auto',
+                containIntrinsicSize: '0 60px',
               }}
               title={`Open version v${rev.revisionNumber} read-only`}
             >
