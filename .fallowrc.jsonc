@@ -53,5 +53,21 @@
     // Vite dev-server virtual module ids — only resolvable at runtime
     "/@id/react",
     "/@id/react-dom/client"
+  ],
+
+  "ignoreDependencies": [
+    // Intentional framework-internal sub-packages (pinning them separately
+    // would drift from their parent's version — rely on the parent instead).
+    "@supabase/auth-js", // internal of @supabase/supabase-js, used in supabaseClient
+    "lib0",              // yjs utility lib, used in collab providers
+    "@embedpdf/models",  // used only by a prototype spike under src/prototype
+    // Dev/test tooling imported by scripts & benchmarks, not app code.
+    "@babel/parser",
+    "@babel/traverse",
+    "@hocuspocus/server",
+    "jose",
+    "pixelmatch",
+    "pngjs",
+    "playwright-core"
   ]
 }
