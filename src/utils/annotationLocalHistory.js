@@ -82,8 +82,9 @@ export function buildPreciseAnnotationHistoryAction({
   const previousById = buildIdMap(previousObjects);
   const nextById = buildIdMap(nextObjects);
   const deleteSet = normalizeIdList(deletedIds);
-  const changeSet = normalizeIdList(changedIds).filter((id) => !deleteSet.includes(id));
-  const createSet = normalizeIdList(createdIds).filter((id) => !deleteSet.includes(id));
+  const deleteSetLookup = new Set(deleteSet);
+  const changeSet = normalizeIdList(changedIds).filter((id) => !deleteSetLookup.has(id));
+  const createSet = normalizeIdList(createdIds).filter((id) => !deleteSetLookup.has(id));
 
   const created = createSet
     .map((id) => {
