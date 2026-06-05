@@ -35,6 +35,22 @@ function continuousLevelName(level) {
     default: return (typeof level === 'string' && level) ? level : 'info';
   }
 }
+// Scrub auth secrets from any line before it's persisted to the continuous log.
+// That file lives on disk indefinitely, and MSAL / Supabase auth flows can emit
+// tokens in debug lines — redact them while keeping the rest of the line readable.
+function redactSecrets(text) {
+  if (text == null) return text;
+  let s = String(text);
+  // JSON Web Tokens (Supabase access/refresh tokens, MSAL id tokens) always start "eyJ".
+  s = s.replace(/eyJ[A-Za-z0-9._-]{10,}/g, '[REDACTED_JWT]');
+  // key=value / key: value style secrets.
+  s = s.replace(/(access_token|refresh_token|id_token|provider_token|provider_refresh_token|client_secret|api[_-]?key)(["']?\s*[=:]\s*["']?)[A-Za-z0-9._-]+/gi, '$1$2[REDACTED]');
+  s = s.replace(/\b(code|token)(["']?\s*[=:]\s*["']?)[A-Za-z0-9._-]{8,}/gi, '$1$2[REDACTED]');
+  // Authorization: Bearer <token>.
+  s = s.replace(/\bBearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [REDACTED]');
+  return s;
+}
+
 function appendContinuous(level, message, lineNo, sourceId) {
   try {
     if (!_continuousLogDirReady) {
@@ -52,7 +68,8 @@ function appendContinuous(level, message, lineNo, sourceId) {
     } catch (_e) { /* file may not exist yet, or stat failed — ignore */ }
     const levelName = continuousLevelName(level);
     const src = `${sourceId == null ? '' : sourceId}:${lineNo == null ? '' : lineNo}`;
-    const line = `[${new Date().toISOString()}] [${levelName}] ${src} ${message == null ? '' : String(message)}\n`;
+    const safeMessage = redactSecrets(message == null ? '' : String(message));
+    const line = `[${new Date().toISOString()}] [${levelName}] ${src} ${safeMessage}\n`;
     fs.appendFile(CONTINUOUS_LOG_PATH, line, (_err) => { /* fire-and-forget */ });
   } catch (_e) { /* logging must never crash main */ }
 }
@@ -368,18 +385,34 @@ function createWindow() {
 
   // Also handle external links (like OAuth providers)
   win.webContents.setWindowOpenHandler(({ url }) => {
-    // Allow OAuth URLs and blank windows (MSAL opens about:blank first, then navigates)
-    if (url === 'about:blank' ||
-        url.includes('oauth') ||
-        url.includes('google') ||
-        url.includes('supabase') ||
-        url.includes('microsoft') ||
-        url.includes('login.microsoftonline.com') ||
-        url.includes('login.live.com')) {
+    // MSAL opens about:blank first, then navigates to the IdP — allow it.
+    if (url === 'about:blank') {
       return { action: 'allow' };
     }
-    // Open other external links in the default browser
-    shell.openExternal(url);
+    // Allow a child window only for https URLs whose host is a known identity
+    // provider. The old substring checks (url.includes('google')) were trivially
+    // bypassable by e.g. https://attacker.com/?r=google.
+    try {
+      const parsed = new URL(url);
+      const host = parsed.hostname.toLowerCase();
+      const isAllowedHost =
+        host === 'login.microsoftonline.com' ||
+        host === 'login.live.com' ||
+        host === 'login.microsoft.com' ||
+        host === 'accounts.google.com' ||
+        host === 'supabase.com' ||
+        host.endsWith('.supabase.co') ||
+        host.endsWith('.microsoftonline.com');
+      if (parsed.protocol === 'https:' && isAllowedHost) {
+        return { action: 'allow' };
+      }
+      // Open genuine external web links in the default browser.
+      if (parsed.protocol === 'https:' || parsed.protocol === 'http:' || parsed.protocol === 'mailto:') {
+        shell.openExternal(url);
+      }
+    } catch (_e) {
+      // Unparseable URL — deny silently.
+    }
     return { action: 'deny' };
   });
 
@@ -697,19 +730,21 @@ ipcMain.handle('dialog:saveFile', async (event, { title, defaultPath, filters, d
 });
 
 ipcMain.handle('shell:openPath', async (event, filePath) => {
-  // On macOS, use the native 'open' command which works more reliably than shell.openPath
+  if (typeof filePath !== 'string' || !filePath) {
+    return 'Invalid file path';
+  }
+  // On macOS, use the native 'open' command which works more reliably than shell.openPath.
+  // Use spawn with shell:false so the path is passed as a literal argv element — the shell
+  // never interprets it, so backticks, $(), ;, newlines etc. in the path can't run commands.
   if (process.platform === 'darwin') {
     return new Promise((resolve) => {
-      // Use 'open' command which is what Finder uses when you double-click
-      // The -a flag specifies the application, -W waits for the app to open
-      const escapedPath = filePath.replace(/"/g, '\\"');
-      exec(`open "${escapedPath}"`, (error, stdout, stderr) => {
-        if (error) {
-          console.error('Failed to open file with open command:', error);
-          resolve(error.message);
-        } else {
-          resolve('');
-        }
+      const child = spawn('open', [filePath], { shell: false });
+      child.on('error', (error) => {
+        console.error('Failed to open file with open command:', error);
+        resolve(error.message);
+      });
+      child.on('close', (code) => {
+        resolve(code === 0 ? '' : `open exited with code ${code}`);
       });
     });
   }
@@ -1350,6 +1385,20 @@ ipcMain.handle('logs:saveSnapshot', async (event, payload = {}) => {
 // Opens a separate window for OAuth flow, captures the redirect, and returns the result
 ipcMain.handle('oauth:openWindow', async (event, { authUrl, redirectUri }) => {
   return new Promise((resolve, reject) => {
+    // Validate the auth URL before it's loaded into a BrowserWindow. Only https
+    // is allowed — a compromised renderer must not be able to point this window
+    // at javascript:, file:, or data: URLs.
+    let parsedAuth;
+    try {
+      parsedAuth = new URL(authUrl);
+    } catch (_e) {
+      resolve({ success: false, error: 'invalid-auth-url' });
+      return;
+    }
+    if (parsedAuth.protocol !== 'https:') {
+      resolve({ success: false, error: 'invalid-auth-url-protocol' });
+      return;
+    }
     const authWindow = new BrowserWindow({
       width: 500,
       height: 700,
@@ -1357,6 +1406,7 @@ ipcMain.handle('oauth:openWindow', async (event, { authUrl, redirectUri }) => {
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
+        sandbox: true,
       },
       // Make it a child of the main window
       parent: BrowserWindow.fromWebContents(event.sender),
