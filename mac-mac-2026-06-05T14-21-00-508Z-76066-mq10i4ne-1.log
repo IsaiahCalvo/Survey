@@ -1,0 +1,461 @@
+===== SurveyApp Save Log =====
+version:   0.1.46
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1512x833
+locale:    en-US
+timestamp: 2026-06-05T14:21:00.504Z (6/5/2026, 10:21:00 AM)
+==============================
+[TextSearchDiag] svg_layer_render {"at":"2026-06-05T03:53:01.049Z","pageNumber":2,"matchCount":2,"rectangleCount":2,"activeMatchId":"search-1780631576196-4","fillContainer":true,"scale":1.5,"width":612,"height":792,"cssWidth":"100%","cssHeight":"100%","firstRect":{"x":35.984375,"y":33.578125,"width":65.296875,"height":32},"layerRect":{"left":297,"top":262,"width":918,"height":1188},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_render {"at":"2026-06-05T03:53:01.049Z","pageNumber":3,"matchCount":1,"rectangleCount":1,"activeMatchId":"search-1780631576196-4","fillContainer":true,"scale":1.5,"width":612,"height":792,"cssWidth":"100%","cssHeight":"100%","firstRect":{"x":35.984375,"y":33.578125,"width":65.296875,"height":32},"layerRect":{"left":297,"top":1466,"width":918,"height":1188},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:01.049Z","pageNumber":3,"activeMatchId":"search-1780631576196-4","fillContainer":true,"sample":0,"elapsedMs":19,"scale":1.5,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":297,"top":1466,"width":918,"height":1188},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:01.062Z","pageNumber":3,"activeMatchId":"search-1780631576196-4","fillContainer":true,"sample":1,"elapsedMs":32,"scale":1.5,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":297,"top":1466,"width":918,"height":1188},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:01.065Z","pageNumber":3,"activeMatchId":"search-1780631576196-4","fillContainer":true,"sample":2,"elapsedMs":34,"scale":1.5,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":297,"top":1466,"width":918,"height":1188},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:01.069Z","pageNumber":3,"activeMatchId":"search-1780631576196-4","fillContainer":true,"sample":3,"elapsedMs":39,"scale":1.5,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":297,"top":1466,"width":918,"height":1188},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:01.078Z","pageNumber":3,"activeMatchId":"search-1780631576196-4","fillContainer":true,"sample":4,"elapsedMs":48,"scale":1.5,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":297,"top":1466,"width":918,"height":1188},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:01.088Z","pageNumber":3,"activeMatchId":"search-1780631576196-4","fillContainer":true,"sample":5,"elapsedMs":57,"scale":1.5,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":297,"top":1466,"width":918,"height":1188},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:01.095Z","pageNumber":3,"activeMatchId":"search-1780631576196-4","fillContainer":true,"sample":6,"elapsedMs":65,"scale":1.5,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":297,"top":1466,"width":918,"height":1188},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:01.104Z","pageNumber":3,"activeMatchId":"search-1780631576196-4","fillContainer":true,"sample":7,"elapsedMs":73,"scale":1.5,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":297,"top":1466,"width":918,"height":1188},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:01.112Z","pageNumber":3,"activeMatchId":"search-1780631576196-4","fillContainer":true,"sample":8,"elapsedMs":81,"scale":1.5,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":297,"top":1466,"width":918,"height":1188},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:01.120Z","pageNumber":3,"activeMatchId":"search-1780631576196-4","fillContainer":true,"sample":9,"elapsedMs":90,"scale":1.5,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":297,"top":1466,"width":918,"height":1188},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] match_navigate_request {"at":"2026-06-05T03:53:01.754Z","index":0,"resultCount":4,"pageNumber":1,"query":"sync","documentKey":"explicit:local:sync-test.pdf-2489:3"}
+[TextSearchDiag] current_match_change {"at":"2026-06-05T03:53:01.754Z","reason":"navigate","previousIndex":3,"nextIndex":0,"resultCount":4,"query":"sync","documentKey":"explicit:local:sync-test.pdf-2489:3"}
+[TextSearchDiag] app_match_navigation_start {"at":"2026-06-05T03:53:01.754Z","index":0,"pageNumber":1,"hasBounds":true,"currentScale":1.5,"targetRenderer":"syncfusion","pdfDocumentKey":"local:sync-test.pdf-2489:3"}
+[TextSearchDiag] svg_layer_render {"at":"2026-06-05T03:53:01.758Z","pageNumber":1,"matchCount":1,"rectangleCount":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"scale":1.5,"width":612,"height":792,"cssWidth":"100%","cssHeight":"100%","firstRect":{"x":35.984375,"y":33.578125,"width":65.296875,"height":32},"layerRect":{"left":297,"top":-942,"width":918,"height":1188},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:01.758Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":0,"elapsedMs":1,"scale":1.5,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":297,"top":-942,"width":918,"height":1188},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_render {"at":"2026-06-05T03:53:01.758Z","pageNumber":2,"matchCount":2,"rectangleCount":2,"activeMatchId":"search-1780631576185-1","fillContainer":true,"scale":1.5,"width":612,"height":792,"cssWidth":"100%","cssHeight":"100%","firstRect":{"x":35.984375,"y":33.578125,"width":65.296875,"height":32},"layerRect":{"left":297,"top":262,"width":918,"height":1188},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_render {"at":"2026-06-05T03:53:01.759Z","pageNumber":3,"matchCount":1,"rectangleCount":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"scale":1.5,"width":612,"height":792,"cssWidth":"100%","cssHeight":"100%","firstRect":{"x":35.984375,"y":33.578125,"width":65.296875,"height":32},"layerRect":{"left":297,"top":1466,"width":918,"height":1188},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:01.781Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":1,"elapsedMs":23,"scale":1.5,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":297,"top":-942,"width":918,"height":1188},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:01.782Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":2,"elapsedMs":24,"scale":1.5,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":297,"top":-941,"width":918,"height":1188},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:01.786Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":3,"elapsedMs":28,"scale":1.5,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":297,"top":-939,"width":918,"height":1188},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:01.795Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":4,"elapsedMs":37,"scale":1.5,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":297,"top":-937,"width":918,"height":1188},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:01.804Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":5,"elapsedMs":46,"scale":1.5,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":297,"top":-935,"width":918,"height":1188},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:01.812Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":6,"elapsedMs":54,"scale":1.5,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":297,"top":-931,"width":918,"height":1188},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:01.820Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":7,"elapsedMs":62,"scale":1.5,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":297,"top":-928,"width":918,"height":1188},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:01.827Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":8,"elapsedMs":70,"scale":1.5,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":297,"top":-923,"width":918,"height":1188},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:01.837Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":9,"elapsedMs":79,"scale":1.5,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":297,"top":-918,"width":918,"height":1188},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_render {"at":"2026-06-05T03:53:02.916Z","pageNumber":1,"matchCount":1,"rectangleCount":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"scale":0.96078,"width":612,"height":792,"cssWidth":"100%","cssHeight":"100%","firstRect":{"x":35.984375,"y":33.578125,"width":65.296875,"height":32},"layerRect":{"left":462,"top":97,"width":588,"height":760},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:02.916Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":0,"elapsedMs":15,"scale":0.96078,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":462,"top":97,"width":588,"height":760},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_render {"at":"2026-06-05T03:53:02.916Z","pageNumber":2,"matchCount":2,"rectangleCount":2,"activeMatchId":"search-1780631576185-1","fillContainer":true,"scale":0.96078,"width":612,"height":792,"cssWidth":"100%","cssHeight":"100%","firstRect":{"x":35.984375,"y":33.578125,"width":65.296875,"height":32},"layerRect":{"left":462,"top":873,"width":588,"height":760},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_render {"at":"2026-06-05T03:53:02.916Z","pageNumber":3,"matchCount":1,"rectangleCount":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"scale":0.96078,"width":612,"height":792,"cssWidth":"100%","cssHeight":"100%","firstRect":{"x":35.984375,"y":33.578125,"width":65.296875,"height":32},"layerRect":{"left":462,"top":1650,"width":588,"height":760},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:02.925Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":1,"elapsedMs":24,"scale":0.96078,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":569,"top":97,"width":373,"height":483},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_render {"at":"2026-06-05T03:53:02.934Z","pageNumber":1,"matchCount":1,"rectangleCount":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"scale":0.60948,"width":612,"height":792,"cssWidth":"100%","cssHeight":"100%","firstRect":{"x":35.984375,"y":33.578125,"width":65.296875,"height":32},"layerRect":{"left":569,"top":97,"width":373,"height":483},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:02.934Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":0,"elapsedMs":6,"scale":0.60948,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":569,"top":97,"width":373,"height":483},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_render {"at":"2026-06-05T03:53:02.934Z","pageNumber":2,"matchCount":2,"rectangleCount":2,"activeMatchId":"search-1780631576185-1","fillContainer":true,"scale":0.60948,"width":612,"height":792,"cssWidth":"100%","cssHeight":"100%","firstRect":{"x":35.984375,"y":33.578125,"width":65.296875,"height":32},"layerRect":{"left":569,"top":596,"width":373,"height":483},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_render {"at":"2026-06-05T03:53:02.934Z","pageNumber":3,"matchCount":1,"rectangleCount":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"scale":0.60948,"width":612,"height":792,"cssWidth":"100%","cssHeight":"100%","firstRect":{"x":35.984375,"y":33.578125,"width":65.296875,"height":32},"layerRect":{"left":569,"top":1095,"width":373,"height":483},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:02.940Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":1,"elapsedMs":12,"scale":0.60948,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":569,"top":97,"width":373,"height":483},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:02.944Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":2,"elapsedMs":16,"scale":0.60948,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":569,"top":97,"width":373,"height":483},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:02.954Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":3,"elapsedMs":27,"scale":0.60948,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":569,"top":97,"width":373,"height":483},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:02.962Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":4,"elapsedMs":35,"scale":0.60948,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":569,"top":97,"width":373,"height":483},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:02.970Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":5,"elapsedMs":43,"scale":0.60948,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":569,"top":97,"width":373,"height":483},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:02.981Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":6,"elapsedMs":53,"scale":0.60948,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":569,"top":97,"width":373,"height":483},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:02.987Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":7,"elapsedMs":60,"scale":0.60948,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":569,"top":97,"width":373,"height":483},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:02.996Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":8,"elapsedMs":68,"scale":0.60948,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":569,"top":97,"width":373,"height":483},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:03.004Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":9,"elapsedMs":76,"scale":0.60948,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":569,"top":97,"width":373,"height":483},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[DrawCanvas p1] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p1] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p2] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p2] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p3] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p3] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[InteractionDiag] tool-changed @ 82456ms from=pan to=pen
+[InteractionDiag] viewer-pointer-down @ 82802ms tool=pen button=0 target=canvas
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-1","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-1","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 83277ms tool=pen
+[PreviewDiag] pointer release {"id":"gesture-1","frames":37,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"642c5fa3-7056-451b-b278-527a28e762e9"}
+[PreviewDiag] final commit {"id":"gesture-1","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"642c5fa3-7056-451b-b278-527a28e762e9","source":"path:created","objectDelta":1,"previousObjectCount":0,"nextObjectCount":1,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] preview {"id":"gesture-1","frames":50,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"642c5fa3-7056-451b-b278-527a28e762e9","source":"path:created","objectDelta":1,"previousObjectCount":0,"nextObjectCount":1,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[InteractionDiag] tool-changed @ 84339ms from=pen to=pan (pan-active → Syncfusion interactionMode=Pan)
+[InteractionDiag] viewer-pan-start @ 84588ms tool=pan button=0 target=syncfusion-page scrollTop=0 scrollLeft=0
+[InteractionDiag] pan-drag @ 84592ms pointerDelta=(0,0) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[PreviewDiag] summary path:created started, 59 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-1","durationMs":1878.5,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"642c5fa3-7056-451b-b278-527a28e762e9","source":"path:created","objectDelta":1,"previousObjectCount":0,"nextObjectCount":1,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[InteractionDiag] pan-drag @ 84691ms pointerDelta=(0,-2) scrollDelta=(0,2) MOVED
+[InteractionDiag] pan-drag @ 84791ms pointerDelta=(1,-78) scrollDelta=(0,75) MOVED
+[InteractionDiag] pan-drag @ 84892ms pointerDelta=(-2,-9) scrollDelta=(0,4) MOVED
+[InteractionDiag] pan-drag @ 85067ms pointerDelta=(-3,43) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-end @ 85087ms totalScrollDelta=(0,0) [PAN DID NOTHING]
+[DrawCanvas p1] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p1] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p2] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p2] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p3] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p3] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[InteractionDiag] tool-changed @ 85158ms from=pan to=pen
+[DrawCanvas p1] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p2] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p3] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[InteractionDiag] tool-changed @ 85985ms from=pen to=highlighter
+[DrawCanvas p1] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p2] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p3] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[InteractionDiag] viewer-pointer-down @ 86263ms tool=highlighter button=0 target=canvas
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"highlighter","type":"highlighter","action":"highlight-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-2","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"highlighter","type":"highlighter","action":"highlight-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-2","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"highlighter","type":"highlighter","action":"highlight-stroke","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 86768ms tool=highlighter
+[PreviewDiag] pointer release {"id":"gesture-2","frames":49,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"highlighter","type":"highlighter","action":"highlight-stroke","pageNumber":1,"annotationId":"6ed6ee20-3982-4fdf-8d21-e31ef7e532c6"}
+[PreviewDiag] final commit {"id":"gesture-2","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"highlighter","type":"highlighter","action":"path:created","pageNumber":1,"annotationId":"6ed6ee20-3982-4fdf-8d21-e31ef7e532c6","source":"path:created","objectDelta":1,"previousObjectCount":1,"nextObjectCount":2,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] preview {"id":"gesture-2","frames":50,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"highlighter","type":"highlighter","action":"highlight-stroke","pageNumber":1,"annotationId":"6ed6ee20-3982-4fdf-8d21-e31ef7e532c6","source":"path:created","objectDelta":1,"previousObjectCount":1,"nextObjectCount":2,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[FabricEraserCanvas p1] enliven — input=2 enlivenable=2 unsupported=0 output=2 nulls=0 types={"path":2}→{"path":2}
+[InteractionDiag] tool-changed @ 87778ms from=highlighter to=eraser (eraser-active → FabricEraserCanvas mounts)
+[PreviewDiag] summary path:created started, 73 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-2","durationMs":1907.2,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"highlighter","type":"highlighter","action":"path:created","pageNumber":1,"annotationId":"6ed6ee20-3982-4fdf-8d21-e31ef7e532c6","source":"path:created","objectDelta":1,"previousObjectCount":1,"nextObjectCount":2,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[InteractionDiag] viewer-pointer-down @ 88397ms tool=eraser button=0 target=eraser-canvas
+[InteractionDiag] eraser-down @ 88402ms page=1 mode=entire
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricEraserCanvas","tool":"eraser","type":"annotation","action":"eraser-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-3","frames":1,"pointerDown":true,"surface":"FabricEraserCanvas","tool":"eraser","type":"annotation","action":"eraser-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-3","frames":25,"pointerDown":true,"surface":"FabricEraserCanvas","tool":"eraser","type":"annotation","action":"eraser-stroke","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 88925ms tool=eraser
+[PreviewDiag] pointer release {"id":"gesture-3","frames":32,"pointerDown":false,"surface":"FabricEraserCanvas","tool":"eraser","type":"annotation","action":"eraser-stroke","pageNumber":1,"annotationId":null}
+[EraserHitTest] {"pageNumber":1,"gestureId":"gesture-3","pointerBounds":{"left":216.2631980665763,"top":400.02727313360043,"right":328.46602445353085,"bottom":440.0370700299383,"width":112.20282638695457,"height":40.00979689633794},"candidateAnnotationIds":["642c5fa3-7056-451b-b278-527a28e762e9","6ed6ee20-3982-4fdf-8d21-e31ef7e532c6"],"rejectedAnnotations":[{"id":"6ed6ee20-3982-4fdf-8d21-e31ef7e532c6","reason":"geometry-miss"}],"touchedAnnotationIds":["642c5fa3-7056-451b-b278-527a28e762e9"],"finalDeletedAnnotationIds":["642c5fa3-7056-451b-b278-527a28e762e9"],"finalChangedAnnotationIds":[],"objectDelta":-1,"changedObjectsCount":2}
+[InteractionDiag] eraser-apply @ 88930ms page=1 mode=entire candidates=2 deleted=1 changed=0 callouts=0 rejected=1 COMMIT
+[PreviewDiag] final commit {"id":"gesture-3","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"eraser","type":"annotation","action":"eraser:apply","pageNumber":1,"annotationId":null,"source":"eraser:commit","objectDelta":-1,"previousObjectCount":2,"nextObjectCount":1,"changedObjectsCount":2,"checkpointPolicy":"normal"}
+[InteractionDiag] viewer-pointer-down @ 89764ms tool=eraser button=0 target=eraser-canvas
+[InteractionDiag] eraser-down @ 89765ms page=1 mode=entire
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricEraserCanvas","tool":"eraser","type":"annotation","action":"eraser-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-4","frames":1,"pointerDown":true,"surface":"FabricEraserCanvas","tool":"eraser","type":"annotation","action":"eraser-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-4","frames":25,"pointerDown":true,"surface":"FabricEraserCanvas","tool":"eraser","type":"annotation","action":"eraser-stroke","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 90321ms tool=eraser
+[PreviewDiag] pointer release {"id":"gesture-4","frames":35,"pointerDown":false,"surface":"FabricEraserCanvas","tool":"eraser","type":"annotation","action":"eraser-stroke","pageNumber":1,"annotationId":null}
+[EraserHitTest] {"pageNumber":1,"gestureId":"gesture-4","pointerBounds":{"left":317.9897396215361,"top":439.4052892193913,"right":438.39631935969703,"bottom":531.9191075634504,"width":120.40657973816099,"height":92.51381834405913},"candidateAnnotationIds":["6ed6ee20-3982-4fdf-8d21-e31ef7e532c6"],"rejectedAnnotations":[],"touchedAnnotationIds":["6ed6ee20-3982-4fdf-8d21-e31ef7e532c6"],"finalDeletedAnnotationIds":["6ed6ee20-3982-4fdf-8d21-e31ef7e532c6"],"finalChangedAnnotationIds":[],"objectDelta":-1,"changedObjectsCount":1}
+[InteractionDiag] eraser-apply @ 90322ms page=1 mode=entire candidates=1 deleted=1 changed=0 callouts=0 rejected=0 COMMIT
+[PreviewDiag] final commit {"id":"gesture-4","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"eraser","type":"annotation","action":"eraser:apply","pageNumber":1,"annotationId":null,"source":"eraser:commit","objectDelta":-1,"previousObjectCount":1,"nextObjectCount":0,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] summary eraser:apply started, 32 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-3","durationMs":1945,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"eraser","type":"annotation","action":"eraser:apply","pageNumber":1,"annotationId":null,"source":"eraser:commit","objectDelta":-1,"previousObjectCount":2,"nextObjectCount":1,"changedObjectsCount":2,"checkpointPolicy":"normal","reason":"settled"}
+[PreviewDiag] summary eraser:apply started, 35 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-4","durationMs":1959.7,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"eraser","type":"annotation","action":"eraser:apply","pageNumber":1,"annotationId":null,"source":"eraser:commit","objectDelta":-1,"previousObjectCount":1,"nextObjectCount":0,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[InteractionDiag] tool-intent @ 92253ms requested=counter from=eraser
+[InteractionDiag] tool-changed @ 92263ms from=eraser to=counter
+[PreviewDiag] final commit {"surface":"App.handleSaveAnnotations","source":"counter:create","action":"counter:create","pageNumber":1,"objectDelta":1,"previousObjectCount":0,"nextObjectCount":1,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] final commit {"surface":"App.handleSaveAnnotations","source":"counter:create","action":"counter:create","pageNumber":1,"objectDelta":1,"previousObjectCount":1,"nextObjectCount":2,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] final commit {"surface":"App.handleSaveAnnotations","source":"counter:create","action":"counter:create","pageNumber":1,"objectDelta":1,"previousObjectCount":2,"nextObjectCount":3,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] final commit {"surface":"App.handleSaveAnnotations","source":"counter:create","action":"counter:create","pageNumber":1,"objectDelta":1,"previousObjectCount":3,"nextObjectCount":4,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] final commit {"surface":"App.handleSaveAnnotations","source":"counter:create","action":"counter:create","pageNumber":1,"objectDelta":1,"previousObjectCount":4,"nextObjectCount":5,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] final commit {"surface":"App.handleSaveAnnotations","source":"counter:create","action":"counter:create","pageNumber":1,"objectDelta":1,"previousObjectCount":5,"nextObjectCount":6,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[InteractionDiag] tool-changed @ 95155ms from=counter to=select
+[PreviewDiag] start {"pointerDown":true,"surface":"SVGAnnotationLayer","tool":"select","type":"counter","action":"move","annotationId":"a73715d5-3cef-47ee-90fd-fda996920a66"}
+[PreviewDiag] preview {"id":"gesture-5","frames":1,"pointerDown":true,"surface":"SVGAnnotationLayer","tool":"select","type":"counter","action":"move","annotationId":"a73715d5-3cef-47ee-90fd-fda996920a66","handleId":null,"partType":null}
+[PreviewDiag] preview {"id":"gesture-5","frames":25,"pointerDown":true,"surface":"SVGAnnotationLayer","tool":"select","type":"counter","action":"move","annotationId":"a73715d5-3cef-47ee-90fd-fda996920a66","handleId":null,"partType":null}
+[PreviewDiag] pointer release {"id":"gesture-5","frames":45,"pointerDown":false,"surface":"SVGAnnotationLayer","tool":"select","type":"counter","action":"move","annotationId":"a73715d5-3cef-47ee-90fd-fda996920a66","handleId":null,"partType":null}
+[PreviewDiag] final commit {"id":"gesture-5","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"select","type":"counter","action":"move","annotationId":"a73715d5-3cef-47ee-90fd-fda996920a66","handleId":null,"partType":null,"source":"object:modified","pageNumber":1,"objectDelta":0,"previousObjectCount":6,"nextObjectCount":6,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[InteractionDiag] tool-intent @ 97390ms requested=counter from=select
+[InteractionDiag] tool-changed @ 97401ms from=select to=counter
+[PreviewDiag] summary move started, 45 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-5","durationMs":1947.5,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"select","type":"counter","action":"move","annotationId":"a73715d5-3cef-47ee-90fd-fda996920a66","handleId":null,"partType":null,"source":"object:modified","pageNumber":1,"objectDelta":0,"previousObjectCount":6,"nextObjectCount":6,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[DrawCanvas p1] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p2] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p3] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-changed @ 98134ms from=counter to=rect
+[DrawCanvas p1] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[InteractionDiag] viewer-pointer-down @ 98368ms tool=rect button=0 target=canvas
+[DrawCanvas p1] shape mousedown at (147.7, 219.9), tool=rect
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"rect","type":"rect","action":"rect-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-6","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"rect","type":"rect","action":"rect-draw","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 98601ms tool=rect
+[PreviewDiag] pointer release {"id":"gesture-6","frames":22,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"rect","type":"rect","action":"rect-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] shape mouseup — tool=rect, hasSize=true {"left":148.6675603217158,"top":220.86058981233242,"w":255.59785522788195,"h":139.1045576407506}
+[ShapeCommitDiag] commit geometry {"annotationId":"7df8acff-968c-465c-ac67-88b1b6568f51","pageNumber":1,"tool":"rect","pointerDown":{"x":147.668,"y":219.861},"lastMouseMove":{"x":405.265,"y":360.965},"mouseUp":{"x":405.265,"y":360.965},"previewOuterBounds":{"left":147.668,"top":219.861,"width":257.598,"height":141.105},"fabricPreviewBeforeCommit":{"type":"rect","left":148.668,"top":220.861,"width":255.598,"height":139.105,"rx":0,"ry":0,"strokeWidth":2},"serializedAnnotation":{"type":"rect","left":148.67,"top":220.86,"width":255.6,"height":139.1,"rx":0,"ry":0,"strokeWidth":2,"strokeRenderContract":"drawn-centered-stroke"},"serializedOuterBounds":{"left":148.67,"top":220.86,"width":255.6,"height":139.1},"deltaPreviewToSaved":{"left":1.002,"top":0.999,"width":-1.998,"height":-2.005}}
+[PreviewDiag] final commit {"id":"gesture-6","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"rect","type":"rect","action":"path:created","pageNumber":1,"annotationId":"7df8acff-968c-465c-ac67-88b1b6568f51","source":"path:created","objectDelta":1,"previousObjectCount":6,"nextObjectCount":7,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[DrawCanvas p1] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[ShapeCommitDiag] svg rendered bbox after commit {"annotationId":"7df8acff-968c-465c-ac67-88b1b6568f51","pageNumber":1,"tool":"rect","pointerDown":{"x":147.668,"y":219.861},"lastMouseMove":{"x":405.265,"y":360.965},"mouseUp":{"x":405.265,"y":360.965},"previewOuterBounds":{"left":147.668,"top":219.861,"width":257.598,"height":141.105},"serializedOuterBounds":{"left":148.67,"top":220.86,"width":255.6,"height":139.1},"svgRenderedBBox":{"left":148.67,"top":220.86,"width":255.6,"height":139.1},"deltaPreviewToSaved":{"left":1.002,"top":0.999,"width":-1.998,"height":-2.005},"deltaSavedToSvg":{"left":0,"top":0,"width":0,"height":0},"deltaPreviewToSvg":{"left":1.002,"top":0.999,"width":-1.998,"height":-2.005}}
+[DrawCanvas p1] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-changed @ 99508ms from=rect to=ellipse
+[DrawCanvas p1] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[InteractionDiag] viewer-pointer-down @ 99861ms tool=ellipse button=0 target=canvas
+[DrawCanvas p1] shape mousedown at (234.6, 356.0), tool=ellipse
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"ellipse","type":"ellipse","action":"ellipse-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-7","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"ellipse","type":"ellipse","action":"ellipse-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] summary path:created started, 22 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-6","durationMs":1630.7,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"rect","type":"rect","action":"path:created","pageNumber":1,"annotationId":"7df8acff-968c-465c-ac67-88b1b6568f51","source":"path:created","objectDelta":1,"previousObjectCount":6,"nextObjectCount":7,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[InteractionDiag] pointer-end @ 100101ms tool=ellipse
+[PreviewDiag] pointer release {"id":"gesture-7","frames":20,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"ellipse","type":"ellipse","action":"ellipse-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] shape mouseup — tool=ellipse, hasSize=true {"left":235.627345844504,"top":357.0428954423592,"w":229.34584450402141,"h":189.96782841823045}
+[ShapeCommitDiag] commit geometry {"annotationId":"8f928307-0151-41dd-98be-49776d74b325","pageNumber":1,"tool":"ellipse","pointerDown":{"x":234.627,"y":356.043},"lastMouseMove":{"x":465.973,"y":548.011},"mouseUp":{"x":465.973,"y":548.011},"previewOuterBounds":{"left":234.627,"top":356.043,"width":231.346,"height":191.968},"fabricPreviewBeforeCommit":{"type":"ellipse","left":235.627,"top":357.043,"width":229.346,"height":189.968,"rx":114.673,"ry":94.984,"strokeWidth":2},"serializedAnnotation":{"type":"ellipse","left":235.63,"top":357.04,"width":229.35,"height":189.97,"rx":114.67292225201071,"ry":94.98391420911523,"strokeWidth":2,"strokeRenderContract":"drawn-centered-stroke"},"serializedOuterBounds":{"left":235.63,"top":357.04,"width":229.346,"height":189.968},"deltaPreviewToSaved":{"left":1.003,"top":0.997,"width":-2,"height":-2}}
+[PreviewDiag] final commit {"id":"gesture-7","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"ellipse","type":"ellipse","action":"path:created","pageNumber":1,"annotationId":"8f928307-0151-41dd-98be-49776d74b325","source":"path:created","objectDelta":1,"previousObjectCount":7,"nextObjectCount":8,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[DrawCanvas p1] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[ShapeCommitDiag] svg rendered bbox after commit {"annotationId":"8f928307-0151-41dd-98be-49776d74b325","pageNumber":1,"tool":"ellipse","pointerDown":{"x":234.627,"y":356.043},"lastMouseMove":{"x":465.973,"y":548.011},"mouseUp":{"x":465.973,"y":548.011},"previewOuterBounds":{"left":234.627,"top":356.043,"width":231.346,"height":191.968},"serializedOuterBounds":{"left":235.63,"top":357.04,"width":229.346,"height":189.968},"svgRenderedBBox":{"left":235.63,"top":357.04,"width":229.346,"height":189.968},"deltaPreviewToSaved":{"left":1.003,"top":0.997,"width":-2,"height":-2},"deltaSavedToSvg":{"left":0,"top":0,"width":0,"height":0},"deltaPreviewToSvg":{"left":1.003,"top":0.997,"width":-2,"height":-2}}
+[DrawCanvas p1] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=line, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-changed @ 100899ms from=ellipse to=line
+[DrawCanvas p1] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=line, isShape=true, isDrawingMode=false
+[InteractionDiag] viewer-pointer-down @ 101263ms tool=line button=0 target=canvas
+[DrawCanvas p1] shape mousedown at (201.8, 351.1), tool=line
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"line","type":"line","action":"line-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] line created — start=(201.8, 351.1), color=rgba(255, 0, 0, 1), sw=2
+[PreviewDiag] preview {"id":"gesture-8","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"line","type":"line","action":"line-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] summary path:created started, 20 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-7","durationMs":1641.8,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"ellipse","type":"ellipse","action":"path:created","pageNumber":1,"annotationId":"8f928307-0151-41dd-98be-49776d74b325","source":"path:created","objectDelta":1,"previousObjectCount":7,"nextObjectCount":8,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[InteractionDiag] pointer-end @ 101545ms tool=line
+[PreviewDiag] pointer release {"id":"gesture-8","frames":20,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"line","type":"line","action":"line-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] line mouseup — hasSize=true {"fabricObj":{"type":"line","left":"201.8","top":"239.5","x1":"201.8","y1":"351.1","x2":"247.8","y2":"239.5","width":"45.9","height":"111.6"}}
+[PreviewDiag] final commit {"id":"gesture-8","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"line","type":"line","action":"path:created","pageNumber":1,"annotationId":"365f4bb8-5a49-45c0-b066-8beaf197a37b","source":"path:created","objectDelta":1,"previousObjectCount":8,"nextObjectCount":9,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[DrawCanvas p1] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-changed @ 102523ms from=line to=arrow
+[DrawCanvas p1] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[InteractionDiag] viewer-pointer-down @ 102863ms tool=arrow button=0 target=canvas
+[DrawCanvas p1] shape mousedown at (443.0, 211.7), tool=arrow
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"arrow","type":"arrow","action":"arrow-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] arrow created — start=(443.0, 211.7), color=rgba(255, 0, 0, 1), sw=2
+[PreviewDiag] preview {"id":"gesture-9","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"arrow","type":"arrow","action":"arrow-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] summary path:created started, 20 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-8","durationMs":1684.8,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"line","type":"line","action":"path:created","pageNumber":1,"annotationId":"365f4bb8-5a49-45c0-b066-8beaf197a37b","source":"path:created","objectDelta":1,"previousObjectCount":8,"nextObjectCount":9,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[PreviewDiag] preview {"id":"gesture-9","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"arrow","type":"arrow","action":"arrow-draw","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 103219ms tool=arrow
+[PreviewDiag] pointer release {"id":"gesture-9","frames":27,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"arrow","type":"arrow","action":"arrow-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] arrow mouseup — hasSize=true {"fabricObj":{"type":"line","left":"370.8","top":"211.7","x1":"443.0","y1":"211.7","x2":"370.8","y2":"449.6","width":"72.2","height":"237.9"}}
+[PreviewDiag] final commit {"id":"gesture-9","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"arrow","type":"arrow","action":"path:created","pageNumber":1,"annotationId":"e964f252-5edc-4c68-9741-e0409b9dd366","source":"path:created","objectDelta":1,"previousObjectCount":9,"nextObjectCount":10,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[DrawCanvas p1] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[PreviewDiag] summary path:created started, 27 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-9","durationMs":1757,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"arrow","type":"arrow","action":"path:created","pageNumber":1,"annotationId":"e964f252-5edc-4c68-9741-e0409b9dd366","source":"path:created","objectDelta":1,"previousObjectCount":9,"nextObjectCount":10,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[InteractionDiag] tool-changed @ 105742ms from=arrow to=select
+[PreviewDiag] start {"pointerDown":true,"surface":"SVGAnnotationLayer","tool":"select","type":"line","action":"midpoint","annotationId":"365f4bb8-5a49-45c0-b066-8beaf197a37b"}
+[PreviewDiag] preview {"id":"gesture-10","frames":1,"pointerDown":true,"surface":"SVGAnnotationLayer","tool":"select","type":"line","action":"midpoint","annotationId":"365f4bb8-5a49-45c0-b066-8beaf197a37b","handleId":"midpoint","partType":null}
+[PreviewDiag] preview {"id":"gesture-10","frames":25,"pointerDown":true,"surface":"SVGAnnotationLayer","tool":"select","type":"line","action":"midpoint","annotationId":"365f4bb8-5a49-45c0-b066-8beaf197a37b","handleId":"midpoint","partType":null}
+[PreviewDiag] preview {"id":"gesture-10","frames":50,"pointerDown":true,"surface":"SVGAnnotationLayer","tool":"select","type":"line","action":"midpoint","annotationId":"365f4bb8-5a49-45c0-b066-8beaf197a37b","handleId":"midpoint","partType":null}
+[PreviewDiag] preview {"id":"gesture-10","frames":75,"pointerDown":true,"surface":"SVGAnnotationLayer","tool":"select","type":"line","action":"midpoint","annotationId":"365f4bb8-5a49-45c0-b066-8beaf197a37b","handleId":"midpoint","partType":null}
+[PreviewDiag] preview {"id":"gesture-10","frames":100,"pointerDown":true,"surface":"SVGAnnotationLayer","tool":"select","type":"line","action":"midpoint","annotationId":"365f4bb8-5a49-45c0-b066-8beaf197a37b","handleId":"midpoint","partType":null}
+[PreviewDiag] pointer release {"id":"gesture-10","frames":105,"pointerDown":false,"surface":"SVGAnnotationLayer","tool":"select","type":"line","action":"midpoint","annotationId":"365f4bb8-5a49-45c0-b066-8beaf197a37b","handleId":"midpoint","partType":null}
+[PreviewDiag] final commit {"id":"gesture-10","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"select","type":"line","action":"midpoint-move","annotationId":"365f4bb8-5a49-45c0-b066-8beaf197a37b","handleId":"midpoint","partType":null,"source":"object:modified","pageNumber":1,"objectDelta":0,"previousObjectCount":10,"nextObjectCount":10,"changedObjectsCount":0,"checkpointPolicy":"normal"}
+[PreviewDiag] summary midpoint-move started, 105 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-10","durationMs":2655.6,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"select","type":"line","action":"midpoint-move","annotationId":"365f4bb8-5a49-45c0-b066-8beaf197a37b","handleId":"midpoint","partType":null,"source":"object:modified","pageNumber":1,"objectDelta":0,"previousObjectCount":10,"nextObjectCount":10,"changedObjectsCount":0,"checkpointPolicy":"normal","reason":"settled"}
+[InteractionDiag] tool-intent @ 109652ms requested=arrow from=select
+[DrawCanvas p1] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p2] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p3] MOUNT — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-changed @ 109666ms from=select to=arrow
+[InteractionDiag] tool-intent @ 110546ms requested=callout from=arrow
+[InteractionDiag] tool-changed @ 110566ms from=arrow to=callout
+[PreviewDiag] backup write {"kind":"callout-localStorage","count":1,"calloutCount":1,"bytes":518}
+[CalloutEditCanvasDiag] {"effectiveScale":0.6094771241830066,"effectiveScaleY":0.6098484848484849,"useNonUniform":false,"canvasWidth":112,"canvasHeight":58,"parentOffset":{"w":373,"h":483},"pageSize":{"w":612,"h":792},"vpt":[0.6094771241830066,0,0,0.6094771241830066,0,0],"zoom":0.6094771241830066}
+[InteractionDiag] tool-changed @ 111805ms from=callout to=select
+[EditCanvas] COMMIT pre-convert — text="rbdfgb" fontSize=14 width=108 height=15.82 scaleX=1 scaleY=1 left=38 top=42.54 isNewText=false
+[EditCanvas] COMMIT post-convert — text="rbdfgb" fontSize=14 width=120 height=32 scaleX=1 scaleY=1 left=478.76591823056305 top=267.93924689440996
+[PreviewDiag] backup write {"kind":"callout-localStorage","count":1,"calloutCount":1,"bytes":524}
+[InteractionDiag] tool-intent @ 113243ms requested=callout from=select
+[InteractionDiag] tool-changed @ 113246ms from=select to=callout
+[InteractionDiag] tool-changed @ 113925ms from=callout to=text
+[InteractionDiag] viewer-pointer-down @ 115560ms tool=text button=0 target=syncfusion-page
+[EditCanvas] COMMIT pre-convert — text="fgbfgb" fontSize=16 width=45.56 height=18.08 scaleX=1 scaleY=1 left=38 top=38 isNewText=true
+[EditCanvas] COMMIT post-convert — text="fgbfgb" fontSize=16 width=59 height=30.08 scaleX=1 scaleY=1 left=137.79101038873992 top=541.1400804289543
+[PreviewDiag] final commit {"surface":"App.handleSaveAnnotations","source":"edit:commit","action":"text","pageNumber":1,"objectDelta":1,"previousObjectCount":10,"nextObjectCount":11,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[InteractionDiag] pointer-end @ 115620ms tool=text
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:43.341Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":0,"elapsedMs":1,"scale":0.61,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":0,"top":0,"width":0,"height":0},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:43.343Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":1,"elapsedMs":3,"scale":0.61,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":0,"top":0,"width":0,"height":0},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:43.352Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":2,"elapsedMs":13,"scale":0.61,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":0,"top":0,"width":0,"height":0},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:43.353Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":3,"elapsedMs":14,"scale":0.61,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":0,"top":0,"width":0,"height":0},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:43.361Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":4,"elapsedMs":22,"scale":0.61,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":0,"top":0,"width":0,"height":0},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:43.371Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":5,"elapsedMs":31,"scale":0.61,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":0,"top":0,"width":0,"height":0},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:43.379Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":6,"elapsedMs":39,"scale":0.61,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":0,"top":0,"width":0,"height":0},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:43.387Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":7,"elapsedMs":47,"scale":0.61,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":0,"top":0,"width":0,"height":0},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:43.396Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":8,"elapsedMs":57,"scale":0.61,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":0,"top":0,"width":0,"height":0},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[TextSearchDiag] svg_layer_live_sample {"at":"2026-06-05T03:53:43.404Z","pageNumber":1,"activeMatchId":"search-1780631576185-1","fillContainer":true,"sample":9,"elapsedMs":65,"scale":0.61,"cssWidth":"100%","cssHeight":"100%","layerRect":{"left":0,"top":0,"width":0,"height":0},"pageHostRect":null,"contentRect":null,"contentTransform":null,"hostWidthDelta":null,"hostHeightDelta":null}
+[PDFSaveExport] action start {"actionType":"app-state-save","documentId":null,"supabaseAnnotationSaveRan":false,"pdfBytesGenerated":false,"localFilesystemWrite":false,"outputPath":null,"annotationCountsByType":{"circle":6,"rect":1,"ellipse":1,"line":2,"textbox":1,"callout":1},"annotationCountSummary":{"totalObjects":11,"calloutCount":1,"surveyMarkerCount":0,"importedPdfObjects":0,"byType":{"circle":6,"rect":1,"ellipse":1,"line":2,"textbox":1,"callout":1}},"embeddedPdfNativeAnnotationHandling":"not-applicable-app-state-only","silent":true}
+[PDFSaveExport] action complete {"actionType":"app-state-save","documentId":null,"supabaseAnnotationSaveRan":false,"supabaseAnnotationSaveError":null,"pdfBytesGenerated":false,"localFilesystemWrite":false,"outputPath":null,"annotationCountsByType":{"circle":6,"rect":1,"ellipse":1,"line":2,"textbox":1,"callout":1},"annotationCountSummary":{"totalObjects":11,"calloutCount":1,"surveyMarkerCount":0,"importedPdfObjects":0,"byType":{"circle":6,"rect":1,"ellipse":1,"line":2,"textbox":1,"callout":1}},"embeddedPdfNativeAnnotationHandling":"not-applicable-app-state-only","localBackupSaved":true,"surveyDataStorageSaveRequested":true,"silent":true}
+=== PAGE RELOAD (navigation) @ 2026-06-05T03:54:33.613Z ===
+[DocumentDelete] start {"docId":"5fa31b86-a0ce-481d-b20c-66be5f2f30fc","filePath":"170d915c-5741-4e0b-b03f-deaeedae27bd/general/1779028746148.pdf","source":"survey-hub-bulk"}
+[DocumentDelete] archive:result {"docId":"5fa31b86-a0ce-481d-b20c-66be5f2f30fc","source":"survey-hub-bulk","archivedCount":1,"archivedRows":[{"id":"5fa31b86-a0ce-481d-b20c-66be5f2f30fc","name":"Package 2 - Rev 4 -- IC.pdf","file_path":"170d915c-5741-4e0b-b03f-deaeedae27bd/general/1779028746148.pdf","user_id":"170d915c-5741-4e0b-b03f-deaeedae27bd"}]}
+[DocumentDelete] verify:archived {"docId":"5fa31b86-a0ce-481d-b20c-66be5f2f30fc","source":"survey-hub-bulk"}
+[OpenTiming] pdfid-resolve @ 644399ms Package 2 - Rev 4 -- IC.pdf-6311068
+[PreviewDiag] backup write {"kind":"callout-localStorage","count":1,"calloutCount":0,"bytes":2}
+[InteractionDiag] interactive-ready @ 646405ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 646796ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[OpenTiming] doc-click @ 659567ms Package 2 - Rev 4 -- IC.pdf
+[OpenTiming] pdfid-resolve @ 659751ms Package 2 - Rev 4 -- IC.pdf-6311068
+[OpenTiming] hydrate-start @ 659845ms temp-1780632316967
+[InteractionDiag] interactive-ready @ 660161ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 660301ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+console.error @ [AnnotationSync] Error fetching annotations: {"code":"22P02","details":null,"hint":null,"message":"invalid input syntax for type uuid: \"temp-1780632316967\""}
+console.error @ [DocumentSync] Error loading annotations: {"code":"22P02","details":null,"hint":null,"message":"invalid input syntax for type uuid: \"temp-1780632316967\""}
+[OpenTiming] snapshot-fetch-done @ 660417ms null
+console.error @ [CloudSync][hydrate] loadAllNonSurveyMarkerAnnotations failed {"elapsedMs":160,"error":"invalid input syntax for type uuid: \"temp-1780632316967\""}
+console.warn @ [Phase31 UAT] backfill:select-loop page ERROR {"documentId":"temp-1780632316967","page":0,"range":[0,999],"pageElapsedMs":88,"errorCode":"22P02","errorMessage":"invalid input syntax for type uuid: \"temp-1780632316967\""}
+console.warn @ [Phase31 UAT] backfill:done (failed at SELECT) {"ranAs":"failed","documentId":"temp-1780632316967","userId":"170d915c-5741-4e0b-b03f-deaeedae27bd","pagesFetched":0,"rowsFetched":0,"errorCode":"22P02","errorMessage":"invalid input syntax for type uuid: \"temp-1780632316967\""}
+console.error @ [CloudSync][hydrate] loadAllNonSurveyMarkerAnnotations failed {"elapsedMs":39,"error":"invalid input syntax for type uuid: \"temp-1780632316967\""}
+console.error @ [CloudSync][hook] hydrate error invalid input syntax for type uuid: "temp-1780632316967"
+console.error @ [CloudSync][hydrate] loadAllNonSurveyMarkerAnnotations failed {"elapsedMs":57,"error":"invalid input syntax for type uuid: \"temp-1780632316967\""}
+console.error @ [CloudSync][hook] migration error invalid input syntax for type uuid: "temp-1780632316967"
+[DocumentDelete] start {"docId":"398beaa9-22ff-4d40-a63a-58116cf9ffc2","filePath":"170d915c-5741-4e0b-b03f-deaeedae27bd/general/1780632316967.pdf","source":"survey-hub-bulk"}
+[DocumentDelete] archive:result {"docId":"398beaa9-22ff-4d40-a63a-58116cf9ffc2","source":"survey-hub-bulk","archivedCount":1,"archivedRows":[{"id":"398beaa9-22ff-4d40-a63a-58116cf9ffc2","name":"Package 2 - Rev 4 -- IC.pdf","file_path":"170d915c-5741-4e0b-b03f-deaeedae27bd/general/1780632316967.pdf","user_id":"170d915c-5741-4e0b-b03f-deaeedae27bd"}]}
+[DocumentDelete] verify:archived {"docId":"398beaa9-22ff-4d40-a63a-58116cf9ffc2","source":"survey-hub-bulk"}
+[OpenTiming] hydrate-start @ 693468ms temp-1780632316967
+[OpenTiming] snapshot-fetch-done @ 693729ms null
+console.error @ [CloudSync][hydrate] loadAllNonSurveyMarkerAnnotations failed {"elapsedMs":106,"error":"invalid input syntax for type uuid: \"temp-1780632316967\""}
+console.error @ [CloudSync][hook] hydrate error invalid input syntax for type uuid: "temp-1780632316967"
+console.error @ [CloudSync][hydrate] loadAllNonSurveyMarkerAnnotations failed {"elapsedMs":115,"error":"invalid input syntax for type uuid: \"temp-1780632316967\""}
+console.error @ [CloudSync][hook] migration error invalid input syntax for type uuid: "temp-1780632316967"
+[OpenTiming] pdfid-resolve @ 2038223ms Package 2 - Rev 4 -- IC.pdf-6311068
+[InteractionDiag] interactive-ready @ 2038700ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+console.error @ [AnnotationSync] Error removing presence: {"code":"22P02","details":null,"hint":null,"message":"invalid input syntax for type uuid: \"temp-1780632316967\""}
+console.error @ [AnnotationSync] Error fetching annotations: {"code":"22P02","details":null,"hint":null,"message":"invalid input syntax for type uuid: \"temp-1780632316967\""}
+console.error @ [DocumentSync] Error loading annotations: {"code":"22P02","details":null,"hint":null,"message":"invalid input syntax for type uuid: \"temp-1780632316967\""}
+[OpenTiming] first-marks-painted @ 2055681ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[OpenTiming] pdfid-resolve @ 2836526ms Package 2 - Rev 4 -- IC.pdf-6311068
+[InteractionDiag] interactive-ready @ 2837217ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+console.error @ [AnnotationSync] Error removing presence: {"code":"22P02","details":null,"hint":null,"message":"invalid input syntax for type uuid: \"temp-1780632316967\""}
+console.error @ [AnnotationSync] Error fetching annotations: {"code":"22P02","details":null,"hint":null,"message":"invalid input syntax for type uuid: \"temp-1780632316967\""}
+console.error @ [DocumentSync] Error loading annotations: {"code":"22P02","details":null,"hint":null,"message":"invalid input syntax for type uuid: \"temp-1780632316967\""}
+[OpenTiming] first-marks-painted @ 2837340ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+console.error @ Warning: React has detected a change in the order of Hooks called by %s. This will lead to bugs and errors if not fixed. For more information, read the Rules of Hooks: https://reactjs.org/link/rules-of-hooks
+
+   Previous render            Next render
+   ------------------------------------------------------
+%s   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+%s ForwardRef(Dashboard2) 1. useRef                     useRef
+2. useRef                     useRef
+3. useRef                     useRef
+4. useRef                     useRef
+5. useState                   useState
+6. useState                   useState
+7. useState                   useState
+8. useState                   useState
+9. useState                   useState
+10. useState                  useState
+11. useRef                    useRef
+12. useState                  useState
+13. useState                  useState
+14. useState                  useState
+15. useState                  useState
+16. useState                  useState
+17. useState                  useState
+18. useState                  useState
+19. useState                  useState
+20. useState                  useState
+21. useState                  useState
+22. useState                  useState
+23. useState                  useState
+24. useState                  useState
+25. useState                  useState
+26. useState                  useState
+27. useState                  useState
+28. useRef                    useRef
+29. useState                  useState
+30. useState                  useState
+31. useState                  useState
+32. useContext                useContext
+33. useContext                useContext
+34. useState                  useState
+35. useState                  useState
+36. useRef                    useRef
+37. useContext                useContext
+38. useState                  useState
+39. useState                  useState
+40. useState                  useState
+41. useEffect                 useEffect
+42. useContext                useContext
+43. useState                  useState
+44. useState                  useState
+45. useState                  useState
+46. useEffect                 useEffect
+47. useContext                useContext
+48. useCallback               useCallback
+49. useCallback               useCallback
+50. useCallback               useCallback
+51. useCallback               useCallback
+52. useCallback               useCallback
+53. useContext                useContext
+54. useState                  useState
+55. useState                  useState
+56. useState                  useState
+57. useState                  useCallback
+ 
+    at Dashboard2 (http://localhost:5173/src/Dashboard.jsx?t=1780636926422:93:63)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/AppShell.jsx?t=1780634509483:53:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:50:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:31:5)
+console.error @ The above error occurred in the <ForwardRef(Dashboard2)> component:
+
+    at Dashboard2 (http://localhost:5173/src/Dashboard.jsx?t=1780636926422:93:63)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/AppShell.jsx?t=1780634509483:53:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:50:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:31:5)
+
+React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary.
+console.error @ ErrorBoundary caught an error: {"name":"Error","message":"Should have a queue. This is likely a bug in React. Please file an issue.","stack":"Error: Should have a queue. This is likely a bug in React. Please file an issue.\n    at updateReducer (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=1823d666:18608:19)\n    at updateState (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=1823d666:18899:18)\n    at Object.useState (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=1823d666:19631:24)\n    at useState (http://localhost:5173/node_modules/.vite/deps/chunk-YMK7XHJB.js?v=1823d666:1351:29)\n    at Dashboard2 (http://localhost:5173/src/Dashboard.jsx?t=1780636926422:161:61)\n    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=1823d666:18426:26)\n    at updateForwardRef (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=1823d666:21203:28)\n    at beginWork (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=1823d666:22824:22)\n    at beginWork$1 (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=1823d666:26631:22)\n    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=1823d666:26076:20)","cause":null} {"componentStack":"\n    at Dashboard2 (http://localhost:5173/src/Dashboard.jsx?t=1780636926422:93:63)\n    at div\n    at div\n    at div\n    at div\n    at App (http://localhost:5173/src/AppShell.jsx?t=1780634509483:53:151)\n    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx:65:35)\n    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:50:32)\n    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:31:5)"}
+console.error @ [AnnotationSync] Error removing presence: {"code":"22P02","details":null,"hint":null,"message":"invalid input syntax for type uuid: \"temp-1780632316967\""}
+=== PAGE RELOAD (navigation) @ 2026-06-05T05:31:15.607Z ===
+=== PAGE RELOAD (navigation) @ 2026-06-05T05:31:19.060Z ===
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 2500ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+console.error @ Warning: Functions are not valid as a React child. This may happen if you return a Component instead of <Component /> from render. Or maybe you meant to call this function rather than return it.%s 
+    at Icon (http://localhost:5173/src/Icons.jsx?t=1780637865440:24:17)
+    at div
+    at TabItem (http://localhost:5173/src/TabBar.jsx:96:3)
+    at div
+    at div
+    at TabBar (http://localhost:5173/src/TabBar.jsx:346:19)
+    at div
+    at App (http://localhost:5173/src/AppShell.jsx?t=1780637478154:53:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx?t=1780637478154:64:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:50:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:31:5)
+console.error @ [hmr] Failed to reload /src/Icons.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above)
+console.error @ The above error occurred in the <Context.Provider> component:
+
+    at SurveyHub (http://localhost:5173/src/home/SurveyHub.jsx?t=1780639406870:39:3)
+    at Dashboard2 (http://localhost:5173/src/Dashboard.jsx?t=1780639145213:93:63)
+    at div
+    at div
+    at div
+    at div
+    at App (http://localhost:5173/src/AppShell.jsx?t=1780637478154:53:151)
+    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx?t=1780637478154:64:35)
+    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:50:32)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:31:5)
+
+React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary.
+console.error @ ErrorBoundary caught an error: {"name":"Error","message":"A component suspended while responding to synchronous input. This will cause the UI to be replaced with a loading indicator. To fix, updates that suspend should be wrapped with startTransition.","stack":"Error: A component suspended while responding to synchronous input. This will cause the UI to be replaced with a loading indicator. To fix, updates that suspend should be wrapped with startTransition.\n    at throwException (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=1823d666:21091:43)\n    at handleError (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=1823d666:25912:15)\n    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=1823d666:25997:15)\n    at recoverFromConcurrentError (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=1823d666:25614:28)\n    at performSyncWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=1823d666:25757:28)\n    at flushSyncCallbacks (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=1823d666:15997:30)\n    at flushSync (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=1823d666:25837:15)\n    at Object.scheduleRefresh (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=1823d666:26882:13)\n    at http://localhost:5173/@react-refresh:228:17\n    at Set.forEach (<anonymous>)","cause":null} {"componentStack":"\n    at SurveyHub (http://localhost:5173/src/home/SurveyHub.jsx?t=1780639406870:39:3)\n    at Dashboard2 (http://localhost:5173/src/Dashboard.jsx?t=1780639145213:93:63)\n    at div\n    at div\n    at div\n    at div\n    at App (http://localhost:5173/src/AppShell.jsx?t=1780637478154:53:151)\n    at MSGraphProvider (http://localhost:5173/src/contexts/MSGraphContext.jsx?t=1780637478154:64:35)\n    at AuthProvider (http://localhost:5173/src/contexts/AuthContext.jsx:50:32)\n    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.jsx:31:5)"}
+[OpenTiming] doc-click @ 30848583ms Package 2 - Rev 4 -- IC.pdf
+=== PAGE RELOAD (navigation) @ 2026-06-05T14:05:31.900Z ===
+=== PAGE RELOAD (navigation) @ 2026-06-05T14:05:32.087Z ===
+[OpenTiming] doc-click @ 1995ms Package 2 - Rev 4 -- IC.pdf
+[OpenTiming] doc-click @ 6930ms Package 2 - Rev 4 -- IC.pdf
+[OpenTiming] pdfid-resolve @ 17611ms Package 2 - Rev 4 -- IC.pdf-6311068
+[OpenTiming] hydrate-start @ 17783ms 0c9626ea-e5b8-4de2-822d-95543df54bd1
+[OpenTiming] snapshot-fetch-done @ 18101ms null
+[InteractionDiag] interactive-ready @ 18161ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] crdt-hydrate-done @ 18201ms pages=0
+[OpenTiming] first-marks-painted @ 18354ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 2500ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+console.warn @ @supabase/gotrue-js: Lock "lock:sb-cvamwtpsuvxvjdnotbeg-auth-token" was not released within 2500ms. This may indicate an orphaned lock from a component unmount (e.g., React Strict Mode). Forcefully acquiring the lock to recover.
+=== PAGE RELOAD (navigation) @ 2026-06-05T14:20:30.625Z ===
+[OpenTiming] doc-click @ 2998ms Package 2 - Rev 4 -- IC.pdf
+[OpenTiming] pdfid-resolve @ 3647ms Package 2 - Rev 4 -- IC.pdf-6311068
+[OpenTiming] hydrate-start @ 3728ms 0c9626ea-e5b8-4de2-822d-95543df54bd1
+[InteractionDiag] interactive-ready @ 4059ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] snapshot-fetch-done @ 4100ms null
+[OpenTiming] crdt-hydrate-done @ 4212ms pages=0
+[OpenTiming] first-marks-painted @ 4299ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
