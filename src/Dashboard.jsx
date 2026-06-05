@@ -7,6 +7,7 @@
 // singleton in the Vite module graph, so no re-init is needed here.
 
 import { loadPdfjs } from './utils/pdfWorkerConfig';
+import { classifyIncomingFile } from './utils/incomingFileResolver';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import SurveyHub from './home/SurveyHub';
@@ -523,6 +524,21 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         perfUpload.mark('electron-dialog', 'File object created');
         perfUpload.end('electron-dialog');
 
+        // Recognize a file we already have (same name + exact byte size) and
+        // reopen THAT copy instead of uploading a blank duplicate. This is the
+        // root-cause fix for the blank-pages bug, where every open created a new
+        // empty cloud document.
+        const incomingDecision = classifyIncomingFile(file, supabaseDocuments);
+        if (incomingDecision.kind === 'reuse') {
+          const existing = incomingDecision.doc;
+          file.id = existing.id;
+          file.projectId = existing.project_id ?? existing.projectId ?? null;
+          file.supabaseFilePath = existing.file_path ?? existing.filePath ?? null;
+          file.user_id = existing.user_id ?? existing.userId ?? file.user_id ?? null;
+          if (openAfterUpload) onDocumentSelect(file, filePath);
+          return;
+        }
+
         // Start upload timing for this specific file
         perfUpload.start(file.name);
 
@@ -660,6 +676,21 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       const openAfterUpload = pendingUpload.open !== false;
       if (!projectId && selectedProjectId && activeSection === 'projects') {
         projectId = selectedProjectId;
+      }
+
+      // Recognize a file we already have (same name + exact byte size) and
+      // reopen THAT copy instead of uploading a blank duplicate (root-cause fix
+      // for the blank-pages bug — every open used to create a new empty doc).
+      const incomingDecision = classifyIncomingFile(file, supabaseDocuments);
+      if (incomingDecision.kind === 'reuse') {
+        const existing = incomingDecision.doc;
+        file.id = existing.id;
+        file.projectId = existing.project_id ?? existing.projectId ?? null;
+        file.supabaseFilePath = existing.file_path ?? existing.filePath ?? null;
+        file.user_id = existing.user_id ?? existing.userId ?? file.user_id ?? null;
+        if (openAfterUpload) onDocumentSelect(file);
+        event.target.value = '';
+        return;
       }
 
       // OPTIMISTIC UPLOAD: open immediately — unless this is a silent
