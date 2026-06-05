@@ -336,8 +336,10 @@ function createWindow() {
           win.loadFile(distPath).then(() => {
             // Wait for the page to load, then inject the hash
             win.webContents.once('did-finish-load', () => {
-              const hash = parsedUrl.hash.replace(/"/g, '\\"'); // Escape quotes
-              win.webContents.executeJavaScript(`window.location.hash = "${hash}";`).catch(err => {
+              // Inject the OAuth hash safely. JSON.stringify escapes quotes,
+              // backslashes and newlines; the old quote-only escape did not, so a
+              // crafted hash could break out of the string literal.
+              win.webContents.executeJavaScript(`window.location.hash = ${JSON.stringify(parsedUrl.hash)};`).catch(err => {
                 console.error('Error setting OAuth hash:', err);
               });
             });
@@ -717,6 +719,20 @@ ipcMain.handle('shell:openPath', async (event, filePath) => {
 });
 
 ipcMain.handle('shell:openExternal', async (event, url) => {
+  // Only open web/mail links externally. All app callers pass http(s) URLs
+  // (survey web links, Stripe checkout, the GitHub repo); reject anything else
+  // (file:, javascript:, custom schemes) so a crafted URL can't launch them.
+  const allowedProtocols = ['http:', 'https:', 'mailto:'];
+  try {
+    const parsed = new URL(url);
+    if (!allowedProtocols.includes(parsed.protocol)) {
+      console.warn(`Rejected openExternal URL with disallowed protocol: ${url}`);
+      return '';
+    }
+  } catch {
+    console.warn(`Rejected openExternal with invalid URL: ${url}`);
+    return '';
+  }
   return await shell.openExternal(url);
 });
 
