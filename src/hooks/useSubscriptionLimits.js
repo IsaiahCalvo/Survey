@@ -65,16 +65,9 @@ export const useSubscriptionLimits = () => {
     documents: 0,
     storage: 0,
   });
-  const [limits, setLimits] = useState(TIER_LIMITS.free);
+  const limits = TIER_LIMITS[userTier] || TIER_LIMITS.free;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
-  // Update limits when tier changes
-  useEffect(() => {
-    if (userTier) {
-      setLimits(TIER_LIMITS[userTier] || TIER_LIMITS.free);
-    }
-  }, [userTier]);
 
   // Fetch current usage from database. `coalesce:true` (boot) shares the
   // project-count + document-count + storage trio across the multiple live
