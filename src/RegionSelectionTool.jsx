@@ -84,7 +84,9 @@ const RegionSelectionTool = ({
   const [targetElement, setTargetElement] = useState(null);
   const [isCursorOverCanvas, setIsCursorOverCanvas] = useState(false);
   const [canvasRect, setCanvasRect] = useState(null);
-  const [cursorPosition, setCursorPosition] = useState({ x: 0, y: 0 });
+  const cursorPositionRef = useRef({ x: 0, y: 0 });
+  const addIndicatorRef = useRef(null);
+  const subtractIndicatorRef = useRef(null);
   const [isShiftPressed, setIsShiftPressed] = useState(false);
   const [isOptionAltPressed, setIsOptionAltPressed] = useState(false);
   const [isCmdCtrlPressed, setIsCmdCtrlPressed] = useState(false);
@@ -1103,10 +1105,15 @@ const RegionSelectionTool = ({
 
     // Update cursor position for subtractive mode indicator
     if (isWithinCanvas && (effectiveToolType === 'rectangular' || effectiveToolType === 'freehand')) {
-      setCursorPosition({
-        x: event.clientX,
-        y: event.clientY
-      });
+      cursorPositionRef.current = { x: event.clientX, y: event.clientY };
+      if (addIndicatorRef.current) {
+        addIndicatorRef.current.style.left = (event.clientX + 8) + 'px';
+        addIndicatorRef.current.style.top = (event.clientY - 20) + 'px';
+      }
+      if (subtractIndicatorRef.current) {
+        subtractIndicatorRef.current.style.left = (event.clientX + 8) + 'px';
+        subtractIndicatorRef.current.style.top = (event.clientY - 20) + 'px';
+      }
     }
 
     if (!isWithinCanvas && !isDrawing && !interactionState) {
@@ -2731,10 +2738,11 @@ const RegionSelectionTool = ({
       {/* Floating Plus Sign Indicator for Additive Mode */}
       {effectiveSelectionMode === REGION_OPERATIONS.ADD && isCursorOverCanvas && (toolType === 'rectangular' || toolType === 'freehand') && (
         <div
+          ref={addIndicatorRef}
           style={{
             position: 'fixed',
-            left: `${cursorPosition.x + 8}px`,
-            top: `${cursorPosition.y - 20}px`,
+            left: `${cursorPositionRef.current.x + 8}px`,
+            top: `${cursorPositionRef.current.y - 20}px`,
             pointerEvents: 'none',
             zIndex: 100002
           }}
@@ -2757,10 +2765,11 @@ const RegionSelectionTool = ({
       {/* Floating Minus Sign Indicator for Subtractive Mode */}
       {effectiveSelectionMode === REGION_OPERATIONS.SUBTRACT && isCursorOverCanvas && (toolType === 'rectangular' || toolType === 'freehand') && (
         <div
+          ref={subtractIndicatorRef}
           style={{
             position: 'fixed',
-            left: `${cursorPosition.x + 8}px`,
-            top: `${cursorPosition.y - 20}px`,
+            left: `${cursorPositionRef.current.x + 8}px`,
+            top: `${cursorPositionRef.current.y - 20}px`,
             pointerEvents: 'none',
             zIndex: 100002
           }}
