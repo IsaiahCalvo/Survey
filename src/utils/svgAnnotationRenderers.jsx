@@ -690,10 +690,16 @@ export const renderPolygon = (obj, index) => {
   // top-left corner. Compute the center in pre-rotation local space (after
   // scale + pathOffset, before rotate) so it matches the rotation center
   // used by useSVGInteraction's drag preview.
-  const pointXs = obj.points.map(p => toNumber(p?.x));
-  const pointYs = obj.points.map(p => toNumber(p?.y));
-  const rawCenterX = (Math.min(...pointXs) + Math.max(...pointXs)) / 2;
-  const rawCenterY = (Math.min(...pointYs) + Math.max(...pointYs)) / 2;
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const p of obj.points) {
+    const x = toNumber(p?.x), y = toNumber(p?.y);
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  const rawCenterX = (minX + maxX) / 2;
+  const rawCenterY = (minY + maxY) / 2;
   const rotCenterX = scaleX * (rawCenterX - pathOffsetX);
   const rotCenterY = scaleY * (rawCenterY - pathOffsetY);
 
@@ -795,10 +801,16 @@ export const renderPolyline = (obj, index) => {
 
   // UX: same rotation-center fix as renderPolygon — rotate around visual
   // center, not the top-left corner.
-  const pointXs = obj.points.map(p => toNumber(p?.x));
-  const pointYs = obj.points.map(p => toNumber(p?.y));
-  const rawCenterX = (Math.min(...pointXs) + Math.max(...pointXs)) / 2;
-  const rawCenterY = (Math.min(...pointYs) + Math.max(...pointYs)) / 2;
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const p of obj.points) {
+    const x = toNumber(p?.x), y = toNumber(p?.y);
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  const rawCenterX = (minX + maxX) / 2;
+  const rawCenterY = (minY + maxY) / 2;
   const rotCenterX = scaleX * (rawCenterX - pathOffsetX);
   const rotCenterY = scaleY * (rawCenterY - pathOffsetY);
 

@@ -577,11 +577,11 @@ function MoreMenu({ anchorRect, items, onClose }) {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('mousedown', onDown, true);
     window.addEventListener('keydown', onKey, true);
-    window.addEventListener('scroll', onClose, true);
+    window.addEventListener('scroll', onClose, { capture: true, passive: true });
     return () => {
       window.removeEventListener('mousedown', onDown, true);
       window.removeEventListener('keydown', onKey, true);
-      window.removeEventListener('scroll', onClose, true);
+      window.removeEventListener('scroll', onClose, { capture: true });
     };
   }, [onClose]);
 
@@ -658,11 +658,11 @@ function CustomSelect({ value, options, onChange, placeholder = 'Select…', dis
     const onScroll = () => setOpen(false);
     window.addEventListener('mousedown', onDown, true);
     window.addEventListener('keydown', onKey, true);
-    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('scroll', onScroll, { capture: true, passive: true });
     return () => {
       window.removeEventListener('mousedown', onDown, true);
       window.removeEventListener('keydown', onKey, true);
-      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('scroll', onScroll, { capture: true });
     };
   }, [open]);
 

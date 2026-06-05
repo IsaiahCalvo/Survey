@@ -153,7 +153,11 @@ export default function DocumentsLedger({
      render its real first page (download first, public URL as a fallback). */
   const { downloadDocument, getDocumentUrl } = useStorage();
 
-  const projectName = (id) => projects.find((p) => p.id === id)?.name || null;
+  const projectNameById = useMemo(() => {
+    const m = new Map();
+    for (const p of projects) m.set(p.id, p.name);
+    return m;
+  }, [projects]);
 
   // Map each real document into the shape the ledger markup expects.
   const mapped = useMemo(() => documents.map((d, i) => {
@@ -163,7 +167,7 @@ export default function DocumentsLedger({
       raw: d,
       id: d.id,
       name: d.name,
-      project: projectName(d.project_id) || 'Sandbox',
+      project: projectNameById.get(d.project_id) || 'Sandbox',
       size: formatSize(d.file_size),
       sizeBytes: Number(d.file_size) || 0,
       pages: d.pages ?? d.page_count ?? null,

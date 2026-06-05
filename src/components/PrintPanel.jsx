@@ -674,7 +674,7 @@ export default function PrintPanel({
   useEffect(() => {
     if (!includedSet.size) return;
     if (!includedSet.has(currentPage)) {
-      const first = Array.from(includedSet).sort((a, b) => a - b)[0];
+      const first = Math.min(...includedSet);
       setCurrentPage(first);
     }
   }, [includedSet, currentPage]);

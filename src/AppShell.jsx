@@ -23,7 +23,7 @@ import SaveLogBanner from './components/SaveLogBanner';
 import SurveySpacesRail from './SurveySpacesRail';
 import TabBar from './TabBar';
 import YDocProvider from './components/collab/YDocProvider.jsx';
-import { ARROWHEAD_STYLE_LABELS } from './PageAnnotationLayer';
+import { ARROWHEAD_STYLE_LABELS } from './components/Callout/types';
 import { AuthModal } from './components/AuthModal';
 import { FORM_TOOL_IDS } from './components/formDesignerTools';
 import { ZOOM_MODES } from './utils/zoomController';
