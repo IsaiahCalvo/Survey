@@ -27,7 +27,7 @@ const renderQueue = [];
 
 const processRenderQueue = () => {
   while (activeRenderCount < MAX_CONCURRENT_RENDERS && renderQueue.length > 0) {
-    renderQueue.sort((a, b) => a.priority - b.priority);
+    if (renderQueue.length > 1) renderQueue.sort((a, b) => a.priority - b.priority);
     const next = renderQueue.shift();
     if (next && next.execute) {
       activeRenderCount++;

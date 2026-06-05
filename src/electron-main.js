@@ -25,6 +25,7 @@ const CONTINUOUS_LOG_PATH = path.join(app.getAppPath(), 'Logs', 'renderer-consol
 const CONTINUOUS_LOG_MAX_BYTES = 5 * 1024 * 1024; // 5MB cap
 const CONTINUOUS_LOG_KEEP_BYTES = 2 * 1024 * 1024; // truncate down to last ~2MB
 let _continuousLogDirReady = false;
+let _continuousAppendCount = 0;
 function continuousLevelName(level) {
   // Electron numeric levels: 0 verbose, 1 info, 2 warning, 3 error.
   switch (level) {
@@ -58,14 +59,20 @@ function appendContinuous(level, message, lineNo, sourceId) {
       _continuousLogDirReady = true;
     }
     // Opportunistic size cap so the file can't grow unbounded across long sessions.
-    try {
-      const st = fs.statSync(CONTINUOUS_LOG_PATH);
-      if (st && st.size > CONTINUOUS_LOG_MAX_BYTES) {
-        const buf = fs.readFileSync(CONTINUOUS_LOG_PATH);
-        const sliced = buf.slice(buf.length - CONTINUOUS_LOG_KEEP_BYTES);
-        fs.writeFileSync(CONTINUOUS_LOG_PATH, sliced);
-      }
-    } catch (_e) { /* file may not exist yet, or stat failed — ignore */ }
+    // This fires for EVERY renderer console line, so only touch the filesystem
+    // every 256th call and do the check + truncation asynchronously — never block
+    // the main-process event loop on the logging hot path.
+    _continuousAppendCount = (_continuousAppendCount + 1) % 256;
+    if (_continuousAppendCount === 0) {
+      fs.promises.stat(CONTINUOUS_LOG_PATH).then((st) => {
+        if (st && st.size > CONTINUOUS_LOG_MAX_BYTES) {
+          return fs.promises.readFile(CONTINUOUS_LOG_PATH).then((buf) => {
+            const sliced = buf.slice(buf.length - CONTINUOUS_LOG_KEEP_BYTES);
+            return fs.promises.writeFile(CONTINUOUS_LOG_PATH, sliced);
+          });
+        }
+      }).catch(() => { /* file may not exist yet, or stat failed — ignore */ });
+    }
     const levelName = continuousLevelName(level);
     const src = `${sourceId == null ? '' : sourceId}:${lineNo == null ? '' : lineNo}`;
     const safeMessage = redactSecrets(message == null ? '' : String(message));
@@ -690,9 +697,11 @@ ipcMain.handle('dialog:openFile', async (event, options = {}) => {
   const filePath = filePaths[0];
 
   try {
-    // Read the file and return both the data and the path
-    const data = fs.readFileSync(filePath);
-    const stats = fs.statSync(filePath);
+    // Read async (fs.promises) so a large PDF doesn't block the main-process event
+    // loop, and return a Uint8Array which IPC transfers over the fast binary path
+    // instead of serializing a million-element plain number array.
+    const data = await fs.promises.readFile(filePath);
+    const stats = await fs.promises.stat(filePath);
     const fileName = path.basename(filePath);
 
     return {
@@ -700,7 +709,7 @@ ipcMain.handle('dialog:openFile', async (event, options = {}) => {
       filePath,
       fileName,
       fileSize: stats.size,
-      data: Array.from(data) // Convert Buffer to array for IPC
+      data: new Uint8Array(data)
     };
   } catch (error) {
     console.error('Failed to read file:', error);
@@ -773,8 +782,8 @@ ipcMain.handle('shell:openExternal', async (event, url) => {
 
 ipcMain.handle('fs:readFile', async (event, path) => {
   try {
-    const data = fs.readFileSync(path);
-    return data; // Returns Buffer
+    const data = await fs.promises.readFile(path);
+    return data; // Returns Buffer (Uint8Array on the renderer)
   } catch (error) {
     console.error('Failed to read file:', error);
     throw error;
@@ -784,10 +793,10 @@ ipcMain.handle('fs:readFile', async (event, path) => {
 ipcMain.handle('fs:writeFile', async (event, { path: filePath, data }) => {
   try {
     const dir = path.dirname(filePath);
-    if (dir && !fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+    if (dir) {
+      await fs.promises.mkdir(dir, { recursive: true });
     }
-    fs.writeFileSync(filePath, Buffer.from(data));
+    await fs.promises.writeFile(filePath, Buffer.from(data));
     return { success: true };
   } catch (error) {
     console.error('Failed to write file:', error);
@@ -798,10 +807,10 @@ ipcMain.handle('fs:writeFile', async (event, { path: filePath, data }) => {
 ipcMain.handle('fs:appendFile', async (event, { path: filePath, data }) => {
   try {
     const dir = path.dirname(filePath);
-    if (dir && !fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+    if (dir) {
+      await fs.promises.mkdir(dir, { recursive: true });
     }
-    fs.appendFileSync(filePath, Buffer.from(data));
+    await fs.promises.appendFile(filePath, Buffer.from(data));
     return { success: true };
   } catch (error) {
     console.error('Failed to append file:', error);
@@ -952,19 +961,32 @@ ipcMain.handle('fileWatcher:start', async (event, { filePath, watchId }) => {
       }
     });
 
+    // Guard every send: if the renderer closed its tab/window, event.sender is
+    // destroyed and send() would throw repeatedly on each filesystem event.
+    const safeSend = (channel, payload) => {
+      if (!event.sender.isDestroyed()) event.sender.send(channel, payload);
+    };
+
     // Handle file changes
     watcher.on('change', (path) => {
-      event.sender.send('fileWatcher:changed', { watchId, filePath: path, event: 'change' });
+      safeSend('fileWatcher:changed', { watchId, filePath: path, event: 'change' });
     });
 
     // Handle file deletion
     watcher.on('unlink', (path) => {
-      event.sender.send('fileWatcher:changed', { watchId, filePath: path, event: 'unlink' });
+      safeSend('fileWatcher:changed', { watchId, filePath: path, event: 'unlink' });
     });
 
     watcher.on('error', (error) => {
       console.error('File watcher error:', error);
-      event.sender.send('fileWatcher:error', { watchId, error: error.message });
+      safeSend('fileWatcher:error', { watchId, error: error.message });
+    });
+
+    // If the renderer goes away before fileWatcher:stop is called, auto-close the
+    // watcher so it stops firing on a destroyed WebContents.
+    event.sender.once('destroyed', () => {
+      try { watcher.close(); } catch (_e) { /* ignore */ }
+      fileWatchers.delete(watchId);
     });
 
     fileWatchers.set(watchId, watcher);
