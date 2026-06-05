@@ -19197,29 +19197,32 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const container = containerRef.current;
       if (!container) return;
 
-      // Check if event target is inside a modal overlay (keyboard shortcuts modal)
+      // Fast path: when the wheel target is inside the PDF container (the common
+      // case during scroll/zoom, 60+ events/sec) we know it can't be inside an
+      // overlay modal, so skip the page-wide querySelector + getBoundingClientRect
+      // entirely. Those only run in the rare case the target is outside the container.
+      if (container.contains(e.target)) {
+        handleWheel(e);
+        return;
+      }
+
+      // Target is outside the container. Don't hijack wheel events that belong to
+      // an overlay modal (e.g. the keyboard shortcuts modal) sitting over the PDF.
       const modalOverlay = document.querySelector('[data-keyboard-shortcuts-modal="true"]');
-      const isInModal = modalOverlay && modalOverlay.contains(e.target);
-
-      if (isInModal) {
-        return; // Don't handle wheel events inside modal
+      if (modalOverlay && modalOverlay.contains(e.target)) {
+        return;
       }
 
-      const isTargetContained = container.contains(e.target);
-      let isCoordInContainer = false;
-
-      if (!isTargetContained) {
-        // Check if event coordinates are within container bounds
-        const rect = container.getBoundingClientRect();
-        isCoordInContainer = (
-          e.clientX >= rect.left &&
-          e.clientX <= rect.right &&
-          e.clientY >= rect.top &&
-          e.clientY <= rect.bottom
-        );
-      }
-
-      if (isTargetContained || isCoordInContainer) {
+      // Otherwise, only handle it if the pointer coordinates fall within the
+      // container bounds (covers transparent overlays positioned over the PDF).
+      const rect = container.getBoundingClientRect();
+      const isCoordInContainer = (
+        e.clientX >= rect.left &&
+        e.clientX <= rect.right &&
+        e.clientY >= rect.top &&
+        e.clientY <= rect.bottom
+      );
+      if (isCoordInContainer) {
         handleWheel(e);
       }
     };
