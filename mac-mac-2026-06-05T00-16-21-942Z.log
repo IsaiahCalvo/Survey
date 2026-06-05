@@ -1,0 +1,461 @@
+===== SurveyApp Save Log =====
+version:   0.1.46
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1203x833
+locale:    en-US
+timestamp: 2026-06-05T00:16:21.938Z (6/4/2026, 8:16:21 PM)
+==============================
+[DrawCanvas p10] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p10] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p11] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p11] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p12] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p12] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p13] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p13] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p14] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p14] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p15] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p15] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p16] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p16] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p17] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p17] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p18] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p18] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p19] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p19] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p20] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p20] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p21] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p21] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p22] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p22] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p23] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p23] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p24] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p24] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p25] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p25] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p26] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p26] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p27] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p27] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p28] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p28] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p29] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p29] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p30] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p30] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p31] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p31] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p32] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p32] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p33] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p33] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p34] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p34] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p35] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p35] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p36] MOUNT — tool=pen, isShape=false, isDrawingMode=true
+[DrawCanvas p36] shape effect — tool=pen, isShape=false, isDrawingMode=true
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-1","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-1","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] pointer release {"id":"gesture-1","frames":44,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"762fd2d2-efbb-49a7-9bf6-4037e3f309c5"}
+[PreviewDiag] final commit {"id":"gesture-1","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"762fd2d2-efbb-49a7-9bf6-4037e3f309c5","source":"path:created","objectDelta":1,"previousObjectCount":1,"nextObjectCount":2,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] preview {"id":"gesture-1","frames":50,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"762fd2d2-efbb-49a7-9bf6-4037e3f309c5","source":"path:created","objectDelta":1,"previousObjectCount":1,"nextObjectCount":2,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] preview {"id":"gesture-1","frames":75,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"pen-stroke","pageNumber":1,"annotationId":"762fd2d2-efbb-49a7-9bf6-4037e3f309c5","source":"path:created","objectDelta":1,"previousObjectCount":1,"nextObjectCount":2,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[DrawCanvas p1] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p2] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p3] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p4] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p5] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p6] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p7] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p8] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p9] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p10] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p11] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p12] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p13] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p14] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p15] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p16] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p17] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p18] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p19] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p20] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p21] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p22] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p23] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p24] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p25] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p26] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p27] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p28] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p29] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p30] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p31] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p32] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p33] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p34] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p35] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p36] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p1] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p2] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p3] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p4] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p5] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p6] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p7] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p8] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p9] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p10] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p11] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p12] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p13] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p14] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p15] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p16] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p17] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p18] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p19] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p20] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p21] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p22] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p23] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p24] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p25] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p26] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p27] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p28] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p29] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p30] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p31] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p32] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p33] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p34] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p35] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[DrawCanvas p36] shape effect — tool=highlighter, isShape=false, isDrawingMode=true
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"highlighter","type":"highlighter","action":"highlight-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-2","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"highlighter","type":"highlighter","action":"highlight-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] sync push {"gestureId":"gesture-2","totalAfterRelease":0,"kind":"fabric","count":1,"changedObjectCount":1,"deletedCount":0,"pageCount":1}
+[PreviewDiag] summary path:created started, 88 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-1","durationMs":1867.6,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"pen","type":"path","action":"path:created","pageNumber":1,"annotationId":"762fd2d2-efbb-49a7-9bf6-4037e3f309c5","source":"path:created","objectDelta":1,"previousObjectCount":1,"nextObjectCount":2,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[PreviewDiag] preview {"id":"gesture-2","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"highlighter","type":"highlighter","action":"highlight-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] pointer release {"id":"gesture-2","frames":47,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"highlighter","type":"highlighter","action":"highlight-stroke","pageNumber":1,"annotationId":"deaf404e-5ffb-4f42-985d-0c678c5cbdda"}
+[PreviewDiag] final commit {"id":"gesture-2","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"highlighter","type":"highlighter","action":"path:created","pageNumber":1,"annotationId":"deaf404e-5ffb-4f42-985d-0c678c5cbdda","source":"path:created","objectDelta":1,"previousObjectCount":2,"nextObjectCount":3,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] preview {"id":"gesture-2","frames":50,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"highlighter","type":"highlighter","action":"highlight-stroke","pageNumber":1,"annotationId":"deaf404e-5ffb-4f42-985d-0c678c5cbdda","source":"path:created","objectDelta":1,"previousObjectCount":2,"nextObjectCount":3,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] preview {"id":"gesture-2","frames":75,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"highlighter","type":"highlighter","action":"highlight-stroke","pageNumber":1,"annotationId":"deaf404e-5ffb-4f42-985d-0c678c5cbdda","source":"path:created","objectDelta":1,"previousObjectCount":2,"nextObjectCount":3,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[FabricEraserCanvas p1] enliven — input=3 enlivenable=3 unsupported=0 output=3 nulls=0 types={"path":3}→{"path":3}
+[FabricEraserCanvas p6] enliven — input=410 enlivenable=410 unsupported=0 output=410 nulls=0 types={"path":408,"rect":1,"textbox":1}→{"path":408,"rect":1,"textbox":1}
+[FabricEraserCanvas p7] enliven — input=146 enlivenable=146 unsupported=0 output=146 nulls=0 types={"path":145,"rect":1}→{"path":145,"rect":1}
+[FabricEraserCanvas p8] enliven — input=393 enlivenable=393 unsupported=0 output=393 nulls=0 types={"path":392,"rect":1}→{"path":392,"rect":1}
+[FabricEraserCanvas p9] enliven — input=1520 enlivenable=1520 unsupported=0 output=1520 nulls=0 types={"path":1519,"rect":1}→{"path":1519,"rect":1}
+[FabricEraserCanvas p10] enliven — input=330 enlivenable=330 unsupported=0 output=330 nulls=0 types={"path":329,"rect":1}→{"path":329,"rect":1}
+[FabricEraserCanvas p11] enliven — input=257 enlivenable=257 unsupported=0 output=257 nulls=0 types={"path":256,"rect":1}→{"path":256,"rect":1}
+[PreviewDiag] summary path:created started, 82 preview frames, 1 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-2","durationMs":2201.6,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"highlighter","type":"highlighter","action":"path:created","pageNumber":1,"annotationId":"deaf404e-5ffb-4f42-985d-0c678c5cbdda","source":"path:created","objectDelta":1,"previousObjectCount":2,"nextObjectCount":3,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[PreviewDiag] sync push {"gestureId":"gesture-2","totalAfterRelease":1,"kind":"fabric","count":1,"changedObjectCount":1,"deletedCount":0,"pageCount":1}
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricEraserCanvas","tool":"eraser","type":"annotation","action":"eraser-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] pointer release {"id":"gesture-3","frames":0,"pointerDown":false,"surface":"FabricEraserCanvas","tool":"eraser","type":"annotation","action":"eraser-stroke","pageNumber":1,"annotationId":null}
+[EraserHitTest] {"pageNumber":1,"gestureId":"gesture-3","pointerBounds":{"left":372.8086899899231,"top":570.8396710570488,"right":412.995096584948,"bottom":611.0260776520737,"width":40.186406595024884,"height":40.186406595024884},"candidateAnnotationIds":["ink-1779033329740-giqrs58lm","762fd2d2-efbb-49a7-9bf6-4037e3f309c5","deaf404e-5ffb-4f42-985d-0c678c5cbdda"],"rejectedAnnotations":[{"id":"ink-1779033329740-giqrs58lm","reason":"geometry-miss"},{"id":"762fd2d2-efbb-49a7-9bf6-4037e3f309c5","reason":"geometry-miss"}],"touchedAnnotationIds":["deaf404e-5ffb-4f42-985d-0c678c5cbdda"],"finalDeletedAnnotationIds":[],"finalChangedAnnotationIds":["deaf404e-5ffb-4f42-985d-0c678c5cbdda"],"objectDelta":0,"changedObjectsCount":1}
+[PreviewDiag] final commit {"id":"gesture-3","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"eraser","type":"annotation","action":"eraser:apply","pageNumber":1,"annotationId":null,"source":"eraser:commit","objectDelta":0,"previousObjectCount":3,"nextObjectCount":3,"changedObjectsCount":2,"checkpointPolicy":"normal"}
+[PreviewDiag] summary eraser:apply started, 0 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-3","durationMs":978.6,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"eraser","type":"annotation","action":"eraser:apply","pageNumber":1,"annotationId":null,"source":"eraser:commit","objectDelta":0,"previousObjectCount":3,"nextObjectCount":3,"changedObjectsCount":2,"checkpointPolicy":"normal","reason":"settled"}
+[PreviewDiag] sync push {"gestureId":"gesture-3","totalAfterRelease":1,"kind":"fabric","count":1,"changedObjectCount":1,"deletedCount":0,"pageCount":1}
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricEraserCanvas","tool":"eraser","type":"annotation","action":"eraser-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-4","frames":1,"pointerDown":true,"surface":"FabricEraserCanvas","tool":"eraser","type":"annotation","action":"eraser-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] pointer release {"id":"gesture-4","frames":1,"pointerDown":false,"surface":"FabricEraserCanvas","tool":"eraser","type":"annotation","action":"eraser-stroke","pageNumber":1,"annotationId":null}
+[EraserHitTest] {"pageNumber":1,"gestureId":"gesture-4","pointerBounds":{"left":311.7140256181503,"top":619.2940600415583,"right":351.9004322131752,"bottom":659.4804666365832,"width":40.186406595024884,"height":40.186406595024884},"candidateAnnotationIds":["ink-1779033329740-giqrs58lm","762fd2d2-efbb-49a7-9bf6-4037e3f309c5","deaf404e-5ffb-4f42-985d-0c678c5cbdda"],"rejectedAnnotations":[{"id":"ink-1779033329740-giqrs58lm","reason":"geometry-miss"}],"touchedAnnotationIds":["762fd2d2-efbb-49a7-9bf6-4037e3f309c5","deaf404e-5ffb-4f42-985d-0c678c5cbdda"],"finalDeletedAnnotationIds":[],"finalChangedAnnotationIds":["762fd2d2-efbb-49a7-9bf6-4037e3f309c5","deaf404e-5ffb-4f42-985d-0c678c5cbdda"],"objectDelta":0,"changedObjectsCount":2}
+[PreviewDiag] final commit {"id":"gesture-4","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"eraser","type":"annotation","action":"eraser:apply","pageNumber":1,"annotationId":null,"source":"eraser:commit","objectDelta":0,"previousObjectCount":3,"nextObjectCount":3,"changedObjectsCount":2,"checkpointPolicy":"normal"}
+[PreviewDiag] sync push {"gestureId":"gesture-4","totalAfterRelease":1,"kind":"fabric","count":1,"changedObjectCount":2,"deletedCount":0,"pageCount":1}
+[PreviewDiag] summary eraser:apply started, 1 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 1 sync push after release, 0 backup writes after release {"id":"gesture-4","durationMs":1378.4,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"eraser","type":"annotation","action":"eraser:apply","pageNumber":1,"annotationId":null,"source":"eraser:commit","objectDelta":0,"previousObjectCount":3,"nextObjectCount":3,"changedObjectsCount":2,"checkpointPolicy":"normal","reason":"settled"}
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricEraserCanvas","tool":"eraser","type":"annotation","action":"eraser-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] pointer release {"id":"gesture-5","frames":0,"pointerDown":false,"surface":"FabricEraserCanvas","tool":"eraser","type":"annotation","action":"eraser-stroke","pageNumber":1,"annotationId":null}
+[EraserHitTest] {"pageNumber":1,"gestureId":"gesture-5","pointerBounds":{"left":293.8069688195272,"top":614.0272786301986,"right":333.9933754145521,"bottom":654.2136852252235,"width":40.186406595024884,"height":40.186406595024884},"candidateAnnotationIds":["ink-1779033329740-giqrs58lm","762fd2d2-efbb-49a7-9bf6-4037e3f309c5","deaf404e-5ffb-4f42-985d-0c678c5cbdda"],"rejectedAnnotations":[{"id":"ink-1779033329740-giqrs58lm","reason":"geometry-miss"},{"id":"762fd2d2-efbb-49a7-9bf6-4037e3f309c5","reason":"geometry-miss"},{"id":"deaf404e-5ffb-4f42-985d-0c678c5cbdda","reason":"geometry-miss"}],"touchedAnnotationIds":[],"finalDeletedAnnotationIds":[],"finalChangedAnnotationIds":[],"objectDelta":0,"changedObjectsCount":0}
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricEraserCanvas","tool":"eraser","type":"annotation","action":"eraser-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-6","frames":1,"pointerDown":true,"surface":"FabricEraserCanvas","tool":"eraser","type":"annotation","action":"eraser-stroke","pageNumber":1,"annotationId":null}
+[PreviewDiag] pointer release {"id":"gesture-6","frames":1,"pointerDown":false,"surface":"FabricEraserCanvas","tool":"eraser","type":"annotation","action":"eraser-stroke","pageNumber":1,"annotationId":null}
+[EraserHitTest] {"pageNumber":1,"gestureId":"gesture-6","pointerBounds":{"left":256.9394989400091,"top":640.3611856869971,"right":297.125905535034,"bottom":680.547592282022,"width":40.186406595024884,"height":40.186406595024884},"candidateAnnotationIds":["ink-1779033329740-giqrs58lm","762fd2d2-efbb-49a7-9bf6-4037e3f309c5","deaf404e-5ffb-4f42-985d-0c678c5cbdda"],"rejectedAnnotations":[{"id":"ink-1779033329740-giqrs58lm","reason":"geometry-miss"},{"id":"762fd2d2-efbb-49a7-9bf6-4037e3f309c5","reason":"geometry-miss"},{"id":"deaf404e-5ffb-4f42-985d-0c678c5cbdda","reason":"geometry-miss"}],"touchedAnnotationIds":[],"finalDeletedAnnotationIds":[],"finalChangedAnnotationIds":[],"objectDelta":0,"changedObjectsCount":0}
+[PreviewDiag] summary eraser-stroke started, 0 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 0 commits on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-5","durationMs":1523.1,"pointerDown":false,"surface":"FabricEraserCanvas","tool":"eraser","type":"annotation","action":"eraser-stroke","pageNumber":1,"annotationId":null,"reason":"settled"}
+[PreviewDiag] summary eraser-stroke started, 1 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 0 commits on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-6","durationMs":1504.2,"pointerDown":false,"surface":"FabricEraserCanvas","tool":"eraser","type":"annotation","action":"eraser-stroke","pageNumber":1,"annotationId":null,"reason":"settled"}
+[DrawCanvas p1] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p2] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p3] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p4] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p4] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p5] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p5] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p6] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p6] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p7] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p7] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p8] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p8] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p9] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p9] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p10] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p10] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p11] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p11] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p12] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p12] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p13] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p13] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p14] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p14] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p15] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p15] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p16] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p16] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p17] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p17] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p18] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p18] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p19] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p19] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p20] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p20] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p21] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p21] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p22] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p22] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p23] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p23] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p24] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p24] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p25] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p25] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p26] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p26] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p27] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p27] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p28] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p28] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p29] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p29] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p30] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p30] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p31] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p31] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p32] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p32] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p33] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p33] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p34] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p34] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p35] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p35] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p36] MOUNT — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p36] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p4] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p5] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p6] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p7] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p8] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p9] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p10] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p11] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p12] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p13] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p14] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p15] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p16] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p17] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p18] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p19] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p20] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p21] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p22] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p23] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p24] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p25] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p26] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p27] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p28] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p29] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p30] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p31] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p32] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p33] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p34] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p35] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p36] shape effect — tool=rect, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape mousedown at (158.0, 543.5), tool=rect
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"rect","type":"rect","action":"rect-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-7","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"rect","type":"rect","action":"rect-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-7","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"rect","type":"rect","action":"rect-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-7","frames":50,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"rect","type":"rect","action":"rect-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] pointer release {"id":"gesture-7","frames":53,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"rect","type":"rect","action":"rect-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] shape mouseup — tool=rect, hasSize=true {"left":159.00344234079176,"top":544.5318416523237,"w":133.88296041308092,"h":67.52151462994834}
+[ShapeCommitDiag] commit geometry {"annotationId":"d8d0fef3-fdc8-417e-b89d-a47320f39a64","pageNumber":1,"tool":"rect","pointerDown":{"x":158.003,"y":543.532},"lastMouseMove":{"x":293.886,"y":613.053},"mouseUp":{"x":293.886,"y":613.053},"previewOuterBounds":{"left":158.003,"top":543.532,"width":135.883,"height":69.522},"fabricPreviewBeforeCommit":{"type":"rect","left":159.003,"top":544.532,"width":133.883,"height":67.522,"rx":0,"ry":0,"strokeWidth":2},"serializedAnnotation":{"type":"rect","left":159,"top":544.53,"width":133.88,"height":67.52,"rx":0,"ry":0,"strokeWidth":2,"strokeRenderContract":"drawn-centered-stroke"},"serializedOuterBounds":{"left":159,"top":544.53,"width":133.88,"height":67.52},"deltaPreviewToSaved":{"left":0.997,"top":0.998,"width":-2.003,"height":-2.002}}
+[PreviewDiag] final commit {"id":"gesture-7","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"rect","type":"rect","action":"path:created","pageNumber":1,"annotationId":"d8d0fef3-fdc8-417e-b89d-a47320f39a64","source":"path:created","objectDelta":1,"previousObjectCount":3,"nextObjectCount":4,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[ShapeCommitDiag] svg rendered bbox after commit {"annotationId":"d8d0fef3-fdc8-417e-b89d-a47320f39a64","pageNumber":1,"tool":"rect","pointerDown":{"x":158.003,"y":543.532},"lastMouseMove":{"x":293.886,"y":613.053},"mouseUp":{"x":293.886,"y":613.053},"previewOuterBounds":{"left":158.003,"top":543.532,"width":135.883,"height":69.522},"serializedOuterBounds":{"left":159,"top":544.53,"width":133.88,"height":67.52},"svgRenderedBBox":{"left":159,"top":544.53,"width":133.88,"height":67.52},"deltaPreviewToSaved":{"left":0.997,"top":0.998,"width":-2.003,"height":-2.002},"deltaSavedToSvg":{"left":0,"top":0,"width":0,"height":0},"deltaPreviewToSvg":{"left":0.997,"top":0.998,"width":-2.003,"height":-2.001}}
+[PreviewDiag] sync attempted while pointer down {"gestureId":"gesture-7","deferred":true,"kind":"fabric","pointerDown":true,"count":1,"pageCount":7,"objectCount":3060,"priorObjectCount":3059}
+[DrawCanvas p1] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p4] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p5] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p6] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p7] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p8] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p9] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p10] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p11] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p12] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p13] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p14] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p15] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p16] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p17] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p18] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p19] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p20] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p21] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p22] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p23] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p24] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p25] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p26] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p27] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p28] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p29] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p30] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p31] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p32] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p33] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p34] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p35] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p36] shape effect — tool=ellipse, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape mousedown at (347.6, 552.0), tool=ellipse
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"ellipse","type":"ellipse","action":"ellipse-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] summary path:created started, 53 preview frames, 1 sync writes during drag, 1 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-7","durationMs":2166.6,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"rect","type":"rect","action":"path:created","pageNumber":1,"annotationId":"d8d0fef3-fdc8-417e-b89d-a47320f39a64","source":"path:created","objectDelta":1,"previousObjectCount":3,"nextObjectCount":4,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[PreviewDiag] preview {"id":"gesture-8","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"ellipse","type":"ellipse","action":"ellipse-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-8","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"ellipse","type":"ellipse","action":"ellipse-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] sync attempted while pointer down {"gestureId":"gesture-8","deferred":true,"kind":"fabric","pointerDown":true,"count":1,"pageCount":7,"objectCount":3060,"priorObjectCount":3059}
+[PreviewDiag] preview {"id":"gesture-8","frames":50,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"ellipse","type":"ellipse","action":"ellipse-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] pointer release {"id":"gesture-8","frames":52,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"ellipse","type":"ellipse","action":"ellipse-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] shape mouseup — tool=ellipse, hasSize=true {"left":348.6075731497419,"top":552.9586919104993,"w":142.30981067125646,"h":85.42857142857144}
+[ShapeCommitDiag] commit geometry {"annotationId":"e22807ca-486e-4159-ab9b-a0d83c561581","pageNumber":1,"tool":"ellipse","pointerDown":{"x":347.608,"y":551.959},"lastMouseMove":{"x":491.917,"y":639.387},"mouseUp":{"x":491.917,"y":639.387},"previewOuterBounds":{"left":347.608,"top":551.959,"width":144.31,"height":87.429},"fabricPreviewBeforeCommit":{"type":"ellipse","left":348.608,"top":552.959,"width":142.31,"height":85.429,"rx":71.155,"ry":42.714,"strokeWidth":2},"serializedAnnotation":{"type":"ellipse","left":348.61,"top":552.96,"width":142.31,"height":85.43,"rx":71.15490533562823,"ry":42.71428571428572,"strokeWidth":2,"strokeRenderContract":"drawn-centered-stroke"},"serializedOuterBounds":{"left":348.61,"top":552.96,"width":142.31,"height":85.429},"deltaPreviewToSaved":{"left":1.002,"top":1.001,"width":-2,"height":-2}}
+[PreviewDiag] final commit {"id":"gesture-8","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"ellipse","type":"ellipse","action":"path:created","pageNumber":1,"annotationId":"e22807ca-486e-4159-ab9b-a0d83c561581","source":"path:created","objectDelta":1,"previousObjectCount":4,"nextObjectCount":5,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[ShapeCommitDiag] svg rendered bbox after commit {"annotationId":"e22807ca-486e-4159-ab9b-a0d83c561581","pageNumber":1,"tool":"ellipse","pointerDown":{"x":347.608,"y":551.959},"lastMouseMove":{"x":491.917,"y":639.387},"mouseUp":{"x":491.917,"y":639.387},"previewOuterBounds":{"left":347.608,"top":551.959,"width":144.31,"height":87.429},"serializedOuterBounds":{"left":348.61,"top":552.96,"width":142.31,"height":85.429},"svgRenderedBBox":{"left":348.61,"top":552.96,"width":142.31,"height":85.429},"deltaPreviewToSaved":{"left":1.002,"top":1.001,"width":-2,"height":-2},"deltaSavedToSvg":{"left":0,"top":0,"width":0,"height":0},"deltaPreviewToSvg":{"left":1.002,"top":1.001,"width":-2,"height":-2}}
+[PreviewDiag] sync attempted while pointer down {"gestureId":"gesture-8","deferred":true,"kind":"fabric","pointerDown":true,"count":1,"pageCount":7,"objectCount":3061,"priorObjectCount":3060}
+[DrawCanvas p1] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p4] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p5] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p6] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p7] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p8] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p9] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p10] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p11] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p12] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p13] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p14] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p15] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p16] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p17] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p18] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p19] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p20] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p21] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p22] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p23] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p24] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p25] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p26] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p27] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p28] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p29] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p30] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p31] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p32] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p33] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p34] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p35] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p36] shape effect — tool=line, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape mousedown at (276.0, 672.0), tool=line
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"line","type":"line","action":"line-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] line created — start=(276.0, 672.0), color=rgba(255, 0, 0, 1), sw=2
+[PreviewDiag] preview {"id":"gesture-9","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"line","type":"line","action":"line-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] summary path:created started, 52 preview frames, 2 sync writes during drag, 2 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-8","durationMs":2004.1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"ellipse","type":"ellipse","action":"path:created","pageNumber":1,"annotationId":"e22807ca-486e-4159-ab9b-a0d83c561581","source":"path:created","objectDelta":1,"previousObjectCount":4,"nextObjectCount":5,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[PreviewDiag] preview {"id":"gesture-9","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"line","type":"line","action":"line-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] sync attempted while pointer down {"gestureId":"gesture-9","deferred":true,"kind":"fabric","pointerDown":true,"count":1,"pageCount":7,"objectCount":3061,"priorObjectCount":3060}
+[PreviewDiag] pointer release {"id":"gesture-9","frames":32,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"line","type":"line","action":"line-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] line mouseup — hasSize=true {"fabricObj":{"type":"line","left":"276.0","top":"672.0","x1":"276.0","y1":"672.0","x2":"422.4","y2":"681.5","width":"146.4","height":"9.5"}}
+[PreviewDiag] final commit {"id":"gesture-9","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"line","type":"line","action":"path:created","pageNumber":1,"annotationId":"e5adf73b-983e-40e8-be79-8a4cd5985e1d","source":"path:created","objectDelta":1,"previousObjectCount":5,"nextObjectCount":6,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] sync push {"gestureId":"gesture-9","totalAfterRelease":1,"kind":"fabric","count":1,"changedObjectCount":1,"deletedCount":0,"pageCount":1}
+[DrawCanvas p1] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p4] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p5] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p6] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p7] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p8] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p9] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p10] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p11] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p12] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p13] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p14] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p15] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p16] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p17] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p18] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p19] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p20] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p21] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p22] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p23] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p24] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p25] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p26] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p27] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p28] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p29] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p30] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p31] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p32] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p33] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p34] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p35] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p36] shape effect — tool=arrow, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape mousedown at (113.8, 566.7), tool=arrow
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"arrow","type":"arrow","action":"arrow-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] arrow created — start=(113.8, 566.7), color=rgba(255, 0, 0, 1), sw=2
+[PreviewDiag] preview {"id":"gesture-10","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"arrow","type":"arrow","action":"arrow-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-10","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"arrow","type":"arrow","action":"arrow-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] pointer release {"id":"gesture-10","frames":28,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"arrow","type":"arrow","action":"arrow-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] arrow mouseup — hasSize=true {"fabricObj":{"type":"line","left":"113.8","top":"566.7","x1":"113.8","y1":"566.7","x2":"181.2","y2":"656.2","width":"67.4","height":"89.5"}}
+[PreviewDiag] final commit {"id":"gesture-10","commits":1,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"arrow","type":"arrow","action":"path:created","pageNumber":1,"annotationId":"ca6fbdb3-b1d5-49e4-ade6-171cb39d4ab7","source":"path:created","objectDelta":1,"previousObjectCount":6,"nextObjectCount":7,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] summary path:created started, 32 preview frames, 1 sync writes during drag, 1 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 1 sync push after release, 0 backup writes after release {"id":"gesture-9","durationMs":2821,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"line","type":"line","action":"path:created","pageNumber":1,"annotationId":"e5adf73b-983e-40e8-be79-8a4cd5985e1d","source":"path:created","objectDelta":1,"previousObjectCount":5,"nextObjectCount":6,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[PreviewDiag] sync push {"gestureId":"gesture-10","totalAfterRelease":1,"kind":"fabric","count":1,"changedObjectCount":1,"deletedCount":0,"pageCount":1}
+[PreviewDiag] final commit {"id":"gesture-10","commits":2,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"arrow","type":"arrow","action":"counter:create","pageNumber":1,"annotationId":"ca6fbdb3-b1d5-49e4-ade6-171cb39d4ab7","source":"counter:create","objectDelta":1,"previousObjectCount":7,"nextObjectCount":8,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] final commit {"id":"gesture-10","commits":3,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"arrow","type":"arrow","action":"counter:create","pageNumber":1,"annotationId":"ca6fbdb3-b1d5-49e4-ade6-171cb39d4ab7","source":"counter:create","objectDelta":1,"previousObjectCount":8,"nextObjectCount":9,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] sync push {"gestureId":"gesture-10","totalAfterRelease":2,"kind":"fabric","count":1,"changedObjectCount":1,"deletedCount":0,"pageCount":1}
+[PreviewDiag] summary counter:create started, 28 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 3 commits on release, 2 sync pushes after release, 0 backup writes after release {"id":"gesture-10","durationMs":4955.8,"pointerDown":false,"surface":"App.handleSaveAnnotations","tool":"arrow","type":"arrow","action":"counter:create","pageNumber":1,"annotationId":"ca6fbdb3-b1d5-49e4-ade6-171cb39d4ab7","source":"counter:create","objectDelta":1,"previousObjectCount":8,"nextObjectCount":9,"changedObjectsCount":1,"checkpointPolicy":"normal","reason":"settled"}
+[EditCanvas] COMMIT pre-convert — text="iohiuiubi" fontSize=16 width=148 height=18.08 scaleX=1 scaleY=1 left=38 top=38 isNewText=true
+[EditCanvas] COMMIT post-convert — text="iohiuiubi" fontSize=16 width=73 height=30.08 scaleX=1 scaleY=1 left=377.9903184165233 top=696.396057444062
+[PreviewDiag] final commit {"surface":"App.handleSaveAnnotations","source":"edit:commit","action":"text","pageNumber":1,"objectDelta":1,"previousObjectCount":9,"nextObjectCount":10,"changedObjectsCount":1,"checkpointPolicy":"normal"}
+[PreviewDiag] sync attempted while pointer down {"gestureId":null,"deferred":true,"kind":"fabric","pointerDown":true,"count":1,"pageCount":7,"objectCount":3066,"priorObjectCount":3065}
+[PreviewDiag] sync push {"kind":"fabric","count":1,"changedObjectCount":1,"deletedCount":0,"pageCount":1}
+[CalloutEditCanvasDiag] {"effectiveScale":0.9493464052287581,"effectiveScaleY":0.9494949494949495,"useNonUniform":false,"canvasWidth":174,"canvasHeight":91,"parentOffset":{"w":581,"h":752},"pageSize":{"w":612,"h":792},"vpt":[0.9493464052287581,0,0,0.9493464052287581,0,0],"zoom":0.9493464052287581}
+[PreviewDiag] sync push {"kind":"callout","count":1,"calloutCount":1,"priorCalloutCount":0,"deletedCount":0}
+[EditCanvas] COMMIT pre-convert — text="iuhibiub" fontSize=14 width=108 height=15.82 scaleX=1 scaleY=1 left=38 top=42.54 isNewText=false
+[EditCanvas] COMMIT post-convert — text="iuhibiub" fontSize=14 width=120 height=32 scaleX=1 scaleY=1 left=433.151624354561 top=623.7732297207447
+[PreviewDiag] sync attempted while pointer down {"gestureId":null,"deferred":true,"kind":"callout","pointerDown":true,"count":1,"calloutCount":1,"priorCalloutCount":1}
+[PreviewDiag] sync push {"kind":"callout","count":1,"calloutCount":1,"priorCalloutCount":1,"deletedCount":0}
+[PreviewDiag] sync push {"kind":"fabric","count":1,"changedObjectCount":0,"deletedCount":1,"pageCount":0}
