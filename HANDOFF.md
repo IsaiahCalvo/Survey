@@ -1,89 +1,86 @@
-# Handoff: optimize DB sync → multi-user collaboration → buttery zoom/scroll/pan
+# Handoff: blank-pages + load-then-vanish annotation bugs (fixed, needs live verify) + duplicate-name UX (half-built)
 
-**Generated**: 2026-06-03 (evening)
-**Branch**: main (pushed; HEAD `ba4d7b30`, origin/main up to date)
-**Workflow**: direct-to-main. Land on local `main`, user tests on their own dev server (`localhost:5173`, Electron), push only when explicitly asked. The user verifies backend changes with a **Cmd+Shift+L** network capture → writes `Desktop/Survey-BetaSafeS2/Logs/<timestamp>/network.json` (URLs + method + duration, no bodies). `Desktop/Survey-BetaSafeS2` and the primary repo are the SAME files (symlink).
+**Generated**: 2026-06-05 (late session)
+**Branch**: `main` (local-only, NOT pushed — direct-to-main workflow; push only when the user asks)
+**Status**: In Progress — core fixes landed + tested; 3 open threads + live verification pending
 
----
+## Goal
+Drive down the optimization backlog (started with a security batch + safe perf batch), then chased a real user-facing chain: a PDF opened blank → marks loaded then vanished → why the file kept landing on empty duplicate cloud documents. Also: make the fragile files safe for an agent to change on its own (self-verification harness).
 
-## THE MASTER PLAN (the north star — do these in order, never forget it)
+## Completed this session (7 commits, local main, unpushed — newest first)
+- [x] `6d0ca379` **fix(sync): load-then-vanish.** Cloud hydrate wholesale-replaced page state, so an empty/partial cloud snapshot wiped embedded PDF marks the cloud lacked. Added `mergePreservingImportedMarks` (preserves `isPdfImported` marks the cloud lacks, deduped by id) and wired it into all 5 initial-hydrate `setAnnotationsByPage` sites in `useAnnotationCloudSync.js`. **Needs live verify.**
+- [x] `a9fc855d` **fix(documents): reopen-don't-duplicate.** Both file-open paths created a NEW empty cloud doc every time (no dedup) → blank duplicates piled up. Added `classifyIncomingFile` (recognizes a file by name + exact byte size) and wired both Dashboard open paths to reopen the existing live copy instead of uploading a blank duplicate.
+- [x] `247fcffe` **fix(import): self-heal blank pages.** When a cloud doc hydrates with count===0 but the PDF has embedded marks, re-import them (guarded once-per-doc, re-checks live count is still 0 before committing). This is what made the marks come back. **Known wart: it commits via `handleSaveAnnotations`, which pushes the imported marks to the cloud — that push fails ("Failed to fetch") and is noisy / risks re-bloat. See Not Yet Done.**
+- [x] `0e24b31c` docs: `.planning/optimization/SELF-VERIFY-CAPABILITIES.md` — full map of how an agent can drive + verify the app (agent-cli, `?testPdf=` route, Playwright/kapture MCPs, behavior-coverage checklist).
+- [x] `968baf2c` perf(viewer): wheel handler no longer runs `document.querySelector` + getBoundingClientRect on every wheel tick (only when target is outside the PDF container). User felt it "maybe minuscule."
+- [x] `1f809a2d` perf(main): async `fs.promises` for file read/write IPC, Uint8Array IPC for openFile, statSync-throttle on the continuous-log hot path, fileWatcher isDestroyed guard + auto-close.
+- [x] `cd45e6bb` fix(security): shell:openPath spawn-not-exec, setWindowOpenHandler exact-host allowlist, oauth:openWindow https-validate + sandbox, continuous-log token redaction. **Cmd+Shift+L log-save kept intact, just scrubs tokens.**
 
-1. **Optimize ALL backend database communication** — every round-trip for auth, document loading/rendering, saving, deleting, resizing, sharing. Make it lightweight, fast, few round-trips, correct. ← IN PROGRESS.
-2. **Then optimize multi-user collaboration / presence** — make it professional-grade real-time multiplayer.
-3. **Then go back to zoom / scroll / pan and make it buttery-smooth** — the real app's pdf.js path is better than before but NOT yet demo-perfect. This was deprioritized until the data layer is "mint," but it is the ultimate goal.
+Baseline: `npm test` was **888/0/6** at session start, now **899/0/6** (added incomingFileResolver +6, mergePreservingImportedMarks +5). `npx vite build` clean.
 
-**Benchmark everything against the pros (the user named these explicitly):**
-- **Figma** — server-authoritative multiplayer, per-property last-write-wins + live awareness.
-- **Drawboard PDF** — collaborative annotation over an immutable PDF (our exact problem).
-- **Google Docs** — operational transform, server revision log, offline.
-- **tldraw sync** — freshest realtime multiplayer/presence reference (tldraw.dev/docs/sync).
+## Not Yet Done (next session, priority order)
+- [ ] **VERIFY the vanish fix live** — reopen the test file, confirm marks stay on pages 6–11 (not just 6–7). Cloud-hydrate state is NOT reproducible headlessly.
+- [ ] **Quiet the self-heal push** — self-heal (`247fcffe`) commits embedded marks via `handleSaveAnnotations`, which triggers the legacy bulk push (`upsertAnnotationsByPage`, 3056 rows → "Failed to fetch"). Imported marks are file-derived and should NOT be cloud-pushed. Change the self-heal apply to render-only (`setAnnotationsByPage` merge) and confirm the bulk push no longer fires for imported marks. Watch for the CRDT delta path already skipping `isImported` (useAnnotationCloudSync ~L2308) vs the legacy bulk push NOT excluding them.
+- [ ] **Stage 2: same-name-different-content prompt** (design agreed with user, not built). `classifyIncomingFile` already returns `{kind:'name-collision', collisions}`; `nextAvailableName` helper already exists. Build: a modal (pattern: `src/components/ExcelSyncConfirmModal.jsx`) that ALWAYS asks (user: "ask every time" like Windows/Mac) → "Keep both" (numbered name via `nextAvailableName`) or "Replace" (SAFE = archive the old copy, create new with original name; never destroy marks). Wire into both Dashboard open paths where the `name-collision` branch currently falls through to create-new.
+- [ ] **Duplicate cleanup + restore** — user's original `Package 2 - Rev 4 -- IC.pdf` (`5fa31b86`, 22,103 marks) is soft-deleted (archived). Ask user whether to restore it (un-archive) or leave it (embedded 3056 marks re-import via self-heal; the 22k were mostly duplicate re-imports). Two empty archived dupes (`398beaa9`, `0c9626ea`) can be hard-deleted.
+- [ ] **Remaining 46-finding backlog** in `.planning/optimization/FINDINGS.md` — surfaced, not applied. Notably security #4 (fs path allowlist — risks breaking Excel/OneDrive reads, needs live test) and #5 (VITE_GITHUB_LOG_TOKEN baked into bundle — needs a secrets-in-packaged-build decision + mobile proxy). Plus IPC/collab/interaction/rendering/db-sync/react-perf items.
 
-**For zoom/scroll/pan, reference our OWN demos** — we had three throwaway demos (the pdf.js / EmbedPDF "two-arm" spikes: `src/prototype/PdfjsArm.jsx`, `src/prototype/FeatureSpike.jsx`, plus the renderer spike) where **zoom/scroll/pan were WAY smoother than the real app**. That smoothness is the bar. Phase 37 `DEMO-PARITY-BLUEPRINT` (in `.planning/phases/37-pdfjs-cutover/`) has the concrete fix (Strategy B: per-frame live-zoom emit; overlay portals must ride the engine's transformed content node, not snap on settle).
+## Failed Approaches (don't repeat)
+- **`debug/scenarios/annotation-draw-render.spec.mjs` fails headless.** The pen arms (Draw button → `lastDrawTool='pen'`, 36 canvas-containers mount) but a `page.mouse` stroke does NOT commit under `npx playwright test` — `__renderedAnnotationRegistry['1']` and the Fabric canvas `getObjects()` both stay 0, even with `expect.poll` (10s) and reading the canvas directly. The SAME stroke DOES commit when driven live via the Playwright MCP (regPage1 went 0→1). Cause is a readiness/timing gap (drawing canvas not interactive yet at draw time). Next: gate the stroke on the upper-canvas being interactive, or use a different draw trigger. Spec is committed but currently red — treat as WIP.
+- **`?testPdf=` route does NOT persist drawn marks across reload.** It's a transient local preview; the `annotationsByPage_<id>` localStorage key is a read-only legacy migration cache (PDFViewer deliberately does not load it). Real persistence is the Supabase cloud path (already covered by agent-cli: `survey-roundtrip.mjs`, `proof-snapshot-invariant.mjs`). So a draw→reload-survival browser test is NOT viable on testPdf — assert draw→render→survive-zoom instead.
 
-End goal: instant opens, cheap backend, real multi-user collaboration, buttery zoom/scroll/pan — feels professional and "mint."
+## Key Decisions
+| Decision | Rationale |
+|----------|-----------|
+| Recognize files by **name + exact byte size**, not a content hash | No DB migration needed; uniquely identifies the same file in practice (different content → different size). A true hash column is a possible future hardening. |
+| Preserve `isPdfImported` marks across cloud hydrate (merge) instead of refactoring the ~15 sync apply sites | Minimal, principled: cloud owns user-drawn marks; file-derived marks are re-derived and must never be cloud-deleted. |
+| Two-layer + non-destructive defense | dedup-at-create (prevent blank dupes) + self-heal-at-open (recover) + preserve-on-hydrate (don't wipe). |
+| Soft-delete is intentional, and the dupes were a **user bulk-delete** (source `survey-hub-bulk`), not an auto-bug | Logs confirm 3 bulk deletes today; re-adding a deleted file makes a fresh empty doc by design — combined with no-dedup = blank pages. |
 
----
+## Files to Know
+| File | Why It Matters |
+|------|----------------|
+| `src/utils/incomingFileResolver.js` | `classifyIncomingFile(file, existingDocs)` → `{kind:'new'|'reuse'|'name-collision'}` + `nextAvailableName(name, existingNames)`. Pure, unit-tested. |
+| `src/utils/safeSnapshot.js` | `mergePreservingImportedMarks(prev, incoming)` (new) + existing `resolveSafeSnapshot` (empty-only guard). |
+| `src/Dashboard.jsx` | Two file-open paths (Electron dialog ~L525, browser input ~L665) — reuse branch added; `name-collision` branch is the Stage-2 TODO. |
+| `src/PDFViewer.jsx` | Self-heal effect just above the `__fix19ImportPdfAnnotations` harness; `embeddedImportFallbackDoneRef`. Import skip at "shouldSkipEmbeddedPdfAnnotationImport = !!pdfFile?.id". |
+| `src/hooks/useAnnotationCloudSync.js` | HIGHEST-RISK. 5 initial-hydrate apply sites now use `mergePreservingImportedMarks`. `markInitialHydration({ready,count})` is the signal the self-heal keys on. The failing bulk push is `upsertAnnotationsByPage`. |
+| `.planning/optimization/FINDINGS.md` | 46 surfaced findings, not applied. |
+| `.planning/optimization/SELF-VERIFY-CAPABILITIES.md` | How to drive/verify the app. |
 
-## THE AUDIT + RANKED PLAN (read first)
+## Code Context
+```js
+// src/utils/incomingFileResolver.js
+classifyIncomingFile(file, existingDocs) // matches by name + Number(file_size||size); reuse picks OLDEST match
+  -> { kind:'new' } | { kind:'reuse', doc } | { kind:'name-collision', collisions }
+nextAvailableName('Report.pdf', ['Report.pdf']) // -> 'Report (1).pdf'
 
-The full audit lives at **`.planning/DB-SYNC-AUDIT-2026-06-03.md`** (16-agent workflow). §6 is the ranked optimization backlog (#1–#13), §7 the correctness invariants, §8 the things to confirm with a live capture. Work the backlog top-down.
+// src/utils/safeSnapshot.js
+mergePreservingImportedMarks(prev, incoming) // returns `incoming` identity-unchanged when nothing to preserve
+// else: incoming + any prev objects with isPdfImported not already in incoming (deduped by id ?? data.id ?? pdfAnnotationId)
 
----
+// useAnnotationCloudSync: hydration signal the self-heal watches (PDFViewer destructures as normalAnnotationHydration)
+initialHydration = { ready: boolean, count: number|null, documentId, pdfId, ... } // count===0 + ready===true => empty cloud doc
+```
+**Reuse branch (both Dashboard paths):** attaches `file.id = existing.id` (+ project_id, file_path, user_id) to the local File and calls `onDocumentSelect(file)` — skips upload+create entirely.
 
-## DONE (this session, 2026-06-03 evening) — committed + pushed `ba4d7b30`
+**Self-heal trigger (PDFViewer):** `normalAnnotationHydration.ready===true && count===0 && documentId===pdfFile.id && !done-for-this-doc && pdfDoc present` → `importAnnotationsFromPdf(pdfDoc, {rawPdfBytes})` → commit per page via `handleSaveAnnotations(pageNumber, {...current, objects:[...current, ...stamped]}, {source:'embedded-import-empty-cloud-fallback', checkpointPolicy:'skip'})`.
 
-**Audit #3 — kill the duplicate-fetch fan-out + dead code.** Three pieces:
-1. **In-flight request coalescer** (`src/hooks/requestCoalescer.js`, + 7 unit tests). The boot burst of identical Supabase reads (the same query fired 3–4× within ~3ms by multiple uncoordinated hook instances) now collapses to ONE round-trip per query. In-flight-ONLY (key deleted on settle — NOT a value cache). Wired into `useDocuments`, `useTemplates`, `useSubscriptionLimits` (boot effect coalesces; `refetch` is a zero-arg BYPASS wrapper), and `AuthContext` tier read (module-level `inFlightTierByUser`; the two boot calls coalesce; window-focus + 5-min interval + `refreshSubscriptionTier` BYPASS so Stripe upgrades always land). Every hook keeps its public contract — no consumer call sites touched. **This is Linear KAL-251.**
-2. **AuthContext tier read** `.single()` → `.maybeSingle()` — stops a false "Error fetching subscription tier" logged on every free-tier boot/focus/5-min refresh.
-3. **Removed dead code** `getUserSubscriptionTier` + `canUserBeCollaborator` from `documentAnnotationService.js` — superseded by server-side RPCs `check_user_collaborator_eligibility` / `check_collaborator_by_email`; verified unreferenced repo-wide by an adversarial 3-agent workflow.
+## Resume Instructions
+1. Read this + today's session-moments (`.claude/projects/-Users-isaiahcalvo-Documents-Projects-Active-Survey-BetaSafeS2/memory/session-moments/2026-06-05.md`) — the full root-cause chain is logged there.
+2. **Live-verify the vanish fix**: user reopens the test file (`/Users/isaiahcalvo/Documents/Records/Documents To Review/PDFs from Desktop/Package 2 - Rev 4 -- IC.pdf`). Expected: marks render AND stay on pages 6–11. If they still vanish: check `renderer-console.continuous.log` for which hydrate `source` fired (one of snapshot-prefetch / supabase-durable-snapshot / ydoc-snapshot / *-fallback) and whether `[CloudSync][push] upsertAnnotationsByPage failed` is still corrupting the cloud to a partial set.
+3. **Then quiet the self-heal push** (see Not Yet Done) so nothing fights — verify no `upsertAnnotationsByPage` fires for the 3056 imported marks after open.
+4. **Then Stage 2 prompt** (modal + numbering + safe replace).
+5. Confirm `npm test` 899/0/6 and `npx vite build` clean after any change. Commit with explicit `git add <paths>` ONLY (never `-A`) to keep the pdf.js-cutover WIP + debug scaffolding out. Push only on the user's say-so.
 
-**Verified** by before/after Cmd+Shift+L capture (`Logs/2026-06-03_17-24-18` → `Logs/2026-06-03_18-01-08`): documents list 10→2, collaborators 10→2, documents id=in 10→2, templates 8→2, tier 2→1; ALL documents-table reads 37→12; total session requests 107→81. The ~3ms simultaneous boot burst collapsed to exactly ONE in every family; the remaining 2× are legitimate reads seconds apart (separate auth settles + per-tab document opens), which the in-flight-only design correctly does NOT merge. `npm test` 862/0/6, `npm run build` clean. Independent code review confirmed all must-not-regress invariants. Proof posted as a comment on KAL-251.
+## Headless verification tools (no GUI needed)
+- `node agent-cli/index.mjs docs` — list visible (non-archived) docs as the dev user.
+- `node agent-cli/index.mjs open <documentId>` — real backend hydrate row count + timing. (Heavy original: `5fa31b86-...` = 22,103 marks; empty dupes = 0.)
+- Count embedded PDF marks in a file: load `pdfjs-dist/legacy/build/pdf.js`, `getDocument({data})`, loop `page.getAnnotations()`. The test file has **3056** embedded (pages 6–11: Ink + 1 Square/page + 1 FreeText).
+- Drive the live app: Playwright MCP → `http://localhost:5173/?testPdf=Package%202%20-%20Rev%204%20--%20IC.pdf`; arm pen by clicking the toolbar **Draw** button; read `window.__debugBridge.snapshot()` and `window.__renderedAnnotationRegistry`.
 
-**Linear filed this session:** KAL-251 (the fan-out, High — IMPLEMENTED+VERIFIED, see its comment), KAL-250 (the per-open `documents`/`cutover_completed_at` 3× read → one shared per-open metadata resolver, Low/deferred — fully self-contained ticket).
-
----
-
-## DEFERRED TO NEXT SESSION — start here
-
-**#4 — the "who's viewing this" presence re-polling (the background chatter).** This is the next target. The presence realtime handler discards the payload and re-SELECTs the whole roster on every event; a 30s poll runs forever per viewer (the `document_presence` reads/upserts seen in every capture: ~13/session). Incremental fix: apply `payload.new`/`payload.old` directly instead of refetching, add a `clientSessionId` echo filter, gate the 30s poll on visibility + >1 viewer, shallow-equal the roster before `setPresence`. Structural fix: migrate to Supabase Realtime Presence (`track`/`presenceState`). **Must NOT regress** the presence-upsert-as-RLS-probe behavior (the upsert success flips `documentSyncEnabled`) — keep a separate entitlement probe if moving off the table. See audit §6 #4.
-
-**Then the rest of the audit backlog** (top-down toward "mint"): #2 merge the two keyset loops, #5 batch history writes + stop the RevisionsPanel poll, #6 reuse hydrate read for backfill (kill double cold read), #8 don't block first paint on the tier read, #9 realtime payload (REPLICA IDENTITY), and the structural bets #10–#13 (per-open Y.Doc rebuild, realtime transport decision, CRDT completeness/persistence — central to step 2 multi-user collab, RLS/index tuning). KAL-250 (per-open cutover read dedup) fits here too.
-
-**ONLY after the data + collaboration layers are mint:** return to step 3 — buttery zoom/scroll/pan vs the demos (Phase 37 blueprint).
-
----
-
-## UNCOMMITTED WORK STILL IN THE TREE (needs a decision — NOT pushed)
-
-Pushing `ba4d7b30` published only this session's #3 work + the prior commit backlog. Two other bodies of work remain UNCOMMITTED in the working tree:
-
-**(B) The #1 watermark / fast-open DB-sync optimization (prior session today) — VERIFIED, and its prod migration is ALREADY LIVE.** This is the real liability: production has the `documents.annotations_changed_at` column + trigger (migration `20260603130000`, applied via `supabase db push`), but the code that uses it is uncommitted. **Recommend committing this next so the repo matches prod.** Files: `src/hooks/useAnnotationCloudSync.js` (HIGH-RISK), `src/services/annotationCloudSync.js`, `src/services/annotationTypeSerializers.js`, new `src/lib/collab/snapshotStore.js`, `src/lib/collab/snapshotFeatureFlag.js`, `src/lib/collab/__tests__/snapshotStore.watermark.test.mjs`, `src/services/annotationReadPagination.js`, migrations `20260602000000`/`20260602120000`/`20260603130000` + rollback, `.planning/DB-SYNC-AUDIT-2026-06-03.md`, `tests/kal241/`. ⚠ `snapshotFeatureFlag.js` is **TEMP default-ON — must be reverted to env/localStorage-gated before any real release.**
-
-**(A) The v2.0 pdf.js engine cutover + tooling (multi-session, in-progress) — large, deliberate, commit separately later.** pdf.js is wired as the default engine behind a selector but not demo-smooth yet. Files: `src/PDFViewer.jsx` (HIGH-RISK), `src/main.jsx`, `src/viewerShared.js`, `src/sidebar/SearchTextPanel.jsx`, `src/prototype/*`, new `src/components/Pdfjs*.jsx` + `PDFViewerEngineSelector.jsx` + `pdfEngineContract.js`, `tests/performance/overlayPresentationGate.test.mjs`, `agent-cli/`, `.planning/phases/36-*` + `37-*`, `HANDOFF-forms-persistence.md`. **Scratch/local artifacts that should probably be gitignored, NOT committed:** the loose screenshots (`forms-*.png`, `pdfjs-*.jpeg`), `debug/fixtures/*.pdf`, and the local tooling folders (`.agents/`, `.hermes/`, `skills/`, `.claude/skills/`, `skills-lock.json`).
-
----
-
-## WARNINGS / INVARIANTS (carry forward)
-
-- **HIGH-RISK files** (minimum-viable-diff, run `npm test` after every touch; standing waiver applies): `src/PDFViewer.jsx`, `src/hooks/useAnnotationCloudSync.js`, `src/PageAnnotationLayer.jsx`, the Fabric canvases, `src/viewerShared.js`, `package.json`/`vite.config.js`. The #3 work this session deliberately stayed OUT of all of these (and out of `Dashboard.jsx`).
-- **The coalescer is in-flight-ONLY** — never turn it into a settled-TTL value cache without per-key invalidation on mutations; that reintroduces the create→refetch and bulk-delete stale-read hazards the design avoided. Deliberate refetches MUST bypass.
-- **Enforced viewer invariants** (still binding): SVG viewBox owns zoom scaling; never reintroduce JS zoom coordination; never remove the `zoomGeneration` signal; container-aware canvas sizing; single-name `fontFamily`; don't structurally edit the per-page overlay portal loop; don't imperatively transform overlay divs for pdf.js zoom (they ride the engine's transformed node — double-scale otherwise).
-- **#1 read-skip guards (audit §7)** must never regress: wrong-page source-of-truth heal, the `queuedLocalWrites.hasPending` guard, the <80% Y.Map degeneracy guard, the empty-everything legacy probe. Snapshots are sourced from durable ROWS, never the Y.Doc.
-
----
-
-## HOW TO VERIFY (no GUI needed)
-
-- `npm test` (expect 862/0/6) and `npm run build` (clean; the chunk-size warning is pre-existing).
-- Backend timing/reads via the headless `agent-cli/` driver (`docs`, `open`, `open-fast`, `sweep [--write]`).
-- Backend behavior proof: user runs Cmd+Shift+L on their dev server → compare `Logs/<ts>/network.json` request counts before/after.
-
----
-
-## RESUME INSTRUCTIONS
-
-1. Read this file + `.planning/DB-SYNC-AUDIT-2026-06-03.md` §6 + today's session-moments (`~/.claude/projects/-Users-isaiahcalvo-Documents-Projects-Active-Survey-BetaSafeS2/memory/session-moments/2026-06-03.md`).
-2. Confirm baseline: `npm test` 862/0/6, build clean.
-3. **First decide the uncommitted work (section above):** recommend committing (B) the #1 watermark work since its migration is already live in prod (separate commit; flag the temp feature flag); handle (A) the pdf.js cutover deliberately and gitignore the scratch artifacts.
-4. **Then start audit #4** — the presence "who's viewing" re-polling/chatter. Verify before/after with a Cmd+Shift+L capture (presence request count).
-5. Keep working the backlog toward "mint," then move to step 2 (multi-user collaboration vs Figma/Drawboard/tldraw), then step 3 (buttery zoom/scroll/pan vs the demos).
+## Warnings
+- **DO NOT `git add -A`.** Pre-existing uncommitted pdf.js-cutover WIP + debug scaffolding must stay out of commits. Stage exact paths.
+- `useAnnotationCloudSync.js` and `PDFViewer.jsx` are the highest-risk files. Min-diff. The waiver in `memory/feedback_protected_files_waiver.md` allows edits without per-edit approval but the enforced invariants still bind (SVG viewBox owns zoom, never remove `zoomGeneration`, container-aware canvas sizing, single-name fontFamily).
+- The live engine is the **owned pdf.js renderer** (not Syncfusion); `[InteractionDiag]` lines saying "syncfusion-page" are stale labels — ignore.
+- `archived: true` on a document means **soft-deleted** (the documents fetch filters `archived=false`).
