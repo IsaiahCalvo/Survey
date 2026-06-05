@@ -547,6 +547,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           name: file.name,
           size: file.size,
           uploadedAt: new Date().toISOString(),
+          // Stamp the timestamps the ledger reads so the optimistic row shows
+          // "just now" immediately instead of a parsed-from-empty year-2000 date.
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
           type: 'application/pdf',
           filePath: filePath,
           projectId: projectId,
@@ -670,6 +674,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         name: file.name,
         size: file.size,
         uploadedAt: new Date().toISOString(),
+        // Stamp the timestamps the ledger reads so the optimistic row shows
+        // "just now" immediately instead of a parsed-from-empty year-2000 date.
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
         type: 'application/pdf',
         filePath: null,
         projectId: projectId,

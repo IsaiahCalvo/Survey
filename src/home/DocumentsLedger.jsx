@@ -161,7 +161,9 @@ export default function DocumentsLedger({
 
   // Map each real document into the shape the ledger markup expects.
   const mapped = useMemo(() => documents.map((d, i) => {
-    const ms = Date.parse(d.updated_at || d.created_at || 0) || 0;
+    // Use '' (not 0) as the empty fallback: Date.parse(0) coerces to the string
+    // "0" and resolves to Jan 1 2000, whereas Date.parse('') is NaN → no date.
+    const ms = Date.parse(d.updated_at || d.created_at || '') || 0;
     const dt = ms ? new Date(ms) : null;
     return {
       raw: d,
