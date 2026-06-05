@@ -27,7 +27,10 @@
     "scripts/**/*.{mjs,cjs,js}",
     "debug/verify-*.mjs",
     // Syncfusion shims — wired via vite.config alias, not imports
-    "src/shims/*.js"
+    "src/shims/*.js",
+    // Parked Microsoft/MSAL sign-in config — intentional staged feature, kept
+    // on purpose though not yet wired into a parent (see fallow REPORT.md).
+    "src/authConfig.js"
   ],
 
   "ignorePatterns": [
