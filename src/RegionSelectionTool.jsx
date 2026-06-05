@@ -309,14 +309,12 @@ const RegionSelectionTool = ({
         : '[data-region-selection-target]';
       const candidates = Array.from(document.querySelectorAll(selector))
         .filter((node) => node instanceof HTMLElement && node.isConnected);
-      const nextTarget = candidates
-        .sort((left, right) => {
-          const leftRect = left.getBoundingClientRect();
-          const rightRect = right.getBoundingClientRect();
-          const leftArea = leftRect.width * leftRect.height;
-          const rightArea = rightRect.width * rightRect.height;
-          return rightArea - leftArea;
-        })[0] || document.getElementById('region-selection-target');
+      const nextTarget = candidates.reduce((best, node) => {
+        const r = node.getBoundingClientRect();
+        const area = r.width * r.height;
+        if (!best || area > best.area) return { node, area };
+        return best;
+      }, null)?.node || document.getElementById('region-selection-target');
       if (!nextTarget) {
         const queryDebugKey = `${selector}:0:${activeTool ?? 'none'}`;
         if (lastTargetQueryDebugRef.current !== queryDebugKey) {
