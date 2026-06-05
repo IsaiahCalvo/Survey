@@ -21,7 +21,7 @@ const TemplatesEditor = lazy(() => import('./TemplatesEditor'));
 import ShareModal from './ShareModal';
 import AccessManagementModal from './AccessManagementModal';
 import { HubChromeContext } from './HubShell';
-import { AccountSettings } from '../components/AccountSettings';
+const AccountSettings = lazy(() => import('../components/AccountSettings').then(m => ({ default: m.AccountSettings })));
 import './hub.css';
 
 const TAB_KEY = 'survey-hub-tab';
@@ -159,10 +159,14 @@ export default function SurveyHub({
       {/* Settings page — shown full-screen over the hub. AccountSettings
           renders its own fixed overlay with a close (×) button in its
           header, which is the way back to the hub. */}
-      <AccountSettings
-        isOpen={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-      />
+      {settingsOpen && (
+        <Suspense fallback={null}>
+          <AccountSettings
+            isOpen
+            onClose={() => setSettingsOpen(false)}
+          />
+        </Suspense>
+      )}
     </HubChromeContext.Provider>
   );
 }
