@@ -131,11 +131,15 @@ worker-config module); pdfHasAnnotations parallel loop (dead code, breaks early-
    Wrapping the per-frame setRange in startTransition could defer page mounts under
    fast scroll → blank-frame risk on the core renderer. Behavioral tradeoff on WIP
    cutover code (Phase 37, off by default). Needs measured judgment, not auto-apply.
-4. **Parallelize the per-page annotation import** (HIGH). importAnnotationsFromPdf
-   imports pages strictly sequentially (~450ms warm on a 36-page doc). Pages are
-   independent; a bounded-concurrency rewrite (cap ~8) with careful counter/Set
-   folding is the fix. RISKY: non-mechanical, import-coupled to PDFViewer; the naive
-   diff drops a Set + 3 counters. Note pdf.js engine already skips the hottest caller.
+4. **[APPLIED 2026-06-05, commit 28f84af3 — NEEDS LIVE TEST before push]**
+   Parallelized the per-page annotation import via a bounded worker pool (cap 8,
+   shared cursor). Each page accumulates into a local Set + counts object and
+   returns a result; results fold back in strict page order so all four page-keyed
+   maps + five counters are identical to the old sequential loop. Only error/log
+   cosmetics differ (non-deterministic console order; a mid-body throw leaves no
+   partial counts). Tests 888/0/6, build clean. Live-test: open an annotation-heavy
+   doc (Package 2, 24,450 marks), confirm all marks import (none missing/dup) +
+   open feels faster.
 5. **content-visibility on the documents-ledger rows** (MEDIUM). Additive CSS so
    off-screen rows skip layout/paint; matches the existing pass-3 pattern. Low risk
    but only pays off with large document counts; intrinsic size should be ~50px
