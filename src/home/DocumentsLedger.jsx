@@ -299,6 +299,10 @@ export default function DocumentsLedger({
                       borderLeft: !docSelectMode && isSel ? '2px solid var(--gold)' : '2px solid transparent',
                       background: docSelectMode ? (isChecked ? 'var(--ink-600)' : 'transparent') : (isSel ? 'var(--ink-600)' : 'transparent'),
                       cursor: 'pointer',
+                      // Skip layout/paint for off-screen rows. Intrinsic height ~50px:
+                      // the two-line "last edited" cell dominates the 30px thumbnail.
+                      contentVisibility: 'auto',
+                      containIntrinsicSize: '0 50px',
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 8px' }}>
