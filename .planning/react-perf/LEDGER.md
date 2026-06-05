@@ -101,7 +101,20 @@ pdfjs already eager via viewerShared, and the suggested fix referenced a non-exi
 worker-config module); pdfHasAnnotations parallel loop (dead code, breaks early-exit).
 
 ### Held for sign-off (pass 4 — real, need human call + live test)
-1. **Drop pdfjs out of the first-paint entry chunk** (HIGH). viewerShared.js eagerly
+1. **[APPLIED 2026-06-04, commit 3855beb7 — NEEDS LIVE TEST before push]** Dropped
+   pdfjs out of the first-paint entry chunk. The audit's note was incomplete: there
+   were FOUR entry-reachable static pdfjs importers, not one — viewerShared (eager
+   worker config), Dashboard + PdfPageThumb (page-count/thumbnail), and PDFSidebar →
+   SearchTextPanel (text-layer). New utils/pdfWorkerConfig.loadPdfjs() lazily loads
+   pdfjs + sets workerSrc once (idempotent); all four call it / lazy-load instead of
+   importing pdfjs at module top. PDFViewer awaits it before getDocument. PDFSidebar
+   lazy-loads SearchTextPanel. Entry chunk 2,345KB → 1,576KB (gzip 666 → 467);
+   PDFDocumentLoadingTask/AnnotationLayer now 0 in entry; pdfjs ships in its own
+   chunk on first open. viewerShared engine-selector WIP left unstaged (partial
+   commit). Tests 888/0/6, build clean. Live-test: home loads, thumbnails render,
+   upload counts pages, open works, text search works.
+
+   ~~Original held note:~~ viewerShared.js eagerly
    imports the whole pdfjs-dist lib + worker URL just to run one module-level side
    effect (GlobalWorkerOptions.workerSrc=). That keeps ~1MB+ of pdfjs in the entry
    chunk. Fix = move the worker-config side effect into a tiny idempotent leaf module
