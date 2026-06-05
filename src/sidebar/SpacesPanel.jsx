@@ -998,7 +998,7 @@ const SpacesPanel = ({
   const [newSpaceName, setNewSpaceName] = useState('');
   const [editingSpace, setEditingSpace] = useState(null);
   const [editingName, setEditingName] = useState('');
-  const [expandedSpaces, setExpandedSpaces] = useState(new Set());
+  const [expandedSpaces, setExpandedSpaces] = useState(() => new Set());
   const [selectedSpaceId, setSelectedSpaceId] = useState(null);
   const [isRearrangingSpaces, setIsRearrangingSpaces] = useState(false);
   const [optimisticSpaceIds, setOptimisticSpaceIds] = useState(() => spaces.map(space => space.id));
