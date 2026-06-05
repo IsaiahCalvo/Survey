@@ -1,0 +1,79 @@
+===== SurveyApp Save Log =====
+version:   0.1.46
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1512x833
+locale:    en-US
+timestamp: 2026-06-05T03:04:27.603Z (6/4/2026, 11:04:27 PM)
+==============================
+[OpenTiming] doc-click @ 5922ms Package 2 - Rev 4 -- IC.pdf
+[OpenTiming] pdfid-resolve @ 11096ms Package 2 - Rev 4 -- IC.pdf-6311068
+[OpenTiming] hydrate-start @ 11144ms 5fa31b86-a0ce-481d-b20c-66be5f2f30fc
+[InteractionDiag] interactive-ready @ 11409ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 11414ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[OpenTiming] snapshot-fetch-done @ 12561ms pages=7
+[OpenTiming] doc-click @ 15650ms Package 2 - Rev 4 -- IC.pdf
+[OpenTiming] pdfid-resolve @ 15812ms Package 2 - Rev 4 -- IC.pdf-6311068
+[OpenTiming] hydrate-start @ 15856ms 5fa31b86-a0ce-481d-b20c-66be5f2f30fc
+[InteractionDiag] interactive-ready @ 16141ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 16144ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[OpenTiming] snapshot-fetch-done @ 17046ms pages=7
+[InteractionDiag] viewer-pan-start @ 20439ms tool=pan button=0 target=syncfusion-page scrollTop=419 scrollLeft=0
+[InteractionDiag] pan-drag @ 20593ms pointerDelta=(0,0) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 20692ms pointerDelta=(0,45) scrollDelta=(0,-47) MOVED
+[InteractionDiag] pan-drag @ 20792ms pointerDelta=(2,85) scrollDelta=(0,-89) MOVED
+[InteractionDiag] pan-end @ 20993ms totalScrollDelta=(0,-97)
+[OpenTiming] doc-click @ 23859ms Isaiah Calvo Construction Project Manager.pdf
+[OpenTiming] pdfid-resolve @ 24000ms Isaiah Calvo Construction Project Manager.pdf-67930
+[OpenTiming] hydrate-start @ 24008ms 63f103d1-f5c8-4a1e-ae2b-d8a6e03fc7f3
+[OpenTiming] snapshot-fetch-done @ 24143ms pages=0
+[OpenTiming] crdt-hydrate-done @ 24212ms pages=0
+[InteractionDiag] interactive-ready @ 24649ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 24756ms pdfId=Isaiah Calvo Construction Project Manager.pdf-67930
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[InteractionDiag] viewer-pan-start @ 26192ms tool=pan button=0 target=syncfusion-page scrollTop=0 scrollLeft=0
+[InteractionDiag] pan-drag @ 26348ms pointerDelta=(0,-1) scrollDelta=(0,1) MOVED
+[InteractionDiag] pan-drag @ 26444ms pointerDelta=(0,-87) scrollDelta=(0,37) MOVED
+[InteractionDiag] pan-drag @ 26551ms pointerDelta=(0,-134) scrollDelta=(0,37) MOVED
+[InteractionDiag] pan-end @ 26664ms totalScrollDelta=(0,37)
+[OpenTiming] doc-click @ 28647ms Isaiah Calvo Construction Project Manager.pdf
+[OpenTiming] pdfid-resolve @ 28806ms Isaiah Calvo Construction Project Manager.pdf-67930
+[OpenTiming] hydrate-start @ 28814ms 63f103d1-f5c8-4a1e-ae2b-d8a6e03fc7f3
+[OpenTiming] snapshot-fetch-done @ 28911ms pages=0
+[OpenTiming] crdt-hydrate-done @ 29120ms pages=0
+[InteractionDiag] interactive-ready @ 29184ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 29328ms pdfId=Isaiah Calvo Construction Project Manager.pdf-67930
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[OpenTiming] doc-click @ 32216ms Package 2 - Rev 4 -- IC.pdf
+[OpenTiming] pdfid-resolve @ 32392ms Isaiah Calvo Construction Project Manager.pdf-67930
+[OpenTiming] pdfid-resolve @ 32393ms Package 2 - Rev 4 -- IC.pdf-6311068
+[OpenTiming] hydrate-start @ 32440ms 5fa31b86-a0ce-481d-b20c-66be5f2f30fc
+[InteractionDiag] interactive-ready @ 32761ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 32764ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[InteractionDiag] interactive-ready @ 32870ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[OpenTiming] hydrate-start @ 35103ms 63f103d1-f5c8-4a1e-ae2b-d8a6e03fc7f3
+[OpenTiming] snapshot-fetch-done @ 35266ms pages=0
+[OpenTiming] crdt-hydrate-done @ 35548ms pages=0
+[OpenTiming] snapshot-fetch-done @ 35590ms pages=7
+[OpenTiming] hydrate-start @ 36303ms 5fa31b86-a0ce-481d-b20c-66be5f2f30fc
+[OpenTiming] snapshot-fetch-done @ 37108ms pages=7
+[OpenTiming] hydrate-start @ 38416ms 63f103d1-f5c8-4a1e-ae2b-d8a6e03fc7f3
+[OpenTiming] snapshot-fetch-done @ 38608ms pages=0
+[OpenTiming] crdt-hydrate-done @ 38681ms pages=0
+[OpenTiming] hydrate-start @ 42785ms 5fa31b86-a0ce-481d-b20c-66be5f2f30fc
+[OpenTiming] snapshot-fetch-done @ 43411ms pages=7
+[OpenTiming] hydrate-start @ 50251ms 63f103d1-f5c8-4a1e-ae2b-d8a6e03fc7f3
+[OpenTiming] snapshot-fetch-done @ 50442ms pages=0
+[OpenTiming] crdt-hydrate-done @ 50615ms pages=0
+[OpenTiming] hydrate-start @ 51151ms 5fa31b86-a0ce-481d-b20c-66be5f2f30fc
+[OpenTiming] snapshot-fetch-done @ 51624ms pages=7
+[OpenTiming] hydrate-start @ 53141ms 63f103d1-f5c8-4a1e-ae2b-d8a6e03fc7f3
+[OpenTiming] snapshot-fetch-done @ 53311ms pages=0
+[OpenTiming] crdt-hydrate-done @ 53368ms pages=0
+[OpenTiming] hydrate-start @ 54158ms 5fa31b86-a0ce-481d-b20c-66be5f2f30fc
+[OpenTiming] snapshot-fetch-done @ 54935ms pages=7
+[OpenTiming] crdt-hydrate-done @ 61346ms pages=7
