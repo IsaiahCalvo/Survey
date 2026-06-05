@@ -13,7 +13,6 @@
 // in PDFViewer's publisher effects, not here — preserve that contract.
 // (Note: CLAUDE.md still says the guard lives in AppShell; that line is stale.)
 
-import CompactColorPicker from './components/CompactColorPicker';
 import Dashboard from './Dashboard';
 import DocumentLockBanner from './components/DocumentLockBanner.jsx';
 import Icon from './Icons';
@@ -41,6 +40,9 @@ import { FONT_FAMILY, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScroll
 // fabric / annotation / Excel weight). The viewer chunk fetches the first time
 // a PDF tab is opened.
 const PDFViewer = lazy(() => import('./PDFViewer').then((m) => ({ default: m.PDFViewer })));
+// Lazy boundary: the compact color picker only renders deep inside the bottom
+// toolbar when a rich-text or annotation color picker is explicitly opened.
+const CompactColorPicker = lazy(() => import('./components/CompactColorPicker'));
 
 export default function App() {
   // Microsoft Graph authentication hook
@@ -1460,16 +1462,18 @@ export default function App() {
                           transform: 'translate(-50%, 0)',
                           zIndex: 2000,
                         }}>
-                          <CompactColorPicker
-                            color={bottomToolbarApi.richTextEditor?.state?.fontColor || '#1e293b'}
-                            opacity={1}
-                            marginRight="0"
-                            onChange={(hex) => {
-                              bottomToolbarApi.richTextEditor?.api?.setFontColor?.(hex);
-                            }}
-                            onClose={() => setShowFontColorPicker(false)}
-                            firstPreset="transparent"
-                          />
+                          <Suspense fallback={null}>
+                            <CompactColorPicker
+                              color={bottomToolbarApi.richTextEditor?.state?.fontColor || '#1e293b'}
+                              opacity={1}
+                              marginRight="0"
+                              onChange={(hex) => {
+                                bottomToolbarApi.richTextEditor?.api?.setFontColor?.(hex);
+                              }}
+                              onClose={() => setShowFontColorPicker(false)}
+                              firstPreset="transparent"
+                            />
+                          </Suspense>
                         </div>
                       )}
                     </div>
@@ -2009,16 +2013,18 @@ export default function App() {
                           })}
                         </div>
                       )}
-                      <CompactColorPicker
-                        color={currentColor}
-                        opacity={currentOpacity}
-                        marginRight="53px"
-                        onChange={applyChange}
-                        onClose={() => bottomToolbarApi.setShowAnnotationColorPicker(false)}
-                        firstPreset={(shapeOneVisibleRule && !onFillTab)
-                          ? { kind: 'match', color: bottomToolbarApi.fillColor || '#ffffff', opacity: (bottomToolbarApi.fillOpacity ?? 100) / 100 }
-                          : 'transparent'}
-                      />
+                      <Suspense fallback={null}>
+                        <CompactColorPicker
+                          color={currentColor}
+                          opacity={currentOpacity}
+                          marginRight="53px"
+                          onChange={applyChange}
+                          onClose={() => bottomToolbarApi.setShowAnnotationColorPicker(false)}
+                          firstPreset={(shapeOneVisibleRule && !onFillTab)
+                            ? { kind: 'match', color: bottomToolbarApi.fillColor || '#ffffff', opacity: (bottomToolbarApi.fillOpacity ?? 100) / 100 }
+                            : 'transparent'}
+                        />
+                      </Suspense>
                     </div>
                   );
                 })()}
