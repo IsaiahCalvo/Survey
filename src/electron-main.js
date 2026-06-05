@@ -336,8 +336,7 @@ function createWindow() {
           win.loadFile(distPath).then(() => {
             // Wait for the page to load, then inject the hash
             win.webContents.once('did-finish-load', () => {
-              const hash = parsedUrl.hash.replace(/"/g, '\\"'); // Escape quotes
-              win.webContents.executeJavaScript(`window.location.hash = "${hash}";`).catch(err => {
+              win.webContents.executeJavaScript(`window.location.hash = ${JSON.stringify(parsedUrl.hash)};`).catch(err => {
                 console.error('Error setting OAuth hash:', err);
               });
             });
