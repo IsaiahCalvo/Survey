@@ -136,7 +136,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   const [editingModules, setEditingModules] = useState(false); // Edit mode for modules
   const [editingCategories, setEditingCategories] = useState(false); // Edit mode for categories
   const [editingModuleName, setEditingModuleName] = useState({}); // { moduleId: name } for editing module names
-  const [editingCategoryName, setEditingCategoryName] = useState({}); // { categoryId: name } for editing category names
+  const [editingCategoryName, setEditingCategoryName] = useState(() => ({})); // { categoryId: name } for editing category names
   const [selectedModuleIds, setSelectedModuleIds] = useState([]); // Selected modules for move/copy
   const [selectedCategoryIds, setSelectedCategoryIds] = useState([]); // Selected categories for move/copy
   const [selectedChecklistItemIds, setSelectedChecklistItemIds] = useState([]); // Selected checklist items for move/copy
