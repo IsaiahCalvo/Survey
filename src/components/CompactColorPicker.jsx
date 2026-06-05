@@ -221,8 +221,8 @@ const CompactColorPicker = ({
     const handleMouseDownSV = (e) => {
         isDraggingSV.current = true;
         handleSVChange(e);
-        window.addEventListener('mousemove', handleMouseMoveSV);
-        window.addEventListener('mouseup', handleMouseUpSV);
+        window.addEventListener('mousemove', handleMouseMoveSV, { passive: true });
+        window.addEventListener('mouseup', handleMouseUpSV, { passive: true });
     };
 
     const handleMouseMoveSV = (e) => {
@@ -238,8 +238,8 @@ const CompactColorPicker = ({
     const handleMouseDownHue = (e) => {
         isDraggingHue.current = true;
         handleHueChange(e);
-        window.addEventListener('mousemove', handleMouseMoveHue);
-        window.addEventListener('mouseup', handleMouseUpHue);
+        window.addEventListener('mousemove', handleMouseMoveHue, { passive: true });
+        window.addEventListener('mouseup', handleMouseUpHue, { passive: true });
     };
 
     const handleMouseMoveHue = (e) => {
