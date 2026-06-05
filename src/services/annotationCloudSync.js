@@ -221,7 +221,7 @@ export async function upsertFabricAnnotation(fabricObj, opts = {}) {
   const { data, error } = await supabase
     .from('document_annotations')
     .upsert(row, { onConflict: 'document_id,annotation_id', ignoreDuplicates: false })
-    .select()
+    .select('annotation_id, updated_at')
     .single();
   if (error) {
     console.error('[CloudSync] upsertFabricAnnotation failed:', error);
@@ -308,7 +308,7 @@ export async function upsertAnnotationsByPage(annotationsByPage, opts = {}) {
     const result = await supabase
       .from('document_annotations')
       .upsert(batch, { onConflict: 'document_id,annotation_id', ignoreDuplicates: false })
-      .select();
+      .select('annotation_id, updated_at');
     if (result.error) {
       error = result.error;
       break;
@@ -365,7 +365,7 @@ export async function upsertCallouts(callouts, opts = {}) {
   const { data, error } = await supabase
     .from('document_annotations')
     .upsert(rows, { onConflict: 'document_id,annotation_id', ignoreDuplicates: false })
-    .select();
+    .select('annotation_id, updated_at');
   const elapsedMs = Date.now() - t0;
   if (error) {
     console.error('[CloudSync][push] upsertCallouts failed ' + JSON.stringify({
