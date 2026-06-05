@@ -698,6 +698,19 @@ ipcMain.handle('shell:openPath', async (event, filePath) => {
 });
 
 ipcMain.handle('shell:openExternal', async (event, url) => {
+  // Validate URL against allowlist of safe protocols before opening
+  const allowedProtocols = ['http:', 'https:', 'mailto:'];
+  try {
+    const parsedUrl = new URL(url);
+    if (!allowedProtocols.includes(parsedUrl.protocol)) {
+      console.warn(`Rejected URL with invalid protocol: ${url}`);
+      return '';
+    }
+  } catch (e) {
+    // URL parsing failed; reject silently
+    console.warn(`Invalid URL format: ${url}`);
+    return '';
+  }
   return await shell.openExternal(url);
 });
 
