@@ -1400,8 +1400,10 @@ export function useAnnotationCloudSync({
                   durableYMap.clear();
                   durableCalloutYMap.clear();
                 }, originPayload);
-                await fanOutCrdtForAnnotationsByPage(safeDurableByPage.value, { documentId, userId });
-                await fanOutCrdtForCallouts(normalizeCalloutsForSync(safeDurableCallouts.value), [], { documentId, userId, ctx });
+                await Promise.all([
+                  fanOutCrdtForAnnotationsByPage(safeDurableByPage.value, { documentId, userId }),
+                  fanOutCrdtForCallouts(normalizeCalloutsForSync(safeDurableCallouts.value), [], { documentId, userId, ctx })
+                ]);
               }
             } catch (reshapeErr) {
               console.warn('[CloudSync][source-of-truth] Supabase snapshot applied to UI but Y.Doc reshape failed ' + JSON.stringify({
