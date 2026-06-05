@@ -14,10 +14,10 @@
      onCreateProject()     — start the new-project flow
      onCreateTemplate()    — start the new-template flow
 */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import DocumentsLedger from './DocumentsLedger';
 import ProjectsFolderTree from './ProjectsFolderTree';
-import TemplatesEditor from './TemplatesEditor';
+const TemplatesEditor = lazy(() => import('./TemplatesEditor'));
 import ShareModal from './ShareModal';
 import AccessManagementModal from './AccessManagementModal';
 import { HubChromeContext } from './HubShell';
@@ -126,14 +126,16 @@ export default function SurveyHub({
         />
       )}
       {tab === 'templates' && (
-        <TemplatesEditor
-          {...common}
-          templates={templates}
-          onCreateTemplate={onCreateTemplate}
-          onSaveTemplates={onSaveTemplates}
-          onShare={shareTemplate}
-          getChecklistItemUsageCount={getChecklistItemUsageCount}
-        />
+        <Suspense fallback={null}>
+          <TemplatesEditor
+            {...common}
+            templates={templates}
+            onCreateTemplate={onCreateTemplate}
+            onSaveTemplates={onSaveTemplates}
+            onShare={shareTemplate}
+            getChecklistItemUsageCount={getChecklistItemUsageCount}
+          />
+        </Suspense>
       )}
 
       <ShareModal
