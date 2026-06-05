@@ -695,24 +695,6 @@ ipcMain.handle('dialog:saveFile', async (event, { title, defaultPath, filters, d
 });
 
 ipcMain.handle('shell:openPath', async (event, filePath) => {
-  // On macOS, use the native 'open' command which works more reliably than shell.openPath
-  if (process.platform === 'darwin') {
-    return new Promise((resolve) => {
-      // Use 'open' command which is what Finder uses when you double-click
-      // The -a flag specifies the application, -W waits for the app to open
-      const escapedPath = filePath.replace(/"/g, '\\"');
-      exec(`open "${escapedPath}"`, (error, stdout, stderr) => {
-        if (error) {
-          console.error('Failed to open file with open command:', error);
-          resolve(error.message);
-        } else {
-          resolve('');
-        }
-      });
-    });
-  }
-
-  // On other platforms, use the standard shell.openPath
   return await shell.openPath(filePath);
 });
 
