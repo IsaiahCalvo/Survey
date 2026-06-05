@@ -1,0 +1,87 @@
+===== SurveyApp Save Log =====
+version:   0.1.46
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1512x833
+locale:    en-US
+timestamp: 2026-06-05T16:24:38.098Z (6/5/2026, 12:24:38 PM)
+==============================
+[OpenTiming] doc-click @ 129020ms Package 2 - Rev 4 -- IC.pdf
+[OpenTiming] pdfid-resolve @ 131678ms Package 2 - Rev 4 -- IC.pdf-6311068
+[OpenTiming] hydrate-start @ 131753ms b8f0c934-b0d5-49ce-be9d-2d6b3a562df6
+[OpenTiming] snapshot-fetch-done @ 132000ms null
+[OpenTiming] crdt-hydrate-done @ 132100ms pages=0
+[InteractionDiag] interactive-ready @ 132244ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 132423ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[PreviewDiag] sync push {"kind":"fabric","count":1,"changedObjectCount":257,"deletedCount":0,"pageCount":1}
+[SaveLog] bulletproof local snapshot saved at /Users/isaiahcalvo/Documents/Projects/Active/Survey-BetaSafeS2/Logs/2026-06-05_15-51-16
+[SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"hasGhTokenEnv":true,"payloadLength":908}
+[SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"hasGhTokenEnv":true,"payloadLength":908}
+[InteractionDiag] viewer-pan-start @ 2050212ms tool=pan button=0 target=syncfusion-page scrollTop=4509 scrollLeft=7
+[InteractionDiag] pan-end @ 2050342ms totalScrollDelta=(0,0) [PAN DID NOTHING]
+[SaveLogBanner] GitHub push OK {"url":"https://github.com/IsaiahCalvo/Survey/blob/logs/mac-mac-2026-06-05T16-22-22-089Z.log","filename":"mac-mac-2026-06-05T16-22-22-089Z.log"}
+=== PAGE RELOAD (navigation) @ 2026-06-05T16:22:24.326Z ===
+[OpenTiming] doc-click @ 3141ms Package 2 - Rev 4 -- IC.pdf
+[OpenTiming] pdfid-resolve @ 3895ms Package 2 - Rev 4 -- IC.pdf-6311068
+[OpenTiming] hydrate-start @ 3973ms b8f0c934-b0d5-49ce-be9d-2d6b3a562df6
+[OpenTiming] snapshot-fetch-done @ 4268ms null
+[InteractionDiag] interactive-ready @ 4346ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 4583ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[OpenTiming] crdt-hydrate-done @ 4665ms pages=1
+=== PAGE RELOAD (navigation) @ 2026-06-05T16:22:38.915Z ===
+[DocumentDelete] start {"docId":"b8f0c934-b0d5-49ce-be9d-2d6b3a562df6","filePath":"170d915c-5741-4e0b-b03f-deaeedae27bd/general/1780670881139.pdf","source":"survey-hub-bulk"}
+[DocumentDelete] archive:result {"docId":"b8f0c934-b0d5-49ce-be9d-2d6b3a562df6","source":"survey-hub-bulk","archivedCount":1,"archivedRows":[{"id":"b8f0c934-b0d5-49ce-be9d-2d6b3a562df6","name":"Package 2 - Rev 4 -- IC.pdf","file_path":"170d915c-5741-4e0b-b03f-deaeedae27bd/general/1780670881139.pdf","user_id":"170d915c-5741-4e0b-b03f-deaeedae27bd"}]}
+[DocumentDelete] verify:archived {"docId":"b8f0c934-b0d5-49ce-be9d-2d6b3a562df6","source":"survey-hub-bulk"}
+[OpenTiming] pdfid-resolve @ 12815ms sync-test.pdf-2489
+[OpenTiming] hydrate-start @ 12830ms 43c92ebc-8ae9-4aec-bd6d-5281fdfcfe5d
+[InteractionDiag] interactive-ready @ 12944ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] snapshot-fetch-done @ 12945ms null
+[OpenTiming] first-marks-painted @ 12950ms pdfId=sync-test.pdf-2489
+[OpenTiming] crdt-hydrate-done @ 13200ms pages=0
+[OpenTiming] pdfid-resolve @ 23116ms Package 2 - Rev 4 -- IC.pdf-6311068
+[PreviewDiag] backup write {"kind":"callout-localStorage","count":1,"calloutCount":0,"bytes":2}
+[InteractionDiag] interactive-ready @ 25256ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 25580ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+=== PAGE RELOAD (navigation) @ 2026-06-05T16:23:10.310Z ===
+[OpenTiming] doc-click @ 1538ms Package 2 - Rev 4 -- IC.pdf
+[OpenTiming] pdfid-resolve @ 2192ms Package 2 - Rev 4 -- IC.pdf-6311068
+[OpenTiming] hydrate-start @ 2239ms 21cca3f9-6168-4434-b092-9a30fa9b22ea
+[OpenTiming] snapshot-fetch-done @ 2490ms null
+[InteractionDiag] interactive-ready @ 2619ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 3061ms pdfId=Package 2 - Rev 4 -- IC.pdf-6311068
+[OpenTiming] doc-click @ 7050ms sync-test.pdf
+[OpenTiming] pdfid-resolve @ 7215ms Package 2 - Rev 4 -- IC.pdf-6311068
+[OpenTiming] pdfid-resolve @ 7249ms sync-test.pdf-2489
+[OpenTiming] hydrate-start @ 7344ms 43c92ebc-8ae9-4aec-bd6d-5281fdfcfe5d
+[InteractionDiag] interactive-ready @ 7468ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 7470ms pdfId=sync-test.pdf-2489
+[InteractionDiag] interactive-ready @ 7508ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] snapshot-fetch-done @ 8179ms null
+[OpenTiming] crdt-hydrate-done @ 9139ms pages=0
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":500}
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+=== PAGE RELOAD (navigation) @ 2026-06-05T16:23:22.696Z ===
+[OpenTiming] doc-click @ 6437ms sync-test.pdf
+[OpenTiming] pdfid-resolve @ 6851ms sync-test.pdf-2489
+[OpenTiming] hydrate-start @ 6863ms 43c92ebc-8ae9-4aec-bd6d-5281fdfcfe5d
+[InteractionDiag] interactive-ready @ 6961ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 6965ms pdfId=sync-test.pdf-2489
+[OpenTiming] snapshot-fetch-done @ 7346ms null
+[OpenTiming] crdt-hydrate-done @ 7740ms pages=0
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[OpenTiming] doc-click @ 11143ms Package 2 - Rev 4 -- IC.pdf
+[OpenTiming] pdfid-resolve @ 11344ms sync-test.pdf-2489
+[OpenTiming] pdfid-resolve @ 11346ms Package 2 - Rev 4 -- IC.pdf-6311068
+[OpenTiming] hydrate-start @ 11388ms 21cca3f9-6168-4434-b092-9a30fa9b22ea
+[InteractionDiag] interactive-ready @ 11604ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 11605ms pdfId=sync-test.pdf-2489
+[InteractionDiag] interactive-ready @ 11665ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] snapshot-fetch-done @ 12475ms null
+[OpenTiming] crdt-hydrate-done @ 14401ms pages=2
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[InteractionDiag] viewer-pan-start @ 69728ms tool=pan button=0 target=syncfusion-page scrollTop=5126 scrollLeft=0
+[InteractionDiag] pan-drag @ 69757ms pointerDelta=(0,0) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-end @ 69867ms totalScrollDelta=(0,0) [PAN DID NOTHING]
