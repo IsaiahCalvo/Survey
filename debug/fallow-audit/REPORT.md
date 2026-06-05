@@ -77,3 +77,50 @@ The safe, high-confidence wins are done and verified. The rest is either a
 product decision (the deferred files above) or work that should ride along with
 the Syncfusion-removal migration rather than a standalone cleanup. Keep
 `.fallowrc.jsonc` so future `npm run audit:*` runs stay honest.
+
+---
+
+# Deep multi-agent audit follow-up — 2026-06-04
+
+20 agents (one investigator + one adversarial verifier per item) audited every
+remaining ambiguous file. Each verdict backed by full-file read, git history
+(`--follow`, `-S`), exhaustive reference hunt (static/dynamic/string/alias/
+electron/worker), and UI-reachability check.
+
+## Removed (7 files — verified unreferenced + unreachable, build + 888 tests green)
+
+- `src/components/OneDriveConnectButton.jsx`, `src/utils/oneDriveUtils.js` —
+  never wired into any parent in git history; live OneDrive path uses
+  `excelGraphService` + `useMSGraph().login` directly.
+- `src/components/Callout/CalloutCanvas|CalloutComponent|CalloutContextMenu|CalloutEditModal.jsx`
+  — Phase-14 null-render stubs, zero importers; live Callout is the index entry.
+- `src/types/database.ts` — only TS file, no tsconfig/typecheck tooling, zero
+  importers.
+
+## Kept after audit (with reasons)
+
+- `src/authConfig.js` — KEEP. Parked Microsoft/MSAL + Graph SSO feature, intact
+  and coherent; `@azure/msal-*` still in package.json, sibling MSGraphContext
+  scaffolding exists. Not an orphan. If Microsoft auth is truly abandoned, remove
+  the whole staged feature in one deliberate pass (config + electron plumbing +
+  the two msal deps), not this file alone.
+- `src/index.css` — KEEP. **Adversarial verifier catch:** not loaded at runtime,
+  but it is the ONLY place defining the `.tool-crosshair` class that live code
+  uses. Deleting it would break the crosshair cursor.
+- `src/App.css` — KEEP (UNCERTAIN). Not loaded at runtime, but referenced as the
+  CSS-variable source-of-truth across ~20 planning docs and component CSS headers.
+  Near-zero benefit, real confusion risk. Leave unless doing a deliberate CSS pass.
+- `src/lib/collab/HocuspocusYjsProvider.js` — KEEP. Deliberate Phase-28 fallback
+  prototype; Supabase won the transport bake-off but this is retained on purpose.
+- `src/utils/geometryHitTest.js` — KEEP, no trim. Fully wired, load-bearing
+  hit-testing; the 26 "unused exports" are over-export noise (internal helpers).
+- `src/utils/calloutGeometry.js`, `src/services/documentAnnotationService.js` —
+  KEEP. Load-bearing; unused exports are over-exporting in sensitive Callout /
+  annotation-sync code. Export-trimming is cosmetic and not worth the risk.
+
+## Net result of the whole audit session
+
+34 dead files removed total (27 + 7), 1 phantom dep declared, 2 import cycles
+broken, maintainability 80 → 90+. Every remaining fallow finding is now either a
+deliberate staged feature, a planned migration (Syncfusion deps), or cosmetic
+over-export in sensitive code — none safe to auto-apply.
