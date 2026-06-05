@@ -9,7 +9,7 @@
 // tab or Spaces UI. The Spaces panel lives in the LEFT rail (PDFSidebar).
 // Accurate rename candidate: SurveyRail.jsx.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Icon from './Icons';
 import EntityIndicator from './components/EntityIndicator';
 import { COLORS } from './theme';
@@ -138,6 +138,13 @@ const SurveySpacesRail = ({
       onCollapseChange(isSurveyPanelCollapsed);
     }
   }, [isSurveyPanelCollapsed, onCollapseChange]);
+
+  // O(1) entity-by-id lookup for the per-marker render loop below (entity ids are
+  // unique, so a Map.get matches the old entities.find first-and-only result).
+  const entitiesMap = useMemo(() => {
+    const entities = selectedTemplate?.entities || [];
+    return new Map(entities.map((e) => [e.id, e]));
+  }, [selectedTemplate?.entities]);
 
   return (
           <>
@@ -1578,8 +1585,7 @@ const SurveySpacesRail = ({
                                                           }
 
                                                           if (entityId) {
-                                                            const entities = selectedTemplate?.entities || [];
-                                                            const entity = entities.find(e => e.id === entityId);
+                                                            const entity = entitiesMap.get(entityId);
                                                             if (entity) {
                                                               // Use the exact color from entity.color without transformation
                                                               indicatorColor = entity.color;
