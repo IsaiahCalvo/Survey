@@ -429,7 +429,7 @@ const RegionSelectionTool = ({
     }
 
     window.addEventListener('scroll', measureRect, { capture: true, passive: true });
-    window.addEventListener('resize', measureRect);
+    window.addEventListener('resize', measureRect, { passive: true });
 
     return () => {
       setCanvasRect(null);
