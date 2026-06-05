@@ -4,6 +4,7 @@ import { emitTextSearchDiag } from '../utils/textSearchDiag';
 const MAX_RENDERED_MATCHES_PER_PAGE = 140;
 const MAX_RENDERED_RECTANGLES_PER_PAGE = 900;
 const INACTIVE_PAGE_MATCH_LIMIT = 60;
+const EMPTY_HIGHLIGHTS = [];
 
 /**
  * SearchHighlightLayer renders highlight overlays for search matches on a PDF page.
@@ -20,7 +21,7 @@ const SearchHighlightLayer = memo(({
   width,
   height,
   scale,
-  highlights = [],
+  highlights = EMPTY_HIGHLIGHTS,
   maxRenderedMatches = MAX_RENDERED_MATCHES_PER_PAGE,
   activeMatchId = null,
   isActiveMatchOnThisPage = false,
