@@ -1804,17 +1804,16 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     }));
   };
 
+  const filteredDocuments = useMemo(() => {
+    if (!searchQuery) return documents;
+    const lq = searchQuery.toLowerCase();
+    return documents.filter(doc =>
+      doc.name.toLowerCase().includes(lq)
+    );
+  }, [documents, searchQuery]);
+
   const sortedDocuments = useMemo(() => {
-    let filteredDocs = documents;
-
-    if (searchQuery) {
-      const lq = searchQuery.toLowerCase();
-      filteredDocs = documents.filter(doc =>
-        doc.name.toLowerCase().includes(lq)
-      );
-    }
-
-    return [...filteredDocs].sort((a, b) => {
+    return [...filteredDocuments].sort((a, b) => {
       if (!sortConfig.key) return 0;
 
       let aVal = a[sortConfig.key];
@@ -1830,7 +1829,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
       if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [documents, sortConfig, searchQuery]);
+  }, [filteredDocuments, sortConfig]);
 
   const sortedProjects = useMemo(() => {
     let filtered = projects;
