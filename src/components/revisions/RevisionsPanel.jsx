@@ -23,7 +23,7 @@
 // `documents.user_id` — matches the helper logic and avoids touching
 // useYDoc state.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../supabaseClient';
 import {
   createRevision,
@@ -647,20 +647,26 @@ export default function RevisionsPanel({
 
   if (!documentId) return null;
 
-  const timelineItems = [
-    ...revisions.map((rev) => ({
-      id: `revision:${rev.id}`,
-      kind: 'revision',
-      at: rev.createdAt,
-      revision: rev,
-    })),
-    ...historyEvents.map((event) => ({
-      id: `event:${event.id}`,
-      kind: 'event',
-      at: event.occurred_at || event.created_at,
-      event,
-    })),
-  ].sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0));
+  const timelineItems = useMemo(() => {
+    const items = [
+      ...revisions.map((rev) => ({
+        id: `revision:${rev.id}`,
+        kind: 'revision',
+        at: rev.createdAt,
+        _ms: new Date(rev.createdAt || 0).getTime(),
+        revision: rev,
+      })),
+      ...historyEvents.map((event) => ({
+        id: `event:${event.id}`,
+        kind: 'event',
+        at: event.occurred_at || event.created_at,
+        _ms: new Date(event.occurred_at || event.created_at || 0).getTime(),
+        event,
+      })),
+    ];
+    items.sort((a, b) => b._ms - a._ms);
+    return items;
+  }, [revisions, historyEvents]);
 
   const panel = (
     <div
