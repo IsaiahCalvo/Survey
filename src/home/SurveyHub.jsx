@@ -16,7 +16,7 @@
 */
 import { useState, useEffect, lazy, Suspense } from 'react';
 import DocumentsLedger from './DocumentsLedger';
-import ProjectsFolderTree from './ProjectsFolderTree';
+const ProjectsFolderTree = lazy(() => import('./ProjectsFolderTree'));
 const TemplatesEditor = lazy(() => import('./TemplatesEditor'));
 import ShareModal from './ShareModal';
 import AccessManagementModal from './AccessManagementModal';
@@ -110,20 +110,22 @@ export default function SurveyHub({
         />
       )}
       {tab === 'projects' && (
-        <ProjectsFolderTree
-          {...common}
-          projects={projects}
-          documents={documents}
-          members={members}
-          onOpenDocument={onOpenDocument}
-          onCreateProject={onCreateProject}
-          onUpload={onUpload}
-          onDeleteProjects={onDeleteProjects}
-          onDeleteDocuments={onDeleteDocuments}
-          onLockDocument={onLockDocument}
-          onShare={shareProject}
-          onShareDocument={shareDocuments}
-        />
+        <Suspense fallback={null}>
+          <ProjectsFolderTree
+            {...common}
+            projects={projects}
+            documents={documents}
+            members={members}
+            onOpenDocument={onOpenDocument}
+            onCreateProject={onCreateProject}
+            onUpload={onUpload}
+            onDeleteProjects={onDeleteProjects}
+            onDeleteDocuments={onDeleteDocuments}
+            onLockDocument={onLockDocument}
+            onShare={shareProject}
+            onShareDocument={shareDocuments}
+          />
+        </Suspense>
       )}
       {tab === 'templates' && (
         <Suspense fallback={null}>
