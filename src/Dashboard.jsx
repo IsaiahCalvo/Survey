@@ -1808,8 +1808,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     let filteredDocs = documents;
 
     if (searchQuery) {
+      const lq = searchQuery.toLowerCase();
       filteredDocs = documents.filter(doc =>
-        doc.name.toLowerCase().includes(searchQuery.toLowerCase())
+        doc.name.toLowerCase().includes(lq)
       );
     }
 
@@ -1834,7 +1835,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   const sortedProjects = useMemo(() => {
     let filtered = projects;
     if (searchQuery) {
-      filtered = projects.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
+      const lq = searchQuery.toLowerCase();
+      filtered = projects.filter(p => p.name.toLowerCase().includes(lq));
     }
     // Default sort by created_at desc (Supabase uses snake_case)
     return [...filtered].sort((a, b) => new Date(b.created_at || b.createdAt || 0) - new Date(a.created_at || a.createdAt || 0));
@@ -1843,7 +1845,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   const sortedTemplates = useMemo(() => {
     let filtered = templates;
     if (searchQuery) {
-      filtered = templates.filter(t => (t.name || '').toLowerCase().includes(searchQuery.toLowerCase()));
+      const lq = searchQuery.toLowerCase();
+      filtered = templates.filter(t => (t.name || '').toLowerCase().includes(lq));
     }
     return [...filtered].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
   }, [templates, searchQuery]);
