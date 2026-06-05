@@ -330,8 +330,8 @@ const installTextMarkupDropletHandlers = (viewer) => {
   bind(textMarkupModule.dropDivAnnotationRight, 'right');
   bind(textMarkupModule.dropElementRight, 'right');
   if (!textMarkupModule.__betasafeDropletHandlersInstalled) {
-    document.addEventListener('pointermove', handleMove, true);
-    document.addEventListener('mousemove', handleMove, true);
+    document.addEventListener('pointermove', handleMove, { capture: true, passive: true });
+    document.addEventListener('mousemove', handleMove, { capture: true, passive: true });
     document.addEventListener('pointerup', endResize, true);
     document.addEventListener('mouseup', endResize, true);
     document.addEventListener('pointercancel', endResize, true);
