@@ -90,6 +90,7 @@ import { shouldRunSurveyMarkerSync } from './utils/surveyMarkerSyncSafety';
 import { splitImportedCalloutsFromPage } from './utils/calloutImportAdapter';
 import { supabase } from './supabaseClient';
 import { useAnnotationCloudSync } from './hooks/useAnnotationCloudSync.js';
+import { useAnnotationDoc } from './hooks/useAnnotationDoc.js';
 import { useAuth } from './contexts/AuthContext';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useDocumentPresenceList } from './hooks/useDocumentPresenceList.js';
@@ -15643,11 +15644,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     [annotationsByPage, user, documentOwnerId, enqueueUndoToast],
   );
 
+  // Legacy cloud sync — its annotation HYDRATE + PUSH are retired by the Yjs
+  // source-of-truth rebuild (kept inert here only for its status return; removed
+  // entirely in the patch-cleanup step). The durable store below now owns
+  // annotation + callout persistence.
   const {
     status: cloudSyncStatus,
     queueSize: cloudSyncQueueSize,
-    forceFlush: cloudSyncForceFlush,
-    initialHydration: normalAnnotationHydration,
   } = useAnnotationCloudSync({
     documentId: pdfFile?.id || null,
     userId: user?.id || null,
@@ -15656,8 +15659,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     callouts,
     setAnnotationsByPage,
     setCallouts,
-    enabled: isActive && cloudSyncActive,
-    hydrateEnabled: isActive && cloudSyncEnabled && !!pdfFile?.id && !!user?.id
+    enabled: false,
+    hydrateEnabled: false
+  });
+
+  // The rebuild: Yjs Y.Doc + append-only op-log is the single source of truth
+  // for annotations (and callouts). Captures every change durably the instant it
+  // happens and hydrates from the durable store on open — no clear-and-refan, no
+  // empty/partial overwrite, no documentId-timing gate.
+  const {
+    initialHydration: normalAnnotationHydration,
+    forceFlush: cloudSyncForceFlush,
+  } = useAnnotationDoc({
+    documentId: pdfFile?.id || null,
+    userId: user?.id || null,
+    enabled: isActive && cloudSyncEnabled && !!pdfFile?.id && !!user?.id,
+    annotationsByPage,
+    setAnnotationsByPage,
+    callouts,
+    setCallouts,
   });
   // Live presence list — feeds the stacked-avatars row in the toolbar.
   // Uses cloudSyncActive (operational flag) so presence stops fetching when

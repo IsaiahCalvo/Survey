@@ -37,17 +37,19 @@ test('same-document reload preserves cloud-owned layers instead of blanking them
   assert.match(APP_SOURCE, /const loadedCallouts = isCloudBackedDoc\s*\?\s*\(isSamePdfReload \? previousCalloutsForSamePdf : \[\]\)\s*:\s*loadCallouts\(id\);/);
 });
 
-test('normal annotation hydration can start before live sync subscription is enabled', () => {
-  // App.jsx may guard the call with `isActive && ` before the two flags; the
-  // contract is that hydrateEnabled does NOT require cloudSyncActive — it only
-  // requires cloudSyncEnabled + pdfFile + user. This regression test allows
-  // the optional `isActive && ` prefix introduced after the hydration gate
-  // landed without changing the underlying contract.
+test('annotation persistence is owned by the durable Yjs store, not the legacy hook', () => {
+  // Rebuild contract: the legacy cloud-sync hook's annotation hydrate + push are
+  // retired (called inert), and the durable Yjs store (useAnnotationDoc) owns
+  // annotation + callout persistence, gated on the document id + user being
+  // present (no live-subscription prerequisite).
+  assert.match(APP_SOURCE, /useAnnotationDoc\(\{/);
   assert.match(
     APP_SOURCE,
-    /enabled: (?:isActive && )?cloudSyncActive,\s*hydrateEnabled: (?:isActive && )?cloudSyncEnabled && !!pdfFile\?\.id && !!user\?\.id/s
+    /useAnnotationDoc\(\{[\s\S]*?enabled: isActive && cloudSyncEnabled && !!pdfFile\?\.id && !!user\?\.id/
   );
-  assert.match(CLOUD_SYNC_SOURCE, /hydrateEnabled = enabled/);
+  // The legacy hook is neutralized for persistence.
+  assert.match(APP_SOURCE, /enabled: false,\s*hydrateEnabled: false/);
+  // The legacy hook still has its hydrate guard (kept until full removal).
   assert.match(CLOUD_SYNC_SOURCE, /if \(!hydrateEnabled \|\| !documentId \|\| !userId \|\| !pdfId\)/);
 });
 

@@ -20,6 +20,7 @@
 import * as Y from 'yjs';
 
 export const ANNOTATIONS_MAP = 'annotations';
+export const META_MAP = 'annoMeta';
 export const SNAPSHOT_ENCODING_VERSION = 1;
 
 /**
@@ -41,6 +42,23 @@ export function getAnnotationsMap(doc) {
   return doc.getMap(ANNOTATIONS_MAP);
 }
 
+/** Read a document-level meta value (e.g. the callouts list). */
+export function getMetaValue(doc, key) {
+  return doc.getMap(META_MAP).get(key);
+}
+
+/**
+ * Write a document-level meta value, but only if it actually changed (JSON
+ * compare), so re-setting identical state produces zero Yjs updates.
+ */
+export function setMetaValue(doc, key, value, origin = 'local') {
+  const map = doc.getMap(META_MAP);
+  const prev = map.get(key);
+  if (stableStringify(prev) === stableStringify(value)) return false;
+  doc.transact(() => { map.set(key, value); }, origin);
+  return true;
+}
+
 /**
  * Materialize the render shape from the Y.Doc. Groups every stored annotation
  * by its page into { [page]: { objects: [...] } }. Object order is the Y.Map's
@@ -60,45 +78,49 @@ export function docToByPage(doc) {
   return byPage;
 }
 
-// Internal: flatten a byPage render shape to a desired id -> { p, o } map,
-// skipping objects without a usable stable id.
-function byPageToDesired(byPage, getId) {
-  const desired = new Map();
-  let skipped = 0;
-  for (const pageKey of Object.keys(byPage || {})) {
-    const page = Number(pageKey);
-    const bucket = byPage[pageKey];
-    const objects = (bucket && Array.isArray(bucket.objects)) ? bucket.objects : [];
-    for (const obj of objects) {
-      const id = getId(obj);
-      if (!id) { skipped += 1; continue; }
-      desired.set(id, { p: page, o: obj });
-    }
-  }
-  return { desired, skipped };
-}
-
 /**
  * Reconcile the Y.Doc to match a render-shape `annotationsByPage`. Computes the
  * minimal set of set/delete operations (so re-saving identical state produces
  * ZERO Yjs updates — never spams the durable log) and applies them in one
  * transaction. Returns { added, updated, removed, skipped } for diagnostics.
  *
+ * Performance: when `prevByPage` is supplied, a page whose bucket is the SAME
+ * object reference as last time is treated as unchanged — its ids are protected
+ * from deletion but its objects are not re-compared (no per-mark stringify). The
+ * viewer replaces only the edited page's array, so on a 24k-mark document a
+ * single draw re-checks one page, not all of them.
+ *
  * `origin` tags the transaction so the local update observer can tell its own
  * writes apart from remote ones.
  */
-export function syncByPageToDoc(doc, byPage, { getId = extractAnnotationId, origin = 'local' } = {}) {
+export function syncByPageToDoc(doc, byPage, { getId = extractAnnotationId, origin = 'local', prevByPage = null } = {}) {
   const map = getAnnotationsMap(doc);
-  const { desired, skipped } = byPageToDesired(byPage, getId);
+
+  const desired = new Map(); // id -> {p,o} for CHANGED pages (full compare)
+  const keepIds = new Set(); // ids on UNCHANGED pages (protect from delete only)
+  let skipped = 0;
+
+  for (const pageKey of Object.keys(byPage || {})) {
+    const page = Number(pageKey);
+    const bucket = byPage[pageKey];
+    const objects = (bucket && Array.isArray(bucket.objects)) ? bucket.objects : [];
+    const unchanged = prevByPage && prevByPage[pageKey] === bucket;
+    for (const obj of objects) {
+      const id = getId(obj);
+      if (!id) { skipped += 1; continue; }
+      if (unchanged) keepIds.add(id);
+      else desired.set(id, { p: page, o: obj });
+    }
+  }
 
   let added = 0;
   let updated = 0;
   let removed = 0;
 
   doc.transact(() => {
-    // Deletes: present in the doc but not desired.
+    // Deletes: present in the doc but neither desired nor on an unchanged page.
     const toDelete = [];
-    map.forEach((_value, key) => { if (!desired.has(key)) toDelete.push(key); });
+    map.forEach((_value, key) => { if (!desired.has(key) && !keepIds.has(key)) toDelete.push(key); });
     for (const key of toDelete) { map.delete(key); removed += 1; }
 
     // Adds / updates: desired entries that are new or changed.

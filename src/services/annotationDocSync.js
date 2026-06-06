@@ -23,6 +23,8 @@ import {
   docToByPage,
   syncByPageToDoc,
   encodeSnapshot,
+  getMetaValue,
+  setMetaValue,
 } from './annotationDocStore.js';
 
 // The flat annotation store gets its OWN registry-managed Y.Doc, keyed apart
@@ -96,6 +98,7 @@ export async function openAnnotationDoc({
     lastSeq: 0,            // highest annotation_updates.seq we've applied
     clientSeq: 0,          // our monotonic per-(doc,client) op counter
     opsSinceSnapshot: 0,
+    lastByPage: null,      // last byPage applied — enables the per-page-ref fast diff
     destroyed: false,
     idbProvider: null,
     realtimeChannel: null,
@@ -132,9 +135,13 @@ export async function openAnnotationDoc({
   // --- observe local mutations → append to the durable log ---
   activeDoc.on('update', (update, origin) => {
     if (state.destroyed) return;
-    if (origin === REMOTE_ORIGIN || origin === HYDRATE_ORIGIN) return; // not our write
+    // Ignore writes we didn't originate as user edits: remote ops, the initial
+    // hydrate, and the local IndexedDB replay (re-appending those would loop).
+    if (origin === REMOTE_ORIGIN || origin === HYDRATE_ORIGIN || origin === state.idbProvider) return;
     if (supabase) enqueueAppend(state, update);
-    notifyChange(state);
+    // No notifyChange here: the viewer already holds the state it just produced.
+    // Pushing it back would clobber per-page render metadata. Remote ops DO
+    // notify (see subscribeRealtime).
   });
 
   // --- live multi-device: apply remote ops as they land ---
@@ -284,8 +291,16 @@ function makeHandle(state) {
 
     /** Push the viewer's render-shape state into the doc (minimal diff → ops). */
     applyByPage(byPage, opts = {}) {
-      return syncByPageToDoc(state.doc, byPage, { origin: 'local', ...opts });
+      const res = syncByPageToDoc(state.doc, byPage, { origin: 'local', prevByPage: state.lastByPage, ...opts });
+      state.lastByPage = byPage;
+      return res;
     },
+
+    /** Read a document-level meta value (e.g. the callouts list). */
+    getMeta(key) { return getMetaValue(state.doc, key); },
+
+    /** Write a document-level meta value (idempotent; coarse whole-value). */
+    setMeta(key, value) { return setMetaValue(state.doc, key, value, 'local'); },
 
     /** Subscribe to changes (local or remote). Returns an unsubscribe fn. */
     onChange(cb) { state.changeListeners.add(cb); return () => state.changeListeners.delete(cb); },

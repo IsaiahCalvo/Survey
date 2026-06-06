@@ -89,6 +89,29 @@ test('objects without a stable id are skipped, not dropped silently into bad key
   assert.equal(countObjects(docToByPage(doc)), 1);
 });
 
+test('prevByPage fast-path skips unchanged pages but still applies deletes', () => {
+  const doc = new Y.Doc();
+  const page6 = { objects: [mark('a', 6), mark('b', 6)] };
+  const page7 = { objects: [mark('c', 7)] };
+  const first = { 6: page6, 7: page7 };
+  syncByPageToDoc(doc, first);
+
+  // Next state: page 6 is the SAME reference (unchanged), page 7 is removed.
+  const second = { 6: page6 };
+  const res = syncByPageToDoc(doc, second, { prevByPage: first });
+  // page 6 untouched (no re-add/update), page 7's mark deleted.
+  assert.deepEqual(res, { added: 0, updated: 0, removed: 1, skipped: 0 });
+  const out = docToByPage(doc);
+  assert.deepEqual(out[6].objects.map((o) => o.data.id).sort(), ['a', 'b']);
+  assert.equal(out[7], undefined);
+
+  // And an unchanged page reference produces zero ops.
+  let updates = 0;
+  doc.on('update', () => { updates += 1; });
+  syncByPageToDoc(doc, second, { prevByPage: second });
+  assert.equal(updates, 0);
+});
+
 test('snapshot + tail replay reconstructs the full document (the open path)', () => {
   // Author doc: pages 6-11 each get a mark — the exact scenario that vanished.
   const author = new Y.Doc();
