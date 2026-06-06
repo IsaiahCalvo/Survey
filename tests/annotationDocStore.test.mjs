@@ -112,6 +112,20 @@ test('prevByPage fast-path skips unchanged pages but still applies deletes', () 
   assert.equal(updates, 0);
 });
 
+test('a multi-page import emits one bounded op PER page, not one giant op', () => {
+  // Resilience: the embedded import of pages 6-11 must not ride on a single
+  // all-or-nothing write. Each changed page is its own transaction → its own op.
+  const doc = new Y.Doc();
+  const updates = [];
+  doc.on('update', (u) => updates.push(u));
+  syncByPageToDoc(doc, byPageFrom(
+    ['p6', 6], ['p7', 7], ['p8', 8], ['p9', 9], ['p10', 10], ['p11', 11],
+  ));
+  assert.equal(updates.length, 6, 'six changed pages => six separate ops');
+  // All still present.
+  assert.equal(Object.keys(docToByPage(doc)).length, 6);
+});
+
 test('snapshot + tail replay reconstructs the full document (the open path)', () => {
   // Author doc: pages 6-11 each get a mark — the exact scenario that vanished.
   const author = new Y.Doc();

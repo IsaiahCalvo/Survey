@@ -33,6 +33,8 @@ import {
 const REGISTRY_PREFIX = 'annoflat:';
 
 const SNAPSHOT_AFTER_OPS = 40;      // compact to a fresh snapshot every N ops
+const SNAPSHOT_DEBOUNCE_MS = 1200;  // after edits settle, write a full-state checkpoint
+const SNAPSHOT_RETRIES = 4;         // the checkpoint is the durability guarantee — retry hard
 const REMOTE_ORIGIN = 'remote';
 const HYDRATE_ORIGIN = 'hydrate';
 
@@ -99,6 +101,7 @@ export async function openAnnotationDoc({
     clientSeq: 0,          // our monotonic per-(doc,client) op counter
     opsSinceSnapshot: 0,
     lastByPage: null,      // last byPage applied — enables the per-page-ref fast diff
+    snapshotTimer: null,   // debounced full-state checkpoint
     destroyed: false,
     idbProvider: null,
     realtimeChannel: null,
@@ -138,7 +141,13 @@ export async function openAnnotationDoc({
     // Ignore writes we didn't originate as user edits: remote ops, the initial
     // hydrate, and the local IndexedDB replay (re-appending those would loop).
     if (origin === REMOTE_ORIGIN || origin === HYDRATE_ORIGIN || origin === state.idbProvider) return;
-    if (supabase) enqueueAppend(state, update);
+    if (supabase) {
+      enqueueAppend(state, update);
+      // The full-state checkpoint is the durability GUARANTEE: even if an
+      // individual op insert fails (network), the next checkpoint re-captures
+      // the whole doc from memory. Schedule it on every local edit.
+      scheduleSnapshot(state);
+    }
     // No notifyChange here: the viewer already holds the state it just produced.
     // Pushing it back would clobber per-page render metadata. Remote ops DO
     // notify (see subscribeRealtime).
@@ -232,22 +241,41 @@ async function appendOp(state, update) {
   }
 }
 
+// Debounce a full-state checkpoint after edits settle. Cheap to call on every op.
+function scheduleSnapshot(state) {
+  if (state.destroyed) return;
+  if (state.snapshotTimer) clearTimeout(state.snapshotTimer);
+  state.snapshotTimer = setTimeout(() => {
+    state.snapshotTimer = null;
+    writeSnapshot(state);
+  }, SNAPSHOT_DEBOUNCE_MS);
+}
+
+// Write the full Y.Doc as one idempotent checkpoint. Retries hard — this is the
+// durability guarantee that makes dropped op inserts self-heal on next open.
 async function writeSnapshot(state) {
-  try {
-    const snapshot = encodeSnapshot(state.doc);
-    const { error } = await state.supabase
-      .from('annotation_snapshots')
-      .upsert({
-        document_id: state.documentId,
-        at_seq: state.lastSeq,
-        snapshot: bytesToPgHex(snapshot),
-        encoding_version: 1,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'document_id' });
-    if (error) console.warn('[annotationDocSync] snapshot write failed', error.message);
-  } catch (err) {
-    console.warn('[annotationDocSync] snapshot threw', err?.message);
+  if (!state.supabase) return false;
+  const snapshot = encodeSnapshot(state.doc);
+  const hex = bytesToPgHex(snapshot);
+  for (let attempt = 1; attempt <= SNAPSHOT_RETRIES; attempt += 1) {
+    try {
+      const { error } = await state.supabase
+        .from('annotation_snapshots')
+        .upsert({
+          document_id: state.documentId,
+          at_seq: state.lastSeq,
+          snapshot: hex,
+          encoding_version: 1,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'document_id' });
+      if (!error) return true;
+      console.warn(`[annotationDocSync] snapshot write failed (attempt ${attempt})`, error.message);
+    } catch (err) {
+      console.warn(`[annotationDocSync] snapshot threw (attempt ${attempt})`, err?.message);
+    }
+    if (attempt < SNAPSHOT_RETRIES) await new Promise((r) => setTimeout(r, 400 * attempt));
   }
+  return false;
 }
 
 function subscribeRealtime(state) {
@@ -312,8 +340,12 @@ function makeHandle(state) {
     async drain() { await state.flushQueue; },
 
     async destroy() {
-      state.destroyed = true;
+      if (state.snapshotTimer) { clearTimeout(state.snapshotTimer); state.snapshotTimer = null; }
+      // Final checkpoint before teardown so the latest state is durable even if a
+      // debounce was still pending. (Mark destroyed AFTER, so the write proceeds.)
       await state.flushQueue.catch(() => {});
+      if (state.supabase) { try { await writeSnapshot(state); } catch { /* */ } }
+      state.destroyed = true;
       if (state.realtimeChannel) { try { await state.supabase.removeChannel(state.realtimeChannel); } catch { /* */ } }
       if (state.idbProvider) { try { state.idbProvider.destroy(); } catch { /* */ } }
       // Release the registry doc (the registry never destroys — keeps undo/state

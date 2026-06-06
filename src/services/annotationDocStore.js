@@ -96,8 +96,9 @@ export function docToByPage(doc) {
 export function syncByPageToDoc(doc, byPage, { getId = extractAnnotationId, origin = 'local', prevByPage = null } = {}) {
   const map = getAnnotationsMap(doc);
 
-  const desired = new Map(); // id -> {p,o} for CHANGED pages (full compare)
-  const keepIds = new Set(); // ids on UNCHANGED pages (protect from delete only)
+  const desired = new Map();          // id -> {p,o} for CHANGED pages (full compare)
+  const desiredByPage = new Map();    // page -> [[id,{p,o}], ...] for per-page transactions
+  const keepIds = new Set();          // ids on UNCHANGED pages (protect from delete only)
   let skipped = 0;
 
   for (const pageKey of Object.keys(byPage || {})) {
@@ -108,8 +109,11 @@ export function syncByPageToDoc(doc, byPage, { getId = extractAnnotationId, orig
     for (const obj of objects) {
       const id = getId(obj);
       if (!id) { skipped += 1; continue; }
-      if (unchanged) keepIds.add(id);
-      else desired.set(id, { p: page, o: obj });
+      if (unchanged) { keepIds.add(id); continue; }
+      const entry = { p: page, o: obj };
+      desired.set(id, entry);
+      if (!desiredByPage.has(page)) desiredByPage.set(page, []);
+      desiredByPage.get(page).push([id, entry]);
     }
   }
 
@@ -117,24 +121,25 @@ export function syncByPageToDoc(doc, byPage, { getId = extractAnnotationId, orig
   let updated = 0;
   let removed = 0;
 
-  doc.transact(() => {
-    // Deletes: present in the doc but neither desired nor on an unchanged page.
-    const toDelete = [];
-    map.forEach((_value, key) => { if (!desired.has(key) && !keepIds.has(key)) toDelete.push(key); });
-    for (const key of toDelete) { map.delete(key); removed += 1; }
+  // Deletes in their own transaction (one op): keys neither desired nor kept.
+  const toDelete = [];
+  map.forEach((_value, key) => { if (!desired.has(key) && !keepIds.has(key)) toDelete.push(key); });
+  if (toDelete.length) {
+    doc.transact(() => { for (const key of toDelete) { map.delete(key); removed += 1; } }, origin);
+  }
 
-    // Adds / updates: desired entries that are new or changed.
-    for (const [id, next] of desired) {
-      const prev = map.get(id);
-      if (prev === undefined) {
-        map.set(id, next);
-        added += 1;
-      } else if (!shallowEntryEqual(prev, next)) {
-        map.set(id, next);
-        updated += 1;
+  // Adds/updates ONE PAGE PER TRANSACTION → one bounded op per page, so a 3000-
+  // mark import becomes several resilient writes instead of one giant fragile
+  // one. A page with no real changes emits no Yjs update at all.
+  for (const [, entries] of desiredByPage) {
+    doc.transact(() => {
+      for (const [id, next] of entries) {
+        const prev = map.get(id);
+        if (prev === undefined) { map.set(id, next); added += 1; }
+        else if (!shallowEntryEqual(prev, next)) { map.set(id, next); updated += 1; }
       }
-    }
-  }, origin);
+    }, origin);
+  }
 
   return { added, updated, removed, skipped };
 }
