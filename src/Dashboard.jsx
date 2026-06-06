@@ -23,66 +23,6 @@ import { purgeAnnotationDoc } from './services/annotationDocSync';
 import { lockDocument, unlockDocument } from './services/documentLockService.js';
 import { perfUpload } from './utils/performanceLogger';
 import { reorderCategoriesByActiveOver, reorderItemsByActiveOver } from './home/templateReorderUtils';
-import { getPDFId } from './viewerShared';
-import { migrateLocalAnnotationsToCloud, resetMigrationFlag } from './services/cloudSyncMigration';
-
-// Root-cause fix (2026-06-05): a freshly uploaded PDF opens optimistically with
-// NO cloud id, so its embedded annotations import + render + mirror to
-// localStorage, but the in-viewer cloud-sync hook stays inactive (documentId is
-// null) because the new document id is never stamped back onto the open File.
-// Result: the embedded marks live only in localStorage for the whole upload
-// session and never reach the cloud — so they vanish on any device that wasn't
-// the uploader (the "embedded marks vanish on re-upload/reload" bug). Here we
-// push the localStorage snapshot straight to the cloud via the existing one-time
-// migration the moment the document row exists, making persistence
-// device-independent. We poll briefly for the viewer's import to land in
-// localStorage first (the import runs in parallel with the upload). If it never
-// appears we DON'T run the migration, leaving the reopen-time migration as the
-// existing backstop (so we never set the migrated flag with nothing pushed).
-async function persistImportedMarksToCloudForUpload({ file, documentId, userId }) {
-  if (!file || !documentId || !userId) return;
-  const pdfId = getPDFId(file);
-  if (!pdfId) return;
-  const key = `annotationsByPage_${pdfId}`;
-  const hasMarks = () => {
-    try {
-      const raw = localStorage.getItem(key);
-      if (!raw) return false;
-      const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === 'object'
-        && Object.values(parsed).some(
-          (p) => Array.isArray(p?.objects) && p.objects.length > 0
-        );
-    } catch { return false; }
-  };
-  // Wait up to ~6s for the viewer's embedded import to mirror into localStorage.
-  const deadline = Date.now() + 6000;
-  while (!hasMarks() && Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  if (!hasMarks()) return; // nothing imported (or race lost) — reopen backstop covers it
-  try {
-    const result = await migrateLocalAnnotationsToCloud({ documentId, userId, pdfId });
-    // The migration is a one-time-per-doc operation that sets a "migrated" flag.
-    // We only used it here to push the EMBEDDED marks at upload time. Reset the
-    // flag so the reopen-time migration still runs and catches any marks the user
-    // draws later in this same session (the in-viewer cloud-sync hook stays
-    // inactive while the open File has no id). The migration is idempotent — it
-    // dedups against existing cloud rows — so re-running it only pushes new marks.
-    if (result && !result.error) {
-      resetMigrationFlag(userId, documentId);
-    }
-    console.log('[UploadPersist] embedded-mark cloud push ' + JSON.stringify({
-      documentId,
-      pdfId,
-      pushed: result?.pushed ?? 0,
-      migrated: result?.migrated ?? false,
-      error: result?.error?.message || null,
-    }));
-  } catch (err) {
-    console.warn('[UploadPersist] embedded-mark cloud push failed', err);
-  }
-}
 
 // --- helpers (shared small utilities; FONT_FAMILY/hexToRgba/normalizeName/
 //     hasNameConflict also live in App.jsx for the viewer) ---
