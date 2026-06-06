@@ -12,7 +12,15 @@
 
 import { makeClient } from './lib/client.mjs';
 import { randomUUID } from 'node:crypto';
+import * as Y from 'yjs';
 import { openAnnotationDoc } from '../src/services/annotationDocSync.js';
+
+// Each simulated device gets its OWN Y.Doc so reopen is a true cold load from
+// the cloud (not a shared in-memory doc). In the app, the registry supplies one
+// doc per document; here we deliberately isolate per "device".
+function freshHandle(opts) {
+  return openAnnotationDoc({ ...opts, doc: new Y.Doc() });
+}
 
 let failures = 0;
 function check(pass, passMsg, failMsg) {
@@ -61,7 +69,7 @@ async function main() {
 
     // SCENARIO 1 — draw marks on pages 6-11, then a fresh stroke on page 11.
     console.log('SCENARIO 1  draw on pages 6-11 + fresh stroke on page 11 → reopen');
-    const writer = await openAnnotationDoc({
+    const writer = await freshHandle({
       documentId, supabase, clientId: 'deviceA', enableLocal: false, enableRealtime: false,
     });
     writer.applyByPage(byPageFrom({ 6: ['p6'], 7: ['p7'], 8: ['p8'], 9: ['p9'], 10: ['p10'], 11: ['p11'] }));
@@ -73,7 +81,7 @@ async function main() {
     await writer.destroy();
 
     // Reopen from a clean handle — loads snapshot + tail from the cloud only.
-    const reader = await openAnnotationDoc({
+    const reader = await freshHandle({
       documentId, supabase, clientId: 'deviceA-reopen', enableLocal: false, enableRealtime: false,
     });
     const got = idsOf(reader.getByPage());
@@ -84,7 +92,7 @@ async function main() {
 
     // SCENARIO 2 — a second device sees the first device's marks via the log.
     console.log('\nSCENARIO 2  second device opens the same doc → sees everything');
-    const deviceB = await openAnnotationDoc({
+    const deviceB = await freshHandle({
       documentId, supabase, clientId: 'deviceB', enableLocal: false, enableRealtime: false,
     });
     const bGot = idsOf(deviceB.getByPage());
@@ -95,7 +103,7 @@ async function main() {
     await deviceB.drain();
     await deviceB.destroy();
 
-    const deviceA2 = await openAnnotationDoc({
+    const deviceA2 = await freshHandle({
       documentId, supabase, clientId: 'deviceA-again', enableLocal: false, enableRealtime: false,
     });
     const a2 = idsOf(deviceA2.getByPage());

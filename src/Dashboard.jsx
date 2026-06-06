@@ -18,6 +18,7 @@ import { useSubscriptionLimits } from './hooks/useSubscriptionLimits';
 import { getSupabaseSession, supabase } from './supabaseClient';
 import { isStorageFileNotFoundError, isSupabaseRowNotFoundError } from './utils/storageErrors';
 import { countSurveyMarkersReferencingChecklistItem } from './services/documentAnnotationService';
+import { computeContentSha256 } from './services/contentHash';
 import { lockDocument, unlockDocument } from './services/documentLockService.js';
 import { perfUpload } from './utils/performanceLogger';
 import { reorderCategoriesByActiveOver, reorderItemsByActiveOver } from './home/templateReorderUtils';
@@ -611,21 +612,54 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           projectId = selectedProjectId;
         }
 
-        // OPTIMISTIC UPLOAD: open immediately — unless this is a silent
-        // Projects-tab add, which only saves the file into the project.
+        // Content fingerprint of the bytes → resolve the document's identity
+        // BEFORE opening it. This is the keystone of the rebuild: the viewer
+        // always opens with a real document id (so the save shortcut and durable
+        // annotation store work on a brand-new upload), and identical bytes dedup
+        // to one document instead of spawning a duplicate/blank copy.
+        let contentSha;
+        try {
+          contentSha = await computeContentSha256(fileData);
+        } catch (hashErr) {
+          console.error('Content hashing failed:', hashErr);
+          setDashboardError('Couldn’t read that file for upload. Please try again.');
+          perfUpload.end(file.name);
+          return;
+        }
+
+        let resolvedDoc;
+        try {
+          resolvedDoc = await createSupabaseDocument({
+            name: file.name,
+            file_path: `${user.id}/${contentSha}.pdf`,
+            file_size: file.size,
+            page_count: 1, // placeholder; corrected in the background after parse
+            project_id: projectId || null,
+            content_sha256: contentSha,
+          });
+        } catch (createErr) {
+          console.error('Could not create/resolve document before open:', createErr);
+          setDashboardError('Couldn’t prepare the document in the cloud: ' + (createErr.message || 'Unknown error'));
+          perfUpload.end(file.name);
+          return;
+        }
+
+        // Stamp the resolved identity onto the in-memory File so the viewer opens
+        // with it (no null-id window).
+        file.id = resolvedDoc.id;
+        file.projectId = resolvedDoc.project_id ?? projectId ?? null;
+        file.supabaseFilePath = resolvedDoc.file_path ?? null;
         file.uploadStartTime = performance.now();
         if (openAfterUpload) onDocumentSelect(file, filePath);
 
         // OPTIMISTIC LIST UPDATE — carry both key spellings so the file shows
         // immediately in the project-grouped views (which read project_id).
         const tempDoc = {
-          id: `temp-${Date.now()}`,
+          id: resolvedDoc.id,
           name: file.name,
           size: file.size,
           uploadedAt: new Date().toISOString(),
-          // Stamp the timestamps the ledger reads so the optimistic row shows
-          // "just now" immediately instead of a parsed-from-empty year-2000 date.
-          created_at: new Date().toISOString(),
+          created_at: resolvedDoc.created_at || new Date().toISOString(),
           updated_at: new Date().toISOString(),
           type: 'application/pdf',
           filePath: filePath,
@@ -633,28 +667,27 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           project_id: projectId,
           file: file
         };
-        setDocuments(prev => [tempDoc, ...prev]);
+        setDocuments(prev => [tempDoc, ...prev.filter(d => d.id !== tempDoc.id)]);
 
-        // Background Upload Process
+        // Background: store the bytes (content-addressed, idempotent — a re-upload
+        // of the same file overwrites the same object) and correct the page count
+        // once parsed. The marks' durability is the annotation store's job now.
         (async () => {
           try {
             perfUpload.mark(file.name, 'Starting cloud upload');
-            // Upload file to Supabase Storage
-            const uploadPromise = uploadToStorage(file, projectId || 'general');
+            const uploadPromise = uploadToStorage(file, projectId || 'general', undefined, contentSha);
             const pageCountPromise = (async () => {
               const arrayBuffer = await file.arrayBuffer();
               perfUpload.mark(file.name, 'ArrayBuffer ready for page count');
               const pdfjsLib = await loadPdfjs();
               let pdfDoc;
               try {
-                // Clone buffer since PDF.js may detach it when transferring to worker
                 pdfDoc = await pdfjsLib.getDocument({ isEvalSupported: false,
                   data: arrayBuffer.slice(0),
                   verbosity: pdfjsLib.VerbosityLevel.ERRORS
                 }).promise;
               } catch (firstError) {
                 console.warn('Standard PDF load failed during upload, trying recovery mode:', firstError.message);
-                // Try recovery mode with fresh buffer clone
                 pdfDoc = await pdfjsLib.getDocument({ isEvalSupported: false,
                   data: arrayBuffer.slice(0),
                   verbosity: pdfjsLib.VerbosityLevel.ERRORS,
@@ -666,34 +699,17 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
               return pdfDoc.numPages;
             })();
 
-            const [filePath, pageCount] = await Promise.all([uploadPromise, pageCountPromise]);
+            const [, pageCount] = await Promise.all([uploadPromise, pageCountPromise]);
             perfUpload.mark(file.name, 'Cloud upload + page count complete');
 
-            // Create document record in Supabase
-            const newDoc = await createSupabaseDocument({
-              name: file.name,
-              file_path: filePath,
-              file_size: file.size,
-              page_count: pageCount,
-              project_id: projectId || null
-            });
-            perfUpload.mark(file.name, 'Database record created');
-
-            // Refresh global document list to update counts
-            refetchAllDocuments();
-
-            // Persist the just-imported embedded annotations to the cloud in THIS
-            // session so they survive on devices that weren't the uploader.
-            if (openAfterUpload) {
-              persistImportedMarksToCloudForUpload({ file, documentId: newDoc.id, userId: user.id });
+            if (pageCount && pageCount !== resolvedDoc.page_count) {
+              try { await updateSupabaseDocument(resolvedDoc.id, { page_count: pageCount }); } catch { /* non-fatal */ }
             }
-
+            refetchAllDocuments();
             perfUpload.end(file.name);
           } catch (err) {
             perfUpload.end(file.name);
             console.error('Error uploading file in background:', err);
-            // Remove temp document from list since upload failed
-            setDocuments(prev => prev.filter(d => !(d.id === tempDoc.id)));
             setDashboardError('Couldn’t save the document to the cloud: ' + (err.message || 'Unknown error') + '. Your file is still on disk — try uploading again or check your connection.');
           }
         })();
@@ -759,53 +775,77 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
         return;
       }
 
-      // OPTIMISTIC UPLOAD: open immediately — unless this is a silent
-      // Projects-tab add, which only saves the file into the project.
+      // Content fingerprint → resolve the document's identity BEFORE opening, so
+      // the viewer opens with a real id (durable store + save shortcut work on a
+      // fresh upload) and identical bytes dedup to one document.
+      let contentSha;
+      try {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        contentSha = await computeContentSha256(bytes);
+      } catch (hashErr) {
+        console.error('Content hashing failed:', hashErr);
+        setDashboardError('Couldn’t read that file for upload. Please try again.');
+        event.target.value = '';
+        return;
+      }
+
+      let resolvedDoc;
+      try {
+        resolvedDoc = await createSupabaseDocument({
+          name: file.name,
+          file_path: `${user.id}/${contentSha}.pdf`,
+          file_size: file.size,
+          page_count: 1,
+          project_id: projectId || null,
+          content_sha256: contentSha,
+        });
+      } catch (createErr) {
+        console.error('Could not create/resolve document before open:', createErr);
+        setDashboardError('Couldn’t prepare the document in the cloud: ' + (createErr.message || 'Unknown error'));
+        event.target.value = '';
+        return;
+      }
+
+      file.id = resolvedDoc.id;
+      file.projectId = resolvedDoc.project_id ?? projectId ?? null;
+      file.supabaseFilePath = resolvedDoc.file_path ?? null;
       file.uploadStartTime = performance.now();
       if (openAfterUpload) onDocumentSelect(file);
 
       // OPTIMISTIC LIST UPDATE — carry both key spellings so the file shows
       // immediately in the project-grouped views (which read project_id).
       const tempDoc = {
-        id: `temp-${Date.now()}`,
+        id: resolvedDoc.id,
         name: file.name,
         size: file.size,
         uploadedAt: new Date().toISOString(),
-        // Stamp the timestamps the ledger reads so the optimistic row shows
-        // "just now" immediately instead of a parsed-from-empty year-2000 date.
-        created_at: new Date().toISOString(),
+        created_at: resolvedDoc.created_at || new Date().toISOString(),
         updated_at: new Date().toISOString(),
         type: 'application/pdf',
         filePath: null,
         projectId: projectId,
         project_id: projectId,
-        file: file // Store local file for immediate access
+        file: file
       };
-      setDocuments(prev => [tempDoc, ...prev]);
+      setDocuments(prev => [tempDoc, ...prev.filter(d => d.id !== tempDoc.id)]);
 
-      // Background Upload Process
+      // Background: store the bytes (content-addressed, idempotent) and correct
+      // the page count once parsed.
       (async () => {
         try {
-          // Upload file to Supabase Storage immediately (non-blocking)
-          // Start upload first to get it going as fast as possible
-          const uploadPromise = uploadToStorage(file, projectId || 'general');
-
-          // Get page count in parallel, but don't block document creation on it
-          // This allows the document to be created immediately after upload
+          const uploadPromise = uploadToStorage(file, projectId || 'general', undefined, contentSha);
           const pageCountPromise = (async () => {
             try {
               const arrayBuffer = await file.arrayBuffer();
               const pdfjsLib = await loadPdfjs();
               let pdfDoc;
               try {
-                // Clone buffer since PDF.js may detach it when transferring to worker
                 pdfDoc = await pdfjsLib.getDocument({ isEvalSupported: false,
                   data: arrayBuffer.slice(0),
                   verbosity: pdfjsLib.VerbosityLevel.ERRORS
                 }).promise;
               } catch (firstError) {
                 console.warn('Standard PDF load failed, trying recovery mode:', firstError.message);
-                // Try recovery mode with fresh buffer clone
                 pdfDoc = await pdfjsLib.getDocument({ isEvalSupported: false,
                   data: arrayBuffer.slice(0),
                   verbosity: pdfjsLib.VerbosityLevel.ERRORS,
@@ -817,49 +857,20 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
               return pdfDoc.numPages;
             } catch (err) {
               console.error('Error getting page count:', err);
-              return null; // Return null if page count fails, we'll update it later
+              return null;
             }
           })();
 
-          // Wait for upload to complete first (most important)
-          const filePath = await uploadPromise;
-
-          // Create document record immediately after upload completes
-          // Use null for page_count initially, update it later when available
-          const newDoc = await createSupabaseDocument({
-            name: file.name,
-            file_path: filePath,
-            file_size: file.size,
-            page_count: null, // Set to null initially, will update in background
-            project_id: projectId || null
-          });
-
-          // Update page count in background (non-blocking)
-          // This allows the UI to be responsive while page count is calculated
+          await uploadPromise;
           pageCountPromise.then(async (pageCount) => {
-            if (pageCount !== null && newDoc) {
-              try {
-                await updateSupabaseDocument(newDoc.id, { page_count: pageCount });
-              } catch (err) {
-                console.error('Error updating page count:', err);
-              }
+            if (pageCount !== null && pageCount !== resolvedDoc.page_count) {
+              try { await updateSupabaseDocument(resolvedDoc.id, { page_count: pageCount }); } catch (err) { console.error('Error updating page count:', err); }
             }
-          }).catch(err => {
-            console.error('Error getting page count in background:', err);
-          });
+          }).catch(() => {});
 
-          // Refresh global document list to update counts
           refetchAllDocuments();
-
-          // Persist the just-imported embedded annotations to the cloud in THIS
-          // session so they survive on devices that weren't the uploader.
-          if (openAfterUpload) {
-            persistImportedMarksToCloudForUpload({ file, documentId: newDoc.id, userId: user.id });
-          }
         } catch (err) {
           console.error('Error uploading file in background:', err);
-          // Remove temp document from list since upload failed
-          setDocuments(prev => prev.filter(d => !(d.id === tempDoc.id)));
           setDashboardError('Couldn’t save the document to the cloud: ' + (err.message || 'Unknown error') + '. Your file is still on disk — try uploading again or check your connection.');
         }
       })();

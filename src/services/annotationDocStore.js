@@ -148,9 +148,10 @@ export function encodeSnapshot(doc) {
  *
  * @param {Uint8Array|null} snapshotBytes
  * @param {Uint8Array[]} tailUpdates  ordered ascending by seq
- * @param {Y.Doc} [doc]  reuse an existing doc instead of creating one
+ * @param {Y.Doc} doc  the target doc (from the registry, or a fresh one in tests)
  */
-export function hydrateDoc(snapshotBytes, tailUpdates = [], doc = new Y.Doc()) {
+export function hydrateDoc(snapshotBytes, tailUpdates, doc) {
+  if (!doc) throw new Error('hydrateDoc: a target Y.Doc is required');
   if (snapshotBytes && snapshotBytes.length) {
     Y.applyUpdate(doc, snapshotBytes, 'hydrate');
   }

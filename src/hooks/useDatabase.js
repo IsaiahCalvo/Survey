@@ -307,6 +307,39 @@ export const useDocuments = (projectId = null) => {
     const provenance = buildDocumentProvenance({ subscriptionTier: tier });
 
     try {
+      // Content-addressed dedup: the same bytes in the same project are ONE
+      // document. If a matching row already exists (even archived), reuse it —
+      // un-archiving as needed — instead of spawning a duplicate/blank copy.
+      const sha = documentData.content_sha256;
+      if (sha) {
+        let lookup = supabase
+          .from('documents')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('content_sha256', sha)
+          .limit(1);
+        lookup = (documentData.project_id == null)
+          ? lookup.is('project_id', null)
+          : lookup.eq('project_id', documentData.project_id);
+        const { data: existing, error: lookupErr } = await lookup.maybeSingle();
+        if (lookupErr && !isSupabaseNotFoundError(lookupErr)) throw lookupErr;
+        if (existing) {
+          if (existing.archived) {
+            const { data: revived, error: reviveErr } = await supabase
+              .from('documents')
+              .update({ archived: false, updated_at: new Date().toISOString() })
+              .eq('id', existing.id)
+              .select()
+              .single();
+            if (reviveErr) throw reviveErr;
+            setDocuments([revived, ...documents.filter((d) => d.id !== revived.id)]);
+            return revived;
+          }
+          setDocuments([existing, ...documents.filter((d) => d.id !== existing.id)]);
+          return existing;
+        }
+      }
+
       const { data, error } = await supabase
         .from('documents')
         .insert({
@@ -647,18 +680,29 @@ export const useSpaces = (documentId) => {
 export const useStorage = () => {
   const { user } = useAuth();
 
-  const uploadDocument = useCallback(async (file, projectId, onProgress) => {
+  const uploadDocument = useCallback(async (file, projectId, onProgress, contentSha = null) => {
     if (!user || !isSupabaseAvailable()) {
       throw new Error('User not authenticated or Supabase not available');
     }
 
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${Date.now()}.${fileExt}`;
-    const filePath = `${user.id}/${projectId}/${fileName}`;
+    // Content-addressed path when we know the file's fingerprint: re-uploading
+    // identical bytes overwrites the same object (idempotent, no duplicate).
+    // Falls back to the legacy timestamp path when no hash is provided.
+    let filePath;
+    let upsert = false;
+    if (contentSha) {
+      filePath = `${user.id}/${contentSha}.pdf`;
+      upsert = true;
+    } else {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}.${fileExt}`;
+      filePath = `${user.id}/${projectId}/${fileName}`;
+    }
 
     const { data, error } = await supabase.storage
       .from('documents')
       .upload(filePath, file, {
+        upsert,
         onUploadProgress: onProgress,
       });
 

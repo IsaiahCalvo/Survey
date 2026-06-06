@@ -104,7 +104,7 @@ test('snapshot + tail replay reconstructs the full document (the open path)', ()
   ));
 
   // Open path: a fresh client applies snapshot then the tail.
-  const opened = hydrateDoc(snapshot, tail);
+  const opened = hydrateDoc(snapshot, tail, new Y.Doc());
   const out = docToByPage(opened);
   const ids = Object.values(out).flatMap((p) => p.objects.map((o) => o.data.id)).sort();
   assert.deepEqual(ids, ['p10', 'p11', 'p6', 'p7', 'p8', 'p9']);
@@ -124,7 +124,7 @@ test('a fresh pen stroke is durable as a single tail update and survives reopen'
   assert.equal(tail.length, 1, 'one mutation => one durable op');
 
   // Simulate close + reopen from durable storage only.
-  const reopened = hydrateDoc(snapshot, tail);
+  const reopened = hydrateDoc(snapshot, tail, new Y.Doc());
   const out = docToByPage(reopened);
   assert.ok(out[11]?.objects.some((o) => o.data.id === 'fresh-stroke'),
     'the page-11 stroke is present after reload');
@@ -136,8 +136,8 @@ test('concurrent edits on two clients merge with no lost update (CRDT)', () => {
   const baseState = encodeSnapshot(base);
 
   // Two devices fork from the same baseline.
-  const deviceA = hydrateDoc(baseState);
-  const deviceB = hydrateDoc(baseState);
+  const deviceA = hydrateDoc(baseState, [], new Y.Doc());
+  const deviceB = hydrateDoc(baseState, [], new Y.Doc());
 
   // A adds a mark on page 7; B adds a different mark on page 8 — simultaneously.
   const aUpdates = [];

@@ -17,12 +17,18 @@
 // durable path is proved before the viewer is wired to it.
 
 import * as Y from 'yjs';
+import { getOrCreateYDoc, releaseYDoc } from '../lib/collab/ydocRegistry.js';
 import {
   getAnnotationsMap,
   docToByPage,
   syncByPageToDoc,
   encodeSnapshot,
 } from './annotationDocStore.js';
+
+// The flat annotation store gets its OWN registry-managed Y.Doc, keyed apart
+// from the legacy CRDT doc so the two never share a map. (The applyUpdate-only
+// invariant requires all Y.Doc construction to live in the registry module.)
+const REGISTRY_PREFIX = 'annoflat:';
 
 const SNAPSHOT_AFTER_OPS = 40;      // compact to a fresh snapshot every N ops
 const REMOTE_ORIGIN = 'remote';
@@ -70,16 +76,23 @@ export async function openAnnotationDoc({
   clientId = getClientId(),
   enableLocal = true,
   enableRealtime = true,
-  doc = new Y.Doc(),
+  doc = null,
 }) {
   if (!documentId) throw new Error('openAnnotationDoc: documentId required');
 
+  // Default: a dedicated registry-managed Y.Doc for this document's flat store.
+  const registryKey = `${REGISTRY_PREFIX}${documentId}`;
+  const ownsRegistryDoc = !doc;
+  const activeDoc = doc || getOrCreateYDoc(registryKey);
+
   const state = {
     documentId,
+    registryKey,
+    ownsRegistryDoc,
     supabase,
     clientId,
-    doc,
-    map: getAnnotationsMap(doc),
+    doc: activeDoc,
+    map: getAnnotationsMap(activeDoc),
     lastSeq: 0,            // highest annotation_updates.seq we've applied
     clientSeq: 0,          // our monotonic per-(doc,client) op counter
     opsSinceSnapshot: 0,
@@ -94,7 +107,7 @@ export async function openAnnotationDoc({
   if (enableLocal && typeof indexedDB !== 'undefined') {
     try {
       const { IndexeddbPersistence } = await import('y-indexeddb');
-      state.idbProvider = new IndexeddbPersistence(`anno-${documentId}`, doc);
+      state.idbProvider = new IndexeddbPersistence(`anno-${documentId}`, activeDoc);
       await whenSynced(state.idbProvider);
     } catch (err) {
       console.warn('[annotationDocSync] indexeddb unavailable', err?.message);
@@ -117,7 +130,7 @@ export async function openAnnotationDoc({
   if (supabase) await loadFromBackend(state);
 
   // --- observe local mutations → append to the durable log ---
-  doc.on('update', (update, origin) => {
+  activeDoc.on('update', (update, origin) => {
     if (state.destroyed) return;
     if (origin === REMOTE_ORIGIN || origin === HYDRATE_ORIGIN) return; // not our write
     if (supabase) enqueueAppend(state, update);
@@ -288,7 +301,10 @@ function makeHandle(state) {
       await state.flushQueue.catch(() => {});
       if (state.realtimeChannel) { try { await state.supabase.removeChannel(state.realtimeChannel); } catch { /* */ } }
       if (state.idbProvider) { try { state.idbProvider.destroy(); } catch { /* */ } }
-      state.doc.destroy();
+      // Release the registry doc (the registry never destroys — keeps undo/state
+      // across reopen). Only destroy a doc we were explicitly handed (tests).
+      if (state.ownsRegistryDoc) releaseYDoc(state.registryKey);
+      else { try { state.doc.destroy(); } catch { /* */ } }
     },
   };
 }
