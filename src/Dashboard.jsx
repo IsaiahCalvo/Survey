@@ -19,6 +19,7 @@ import { getSupabaseSession, supabase } from './supabaseClient';
 import { isStorageFileNotFoundError, isSupabaseRowNotFoundError } from './utils/storageErrors';
 import { countSurveyMarkersReferencingChecklistItem } from './services/documentAnnotationService';
 import { computeContentSha256 } from './services/contentHash';
+import { purgeAnnotationDoc } from './services/annotationDocSync';
 import { lockDocument, unlockDocument } from './services/documentLockService.js';
 import { perfUpload } from './utils/performanceLogger';
 import { reorderCategoriesByActiveOver, reorderItemsByActiveOver } from './home/templateReorderUtils';
@@ -1458,58 +1459,61 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
 
     console.log('[DocumentDelete] start', JSON.stringify({ docId, filePath, source }));
 
-    // Hard-deleting a cutover/Y.Doc PDF can cascade through thousands of large
-    // annotation/sync rows and hit Supabase statement timeouts. For the user
-    // action, make the document disappear immediately by archiving the row; a
-    // fresh upload will get a fresh document id and will not read the old Y.Doc.
-    const { data: archivedRows, error: archiveError } = await supabase
+    // Rebuild: delete means DELETE. Hard-delete the documents row so the ON
+    // DELETE CASCADE clears its annotation log, snapshot, and legacy rows — the
+    // marks are actually removed, not orphaned. Then drop the stored bytes and
+    // purge the local durable copy so a same-content re-upload (which dedups to
+    // the same id) can't resurrect the old marks.
+    const { data: existing } = await supabase
       .from('documents')
-      .update({ archived: true, updated_at: new Date().toISOString() })
+      .select('id,name,file_path,user_id')
       .eq('id', docId)
-      .select('id,name,file_path,user_id');
+      .maybeSingle();
+    const storagePath = existing?.file_path || filePath || null;
 
-    if (archiveError && !isSupabaseRowNotFoundError(archiveError)) {
-      console.error('[DocumentDelete] archive:error', JSON.stringify({
-        docId,
-        source,
-        error: serializeError(archiveError),
+    const { error: deleteError } = await supabase
+      .from('documents')
+      .delete()
+      .eq('id', docId);
+
+    if (deleteError && !isSupabaseRowNotFoundError(deleteError)) {
+      console.error('[DocumentDelete] delete:error', JSON.stringify({
+        docId, source, error: serializeError(deleteError),
       }));
-      throw archiveError;
+      throw deleteError;
     }
 
-    console.log('[DocumentDelete] archive:result', JSON.stringify({
-      docId,
-      source,
-      archivedCount: Array.isArray(archivedRows) ? archivedRows.length : 0,
-      archivedRows,
-    }));
+    // Remove the stored PDF bytes (best effort — never blocks the delete).
+    if (storagePath) {
+      try { await deleteFromStorage(storagePath); }
+      catch (storageErr) { console.warn('[DocumentDelete] storage remove failed', storageErr?.message); }
+    }
 
+    // Purge the local durable copy (IndexedDB + in-memory doc).
+    try { await purgeAnnotationDoc(docId); }
+    catch (purgeErr) { console.warn('[DocumentDelete] local purge failed', purgeErr?.message); }
+
+    // Verify the row is gone.
     const { data: remaining, error: verifyError } = await supabase
       .from('documents')
-      .select('id,name,file_path,user_id,archived')
+      .select('id')
       .eq('id', docId)
       .maybeSingle();
 
     if (verifyError && !isSupabaseRowNotFoundError(verifyError)) {
       console.error('[DocumentDelete] verify:error', JSON.stringify({
-        docId,
-        source,
-        error: serializeError(verifyError),
+        docId, source, error: serializeError(verifyError),
       }));
       throw verifyError;
     }
 
-    if (remaining && remaining.archived !== true) {
-      const blocked = new Error('Document delete did not hide the database row');
-      console.error('[DocumentDelete] verify:not-archived', JSON.stringify({
-        docId,
-        source,
-        remaining,
-      }));
+    if (remaining) {
+      const blocked = new Error('Document delete did not remove the database row');
+      console.error('[DocumentDelete] verify:still-present', JSON.stringify({ docId, source, remaining }));
       throw blocked;
     }
 
-    console.log('[DocumentDelete] verify:archived', JSON.stringify({ docId, source }));
+    console.log('[DocumentDelete] verify:removed', JSON.stringify({ docId, source }));
   };
 
   const handleBulkDelete = async () => {

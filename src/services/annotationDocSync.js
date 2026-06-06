@@ -324,4 +324,27 @@ function makeHandle(state) {
   };
 }
 
+/**
+ * Purge the LOCAL durable copy of a document's annotations (IndexedDB + the
+ * in-memory registry doc). Call this when a document is hard-deleted so a
+ * same-content re-upload (which dedups to the same id) cannot resurrect the old
+ * marks from local storage. The cloud rows are removed by the documents-row
+ * delete cascade.
+ */
+export async function purgeAnnotationDoc(documentId) {
+  if (!documentId) return;
+  const registryKey = `${REGISTRY_PREFIX}${documentId}`;
+  try {
+    const doc = getOrCreateYDoc(registryKey);
+    doc.transact(() => {
+      getAnnotationsMap(doc).clear();
+      doc.getMap('annoMeta').clear();
+    }, HYDRATE_ORIGIN);
+    releaseYDoc(registryKey);
+  } catch { /* */ }
+  try {
+    if (typeof indexedDB !== 'undefined') indexedDB.deleteDatabase(`anno-${documentId}`);
+  } catch { /* */ }
+}
+
 export const __test = { bytesToPgHex, pgHexToBytes };
