@@ -35,8 +35,21 @@ const REGISTRY_PREFIX = 'annoflat:';
 const SNAPSHOT_AFTER_OPS = 40;      // compact to a fresh snapshot every N ops
 const SNAPSHOT_DEBOUNCE_MS = 1200;  // after edits settle, write a full-state checkpoint
 const SNAPSHOT_RETRIES = 4;         // the checkpoint is the durability guarantee — retry hard
+const SNAPSHOT_ENC_GZIP = 2;        // encoding_version 2 = gzipped Y.encodeStateAsUpdate
 const REMOTE_ORIGIN = 'remote';
 const HYDRATE_ORIGIN = 'hydrate';
+
+// Gzip the checkpoint so heavy documents stay well under request-size limits
+// (a many-thousand-mark Y.Doc compresses several-fold). Available in browsers
+// and Node 18+.
+async function gzip(u8) {
+  const stream = new Blob([u8]).stream().pipeThrough(new CompressionStream('gzip'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+async function gunzip(u8) {
+  const stream = new Blob([u8]).stream().pipeThrough(new DecompressionStream('gzip'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
 
 // PostgREST returns/accepts bytea as '\x<hex>'.
 function bytesToPgHex(u8) {
@@ -175,12 +188,18 @@ async function loadFromBackend(state) {
   // 1. snapshot baseline
   const { data: snapRow } = await supabase
     .from('annotation_snapshots')
-    .select('snapshot, at_seq')
+    .select('snapshot, at_seq, encoding_version')
     .eq('document_id', documentId)
     .maybeSingle();
   if (snapRow && snapRow.snapshot) {
-    Y.applyUpdate(doc, pgHexToBytes(snapRow.snapshot), HYDRATE_ORIGIN);
-    state.lastSeq = Number(snapRow.at_seq) || 0;
+    let bytes = pgHexToBytes(snapRow.snapshot);
+    if (snapRow.encoding_version === SNAPSHOT_ENC_GZIP) {
+      try { bytes = await gunzip(bytes); } catch (err) { console.warn('[annotationDocSync] snapshot gunzip failed', err?.message); bytes = null; }
+    }
+    if (bytes) {
+      Y.applyUpdate(doc, bytes, HYDRATE_ORIGIN);
+      state.lastSeq = Number(snapRow.at_seq) || 0;
+    }
   }
   // 2. tail ops after the snapshot, in order
   let cursor = state.lastSeq;
@@ -255,8 +274,13 @@ function scheduleSnapshot(state) {
 // durability guarantee that makes dropped op inserts self-heal on next open.
 async function writeSnapshot(state) {
   if (!state.supabase) return false;
-  const snapshot = encodeSnapshot(state.doc);
-  const hex = bytesToPgHex(snapshot);
+  let hex;
+  try {
+    hex = bytesToPgHex(await gzip(encodeSnapshot(state.doc)));
+  } catch (err) {
+    console.warn('[annotationDocSync] snapshot gzip failed, storing raw', err?.message);
+    return false;
+  }
   for (let attempt = 1; attempt <= SNAPSHOT_RETRIES; attempt += 1) {
     try {
       const { error } = await state.supabase
@@ -265,7 +289,7 @@ async function writeSnapshot(state) {
           document_id: state.documentId,
           at_seq: state.lastSeq,
           snapshot: hex,
-          encoding_version: 1,
+          encoding_version: SNAPSHOT_ENC_GZIP,
           updated_at: new Date().toISOString(),
         }, { onConflict: 'document_id' });
       if (!error) return true;
