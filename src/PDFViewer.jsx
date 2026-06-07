@@ -71,6 +71,7 @@ import { deleteAnnotations, removeDocumentPresence, subscribeToDocumentAnnotatio
 import { fromFabricGroup, toFabricGroup } from './utils/calloutEditAdapter';
 import { getActivePageRegionId, getPageAnnotationVisibilityState, normalizePageRegions, normalizeRegionVisibility } from './utils/annotationVisibilityRules';
 import { getCalloutSyncFingerprint } from './utils/calloutSyncPayload';
+import { isPlacedSurveyMarker } from './services/surveyMarkerSyncDiff';
 import { getCounterSeriesList, pickNextSeriesColor, renumberCounters } from './utils/counterNumbering';
 import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug, summarizeHistoryDelta, summarizeHistorySnapshot } from './utils/historyHelpers';
 import { getHistoryOrder, shouldRedoLocalBeforeLegacy, shouldUndoLocalBeforeLegacy } from './utils/historyStacks';
@@ -13254,6 +13255,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (excelItemsByScope[scopeKey]) {
         const itemName = ann.name?.toString().trim();
         if (itemName && !excelItemsByScope[scopeKey].has(itemName)) {
+          // Stage 0 safety: Excel is attribute-only. A placed Survey Marker
+          // (has a page + bounds) is never destroyed by an import — only
+          // unplaced/proposed rows may be cleaned up here.
+          if (isPlacedSurveyMarker(ann)) return;
           surveyMarkersToDelete.push({ key, ann });
         }
       }
@@ -13691,6 +13696,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (excelItemsByScope[scopeKey]) {
         const itemName = ann.name?.toString().trim();
         if (itemName && !excelItemsByScope[scopeKey].has(itemName)) {
+          // Stage 0 safety: Excel is attribute-only. A placed Survey Marker
+          // (has a page + bounds) is never destroyed by an import — only
+          // unplaced/proposed rows may be cleaned up here.
+          if (isPlacedSurveyMarker(ann)) return;
           surveyMarkersToDelete.push({ key, ann });
         }
       }

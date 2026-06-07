@@ -34,3 +34,51 @@ export function diffDeletedSurveyMarkerIds(priorAnnotations, currentAnnotations)
   );
   return priorIds.filter((id) => !currentIds.has(id));
 }
+
+/**
+ * A survey marker is "placed" once it has a page number AND non-empty bounds —
+ * i.e. the user has physically located it on the PDF. Excel is attribute-only
+ * (answers/name/note/entity) and must NEVER destroy a placed marker, so the
+ * import deletion-detection path uses this to exclude placed markers.
+ *
+ * @param {object|null|undefined} ann  A survey marker record
+ * @returns {boolean}  true when the marker has been placed on a page
+ */
+export function isPlacedSurveyMarker(ann) {
+  if (!ann || typeof ann !== 'object') return false;
+  if (ann.pageNumber == null) return false;
+  const b = ann.bounds;
+  return b != null && typeof b === 'object' && Object.keys(b).length > 0;
+}
+
+/**
+ * Stage 0 import guard. Given the current survey markers and the set of item
+ * names present in Excel per scope, returns the markers an import would remove
+ * (present in the app, absent from Excel's scope) — EXCLUDING any placed marker
+ * and any id in `protectedIds`. Placed markers and protected ids are never
+ * deletion candidates: Excel can update attributes but can never destroy a
+ * placed Survey Marker or touch geometry.
+ *
+ * @param {object} surveyMarkers  keyed map of survey markers
+ * @param {Record<string, Set<string>>} excelItemsByScope  `${moduleId}-${categoryId}` -> Set of item names in Excel
+ * @param {{ protectedIds?: Iterable<string> }} [opts]
+ * @returns {Array<{ key: string, ann: object }>}  markers safe to delete via import
+ */
+export function computeImportDeletionCandidates(surveyMarkers, excelItemsByScope, opts = {}) {
+  const out = [];
+  if (!surveyMarkers || typeof surveyMarkers !== 'object') return out;
+  if (!excelItemsByScope || typeof excelItemsByScope !== 'object') return out;
+  const protectedSet =
+    opts.protectedIds instanceof Set ? opts.protectedIds : new Set(opts.protectedIds || []);
+  for (const [key, ann] of Object.entries(surveyMarkers)) {
+    const annModuleId = ann.moduleId || ann.spaceId;
+    const scopeKey = `${annModuleId}-${ann.categoryId}`;
+    if (!excelItemsByScope[scopeKey]) continue;
+    const itemName = ann.name?.toString().trim();
+    if (!itemName || excelItemsByScope[scopeKey].has(itemName)) continue;
+    if (isPlacedSurveyMarker(ann)) continue; // Stage 0: never destroy a placed marker via import
+    if (protectedSet.has(key)) continue;
+    out.push({ key, ann });
+  }
+  return out;
+}
