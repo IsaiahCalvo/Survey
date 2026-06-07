@@ -15678,6 +15678,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setAnnotationsByPage,
     callouts,
     setCallouts,
+    spaces,
+    setSpaces,
   });
   // Live presence list — feeds the stacked-avatars row in the toolbar.
   // Uses cloudSyncActive (operational flag) so presence stops fetching when
@@ -17197,7 +17199,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (data.callouts && shouldRestoreLegacyAnnotationBlob) {
         setCallouts(data.callouts);
       }
-      if (data.spaces) {
+      // Cloud-sync documents now source spaces (and their region polygons) from
+      // the Y.Doc, not this older Storage survey-data JSON blob. Restoring the
+      // sidecar's spaces after Y.Doc hydrate would let a stale blob overwrite the
+      // authoritative durable copy — same hazard the annotationsByPage/callouts
+      // restores above already guard against via shouldRestoreLegacyAnnotationBlob.
+      if (data.spaces && shouldRestoreLegacyAnnotationBlob) {
         setSpaces((prev) => {
           const safeSpacesSnapshot = resolveSafeSnapshot({
             current: prev || [],

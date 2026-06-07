@@ -18,6 +18,7 @@ import { supabase } from '../supabaseClient.js';
 import { openAnnotationDoc, getClientId } from '../services/annotationDocSync.js';
 
 const CALLOUTS_KEY = 'calloutsList';
+const SPACES_KEY = 'spaces';
 
 function pageCount(byPage) {
   let n = 0;
@@ -33,15 +34,19 @@ export function useAnnotationDoc({
   setAnnotationsByPage,
   callouts,
   setCallouts,
+  spaces,
+  setSpaces,
 }) {
   const handleRef = useRef(null);
   const readyRef = useRef(false);
   const byPageRef = useRef(annotationsByPage);
   const calloutsRef = useRef(callouts);
+  const spacesRef = useRef(spaces);
   const [initialHydration, setInitialHydration] = useState({ ready: false, source: 'pending', count: 0, documentId: null });
 
   byPageRef.current = annotationsByPage;
   calloutsRef.current = callouts;
+  spacesRef.current = spaces;
 
   // Open the durable doc on documentId; hydrate from it (authoritative) or seed
   // it with whatever the viewer already has (covers marks drawn/imported before
@@ -69,17 +74,29 @@ export function useAnnotationDoc({
         setAnnotationsByPage(byPage);
         const c = handle.getMeta(CALLOUTS_KEY);
         if (Array.isArray(c)) setCallouts(c);
+        const s = handle.getMeta(SPACES_KEY);
+        if (Array.isArray(s)) setSpaces(s);
       });
 
       const storeByPage = handle.getByPage();
       const storeCallouts = handle.getMeta(CALLOUTS_KEY);
+      const storeSpaces = handle.getMeta(SPACES_KEY);
       const count = pageCount(storeByPage);
       const hasCallouts = Array.isArray(storeCallouts) && storeCallouts.length > 0;
+      const hasSpaces = Array.isArray(storeSpaces) && storeSpaces.length > 0;
 
-      if (count > 0 || hasCallouts) {
+      if (count > 0 || hasCallouts || hasSpaces) {
         // Durable store wins — paint from it.
         if (count > 0) setAnnotationsByPage(storeByPage);
         if (hasCallouts) setCallouts(storeCallouts);
+        if (hasSpaces) setSpaces(storeSpaces);
+        // Spaces are document-level: if the store has annotations/callouts but no
+        // spaces yet (e.g. first open after this migration shipped), seed spaces
+        // from the per-device cache the viewer already loaded.
+        if (!hasSpaces) {
+          const curSpaces = spacesRef.current;
+          if (Array.isArray(curSpaces) && curSpaces.length > 0) handle.setMeta(SPACES_KEY, curSpaces);
+        }
       } else {
         // Empty store: seed it with whatever the viewer already holds so a mark
         // drawn (or imported) before this point is captured durably.
@@ -87,6 +104,8 @@ export function useAnnotationDoc({
         if (curByPage && pageCount(curByPage) > 0) handle.applyByPage(curByPage);
         const curCallouts = calloutsRef.current;
         if (Array.isArray(curCallouts) && curCallouts.length > 0) handle.setMeta(CALLOUTS_KEY, curCallouts);
+        const curSpaces = spacesRef.current;
+        if (Array.isArray(curSpaces) && curSpaces.length > 0) handle.setMeta(SPACES_KEY, curSpaces);
       }
 
       readyRef.current = true;
@@ -103,7 +122,7 @@ export function useAnnotationDoc({
       readyRef.current = false;
       if (h) { h.destroy().catch(() => {}); }
     };
-  }, [enabled, documentId, userId, setAnnotationsByPage, setCallouts]);
+  }, [enabled, documentId, userId, setAnnotationsByPage, setCallouts, setSpaces]);
 
   // Capture annotation changes into the durable store (no-op when unchanged).
   useEffect(() => {
@@ -118,6 +137,15 @@ export function useAnnotationDoc({
     if (!h || !readyRef.current) return;
     h.setMeta(CALLOUTS_KEY, callouts);
   }, [callouts]);
+
+  // Capture space changes (document-level; coarse whole-array, no-op when
+  // unchanged). Spaces + their region polygons now live durably in the Y.Doc
+  // instead of the localStorage/Storage-sidecar pair.
+  useEffect(() => {
+    const h = handleRef.current;
+    if (!h || !readyRef.current) return;
+    h.setMeta(SPACES_KEY, spaces);
+  }, [spaces]);
 
   // Cmd/Ctrl+S → drain pending appends + write a fresh snapshot.
   const forceFlush = useCallback(async () => {

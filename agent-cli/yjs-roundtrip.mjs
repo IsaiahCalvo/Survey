@@ -140,6 +140,46 @@ async function main() {
       `both callouts survived cold reopen via the meta path: ${(gotCallouts || []).map((c) => c.id).join(', ')}`,
       `callouts lost on reopen — got: ${JSON.stringify(gotCallouts)}`);
 
+    // SCENARIO 2c — spaces (with nested region polygons) ride the SAME meta path.
+    // Proves the spaces migration: a document-level spaces array survives a true
+    // cold reopen from the cloud, replacing the old localStorage + Storage sidecar.
+    console.log('\nSCENARIO 2c  spaces + region polygons (meta path) → reopen sees them');
+    const spaceWriter = await freshHandle({
+      documentId, supabase, clientId: 'deviceA-spaces', enableLocal: false, enableRealtime: false,
+    });
+    const spacesArray = [
+      {
+        id: 'sp1', name: 'Floor 1',
+        assignedPages: [
+          {
+            pageId: 6, label: 'Kitchen – Page 6', wholePageIncluded: false,
+            showCanvasAnnotations: true, showSurveyAnnotations: true, showBackgroundAnnotations: true,
+            regions: [
+              { regionId: 'rg1', pageId: 6, shapeType: 'rectangular', operation: 'add', coordinates: [0, 0, 100, 0, 100, 100, 0, 100] },
+            ],
+          },
+        ],
+      },
+      { id: 'sp2', name: 'Floor 2', assignedPages: [] },
+    ];
+    spaceWriter.setMeta('spaces', spacesArray);
+    await spaceWriter.drain();
+    await spaceWriter.flushSnapshot();
+    await spaceWriter.destroy();
+
+    const spaceReader = await freshHandle({
+      documentId, supabase, clientId: 'deviceA-spaces-reopen', enableLocal: false, enableRealtime: false,
+    });
+    const gotSpaces = spaceReader.getMeta('spaces');
+    await spaceReader.destroy();
+    const region = gotSpaces?.[0]?.assignedPages?.[0]?.regions?.[0];
+    check(
+      Array.isArray(gotSpaces) && gotSpaces.length === 2 &&
+        gotSpaces.map((s) => s.id).sort().join(',') === 'sp1,sp2' &&
+        region?.regionId === 'rg1' && Array.isArray(region?.coordinates) && region.coordinates.length === 8,
+      `both spaces + nested region polygon survived cold reopen: ${(gotSpaces || []).map((s) => s.name).join(', ')}`,
+      `spaces lost on reopen — got: ${JSON.stringify(gotSpaces)}`);
+
     // SCENARIO 3 — delete the document removes all its log + snapshot rows.
     console.log('\nSCENARIO 3  hard-delete document → log + snapshot cascade away');
     await supabase.from('documents').delete().eq('id', documentId);
