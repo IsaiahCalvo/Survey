@@ -39,7 +39,7 @@ export function resolveFirstVisibleAnnotationPage({
   return 1;
 }
 
-export function isInitialAnnotationHydrationReady({
+function isInitialAnnotationHydrationReady({
   isCloudBackedDocument,
   normalHydration,
 } = {}) {

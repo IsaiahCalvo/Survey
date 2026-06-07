@@ -7,7 +7,7 @@
  * blanked or untouched). Used by the callout edit/commit flow.
  * Part of the separate callout pipeline — see docs/ANNOTATION-CONTRACT.md.
  */
-export function normalizeCalloutText(value) {
+function normalizeCalloutText(value) {
   return typeof value === 'string' ? value : '';
 }
 

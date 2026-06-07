@@ -38,7 +38,7 @@ function countFabricObjects(byPage) {
   return count;
 }
 
-export function isExplicitFabricDeleteAction(fabricAction = null) {
+function isExplicitFabricDeleteAction(fabricAction = null) {
   if (!fabricAction || typeof fabricAction !== 'object') return false;
   const deletedIds = Array.isArray(fabricAction.deletedIds)
     ? fabricAction.deletedIds.filter(Boolean)

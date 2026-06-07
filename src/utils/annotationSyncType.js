@@ -10,9 +10,9 @@
  */
 import { fabricObjectToDbType } from '../services/annotationTypeSerializers.js';
 
-export const CRDT_FAN_OUT_EXCLUDED_TYPES = new Set(['highlight', 'survey-marker', 'callout']);
+const CRDT_FAN_OUT_EXCLUDED_TYPES = new Set(['highlight', 'survey-marker', 'callout']);
 
-export function getRawAnnotationTypeForFanOut(fabricObj) {
+function getRawAnnotationTypeForFanOut(fabricObj) {
   return fabricObj?.data?.annotationType
     || fabricObj?.data?.type
     || fabricObj?.tool

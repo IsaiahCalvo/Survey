@@ -48,7 +48,7 @@ function sortPlainObject(value) {
   return sorted;
 }
 
-export function normalizeCalloutForSync(callout) {
+function normalizeCalloutForSync(callout) {
   if (!callout || typeof callout !== 'object') return callout;
   return sortPlainObject(callout);
 }

@@ -16,7 +16,7 @@ export function getAnnotationHistoryId(annotation) {
     || null;
 }
 
-export function getAnnotationHistoryAuthorId(annotation) {
+function getAnnotationHistoryAuthorId(annotation) {
   return annotation?.meta?.authorId
     || annotation?.__meta?.authorId
     || annotation?.authorId

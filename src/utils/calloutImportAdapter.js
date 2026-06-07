@@ -5,7 +5,7 @@
 
 import { defaultCalloutStyle } from '../components/Callout/types';
 
-export function isImportedCalloutTextbox(obj) {
+function isImportedCalloutTextbox(obj) {
   if (!obj || obj.type !== 'textbox') return false;
   const data = obj.data || {};
   if (data.pdfIntent === 'FreeTextCallout') return true;
@@ -13,7 +13,7 @@ export function isImportedCalloutTextbox(obj) {
   return false;
 }
 
-export function convertImportedCalloutToCalloutState(importedObj, pageNumber, pageWidth, pageHeight) {
+function convertImportedCalloutToCalloutState(importedObj, pageNumber, pageWidth, pageHeight) {
   if (!isImportedCalloutTextbox(importedObj)) return null;
   if (!Number.isFinite(pageWidth) || !Number.isFinite(pageHeight) || pageWidth <= 0 || pageHeight <= 0) {
     return null;

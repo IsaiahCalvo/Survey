@@ -9,7 +9,7 @@
  * Part of the separate callout pipeline — see docs/ANNOTATION-CONTRACT.md.
  */
 const CALLOUT_REMOVAL_INTENT_KEY = '__pdfLastCalloutRemovalIntent';
-export const CALLOUT_REMOVAL_INTENT_TTL_MS = 5000;
+const CALLOUT_REMOVAL_INTENT_TTL_MS = 5000;
 
 const INTENT_SOURCES = new Set([
   'undo',

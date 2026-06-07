@@ -8,7 +8,7 @@
  */
 import { moveItemById } from '../reorder/flatReorderUtils.js';
 
-export const restrictSortableToVerticalAxis = ({ transform }) => ({
+const restrictSortableToVerticalAxis = ({ transform }) => ({
   ...transform,
   x: 0,
 });

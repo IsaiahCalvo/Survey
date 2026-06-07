@@ -213,7 +213,7 @@ export function recordAnnotationUndoRedo(action, detail = {}) {
   log('undo-redo', { action, ...detail });
 }
 
-export function emitAnnotationGestureSummary(gestureId = null, detail = {}) {
+function emitAnnotationGestureSummary(gestureId = null, detail = {}) {
   if (!isAnnotationPreviewDiagEnabled()) return;
   const state = getState();
   const gesture = resolveGesture(gestureId);
