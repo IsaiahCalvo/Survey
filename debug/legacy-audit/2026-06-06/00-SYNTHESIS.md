@@ -14,10 +14,10 @@ and lock the migrate-then-delete order for the next session.
 | Data kind | Engine today | Action needed | Blast radius |
 |---|---|---|---|
 | Regular fabric annotations (pen, shapes) | **NEW** | none — done + proven | — |
-| **Callouts** | **NEW** (rides Y.Doc `meta` key `calloutsList`) | none functional; **add test coverage** + watch latent dual-write | tiny |
-| Region-scoped fabric annotations | **NEW** (they are `annotationsByPage` objects with a `regionId` field) | none for persistence; cascade-on-remote-delete is a gap | small |
-| **Spaces** (+ region slots inside them) | **OLD** (localStorage + Storage sidecar via `resolveSafeSnapshot`); **no Postgres table exists at all** | migrate to Y.Doc `meta` (mirror the callouts pattern) | medium |
-| **Survey markers (highlights)** | **OLD** (`documentAnnotationService.js`, full save/hydrate/delete/subscribe; separate React state, NOT fabric objects) | migrate to Y.Doc `meta`; preserve checklist-reference query + RLS detection | large |
+| **Callouts** | **NEW** (rides Y.Doc `meta` key `calloutsList`) | ✅ DONE — store tests + real-backend harness scenario added | tiny |
+| Region-scoped fabric annotations | **NEW** (they are `annotationsByPage` objects with a `regionId` field) | none for persistence; cascade-on-remote-delete is a follow-up | small |
+| **Spaces** (+ region slots inside them) | **NEW** (Y.Doc `meta` key `spaces`) | ✅ DONE — captured/hydrated; legacy sidecar restore gated to local docs; harness scenario added | medium |
+| **Survey markers (highlights)** | **OLD** for display; **NEW engine support built + proven** (dedicated keyed Y.Map) | flip hydrate/realtime/save to Y.Doc — NEEDS LIVE TEST (entangled w/ presence/RLS/projection baseline) | large |
 | **Presence (who's viewing)** | **OLD** but **fully decoupled** (own table `document_presence`, own Realtime channel) | **keep as-is — no migration** | none |
 | **Undo/redo** | **OLD CRDT layer** (`YDocProvider` Y.Doc keyed raw `<id>`) | rewire onto the new Y.Doc; then retire CRDT layer | large (gating) |
 
@@ -99,6 +99,32 @@ Presence is intentionally absent from this list — it stays exactly as-is.
   signal, no JS zoom coordination in `SVGAnnotationLayer`) apply to every PDFViewer edit.
 
 ---
+
+## Survey-marker flip — why it needs the dev server (hazard found while tracing)
+
+The new engine now has full, proven survey-marker support (keyed Y.Map, harness green).
+But flipping the live viewer from the old table to the Y.Doc is NOT a safe-blind change:
+
+1. **One hydrate source only.** Two hydrate sources (old `loadAnnotationsFromSupabase` +
+   Y.Doc) fight over `setSurveyMarkers`. The flip must retire the old read.
+2. **Destructive-delete-on-open hazard.** The debounced projection sync computes deletes by
+   diffing current markers against `lastSyncedAnnotationsRef`. Under clean cutover an OLD doc
+   opens with an EMPTY Y.Doc but a NON-empty `document_annotations`. If the projection baseline
+   is seeded from the old table (not the Y.Doc), the sync would read "user deleted everything"
+   and wipe the projection rows on open. The baseline MUST be seeded from the Y.Doc hydrate.
+3. **Entanglement.** The old survey-hydrate effect ALSO drives presence init, RLS detection,
+   and `documentSyncEnabled`. The flip must preserve all three while only removing the marker
+   read. `shouldRunSurveyMarkerSync`'s `hydrate-empty-delete-guard` is the existing protection
+   to lean on.
+4. **Checklist projection.** Keep the debounced `document_annotations` write as a write-only
+   derived projection so `countSurveyMarkersReferencingChecklistItem` (cross-document) keeps
+   working until a server-side observer replaces it (Pass 2).
+
+Plan for the flip (do with dev server up): wire survey markers into `useAnnotationDoc`
+(hydrate-wins / seed-from-current / capture / remote onChange) exactly like spaces; seed
+`lastSyncedAnnotationsRef` from the Y.Doc hydrate; retire the old marker read + old realtime;
+keep presence/RLS/projection. Verify live: place a highlight → reload → it returns; delete →
+stays deleted; checklist-item delete still sees usage.
 
 ## Open question for Isaiah
 
