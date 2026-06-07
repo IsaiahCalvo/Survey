@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 
 /**
@@ -99,9 +99,12 @@ export default function PdfjsFormLayer({
   // that arrive after mount (reload hydration / a collaborator's edit).
   const persistedRef = useRef(persistedValues);
   persistedRef.current = persistedValues;
-  const persistedSignature = Array.isArray(persistedValues)
-    ? persistedValues.map((v) => `${v?.fieldId}=${v?.value}`).join('|')
-    : '';
+  const persistedSignature = useMemo(
+    () => (Array.isArray(persistedValues)
+      ? persistedValues.map((v) => `${v?.fieldId}=${v?.value}`).join('|')
+      : ''),
+    [persistedValues],
+  );
   // Latest committed scale, used only as the initial render hint (the authority
   // for sizing is the ResizeObserver in the render effect, which measures the
   // page host). pdf.js sizes this whole layer as

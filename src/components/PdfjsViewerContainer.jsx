@@ -372,7 +372,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
 
   // refs that keep zoom/render effects from re-running when callbacks change
   const scaleRef = useRef(scale);
-  useEffect(() => { scaleRef.current = scale; }, [scale]);
+  scaleRef.current = scale; // keep in sync during render so same-frame reads aren't stale
   const numPagesRef = useRef(0);
   const currentPageRef = useRef(1);
   const prevScaleRef = useRef(null);
@@ -700,10 +700,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       el.style.cursor = 'grab';
     };
     el.style.cursor = 'grab';
-    el.addEventListener('pointerdown', onDown);
-    el.addEventListener('pointermove', onMove);
-    el.addEventListener('pointerup', onUp);
-    el.addEventListener('pointercancel', onUp);
+    el.addEventListener('pointerdown', onDown, { passive: true });
+    el.addEventListener('pointermove', onMove, { passive: true });
+    el.addEventListener('pointerup', onUp, { passive: true });
+    el.addEventListener('pointercancel', onUp, { passive: true });
     return () => {
       el.removeEventListener('pointerdown', onDown);
       el.removeEventListener('pointermove', onMove);

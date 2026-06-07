@@ -7,7 +7,7 @@
  * onFindTextMatches bounds or metric estimates). Drives navigation via
  * onNavigateToMatch/onNavigateToPage and emits diagnostics through textSearchDiag.
  */
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { memo, useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import Icon from '../Icons';
 import { emitTextSearchDiag } from '../utils/textSearchDiag';
@@ -999,6 +999,97 @@ const collectNativeTextMatches = (rawResults) => {
   return byPage;
 };
 
+// Pure: wraps the matched substring in a highlight. Hoisted to module scope so
+// it isn't reallocated per render and can be shared by the memoized row below.
+const highlightMatch = (text, matchIndex, queryLength) => {
+  if (matchIndex < 0 || !text) return text;
+  const beforeMatch = text.substring(0, matchIndex);
+  const match = text.substring(matchIndex, matchIndex + queryLength);
+  const afterMatch = text.substring(matchIndex + queryLength);
+  return (
+    <>
+      {beforeMatch}
+      <strong style={{ background: '#4A90E2', color: '#ffffff', padding: '0 2px', borderRadius: '2px' }}>{match}</strong>
+      {afterMatch}
+    </>
+  );
+};
+
+// One row of the results list. Memoized so that navigating between matches
+// (which only flips `isActive` on two rows) re-renders just those rows instead
+// of every row in a large result set.
+const SearchResultRow = memo(function SearchResultRow({ result, index, isActive, queryLength, onSelect }) {
+  return (
+    <div
+      data-result-index={index}
+      onClick={() => onSelect(result, index)}
+      style={{
+        padding: '10px 12px',
+        background: isActive ? '#3a5070' : '#2b2b2b',
+        border: isActive ? '1px solid #4A90E2' : '1px solid #3a3a3a',
+        borderRadius: '6px',
+        cursor: 'pointer',
+        transition: 'all 0.15s ease',
+        fontSize: '12px',
+        color: '#ddd',
+        // Off-screen result rows skip layout/paint on big searches.
+        // 'auto' lets the browser remember each row's real height.
+        contentVisibility: 'auto',
+        containIntrinsicSize: 'auto 56px'
+      }}
+      onMouseEnter={(e) => {
+        if (!isActive) {
+          e.currentTarget.style.background = '#333';
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!isActive) {
+          e.currentTarget.style.background = '#2b2b2b';
+        }
+      }}
+    >
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        marginBottom: '4px',
+        gap: '8px'
+      }}>
+        <span style={{
+          fontSize: '10px',
+          fontWeight: '600',
+          color: '#fff',
+          background: isActive ? '#4A90E2' : '#666',
+          padding: '2px 6px',
+          borderRadius: '4px',
+          minWidth: '20px',
+          textAlign: 'center'
+        }}>
+          {index + 1}
+        </span>
+        <span style={{
+          fontSize: '11px',
+          fontWeight: '600',
+          color: '#4A90E2',
+          background: '#e8f0fe',
+          padding: '2px 6px',
+          borderRadius: '4px'
+        }}>
+          Page {result.pageNumber}
+        </span>
+      </div>
+      <div style={{
+        fontSize: '12px',
+        lineHeight: '1.4',
+        color: '#999',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis'
+      }}>
+        {highlightMatch(result.snippet, result.snippetMatchIndex, queryLength)}
+      </div>
+    </div>
+  );
+});
+
 const SearchTextPanel = ({
   pdfDoc,
   numPages,
@@ -1512,8 +1603,15 @@ const SearchTextPanel = ({
     }
   }, [currentMatchIndex]);
 
-  // Keyboard shortcuts
+  // Keyboard shortcuts. The next/prev callbacks change on every match-index or
+  // result-set change, so we reach them through refs (written during render)
+  // and bind the document listener ONCE instead of tearing it down and
+  // rebinding it on every keystroke of a live search.
   const clearSearchRef = useRef(null);
+  const goToNextMatchRef = useRef(goToNextMatch);
+  goToNextMatchRef.current = goToNextMatch;
+  const goToPrevMatchRef = useRef(goToPrevMatch);
+  goToPrevMatchRef.current = goToPrevMatch;
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (!searchInputRef.current) return;
@@ -1524,9 +1622,9 @@ const SearchTextPanel = ({
       if (e.key === 'Enter' && isInputFocused) {
         e.preventDefault();
         if (e.shiftKey) {
-          goToPrevMatch();
+          goToPrevMatchRef.current();
         } else {
-          goToNextMatch();
+          goToNextMatchRef.current();
         }
       }
 
@@ -1535,9 +1633,9 @@ const SearchTextPanel = ({
       if (e.key === 'F3' || isCmdOrCtrlG) {
         e.preventDefault();
         if (e.shiftKey) {
-          goToPrevMatch();
+          goToPrevMatchRef.current();
         } else {
-          goToNextMatch();
+          goToNextMatchRef.current();
         }
       }
 
@@ -1551,23 +1649,7 @@ const SearchTextPanel = ({
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [goToNextMatch, goToPrevMatch]);
-
-  const highlightMatch = (text, matchIndex, queryLength) => {
-    if (matchIndex < 0 || !text) return text;
-
-    const beforeMatch = text.substring(0, matchIndex);
-    const match = text.substring(matchIndex, matchIndex + queryLength);
-    const afterMatch = text.substring(matchIndex + queryLength);
-
-    return (
-      <>
-        {beforeMatch}
-        <strong style={{ background: '#4A90E2', color: '#ffffff', padding: '0 2px', borderRadius: '2px' }}>{match}</strong>
-        {afterMatch}
-      </>
-    );
-  };
+  }, []);
 
   const clearSearch = useCallback(() => {
     emitTextSearchDiag('search_clear_button', {
@@ -1813,79 +1895,16 @@ const SearchTextPanel = ({
             flexDirection: 'column',
             gap: '2px'
           }}>
-            {searchResults.map((result, index) => {
-              const isActive = index === currentMatchIndex;
-              return (
-                <div
-                  key={result.id}
-                  data-result-index={index}
-                  onClick={() => handleResultClick(result, index)}
-                  style={{
-                    padding: '10px 12px',
-                    background: isActive ? '#3a5070' : '#2b2b2b',
-                    border: isActive ? '1px solid #4A90E2' : '1px solid #3a3a3a',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                    fontSize: '12px',
-                    color: '#ddd',
-                    // Off-screen result rows skip layout/paint on big searches.
-                    // 'auto' lets the browser remember each row's real height.
-                    contentVisibility: 'auto',
-                    containIntrinsicSize: 'auto 56px'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isActive) {
-                      e.currentTarget.style.background = '#333';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isActive) {
-                      e.currentTarget.style.background = '#2b2b2b';
-                    }
-                  }}
-                >
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    marginBottom: '4px',
-                    gap: '8px'
-                  }}>
-                    <span style={{
-                      fontSize: '10px',
-                      fontWeight: '600',
-                      color: '#fff',
-                      background: isActive ? '#4A90E2' : '#666',
-                      padding: '2px 6px',
-                      borderRadius: '4px',
-                      minWidth: '20px',
-                      textAlign: 'center'
-                    }}>
-                      {index + 1}
-                    </span>
-                    <span style={{
-                      fontSize: '11px',
-                      fontWeight: '600',
-                      color: '#4A90E2',
-                      background: '#e8f0fe',
-                      padding: '2px 6px',
-                      borderRadius: '4px'
-                    }}>
-                      Page {result.pageNumber}
-                    </span>
-                  </div>
-                  <div style={{
-                    fontSize: '12px',
-                    lineHeight: '1.4',
-                    color: '#999',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis'
-                  }}>
-                    {highlightMatch(result.snippet, result.snippetMatchIndex, internalSearchQuery.length)}
-                  </div>
-                </div>
-              );
-            })}
+            {searchResults.map((result, index) => (
+              <SearchResultRow
+                key={result.id}
+                result={result}
+                index={index}
+                isActive={index === currentMatchIndex}
+                queryLength={internalSearchQuery.length}
+                onSelect={handleResultClick}
+              />
+            ))}
           </div>
         )}
       </div>

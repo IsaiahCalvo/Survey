@@ -119,9 +119,11 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
   // KAL-23 verification hook: expose setter on window in development only so
   // automated UAT can force the toast without needing a real upload failure.
   // The user-visible upload/create paths still drive setDashboardError normally.
-  if (typeof window !== 'undefined' && import.meta.env?.DEV) {
-    window.__kal23_setDashboardError = setDashboardError;
-  }
+  useEffect(() => {
+    if (typeof window !== 'undefined' && import.meta.env?.DEV) {
+      window.__kal23_setDashboardError = setDashboardError;
+    }
+  }, []);
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
@@ -318,13 +320,18 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     return rest;
   };
 
+  // Read templates from a ref so this callback stays stable across template
+  // changes (it was being rebuilt on every edit, churning everything that
+  // depends on it). The ref is written during render so it is always current.
+  const templatesRef = useRef(templates);
+  templatesRef.current = templates;
   const updateTemplates = useCallback((updater) => {
-    const currentTemplates = templates;
+    const currentTemplates = templatesRef.current;
     const nextValue = typeof updater === 'function' ? updater(currentTemplates) : updater;
     const next = Array.isArray(nextValue) ? nextValue : [];
     // Use setTimeout to avoid setState during render
     setTimeout(() => onTemplatesChange?.(next), 0);
-  }, [onTemplatesChange, templates]);
+  }, [onTemplatesChange]);
 
   const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState(null);
@@ -1144,7 +1151,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     return [];
   };
 
-  const isItemSelected = (id) => selectedIds.includes(id);
+  const selectedIdsSet = new Set(selectedIds);
+  const isItemSelected = (id) => selectedIdsSet.has(id);
 
   const toggleSelectItem = (id, e) => {
     if (e && e.stopPropagation) e.stopPropagation();
