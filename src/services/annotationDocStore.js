@@ -59,6 +59,69 @@ export function setMetaValue(doc, key, value, origin = 'local') {
   return true;
 }
 
+// --- Survey markers (highlights) ---------------------------------------------
+//
+// Survey markers are NOT Fabric objects and do NOT live in annotationsByPage —
+// they are flat bounding-box + metadata records held in a document-level dict
+// { [annotationId]: marker }. They could be numerous (hundreds+), so they get
+// their OWN keyed Y.Map (minimal per-marker diff) rather than a coarse whole-
+// dict meta blob — a single placement becomes one small bounded op, never a
+// giant re-serialization of every marker.
+
+export const SURVEY_MARKERS_MAP = 'surveyMarkers';
+
+export function getSurveyMarkersMap(doc) {
+  return doc.getMap(SURVEY_MARKERS_MAP);
+}
+
+/** Materialize the survey-marker dict { [annotationId]: marker } from the Y.Doc. */
+export function docToSurveyMarkers(doc) {
+  const map = getSurveyMarkersMap(doc);
+  const out = {};
+  map.forEach((value, key) => { if (value && typeof value === 'object') out[key] = value; });
+  return out;
+}
+
+/**
+ * Reconcile the survey-marker Y.Map to a desired dict. Minimal diff: only
+ * changed/new markers are set, only removed ids are deleted, and re-applying
+ * identical state produces ZERO Yjs updates. Adds/updates are applied in bounded
+ * batches (one transaction per batch) so a bulk seed of N markers becomes
+ * several resilient ops, never one giant all-or-nothing write.
+ */
+export function syncSurveyMarkersToDoc(doc, markers, { origin = 'local', batchSize = 250 } = {}) {
+  const map = getSurveyMarkersMap(doc);
+  const desired = markers || {};
+  const ids = Object.keys(desired);
+  const desiredSet = new Set(ids);
+
+  let added = 0;
+  let updated = 0;
+  let removed = 0;
+
+  const toDelete = [];
+  map.forEach((_value, key) => { if (!desiredSet.has(key)) toDelete.push(key); });
+  if (toDelete.length) {
+    doc.transact(() => { for (const k of toDelete) { map.delete(k); removed += 1; } }, origin);
+  }
+
+  const changed = [];
+  for (const id of ids) {
+    const next = desired[id];
+    const cur = map.get(id);
+    if (cur === undefined) changed.push([id, next, true]);
+    else if (stableStringify(cur) !== stableStringify(next)) changed.push([id, next, false]);
+  }
+  for (let i = 0; i < changed.length; i += batchSize) {
+    const batch = changed.slice(i, i + batchSize);
+    doc.transact(() => {
+      for (const [id, next, isAdd] of batch) { map.set(id, next); if (isAdd) added += 1; else updated += 1; }
+    }, origin);
+  }
+
+  return { added, updated, removed };
+}
+
 /**
  * Materialize the render shape from the Y.Doc. Groups every stored annotation
  * by its page into { [page]: { objects: [...] } }. Object order is the Y.Map's

@@ -25,6 +25,8 @@ import {
   encodeSnapshot,
   getMetaValue,
   setMetaValue,
+  docToSurveyMarkers,
+  syncSurveyMarkersToDoc,
 } from './annotationDocStore.js';
 
 // The flat annotation store gets its OWN registry-managed Y.Doc, keyed apart
@@ -353,6 +355,12 @@ function makeHandle(state) {
 
     /** Write a document-level meta value (idempotent; coarse whole-value). */
     setMeta(key, value) { return setMetaValue(state.doc, key, value, 'local'); },
+
+    /** Current survey markers as { [annotationId]: marker }. */
+    getSurveyMarkers() { return docToSurveyMarkers(state.doc); },
+
+    /** Push the survey-marker dict into the doc (minimal per-marker diff → ops). */
+    applySurveyMarkers(markers) { return syncSurveyMarkersToDoc(state.doc, markers, { origin: 'local' }); },
 
     /** Subscribe to changes (local or remote). Returns an unsubscribe fn. */
     onChange(cb) { state.changeListeners.add(cb); return () => state.changeListeners.delete(cb); },

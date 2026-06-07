@@ -180,6 +180,57 @@ async function main() {
       `both spaces + nested region polygon survived cold reopen: ${(gotSpaces || []).map((s) => s.name).join(', ')}`,
       `spaces lost on reopen — got: ${JSON.stringify(gotSpaces)}`);
 
+    // SCENARIO 2d — survey markers (highlights) ride their own keyed map. They
+    // are flat bbox+metadata records, NOT fabric objects. Prove a marker dict
+    // (incl. a checklist response + entity link) survives a true cold reopen and
+    // that an edit + delete reconcile minimally on the new engine.
+    console.log('\nSCENARIO 2d  survey markers (keyed map) → reopen + edit + delete');
+    const smWriter = await freshHandle({
+      documentId, supabase, clientId: 'deviceA-survey', enableLocal: false, enableRealtime: false,
+    });
+    const smMark = (id, page, extra = {}) => ({
+      annotationId: id, pageNumber: page,
+      bounds: { x: 1, y: 2, width: 10, height: 10 },
+      categoryId: 'cat-1', moduleId: null, regionId: null,
+      checklistResponses: {}, color: '#FFFF00', opacity: 0.3, ...extra,
+    });
+    smWriter.applySurveyMarkers({
+      sm1: smMark('sm1', 6, { checklistResponses: { q1: { selection: 'yes' } } }),
+      sm2: smMark('sm2', 11, { entityId: 'ent-9', entityName: 'Unit A', entityColor: '#00aa00' }),
+    });
+    await smWriter.drain();
+    await smWriter.flushSnapshot();
+    await smWriter.destroy();
+
+    const smReader = await freshHandle({
+      documentId, supabase, clientId: 'deviceA-survey-reopen', enableLocal: false, enableRealtime: false,
+    });
+    const gotMarkers = smReader.getSurveyMarkers();
+    const sm1ok = gotMarkers?.sm1?.checklistResponses?.q1?.selection === 'yes';
+    const sm2ok = gotMarkers?.sm2?.entityId === 'ent-9' && gotMarkers?.sm2?.entityColor === '#00aa00';
+    check(
+      gotMarkers && Object.keys(gotMarkers).length === 2 && sm1ok && sm2ok,
+      `both survey markers survived cold reopen with checklist + entity data intact`,
+      `survey markers lost/mangled on reopen — got: ${JSON.stringify(gotMarkers)}`);
+
+    // edit sm1, delete sm2 → reopen sees exactly that
+    smReader.applySurveyMarkers({
+      sm1: smMark('sm1', 6, { checklistResponses: { q1: { selection: 'no' } } }),
+    });
+    await smReader.drain();
+    await smReader.flushSnapshot();
+    await smReader.destroy();
+
+    const smReader2 = await freshHandle({
+      documentId, supabase, clientId: 'deviceA-survey-reopen2', enableLocal: false, enableRealtime: false,
+    });
+    const after = smReader2.getSurveyMarkers();
+    await smReader2.destroy();
+    check(
+      after && Object.keys(after).length === 1 && after.sm1?.checklistResponses?.q1?.selection === 'no' && !after.sm2,
+      `survey-marker edit + delete reconciled on reopen (sm1 edited, sm2 gone)`,
+      `survey-marker edit/delete not reflected — got: ${JSON.stringify(after)}`);
+
     // SCENARIO 3 — delete the document removes all its log + snapshot rows.
     console.log('\nSCENARIO 3  hard-delete document → log + snapshot cascade away');
     await supabase.from('documents').delete().eq('id', documentId);

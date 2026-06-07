@@ -11,6 +11,8 @@ import {
   hydrateDoc,
   getMetaValue,
   setMetaValue,
+  docToSurveyMarkers,
+  syncSurveyMarkersToDoc,
 } from '../src/services/annotationDocStore.js';
 
 // Helper: a minimal annotation object shaped like a Fabric path with a stable id.
@@ -243,6 +245,94 @@ test('independent meta keys do not clobber each other (callouts vs spaces vs sur
   assert.equal(getMetaValue(reopened, 'calloutsList').length, 1);
   assert.equal(getMetaValue(reopened, 'spaces')[0].name, 'Floor 1');
   assert.ok(getMetaValue(reopened, 'surveyMarkers').m1, 'survey marker key intact');
+});
+
+// --- Survey markers (flat dict in their own keyed map) ---
+//
+// Survey markers are bounding-box + metadata records keyed by annotationId, not
+// per-page fabric objects. They use a dedicated keyed map with minimal per-marker
+// diff so a single placement is one small op, never a giant whole-dict re-write.
+
+function surveyMarker(id, page, extra = {}) {
+  return {
+    annotationId: id,
+    pageNumber: page,
+    bounds: { x: 1, y: 2, width: 10, height: 10 },
+    categoryId: 'cat-1',
+    checklistResponses: {},
+    color: '#FFFF00',
+    opacity: 0.3,
+    ...extra,
+  };
+}
+
+test('survey markers round-trip through their keyed map', () => {
+  const doc = new Y.Doc();
+  const markers = { m1: surveyMarker('m1', 6), m2: surveyMarker('m2', 11) };
+  syncSurveyMarkersToDoc(doc, markers);
+  const out = docToSurveyMarkers(doc);
+  assert.deepEqual(Object.keys(out).sort(), ['m1', 'm2']);
+  assert.equal(out.m1.pageNumber, 6);
+  assert.equal(out.m2.bounds.width, 10);
+});
+
+test('survey markers: re-syncing identical state produces ZERO updates', () => {
+  const doc = new Y.Doc();
+  const markers = { m1: surveyMarker('m1', 6) };
+  syncSurveyMarkersToDoc(doc, markers);
+  let updates = 0;
+  doc.on('update', () => { updates += 1; });
+  const res = syncSurveyMarkersToDoc(doc, { m1: surveyMarker('m1', 6) });
+  assert.equal(updates, 0, 'no Yjs update for unchanged survey markers');
+  assert.deepEqual(res, { added: 0, updated: 0, removed: 0 });
+});
+
+test('survey markers: minimal add / edit / delete', () => {
+  const doc = new Y.Doc();
+  syncSurveyMarkersToDoc(doc, { m1: surveyMarker('m1', 6), m2: surveyMarker('m2', 6) });
+  // edit m1's checklist response, drop m2, add m3
+  const res = syncSurveyMarkersToDoc(doc, {
+    m1: surveyMarker('m1', 6, { checklistResponses: { q1: { selection: 'yes' } } }),
+    m3: surveyMarker('m3', 7),
+  });
+  assert.deepEqual(res, { added: 1, updated: 1, removed: 1 });
+  const out = docToSurveyMarkers(doc);
+  assert.deepEqual(Object.keys(out).sort(), ['m1', 'm3']);
+  assert.equal(out.m1.checklistResponses.q1.selection, 'yes');
+});
+
+test('survey markers: a bulk seed batches into several ops, all survive reopen', () => {
+  // 600 markers with batchSize 250 => 3 add transactions (resilient, bounded).
+  const doc = new Y.Doc();
+  const updates = [];
+  doc.on('update', (u) => updates.push(u));
+  const many = {};
+  for (let i = 0; i < 600; i += 1) many[`m${i}`] = surveyMarker(`m${i}`, (i % 11) + 1);
+  const res = syncSurveyMarkersToDoc(doc, many, { batchSize: 250 });
+  assert.equal(res.added, 600);
+  assert.equal(updates.length, 3, '600 markers / 250 per batch => 3 bounded ops');
+
+  const snapshot = encodeSnapshot(doc);
+  const reopened = hydrateDoc(snapshot, [], new Y.Doc());
+  assert.equal(Object.keys(docToSurveyMarkers(reopened)).length, 600, 'all markers survive reopen');
+});
+
+test('survey markers survive snapshot + tail reopen alongside annotations and meta', () => {
+  const author = new Y.Doc();
+  syncByPageToDoc(author, byPageFrom(['a', 6]));
+  setMetaValue(author, 'calloutsList', [callout('c1', 6)]);
+  syncSurveyMarkersToDoc(author, { m1: surveyMarker('m1', 6) });
+  const snapshot = encodeSnapshot(author);
+
+  const tail = [];
+  author.on('update', (u) => tail.push(u));
+  // After the snapshot: add a second survey marker (a tail op).
+  syncSurveyMarkersToDoc(author, { m1: surveyMarker('m1', 6), m2: surveyMarker('m2', 9) });
+
+  const reopened = hydrateDoc(snapshot, tail, new Y.Doc());
+  assert.deepEqual(Object.keys(docToSurveyMarkers(reopened)).sort(), ['m1', 'm2']);
+  assert.equal(getMetaValue(reopened, 'calloutsList').length, 1, 'callouts still intact');
+  assert.equal(countObjects(docToByPage(reopened)), 1, 'annotations still intact');
 });
 
 test('concurrent edits on two clients merge with no lost update (CRDT)', () => {
