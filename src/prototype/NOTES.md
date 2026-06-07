@@ -1,8 +1,24 @@
-# Renderer Spike — throwaway prototype (v2: real two-arm mini-viewer)
+# Renderer Spikes — KEEP: permanent reference demos
 
-**This is throwaway code.** Delete `src/prototype/` and the `?spike=renderer`
-block in `src/main.jsx` once the verdict below is recorded. Also remove the
-EmbedPDF deps from `package.json` and `public/pdfium.wasm` if we don't keep it.
+**⚠ DO NOT DELETE `src/prototype/` or its `?spike=…` blocks in `src/main.jsx`.**
+The original "throwaway, delete after verdict" note is void: the verdict landed on
+the **pdf.js path**, and the demos below are now the **gold-standard reference and
+regression test** that the real app's pdf.js engine is being brought up to match
+(see `.planning/phases/37-pdfjs-cutover/DEMO-PARITY-BLUEPRINT.md`). They load in
+isolation (no auth / Supabase / Syncfusion) so they stay a clean baseline to test
+against. A cleanup/Syncfusion-removal pass must leave these in place.
+
+## The three demos (run the dev server, then append to the address)
+
+- `?spike=renderer` — the two-arm mini-viewer below: pdf.js vs EmbedPDF on scroll,
+  cursor-anchored zoom, page-locked overlays, and fps/frame/heap meters.
+- `?spike=perfgate` — the renderer-ownership zoom-smoothness / perf gate.
+- `?spike=features` — the full feature demo (glued-during-zoom annotations, text
+  search + select/copy, clickable links, interactive form fields). This is THE
+  parity target for the real app.
+
+(The EmbedPDF arm and `public/pdfium.wasm` may be retired separately since the
+verdict chose pdf.js, but the demos themselves stay.)
 
 ## The question
 
