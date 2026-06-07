@@ -17,7 +17,7 @@ and lock the migrate-then-delete order for the next session.
 | **Callouts** | **NEW** (rides Y.Doc `meta` key `calloutsList`) | ✅ DONE — store tests + real-backend harness scenario added | tiny |
 | Region-scoped fabric annotations | **NEW** (they are `annotationsByPage` objects with a `regionId` field) | none for persistence; cascade-on-remote-delete is a follow-up | small |
 | **Spaces** (+ region slots inside them) | **NEW** (Y.Doc `meta` key `spaces`) | ✅ DONE — captured/hydrated; legacy sidecar restore gated to local docs; harness scenario added | medium |
-| **Survey markers (highlights)** | **OLD** for display; **NEW engine support built + proven** (dedicated keyed Y.Map) | flip hydrate/realtime/save to Y.Doc — NEEDS LIVE TEST (entangled w/ presence/RLS/projection baseline) | large |
+| **Survey markers (highlights)** | **NEW** (Y.Doc keyed map owns hydrate/capture/realtime) | ✅ FLIPPED — legacy read+realtime retired; document_annotations kept as upsert-only projection for checklist count; wipe-on-open hazard removed. NEEDS LIVE TEST | large |
 | **Presence (who's viewing)** | **OLD** but **fully decoupled** (own table `document_presence`, own Realtime channel) | **keep as-is — no migration** | none |
 | **Undo/redo** | **OLD CRDT layer** (`YDocProvider` Y.Doc keyed raw `<id>`) | rewire onto the new Y.Doc; then retire CRDT layer | large (gating) |
 
