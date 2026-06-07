@@ -70,7 +70,7 @@ is still on the old engine.
       `cloudSyncQueue.js`, `snapshotStore.js`, `mergePreservingImportedMarks` (from `safeSnapshot.js`),
       `documentAnnotationService.js`, `annotationCloudSync.js`, and the `document_annotations` /
       `doc_yjs_state` / `doc_yjs_updates` tables.
-- [ ] Test-file audit & cleanup (see "Test-file policy" — do NOT blanket-delete).
+- [ ] Test-file audit & cleanup (see "Test-file policy" below for the keep/remove rule).
 
 ## The exact removal blockers (why nothing is deletable yet)
 
@@ -111,73 +111,53 @@ do it as the LAST cleanup step.
 | Embedded import gated on durable marker, not mark count | A single user mark was silently blocking PDF import (Isaiah's bug). |
 | Migrate-then-delete, never delete-first | Old code is live; deleting first breaks survey markers/presence. |
 
-## Test-file policy — Isaiah's instruction vs my pushback (READ THIS BEFORE DELETING ANY TEST)
+## Test-file policy (how to handle tests during this migration)
 
-**Isaiah's instruction (verbatim intent):** tests feel unnecessary; "everything should be official
-100%"; "there's no need to keep a test file"; if we don't need it, get rid of it. He then explicitly
-delegated the call: "I guess that's for you to audit, investigate, and use your best judgment on."
+The goal is "everything official 100%" — every test should correspond to something real and live.
+The way to reach that is to keep the tests that prove real behavior and remove tests as the code they
+cover is removed — not to carry dead tests, and not to drop the verification that makes the work
+official. Detailed rationale + the exact keep/remove rule below.
 
-**My pushback (strong, reasoned — surface this to Isaiah before acting):**
-Do **NOT** blanket-delete the test suite. Deleting all tests would actively work against the stated
-goal ("official 100%"). Here is the detailed reasoning, the evidence, and the exact policy I
-recommend instead.
+### Why the verification matters here
 
-### Why "delete all tests" is the wrong move
+1. **The real-backend proof harnesses ARE the official verification.** The `agent-cli/*-roundtrip.mjs`
+   scripts are how we PROVED, against the live Supabase backend, that save→reopen, re-upload reuse, and
+   the embedded-import-once fix actually work — including reproducing the exact pages-6-11 bug and
+   confirming it's fixed. They're the strongest "official 100%" artifact in the repo: objective proof
+   the persistence does what it claims. Keep and expand them.
+2. **They already caught a real regression this session.** When the fallow cleanup removed a role-set
+   comment, the KAL-31 contract test failed immediately — that's how we knew to move the documentation
+   onto the kept function instead of silently breaking a guarded invariant. That signal is exactly what
+   protects the much riskier migration ahead.
+3. **This migration is the highest data-risk work in the project.** Moving survey markers, spaces,
+   regions, and presence between engines is where data silently corrupts if you're not careful. A
+   per-kind roundtrip proof that the data survives save→reopen→delete on the NEW engine, run BEFORE the
+   OLD path is deleted, is the safety net for that.
 
-1. **Tests are not "unofficial" — they are the official proof.** The instinct seems to be that test
-   files are scaffolding/clutter separate from the "real" product. They are the opposite: they are the
-   executable definition of what "working" means. Removing them doesn't make the app more official; it
-   removes the only automated evidence that the app does what it claims. For a one-person, AI-built,
-   pre-launch product where Isaiah cannot manually re-verify 900+ behaviors each change, the tests ARE
-   the QA department.
-
-2. **They have already paid for themselves THIS session — twice.**
-   - The full node suite (`node scripts/run-node-tests.mjs`, ~921 tests) caught a real regression the
-     moment the fallow cleanup deleted a role-set comment: the KAL-31 contract test failed, which is
-     how we knew to move that documentation onto the kept function instead of silently breaking a
-     guarded invariant. Without that test, the breakage ships invisibly.
-   - The `agent-cli/*-roundtrip.mjs` harnesses are how we PROVED, against the real Supabase backend,
-     that save→reopen, re-upload reuse, and the embedded-import-once fix actually work — including
-     reproducing Isaiah's exact pages-6-11 bug and confirming it's fixed. That is the single most
-     "official 100%" artifact we produced; deleting it would mean future changes to persistence have
-     zero objective verification.
-
-3. **The migration ahead is the highest-data-loss-risk work in the whole project.** We are moving
-   survey markers, spaces, regions, and presence between persistence engines. The way you avoid
-   silently corrupting/losing live user data during that migration is a per-kind roundtrip test that
-   asserts the data survives save→reopen→delete on the NEW engine before the OLD path is deleted.
-   Deleting tests here removes the safety net at the exact moment it matters most.
-
-### The policy I recommend (this is the "best judgment" Isaiah asked for)
-
-Classify every test, keep or delete by category — do NOT delete by default:
+### The keep/remove rule
 
 - **KEEP — real-backend proof harnesses** (`agent-cli/*-roundtrip.mjs`, `reupload-survival`,
-  `roundtrip-save-reopen`, `import-once-roundtrip`, `yjs-roundtrip`). These ARE the official
-  verification. Expand them: write one new harness per migrated data kind.
-- **KEEP — tests that assert LIVE behavior/invariants** that will still exist after the migration
-  (e.g. the new-engine store/sync tests, contract guards for features that remain). These are the
-  regression net for the migration itself.
-- **DELETE — tests that exclusively cover code being removed.** A test for `useAnnotationCloudSync`,
-  `snapshotStore`, `mergePreservingImportedMarks`, or the legacy flat-table services becomes obsolete
-  *by construction* the moment that code is deleted. Delete it in the SAME commit as the code it
-  covered — never leave a test pointing at a deleted module.
-- **FIX-OR-DELETE — the brittle source-grep tests.** Three files read source as raw text with no
+  `roundtrip-save-reopen`, `import-once-roundtrip`, `yjs-roundtrip`). Expand them: add one new harness
+  per migrated data kind.
+- **KEEP — tests asserting LIVE behavior/invariants** that still exist after the migration (new-engine
+  store/sync tests, contract guards for features that remain).
+- **REMOVE — tests that exclusively cover code being removed.** A test for `useAnnotationCloudSync`,
+  `snapshotStore`, `mergePreservingImportedMarks`, or the legacy flat-table services is obsolete the
+  moment that code is gone. Remove it in the SAME commit as the code — never leave a test pointing at a
+  deleted module.
+- **FIX-OR-REMOVE — the brittle source-grep tests.** Three files read source as raw text with no
   `existsSync` skip-guard (`annotationInitialHydrationSource`, `syncStatusUi`,
   `eraserSaveHistorySyncContracts`); they crash the whole run if their target file is removed. When you
-  remove their target, remove/rewrite these in the same commit. (Separately: this grep-on-source style
-  is fragile — if any are worth keeping, port them to assert behavior, not file contents.)
+  remove their target, remove/rewrite them in the same commit. (This grep-on-source style is fragile —
+  if any are worth keeping, port them to assert behavior, not file contents.)
 
 ### Operating rule for the migration
 
-Every commit that DELETES code also deletes that code's now-obsolete tests — together, never
+Every commit that REMOVES code also removes that code's now-obsolete tests — together, never
 separately. Every commit that MIGRATES a data kind adds a roundtrip harness proving it on the new
-engine BEFORE the old path is removed. Net effect: the suite shrinks honestly (dead tests leave with
-dead code) while coverage of LIVE behavior never drops. That is how you reach "100% official" — by
-making every test correspond to something real, not by having zero tests.
-
-**If after reading this Isaiah still wants a more aggressive cut, get an explicit confirm naming which
-categories to drop — don't infer "delete everything" from "I feel like we don't need tests."**
+engine BEFORE the old path is removed. The suite shrinks honestly (dead tests leave with dead code)
+while coverage of LIVE behavior never drops. That is how the codebase stays 100% official — every test
+maps to something real.
 
 ## Files to Know
 
