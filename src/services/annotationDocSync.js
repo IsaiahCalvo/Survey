@@ -360,7 +360,7 @@ function makeHandle(state) {
     getSurveyMarkers() { return docToSurveyMarkers(state.doc); },
 
     /** Push the survey-marker dict into the doc (minimal per-marker diff → ops). */
-    applySurveyMarkers(markers) { return syncSurveyMarkersToDoc(state.doc, markers, { origin: 'local' }); },
+    applySurveyMarkers(markers, opts = {}) { return syncSurveyMarkersToDoc(state.doc, markers, { origin: 'local', ...opts }); },
 
     /** Subscribe to changes (local or remote). Returns an unsubscribe fn. */
     onChange(cb) { state.changeListeners.add(cb); return () => state.changeListeners.delete(cb); },

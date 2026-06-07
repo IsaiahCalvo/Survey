@@ -88,19 +88,40 @@ export function docToSurveyMarkers(doc) {
  * identical state produces ZERO Yjs updates. Adds/updates are applied in bounded
  * batches (one transaction per batch) so a bulk seed of N markers becomes
  * several resilient ops, never one giant all-or-nothing write.
+ *
+ * Stage 0 safety contract:
+ *   * `origin: 'excel-import'` makes the reconcile ADDITIVE/patch-only — it may
+ *     add or update markers but NEVER deletes a key the imported dict omits. A
+ *     flat Excel sheet can't tell "deleted" from "filtered/sorted", and an
+ *     un-exported app marker is simply absent from the sheet; deleting it here is
+ *     the durable-store corruption bug. Excel-side removals flow through the
+ *     explicit (app-origin) tombstone path instead, not this reconcile.
+ *   * `protectedIds` (iterable) are never deleted regardless of origin — used to
+ *     shield app-created-not-yet-exported markers even on a local reconcile.
  */
-export function syncSurveyMarkersToDoc(doc, markers, { origin = 'local', batchSize = 250 } = {}) {
+export function syncSurveyMarkersToDoc(doc, markers, { origin = 'local', batchSize = 250, protectedIds = null } = {}) {
   const map = getSurveyMarkersMap(doc);
   const desired = markers || {};
   const ids = Object.keys(desired);
   const desiredSet = new Set(ids);
+  const protectedSet = protectedIds ? new Set(protectedIds) : null;
+  // Excel imports are additive: never delete keys the sheet omits.
+  const allowDeletes = origin !== 'excel-import';
+  // Clamp batch size so a 0/negative/NaN value can never stall the update loop.
+  const step = Math.max(1, Math.floor(batchSize) || 1);
 
   let added = 0;
   let updated = 0;
   let removed = 0;
 
   const toDelete = [];
-  map.forEach((_value, key) => { if (!desiredSet.has(key)) toDelete.push(key); });
+  if (allowDeletes) {
+    map.forEach((_value, key) => {
+      if (desiredSet.has(key)) return;
+      if (protectedSet && protectedSet.has(key)) return;
+      toDelete.push(key);
+    });
+  }
   if (toDelete.length) {
     doc.transact(() => { for (const k of toDelete) { map.delete(k); removed += 1; } }, origin);
   }
@@ -112,8 +133,8 @@ export function syncSurveyMarkersToDoc(doc, markers, { origin = 'local', batchSi
     if (cur === undefined) changed.push([id, next, true]);
     else if (stableStringify(cur) !== stableStringify(next)) changed.push([id, next, false]);
   }
-  for (let i = 0; i < changed.length; i += batchSize) {
-    const batch = changed.slice(i, i + batchSize);
+  for (let i = 0; i < changed.length; i += step) {
+    const batch = changed.slice(i, i + step);
     doc.transact(() => {
       for (const [id, next, isAdd] of batch) { map.set(id, next); if (isAdd) added += 1; else updated += 1; }
     }, origin);
