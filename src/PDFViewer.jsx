@@ -67,7 +67,7 @@ import { clearDebugState, debugLog, emitDebugEvent as emitPdfDebugEvent, getDebu
 import { computeExcelSyncFingerprint, computeHasPendingExcelSyncChanges } from './utils/excelSyncDirtyState';
 import { createPortal, flushSync } from 'react-dom';
 import { debugMark } from './utils/debugBridge';
-import { deleteAnnotations, loadAnnotationsFromSupabase, removeDocumentPresence, subscribeToDocumentAnnotations, syncAnnotationsToSupabase, updateDocumentPresence } from './services/documentAnnotationService';
+import { deleteAnnotations, removeDocumentPresence, subscribeToDocumentAnnotations, syncAnnotationsToSupabase, updateDocumentPresence } from './services/documentAnnotationService';
 import { fromFabricGroup, toFabricGroup } from './utils/calloutEditAdapter';
 import { getActivePageRegionId, getPageAnnotationVisibilityState, normalizePageRegions, normalizeRegionVisibility } from './utils/annotationVisibilityRules';
 import { getCalloutSyncFingerprint } from './utils/calloutSyncPayload';
@@ -14965,8 +14965,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       preservedCount: Object.keys(surveyMarkersRef.current || {}).length,
     }));
 
-    loadAnnotationsFromSupabase(documentId)
-      .then(async ({ surveyMarkers: remoteAnnotations, error }) => {
+    // Highlights (survey markers) now hydrate from the durable Y.Doc via
+    // useAnnotationDoc — NOT from this legacy document_annotations read. This
+    // effect is kept ONLY for its presence init + permission(RLS) detection +
+    // sync-enable chain, which used to be chained off the highlight load. We feed
+    // it a resolved no-op so that chain runs without touching the old table and
+    // without ever applying (or deleting) highlight rows on open.
+    Promise.resolve({ surveyMarkers: {}, error: null })
+      .then(async ({ error }) => {
         if (activeCloudDocumentIdRef.current !== documentId) {
           return;
         }
@@ -14974,7 +14980,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           console.error('[DocumentSync] Error loading annotations:', error);
           setSurveyAnnotationHydration({
             ready: true,
-            source: 'supabase-highlight-error',
+            source: 'annotation-doc-error',
             documentId,
             pdfId: hydrationPdfId,
             count: Object.keys(surveyMarkersRef.current || {}).length,
@@ -14984,40 +14990,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           return;
         }
 
-        const remoteCount = Object.keys(remoteAnnotations || {}).length;
-        const safeSurveySnapshot = resolveSafeSnapshot({
-          current: surveyMarkersRef.current || {},
-          incoming: remoteAnnotations || {},
-          cloudBacked: true,
-          kind: 'object-map',
-          context: 'survey-marker-hydrate',
-        });
-        if (safeSurveySnapshot.preserved) {
-          console.warn('[SafeSnapshot] preserved survey markers instead of painting empty hydrate result ' + JSON.stringify({
-            documentId,
-            pdfId: hydrationPdfId,
-            currentCount: safeSurveySnapshot.currentCount,
-            incomingCount: safeSurveySnapshot.incomingCount,
-          }));
-        }
-        setSurveyMarkers(safeSurveySnapshot.value);
-        lastSyncedAnnotationsRef.current = JSON.stringify(safeSurveySnapshot.value || {});
-        appDebug('[AnnotationHydrationGate][survey] supabase surveyMarkers complete ' + JSON.stringify({
-          documentId,
-          pdfId: hydrationPdfId,
-          requestId: hydrationRequestId,
-          count: Object.keys(safeSurveySnapshot.value || {}).length,
-          remoteCount,
-          preserved: !!safeSurveySnapshot.preserved,
-          wasCancelledSameDocument: !!cancelled,
-          durationMs: Date.now() - hydrationStartedAt,
-        }));
+        // The Y.Doc owns highlight state; mark hydration ready so the projection
+        // sync + presence chain proceed. Count reflects whatever the durable
+        // store has already painted into React state by now.
         setSurveyAnnotationHydration({
           ready: true,
-          source: 'supabase-highlight',
+          source: 'annotation-doc',
           documentId,
           pdfId: hydrationPdfId,
-          count: Object.keys(safeSurveySnapshot.value || {}).length,
+          count: Object.keys(surveyMarkersRef.current || {}).length,
           durationMs: Date.now() - hydrationStartedAt,
           wasCancelledSameDocument: !!cancelled,
         });
@@ -15139,6 +15120,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Subscribe to real-time annotation changes
   useEffect(() => {
     const documentId = pdfFile?.id;
+    // Highlights (survey markers) now receive remote updates through the durable
+    // Y.Doc (useAnnotationDoc's onChange). The legacy document_annotations
+    // realtime subscription is retired to avoid double-applying the same change
+    // from two sources. Left as a no-op effect pending full removal in the
+    // legacy-engine cleanup step.
+    return;
+    // eslint-disable-next-line no-unreachable
     // Check both state and ref (ref is synchronous, state may lag)
     if (
       !documentId ||
@@ -15299,14 +15287,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // the cached JSON string defensively — if parse fails (corrupt cache),
       // priorSurveyMarkers is null and the service falls back to upsert-
       // only behavior (no regression vs pre-fix).
-      let priorSurveyMarkers = null;
-      if (lastSyncedAnnotationsRef.current) {
-        try {
-          priorSurveyMarkers = JSON.parse(lastSyncedAnnotationsRef.current);
-        } catch (_) {
-          priorSurveyMarkers = null;
-        }
-      }
+      // UPSERT-ONLY projection: the Y.Doc is the source of truth for highlights;
+      // this write only keeps document_annotations populated so the cross-document
+      // checklist-usage count keeps working. We pass NO priorSurveyMarkers so the
+      // service never runs a delete-diff — that removes the "wipe highlights on
+      // open" hazard entirely (an empty-on-open state can no longer delete rows).
+      // Real deletions still propagate via the explicit delete paths
+      // (handleSurveyMarkerDeleted / cascade) which call deleteAnnotations.
       const {
         success,
         error,
@@ -15314,7 +15301,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         nonRetryable,
         isRLSError
       } = await syncAnnotationsToSupabase(documentId, user.id, surveyMarkers, {
-        priorSurveyMarkers,
+        priorSurveyMarkers: null,
       });
 
       if (cancelled) return;
@@ -15426,21 +15413,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (pending === flushPendingSurveyMarkerSync) {
         pendingSurveyMarkerSyncRef.current = null;
         try {
-          // Re-derive prior baseline + run upsert directly (cancelled flag
-          // would otherwise block runSync()). Fire-and-forget.
-          let priorSurveyMarkers = null;
-          if (lastSyncedAnnotationsRef.current && typeof lastSyncedAnnotationsRef.current === 'string') {
-            try {
-              priorSurveyMarkers = JSON.parse(lastSyncedAnnotationsRef.current);
-            } catch (_) {
-              priorSurveyMarkers = null;
-            }
-          }
+          // Upsert-only projection flush (see runSync) — no delete-diff baseline.
           if (!syncStructuralAutoDisabledRef.current) {
             appDebug('[DocumentSync] unmount flush — pushing pending highlight sync');
             Promise.resolve(
               syncAnnotationsToSupabase(documentId, user.id, surveyMarkers, {
-                priorSurveyMarkers,
+                priorSurveyMarkers: null,
               })
             ).catch(() => { /* swallow on unmount path */ });
           }
@@ -15680,6 +15658,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setCallouts,
     spaces,
     setSpaces,
+    surveyMarkers,
+    setSurveyMarkers,
   });
   // Live presence list — feeds the stacked-avatars row in the toolbar.
   // Uses cloudSyncActive (operational flag) so presence stops fetching when
@@ -17167,9 +17147,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // return; // Optional: decide whether to load anyway or warn
       }
 
-      // Restore state. Supabase Storage is an older sidecar snapshot, so it
-      // must not blank the live cloud view if the sidecar is empty/stale.
-      if (data.annotations) {
+      // Restore state. Supabase Storage is an older sidecar snapshot. For cloud
+      // documents, highlights now come from the durable Y.Doc — restoring the
+      // sidecar would let a stale blob fight the authoritative copy, so this only
+      // runs for local-only documents (no cloud id), mirroring the spaces +
+      // annotations guards below.
+      if (data.annotations && !doc.id) {
         const safeSurveySnapshot = resolveSafeSnapshot({
           current: surveyMarkersRef.current || {},
           incoming: data.annotations || {},

@@ -11,11 +11,17 @@ const APP_SOURCE = readFileSync(new URL('../src/viewerShared.js', import.meta.ur
   + '\n' + readFileSync(new URL('../src/components/annotationHydrationCover.jsx', import.meta.url), 'utf8');
 const CLOUD_SYNC_SOURCE = readFileSync(new URL('../src/hooks/useAnnotationCloudSync.js', import.meta.url), 'utf8');
 
-test('cloud-backed survey highlights are not painted from localStorage before Supabase settles', () => {
+test('cloud-backed survey highlights hydrate from the durable Y.Doc, not the legacy table', () => {
+  // Cloud docs start highlights empty (or the same-pdf-reload snapshot); the
+  // durable Y.Doc (useAnnotationDoc) then paints them. They are NO LONGER read
+  // from the legacy document_annotations table on open.
   assert.match(APP_SOURCE, /const loadedSurveyMarkers = isCloudBackedDoc\s*\?\s*\(isSamePdfReload \? previousSurveyMarkersForSamePdf : \{\}\)\s*:\s*loadSurveyMarkers\(id\);/);
-  assert.match(APP_SOURCE, /context: 'survey-marker-hydrate'/);
-  assert.match(APP_SOURCE, /setSurveyMarkers\(safeSurveySnapshot\.value\);/);
-  assert.match(APP_SOURCE, /source: 'supabase-highlight'/);
+  // useAnnotationDoc now owns highlight hydrate + capture + realtime.
+  assert.match(APP_SOURCE, /useAnnotationDoc\(\{[\s\S]*?surveyMarkers,\s*setSurveyMarkers,/);
+  // The legacy survey-marker SELECT is retired (no document_annotations read).
+  assert.doesNotMatch(APP_SOURCE, /loadAnnotationsFromSupabase\(documentId\)/);
+  // The hydration-ready signal is now sourced from the annotation doc.
+  assert.match(APP_SOURCE, /source: 'annotation-doc'/);
 });
 
 test('survey marker hydration cannot stay pending after a cancelled same-document load', () => {
@@ -23,9 +29,10 @@ test('survey marker hydration cannot stay pending after a cancelled same-documen
   assert.match(APP_SOURCE, /const surveyHydrationRequestSeqRef = useRef\(0\);/);
   assert.match(APP_SOURCE, /activeCloudDocumentIdRef\.current !== documentId/);
   assert.match(APP_SOURCE, /wasCancelledSameDocument: !!cancelled/);
-  assert.match(APP_SOURCE, /source: 'supabase-highlight-error'/);
+  // The presence/permission chain still runs; its error path now reports the
+  // annotation-doc source (the legacy 'supabase-highlight-error' is retired).
+  assert.match(APP_SOURCE, /source: 'annotation-doc-error'/);
   assert.match(APP_SOURCE, /\[AnnotationHydrationGate\]\[survey\] supabase surveyMarkers start/);
-  assert.match(APP_SOURCE, /\[AnnotationHydrationGate\]\[survey\] supabase surveyMarkers complete/);
 });
 
 test('same-document reload preserves cloud-owned layers instead of blanking them', () => {
@@ -67,7 +74,9 @@ test('cutover reconnect/focus cannot leave a blank local view when Supabase stil
 });
 
 test('cloud snapshots use the shared safe-snapshot rule before replacing visible state', () => {
-  assert.match(APP_SOURCE, /resolveSafeSnapshot\(\{\s*current: surveyMarkersRef\.current \|\| \{\},\s*incoming: remoteAnnotations \|\| \{\},\s*cloudBacked: true,\s*kind: 'object-map',\s*context: 'survey-marker-hydrate'/s);
+  // Highlights no longer use resolveSafeSnapshot on hydrate — the durable Y.Doc
+  // is their source of truth now. The fabric guards (and the local-only spaces/
+  // survey-marker sidecar guards) remain.
   assert.match(APP_SOURCE, /context: 'supabase-storage-spaces'/);
   assert.match(CLOUD_SYNC_SOURCE, /context: 'initial-hydrate-fabric'/);
   assert.match(CLOUD_SYNC_SOURCE, /context: 'post-subscribe-fabric'/);

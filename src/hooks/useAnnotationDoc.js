@@ -36,17 +36,21 @@ export function useAnnotationDoc({
   setCallouts,
   spaces,
   setSpaces,
+  surveyMarkers,
+  setSurveyMarkers,
 }) {
   const handleRef = useRef(null);
   const readyRef = useRef(false);
   const byPageRef = useRef(annotationsByPage);
   const calloutsRef = useRef(callouts);
   const spacesRef = useRef(spaces);
+  const surveyMarkersRef = useRef(surveyMarkers);
   const [initialHydration, setInitialHydration] = useState({ ready: false, source: 'pending', count: 0, documentId: null });
 
   byPageRef.current = annotationsByPage;
   calloutsRef.current = callouts;
   spacesRef.current = spaces;
+  surveyMarkersRef.current = surveyMarkers;
 
   // Open the durable doc on documentId; hydrate from it (authoritative) or seed
   // it with whatever the viewer already has (covers marks drawn/imported before
@@ -76,26 +80,35 @@ export function useAnnotationDoc({
         if (Array.isArray(c)) setCallouts(c);
         const s = handle.getMeta(SPACES_KEY);
         if (Array.isArray(s)) setSpaces(s);
+        const sm = handle.getSurveyMarkers();
+        if (sm && typeof sm === 'object') setSurveyMarkers(sm);
       });
 
       const storeByPage = handle.getByPage();
       const storeCallouts = handle.getMeta(CALLOUTS_KEY);
       const storeSpaces = handle.getMeta(SPACES_KEY);
+      const storeSurvey = handle.getSurveyMarkers();
       const count = pageCount(storeByPage);
       const hasCallouts = Array.isArray(storeCallouts) && storeCallouts.length > 0;
       const hasSpaces = Array.isArray(storeSpaces) && storeSpaces.length > 0;
+      const hasSurvey = storeSurvey && Object.keys(storeSurvey).length > 0;
 
-      if (count > 0 || hasCallouts || hasSpaces) {
+      if (count > 0 || hasCallouts || hasSpaces || hasSurvey) {
         // Durable store wins — paint from it.
         if (count > 0) setAnnotationsByPage(storeByPage);
         if (hasCallouts) setCallouts(storeCallouts);
         if (hasSpaces) setSpaces(storeSpaces);
-        // Spaces are document-level: if the store has annotations/callouts but no
-        // spaces yet (e.g. first open after this migration shipped), seed spaces
-        // from the per-device cache the viewer already loaded.
+        if (hasSurvey) setSurveyMarkers(storeSurvey);
+        // Document-level kinds: if the store has SOME state but not this kind yet
+        // (first open after each kind's migration shipped), seed it from the
+        // per-device state the viewer already loaded so nothing is dropped.
         if (!hasSpaces) {
           const curSpaces = spacesRef.current;
           if (Array.isArray(curSpaces) && curSpaces.length > 0) handle.setMeta(SPACES_KEY, curSpaces);
+        }
+        if (!hasSurvey) {
+          const curSurvey = surveyMarkersRef.current;
+          if (curSurvey && Object.keys(curSurvey).length > 0) handle.applySurveyMarkers(curSurvey);
         }
       } else {
         // Empty store: seed it with whatever the viewer already holds so a mark
@@ -106,6 +119,8 @@ export function useAnnotationDoc({
         if (Array.isArray(curCallouts) && curCallouts.length > 0) handle.setMeta(CALLOUTS_KEY, curCallouts);
         const curSpaces = spacesRef.current;
         if (Array.isArray(curSpaces) && curSpaces.length > 0) handle.setMeta(SPACES_KEY, curSpaces);
+        const curSurvey = surveyMarkersRef.current;
+        if (curSurvey && Object.keys(curSurvey).length > 0) handle.applySurveyMarkers(curSurvey);
       }
 
       readyRef.current = true;
@@ -122,7 +137,7 @@ export function useAnnotationDoc({
       readyRef.current = false;
       if (h) { h.destroy().catch(() => {}); }
     };
-  }, [enabled, documentId, userId, setAnnotationsByPage, setCallouts, setSpaces]);
+  }, [enabled, documentId, userId, setAnnotationsByPage, setCallouts, setSpaces, setSurveyMarkers]);
 
   // Capture annotation changes into the durable store (no-op when unchanged).
   useEffect(() => {
@@ -146,6 +161,15 @@ export function useAnnotationDoc({
     if (!h || !readyRef.current) return;
     h.setMeta(SPACES_KEY, spaces);
   }, [spaces]);
+
+  // Capture survey-marker (highlight) changes into their keyed map (minimal
+  // per-marker diff; no-op when unchanged). The Y.Doc is now the source of truth
+  // for highlights — hydrate, realtime, and durability all flow through here.
+  useEffect(() => {
+    const h = handleRef.current;
+    if (!h || !readyRef.current) return;
+    h.applySurveyMarkers(surveyMarkers);
+  }, [surveyMarkers]);
 
   // Cmd/Ctrl+S → drain pending appends + write a fresh snapshot.
   const forceFlush = useCallback(async () => {
