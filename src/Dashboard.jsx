@@ -1474,8 +1474,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
           selectedCount: idsToDelete.length,
           visibleDocumentCount: sortedDocuments.length,
         }));
-        // Hide immediately. The database operation below archives the row so
-        // old cutover/Y.Doc annotation blobs are not synchronously hard-deleted.
+        // Hide immediately. The database operation below hard-deletes each row,
+        // and Postgres ON DELETE CASCADE removes its annotation log, snapshot,
+        // and all child rows; storage bytes + the local durable copy are purged too.
         setDocuments(prev => prev.filter(d => !idsToDelete.includes(d.id)));
         setSelectedIds([]);
         setIsSelectionMode(false);
@@ -1932,9 +1933,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     // Remove from UI immediately
     setDocuments(prev => prev.filter(d => d.id !== docId));
 
-    // Delete stale DB row when present; treat already-missing rows as success.
+    // Hard-delete the stale row so its annotation log, snapshot, and cascade
+    // children go with it — a missing PDF means the document is unusable, and a
+    // soft-archive would orphan all that data forever. Treat already-missing
+    // rows as success.
     try {
-      await deleteSupabaseDocument(docId);
+      await deleteDocumentEverywhere({ docId, source: 'file-not-found-cleanup' });
     } catch (error) {
       if (!isSupabaseRowNotFoundError(error)) {
         console.error('[DocumentCleanup] Failed to delete stale document row:', error);
@@ -1942,7 +1946,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     } finally {
       cleaningUpDocumentsRef.current.delete(docId);
     }
-  }, [deleteSupabaseDocument]);
+  }, [deleteDocumentEverywhere]);
 
   const handleDocumentClick = async (doc) => {
     try {

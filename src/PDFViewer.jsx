@@ -20622,17 +20622,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return { ok: true, pageNumber };
   }, [handleSaveAnnotations]);
 
-  // Self-heal: when a cloud document finishes hydrating with ZERO annotations but
-  // the underlying PDF carries embedded annotations (e.g. the file got linked to an
-  // empty duplicate cloud record), import the PDF's embedded annotations so the page
-  // isn't blank. Gated on the hydration "ready + count===0" signal so it never races
-  // a still-loading cloud doc, and on a per-document ref so it runs at most once.
+  // Embedded import — exactly once per document, durably.
+  //
+  // A PDF can carry its own embedded annotations (e.g. markups on pages 6-11).
+  // Those must be imported into the annotation store the FIRST time this document
+  // is opened, and then never re-imported. The trigger is a durable per-document
+  // marker (documents.embedded_import_completed_at), NOT the live mark count: a
+  // user could draw one stroke before the import runs, and gating on count===0
+  // (the old behavior) let a single stroke silently suppress the import forever.
+  // Imported objects are merged ALONGSIDE any existing marks (stable ids keep a
+  // re-run idempotent), and the marker is stamped once the import lands so reopen
+  // skips it. Runs at most once per mount via embeddedImportFallbackDoneRef.
   useEffect(() => {
     const hydration = normalAnnotationHydration;
     const documentId = pdfFile?.id || null;
     if (!documentId || !pdfDoc) return undefined;
     if (!hydration || hydration.ready !== true) return undefined;
-    if (hydration.count !== 0) return undefined;
     if (hydration.documentId && hydration.documentId !== documentId) return undefined;
     if (embeddedImportFallbackDoneRef.current === documentId) return undefined;
     embeddedImportFallbackDoneRef.current = documentId;
@@ -20640,11 +20645,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     let cancelled = false;
     (async () => {
       try {
-        // Skip if state already has marks — another path may have populated it
-        // between the hydration signal firing and this effect running.
-        const liveCount = Object.values(annotationsByPageRef.current || {})
-          .reduce((n, pg) => n + (Array.isArray(pg?.objects) ? pg.objects.length : 0), 0);
-        if (liveCount > 0) return;
+        // Durable once-only gate: if this document already imported its embedded
+        // marks in any prior session, never import again.
+        let alreadyImported = false;
+        try {
+          const { data: metaRow } = await supabase
+            .from('documents')
+            .select('embedded_import_completed_at')
+            .eq('id', documentId)
+            .maybeSingle();
+          alreadyImported = !!metaRow?.embedded_import_completed_at;
+        } catch (metaErr) {
+          // If we can't read the marker, fall through to importing — stable ids
+          // make a redundant import a no-op, and the merge never clobbers.
+          console.warn('[PDFImport] could not read embedded-import marker:', metaErr?.message || metaErr);
+        }
+        if (cancelled || alreadyImported) return;
 
         const rawPdfBytes = typeof pdfFile.arrayBuffer === 'function'
           ? await pdfFile.arrayBuffer()
@@ -20655,40 +20671,59 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
         const totalImported = Object.values(importedAnnotations || {})
           .reduce((n, pg) => n + (Array.isArray(pg?.objects) ? pg.objects.length : 0), 0);
-        if (totalImported === 0) return; // genuinely-empty doc — nothing to heal
 
-        // Re-check emptiness right before committing so we never duplicate marks
-        // if the cloud populated state during the async import above.
-        const liveCountAfter = Object.values(annotationsByPageRef.current || {})
-          .reduce((n, pg) => n + (Array.isArray(pg?.objects) ? pg.objects.length : 0), 0);
-        if (liveCountAfter > 0) return;
+        if (totalImported > 0) {
+          setPdfNativeAnnotationLayerPolicyByPage(nativeLayerPolicyByPage || {});
+          Object.entries(importedAnnotations || {}).forEach(([pageKey, pageData]) => {
+            const pageNumber = Number(pageKey);
+            const objects = Array.isArray(pageData?.objects) ? pageData.objects : [];
+            if (objects.length === 0) return;
+            const current = annotationsByPageRef.current?.[pageKey]
+              || annotationsByPageRef.current?.[pageNumber]
+              || { objects: [] };
+            const currentObjects = Array.isArray(current.objects) ? current.objects : [];
+            // Stable ids make this merge idempotent: an imported mark keyed by the
+            // same id overwrites rather than duplicates, and existing user marks
+            // (different ids) are preserved.
+            const existingIds = new Set(currentObjects.map((o) => o?.id || o?.data?.id).filter(Boolean));
+            const stamped = objects.map((obj) => {
+              const stableId = obj.id || obj.data?.id || obj.pdfAnnotationId;
+              return { ...obj, id: stableId, data: { ...(obj.data || {}), id: stableId } };
+            }).filter((o) => !existingIds.has(o.id));
+            if (stamped.length === 0) return;
+            handleSaveAnnotations(pageNumber, { ...current, objects: [...currentObjects, ...stamped] }, {
+              source: 'embedded-import-once',
+              action: 'import-pdf-annotations',
+              checkpointPolicy: 'skip',
+            });
+          });
+          appDebug('[PDFImport] imported embedded PDF annotations (once) ' + JSON.stringify({
+            documentId,
+            pages: Object.keys(importedAnnotations || {}).length,
+            totalImported,
+          }));
+        }
 
-        setPdfNativeAnnotationLayerPolicyByPage(nativeLayerPolicyByPage || {});
-        Object.entries(importedAnnotations || {}).forEach(([pageKey, pageData]) => {
-          const pageNumber = Number(pageKey);
-          const objects = Array.isArray(pageData?.objects) ? pageData.objects : [];
-          if (objects.length === 0) return;
-          const current = annotationsByPageRef.current?.[pageKey]
-            || annotationsByPageRef.current?.[pageNumber]
-            || { objects: [] };
-          const currentObjects = Array.isArray(current.objects) ? current.objects : [];
-          const stamped = objects.map((obj) => {
-            const stableId = obj.id || obj.data?.id || obj.pdfAnnotationId;
-            return { ...obj, id: stableId, data: { ...(obj.data || {}), id: stableId } };
-          });
-          handleSaveAnnotations(pageNumber, { ...current, objects: [...currentObjects, ...stamped] }, {
-            source: 'embedded-import-empty-cloud-fallback',
-            action: 'import-pdf-annotations',
-            checkpointPolicy: 'skip',
-          });
-        });
-        appDebug('[PDFImport] empty-cloud fallback imported embedded PDF annotations ' + JSON.stringify({
-          documentId,
-          pages: Object.keys(importedAnnotations || {}).length,
-          totalImported,
-        }));
-      } catch (fallbackError) {
-        console.warn('[PDFImport] empty-cloud embedded fallback failed:', fallbackError);
+        // Stamp the durable marker so this document never re-parses for embedded
+        // marks again — whether it had marks or was genuinely empty. Only after a
+        // successful parse (a thrown parse leaves the marker null so we retry).
+        if (!cancelled) {
+          try {
+            await supabase
+              .from('documents')
+              .update({ embedded_import_completed_at: new Date().toISOString() })
+              .eq('id', documentId);
+          } catch (markErr) {
+            console.warn('[PDFImport] could not stamp embedded-import marker:', markErr?.message || markErr);
+          }
+        }
+      } catch (importError) {
+        // Leave the marker unset so a transient parse failure retries next open;
+        // clear the per-mount guard so a remount can re-attempt.
+        if (embeddedImportFallbackDoneRef.current === documentId) {
+          embeddedImportFallbackDoneRef.current = null;
+        }
+        console.warn('[PDFImport] embedded import failed:', importError);
       }
     })();
 

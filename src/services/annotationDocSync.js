@@ -399,7 +399,21 @@ export async function purgeAnnotationDoc(documentId) {
     releaseYDoc(registryKey);
   } catch { /* */ }
   try {
-    if (typeof indexedDB !== 'undefined') indexedDB.deleteDatabase(`anno-${documentId}`);
+    if (typeof indexedDB !== 'undefined') {
+      // The flat-annotation y-indexeddb store...
+      indexedDB.deleteDatabase(`anno-${documentId}`);
+      // ...and the legacy Phase-27 CRDT collab store (ydocLifecycle keys its
+      // IndexedDB by the raw document UUID). Both must go or a same-content
+      // re-upload (which dedups to the same id) could resurrect old marks.
+      indexedDB.deleteDatabase(documentId);
+    }
+  } catch { /* */ }
+  try {
+    // Drop any pending offline sync ops for this doc so a deleted document's
+    // retries can never re-fire (the row is gone; they'd 404 forever otherwise).
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(`cloudSyncQueue_${documentId}`);
+    }
   } catch { /* */ }
 }
 
