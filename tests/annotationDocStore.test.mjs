@@ -9,6 +9,8 @@ import {
   syncByPageToDoc,
   encodeSnapshot,
   hydrateDoc,
+  getMetaValue,
+  setMetaValue,
 } from '../src/services/annotationDocStore.js';
 
 // Helper: a minimal annotation object shaped like a Fabric path with a stable id.
@@ -165,6 +167,82 @@ test('a fresh pen stroke is durable as a single tail update and survives reopen'
   const out = docToByPage(reopened);
   assert.ok(out[11]?.objects.some((o) => o.data.id === 'fresh-stroke'),
     'the page-11 stroke is present after reload');
+});
+
+// --- Document-level meta (callouts, and the home for spaces + survey markers) ---
+//
+// Callouts already ride this path in the live app (setMeta('calloutsList', ...));
+// spaces and survey markers will move onto the SAME meta path. These tests pin
+// the contract: read-back, change-only writes, and survival through snapshot+tail.
+
+function callout(id, page, label = 'note') {
+  return { id, pageNumber: page, anchor: { x: 1, y: 2 }, knee: { x: 3, y: 4 }, label };
+}
+
+test('meta value round-trips: setMetaValue then getMetaValue returns the same list', () => {
+  const doc = new Y.Doc();
+  const list = [callout('c1', 6), callout('c2', 11)];
+  const wrote = setMetaValue(doc, 'calloutsList', list);
+  assert.equal(wrote, true, 'first write reports a change');
+  assert.deepEqual(getMetaValue(doc, 'calloutsList'), list);
+});
+
+test('re-setting identical meta produces ZERO updates (never spams the log)', () => {
+  const doc = new Y.Doc();
+  const list = [callout('c1', 6)];
+  setMetaValue(doc, 'calloutsList', list);
+
+  let updates = 0;
+  doc.on('update', () => { updates += 1; });
+  const wrote = setMetaValue(doc, 'calloutsList', [callout('c1', 6)]); // deep-equal copy
+  assert.equal(updates, 0, 'no Yjs update for an unchanged meta value');
+  assert.equal(wrote, false, 'setMetaValue reports no change');
+});
+
+test('changing a meta value fires exactly one update', () => {
+  const doc = new Y.Doc();
+  setMetaValue(doc, 'calloutsList', [callout('c1', 6)]);
+  let updates = 0;
+  doc.on('update', () => { updates += 1; });
+  const wrote = setMetaValue(doc, 'calloutsList', [callout('c1', 6, 'edited')]);
+  assert.equal(updates, 1, 'one edit => one durable op');
+  assert.equal(wrote, true);
+});
+
+test('meta survives snapshot + tail reopen alongside annotations (the open path)', () => {
+  // Author: some annotations AND a callouts meta list, then a later edit as a tail op.
+  const author = new Y.Doc();
+  syncByPageToDoc(author, byPageFrom(['a', 6]));
+  setMetaValue(author, 'calloutsList', [callout('c1', 6)]);
+  const snapshot = encodeSnapshot(author);
+
+  const tail = [];
+  author.on('update', (u) => tail.push(u));
+  // After the snapshot: draw a mark and add a second callout — both must replay.
+  syncByPageToDoc(author, byPageFrom(['a', 6], ['b', 7]));
+  setMetaValue(author, 'calloutsList', [callout('c1', 6), callout('c2', 11)]);
+
+  const reopened = hydrateDoc(snapshot, tail, new Y.Doc());
+  assert.deepEqual(
+    getMetaValue(reopened, 'calloutsList').map((c) => c.id).sort(),
+    ['c1', 'c2'],
+    'both callouts present after snapshot+tail reopen',
+  );
+  assert.equal(countObjects(docToByPage(reopened)), 2, 'annotations also survived');
+});
+
+test('independent meta keys do not clobber each other (callouts vs spaces vs surveyMarkers)', () => {
+  // The migration parks three different concerns under three meta keys in ONE doc.
+  const doc = new Y.Doc();
+  setMetaValue(doc, 'calloutsList', [callout('c1', 6)]);
+  setMetaValue(doc, 'spaces', [{ id: 's1', name: 'Floor 1', assignedPages: [] }]);
+  setMetaValue(doc, 'surveyMarkers', { m1: { bounds: { x: 0, y: 0, w: 10, h: 10 } } });
+
+  const snapshot = encodeSnapshot(doc);
+  const reopened = hydrateDoc(snapshot, [], new Y.Doc());
+  assert.equal(getMetaValue(reopened, 'calloutsList').length, 1);
+  assert.equal(getMetaValue(reopened, 'spaces')[0].name, 'Floor 1');
+  assert.ok(getMetaValue(reopened, 'surveyMarkers').m1, 'survey marker key intact');
 });
 
 test('concurrent edits on two clients merge with no lost update (CRDT)', () => {
