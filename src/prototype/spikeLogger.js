@@ -86,7 +86,7 @@ export function createSpikeLog() {
       }
 
       // ---- discrete events ----
-      const ev = events.filter((e) => ['tab', 'file', 'drag', 'rotate', 'quickzoom'].includes(e.type));
+      const ev = events.filter((e) => ['tab', 'file', 'drag', 'rotate', 'quickzoom', 'config', 'zoom-gesture-start', 'zoom-settle'].includes(e.type));
       if (ev.length) {
         lines.push('== EVENTS ==');
         for (const e of ev) {
@@ -95,7 +95,41 @@ export function createSpikeLog() {
           else if (e.type === 'drag') lines.push(`t=${e.rel}s [${tabLabel(e.tab)}]  DRAG annotation (page ${e.page})`);
           else if (e.type === 'rotate') lines.push(`t=${e.rel}s [${tabLabel(e.tab)}]  ROTATE`);
           else if (e.type === 'quickzoom') lines.push(`t=${e.rel}s [${tabLabel(e.tab)}]  QUICK ZOOM ${e.label}`);
+          else if (e.type === 'config') lines.push(`t=${e.rel}s  CONFIG stress=${e.stress ? 'ON' : 'off'} shapes/page=${e.shapesPerPage}`);
+          else if (e.type === 'zoom-gesture-start') lines.push(`t=${e.rel}s  ZOOM START @ ${e.atPct}%`);
+          else if (e.type === 'zoom-settle') lines.push(`t=${e.rel}s  ZOOM SETTLE ${e.fromPct}% → ${e.toPct}% (re-raster begins)`);
         }
+        lines.push('');
+      }
+
+      // ---- dropped frames (the catches) ----
+      const longFrames = events.filter((e) => e.type === 'long-frame');
+      lines.push(`== DROPPED FRAMES (>33ms during interaction): ${longFrames.length} ==`);
+      if (longFrames.length) {
+        const worstLF = Math.max(...longFrames.map((e) => e.ms));
+        lines.push(`worst single frame: ${worstLF}ms`);
+        for (const e of longFrames) lines.push(`t=${e.rel}s  ${e.ms}ms frame @ ${e.zoomPct}%`);
+      } else {
+        lines.push('(none — no visible catches captured)');
+      }
+      lines.push('');
+
+      // ---- page raster timings (base re-raster + deep-zoom tiles) ----
+      const rasterEvents = events.filter((e) => e.type === 'raster');
+      if (rasterEvents.length) {
+        const base = rasterEvents.filter((e) => e.kind === 'base');
+        const tiles = rasterEvents.filter((e) => e.kind === 'tile');
+        const stat = (arr) => {
+          if (!arr.length) return 'none';
+          const ms = arr.map((e) => e.ms);
+          return `${arr.length} renders, avg ${Math.round(ms.reduce((a, b) => a + b, 0) / ms.length)}ms, worst ${Math.max(...ms)}ms`;
+        };
+        lines.push('== PAGE RASTERS ==');
+        lines.push(`base page re-raster: ${stat(base)}`);
+        lines.push(`deep-zoom tiles:     ${stat(tiles)}`);
+        const slowest = [...rasterEvents].sort((a, b) => b.ms - a.ms).slice(0, 12);
+        lines.push('slowest renders:');
+        for (const e of slowest) lines.push(`  t=${e.rel}s  ${e.kind} p${e.page}  ${e.ms}ms  ${e.mp}MP @ ${e.zoomPct}%`);
         lines.push('');
       }
 

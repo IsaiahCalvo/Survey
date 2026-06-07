@@ -370,51 +370,6 @@ function getFabricObjectFingerprint(obj) {
   }
 }
 
-export function buildChangedAnnotationsByPage(currentByPage, priorByPage) {
-  if (!currentByPage || typeof currentByPage !== 'object') return {};
-
-  const priorById = new Map();
-  for (const page of Object.values(priorByPage || {})) {
-    if (!page || !Array.isArray(page.objects)) continue;
-    for (const obj of page.objects) {
-      const id = getFabricAnnotationId(obj);
-      if (!id) continue;
-      priorById.set(id, getFabricObjectFingerprint(obj));
-    }
-  }
-
-  const changed = {};
-  for (const [pageKey, page] of Object.entries(currentByPage || {})) {
-    if (!page || !Array.isArray(page.objects)) continue;
-    for (const obj of page.objects) {
-      const id = getFabricAnnotationId(obj);
-      if (!id) continue;
-      const currentFingerprint = getFabricObjectFingerprint(obj);
-      if (priorById.get(id) === currentFingerprint) continue;
-      if (!changed[pageKey]) changed[pageKey] = { ...page, objects: [] };
-      changed[pageKey].objects.push(obj);
-    }
-  }
-  return changed;
-}
-
-export function buildChangedAnnotationsByIds(currentByPage, changedIds = []) {
-  if (!currentByPage || typeof currentByPage !== 'object' || !Array.isArray(changedIds)) return {};
-  const wanted = new Set(changedIds.filter(Boolean));
-  if (wanted.size === 0) return {};
-  const changed = {};
-  for (const [pageKey, page] of Object.entries(currentByPage || {})) {
-    if (!page || !Array.isArray(page.objects)) continue;
-    for (const obj of page.objects) {
-      const id = getFabricAnnotationId(obj);
-      if (!id || !wanted.has(id)) continue;
-      if (!changed[pageKey]) changed[pageKey] = { ...page, objects: [] };
-      changed[pageKey].objects.push(obj);
-    }
-  }
-  return changed;
-}
-
 function summarizeTypeBreakdownValue(breakdown, key) {
   if (!key) return;
   breakdown[key] = (breakdown[key] || 0) + 1;

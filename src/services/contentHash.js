@@ -20,9 +20,3 @@ export async function computeContentSha256(bytes) {
   for (let i = 0; i < arr.length; i += 1) hex += arr[i].toString(16).padStart(2, '0');
   return hex;
 }
-
-// Content-addressed storage path: same bytes always land on the same object, so
-// re-uploading is idempotent (no second copy).
-export function contentStoragePath(userId, sha256) {
-  return `${userId}/${sha256}.pdf`;
-}

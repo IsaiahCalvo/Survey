@@ -113,33 +113,6 @@ export function countMarkersReferencingItem(markers, itemId) {
   return n;
 }
 
-/**
- * Plan an orphan-cleanup pass across a list of survey marker rows. Pure — does
- * not write to Supabase. Returns the rows that need updating along with their
- * new checklist_responses payloads.
- *
- * @param {Array<object>} markerRows  Supabase rows shaped like survey_markers
- * @param {Set<string>} liveIds  ids currently present in the template
- * @returns {Array<{ id: string|number, annotation_id: string, checklist_responses: object, removedKeys: string[] }>}
- */
-export function planOrphanCleanup(markerRows, liveIds) {
-  if (!Array.isArray(markerRows) || !(liveIds instanceof Set)) return [];
-  const plan = [];
-  for (const row of markerRows) {
-    if (!row) continue;
-    const { cleaned, removedKeys } = stripOrphanResponseKeys(row.checklist_responses, liveIds);
-    if (removedKeys.length > 0) {
-      plan.push({
-        id: row.id,
-        annotation_id: row.annotation_id,
-        checklist_responses: cleaned,
-        removedKeys,
-      });
-    }
-  }
-  return plan;
-}
-
 /* ============================================================================
  * Archive flow (KAL-44 final)
  * ============================================================================ */

@@ -25,7 +25,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.js?url';
+import { PDFDocument } from 'pdf-lib';
 import { clampToBudget } from './spikeMetrics';
+import InteractiveOverlay, { extractInkAnnotations } from './InteractiveOverlay';
+import SpikeTextLayer from './SpikeTextLayer';
+import SpikeLinkLayer from './SpikeLinkLayer';
+import SpikeFormLayer from './SpikeFormLayer';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -44,20 +49,60 @@ const SETTLE_MS = 110;          // commit the gesture this long after the last w
 const WHEEL_GAIN = 0.01;        // matches EmbedPDF: factor = 1 - deltaY * WHEEL_GAIN
 const DPR = Math.min(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1, 2);
 
+// --- PERF-GATE STRESS SEED ----------------------------------------------------
+// Synthetic dense annotation swarm in PAGE SPACE (points, scale-independent) so it
+// rides the same viewBox-CSS-transform path as the real SVGAnnotationLayer. A mix
+// of multi-Bézier pen strokes + filled marker dots — the geometry the overlay pays
+// for during a cursor-zoom. Deterministic per page so it doesn't reshuffle on every
+// re-render. Generated lazily per MOUNTED page, so memory stays virtualization-bounded.
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const STRESS_PALETTE = ['255,45,85', '10,132,255', '48,209,88', '255,214,10', '191,90,242'];
+function makeStressShapes(n, w, h, pageIndex) {
+  const rnd = mulberry32((0x9e3779b9 ^ ((pageIndex + 1) * 2654435761)) >>> 0);
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const cx = rnd() * w;
+    const cy = rnd() * h;
+    const col = STRESS_PALETTE[(i + pageIndex) % STRESS_PALETTE.length];
+    if (i % 3 === 0) {
+      const s = 6 + rnd() * 22;
+      out.push({ id: `st${pageIndex}_${i}`, type: 'mark', cmds: [['M', cx, cy], ['L', cx + s, cy], ['L', cx + s, cy + s], ['L', cx, cy + s], ['Z']], filled: true, paint: `rgba(${col},0.5)`, strokeWidth: 1 });
+    } else {
+      const cmds = [['M', cx, cy]];
+      let px = cx; let py = cy;
+      const segs = 3 + Math.floor(rnd() * 4);
+      for (let k = 0; k < segs; k++) {
+        const nx = Math.max(0, Math.min(w, px + (rnd() - 0.5) * 140));
+        const ny = Math.max(0, Math.min(h, py + (rnd() - 0.5) * 140));
+        cmds.push(['C', px + (rnd() - 0.5) * 90, py + (rnd() - 0.5) * 90, nx + (rnd() - 0.5) * 90, ny + (rnd() - 0.5) * 90, nx, ny]);
+        px = nx; py = ny;
+      }
+      out.push({ id: `st${pageIndex}_${i}`, type: 'mark', cmds, filled: false, paint: `rgba(${col},0.9)`, strokeWidth: 1.2 + rnd() * 1.6 });
+    }
+  }
+  return out;
+}
+
 // --- one mounted page: double-buffered, DPR-correct, cancellable raster -------
 // The canvas FILLS its wrapper (width/height 100%). The wrapper is sized to the
 // live display scale by the parent, so: (a) the bitmap upscales instantly during
 // a zoom gesture (render-on-settle), and (b) rotation is correct for free — the
 // rotated bitmap fills a rotated-aspect wrapper instead of being squashed into an
 // unrotated CSS box.
-function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, onRaster }) {
+function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, bakeAnnotations, onRaster }) {
   const canvasRef = useRef(null);
   const taskRef = useRef(null);
   const genRef = useRef(0);
   // Above BASE_MAX_SCALE the base is a fixed cheap backdrop: it renders ONCE at the
   // cap and does NOT re-raster as you zoom/pan deeper (the effect keys on baseScale,
-  // which stops changing past the cap). DetailTile owns sharpness up there, so deep
-  // zoom only pays for the small tile and the crisp result lands fast.
+  // which stops changing past the cap). DetailTile owns sharpness up there.
   const baseScale = Math.min(renderScale, BASE_MAX_SCALE);
   const tiled = renderScale > BASE_MAX_SCALE;
 
@@ -76,11 +121,6 @@ function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, on
       const backingH = pageH * want;
       const { factor } = clampToBudget(backingW, backingH);
       const rasterScale = want * factor;
-      // Bake the page's intrinsic /Rotate (page.rotate) PLUS the user's manual
-      // rotate-button rotation. pdf.js normalizes the sum mod 360, so a /Rotate-270
-      // page renders displayed-landscape at rest, and each manual rotate adds 90°
-      // on top of that. The pageW/pageH (rotation-baked) and this viewport stay in
-      // the same displayed frame, so the canvas + overlay box agree.
       const viewport = page.getViewport({ scale: rasterScale, rotation: page.rotate + rotation });
 
       const off = document.createElement('canvas');
@@ -90,12 +130,8 @@ function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, on
 
       if (taskRef.current) { try { taskRef.current.cancel(); } catch {} }
       const t0 = performance.now();
-      // Render WITH the PDF's embedded annotation appearances (pdf.js executes each
-      // markup's appearance stream → real smooth pen strokes + true semi-transparent
-      // fills, exactly like the source). Deep-zoom crispness comes from DetailTile
-      // re-rastering the visible slice at full DPR — not from rebuilt vectors, which
-      // lost the smoothing and opacity.
-      const task = page.render({ canvasContext: ctx, viewport });
+      const annotationMode = bakeAnnotations ? undefined : pdfjsLib.AnnotationMode.DISABLE;
+      const task = page.render({ canvasContext: ctx, viewport, annotationMode });
       taskRef.current = task;
       try {
         await task.promise;
@@ -114,7 +150,7 @@ function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, on
       onRaster?.(pageIndex, { ms, clamped: tiled, backingW: off.width, backingH: off.height });
     })();
     return () => { cancelled = true; if (taskRef.current) { try { taskRef.current.cancel(); } catch {} } };
-  }, [pdf, pageIndex, pageW, pageH, baseScale, rotation]);
+  }, [pdf, pageIndex, pageW, pageH, baseScale, rotation, bakeAnnotations]);
 
   return <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%', background: '#fff', boxShadow: '0 2px 14px rgba(0,0,0,0.45)' }} />;
 }
@@ -126,7 +162,7 @@ function PdfPageCanvas({ pdf, pageIndex, pageW, pageH, renderScale, rotation, on
 // the pixel count is bounded and never hits the canvas budget = crisp deep zoom.
 // Re-renders on settle (committed scale) and on scroll; idle during a live gesture
 // (the base canvas CSS-scales meanwhile, then this re-sharpens on settle).
-function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, scrollerRef }) {
+function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, bakeAnnotations, scrollerRef, onRasterEvent }) {
   const hostRef = useRef(null);
   const canvasRef = useRef(null);
   const taskRef = useRef(null);
@@ -168,8 +204,13 @@ function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, scrollerRef }) 
     // Renders WITH annotation appearances (default), so the markups in the visible
     // slice come back crisp at the current zoom instead of upscaled-and-blurry.
     const transform = [DPR, 0, 0, DPR, -vx * DPR, -vy * DPR];
-    const task = page.render({ canvasContext: ctx, viewport, transform });
+    // Match the base canvas: bake in view mode, DISABLE in edit mode (overlay owns
+    // the marks). Deep-zoom tiles stay crisp either way; in edit mode the overlay's
+    // vector marks scale crisply on their own.
+    const annotationMode = bakeAnnotations ? undefined : pdfjsLib.AnnotationMode.DISABLE;
+    const task = page.render({ canvasContext: ctx, viewport, transform, annotationMode });
     taskRef.current = task;
+    const t0 = performance.now();
     try { await task.promise; } catch (e) { if (e?.name === 'RenderingCancelledException') return; throw e; }
     if (myGen !== genRef.current) return;
 
@@ -178,7 +219,8 @@ function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, scrollerRef }) 
     c.width = cw; c.height = ch;
     c.getContext('2d', { alpha: false }).drawImage(off, 0, 0);
     setTile({ left: vx, top: vy, w: vw, h: vh });
-  }, [pdf, pageIndex, scale, rotation, liveZoom, scrollerRef]);
+    onRasterEvent?.({ kind: 'tile', page: pageIndex + 1, ms: Math.round(performance.now() - t0), tiled: true, mp: Math.round((cw * ch) / 1048576), zoomPct: Math.round(scale * 100) });
+  }, [pdf, pageIndex, scale, rotation, liveZoom, bakeAnnotations, scrollerRef, onRasterEvent]);
 
   // re-render on scale / rotation / settle
   useEffect(() => { render(); }, [render]);
@@ -205,7 +247,7 @@ function DetailTile({ pdf, pageIndex, scale, rotation, liveZoom, scrollerRef }) 
   );
 }
 
-export default function PdfjsArm({ fileSrc, fileKey, onMetrics, onStatus }) {
+export default function PdfjsArm({ fileSrc, fileKey, editMode = false, stressShapesPerPage = 0, textSelectable = false, showLinks = false, showForms = false, searchQuery = '', annsByPage, onAnnsChange, onMetrics, onStatus, onRasterEvent, onZoomPhase, onDocument }) {
   const scrollerRef = useRef(null);
   const pdfRef = useRef(null);
   const [numPages, setNumPages] = useState(0);
@@ -215,9 +257,21 @@ export default function PdfjsArm({ fileSrc, fileKey, onMetrics, onStatus }) {
   const [rotation, setRotation] = useState(0);
   const [range, setRange] = useState([0, -1]);    // [firstMounted, lastMounted]
   const [containerW, setContainerW] = useState(800);
+  // EDIT MODE (owned by the shell): the page ALWAYS shows the PDF's own smooth
+  // baked markups (identical in view + edit). In edit mode an invisible hit-target
+  // overlay is added on top so the marks become selectable/movable WITHOUT changing
+  // how they look (the Walkthrough way — baked appearance is the visual truth).
+  const anns = annsByPage || {};
+  const extractingRef = useRef(new Set()); // pages with an in-flight extraction
+  const pdfLibRef = useRef(null);          // pdf-lib doc (real annotation dicts: pts, color, /CA opacity)
+  const [libReady, setLibReady] = useState(false);
 
   const scaleRef = useRef(scale);
   useEffect(() => { scaleRef.current = scale; }, [scale]);
+  // Debug hooks captured in refs so wiring them never re-runs the zoom/raster effects.
+  const onRasterEventRef = useRef(onRasterEvent);
+  const onZoomPhaseRef = useRef(onZoomPhase);
+  useEffect(() => { onRasterEventRef.current = onRasterEvent; onZoomPhaseRef.current = onZoomPhase; }, [onRasterEvent, onZoomPhase]);
   const settleTimerRef = useRef(null);
   const pendingAnchorRef = useRef(null);
   const wheelRafRef = useRef(0);
@@ -229,18 +283,26 @@ export default function PdfjsArm({ fileSrc, fileKey, onMetrics, onStatus }) {
   // against the REAL centered/padded layout instead of an origin-scaling proxy.
   const dimsPtRef = useRef([]);
   const containerWRef = useRef(800);
+  const topsRef = useRef([]); // current per-page top offsets (for goToPage)
 
   // ---- load document --------------------------------------------------------
   useEffect(() => {
     let cancelled = false;
     setPageSizes([]); setNumPages(0); setRange([0, -1]);
+    pdfLibRef.current = null; setLibReady(false);
     onStatus?.('loading…');
+    // pdf-lib reads the REAL annotation dicts (points, /C color, /CA opacity, /BS
+    // width) the way the app's importer does — pdf.js's getAnnotations hides /CA.
+    fetch(fileSrc).then((r) => r.arrayBuffer()).then((buf) => PDFDocument.load(buf, { updateMetadata: false }))
+      .then((doc) => { if (!cancelled) { pdfLibRef.current = doc; setLibReady(true); } })
+      .catch(() => {});
     (async () => {
       try {
         const task = pdfjsLib.getDocument({ url: fileSrc, isEvalSupported: false });
         const pdf = await task.promise;
         if (cancelled) return;
         pdfRef.current = pdf;
+        onDocument?.(pdf);
         setNumPages(pdf.numPages);
         const sizes = [];
         for (let i = 1; i <= pdf.numPages; i++) {
@@ -287,6 +349,7 @@ export default function PdfjsArm({ fileSrc, fileKey, onMetrics, onStatus }) {
   // keep the layout snapshot refs current for the stable zoom callbacks
   dimsPtRef.current = layout.dims;
   containerWRef.current = containerW;
+  topsRef.current = layout.tops;
 
   // ---- recompute which pages are mounted ------------------------------------
   const recomputeWindow = useCallback(() => {
@@ -417,6 +480,7 @@ export default function PdfjsArm({ fileSrc, fileKey, onMetrics, onStatus }) {
     liveZoomRef.current = 1;
     if (!g || Math.abs(lz - 1) < 1e-4) { setLiveZoom(1); return; }
     // commit: real layout at committed*lz, cursor anchored at the gesture origin
+    onZoomPhaseRef.current?.('settle', { fromPct: Math.round(scaleRef.current * 100), toPct: Math.round(scaleRef.current * lz * 100) });
     applyAnchoredScale(scaleRef.current * lz, g.originCursorX, g.originCursorY);
     setLiveZoom(1);
   }, [applyAnchoredScale]);
@@ -438,6 +502,7 @@ export default function PdfjsArm({ fileSrc, fileKey, onMetrics, onStatus }) {
           originContentX: el.scrollLeft + cursorX,
           originContentY: el.scrollTop + cursorY,
         };
+        onZoomPhaseRef.current?.('gesture-start', { atPct: Math.round(scaleRef.current * 100) });
       }
       const committed = scaleRef.current;
       let lz = liveZoomRef.current * (1 - e.deltaY * WHEEL_GAIN);
@@ -467,9 +532,41 @@ export default function PdfjsArm({ fileSrc, fileKey, onMetrics, onStatus }) {
     applyAnchoredScale(newScale, el.clientWidth / 2, el.clientHeight / 2);
   }, [pageSizes, range, rotation, applyAnchoredScale]);
 
+  // ---- extract the real markups for mounted pages (edit mode only) ----------
+  // Lazily reads each visible page's annotations into editable page-space objects
+  // (cached in annsByPage, lifted to the parent so it survives scroll unmounts).
+  // Guarded so a page is fetched once; rotation is baked into the viewport used.
+  useEffect(() => {
+    if (!editMode || !pdfRef.current || !pdfLibRef.current || range[1] < range[0]) return;
+    const lib = pdfLibRef.current;
+    for (let i = range[0]; i <= range[1]; i++) {
+      if (anns[i] !== undefined || extractingRef.current.has(i)) continue;
+      extractingRef.current.add(i);
+      // Marks are valid page data regardless of effect re-runs (no cancelled-flag
+      // gate — that once silently dropped the heavy page and never retried). pdf-lib
+      // gives the real dict (color + /CA opacity); the pdf.js viewport does the
+      // rotation-correct point mapping.
+      (async () => {
+        try {
+          const page = await pdfRef.current.getPage(i + 1);
+          const vp = page.getViewport({ scale: 1, rotation: page.rotate + rotation });
+          const libPage = lib.getPages()[i];
+          const real = libPage ? extractInkAnnotations(libPage, vp, lib.context) : [];
+          // The imported marks stay first-class + interactive. The PERF-GATE stress
+          // swarm is layered ON TOP (additive, same page space) so we exercise import
+          // + add-on annotations together — never replacing the imported ones.
+          const synthetic = stressShapesPerPage > 0 ? makeStressShapes(stressShapesPerPage, vp.width, vp.height, i) : [];
+          onAnnsChange?.(i, [...real, ...synthetic]);
+        } catch { /* ignore — page may have unmounted */ }
+        finally { extractingRef.current.delete(i); }
+      })();
+    }
+  }, [editMode, libReady, range, rotation, anns, onAnnsChange, stressShapesPerPage]);
+
   // ---- metrics reporting ----------------------------------------------------
   const onRaster = useCallback((idx, info) => {
     rasterInfoRef.current = info;
+    onRasterEventRef.current?.({ kind: 'base', page: idx + 1, ms: info.ms, tiled: info.clamped, mp: Math.round(((info.backingW || 0) * (info.backingH || 0)) / 1048576), zoomPct: Math.round(scaleRef.current * liveZoomRef.current * 100) });
     onMetrics?.({ zoomPct: Math.round(scaleRef.current * liveZoomRef.current * 100), mounted: Math.max(0, range[1] - range[0] + 1), rasterMs: info.ms, clamped: info.clamped, backingW: info.backingW, backingH: info.backingH });
   }, [onMetrics, range]);
 
@@ -477,12 +574,44 @@ export default function PdfjsArm({ fileSrc, fileKey, onMetrics, onStatus }) {
     onMetrics?.({ zoomPct: Math.round(scale * liveZoom * 100), mounted: Math.max(0, range[1] - range[0] + 1), rasterMs: rasterInfoRef.current.ms, clamped: rasterInfoRef.current.clamped, backingW: rasterInfoRef.current.backingW, backingH: rasterInfoRef.current.backingH });
   }, [scale, liveZoom, range, onMetrics]);
 
+  // jump the scroller so page N lands at the top (bookmark / outline navigation)
+  const goToPage = useCallback((n) => {
+    const el = scrollerRef.current;
+    const tops = topsRef.current;
+    if (!el || !tops.length) return;
+    const i = Math.max(0, Math.min(tops.length - 1, (Number(n) || 1) - 1));
+    el.scrollTop = Math.max(0, tops[i] - PAD);
+  }, []);
+
+  // CSS for the pdf.js text layer (glyph positioning) + form layer (widget elements)
+  useEffect(() => {
+    if (!textSelectable && !showForms) return undefined;
+    const style = document.createElement('style');
+    style.textContent = `
+      .spikeTextLayer { color: transparent; user-select: text; -webkit-user-select: text; }
+      .spikeTextLayer > span { position: absolute; white-space: pre; cursor: text; transform-origin: 0% 0%; }
+      .spikeTextLayer ::selection { background: rgba(58,122,254,0.45); }
+      .spikeTextLayer ::-moz-selection { background: rgba(58,122,254,0.45); }
+      .spikeFormLayer { pointer-events: none; }
+      .spikeFormLayer section { position: absolute; pointer-events: auto; box-sizing: border-box; }
+      .spikeFormLayer .textWidgetAnnotation input, .spikeFormLayer .textWidgetAnnotation textarea,
+      .spikeFormLayer .choiceWidgetAnnotation select, .spikeFormLayer .buttonWidgetAnnotation input {
+        width: 100%; height: 100%; box-sizing: border-box; margin: 0; font: inherit; padding: 0 2px;
+        background: rgba(60,130,255,0.06); border: 1px solid rgba(60,130,255,0.55); color: #111;
+      }
+      .spikeFormLayer .buttonWidgetAnnotation.checkBox input,
+      .spikeFormLayer .buttonWidgetAnnotation.radioButton input { appearance: auto; -webkit-appearance: auto; background: #fff; }
+    `;
+    document.head.appendChild(style);
+    return () => { style.remove(); };
+  }, [textSelectable, showForms]);
+
   // ---- expose controls to parent via window (simple for a throwaway) --------
   useEffect(() => {
-    const api = { zoomTo, rotate: () => setRotation((r) => (r === 0 ? 90 : r === 90 ? 270 : 0)) };
+    const api = { zoomTo, goToPage, rotate: () => setRotation((r) => (r === 0 ? 90 : r === 90 ? 270 : 0)) };
     window.__spikePdfjs = api;
     return () => { if (window.__spikePdfjs === api) delete window.__spikePdfjs; };
-  }, [zoomTo]);
+  }, [zoomTo, goToPage]);
 
   const loading = pageSizes.length === 0;
 
@@ -524,6 +653,7 @@ export default function PdfjsArm({ fileSrc, fileKey, onMetrics, onStatus }) {
                       pageH={s.h}
                       renderScale={scale}
                       rotation={rotation}
+                      bakeAnnotations={!editMode}
                       onRaster={onRaster}
                     />
                     <DetailTile
@@ -532,8 +662,44 @@ export default function PdfjsArm({ fileSrc, fileKey, onMetrics, onStatus }) {
                       scale={scale}
                       rotation={rotation}
                       liveZoom={liveZoom}
+                      bakeAnnotations={!editMode}
                       scrollerRef={scrollerRef}
+                      onRasterEvent={onRasterEvent}
                     />
+                    {textSelectable && (
+                      <SpikeTextLayer
+                        pdf={pdfRef.current}
+                        pageIndex={i}
+                        scale={scale}
+                        rotation={rotation}
+                        searchQuery={searchQuery}
+                      />
+                    )}
+                    {editMode && (
+                      <InteractiveOverlay
+                        pageWidth={dim.w}
+                        pageHeight={dim.h}
+                        annotations={anns[i] || []}
+                        interactive
+                        onChange={(next) => onAnnsChange?.(i, next)}
+                      />
+                    )}
+                    {showForms && (
+                      <SpikeFormLayer
+                        pdf={pdfRef.current}
+                        pageIndex={i}
+                        scale={scale}
+                        rotation={rotation}
+                      />
+                    )}
+                    {showLinks && (
+                      <SpikeLinkLayer
+                        pdf={pdfRef.current}
+                        pageIndex={i}
+                        scale={scale}
+                        rotation={rotation}
+                      />
+                    )}
                   </>
                 ) : (
                   <div style={{ width: '100%', height: '100%', background: '#33363b', border: '1px solid #2a2c30', display: 'grid', placeItems: 'center', color: '#6b7077', fontSize: 13 }}>

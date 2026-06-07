@@ -259,12 +259,6 @@ export async function recordDocumentHistoryEvent(row) {
   return { data: null, error };
 }
 
-export async function recordDocumentHistoryDebugEvent(event, context) {
-  const row = buildHistoryEventRowFromDebugEvent(event, context);
-  if (!row) return { data: null, error: null };
-  return recordDocumentHistoryEvent(row);
-}
-
 export async function listDocumentHistoryEvents(documentId, { limit = HISTORY_EVENT_LIMIT } = {}) {
   const safeLimit = Math.max(1, Math.min(500, Number(limit) || HISTORY_EVENT_LIMIT));
   const localRows = listLocalHistoryRows(documentId);

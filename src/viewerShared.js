@@ -397,6 +397,54 @@ export const ZOOM_ONLY_INTERACTION_REASONS = new Set([
   'wheel-zoom', 'syncfusion-wheel-zoom', 'syncfusion-zoom-change', 'overlay-wheel-zoom'
 ]);
 export const SYNCFUSION_SCROLL_DELAY_MS = 8;
+
+// Phase 37 (pdf.js cutover) — PDF engine selector. This chooses WHICH page-
+// drawing engine mounts: Syncfusion today, the owned pdf.js renderer later.
+// It is deliberately SEPARATE from the in-PDFViewer `useSyncfusionRenderer`
+// flag, which gates overlay/zoom *behavior*, not engine mounting — do not
+// conflate the two. Defaults to Syncfusion; the default flips only after the
+// pdf.js engine passes the parity checklist. A dev-only console override
+// (`window.__DEV_OVERRIDE_PDF_VIEWER_ENGINE = 'pdfjs' | 'syncfusion'`) lets a
+// developer preview the other engine without a rebuild.
+export const PDF_VIEWER_ENGINE_SYNCFUSION = 'syncfusion';
+export const PDF_VIEWER_ENGINE_PDFJS = 'pdfjs';
+// CUTOVER 2026-06-03: the owned pdf.js engine is now the DEFAULT. Glued-zoom
+// (overlays ride the engine's transformed content node — verified live: overlay
+// rect tracks the page canvas 1:1 at rest, mid-gesture, and post-settle, no
+// double-scale), fast snapshot open, and full marking render all confirmed on a
+// real 99-page / 1,776-mark survey. Syncfusion stays in the bundle as instant,
+// no-rebuild rollback: ?pdfEngine=syncfusion, window.__DEV_OVERRIDE_PDF_VIEWER_ENGINE,
+// or the Cmd/Ctrl+Shift+E toggle all outrank this default. Physical removal of
+// Syncfusion is a later, staged release — not part of this flip.
+export const PDF_VIEWER_ENGINE_DEFAULT = PDF_VIEWER_ENGINE_PDFJS;
+
+export const getPDFViewerEngine = () => {
+  if (typeof window !== 'undefined') {
+    // Dev-only URL override (?pdfEngine=pdfjs|syncfusion) — highest precedence so a
+    // preview link survives a fresh load; then the console override; else default.
+    try {
+      const fromUrl = new URLSearchParams(window.location.search).get('pdfEngine');
+      if (fromUrl === PDF_VIEWER_ENGINE_SYNCFUSION || fromUrl === PDF_VIEWER_ENGINE_PDFJS) {
+        return fromUrl;
+      }
+    } catch { /* no window.location in some environments */ }
+    const override = window.__DEV_OVERRIDE_PDF_VIEWER_ENGINE;
+    if (override === PDF_VIEWER_ENGINE_SYNCFUSION || override === PDF_VIEWER_ENGINE_PDFJS) {
+      return override;
+    }
+    // Remembered preference (set by the Cmd/Ctrl+Shift+E toggle) so the chosen
+    // engine survives reloads without a URL param. Lower precedence than the URL
+    // param + console override; the default still wins when unset. Keeps
+    // Syncfusion as the safe fallback per the migration plan.
+    try {
+      const stored = window.localStorage?.getItem('pdfViewerEngine');
+      if (stored === PDF_VIEWER_ENGINE_SYNCFUSION || stored === PDF_VIEWER_ENGINE_PDFJS) {
+        return stored;
+      }
+    } catch { /* localStorage unavailable (private mode / sandbox) */ }
+  }
+  return PDF_VIEWER_ENGINE_DEFAULT;
+};
 // Keep enough PDF pages resident that revisiting nearby drawing sheets does not
 // briefly blank/rebuild the page under already-rendered annotations. Syncfusion
 // removes canvases outside this initial window, which caused 1s+ page revisit

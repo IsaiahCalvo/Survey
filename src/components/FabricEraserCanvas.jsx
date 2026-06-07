@@ -619,6 +619,21 @@ const FabricEraserCanvas = memo(({
         changedObjectsCount: eraserDiagnostics.changedObjectsCount,
       }));
     } catch (_) {}
+    // [InteractionDiag] ERASER outcome: did the swipe actually hit/remove
+    // anything? candidates = annotations the stroke overlapped, deleted/changed
+    // = what the geometry eraser actually committed. candidates>0 but
+    // deleted+changed===0 means the eraser saw targets but removed nothing
+    // (the "eraser misbehaves" symptom). rejected = blocked by the per-user
+    // delete-authority gate.
+    try {
+      const deletedN = eraserDiagnostics.finalDeletedAnnotationIds.length;
+      const changedN = eraserDiagnostics.finalChangedAnnotationIds.length;
+      const candN = candidateAnnotationIds.length;
+      const rejN = rejectedAnnotations.length;
+      const calloutN = calloutHitIds.length;
+      const willCommit = deletedN > 0 || changedN > 0;
+      console.log(`[InteractionDiag] eraser-apply @ ${Math.round(performance.now())}ms page=${pageNumber} mode=${mode} candidates=${candN} deleted=${deletedN} changed=${changedN} callouts=${calloutN} rejected=${rejN} ${willCommit ? 'COMMIT' : (candN > 0 || calloutN > 0 ? 'NO-OP (had targets, removed nothing)' : 'NO-OP (empty space)')}`);
+    } catch (_e) { /* swallow */ }
     if (
       eraserDiagnostics.finalDeletedAnnotationIds.length > 0
       || eraserDiagnostics.finalChangedAnnotationIds.length > 0
@@ -979,8 +994,15 @@ const FabricEraserCanvas = memo(({
       // MUST check the ref, NOT the state variable, because this handler is
       // bound in useEffect([]) and the state value would be stale (always true).
       if (isLoadingRef.current) {
+        // [InteractionDiag] erase attempt arrived while the eraser canvas is
+        // still loading/hydrating — swallowed. Contributes to the "dead first
+        // few seconds" + "eraser misbehaves" reports.
+        try { console.log(`[InteractionDiag] eraser-down-blocked @ ${Math.round(performance.now())}ms page=${pageNumber} (eraser canvas still loading, mouse:down ignored)`); } catch (_e) { /* swallow */ }
         return;
       }
+
+      // [InteractionDiag] erase gesture START (mouse:down on the eraser canvas).
+      try { console.log(`[InteractionDiag] eraser-down @ ${Math.round(performance.now())}ms page=${pageNumber} mode=${eraserModeRef.current}`); } catch (_e) { /* swallow */ }
 
       isErasingRef.current = true;
       eraserDiagGestureRef.current = beginAnnotationGesture({

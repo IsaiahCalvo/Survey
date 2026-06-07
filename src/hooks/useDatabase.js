@@ -29,65 +29,6 @@ const isSupabaseNotFoundError = (error) => {
 };
 
 // ============================================
-// USER SETTINGS HOOKS
-// ============================================
-
-export const useUserSettings = () => {
-  const { user } = useAuth();
-  const [settings, setSettings] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    if (!user || !isSupabaseAvailable()) {
-      setLoading(false);
-      return;
-    }
-
-    fetchSettings();
-  }, [user]);
-
-  const fetchSettings = async () => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('user_settings')
-        .select('*')
-        .eq('user_id', user.id)
-        .single();
-
-      if (error && error.code !== 'PGRST116') throw error; // PGRST116 = no rows
-      setSettings(data);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const updateSettings = async (updates) => {
-    if (!user || !isSupabaseAvailable()) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('user_settings')
-        .upsert({ user_id: user.id, ...updates })
-        .select()
-        .single();
-
-      if (error) throw error;
-      setSettings(data);
-      return data;
-    } catch (err) {
-      setError(err.message);
-      throw err;
-    }
-  };
-
-  return { settings, loading, error, updateSettings, refetch: fetchSettings };
-};
-
-// ============================================
 // PROJECTS HOOKS
 // ============================================
 
@@ -578,102 +519,6 @@ export async function getOtherSurveysUsingTemplate(templateId, currentSurveyId) 
 }
 
 // ============================================
-// SPACES HOOKS
-// ============================================
-
-export const useSpaces = (documentId) => {
-  const [spaces, setSpaces] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    if (!documentId || !isSupabaseAvailable()) {
-      setLoading(false);
-      return;
-    }
-
-    fetchSpaces();
-  }, [documentId]);
-
-  const fetchSpaces = async () => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('spaces')
-        .select('*')
-        .eq('document_id', documentId)
-        .order('sort_order', { ascending: true });
-
-      if (error) throw error;
-      setSpaces(data || []);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const createSpace = async (spaceData) => {
-    if (!documentId || !isSupabaseAvailable()) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('spaces')
-        .insert({ document_id: documentId, ...spaceData })
-        .select()
-        .single();
-
-      if (error) throw error;
-      setSpaces([...spaces, data]);
-      return data;
-    } catch (err) {
-      setError(err.message);
-      throw err;
-    }
-  };
-
-  const updateSpace = async (id, updates) => {
-    try {
-      const { data, error } = await supabase
-        .from('spaces')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      setSpaces(spaces.map((s) => (s.id === id ? data : s)));
-      return data;
-    } catch (err) {
-      setError(err.message);
-      throw err;
-    }
-  };
-
-  const deleteSpace = async (id) => {
-    try {
-      const { error } = await supabase.from('spaces').delete().eq('id', id);
-
-      if (error) throw error;
-      setSpaces(spaces.filter((s) => s.id !== id));
-    } catch (err) {
-      setError(err.message);
-      throw err;
-    }
-  };
-
-  return {
-    spaces,
-    loading,
-    error,
-    createSpace,
-    updateSpace,
-    deleteSpace,
-    refetch: fetchSpaces,
-  };
-};
-
-// ============================================
 // STORAGE HOOKS
 // ============================================
 
@@ -939,7 +784,7 @@ export const useConnectedServices = () => {
 // ============================================
 
 // Default preferences for each tool type
-export const DEFAULT_TOOL_PREFERENCES = {
+const DEFAULT_TOOL_PREFERENCES = {
   pen: { strokeColor: '#ff0000', strokeWidth: 3, strokeOpacity: 100 },
   highlighter: { strokeColor: '#ffff00', strokeWidth: 20, strokeOpacity: 50 },
   'text-highlight': { strokeColor: '#ffff00', strokeOpacity: 50 },
@@ -960,14 +805,6 @@ export const DEFAULT_TOOL_PREFERENCES = {
   squiggly: { strokeColor: '#ff0000', strokeOpacity: 100 },
   surveyMarker: { strokeColor: '#ffff00', strokeOpacity: 50 },
 };
-
-// Tools that support stroke width
-// Counter included so the Size input slot is treated as a real width source for
-// per-tool persistence (counter repurposes the value as its radius).
-export const TOOLS_WITH_STROKE_WIDTH = ['pen', 'highlighter', 'eraser', 'rect', 'ellipse', 'line', 'arrow', 'callout', 'counter'];
-
-// Tools that support fill
-export const TOOLS_WITH_FILL = ['rect', 'ellipse', 'note', 'callout'];
 
 /**
  * Hook for managing per-document, per-tool preferences

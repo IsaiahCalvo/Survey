@@ -175,47 +175,6 @@ export async function updateCellRange(graphClient, fileId, sessionId, sheetName,
 }
 
 /**
- * Read a cell range from Excel workbook (with session for consistency)
- *
- * @param {Object} graphClient - Microsoft Graph client
- * @param {string} fileId - OneDrive item ID
- * @param {string} sessionId - Workbook session ID (optional)
- * @param {string} sheetName - Worksheet name
- * @param {string} range - Cell range (e.g., 'A1:D10')
- * @returns {Promise<{values: Array<Array>, address: string}>} - Cell values and address
- */
-export async function getCellRange(graphClient, fileId, sessionId, sheetName, range) {
-  if (!graphClient) {
-    throw new Error('Not authenticated with Microsoft. Please sign in first.');
-  }
-
-  try {
-    const encodedSheetName = encodeURIComponent(sheetName);
-
-    const requestBuilder = graphClient
-      .api(`/me/drive/items/${fileId}/workbook/worksheets('${encodedSheetName}')/range(address='${range}')`);
-
-    if (sessionId) {
-      requestBuilder.header('workbook-session-id', sessionId);
-    }
-
-    const response = await requestBuilder
-      .select('values,address,rowCount,columnCount')
-      .get();
-
-    return {
-      values: response.values,
-      address: response.address,
-      rowCount: response.rowCount,
-      columnCount: response.columnCount
-    };
-  } catch (error) {
-    console.error('Failed to get cell range:', error);
-    throw new Error(`Failed to read cells: ${error.message}`);
-  }
-}
-
-/**
  * Get all worksheets in a workbook
  *
  * @param {Object} graphClient - Microsoft Graph client

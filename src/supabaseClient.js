@@ -47,7 +47,7 @@ const supabaseProjectRef = (() => {
     return null;
   }
 })();
-export const SUPABASE_AUTH_STORAGE_KEY = supabaseProjectRef
+const SUPABASE_AUTH_STORAGE_KEY = supabaseProjectRef
   ? `sb-${supabaseProjectRef}-auth-token`
   : null;
 

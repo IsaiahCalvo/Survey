@@ -33,6 +33,7 @@ const QUICK = [['Fit', 'fit'], ['100%', 1], ['400%', 4], ['1600%', 16]];
 
 export default function RendererSpike() {
   const [arm, setArm] = useState('pdfjs');
+  const [editing, setEditing] = useState(false); // edit-marks mode (pdf.js arm)
   const [file, setFile] = useState({ src: FIXTURES[0].url, key: 1, name: FIXTURES[0].label });
   const [status, setStatus] = useState({ pdfjs: '', embedpdf: '' });
   // metrics tracked PER ARM so the bar always shows the visible arm's numbers
@@ -221,7 +222,7 @@ export default function RendererSpike() {
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
         {arm === 'pdfjs' ? (
           <PdfjsArm
-            fileSrc={file.src} fileKey={file.key}
+            fileSrc={file.src} fileKey={file.key} editMode={editing}
             annsByPage={annsByPage} ensureSeed={ensureSeed} onAnnsChange={onAnnsChange}
             onMetrics={onMetricsPdf} onStatus={setPdfStatus}
           />
@@ -244,6 +245,13 @@ export default function RendererSpike() {
           {arm === 'pdfjs' && (
             <button onClick={() => { window.__spikePdfjs?.rotate?.(); log.event('rotate', {}); setLogCount(log.count()); }}
               style={{ background: '#333', color: '#ddd', border: '1px solid #555', borderRadius: 4, padding: '4px 9px', cursor: 'pointer' }}>Rotate</button>
+          )}
+          {arm === 'pdfjs' && (
+            <button onClick={() => { setEditing((v) => !v); log.event('editmode', { on: !editing }); setLogCount(log.count()); }}
+              title="Drop baked marks → editable overlay (Walkthrough way + perf lever)"
+              style={{ background: editing ? '#b8860b' : '#333', color: editing ? '#fff' : '#ddd', border: '1px solid #555', borderRadius: 4, padding: '4px 9px', cursor: 'pointer', fontWeight: editing ? 700 : 400 }}>
+              {editing ? '✏️ Editing marks' : 'Edit marks'}
+            </button>
           )}
         </div>
         <span style={{ color: C.text }}>zoom <strong style={{ color: C.white }}>{m.zoomPct ?? '—'}%</strong> <span style={{ opacity: 0.6 }}>(ctrl/⌘+scroll)</span></span>

@@ -266,7 +266,7 @@ export function hasPendingForUser(userId) {
  *
  * UX: noisy console message so a user who pastes this knows what was cleared.
  */
-export function clearAllDualWriteQueuesAndFlags() {
+function clearAllDualWriteQueuesAndFlags() {
   if (typeof window === 'undefined' || !window.localStorage) return { cleared: 0, flagsReset: 0 };
   let cleared = 0;
   const toRemove = [];

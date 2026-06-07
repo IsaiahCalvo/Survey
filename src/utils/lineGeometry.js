@@ -46,37 +46,6 @@ export function distanceToLineSegment(point, start, end) {
 }
 
 /**
- * Project a point onto the line defined by start-end
- * Returns the closest point on the line segment to the given point
- * @param {{ x: number, y: number }} point
- * @param {{ x: number, y: number }} start
- * @param {{ x: number, y: number }} end
- * @returns {{ x: number, y: number }}
- */
-export function projectPointToLine(point, start, end) {
-  const dx = end.x - start.x;
-  const dy = end.y - start.y;
-  const lengthSquared = dx * dx + dy * dy;
-
-  if (lengthSquared === 0) {
-    // start and end are the same point
-    return { ...start };
-  }
-
-  // Calculate parameter t for the projection
-  // t=0 means projection is at start, t=1 means at end
-  let t = ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared;
-
-  // Clamp t to [0, 1] to stay on the line segment
-  t = Math.max(0, Math.min(1, t));
-
-  return {
-    x: start.x + t * dx,
-    y: start.y + t * dy,
-  };
-}
-
-/**
  * Check if the midpoint should snap to a linear path (straight line)
  * Returns true if the midpoint is within the threshold distance from the line
  * @param {{ x: number, y: number }} midpoint
@@ -131,26 +100,6 @@ export function getCurveEndAngle(start, end, midpoint) {
 
   // The tangent at t=1 for a quadratic bezier is the direction from control to end
   const angle = Math.atan2(end.y - controlPoint.y, end.x - controlPoint.x);
-  return angle * (180 / Math.PI);
-}
-
-/**
- * Get the tangent angle at the start of a quadratic bezier curve
- * Used for positioning arrowheads correctly on curved arrows (for two-headed arrows)
- * @param {{ x: number, y: number }} start
- * @param {{ x: number, y: number }} end
- * @param {{ x: number, y: number }} midpoint
- * @returns {number} - Angle in degrees
- */
-export function getCurveStartAngle(start, end, midpoint) {
-  // Calculate the control point (same as in getCurvedPath)
-  const controlPoint = {
-    x: 2 * midpoint.x - 0.5 * start.x - 0.5 * end.x,
-    y: 2 * midpoint.y - 0.5 * start.y - 0.5 * end.y,
-  };
-
-  // The tangent at t=0 for a quadratic bezier is the direction from start to control
-  const angle = Math.atan2(controlPoint.y - start.y, controlPoint.x - start.x);
   return angle * (180 / Math.PI);
 }
 

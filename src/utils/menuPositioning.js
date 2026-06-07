@@ -85,33 +85,6 @@ export function calculateViewportSafePosition(x, y, options = {}) {
   return { x: adjustedX, y: adjustedY };
 }
 
-/**
- * Calculates viewport-safe position using actual element dimensions (use after render)
- * @param {HTMLElement} element - The menu/modal element
- * @param {number} initialX - Initial x coordinate (clientX)
- * @param {number} initialY - Initial y coordinate (clientY)
- * @param {number} padding - Minimum padding from viewport edges (default: 10)
- * @param {boolean} preferAbove - Prefer positioning above cursor if it would overflow below (default: true)
- * @param {Object} constraintRect - Optional bounding rect ({ left, top, right, bottom }) in viewport coordinates
- * @returns {{x: number, y: number}} Adjusted position coordinates
- */
-export function calculateViewportSafePositionFromElement(element, initialX, initialY, padding = 10, preferAbove = true, constraintRect = null) {
-  if (!element) {
-    return { x: initialX, y: initialY };
-  }
-
-  const rect = element.getBoundingClientRect();
-  const width = rect.width;
-  const height = rect.height;
-
-  return calculateViewportSafePosition(initialX, initialY, {
-    estimatedWidth: width,
-    estimatedHeight: height,
-    padding,
-    preferAbove,
-    constraintRect
-  });
-}
 
 
 

@@ -16,7 +16,7 @@ import { coalesceRead } from './requestCoalescer.js';
  * Subscription tier limits
  * These should match the database functions get_storage_limit(), get_project_limit(), etc.
  */
-export const TIER_LIMITS = {
+const TIER_LIMITS = {
   free: {
     projects: 1,
     documents: 5,

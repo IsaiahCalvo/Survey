@@ -6,8 +6,53 @@ import { sanitizeConsoleLogText, shouldCaptureConsoleLine } from './utils/consol
 (() => {
   const MAX_LINES = 1200;
   const MAX_LINE_CHARS = 4000;
+  const SESSION_KEY = '__consoleLogBuffer';
   const buffer = [];
+
+  // REHYDRATE across reloads (2026-06-03): the buffer lives at module-init level,
+  // so any full page reload (engine toggle, signOut, YDoc failure-banner action,
+  // ErrorBoundary, a chunk-load failure during a heavy PDF open, etc.) re-evaluates
+  // this IIFE with an EMPTY buffer and silently wipes the timeline. To keep ONE
+  // continuous log spanning launch → open → reloads → Cmd+Shift+L capture, we
+  // persist the ring to sessionStorage (survives reload within the same tab,
+  // auto-clears on app quit) and restore it here BEFORE installing the patched
+  // console. A visible PAGE RELOAD marker is appended so reloads show up in the
+  // timeline rather than silently truncating it. Everything is try/catch'd and
+  // dependency-free so logging can never break.
+  try {
+    const raw = window.sessionStorage.getItem(SESSION_KEY);
+    if (raw) {
+      const restored = JSON.parse(raw);
+      if (Array.isArray(restored)) {
+        for (const line of restored) {
+          if (typeof line === 'string') buffer.push(line);
+        }
+        // Trim from the front if a prior session left more than the cap.
+        while (buffer.length > MAX_LINES) buffer.shift();
+        buffer.push(`=== PAGE RELOAD (navigation) @ ${new Date().toISOString()} ===`);
+        if (buffer.length > MAX_LINES) buffer.shift();
+      }
+    }
+  } catch (_e) { /* never break logging on rehydrate failure */ }
+
   window.__consoleLogBuffer = buffer;
+
+  // Throttled persist so a burst of log lines doesn't stringify the ring on every
+  // push. Always flush on pagehide/beforeunload so the last lines survive a reload.
+  let persistTimer = null;
+  const persistNow = () => {
+    persistTimer = null;
+    try { window.sessionStorage.setItem(SESSION_KEY, JSON.stringify(buffer)); } catch (_e) { /* swallow */ }
+  };
+  const schedulePersist = () => {
+    if (persistTimer != null) return;
+    try { persistTimer = setTimeout(persistNow, 500); } catch (_e) { persistNow(); }
+  };
+  try {
+    window.addEventListener('pagehide', persistNow, true);
+    window.addEventListener('beforeunload', persistNow, true);
+  } catch (_e) { /* swallow */ }
+
   const _log = console.log;
   const _warn = console.warn;
   const _error = console.error;
@@ -42,11 +87,41 @@ import { sanitizeConsoleLogText, shouldCaptureConsoleLine } from './utils/consol
       : rawLine;
     buffer.push(line);
     if (buffer.length > MAX_LINES) buffer.shift();
+    schedulePersist();
     origFn.apply(console, args);
   };
   console.log = (...args) => capture('', _log, args);
   console.warn = (...args) => capture('console.warn @ ', _warn, args);
   console.error = (...args) => capture('console.error @ ', _error, args);
+})();
+
+// Cmd/Ctrl+Shift+E — toggle the PDF viewer engine (original Syncfusion <-> the
+// owned pdf.js engine) and reload. The choice is remembered in localStorage so
+// it survives reloads; Syncfusion stays the default fallback when unset. This is
+// the one-step way to run the new engine (where form fields + saving + the zoom
+// behavior live) in the desktop app without a URL param or devtools. Mirrors the
+// bulletproof Cmd+Shift+L pattern: capture-phase, install-once, every step
+// individually try/catch'd so it works no matter what state the app is in.
+(() => {
+  const handler = (event) => {
+    try {
+      const key = event.key || '';
+      const isShortcut = (event.metaKey || event.ctrlKey)
+        && event.shiftKey
+        && (key === 'E' || key === 'e' || event.code === 'KeyE');
+      if (!isShortcut) return;
+      try { event.preventDefault(); } catch (_e) { /* swallow */ }
+      try { event.stopPropagation(); } catch (_e) { /* swallow */ }
+      let current = 'syncfusion';
+      try { current = window.localStorage.getItem('pdfViewerEngine') || 'syncfusion'; } catch (_e) { /* swallow */ }
+      const next = current === 'pdfjs' ? 'syncfusion' : 'pdfjs';
+      try { window.localStorage.setItem('pdfViewerEngine', next); } catch (_e) { /* swallow */ }
+      try { console.log('[EngineToggle] switching PDF viewer engine to "' + next + '" and reloading'); } catch (_e) { /* swallow */ }
+      try { window.location.reload(); } catch (_e) { /* swallow */ }
+    } catch (_err) { /* never throw out of a global hotkey */ }
+  };
+  try { window.addEventListener('keydown', handler, true); } catch (_e) { /* swallow */ }
+  try { document.addEventListener('keydown', handler, true); } catch (_e) { /* swallow */ }
 })();
 
 // BULLETPROOF Cmd+Shift+L (2026-05-03) — capture-phase, install-once,
@@ -155,21 +230,55 @@ import { sanitizeConsoleLogText, shouldCaptureConsoleLine } from './utils/consol
       try {
         const api = (typeof window !== 'undefined') ? window.electronAPI : null;
         if (api && typeof api.saveLogSnapshot === 'function') {
-          api.saveLogSnapshot({
-            consoleText,
+          // 2026-06-04 — Prefer the continuous main-process console log when
+          // available. The Electron main process captures EVERY renderer console
+          // message from launch through every reload/realm, so it has the full
+          // timeline even when the in-page buffer (`buf`) has been reset by a
+          // navigation (engine toggle, sign-out, PDF-open chunk re-eval). We
+          // resolve it asynchronously, then fall back to the in-page buffer text
+          // (`consoleText`, already built above) if main has nothing. The keydown
+          // handler stays synchronous; this just defers the disk write by one
+          // microtask. Everything is try/catch'd so logging can never break.
+          const readMainLog = () => {
+            try {
+              if (typeof api.readContinuousLog === 'function') {
+                return api.readContinuousLog().catch(() => null);
+              }
+            } catch (_e) { /* swallow */ }
+            return Promise.resolve(null);
+          };
+          readMainLog().then((mainRes) => {
+            let finalConsoleText = consoleText;
+            let finalLineCount = Array.isArray(buf) ? buf.length : 0;
+            try {
+              const mainText = (mainRes && mainRes.ok && typeof mainRes.text === 'string') ? mainRes.text : '';
+              if (mainText && mainText.length) {
+                const builtMain = typeof window.__buildSaveLogConsoleText === 'function'
+                  ? window.__buildSaveLogConsoleText(mainText)
+                  : mainText;
+                finalConsoleText = sanitizeConsoleLogText(builtMain, window);
+                finalLineCount = finalConsoleText
+                  ? finalConsoleText.split('\n').filter((l) => l.length > 0).length
+                  : 0;
+              }
+            } catch (_e) { /* fall back to the in-page buffer text */ }
+            return api.saveLogSnapshot({
+            consoleText: finalConsoleText,
             network: networkSnapshot,
             extraFiles: trackpadInteractionExtraFiles,
             summary: {
               triggeredBy: 'cmd-shift-l-bulletproof',
               userAgent: (typeof navigator !== 'undefined' ? navigator.userAgent : null),
               screen: (typeof window !== 'undefined') ? { w: window.innerWidth, h: window.innerHeight } : null,
-              consoleLineCount: Array.isArray(buf) ? buf.length : 0,
+              consoleLineCount: finalLineCount,
+              consoleSource: (finalConsoleText !== consoleText) ? 'main-process-continuous' : 'in-page-buffer',
               url: (typeof window !== 'undefined' && window.location) ? window.location.href : null,
               overlayPerformance,
               overlayRecorderStatus,
               trackpadInteractionDebug,
               trackpadInteractionDebugDump,
             },
+          });
           }).then((res) => {
             try {
               if (res?.ok) {
@@ -300,6 +409,26 @@ if (import.meta.env.DEV) {
     devRouteActive = true;
     import('./prototype/RendererSpike').then(({ default: RendererSpike }) => {
       createRoot(document.getElementById('root')).render(<RendererSpike />);
+    });
+  }
+
+  // DEV-ONLY PROTOTYPE: `?spike=perfgate` renders the Renderer-Ownership Phase 1
+  // perf gate — the owned pdf.js renderer under a heavy synthetic annotation
+  // overlay, with a live fps / worst-frame meter. See src/prototype/PerfGateSpike.jsx.
+  if (!devRouteActive && spike === 'perfgate') {
+    devRouteActive = true;
+    import('./prototype/PerfGateSpike').then(({ default: PerfGateSpike }) => {
+      createRoot(document.getElementById('root')).render(<PerfGateSpike />);
+    });
+  }
+
+  // DEV-ONLY PROTOTYPE: `?spike=features` — troubleshoot the features Syncfusion
+  // still owns (bookmarks, text select/copy, find, links, markup) on the pdf.js
+  // renderer before the cutover. See src/prototype/FeatureSpike.jsx.
+  if (!devRouteActive && spike === 'features') {
+    devRouteActive = true;
+    import('./prototype/FeatureSpike').then(({ default: FeatureSpike }) => {
+      createRoot(document.getElementById('root')).render(<FeatureSpike />);
     });
   }
 }

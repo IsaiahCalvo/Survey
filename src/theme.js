@@ -191,49 +191,6 @@ export const LAYOUT = {
   },
 };
 
-// Helper functions for common color operations
-export const hexToRgba = (hex, opacity = 1) => {
-  hex = hex.replace('#', '');
-  const r = parseInt(hex.substring(0, 2), 16);
-  const g = parseInt(hex.substring(2, 4), 16);
-  const b = parseInt(hex.substring(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
-};
-
-export const ensureRgbaOpacity = (color, opacity = 0.2) => {
-  if (!color) return `rgba(227, 209, 251, ${opacity})`;
-
-  if (color.startsWith('rgba')) {
-    const rgbaMatch = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/);
-    if (rgbaMatch) {
-      return `rgba(${rgbaMatch[1]}, ${rgbaMatch[2]}, ${rgbaMatch[3]}, ${opacity})`;
-    }
-  }
-
-  if (color.startsWith('#')) {
-    return hexToRgba(color, opacity);
-  }
-
-  return `rgba(227, 209, 251, ${opacity})`;
-};
-
-export const getHexFromColor = (color) => {
-  if (!color) return null;
-  if (color.startsWith('rgba')) {
-    const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/);
-    if (match) {
-      const r = parseInt(match[1]).toString(16).padStart(2, '0');
-      const g = parseInt(match[2]).toString(16).padStart(2, '0');
-      const b = parseInt(match[3]).toString(16).padStart(2, '0');
-      return `#${r}${g}${b}`;
-    }
-  }
-  if (color.startsWith('#')) {
-    return color;
-  }
-  return null;
-};
-
 // Export default theme object
 export default {
   colors: COLORS,

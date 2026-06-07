@@ -51,14 +51,6 @@ export function enqueueSync(documentId, entry) {
   writeQueue(documentId, queue);
 }
 
-export function getQueue(documentId) {
-  return readQueue(documentId);
-}
-
-export function clearQueue(documentId) {
-  writeQueue(documentId, []);
-}
-
 export function getQueueSize(documentId) {
   return readQueue(documentId).length;
 }

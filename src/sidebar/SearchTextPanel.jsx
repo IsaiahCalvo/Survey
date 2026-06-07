@@ -1513,6 +1513,7 @@ const SearchTextPanel = ({
   }, [currentMatchIndex]);
 
   // Keyboard shortcuts
+  const clearSearchRef = useRef(null);
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (!searchInputRef.current) return;
@@ -1538,6 +1539,13 @@ const SearchTextPanel = ({
         } else {
           goToNextMatch();
         }
+      }
+
+      // Esc clears the search, but only while the search input is focused so it
+      // never swallows Escape used elsewhere in the app.
+      if (e.key === 'Escape' && isInputFocused) {
+        e.preventDefault();
+        clearSearchRef.current?.();
       }
     };
 
@@ -1576,6 +1584,12 @@ const SearchTextPanel = ({
     onClearTextSearch?.();
     searchInputRef.current?.focus();
   }, [onClearTextSearch, setSearchResults, setCurrentMatchIndex]);
+
+  // Keep the latest clearSearch reachable from the keydown listener above
+  // (which is declared earlier in render order) without re-binding the listener.
+  useEffect(() => {
+    clearSearchRef.current = clearSearch;
+  }, [clearSearch]);
 
   return (
     <div style={{
@@ -1814,7 +1828,11 @@ const SearchTextPanel = ({
                     cursor: 'pointer',
                     transition: 'all 0.15s ease',
                     fontSize: '12px',
-                    color: '#ddd'
+                    color: '#ddd',
+                    // Off-screen result rows skip layout/paint on big searches.
+                    // 'auto' lets the browser remember each row's real height.
+                    contentVisibility: 'auto',
+                    containIntrinsicSize: 'auto 56px'
                   }}
                   onMouseEnter={(e) => {
                     if (!isActive) {
