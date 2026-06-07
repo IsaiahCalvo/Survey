@@ -3712,7 +3712,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onBack, docu
     }
   };
 
-  // Delete the given documents everywhere (archives row + storage file).
+  // Delete the given documents everywhere: hard-deletes each row (cascading its
+  // annotation log, snapshot, and child rows), removes the stored PDF, and purges
+  // the local durable copy.
   const hubDeleteDocuments = async (docs) => {
     const list = Array.isArray(docs) ? docs.filter(Boolean) : [];
     if (list.length === 0) return;
