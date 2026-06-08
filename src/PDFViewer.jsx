@@ -12144,9 +12144,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                     bottom: { style: 'thin' },
                     right: { style: 'thin' }
                   };
-                  // Hidden Row ID is the only LOCKED column; everything else stays
-                  // editable when the sheet is protected (see worksheet.protect below).
-                  cell.protection = { locked: colNumber === 1 };
                 });
               } else {
                 // Add borders and alignment to data cells
@@ -12170,8 +12167,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                   } else if ((colNumber >= 5 && colNumber <= lastChecklistCol) || colNumber === entityColIndex) {
                     cell.alignment = { horizontal: 'center', vertical: 'middle' };
                   }
-                  // Lock ONLY the hidden Row ID column; all other cells stay editable.
-                  cell.protection = { locked: colNumber === 1 };
                 });
               }
             });
@@ -12385,32 +12380,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         });
       }
 
-      // Protect each survey sheet so the hidden Row ID column stays locked while every
-      // data cell remains editable, and sorting / filtering / inserting+deleting rows /
-      // formatting all stay allowed (only the Row ID cells were locked during styling).
-      // The very-hidden _SurveyMetadata sheet is left as-is.
-      for (const ws of workbook.worksheets) {
-        if (ws.name === '_SurveyMetadata') continue;
-        try {
-          // eslint-disable-next-line no-await-in-loop
-          await ws.protect(undefined, {
-            selectLockedCells: true,
-            selectUnlockedCells: true,
-            formatCells: true,
-            formatColumns: true,
-            formatRows: true,
-            insertRows: true,
-            deleteRows: true,
-            insertColumns: false,
-            deleteColumns: false,
-            sort: true,
-            autoFilter: true,
-          });
-        } catch (protectErr) {
-          // Protection is a hardening nicety; never block the export on it.
-          debugLog('Sheet protection skipped for "' + ws.name + '": ' + (protectErr?.message || protectErr));
-        }
-      }
+      // NOTE: we deliberately do NOT lock the Row ID column or protect the sheet.
+      // Excel sort physically rewrites every column in a row (including a locked one),
+      // so locking Row ID makes Excel block sorting AND filtering of the table
+      // ("you do not have sufficient permissions to change those cells"). The column is
+      // instead HIDDEN + text-formatted, and the token is HMAC-signed — so accidental
+      // edits are out of sight and any tampering is detected on import (malformed →
+      // review). That protects identity without breaking the user's sort/filter.
 
       // Write workbook to buffer
       const workbookBuffer = await workbook.xlsx.writeBuffer();

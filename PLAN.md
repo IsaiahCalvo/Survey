@@ -40,20 +40,23 @@ behavior lands.
    always-on safety/confidence layer for matching, change-detection, and conflict checks.
 
 5. **No user-facing ID columns on the visible sheets.** The durable identity carrier is a
-   **hidden, locked** `Row ID` column (Amendment #10) — not shown in the normal sheet view,
-   so the visible workbook a user reads/edits is unchanged. The very-hidden `_SurveyMetadata`
-   sheet + the app sync record remain the secondary/backup store. Row fingerprints (#4) still
-   run for every row as the change-detection/fallback layer. See #10.
+   **hidden, signed (not locked)** `Row ID` column (Amendment #10) — not shown in the normal
+   sheet view, so the visible workbook a user reads/edits is unchanged, and sort/filter stay
+   free. The very-hidden `_SurveyMetadata` sheet + the app sync record remain the
+   secondary/backup store. Row fingerprints (#4) still run for every row as the
+   change-detection/fallback layer. See #10.
 
-10. **A hidden, locked `Row ID` (Sync ID) column is the primary identity key (2026-06-08;
-    amended same day — the ID column is HIDDEN + LOCKED, not user-facing).** Add a **hidden,
-    text-formatted, locked first column named `Row ID`** to each survey sheet, holding a
-    **stable, unique, opaque per-Survey-Marker token** — the ID is stable to the *marker*,
-    never a positional row number (row positions change). Because it is a real (hidden)
-    column, the token **travels with its row** when the user sorts, filters, moves, or copies
-    rows. The sheet is **protected so the Row ID column is locked while normal editing,
-    sorting, filtering, and filling out checklist answers all stay allowed** (only the Row ID
-    cells are locked; every other cell is editable). Matching rules: (a) an existing synced
+10. **A hidden `Row ID` (Sync ID) column is the primary identity key (2026-06-08; amended
+    same day — the ID column is HIDDEN + signed, NOT locked/sheet-protected).** Add a
+    **hidden, text-formatted first column named `Row ID`** to each survey sheet, holding a
+    **stable, unique, opaque, HMAC-signed per-Survey-Marker token** — the ID is stable to the
+    *marker*, never a positional row number (row positions change). Because it is a real
+    (hidden) column, the token **travels with its row** when the user sorts, filters, moves,
+    or copies rows. **We do NOT lock the column or protect the sheet:** Excel sort physically
+    rewrites every column in a row (including a locked one), so locking Row ID makes Excel
+    block sorting AND filtering ("you do not have sufficient permissions to change those
+    cells"). Identity is protected instead by being hidden (out of sight) + signed (any edit
+    breaks the HMAC → `malformed-rowid` → review). Matching rules: (a) an existing synced
     row whose `Row ID` matches a marker → match by `Row ID`; rename / edited answers / notes /
     entity → **same `Row ID`, update that same marker**. (b) A new row with a **blank** `Row ID`
     → the app assigns a fresh `Row ID` and creates an **unplaced** Survey-panel item
