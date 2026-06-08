@@ -26,12 +26,14 @@ This keeps active views unchanged: the delete path still removes the marker from
 
 ## Build order (each slice: pure logic + test, then wire, `node scripts/run-node-tests.mjs` + `npx vite build` green, commit)
 
-1. **DONE-IN-THIS-SESSION? check git log.** Pure service `src/services/surveyMarkerTrash.js`: `TRASH_RETENTION_DAYS=30`, `makeTombstone(marker,{deletedAt,deletedBy,reason})`, `isTombstoneExpired(t,{now,retentionDays})`, `selectExpiredKeys(tombstones,{now})`, `addTombstone/restoreFrom/listActiveTrash` helpers over a plain `{key: tombstone}` map. + `tests/surveyMarkerTrash.test.mjs`.
-2. Durable store `src/services/surveyMarkerTrashStore.js` (localStorage per `pdfId`, swappable storage arg, graceful when unavailable) + test. Mirror `excelSyncBaselineStore.js`.
-3. **Wire the delete path** (`handleSurveyMarkerDeleted`, ~`22480`): immediately before the `setSurveyMarkers(prev => { delete updated[id] })` at ~`22542`, capture each permitted marker and write a tombstone to the store (origin `app`, `deletedBy = user?.id`). High-risk file — minimum-viable-diff, `npm test` after, report baseline. No change to the existing visual-cleanup code.
-4. **Restore + purge functions** in PDFViewer (callbacks): `restoreSurveyMarkerFromTrash(key)` (re-add to `surveyMarkers`, drop tombstone) and a startup purge sweep that drops tombstones past 30 days. Expose `restore` for the eventual Trash UI.
-5. **Minimal Trash UI** — a simple list (deleted item name, when, by whom, Restore button). Can be a small panel; this is the only user-visible piece and can be basic. The red per-row warning icon is still deferred until after this.
-6. **Only after 1–5 are solid:** allow Excel-origin deletes of *received* markers to go through the tombstone path (flip the received-only guard so a previously-exported marker absent from Excel becomes a *recoverable* tombstone instead of being protected). This is the actual "Excel can delete what it received" enablement, now safe because it's recoverable. Keep placed-marker protection until this is explicitly verified end-to-end.
+1. ✅ **DONE** (`db6be9cd`). Pure service `src/services/surveyMarkerTrash.js` (`TRASH_RETENTION_DAYS=30`, `makeTombstone`, `isTombstoneExpired`, `selectExpiredKeys`, `addTombstone`/`removeTombstone`/`purgeExpired`/`listActiveTrash`) + `tests/surveyMarkerTrash.test.mjs` (8/8).
+2. ✅ **DONE** (`db6be9cd`). Durable store `src/services/surveyMarkerTrashStore.js` (localStorage per `pdfId`, swappable storage, graceful) + tests.
+3. ✅ **DONE** (`db6be9cd`). Wired `handleSurveyMarkerDeleted`: tombstones each permitted marker (origin `app`) before removal. Best-effort; delete still proceeds if store unavailable.
+4. ✅ **DONE** (`db6be9cd` + `2e14802d`). `restoreSurveyMarkerFromTrash(key)` callback exists (re-adds to `surveyMarkers`, drops tombstone); startup purge sweep drops >30-day tombstones; import-driven deletions (`executeExcelImport`/`executeAutoExcelImport`) also tombstone (origin `excel-import`).
+5. **NEXT — Minimal Trash UI.** A simple list (deleted item name, when, by whom, Restore button) calling `restoreSurveyMarkerFromTrash`. `restoreSurveyMarkerFromTrash` is currently defined but unused — the UI wires it. Source the list from `loadTrash(pdfId)` → `listActiveTrash(trash, { now })`. Keep it basic; the red per-row warning icon stays deferred until after this.
+6. **Only after 5 is solid:** allow Excel-origin deletes of *received* markers to go through the tombstone path (relax the received-only guard so a previously-exported marker absent from Excel becomes a *recoverable* tombstone instead of being protected). This is the actual "Excel can delete what it received" enablement, now safe because it's recoverable. Keep placed-marker protection until verified end-to-end.
+
+**Note on storage:** trash is currently per-device (localStorage). Promote the tombstone map into the Y.Doc (or Supabase) for shared cross-device trash as a follow-up — the store interface (`loadTrash`/`saveTrash`/`clearTrash`) is the only thing that changes.
 
 ---
 
