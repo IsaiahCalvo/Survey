@@ -39,7 +39,8 @@ test('computeImportDeletionCandidates: a placed marker absent from Excel is NEVE
   assert.deepEqual(candidates, [], 'placed marker must survive an import that omits it');
 });
 
-test('computeImportDeletionCandidates: an UNPLACED app row absent from Excel is still a candidate', () => {
+test('computeImportDeletionCandidates: an UNPLACED app row Excel never received is protected', () => {
+  // No exportedAt → Excel never got it → a missing row can never erase it.
   const surveyMarkers = {
     proposed: {
       name: 'Ghost Row',
@@ -52,8 +53,25 @@ test('computeImportDeletionCandidates: an UNPLACED app row absent from Excel is 
   const excelItemsByScope = { 'm1-c1': new Set(['Fire Extinguisher']) };
 
   const candidates = computeImportDeletionCandidates(surveyMarkers, excelItemsByScope);
+  assert.deepEqual(candidates, [], 'app work Excel never received must survive');
+});
+
+test('computeImportDeletionCandidates: an UNPLACED row Excel DID receive, now absent, is a candidate', () => {
+  const surveyMarkers = {
+    received: {
+      name: 'Was In Excel',
+      moduleId: 'm1',
+      categoryId: 'c1',
+      pageNumber: null,
+      bounds: null,
+      exportedAt: '2026-06-08T00:00:00.000Z', // previously synced to Excel
+    },
+  };
+  const excelItemsByScope = { 'm1-c1': new Set(['Fire Extinguisher']) };
+
+  const candidates = computeImportDeletionCandidates(surveyMarkers, excelItemsByScope);
   assert.equal(candidates.length, 1);
-  assert.equal(candidates[0].key, 'proposed');
+  assert.equal(candidates[0].key, 'received');
 });
 
 test('computeImportDeletionCandidates: markers in scopes Excel did not cover are untouched', () => {
@@ -73,8 +91,9 @@ test('computeImportDeletionCandidates: a marker still present in Excel is not de
 });
 
 test('computeImportDeletionCandidates: protectedIds are never deletion candidates', () => {
+  // exportedAt present so the ONLY thing protecting it is the protectedIds set.
   const surveyMarkers = {
-    locked: { name: 'Proposed', moduleId: 'm1', categoryId: 'c1', pageNumber: null, bounds: null },
+    locked: { name: 'Proposed', moduleId: 'm1', categoryId: 'c1', pageNumber: null, bounds: null, exportedAt: '2026-06-08T00:00:00.000Z' },
   };
   const excelItemsByScope = { 'm1-c1': new Set(['Other']) };
   const candidates = computeImportDeletionCandidates(surveyMarkers, excelItemsByScope, {
@@ -85,7 +104,7 @@ test('computeImportDeletionCandidates: protectedIds are never deletion candidate
 
 test('computeImportDeletionCandidates: honors spaceId as a moduleId fallback', () => {
   const surveyMarkers = {
-    legacy: { name: 'Old', spaceId: 'm1', categoryId: 'c1', pageNumber: null, bounds: null },
+    legacy: { name: 'Old', spaceId: 'm1', categoryId: 'c1', pageNumber: null, bounds: null, exportedAt: '2026-06-08T00:00:00.000Z' },
   };
   const excelItemsByScope = { 'm1-c1': new Set(['Different']) };
   const candidates = computeImportDeletionCandidates(surveyMarkers, excelItemsByScope);

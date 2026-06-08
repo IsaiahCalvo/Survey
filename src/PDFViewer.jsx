@@ -73,7 +73,7 @@ import { getActivePageRegionId, getPageAnnotationVisibilityState, normalizePageR
 import { getCalloutSyncFingerprint } from './utils/calloutSyncPayload';
 import { isPlacedSurveyMarker } from './services/surveyMarkerSyncDiff';
 import { forceUnplacedImportedMarker, freezeGeometryFromOriginal } from './services/importFieldWhitelist';
-import { stampExportAck } from './services/excelExportAck';
+import { stampExportAck, wasReceivedByExcel } from './services/excelExportAck';
 import { getCounterSeriesList, pickNextSeriesColor, renumberCounters } from './utils/counterNumbering';
 import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug, summarizeHistoryDelta, summarizeHistorySnapshot } from './utils/historyHelpers';
 import { getHistoryOrder, shouldRedoLocalBeforeLegacy, shouldUndoLocalBeforeLegacy } from './utils/historyStacks';
@@ -13300,9 +13300,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const itemName = ann.name?.toString().trim();
         if (itemName && !excelItemsByScope[scopeKey].has(itemName)) {
           // Stage 0 safety: Excel is attribute-only. A placed Survey Marker
-          // (has a page + bounds) is never destroyed by an import — only
-          // unplaced/proposed rows may be cleaned up here.
+          // (has a page + bounds) is never destroyed by an import. And Excel can
+          // only delete what it actually received — a marker the app made but
+          // never successfully exported (no exportedAt) is never erased by a
+          // missing row (Amendment #1).
           if (isPlacedSurveyMarker(ann)) return;
+          if (!wasReceivedByExcel(ann)) return;
           surveyMarkersToDelete.push({ key, ann });
         }
       }
@@ -13744,9 +13747,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const itemName = ann.name?.toString().trim();
         if (itemName && !excelItemsByScope[scopeKey].has(itemName)) {
           // Stage 0 safety: Excel is attribute-only. A placed Survey Marker
-          // (has a page + bounds) is never destroyed by an import — only
-          // unplaced/proposed rows may be cleaned up here.
+          // (has a page + bounds) is never destroyed by an import. And Excel can
+          // only delete what it actually received — a marker the app made but
+          // never successfully exported (no exportedAt) is never erased by a
+          // missing row (Amendment #1).
           if (isPlacedSurveyMarker(ann)) return;
+          if (!wasReceivedByExcel(ann)) return;
           surveyMarkersToDelete.push({ key, ann });
         }
       }

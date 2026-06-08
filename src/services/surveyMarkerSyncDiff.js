@@ -23,6 +23,8 @@
  * @param {object|null|undefined} currentAnnotations  Current surveyMarkers dict
  * @returns {string[]}  Survey marker IDs that were removed since the prior sync
  */
+import { wasReceivedByExcel } from './excelExportAck.js';
+
 export function diffDeletedSurveyMarkerIds(priorAnnotations, currentAnnotations) {
   if (!priorAnnotations || typeof priorAnnotations !== 'object') return [];
   const priorIds = Object.keys(priorAnnotations);
@@ -54,10 +56,14 @@ export function isPlacedSurveyMarker(ann) {
 /**
  * Stage 0 import guard. Given the current survey markers and the set of item
  * names present in Excel per scope, returns the markers an import would remove
- * (present in the app, absent from Excel's scope) — EXCLUDING any placed marker
- * and any id in `protectedIds`. Placed markers and protected ids are never
- * deletion candidates: Excel can update attributes but can never destroy a
- * placed Survey Marker or touch geometry.
+ * (present in the app, absent from Excel's scope) — EXCLUDING:
+ *   - any placed marker (Excel can never destroy a placed marker or touch geometry);
+ *   - any marker the app made but never successfully exported to Excel
+ *     (no `exportedAt`) — Excel can only delete what it actually received
+ *     (PLAN.md Amendment #1), so app work Excel never got is never erased by a
+ *     missing row;
+ *   - any id in `protectedIds`.
+ * This only ever NARROWS the deletion set versus a naive name-absence diff.
  *
  * @param {object} surveyMarkers  keyed map of survey markers
  * @param {Record<string, Set<string>>} excelItemsByScope  `${moduleId}-${categoryId}` -> Set of item names in Excel
@@ -77,6 +83,7 @@ export function computeImportDeletionCandidates(surveyMarkers, excelItemsByScope
     const itemName = ann.name?.toString().trim();
     if (!itemName || excelItemsByScope[scopeKey].has(itemName)) continue;
     if (isPlacedSurveyMarker(ann)) continue; // Stage 0: never destroy a placed marker via import
+    if (!wasReceivedByExcel(ann)) continue; // Amendment #1: never erase app work Excel never received
     if (protectedSet.has(key)) continue;
     out.push({ key, ann });
   }
