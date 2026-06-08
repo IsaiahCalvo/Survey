@@ -2879,7 +2879,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const pasteAnnotationAtRef = useRef(null);
 
   // Annotation tools state
-  const [activeTool, setActiveTool] = useState('pan');
+  const [activeTool, setActiveToolRaw] = useState('pan');
+  // [DEBUG-toolrevert] temporary: trace every setter that lands on 'pan' so we can
+  // see who reverts survey-marker → pan. Synchronous → captures the real caller.
+  const setActiveTool = useCallback((next) => {
+    try {
+      const resolved = typeof next === 'function' ? '(updater-fn)' : String(next);
+      if (resolved === 'pan' && activeToolRef.current === 'survey-marker') {
+        console.log('[DEBUG-toolrevert] survey-marker → pan caller:\n' + new Error().stack);
+      }
+    } catch (_e) { /* swallow */ }
+    setActiveToolRaw(next);
+  }, []);
   const activeToolRef = useRef('pan');
   // [InteractionDiag] last observed active tool, used to log real transitions.
   const interactionDiagPrevToolRef = useRef('pan');
