@@ -12678,6 +12678,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const loadLatestSurveyData = useCallback(async () => {
     if (!selectedTemplate?.linkedExcelPath) return;
 
+    // Stage 0 safety gate: never run a silent open-time import while the app has
+    // un-exported local changes, or when there is no durable baseline to compare
+    // against (fail closed → review required). Computed fresh from refs so this
+    // is never a stale closure. The user can still sync manually from the UI.
+    const pendingLocalChanges = computeHasPendingExcelSyncChanges({
+      template: selectedTemplate,
+      surveyMarkers: surveyMarkersRef.current || {},
+      baselineHash: lastExcelSyncFingerprintRef.current
+    });
+    if (pendingLocalChanges) {
+      debugLog('Skipping silent Excel auto-import: pending local changes or no baseline (review required).');
+      return;
+    }
+
     try {
       // Get Supabase timestamp from template config
       const supabaseTimestamp = new Date(selectedTemplate.updatedAt || selectedTemplate.lastSyncTime || 0);
