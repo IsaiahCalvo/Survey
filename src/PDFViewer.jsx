@@ -73,6 +73,7 @@ import { getActivePageRegionId, getPageAnnotationVisibilityState, normalizePageR
 import { getCalloutSyncFingerprint } from './utils/calloutSyncPayload';
 import { isPlacedSurveyMarker } from './services/surveyMarkerSyncDiff';
 import { forceUnplacedImportedMarker, freezeGeometryFromOriginal } from './services/importFieldWhitelist';
+import { stampExportAck } from './services/excelExportAck';
 import { getCounterSeriesList, pickNextSeriesColor, renumberCounters } from './utils/counterNumbering';
 import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug, summarizeHistoryDelta, summarizeHistorySnapshot } from './utils/historyHelpers';
 import { getHistoryOrder, shouldRedoLocalBeforeLegacy, shouldUndoLocalBeforeLegacy } from './utils/historyStacks';
@@ -9470,6 +9471,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return fingerprint.hash;
   }, [clearExcelSyncCheckpoint, selectedTemplate]);
 
+  // Called only on a successful export to the linked Excel workbook. Stamps every
+  // exported marker with an `exportedAt` acknowledgment (the durable "this reached
+  // Excel" record that the received-only delete rule will rely on) and records the
+  // sync checkpoint from the stamped markers. The ack fields are excluded from the
+  // dirty fingerprint, so this does NOT make the just-synced survey look dirty.
+  const markExcelExportSynced = useCallback((templateOverride = null) => {
+    const exportedAt = new Date().toISOString();
+    const stamped = stampExportAck(surveyMarkersRef.current || {}, { exportedAt });
+    setSurveyMarkers(stamped);
+    return markExcelSyncCheckpoint(templateOverride, stamped);
+  }, [markExcelSyncCheckpoint]);
+
   useEffect(() => {
     const pending = computeHasPendingExcelSyncChanges({
       template: selectedTemplate,
@@ -12348,7 +12361,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
             // Mark that linked Excel file exists (ensures dropdown menu shows)
             setLinkedExcelExists(true);
-            markExcelSyncCheckpoint(updatedTemplate, surveyMarkersRef.current);
+            markExcelExportSynced(updatedTemplate);
 
             if (!silent) {
               setIsExporting(false);
@@ -12948,7 +12961,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       // Mark that linked Excel file exists (enables dropdown menu)
       setLinkedExcelExists(true);
-      markExcelSyncCheckpoint(updatedTemplate, surveyMarkersRef.current);
+      markExcelExportSynced(updatedTemplate);
 
       // Persist to Supabase
       const supabaseTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id;
@@ -32704,7 +32717,7 @@ ${pageBlocks}
                       }
 
                       setLinkedExcelExists(true);
-                      markExcelSyncCheckpoint(updatedTemplate, surveyMarkersRef.current);
+                      markExcelExportSynced(updatedTemplate);
                       alert('Export to computer successful!');
                     }
                   } catch (error) {

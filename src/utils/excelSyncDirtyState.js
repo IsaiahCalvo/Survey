@@ -8,6 +8,25 @@
  * Excel-link dirty/save state.
  * Part of the separate survey-marker pipeline — see docs/ANNOTATION-CONTRACT.md.
  */
+import { EXPORT_ACK_FIELDS } from '../services/excelExportAck.js';
+
+// Export-acknowledgment fields are sync bookkeeping, not user content. Strip them
+// before hashing so stamping a marker as "exported" never makes a freshly-synced
+// survey read as having pending changes again.
+const stripAckFields = (surveyMarkers = {}) => {
+  const out = {};
+  for (const [key, marker] of Object.entries(surveyMarkers || {})) {
+    if (!marker || typeof marker !== 'object') {
+      out[key] = marker;
+      continue;
+    }
+    const copy = { ...marker };
+    for (const field of EXPORT_ACK_FIELDS) delete copy[field];
+    out[key] = copy;
+  }
+  return out;
+};
+
 const hashString = (value = '') => {
   let hash = 2166136261;
   for (let i = 0; i < value.length; i += 1) {
@@ -27,7 +46,7 @@ const getTemplateSyncIdentity = (template) => ({
 export const computeExcelSyncFingerprint = (template, surveyMarkers = {}) => {
   const payload = {
     template: getTemplateSyncIdentity(template),
-    surveyMarkers: surveyMarkers || {}
+    surveyMarkers: stripAckFields(surveyMarkers)
   };
   const serialized = JSON.stringify(payload);
   return {
