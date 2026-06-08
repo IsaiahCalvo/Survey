@@ -12131,7 +12131,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
               // Style header row
               if (rowIndex === 0) {
-                excelRow.eachCell({ includeEmpty: true }, (cell) => {
+                excelRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
                   cell.alignment = { horizontal: 'center', vertical: 'middle' };
                   cell.fill = {
                     type: 'pattern',
@@ -12144,6 +12144,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                     bottom: { style: 'thin' },
                     right: { style: 'thin' }
                   };
+                  // Hidden Row ID is the only LOCKED column; everything else stays
+                  // editable when the sheet is protected (see worksheet.protect below).
+                  cell.protection = { locked: colNumber === 1 };
                 });
               } else {
                 // Add borders and alignment to data cells
@@ -12167,6 +12170,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                   } else if ((colNumber >= 5 && colNumber <= lastChecklistCol) || colNumber === entityColIndex) {
                     cell.alignment = { horizontal: 'center', vertical: 'middle' };
                   }
+                  // Lock ONLY the hidden Row ID column; all other cells stay editable.
+                  cell.protection = { locked: colNumber === 1 };
                 });
               }
             });
@@ -12348,8 +12353,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             });
 
             // Set column widths
-            // Column 1: Row ID (width 16, system identity column)
-            worksheet.getColumn(1).width = 16;
+            // Column 1: Row ID — HIDDEN, text-formatted, locked sync identity column
+            // (PLAN.md Amendment #10). Not user-facing; travels with its row on
+            // sort/filter/move/copy; the app reads it on import to match the marker.
+            const rowIdColumn = worksheet.getColumn(1);
+            rowIdColumn.width = 16;
+            rowIdColumn.hidden = true;
+            rowIdColumn.numFmt = '@'; // text — never coerced to a number/date
 
             // Column 2: Changed By (width 15)
             worksheet.getColumn(2).width = 15;
@@ -12373,6 +12383,33 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             worksheet.getColumn(notesColIndex).width = 50;
           });
         });
+      }
+
+      // Protect each survey sheet so the hidden Row ID column stays locked while every
+      // data cell remains editable, and sorting / filtering / inserting+deleting rows /
+      // formatting all stay allowed (only the Row ID cells were locked during styling).
+      // The very-hidden _SurveyMetadata sheet is left as-is.
+      for (const ws of workbook.worksheets) {
+        if (ws.name === '_SurveyMetadata') continue;
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          await ws.protect(undefined, {
+            selectLockedCells: true,
+            selectUnlockedCells: true,
+            formatCells: true,
+            formatColumns: true,
+            formatRows: true,
+            insertRows: true,
+            deleteRows: true,
+            insertColumns: false,
+            deleteColumns: false,
+            sort: true,
+            autoFilter: true,
+          });
+        } catch (protectErr) {
+          // Protection is a hardening nicety; never block the export on it.
+          debugLog('Sheet protection skipped for "' + ws.name + '": ' + (protectErr?.message || protectErr));
+        }
       }
 
       // Write workbook to buffer

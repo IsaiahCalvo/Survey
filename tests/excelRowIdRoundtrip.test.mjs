@@ -82,6 +82,40 @@ test('Row ID column round-trips through a real xlsx write/read with a valid toke
   assert.equal(reloadedFp.identityVectorFingerprint, expectedFp.identityVectorFingerprint);
 });
 
+test('a HIDDEN, locked, protected Row ID column still round-trips and stays readable', async () => {
+  const storage = makeStorage();
+  const { keyId, secret } = getOrCreateDocumentSecret(DOC, storage);
+  const token = await generateRowIdToken({ keyId, secret, documentId: DOC, scopeId: SCOPE, markerId: 'm-hidden' });
+
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('mod-1');
+  ws.addRow(['Row ID', 'Item', 'Q1']);
+  const dataRow = ws.addRow([token, 'Door 9', 'Y']);
+  // Mirror the real export: hide + text-format col 1, lock ONLY col 1, protect the sheet.
+  const col1 = ws.getColumn(1);
+  col1.hidden = true;
+  col1.numFmt = '@';
+  ws.eachRow((r) => r.eachCell((cell, colNumber) => { cell.protection = { locked: colNumber === 1 }; }));
+  await ws.protect(undefined, { selectUnlockedCells: true, sort: true, autoFilter: true, insertRows: true, formatCells: true });
+  const buffer = await wb.xlsx.writeBuffer();
+
+  const wb2 = new ExcelJS.Workbook();
+  await wb2.xlsx.load(buffer);
+  const ws2 = wb2.getWorksheet('mod-1');
+
+  assert.equal(ws2.getColumn(1).hidden, true, 'Row ID column must be hidden');
+  assert.equal(ws2.getCell('A2').protection?.locked !== false, true, 'Row ID cell stays locked');
+  assert.equal(ws2.getCell('B2').protection?.locked, false, 'data cells stay editable (unlocked)');
+  assert.ok(ws2.worksheet?.sheetProtection || ws2.sheetProtection, 'sheet is protected');
+
+  // The app can still READ the hidden token and match it.
+  const result = await classifyRowIdToken(ws2.getCell('A2').value, {
+    documentId: DOC, scopeId: SCOPE, resolveSecret: (kid) => resolveDocumentSecret(DOC, kid, storage)
+  });
+  assert.equal(result.status, 'valid');
+  assert.equal(result.markerId, 'm-hidden');
+});
+
 test('a token written for one scope reads as wrong-scope when imported under another sheet', async () => {
   const storage = makeStorage();
   const { keyId, secret } = getOrCreateDocumentSecret(DOC, storage);
