@@ -1,22 +1,97 @@
 # Plan: Redesign the Excel ↔ Survey Marker sync so it never silently loses data
 _Locked via grill — by Claude + Isaiah (2026-06-07). Revised after Codex review round 1._
+_**Amended 2026-06-08 by Isaiah** — see "Product Decision Amendments" below; those decisions GOVERN where they differ from the original body._
 
 > Companion docs: `.planning/optimization/EXCEL-SYNC-MAP.md` (how it works today, with file:line) and `.planning/optimization/EXCEL-SYNC-UX-PLAYBOOK.md` (collaboration UX, proven by Figma/Google/Linear/Notion/Bluebeam/MS 365). This plan is the build contract; the two companions are the evidence.
 
+## Product Decision Amendments — 2026-06-08 (GOVERNING)
+
+These owner decisions supersede any conflicting text in the original plan body. The
+Stage 0 safety fixes already shipped (placed-marker import protection, silent
+open-time import gate, additive origin guard) **stay as temporary protection** until
+the smarter logic below exists — do not remove them; replace them when the final
+behavior lands.
+
+1. **Delete rule — "Excel can only delete what Excel actually received."** Excel *may*
+   delete a Survey-panel/PDF item, but **only if that exact item was previously synced
+   successfully to Excel** (it carries a confirmed export acknowledgment — `exportedAt` /
+   `exportAckEtag`). If the app made a marker and Excel never successfully received it, a
+   later missing row can **never** erase it. This **replaces** the original "no
+   Excel-origin deletion of a placed marker, ever." Excel-origin deletes still go through
+   recoverable tombstones/trash (Stage 2); they are never a hard delete. Until export-ack
+   tracking exists, today's temporary "never delete a placed marker on import" guard holds.
+
+2. **New Excel rows go straight to the Survey panel.** A clean new Excel row appears
+   directly in the Survey panel as an **unplaced item with the orange search/locate
+   button** — it is NOT hidden in an import inbox first. Only genuinely *confusing* rows
+   (see #3) need a review step. This **replaces** the original "all unmatched rows go to a
+   durable import inbox."
+
+3. **Duplicate names are allowed; only broken identity needs a choice.** Two items with
+   the same visible name is fine and normal. The only thing that needs human input is
+   **duplicate or broken tracking identity** — two rows carrying the same tracked identity,
+   or rows that are truly indistinguishable. Those show **"Needs your choice"** (duplicate
+   vs. new item); they are never silently merged.
+
+4. **Every row gets a full visible-value fingerprint.** Independent of any metadata ID,
+   every Excel row is fingerprinted from its **exact visible cell values**: Changed By,
+   Changed Date, Item/title, **every checklist answer value**, Entity, and the **full
+   Notes text**. Use the actual values, not mere presence/absence. This fingerprint is the
+   always-on safety/confidence layer for matching, change-detection, and conflict checks.
+
+5. **No hidden IDs on the visible sheets.** Do **not** add hidden ID rows or hidden ID
+   columns to the visible survey sheets. If durable identity metadata is needed, store it
+   in the existing **very-hidden `_SurveyMetadata` sheet** plus the app's own sync record —
+   never as new visible-sheet columns. Row fingerprints (#4) still run for every row. This
+   **replaces** the original "Stage 1 may add hidden reserved ID/metadata columns to the
+   visible sheets," and the visible-contract snapshot test now also forbids new hidden
+   columns on visible sheets.
+
+6. **Conflict = both sides changed the same row/field before syncing.** A real conflict
+   exists *only* when the same field changed on both sides before a sync reconciled them
+   (e.g. app sets an answer to `Y`, can't push yet, then Excel sets that same answer to
+   `N`). Merely **placing** a Survey Marker in the app while Excel edits that row's
+   answers/notes/entity is **not** a conflict: keep the PDF placement and apply the Excel
+   attributes.
+
+7. **Row-level sync problems use a quiet per-row icon, never a global warning.** When a
+   single row can't sync, show a **red circled exclamation icon on that Survey-panel row**.
+   On hover, explain the issue and the cause/fix when known; if the cause is unknown, say
+   only that the item cannot sync yet. Use the exact asset
+   `/Users/isaiahcalvo/Downloads/exclamation-circle-svgrepo-com.svg`. Tooltip examples:
+   "This item has not synced to Excel yet." · "Excel file is open locally. Close Excel to
+   sync this item." · "Two Excel rows look identical. Choose whether this is a duplicate or
+   a new item." · "This row cannot sync yet."
+
+8. **Prove each Excel setup before promising live sync.** Before building or promising any
+   live-sync behavior, research and prove, per setup, whether the app can push a small
+   cell/range change while the workbook is open and whether the open Excel window receives
+   it safely: (a) **local `.xlsx` open in desktop Excel**, (b) **personal OneDrive
+   workbook**, (c) **Microsoft 365 Business / SharePoint / Teams with AutoSave on**. Work
+   toward live sync on every setup where it is technically possible, but do **not** promise
+   identical behavior across setups until proven. This hardens the existing Stage 3/6 spike
+   gates into a required, written research deliverable.
+
+9. **Identity rewrite must use the full row, not the Item name.** Current export writes
+   Changed By, Changed Date, Item, checklist answers, Entity, Notes; current import matches
+   mostly by module/category + Item name and deletes by Item-name absence. The rewrite
+   fixes this by using the full-row fingerprint (#4) + `_SurveyMetadata`/app-record
+   identity (#5) for matching and change-detection — never Item name alone.
+
 ## Goal
 
-Make the linked-Excel survey workflow trustworthy and collaborative. The app's own store (durable Y.Doc + Supabase) is the **sole authority** for a Survey Marker's existence and on-page geometry. Excel is an **asynchronous attribute mirror** (answers, name, note, entity) — it may edit attributes of existing markers and may *propose* new rows into an import inbox, but it can **never** create a placed marker, delete a placed marker, or touch geometry. We cannot write into a workbook a user has open; persistent-style workbook sessions are available on OneDrive-for-Business/SharePoint but not on consumer/personal OneDrive (local files use the main-process lock/write contract in Stage 3, not Graph sessions); and there is no real-time co-author hook — so "live" means fast polling with patch-only writes to owned ranges, guarded by an app-side lease + a per-flush workbook session + read-latest → merge → write (not a range-level eTag), backed by a **durable per-document outbound queue** (the queue is the durable thing; workbook sessions are created/refreshed per flush, not assumed durable).
+Make the linked-Excel survey workflow trustworthy and collaborative. The app's own store (durable Y.Doc + Supabase) is the **sole authority** for a Survey Marker's existence and on-page geometry. Excel is an **asynchronous attribute mirror** (answers, name, note, entity) — it may edit attributes of existing markers and a clean new row appears **directly in the Survey panel** as an unplaced item (Amendment #2); it can **never** create a *placed* marker or touch geometry, and may delete only a marker it previously received/acknowledged (Amendment #1), always recoverably. We cannot write into a workbook a user has open; persistent-style workbook sessions are available on OneDrive-for-Business/SharePoint but not on consumer/personal OneDrive (local files use the main-process lock/write contract in Stage 3, not Graph sessions); and there is no real-time co-author hook — so "live" means fast polling with patch-only writes to owned ranges, guarded by an app-side lease + a per-flush workbook session + read-latest → merge → write (not a range-level eTag), backed by a **durable per-document outbound queue** (the queue is the durable thing; workbook sessions are created/refreshed per flush, not assumed durable).
 
 ## Core safety invariants (hold from the first commit, every stage)
 
-1. **No Excel-origin deletion of a placed Survey Marker, ever.** A row missing from Excel means "row absent upstream" (a signal surfaced for review) — it is NOT a delete instruction and NEVER removes a marker or its geometry.
+1. **Excel may delete only items it actually received** *(amended 2026-06-08 — Amendment #1)*. A missing row deletes a marker **only if that marker carries a confirmed export acknowledgment** (`exportedAt`/`exportAckEtag`); a missing row for an app-created marker Excel never received is "row absent upstream" — surfaced for review, never a delete. Excel-origin deletes are always recoverable tombstones (Stage 2), never a hard delete or a geometry wipe. *(Until export-ack tracking ships, the temporary Stage 0 guard deletes no placed marker at all.)*
 2. **Excel import is patch-only and additive.** Imports apply allowed attribute patches through a dedicated import transaction; they never run whole-map reconciliation and never delete Y.Map keys, `annotationsByPage` entries, or canvas objects (the geometry path that today gets captured via `applyByPage`).
-3. **Excel can never trigger a deletion** (invariant 1). App-origin deletes become recoverable **canonical tombstones** in Stage 2 (never a hard delete, never a "delete-the-row-then-its-status-cell-too" scheme); until Stage 2 lands, *unintended* loss is already closed by invariant 1 + the Stage 0 writeback kill-switch, so no stage widens the risk.
-4. **No name-string matching of a placed marker.** Identity is a stable owned ID. Legacy/no-ID/ambiguous rows are quarantined for review, never name-guessed back onto a placed marker. **Until stable IDs exist (Stage 1), inbound import is review-only for placed markers** — no attribute is written onto a placed marker without a trusted ID match.
+3. **Excel-origin deletes are recoverable and scoped to received items** (invariant 1 / Amendment #1). Both app-origin and the now-allowed Excel-origin deletes become recoverable **canonical tombstones** in Stage 2 (never a hard delete, never a "delete-the-row-then-its-status-cell-too" scheme); until Stage 2 lands, *unintended* loss is already closed by invariant 1 + the Stage 0 writeback kill-switch, so no stage widens the risk.
+4. **No Item-name-only matching of a placed marker.** Identity comes from the full-row fingerprint (Amendment #4) + `_SurveyMetadata`/app-record identity (Amendment #5), never the Item name alone. Duplicate *names* are fine; only broken/duplicate tracking identity needs a "Needs your choice" (Amendment #3). Rows whose identity is genuinely ambiguous are surfaced for review, never name-guessed back onto a placed marker. **Until the identity rewrite exists (Stage 1), inbound import is review-only for placed markers** — no attribute is written onto a placed marker without a confident fingerprint/identity match.
 5. **Outbound writes patch only app-owned ranges/tables** — never a whole-workbook rebuild that can stomp user formatting, extra sheets, comments, filters, or a concurrent editor. Concurrency is guarded by an **app-side per-workbook sync lease + a workbook session + read-latest → merge → write**, NOT by an `If-Match` precondition on range writes (Graph's range-update endpoint does not honor `If-Match`; eTag/`If-Match` is used only for file-content–level operations where Graph documents it).
 6. **Every sync action is journaled** (attempt id, origin, workbook id + eTag, baseline hash, rows changed/missing/quarantined, prevented deletions, queue depth, retry cause, recovery action).
 7. **No Excel-sync edit may touch the contract-mandated correctness invariants** — container-aware canvas sizing, single-name `fontFamily`, the `zoomGeneration` signal, and no JS zoom coordination in `SVGAnnotationLayer.jsx`. A diff that strays near them is a boundary violation.
-8. **The VISIBLE Excel workbook contract is frozen** (sheet names, header/column order, formatting, validations, widths) — guarded by the builder-output snapshot test. The builder is the only path that creates a workbook; patch writes run only against a workbook it already created. Stage 1 may add *hidden* reserved ID/metadata columns as snapshot-approved additive drift — the visible contract still must not change.
+8. **The VISIBLE Excel workbook contract is frozen** (sheet names, header/column order, formatting, validations, widths) — guarded by the builder-output snapshot test. The builder is the only path that creates a workbook; patch writes run only against a workbook it already created. **No new hidden columns or hidden rows are added to the visible sheets** *(amended 2026-06-08 — Amendment #5)*; durable identity metadata lives only in the very-hidden `_SurveyMetadata` sheet + the app's own sync record. The snapshot test now also fails on any new hidden column/row on a visible sheet.
 
 ## Approach (staged; each stage is independently shippable and never widens the data-loss risk — Stage 0 closes it, later stages add recovery)
 
@@ -24,7 +99,7 @@ Make the linked-Excel survey workflow trustworthy and collaborative. The app's o
 - Add a dedicated **import transaction API**: imports apply attribute patches only; remove the import path's ability to call whole-map reconciliation or to delete keys/geometry. **Whitelist the fields an import may write** (answers / name / note / entity) so an import can never set geometry (`pageNumber`/`bounds`) or introduce a placed marker, and treat `protectedIds` as write-protected for imports (not delete-protected only). Plumb a real `origin='excel-import'` through `useAnnotationDoc` → `applySurveyMarkers` (today it passes no origin) and `annotationDocSync` (today hardcodes `origin:'local'`).
 - **Kill-switch automatic Excel writeback.** Until Stage 3's safe patch-writer + durable queue land, disable automatic full-file re-upload and live-sync writeback (the current whole-workbook rebuild path); leave only an explicit manual export-to-a-clean-copy. This closes the window where Stages 0–2 could otherwise still fire the old rebuild and stomp a concurrent editor's file.
 - Make `syncSurveyMarkersToDoc` additive for imports (it currently deletes missing keys *before* setting changed keys — a crash mid-way leaves a partial durable deletion). Excel imports never delete keys; app-origin hard deletes are left as-is (not expanded) in Stage 0 and become recoverable tombstones in Stage 2.
-- Disable **all** Excel-origin deletes of placed markers and **all** auto-creation of markers into the canonical store (unmatched rows go to an import inbox, Stage 1).
+- Disable **all** Excel-origin deletes of placed markers (the temporary guard; the final received-only rule lands once export-ack tracking exists — Amendment #1). Clean new Excel rows surface as **unplaced Survey-panel items with the orange locate button** (Amendment #2), not in a hidden inbox; only genuinely ambiguous rows get a review surface (Stage 1).
 - Persist durable per-marker metadata: `createdByApp`, `exportedAt` / `exportAckEtag`, pending-operation ids — so "app-created and not yet confirmed-exported" is actually knowable.
 - Replace the broken watermark: stop using `selectedTemplate.updatedAt`; store and compare workbook **eTag + sheet/content hash** with the last merged baseline.
 - Load a **durable baseline** (not the in-memory ref) before any import decision; **fail closed to "review required"** when no baseline exists.
@@ -35,15 +110,16 @@ Make the linked-Excel survey workflow trustworthy and collaborative. The app's o
 
 *Test gates:* before any Stage 0 code ships, three tests must exist and pass — an **origin-guard** test (an `excel-import` write never deletes a Y.Doc marker absent from the import; a `local` write does), a **never-delete-placed-marker** test, and a **durable-baseline** test (a fresh handle with no in-memory baseline is treated as dirty). Before any **Stage 1** builder/parser/schema change (it also guards the Stage 3 cutover), a **builder-output snapshot** test must exist and pass, freezing today's sheet names, header/column order, hidden metadata cells, column widths, and color codes so any unapproved drift fails immediately.
 
-**Stage 1 — Identity & schema integrity.**
-- Define **reserved sync columns + a very-hidden metadata sheet**; teach the schema parser to reserve/skip them (today it skips only `Changed By / Changed Date / Item / Entity / Notes`, so new hidden columns would read as a schema change).
-- **Keep the new-checklist-item modal exactly as-is.** `NewColumnsModal` (the dialog shown when Excel has a new checklist item / column) is preserved unchanged, including the "Modify disabled when the template is shared" cross-survey protection. The Stage-1 hidden ID/metadata columns and every reserved header go into a single shared `SYSTEM_COLUMNS` constant in `src/viewerShared.js` that replaces the four inline skip-list literals (`PDFViewer.jsx:13070, 13487, 14244, 14412`), so reserved columns never read as a new checklist item. No other change to the modal or its trigger logic is permitted.
-- Stable IDs at three levels, stored in column/sheet metadata, not inferred from text: **marker id**, **checklist-item id** (checklist columns are matched by header text today → duplicate/renamed labels map answers to the wrong item), and **entity id** (entity is name-matched today → unknown entity edits silently drop).
-- Detect missing / duplicate / moved IDs and **quarantine** rather than guess. No automatic name fallback for a placed marker.
-- **One-time controlled ID-stamping migration** for existing linked sheets: stamp IDs only onto rows that are *unambiguous* against the current app baseline; everything else quarantines for manual re-link. No placed marker is name-guessed during backfill.
-- **Durable import inbox** for unmatched Excel rows: proposals persist across reload, carry the source workbook eTag/hash + row identity, and are auditable (they are not canonical Survey Markers until a user accepts/places them).
+**Stage 1 — Identity & schema integrity.** *(reshaped by the 2026-06-08 amendments)*
+- **Full-row fingerprint for every row** (Amendment #4): compute a fingerprint from the exact visible values — Changed By, Changed Date, Item/title, every checklist answer value, Entity, and full Notes text — for *every* Excel row, independent of any metadata ID. This is the always-on matching/change-detection/confidence layer.
+- **Durable identity in `_SurveyMetadata` + the app sync record only — no hidden columns/rows on the visible sheets** (Amendment #5). Store marker / checklist-item / entity identity in the very-hidden metadata sheet and the app's own record. Teach the schema parser to read identity there and to treat the visible header exactly as today (skip `Changed By / Changed Date / Item / Entity / Notes`); the parser must never invent or require hidden visible-sheet columns.
+- **Keep the new-checklist-item modal exactly as-is.** `NewColumnsModal` (the dialog shown when Excel has a new checklist item / column) is preserved unchanged, including the "Modify disabled when the template is shared" cross-survey protection. The system skip-list goes into a single shared `SYSTEM_COLUMNS` constant in `src/viewerShared.js` that replaces the four inline skip-list literals (`PDFViewer.jsx:13070, 13487, 14244, 14412`); since no new visible columns are added, this is just a de-duplication so the existing reserved headers stay consistent. No other change to the modal or its trigger logic is permitted.
+- **Matching uses fingerprint + metadata identity, never Item name alone** (Amendment #9). Checklist columns and entities resolve by stored identity, not header/name text, so renamed/duplicate labels no longer map answers to the wrong item.
+- **Clean new rows → straight to the Survey panel** as unplaced items with the orange locate button (Amendment #2). They are real proposed Survey Markers (unplaced), not hidden inbox entries.
+- **Duplicate names allowed; only broken identity asks** (Amendment #3). Two rows with the same name is fine. Only duplicate/broken tracking identity — same tracked identity on two rows, or truly indistinguishable rows — shows **"Needs your choice"** (duplicate vs. new item). Never silently merge.
+- **One-time controlled identity backfill** for existing linked sheets: assign stored identity only to rows that are *unambiguous* against the current app baseline (by fingerprint); everything ambiguous gets the per-row "Needs your choice" rather than a guess. No placed marker is name-guessed during backfill.
 
-*Acceptance:* Given a row renamed in Excel, when imported, then the marker keeps its geometry and only its name attribute changes. Given a duplicated or unknown checklist header, when imported, then those responses are quarantined, not written to the wrong item. Given IDs are stripped, copied, or duplicated in the sheet, when imported, then affected rows quarantine and require manual re-link — no placed marker is matched by name. Given the app is restarted, when there were pending inbox proposals, then they are still present and attributed to their source workbook revision.
+*Acceptance:* Given a row renamed in Excel, when imported, then the marker (matched by fingerprint + stored identity) keeps its geometry and only its name attribute changes. Given a clean new row, when imported, then it appears in the Survey panel as an unplaced item with the orange locate button — not hidden in an inbox. Given two rows with the same name, when imported, then both are kept (no merge). Given two rows that share a tracked identity or are truly indistinguishable, when imported, then the affected row shows the red per-row "Needs your choice" icon and nothing is written onto a placed marker by guess. Given any change, then no new hidden column/row is written to a visible sheet.
 
 **Stage 2 — Tombstones, trash, and history (before any silent overwrite UX).**
 - Replace hard-delete paths (including `deleteAnnotations` for markers) with **canonical tombstones**; build the **recoverable trash** (30-day retention, per-project configurable, restore + filter-by-deleter).
@@ -64,6 +140,7 @@ Make the linked-Excel survey workflow trustworthy and collaborative. The app's o
 *Acceptance:* Given a teammate has the workbook open, when I edit in the app, then my change is durable locally, queued with a visible "syncing when free" state, and lands in Excel without overwriting their concurrent edits or their formatting once the file is free.
 
 **Stage 4 — Conflict model.**
+- **A conflict exists only when the same row/field changed on both sides before a sync reconciled them** (Amendment #6). App sets an answer to `Y`, can't push, then Excel sets that same answer to `N` → conflict. **Placing** a marker in the app while Excel edits that row's answers/notes/entity is **not** a conflict: keep the PDF placement and apply the Excel attributes. The full-row fingerprint + per-field revisions are what detect "both changed."
 - Per-field **revisions sourced from the app store** are the clock (Excel's `Changed Date` is a formatted date, not a durable per-field timestamp); treat an Excel edit as "observed at import time."
 - **Last-writer-wins on committed values**, superseded value preserved in history. **No prompt** (owner's explicit choice). The one refinement over raw LWW: an **actively-open edit field is never clobbered mid-edit** — the remote value applies when the user commits/blurs, and newest-wins still decides, with both values in history. This preserves the no-prompt decision while preventing "text yanked out from under me."
 
@@ -71,6 +148,7 @@ Make the linked-Excel survey workflow trustworthy and collaborative. The app's o
 
 **Stage 5 — Quiet collaboration surfaces** (only once the Stage 0–4 safety contract is testable).
 - Remote add/edit/delete applies live + silently; visible deletes show a toast with Undo + activity entry; routine edits are silent-with-log. Reopen-after-away folds changes in then shows a non-blocking "N changes while you were away · Review" pill (upgrade to a one-time dismissible panel above a threshold). No popup is ever broadcast to all clients; the only ever-interruption is the (now prompt-free) draft-preservation in Stage 4.
+- **Per-row sync-problem icon** (Amendment #7): when an individual row can't sync, render a **red circled exclamation icon on that Survey-panel row** (asset `/Users/isaiahcalvo/Downloads/exclamation-circle-svgrepo-com.svg`) with a hover tooltip explaining the issue + cause/fix when known, or just "This row cannot sync yet." when the cause is unknown. This is the per-row channel for the "Needs your choice" (Amendment #3), "not synced to Excel yet," and "Excel open locally" states — never a global warning banner.
 
 **Stage 6 — Live feel.** Poll/diff cadence spike against real Graph throttling (target 15–30s when reachable, row+field granularity), plus soft presence/attribution chips.
 
@@ -80,9 +158,9 @@ Snapshot **all** sources first — legacy Supabase rows, local caches, the Y.Doc
 
 ## Key decisions & tradeoffs
 
-- **App store is the sole authority for existence + geometry; Excel is attribute-only and can never place or destroy a placed marker.** Tradeoff: you can't bulk-clear markers by deleting rows in the sheet.
+- **App store is the sole authority for existence + geometry; Excel is attribute-only and can never *place* a marker.** Excel *may* delete, but only an item it previously received and acknowledged (Amendment #1), always recoverably. Tradeoff: deleting a row only clears markers Excel already had; app-created-but-unexported work is safe from row-absence.
 - **Patch-only owned-range writes, guarded by an app-side lease + workbook session (not a range-level eTag) — no whole-workbook rebuild.** Protects user formatting / extra sheets / concurrent editors. Tradeoff: more Graph plumbing than a blind re-upload.
-- **Consumer/personal OneDrive is read/import-only** (writeback only via export-to-a-copy until a session-safe, feature-preserving patch path is proven); the safe two-way workbook sync (workbook sessions) requires OneDrive-for-Business/SharePoint or a local file. Tradeoff: feature availability differs by account type — surfaced honestly, not hidden.
+- **Live sync is pursued on every setup where it's technically possible, but proven per setup before promising it** (Amendment #8): local `.xlsx` in desktop Excel, personal OneDrive, and M365 Business/SharePoint/Teams with AutoSave each get a written capability proof (can the app push a small range change while the workbook is open, and does the open window receive it safely). Until a setup is proven session-safe, it stays read/import-only (writeback via export-to-a-copy). Tradeoff: feature availability differs by account type — surfaced honestly, not hidden, and not promised before proof.
 - **Last-writer-wins per field, no prompt, but never clobber an open editor; history is the recovery.** Honors the owner's no-prompt choice; rejects Codex's "require a keep/take/compare prompt." Tradeoff: a committed value can be superseded silently — acceptable because it's always in history.
 - **Anyone can edit/remove; ownership is soft attribution** — relaxed only alongside trash + audit.
 - **No CRDT** — structured attributes + per-field revisions + durable baseline give a real 3-way merge.
@@ -98,7 +176,7 @@ Snapshot **all** sources first — legacy Supabase rows, local caches, the Y.Doc
 
 These must keep working **identically**; breaking any one destroys user data, the sheet's appearance, or the inbound-sync contract. (Full detail + file:line in `.planning/optimization/EXCEL-SYNC-IMPACT.md`.)
 
-- **The sheet builder + all formatting** (`handleExportSurveyToExcel`, `11759–12393`): the `_SurveyMetadata` very-hidden sheet and its `B1`/`B2` cells, `createSheetName`, the header-row layout, the three conditional-formatting sets (Y/N/N-A, entity colors, duplicate names), both data-validation dropdowns, column widths, and `ensureSurveyMarkerMetadata` stamping. Extracted (cut-and-lift) in Stage 3, never rewritten. The *visible* output is frozen by the snapshot test; Stage 1 may add hidden reserved ID/metadata columns (snapshot-approved additive drift) but must not alter the visible contract.
+- **The sheet builder + all formatting** (`handleExportSurveyToExcel`, `11759–12393`): the `_SurveyMetadata` very-hidden sheet and its `B1`/`B2` cells, `createSheetName`, the header-row layout, the three conditional-formatting sets (Y/N/N-A, entity colors, duplicate names), both data-validation dropdowns, column widths, and `ensureSurveyMarkerMetadata` stamping. Extracted (cut-and-lift) in Stage 3, never rewritten. The *visible* output is frozen by the snapshot test; per Amendment #5 **no new hidden columns/rows are added to the visible sheets** — durable identity metadata lives only in the very-hidden `_SurveyMetadata` sheet + the app sync record.
 - **The upload primitives' binary correctness** (`uploadExcelFile`, `uploadFileContentById`, `uploadFileToDrive`, `getTemplateIdFromExcel`, `getFileETag`): keep the Uint8Array normalization + explicit-MIME Blob; ID-based upload stays preferred.
 - **The workbook session lifecycle** (`createWorkbookSession` / `refresh` / `close`): keep the close/error/header semantics and always close sessions. Refresh only sustains an *active long flush* — Stage 3 creates sessions per flush and does not hold one alive across idle time (no contradiction with "per-flush, not durable").
 - **The dirty-state hash module** (`computeExcelSyncFingerprint` / `computeHasPendingExcelSyncChanges`): Stage 0 *extends* checkpointing to persist the baseline durably; it does not replace this module.

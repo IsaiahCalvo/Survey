@@ -1,8 +1,10 @@
 # Handoff — Excel ↔ Survey Marker sync rebuild (Stage 0 underway)
 
-**Updated:** 2026-06-07. **Branch:** `main` (local, unpushed — direct-to-main; the user tests on their dev server; push only on their say-so). **Nothing is committed yet** — the working tree holds the Stage 0 first slice; land it on local `main` only when the user OKs (they had not yet said "commit" at handoff time).
+**Updated:** 2026-06-08. **Branch:** `main` (local, unpushed — direct-to-main; the user tests on their dev server; push only on their say-so).
 
-This is the entry point for the next session. Read this, then `PLAN.md`.
+> ⚠️ **READ FIRST — the plan was amended 2026-06-08.** Nine owner product decisions now GOVERN where they differ from the original plan body — see the "Product Decision Amendments — 2026-06-08 (GOVERNING)" section at the top of `PLAN.md`. Headline changes: Excel **may** delete, but only items it previously received/acknowledged (not "never delete a placed marker"); clean new rows go **straight to the Survey panel** as unplaced items (no import inbox); duplicate **names** are fine — only broken tracking identity asks "Needs your choice"; **every row gets a full visible-value fingerprint**; **no hidden ID columns/rows on visible sheets** (identity lives in `_SurveyMetadata` + the app record); conflict = same field changed on both sides before sync; per-row red exclamation icon for sync problems (asset at `/Users/isaiahcalvo/Downloads/exclamation-circle-svgrepo-com.svg`); prove each Excel setup before promising live sync. The Stage 0 safety slices already shipped are **temporary protection** that stays until the smarter logic replaces it.
+
+This is the entry point for the next session. Read this, then `PLAN.md` (amendments section first).
 
 ---
 
@@ -24,7 +26,18 @@ The plan is **locked and approved**. It was grilled with the user (Act 1 of gril
 
 ---
 
-## What landed this session (uncommitted, verified)
+## What landed (committed on local `main`, 2026-06-08)
+
+Three Stage 0 safety slices are now committed (direct-to-main; not pushed):
+1. `984e4121` — **origin-aware reconcile foundation** (engine level; behavior-neutral on the live app).
+2. `490ddb4c` — **never destroy a placed Survey Marker on import** (live fix at both `executeExcelImport`/`executeAutoExcelImport` delete sites; pure tested predicate `isPlacedSurveyMarker` + `computeImportDeletionCandidates` in `surveyMarkerSyncDiff.js`; `tests/importNeverDeletesPlacedMarker.test.mjs`, 7/7). **Temporary guard** — Amendment #1 will later allow deleting items Excel previously received.
+3. `1d3a58ad` — **gate the silent open-time import** (`loadLatestSurveyData`) on a fresh-computed pending-changes check; fails closed (no baseline → no auto-import); `tests/excelSyncDirtyBaseline.test.mjs` (gate #3). Manual sync untouched.
+
+Full suite **946 pass / 0 fail / 6 skipped**, `npx vite build` clean.
+
+---
+
+## Engine foundation detail (slice 1)
 
 The corruption fix's **foundation**: the durable survey-marker reconcile is now origin-aware.
 - `src/services/annotationDocStore.js` — `syncSurveyMarkersToDoc` now: when `origin === 'excel-import'` it is **additive/patch-only** (never deletes a key the imported dict omits), and it honors a `protectedIds` set (never delete those, even on a local reconcile). Default (`origin: 'local'`, no `protectedIds`) behavior is unchanged.
@@ -42,27 +55,29 @@ The corruption fix's **foundation**: the durable survey-marker reconcile is now 
 
 ## NEXT STEP (recommended — start here)
 
-**Finish Stage 0: wire the live import path to use the guard, then close the rest of the safety contract.** In `src/PDFViewer.jsx` (high-risk, ~34k lines — minimum-viable-diff, `npm test` after, report baseline):
+**Done so far (Stage 0):** placed-marker import guard (slice 2) and the silent open-time import gate (slice 3). **Still to close in Stage 0**, in `src/PDFViewer.jsx` (high-risk, ~34k lines — minimum-viable-diff, `npm test` after, report baseline):
 
-1. Route `executeExcelImport` / `executeAutoExcelImport` so the durable write uses `origin: 'excel-import'` (additive) and never sets React survey-marker state in a way that drops an un-exported placed marker. Disable the silent hard-delete of a placed marker (today ~`13247–13382` / ~`13685–13757`) → quarantine instead.
-2. Gate the silent startup import (`loadLatestSurveyData` ~`12677–12727`) on `!hasPendingExcelSyncChanges`; replace the `selectedTemplate.updatedAt` watermark with a workbook eTag + content hash.
-3. Persist the last-synced baseline durably (today it's an in-memory ref lost on reload) so `hasPendingExcelSyncChanges` isn't falsely true after every reopen; fail closed to "review required" when no baseline exists.
-4. Stand up the sync journal (a new service + a Supabase audit table).
-5. **Writeback kill-switch (do this early in Stage 0):** disable automatic full-file re-upload + live-sync writeback (the old whole-workbook rebuild) until Stage 3's safe patch-writer + queue land; leave only manual export-to-a-clean-copy. And in the import transaction, **whitelist writable fields** (answers/name/note/entity) so an import can never set geometry or introduce a placed marker; treat `protectedIds` as write-protected for imports.
+1. **Writeback kill-switch (highest value next):** disable automatic full-file re-upload + live-sync writeback (the old whole-workbook rebuild) until Stage 3's safe patch-writer + queue land; leave only manual export-to-a-clean-copy. In the import transaction, **whitelist writable fields** (answers/name/note/entity) so an import can never set geometry or introduce a placed marker; treat `protectedIds` as write-protected for imports.
+2. Thread a real `origin: 'excel-import'` through the capture effect (`useAnnotationDoc` → `applySurveyMarkers`) during import so the durable Y.Doc gets the additive guard too (defense-in-depth; today the import path still flows through the default `'local'` origin even though the engine supports `'excel-import'`).
+3. Persist the last-synced baseline durably (today it's an in-memory ref lost on reload) so the dirty check isn't falsely true after every reopen; replace the `selectedTemplate.updatedAt` watermark with a workbook **eTag + content hash**; keep failing closed to "review required" when no baseline exists.
+4. Add per-marker export-acknowledgment metadata (`exportedAt` / `exportAckEtag` / `createdByApp`) — the prerequisite for **Amendment #1** (Excel may delete only items it previously received). The current "never delete a placed marker" guard stays until this exists, then is replaced by the received-only rule.
+5. Stand up the sync journal (a new service + a Supabase audit table).
 
-**Pre-Stage-0 test gates still to add** (per PLAN.md): a never-delete-a-placed-marker test at the viewer level, a durable-baseline test (fresh handle with no in-memory baseline reads as dirty), and an auto-save-never-pushes-Excel test. (The origin-guard test is done.)
-**Pre-Stage-1 gate:** a builder-output snapshot test that freezes today's sheet names / header + column order / hidden metadata cells / column widths / colors — it must exist before any Stage 1 builder/parser change (it also guards the Stage 3 cutover). Stage 1's hidden ID columns are snapshot-approved additive drift; the *visible* contract must not change.
+**Pre-Stage-0 test gates:** never-delete-placed-marker ✅ done; durable-baseline (fail-closed) ✅ done; still to add — an **auto-save-never-pushes-Excel** test (silent save never reaches `pushToExcelWithRetry`), which pairs with the writeback kill-switch.
+**Pre-Stage-1 gate:** a builder-output snapshot test that freezes today's sheet names / header + column order / `_SurveyMetadata` cells / column widths / colors — it must exist before any Stage 1 builder/parser change (it also guards the Stage 3 cutover). **Per Amendment #5 the snapshot now also forbids any new hidden column/row on a visible sheet** — identity metadata goes only in `_SurveyMetadata` + the app record.
 
-After Stage 0: Stage 1 (stable hidden IDs + the shared `SYSTEM_COLUMNS` skip-list + import inbox + ID-stamping migration), Stage 2 (tombstones + 30-day trash + history), Stage 3 (patch-only writes + durable outbound queue + Graph concurrency — has a spike gate), Stage 4 (per-field LWW), Stage 5 (quiet collab UX), Stage 6 (live cadence). See PLAN.md.
+After Stage 0: **Stage 1** (full-row fingerprints for every row + identity in `_SurveyMetadata`/app-record — *no hidden visible-sheet columns*; the shared `SYSTEM_COLUMNS` skip-list de-dup; **clean new rows straight to the Survey panel as unplaced items**; duplicate names allowed, only broken identity asks "Needs your choice"; one-time unambiguous-only identity backfill), **Stage 2** (tombstones + 30-day trash + history), **Stage 3** (patch-only writes + durable outbound queue + Graph concurrency — spike gate + the 3-setup capability proofs from Amendment #8), **Stage 4** (conflict = same field both sides + per-field LWW), **Stage 5** (quiet collab UX + the per-row red exclamation icon), **Stage 6** (live cadence). See `PLAN.md` (amendments govern).
 
 ---
 
 ## Hard guarantees made to the user (do not violate)
 
 - **The Excel sheet builder + all formatting are preserved.** First-time creation always uses the existing builder; in Stage 3 it is *extracted* (cut-and-lift, no logic change), never rewritten. Patch writes run only against a workbook the builder already created and must NOT re-apply conditional formatting / dropdowns. Full Preserve/Do-Not-Break list in `EXCEL-SYNC-IMPACT.md` §4 and `PLAN.md`.
-- **The new-checklist-item modal (`NewColumnsModal`) is KEPT exactly**, including the "Modify disabled when the template is shared" protection. The only required change: add the Stage-1 reserved hidden columns to a shared `SYSTEM_COLUMNS` constant in `src/viewerShared.js`, replacing the four inline skip-list literals (`PDFViewer.jsx:13070, 13487, 14244, 14412`), so hidden columns never trigger it.
-- **Excel is attribute-only.** It may edit answers/name/note/entity and may *propose* a new row (appears unplaced with the orange locate button), but it can never place or destroy a placed marker or touch geometry.
-- **Conflicts:** per-field last-writer-wins, old value kept in history, no prompt — but never clobber a field the user is actively typing in.
+- **The new-checklist-item modal (`NewColumnsModal`) is KEPT exactly**, including the "Modify disabled when the template is shared" protection. The only change: de-dup the existing system skip-list into a shared `SYSTEM_COLUMNS` constant in `src/viewerShared.js`, replacing the four inline literals (`PDFViewer.jsx:13070, 13487, 14244, 14412`). **No new hidden columns are added to visible sheets** (Amendment #5) — identity lives in `_SurveyMetadata` + the app record.
+- **Excel can place nothing, but may delete what it received** (Amendment #1). It may edit answers/name/note/entity and a clean new row appears **directly in the Survey panel** as an unplaced item with the orange locate button (Amendment #2). It can never place or touch geometry. It may delete a marker **only if that marker was previously synced/acknowledged to Excel** — never app-created work Excel never received — and always recoverably.
+- **Conflicts** = the same field changed on both sides before a sync (Amendment #6); placing a marker while Excel edits that row's attributes is NOT a conflict (keep placement, apply attributes). Per-field last-writer-wins, old value in history, no prompt — but never clobber a field the user is actively typing in.
+- **Identity = full visible-value row fingerprint** (Changed By, Changed Date, Item, every checklist answer, Entity, full Notes) for every row, plus `_SurveyMetadata`/app-record IDs — never Item name alone (Amendments #4, #9).
+- **Per-row sync problems** show a red circled exclamation icon on the Survey-panel row (asset `/Users/isaiahcalvo/Downloads/exclamation-circle-svgrepo-com.svg`) with a hover explanation — never a global warning (Amendment #7).
 - **Anyone can edit/remove**; deletes are recoverable (30-day trash); no broadcast popups.
 - **Contract invariants untouched:** container-aware canvas sizing, single-name fontFamily, the `zoomGeneration` signal, no JS zoom coordination in `SVGAnnotationLayer.jsx`.
 

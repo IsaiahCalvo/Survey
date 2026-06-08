@@ -3,6 +3,8 @@
 *Audience: product owner (plain English) and engineer (precise rules). Grounded in Figma, Linear, Google Docs/Sheets, Notion, Bluebeam Studio Sessions, Microsoft 365 co-authoring, and the NNG/Material/LogRocket notification-surface literature.*
 *Produced 2026-06-07 via the `collab-merge-ux-research` workflow (4 parallel app researchers + synthesis). Companion to `EXCEL-SYNC-MAP.md`.*
 
+> ⚠️ **Amended 2026-06-08 — PLAN.md "Product Decision Amendments" GOVERN.** Two surfaces are now pinned by owner decision: clean new Excel rows appear **directly in the Survey panel** as unplaced items with the orange locate button — no separate import-inbox surface (#2); and individual row sync problems show a **red circled exclamation icon on the affected Survey-panel row** with a hover explanation (asset `/Users/isaiahcalvo/Downloads/exclamation-circle-svgrepo-com.svg`), never a global warning (#7). The "Needs your choice" duplicate-vs-new prompt (#3) rides that same per-row icon. Everything else here still applies.
+
 > Background constraint that shapes everything below: you cannot write to an Excel file someone has open, and Microsoft Graph offers no real-time co-authoring hook for a third-party app. Excel is therefore an **asynchronous attribute database**, not a live canvas. Survey Markers are structured attribute records (status, answer, note, assignee) — like Linear issues or Bluebeam markups — *not* free-form text. That is why last-writer-wins is sufficient and CRDTs are unnecessary.
 
 ---

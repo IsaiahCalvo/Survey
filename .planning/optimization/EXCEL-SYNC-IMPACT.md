@@ -2,6 +2,8 @@
 
 *Companion to PLAN.md. Two audiences: the **Plain** blocks speak to the product owner; the **Precise** blocks speak to the engineer. Produced 2026-06-07 via the `excel-sync-impact-analysis` workflow (4 parallel auditors + synthesis), all line references verified against source.*
 
+> ⚠️ **Amended 2026-06-08 — PLAN.md "Product Decision Amendments" GOVERN this doc.** Where this file still describes hidden ID columns on the visible sheets, a separate import inbox for all new rows, or "Excel can never delete a placed marker," it is superseded: (#5) identity metadata lives only in the very-hidden `_SurveyMetadata` sheet + the app sync record — **no new hidden columns/rows on visible sheets**; (#4) every row carries a full visible-value fingerprint; (#2) clean new rows go **straight to the Survey panel** as unplaced items (only ambiguous rows get a review surface); (#1) Excel **may** delete, but only items it previously received/acknowledged, recoverably; (#3) duplicate names are fine, only broken identity asks "Needs your choice"; (#6) conflict = same field changed both sides before sync; (#7) per-row red exclamation icon, not global warnings; (#8) prove each Excel setup before promising live sync. Treat the tables below as the file-level impact map, but apply the amended behavior.
+
 ---
 
 ## 1. Straight answer on the sheet-building code
@@ -73,15 +75,15 @@ Legend: **NEW** create · **MODIFY** surgical · **REPLACE** torn out & replaced
 | File | Site | Touch | Change |
 |---|---|---|---|
 | `src/PDFViewer.jsx` | name-match loop (`13107–13115`) | REPLACE | Match by stable `markerId` from hidden ID column |
-| `src/PDFViewer.jsx` | builder (`11777–12393`) | MODIFY | Write hidden `_markerId`/`_checklistItemId`/`_entityId`; parser skips them |
-| `src/PDFViewer.jsx` | column parser (`13069–13078`) | MODIFY | Reserve/skip hidden IDs; match checklist/entity by ID |
-| `src/PDFViewer.jsx` | new-row creation (`13224–13241`) | MODIFY | Untrusted rows → import inbox, not `bounds:null` ghosts |
-| `src/viewerShared.js` | `SYSTEM_COLUMNS` | NEW | Shared skip-list incl. reserved cols; consumed at all four parser sites |
-| `src/services/excelSchemaParser.js` | — | NEW | Parser w/ reserved/hidden-column + quarantine rules |
-| `src/services/importInbox.js` | — | NEW | Durable per-doc inbox for unmatched rows |
-| `src/services/idStampingMigration.js` | — | NEW | One-time ID stamping on unambiguous rows; rest quarantine |
-| `src/services/annotationDocStore.js` | store/read | MODIFY | Store the three stable IDs as first-class fields |
-| `src/components/ImportInboxPanel.jsx` | — | NEW | Inbox UI (accept/place/reject) |
+| `src/PDFViewer.jsx` | builder (`11777–12393`) | MODIFY | Store `_markerId`/`_checklistItemId`/`_entityId` in the very-hidden `_SurveyMetadata` sheet + app record — **NOT** as hidden columns on visible sheets (Amendment #5) |
+| `src/PDFViewer.jsx` | column parser (`13069–13078`) | MODIFY | Match by stored identity + full-row fingerprint (Amendment #4); visible header unchanged |
+| `src/PDFViewer.jsx` | new-row creation (`13224–13241`) | MODIFY | Clean new rows → unplaced Survey-panel items w/ orange locate (Amendment #2); only ambiguous rows flagged for review |
+| `src/viewerShared.js` | `SYSTEM_COLUMNS` | NEW | Shared skip-list de-dup of the existing reserved headers; consumed at all four parser sites |
+| `src/services/excelRowFingerprint.js` | — | NEW | Full visible-value row fingerprint (Changed By, Changed Date, Item, every answer, Entity, full Notes) |
+| `src/services/excelSchemaParser.js` | — | NEW | Parser w/ `_SurveyMetadata` identity + fingerprint matching + "Needs your choice" rules |
+| `src/services/idStampingMigration.js` | — | NEW | One-time identity backfill on fingerprint-unambiguous rows; rest get per-row "Needs your choice" |
+| `src/services/annotationDocStore.js` | store/read | MODIFY | Store the three stable IDs + row fingerprint as first-class fields |
+| `src/components/` (Survey-panel row) | — | MODIFY | Per-row red exclamation icon + tooltip for sync problems (Amendment #7); no separate inbox panel |
 
 ### Stage 2 — Tombstones, trash, history
 | File | Site | Touch | Change |
