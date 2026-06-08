@@ -247,6 +247,7 @@ import { createCounterDragPreview, removeCounterDragPreview, updateCounterDragPr
 import { renderAnnotationHydrationPageCover } from './components/annotationHydrationCover';
 import { getExportErrorMessage, isFileLocked } from './utils/exportHelpers';
 import { buildTrackpadInteractionDebugSummaryText, summarizeOverlayLagSamples } from './utils/overlayDebug';
+import { EXCEL_AUTOMATIC_WRITEBACK_ENABLED, isSilentWritebackBlocked } from './utils/excelWritebackGate';
 
 export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, isActive, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
@@ -11770,6 +11771,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return;
     }
 
+    // Stage 0 safety switch: block all AUTOMATIC (silent) whole-workbook writeback
+    // until the safe patch-writer ships. Record the survey as "not synced to Excel
+    // yet" so we never silently pretend it reached Excel. Manual (non-silent)
+    // export is allowed through.
+    if (isSilentWritebackBlocked(silent)) {
+      if (selectedTemplate?.linkedExcelPath) {
+        setHasPendingExcelSyncChanges(true);
+      }
+      debugLog('Excel automatic writeback disabled (Stage 0 safety switch) — survey marked not-synced; skipping silent whole-file upload.');
+      return;
+    }
+
     // Set loading state (only for non-silent exports)
     if (!silent) {
       setIsExporting(true);
@@ -14779,8 +14792,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Live sync push to Excel
   // Supports both session-based (cell-level updates) and fallback (full file upload via Graph API)
   useEffect(() => {
-    // Need either session-based or fallback mode to be active
-    const canPush = liveSyncEnabled && oneDriveFileId && graphClient && liveSyncStatus === 'connected' &&
+    // Need either session-based or fallback mode to be active.
+    // Stage 0 safety switch: automatic live-sync writeback is disabled until the
+    // safe patch-writer ships, so this never runs (and never falsely reports
+    // "Live synced") while the switch is off.
+    const canPush = EXCEL_AUTOMATIC_WRITEBACK_ENABLED &&
+      liveSyncEnabled && oneDriveFileId && graphClient && liveSyncStatus === 'connected' &&
       (excelSessionId || useFallbackSync);
 
     if (!canPush) {
@@ -17421,8 +17438,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // existing SyncStatusChip and [PDFSaveExport] diagnostics provide
       // non-blocking confirmation that app/cloud state saved.
 
-      // Check if we should sync to linked Excel file
+      // Check if we should sync to linked Excel file.
+      // Stage 0 safety switch: while automatic writeback is disabled we neither
+      // auto-push nor show the "sync now?" modal — the survey simply stays marked
+      // not-synced. The dedicated manual "Sync to Excel" action still works.
       const shouldOfferExcelSync = (
+        EXCEL_AUTOMATIC_WRITEBACK_ENABLED &&
         !silent &&
         features?.excelExport &&
         selectedTemplate?.linkedExcelPath &&
