@@ -72,6 +72,7 @@ import { fromFabricGroup, toFabricGroup } from './utils/calloutEditAdapter';
 import { getActivePageRegionId, getPageAnnotationVisibilityState, normalizePageRegions, normalizeRegionVisibility } from './utils/annotationVisibilityRules';
 import { getCalloutSyncFingerprint } from './utils/calloutSyncPayload';
 import { isPlacedSurveyMarker } from './services/surveyMarkerSyncDiff';
+import { forceUnplacedImportedMarker, freezeGeometryFromOriginal } from './services/importFieldWhitelist';
 import { getCounterSeriesList, pickNextSeriesColor, renumberCounters } from './utils/counterNumbering';
 import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug, summarizeHistoryDelta, summarizeHistorySnapshot } from './utils/historyHelpers';
 import { getHistoryOrder, shouldRedoLocalBeforeLegacy, shouldUndoLocalBeforeLegacy } from './utils/historyStacks';
@@ -13211,7 +13212,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
           if (changed) {
             updatesCount++;
-            newSurveyMarkers[key] = { ...ann };
+            // Attribute-only import: never let Excel change a marker's geometry.
+            newSurveyMarkers[key] = freezeGeometryFromOriginal({ ...ann }, surveyMarkers[key]);
           }
         } else {
           // Create new surveyMarker for new row
@@ -13266,7 +13268,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             excelRowIndex: i  // Store Excel row index for ordering
           };
 
-          newSurveyMarkers[newSurveyMarkerId] = newSurveyMarker;
+          // Imported rows are always unplaced proposals (no geometry) — they
+          // appear in the Survey panel with the orange locate button.
+          newSurveyMarkers[newSurveyMarkerId] = forceUnplacedImportedMarker(newSurveyMarker);
           updatesCount++;
         }
       }
@@ -13652,7 +13656,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
           if (changed) {
             updatesCount++;
-            newSurveyMarkers[key] = { ...ann };
+            // Attribute-only import: never let Excel change a marker's geometry.
+            newSurveyMarkers[key] = freezeGeometryFromOriginal({ ...ann }, surveyMarkers[key]);
           }
         } else {
           // Create new surveyMarker for new row
@@ -13707,7 +13712,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             excelRowIndex: i  // Store Excel row index for ordering
           };
 
-          newSurveyMarkers[newSurveyMarkerId] = newSurveyMarker;
+          // Imported rows are always unplaced proposals (no geometry) — they
+          // appear in the Survey panel with the orange locate button.
+          newSurveyMarkers[newSurveyMarkerId] = forceUnplacedImportedMarker(newSurveyMarker);
           updatesCount++;
         }
       }
