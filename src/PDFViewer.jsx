@@ -74,6 +74,7 @@ import { getCalloutSyncFingerprint } from './utils/calloutSyncPayload';
 import { isPlacedSurveyMarker } from './services/surveyMarkerSyncDiff';
 import { forceUnplacedImportedMarker, freezeGeometryFromOriginal } from './services/importFieldWhitelist';
 import { stampExportAck, wasReceivedByExcel } from './services/excelExportAck';
+import { loadBaseline, saveBaseline, clearBaseline } from './services/excelSyncBaselineStore';
 import { getCounterSeriesList, pickNextSeriesColor, renumberCounters } from './utils/counterNumbering';
 import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug, summarizeHistoryDelta, summarizeHistorySnapshot } from './utils/historyHelpers';
 import { getHistoryOrder, shouldRedoLocalBeforeLegacy, shouldUndoLocalBeforeLegacy } from './utils/historyStacks';
@@ -9455,7 +9456,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const clearExcelSyncCheckpoint = useCallback(() => {
     lastExcelSyncFingerprintRef.current = null;
     setHasPendingExcelSyncChanges(false);
-  }, []);
+    clearBaseline(pdfId, selectedTemplate?.supabaseId || selectedTemplate?.id);
+  }, [pdfId, selectedTemplate?.supabaseId, selectedTemplate?.id]);
 
   const markExcelSyncCheckpoint = useCallback((templateOverride = null, surveyMarkersOverride = null) => {
     const templateForSync = templateOverride || selectedTemplate;
@@ -9468,8 +9470,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const fingerprint = computeExcelSyncFingerprint(templateForSync, annotationsForSync);
     lastExcelSyncFingerprintRef.current = fingerprint.hash;
     setHasPendingExcelSyncChanges(false);
+    // Persist the baseline so the synced/not-synced signal survives a reload
+    // (instead of fail-closing to "not synced" every reopen).
+    saveBaseline(pdfId, templateForSync.supabaseId || templateForSync.id, fingerprint.hash);
     return fingerprint.hash;
-  }, [clearExcelSyncCheckpoint, selectedTemplate]);
+  }, [clearExcelSyncCheckpoint, selectedTemplate, pdfId]);
 
   // Called only on a successful export to the linked Excel workbook. Stamps every
   // exported marker with an `exportedAt` acknowledgment (the durable "this reached
@@ -9484,6 +9489,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [markExcelSyncCheckpoint]);
 
   useEffect(() => {
+    // After a reload the in-memory baseline is null; rehydrate it from durable
+    // storage so a survey that was genuinely synced doesn't read as not-synced.
+    if (!lastExcelSyncFingerprintRef.current && selectedTemplate?.linkedExcelPath) {
+      const stored = loadBaseline(pdfId, selectedTemplate?.supabaseId || selectedTemplate?.id);
+      if (stored) lastExcelSyncFingerprintRef.current = stored;
+    }
     const pending = computeHasPendingExcelSyncChanges({
       template: selectedTemplate,
       surveyMarkers,
@@ -9491,6 +9502,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
     setHasPendingExcelSyncChanges(pending);
   }, [
+    pdfId,
     selectedTemplate?.id,
     selectedTemplate?.supabaseId,
     selectedTemplate?.linkedExcelPath,
