@@ -15,7 +15,12 @@
 // the Excel-sync dirty fingerprint (see excelSyncDirtyState.js) — stamping them
 // must never make a freshly-synced survey look unsynced again.
 
-export const EXPORT_ACK_FIELDS = Object.freeze(['exportedAt', 'exportAckEtag']);
+// `excelSync` is the durable per-marker identity record stamped at export
+// (excelIdentityRecord.js) — fingerprints + last-export id used by the import
+// matcher. Like the ack timestamp it is sync bookkeeping, not user content, so it
+// is stripped from the dirty fingerprint: stamping it must never make a freshly
+// synced survey read as having pending changes again.
+export const EXPORT_ACK_FIELDS = Object.freeze(['exportedAt', 'exportAckEtag', 'excelSync']);
 
 /**
  * Return a new survey-marker map with every marker stamped as exported.

@@ -70,5 +70,7 @@ test('a real user edit after export still flags pending', () => {
 });
 
 test('EXPORT_ACK_FIELDS is the documented bookkeeping set', () => {
-  assert.deepEqual([...EXPORT_ACK_FIELDS], ['exportedAt', 'exportAckEtag']);
+  // `excelSync` is the durable per-marker identity record (excelIdentityRecord.js),
+  // sync bookkeeping like the ack timestamp — stripped from the dirty fingerprint.
+  assert.deepEqual([...EXPORT_ACK_FIELDS], ['exportedAt', 'exportAckEtag', 'excelSync']);
 });

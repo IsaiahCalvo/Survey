@@ -74,6 +74,7 @@ import { getCalloutSyncFingerprint } from './utils/calloutSyncPayload';
 import { isPlacedSurveyMarker } from './services/surveyMarkerSyncDiff';
 import { forceUnplacedImportedMarker, freezeGeometryFromOriginal } from './services/importFieldWhitelist';
 import { stampExportAck, wasReceivedByExcel } from './services/excelExportAck';
+import { buildMarkerIdentityRecords, applyMarkerIdentityRecords } from './services/excelIdentityRecord';
 import { loadBaseline, saveBaseline, clearBaseline } from './services/excelSyncBaselineStore';
 import { generateRowIdToken } from './services/rowIdToken';
 import { getOrCreateDocumentSecret } from './services/rowIdSecretStore';
@@ -9502,9 +9503,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Excel" record that the received-only delete rule will rely on) and records the
   // sync checkpoint from the stamped markers. The ack fields are excluded from the
   // dirty fingerprint, so this does NOT make the just-synced survey look dirty.
-  const markExcelExportSynced = useCallback((templateOverride = null) => {
+  const markExcelExportSynced = useCallback((templateOverride = null, identityRecordsByMarkerId = null) => {
     const exportedAt = new Date().toISOString();
-    const stamped = stampExportAck(surveyMarkersRef.current || {}, { exportedAt });
+    let stamped = stampExportAck(surveyMarkersRef.current || {}, { exportedAt });
+    // Stamp the durable per-marker identity record (fingerprints + last-export id)
+    // onto every marker actually written as a row, so the next import's matcher can
+    // recover lost Row IDs by content and detect what changed. Stripped from the
+    // dirty fingerprint, so this does not make the just-synced survey look dirty.
+    if (identityRecordsByMarkerId && typeof identityRecordsByMarkerId === 'object') {
+      stamped = applyMarkerIdentityRecords(stamped, identityRecordsByMarkerId);
+    }
     setSurveyMarkers(stamped);
     return markExcelSyncCheckpoint(templateOverride, stamped);
   }, [markExcelSyncCheckpoint]);
@@ -11931,6 +11939,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // per-document signing secret lives in the app store, never in the workbook.
       const rowIdScopeId = (moduleId, categoryId) => `${String(moduleId)}:${String(categoryId)}`;
       const rowIdDocumentId = `${pdfFile?.id || 'local'}:${pdfId || pdfFile?.name || 'pdf'}`;
+      // Id of THIS export — stamped into each written marker's identity record so the
+      // importer knows which export the row came from (and, later, the stale gate).
+      const rowIdExportId = new Date().toISOString();
+      // Per-marker visible values actually written to a row, captured during the row
+      // build so the identity fingerprints are computed from the same strings the
+      // importer reads back out of the cells. markerId → { values: {...} }.
+      const markerRowValuesById = new Map();
       let rowIdSigning = null;
       try {
         rowIdSigning = getOrCreateDocumentSecret(rowIdDocumentId);
@@ -12085,10 +12100,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               const moduleData = matchingItem?.[moduleDataKey] || {};
 
               // Checklist responses (Y/N/N/A) - use survey marker annotation data
+              const rowAnswers = {};
               checklistItems.forEach(checklistItem => {
                 const response = surveyMarkerChecklistResponses[checklistItem.id];
                 const selection = response?.selection || '';
                 row.push(selection);
+                rowAnswers[checklistItem.id] = selection;
               });
 
               // Entity - check survey marker annotation first, then item module data
@@ -12121,6 +12138,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               // Notes - get item-level note from survey marker annotation
               const itemNote = actualSurveyMarker?.note?.text || '';
               row.push(itemNote);
+
+              // Capture the exact visible values written to this row, keyed by marker
+              // id, so we can fingerprint them identically on import. Skip rows with no
+              // marker id (defensive — every survey row has one).
+              if (annotationId) {
+                markerRowValuesById.set(annotationId, {
+                  values: {
+                    changedBy,
+                    changedDate: formattedDate,
+                    item: surveyMarkerName,
+                    entity: entityName,
+                    notes: itemNote,
+                    answers: rowAnswers
+                  }
+                });
+              }
 
               dataRows.push(row);
             });
@@ -12380,6 +12413,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         });
       }
 
+      // Durable per-marker identity records (fingerprints of the exact visible row
+      // values + this export's id), keyed by marker id. Stamped onto the markers on a
+      // successful save so the next import's matcher can recover lost Row IDs by
+      // content and detect what changed. Computed from the captured row values so the
+      // import-side recompute matches byte-for-byte.
+      const identityRecordsByMarkerId = await buildMarkerIdentityRecords({
+        rows: Array.from(markerRowValuesById, ([markerId, entry]) => ({ markerId, values: entry.values })),
+        exportId: rowIdExportId
+      });
+
       // NOTE: we deliberately do NOT lock the Row ID column or protect the sheet.
       // Excel sort physically rewrites every column in a row (including a locked one),
       // so locking Row ID makes Excel block sorting AND filtering of the table
@@ -12495,7 +12538,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
             // Mark that linked Excel file exists (ensures dropdown menu shows)
             setLinkedExcelExists(true);
-            markExcelExportSynced(updatedTemplate);
+            markExcelExportSynced(updatedTemplate, identityRecordsByMarkerId);
 
             if (!silent) {
               setIsExporting(false);
@@ -12522,7 +12565,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           const fileName = sanitizeFilename(selectedTemplate?.name || 'survey', 'survey');
           setExportPendingData({
             buffer: workbookBuffer,
-            fileName: fileName
+            fileName: fileName,
+            identityRecords: identityRecordsByMarkerId
           });
           // Keep isExporting true - modal buttons will reset it when export completes
           setShowExportLocationModal(true);
@@ -13095,7 +13139,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       // Mark that linked Excel file exists (enables dropdown menu)
       setLinkedExcelExists(true);
-      markExcelExportSynced(updatedTemplate);
+      markExcelExportSynced(updatedTemplate, exportPendingData?.identityRecords || null);
 
       // Persist to Supabase
       const supabaseTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id;
@@ -32983,7 +33027,7 @@ ${pageBlocks}
                       }
 
                       setLinkedExcelExists(true);
-                      markExcelExportSynced(updatedTemplate);
+                      markExcelExportSynced(updatedTemplate, exportPendingData?.identityRecords || null);
                       alert('Export to computer successful!');
                     }
                   } catch (error) {
