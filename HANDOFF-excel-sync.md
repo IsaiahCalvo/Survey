@@ -35,6 +35,15 @@ Three Stage 0 safety slices are now committed (direct-to-main; not pushed):
 
 Full suite **946 pass / 0 fail / 6 skipped**, `npx vite build` clean.
 
+**Stage 0 continued (committed on local `main`, 2026-06-08):**
+4. `85e9056d` — **writeback safety switch**: all automatic (silent) whole-workbook upload disabled until the patch-writer ships; survey honestly marked "not synced to Excel yet"; manual export untouched (`src/utils/excelWritebackGate.js`).
+5. `0eff390e` — **attribute-only import boundary**: imports can never place/move a marker or write geometry; new rows forced unplaced (`src/services/importFieldWhitelist.js`).
+6. `9e62fb52` — **export-acknowledgment stamping**: every exported marker stamped `exportedAt` on a successful export; ack fields excluded from the dirty fingerprint so it never re-dirties (`src/services/excelExportAck.js`).
+7. `372a31b5` — **received-only delete narrowing**: an import never erases a marker the app made but never exported (no `exportedAt`); strictly narrows deletions toward Amendment #1.
+8. `59e19b5a` — **durable baseline**: synced/not-synced state persists across reloads (`src/services/excelSyncBaselineStore.js`); still fail-closed when absent.
+
+Suite **969 pass / 0 fail / 6 skipped**, build clean.
+
 ---
 
 ## Engine foundation detail (slice 1)
@@ -55,15 +64,17 @@ The corruption fix's **foundation**: the durable survey-marker reconcile is now 
 
 ## NEXT STEP (recommended — start here)
 
-**Done so far (Stage 0):** placed-marker import guard (slice 2) and the silent open-time import gate (slice 3). **Still to close in Stage 0**, in `src/PDFViewer.jsx` (high-risk, ~34k lines — minimum-viable-diff, `npm test` after, report baseline):
+**Most of Stage 0's safety floor is now in (slices 2–8 above).** What's left:
 
-1. **Writeback kill-switch (highest value next):** disable automatic full-file re-upload + live-sync writeback (the old whole-workbook rebuild) until Stage 3's safe patch-writer + queue land; leave only manual export-to-a-clean-copy. In the import transaction, **whitelist writable fields** (answers/name/note/entity) so an import can never set geometry or introduce a placed marker; treat `protectedIds` as write-protected for imports.
-2. Thread a real `origin: 'excel-import'` through the capture effect (`useAnnotationDoc` → `applySurveyMarkers`) during import so the durable Y.Doc gets the additive guard too (defense-in-depth; today the import path still flows through the default `'local'` origin even though the engine supports `'excel-import'`).
-3. Persist the last-synced baseline durably (today it's an in-memory ref lost on reload) so the dirty check isn't falsely true after every reopen; replace the `selectedTemplate.updatedAt` watermark with a workbook **eTag + content hash**; keep failing closed to "review required" when no baseline exists.
-4. Add per-marker export-acknowledgment metadata (`exportedAt` / `exportAckEtag` / `createdByApp`) — the prerequisite for **Amendment #1** (Excel may delete only items it previously received). The current "never delete a placed marker" guard stays until this exists, then is replaced by the received-only rule.
-5. Stand up the sync journal (a new service + a Supabase audit table).
+1. **Sync journal** — a structured record of every sync action (origin, prevented deletions, writeback-blocked, queue depth, etc.) into a new Supabase audit table + a small client service. Needs a backend table, so it can't be fully self-verified locally; confirm the migration approach before building.
+2. **Row-level status UI** (Amendment #7) — surface the honest "not synced yet" / "needs your choice" state as the red circled-exclamation icon on the Survey-panel row (asset at `/Users/isaiahcalvo/Downloads/exclamation-circle-svgrepo-com.svg`). Deferred from the safety-switch slice; this is the visible payoff of the now-honest not-synced state.
+3. **eTag + content-hash watermark** — replace the remaining `selectedTemplate.updatedAt` timestamp comparison in `loadLatestSurveyData` with a workbook eTag + content hash (the durable baseline + dirty gate already neutralized the worst of it).
 
-**Pre-Stage-0 test gates:** never-delete-placed-marker ✅ done; durable-baseline (fail-closed) ✅ done; still to add — an **auto-save-never-pushes-Excel** test (silent save never reaches `pushToExcelWithRetry`), which pairs with the writeback kill-switch.
+**Deferred (entangled):** threading `origin:'excel-import'` through the capture effect to make the durable Y.Doc additive-on-import conflicts with imports still doing legitimate narrowed deletions in React state (durable additive + React delete → marker reappears on reload). Revisit once the delete model is unified.
+
+**Then Stage 2** (recoverable tombstones + 30-day trash + history) is what actually *enables* Excel-origin deletes — until then the import deletes only unplaced, previously-received, absent rows, and even those should become recoverable.
+
+**Pre-Stage-0 test gates:** never-delete-placed-marker ✅; durable-baseline (fail-closed) ✅; the writeback switch's `excelWritebackGate` test covers auto-save-never-pushes ✅.
 **Pre-Stage-1 gate:** a builder-output snapshot test that freezes today's sheet names / header + column order / `_SurveyMetadata` cells / column widths / colors — it must exist before any Stage 1 builder/parser change (it also guards the Stage 3 cutover). **Per Amendment #5 the snapshot now also forbids any new hidden column/row on a visible sheet** — identity metadata goes only in `_SurveyMetadata` + the app record.
 
 After Stage 0: **Stage 1** (full-row fingerprints for every row + identity in `_SurveyMetadata`/app-record — *no hidden visible-sheet columns*; the shared `SYSTEM_COLUMNS` skip-list de-dup; **clean new rows straight to the Survey panel as unplaced items**; duplicate names allowed, only broken identity asks "Needs your choice"; one-time unambiguous-only identity backfill), **Stage 2** (tombstones + 30-day trash + history), **Stage 3** (patch-only writes + durable outbound queue + Graph concurrency — spike gate + the 3-setup capability proofs from Amendment #8), **Stage 4** (conflict = same field both sides + per-field LWW), **Stage 5** (quiet collab UX + the per-row red exclamation icon), **Stage 6** (live cadence). See `PLAN.md` (amendments govern).
