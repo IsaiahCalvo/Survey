@@ -110,6 +110,9 @@ function trimPayload(payload) {
       annotationType: payload?.annotationType || null,
       annotationId: payload?.annotationId || null,
       pageNumber: payload?.pageNumber ?? null,
+      // Restore data must survive trimming or a deleted item becomes
+      // unrecoverable from History. A single-marker restoreAction is small.
+      restoreAction: payload?.restoreAction || null,
     };
   }
   if (serialized.length <= MAX_PAYLOAD_CHARS) return payload || {};
@@ -125,6 +128,8 @@ function trimPayload(payload) {
     pageNumber: payload?.pageNumber ?? null,
     lane: payload?.lane || null,
     reason: payload?.reason || null,
+    // Preserve restore data even when the rest of the payload is trimmed.
+    restoreAction: payload?.restoreAction || null,
   };
 }
 

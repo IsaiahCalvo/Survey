@@ -77,6 +77,7 @@ import { stampExportAck, wasReceivedByExcel } from './services/excelExportAck';
 import { loadBaseline, saveBaseline, clearBaseline } from './services/excelSyncBaselineStore';
 import { makeTombstone, addTombstone, removeTombstone, purgeExpired } from './services/surveyMarkerTrash';
 import { loadTrash, saveTrash } from './services/surveyMarkerTrashStore';
+import { buildSurveyMarkerDeleteHistoryRow, applySurveyMarkerRestore } from './services/surveyMarkerHistory';
 import { getCounterSeriesList, pickNextSeriesColor, renumberCounters } from './utils/counterNumbering';
 import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug, summarizeHistoryDelta, summarizeHistorySnapshot } from './utils/historyHelpers';
 import { getHistoryOrder, shouldRedoLocalBeforeLegacy, shouldUndoLocalBeforeLegacy } from './utils/historyStacks';
@@ -9514,6 +9515,33 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, [pdfId]);
 
+  // Record a restorable "deleted Survey Marker" event into the document History
+  // timeline so it appears (with a Restore button) in the existing History panel.
+  // `deletedList` is [{ id, marker }]; one event per marker keeps each restore
+  // payload tiny. Best-effort — never blocks the delete.
+  const recordSurveyMarkerDeleteHistory = useCallback((deletedList, origin = 'app') => {
+    const documentId = pdfFile?.id;
+    if (!documentId || !Array.isArray(deletedList) || deletedList.length === 0) return;
+    const actorName = user?.email || user?.user_metadata?.full_name || 'Someone';
+    const deletedAt = new Date().toISOString();
+    deletedList.forEach(({ id, marker }) => {
+      if (!id || !marker) return;
+      try {
+        const row = buildSurveyMarkerDeleteHistoryRow({
+          markerId: id, marker, documentId, userId: user?.id || null, actorName, origin, deletedAt,
+        });
+        try {
+          window.dispatchEvent(new CustomEvent('document-history:event-recorded', { detail: { documentId, row } }));
+        } catch {
+          // live refresh is best-effort; persistence still runs
+        }
+        void recordDocumentHistoryEvent(row);
+      } catch (histErr) {
+        console.warn('Failed to record Survey Marker delete history:', histErr);
+      }
+    });
+  }, [pdfFile?.id, user?.id, user?.email]);
+
   useEffect(() => {
     // After a reload the in-memory baseline is null; rehydrate it from durable
     // storage so a survey that was genuinely synced doesn't read as not-synced.
@@ -13412,6 +13440,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       console.warn('Failed to tombstone import-removed Survey Marker(s):', tombErr);
     }
 
+    // Surface import-driven deletes in the History panel as restorable events.
+    recordSurveyMarkerDeleteHistory(
+      surveyMarkersToDelete.map(({ key, ann }) => ({ id: key, marker: ann })),
+      'excel-import'
+    );
+
     // Process deletions
     const itemsToDelete = [];
     surveyMarkersToDelete.forEach(({ key, ann }) => {
@@ -13878,6 +13912,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     } catch (tombErr) {
       console.warn('Failed to tombstone import-removed Survey Marker(s):', tombErr);
     }
+
+    // Surface import-driven deletes in the History panel as restorable events.
+    recordSurveyMarkerDeleteHistory(
+      surveyMarkersToDelete.map(({ key, ann }) => ({ id: key, marker: ann })),
+      'excel-import'
+    );
 
     // Process deletions
     const itemsToDelete = [];
@@ -20736,7 +20776,51 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleRestoreHistoryActivity = useCallback((event) => {
     const restoreAction = event?.payload?.restoreAction;
-    if (!restoreAction || !restoreAction.type || !restoreAction.pageNumber) {
+    if (!restoreAction || !restoreAction.type) {
+      return { ok: false, reason: 'restore-unavailable' };
+    }
+
+    // Survey Marker restore: rebuild the full marker (Survey Panel row, checklist
+    // answers, name, notes, entity, page number, and PDF bounds). The marker is
+    // marked app-restored / pending sync (its Excel acknowledgment is cleared) so
+    // the next import can't immediately re-delete it just because the Excel row is
+    // still missing — it becomes Excel-deletable again only after a successful
+    // export. Its tombstone is dropped and, if it was placed, it is redrawn.
+    if (restoreAction.type === 'surveyMarker') {
+      const result = applySurveyMarkerRestore(
+        surveyMarkersRef.current || {},
+        restoreAction,
+        { restoredAt: new Date().toISOString() }
+      );
+      if (!result) return { ok: false, reason: 'restore-unavailable' };
+      const { markerId, marker } = result;
+      setSurveyMarkers(result.surveyMarkers);
+      try {
+        const trash = loadTrash(pdfId);
+        if (trash && trash[markerId]) saveTrash(pdfId, removeTombstone(trash, markerId));
+      } catch {
+        // tombstone cleanup is best-effort
+      }
+      const pageNumber = Number(marker.pageNumber);
+      if (Number.isFinite(pageNumber) && marker.bounds) {
+        const b = marker.bounds;
+        setNewSurveyMarkersByPage(prev => {
+          const list = Array.isArray(prev?.[pageNumber]) ? prev[pageNumber] : [];
+          if (list.some(h => h.annotationId === markerId)) return prev;
+          return {
+            ...prev,
+            [pageNumber]: [...list, {
+              annotationId: markerId,
+              x: b.x, y: b.y, width: b.width, height: b.height,
+              angle: Number(b.angle) || 0,
+            }],
+          };
+        });
+      }
+      return { ok: true, pageNumber: Number.isFinite(pageNumber) ? pageNumber : null };
+    }
+
+    if (!restoreAction.pageNumber) {
       return { ok: false, reason: 'restore-unavailable' };
     }
     const current = annotationsByPageRef.current || {};
@@ -20756,7 +20840,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       restoredFromHistoryEventId: event?.client_event_id || event?.id || null,
     });
     return { ok: true, pageNumber };
-  }, [handleSaveAnnotations]);
+  }, [handleSaveAnnotations, pdfId]);
 
   // Embedded import — exactly once per document, durably.
   //
@@ -22620,6 +22704,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       } catch (tombErr) {
         console.warn('Failed to tombstone Survey Marker(s) before delete:', tombErr);
       }
+
+      // Surface the delete in the History panel as a restorable event.
+      recordSurveyMarkerDeleteHistory(
+        surveyMarkersToDelete.map(({ id, surveyMarker }) => ({ id, marker: surveyMarker })),
+        'app'
+      );
 
       // Delete from surveyMarkers
       setSurveyMarkers(prev => {
