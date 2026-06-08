@@ -1,0 +1,444 @@
+===== SurveyApp Save Log =====
+version:   0.1.46
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1203x833
+locale:    en-US
+timestamp: 2026-06-08T19:02:51.011Z (6/8/2026, 3:02:51 PM)
+==============================
+[OpenTiming] doc-click @ 6978ms sync-test.pdf
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[OpenTiming] pdfid-resolve @ 9070ms sync-test.pdf-2489
+[OpenTiming] pdfid-resolve @ 9086ms sync-test.pdf-2489
+[InteractionDiag] interactive-ready @ 9195ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 9200ms pdfId=sync-test.pdf-2489
+[InteractionDiag] tool-changed @ 11136ms from=pan to=select
+[DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-changed @ 11173ms from=select to=survey-marker
+[OpenTiming] pdfid-resolve @ 11174ms sync-test.pdf-2489
+[OpenTiming] first-marks-painted @ 11175ms pdfId=sync-test.pdf-2489
+[OpenTiming] pdfid-resolve @ 11206ms sync-test.pdf-2489
+[OpenTiming] first-marks-painted @ 11212ms pdfId=sync-test.pdf-2489
+[InteractionDiag] tool-changed @ 11226ms from=survey-marker to=pan (pan-active → Syncfusion interactionMode=Pan)
+[DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-changed @ 19419ms from=pan to=survey-marker
+[OpenTiming] pdfid-resolve @ 19420ms sync-test.pdf-2489
+[OpenTiming] first-marks-painted @ 19421ms pdfId=sync-test.pdf-2489
+[OpenTiming] pdfid-resolve @ 19438ms sync-test.pdf-2489
+[OpenTiming] first-marks-painted @ 19454ms pdfId=sync-test.pdf-2489
+[InteractionDiag] tool-changed @ 19469ms from=survey-marker to=pan (pan-active → Syncfusion interactionMode=Pan)
+[OpenTiming] doc-click @ 45828ms Benjamin Franklin Elementary.pdf
+[OpenTiming] pdfid-resolve @ 46004ms Benjamin Franklin Elementary.pdf-2401034
+[OpenTiming] pdfid-resolve @ 46022ms Benjamin Franklin Elementary.pdf-2401034
+[InteractionDiag] interactive-ready @ 46341ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 46449ms pdfId=Benjamin Franklin Elementary.pdf-2401034
+[DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p4] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p4] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-changed @ 48651ms from=pan to=survey-marker
+[OpenTiming] pdfid-resolve @ 48652ms Benjamin Franklin Elementary.pdf-2401034
+[OpenTiming] first-marks-painted @ 48654ms pdfId=Benjamin Franklin Elementary.pdf-2401034
+[OpenTiming] pdfid-resolve @ 48712ms Benjamin Franklin Elementary.pdf-2401034
+[OpenTiming] first-marks-painted @ 48713ms pdfId=Benjamin Franklin Elementary.pdf-2401034
+[InteractionDiag] tool-changed @ 48729ms from=survey-marker to=pan (pan-active → Syncfusion interactionMode=Pan)
+=== PAGE RELOAD (navigation) @ 2026-06-08T17:29:00.442Z ===
+[OpenTiming] doc-click @ 3564684ms sync-test.pdf
+[OpenTiming] pdfid-resolve @ 3565695ms sync-test.pdf-2489
+[OpenTiming] pdfid-resolve @ 3565714ms sync-test.pdf-2489
+[InteractionDiag] interactive-ready @ 3565830ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 3565839ms pdfId=sync-test.pdf-2489
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-changed @ 3567982ms from=pan to=survey-marker
+[OpenTiming] pdfid-resolve @ 3567987ms sync-test.pdf-2489
+[OpenTiming] first-marks-painted @ 3567988ms pdfId=sync-test.pdf-2489
+[OpenTiming] pdfid-resolve @ 3568056ms sync-test.pdf-2489
+[OpenTiming] first-marks-painted @ 3568064ms pdfId=sync-test.pdf-2489
+[InteractionDiag] tool-changed @ 3568102ms from=survey-marker to=pan (pan-active → Syncfusion interactionMode=Pan)
+=== PAGE RELOAD (navigation) @ 2026-06-08T18:28:37.281Z ===
+[OpenTiming] doc-click @ 2887ms sync-test.pdf
+[OpenTiming] pdfid-resolve @ 4479ms sync-test.pdf-2489
+[OpenTiming] pdfid-resolve @ 4500ms sync-test.pdf-2489
+[InteractionDiag] interactive-ready @ 5566ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 5575ms pdfId=sync-test.pdf-2489
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[OpenTiming] pdfid-resolve @ 166322ms sync-test.pdf-2489
+[InteractionDiag] interactive-ready @ 166561ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 166565ms pdfId=sync-test.pdf-2489
+[OpenTiming] pdfid-resolve @ 173316ms sync-test.pdf-2489
+%c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +25ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +25ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +166ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +166ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +175ms] Page sizes calculated (3 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +175ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +175ms] PDF ready for rendering color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 173498ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 173501ms pdfId=sync-test.pdf-2489
+[OpenTiming] pdfid-resolve @ 195008ms sync-test.pdf-2489
+%c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +20ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +20ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +226ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +226ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +238ms] Page sizes calculated (3 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +238ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +238ms] PDF ready for rendering color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 195251ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 195256ms pdfId=sync-test.pdf-2489
+[OpenTiming] pdfid-resolve @ 207015ms sync-test.pdf-2489
+%c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +22ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +22ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +22ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +22ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +228ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +229ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +241ms] Page sizes calculated (3 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +242ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +242ms] PDF ready for rendering color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 207268ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 207275ms pdfId=sync-test.pdf-2489
+[OpenTiming] pdfid-resolve @ 214926ms sync-test.pdf-2489
+%c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +36ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +36ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +37ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +37ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +222ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +222ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +230ms] Page sizes calculated (3 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +230ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +230ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +230ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 215161ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 215165ms pdfId=sync-test.pdf-2489
+[OpenTiming] pdfid-resolve @ 222252ms sync-test.pdf-2489
+%c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +19ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +20ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +20ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +20ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +219ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +219ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +229ms] Page sizes calculated (3 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +230ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +230ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +230ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 222486ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 222490ms pdfId=sync-test.pdf-2489
+[OpenTiming] pdfid-resolve @ 238510ms sync-test.pdf-2489
+%c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +20ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +30ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +30ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +30ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +30ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +204ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +204ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +213ms] Page sizes calculated (3 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +213ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +213ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +214ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 238728ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 238732ms pdfId=sync-test.pdf-2489
+[OpenTiming] pdfid-resolve @ 243524ms sync-test.pdf-2489
+%c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +15ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +25ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +25ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +25ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +25ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +230ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +231ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +250ms] Page sizes calculated (3 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +251ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +251ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +251ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 243785ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 243791ms pdfId=sync-test.pdf-2489
+=== PAGE RELOAD (navigation) @ 2026-06-08T18:35:26.792Z ===
+[OpenTiming] doc-click @ 2069ms sync-test.pdf
+[OpenTiming] pdfid-resolve @ 3648ms sync-test.pdf-2489
+%c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +0ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+[OpenTiming] pdfid-resolve @ 3667ms sync-test.pdf-2489
+%c[LOAD-TRACE +24ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +25ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +25ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +25ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +353ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +353ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +365ms] Page sizes calculated (3 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +365ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +366ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +366ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 4023ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 4032ms pdfId=sync-test.pdf-2489
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-changed @ 7085ms from=pan to=survey-marker
+[OpenTiming] pdfid-resolve @ 7094ms sync-test.pdf-2489
+[OpenTiming] first-marks-painted @ 7100ms pdfId=sync-test.pdf-2489
+[OpenTiming] pdfid-resolve @ 7192ms sync-test.pdf-2489
+[OpenTiming] first-marks-painted @ 7200ms pdfId=sync-test.pdf-2489
+[InteractionDiag] tool-changed @ 7239ms from=survey-marker to=pan (pan-active → Syncfusion interactionMode=Pan)
+[SaveLog] bulletproof local snapshot saved at /Users/isaiahcalvo/Documents/Projects/Active/Survey-BetaSafeS2/Logs/2026-06-08_18-35-40
+[SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"hasGhTokenEnv":true,"payloadLength":15551}
+[SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"hasGhTokenEnv":true,"payloadLength":15551}
+[SaveLogBanner] GitHub push OK {"url":"https://github.com/IsaiahCalvo/Survey/blob/logs/mac-isaiahs-macbook-pro-2026-06-08T18-35-45-788Z.log","filename":"mac-isaiahs-macbook-pro-2026-06-08T18-35-45-788Z.log"}
+[SaveLogBanner] GitHub push OK {"url":"https://github.com/IsaiahCalvo/Survey/blob/logs/mac-isaiahs-macbook-pro-2026-06-08T18-35-45-805Z-68962-mq5jxa21-1.log","filename":"mac-isaiahs-macbook-pro-2026-06-08T18-35-45-805Z-68962-mq5jxa21-1.log"}
+[OpenTiming] pdfid-resolve @ 214632ms sync-test.pdf-2489
+%c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +19ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +23ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +23ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +23ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +23ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +211ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +212ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +222ms] Page sizes calculated (3 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +222ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +222ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +222ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 214863ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 214867ms pdfId=sync-test.pdf-2489
+[OpenTiming] pdfid-resolve @ 241043ms sync-test.pdf-2489
+%c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +72ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +75ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +76ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +77ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +82ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +416ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +417ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +425ms] Page sizes calculated (3 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +425ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +425ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +425ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 241478ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 241482ms pdfId=sync-test.pdf-2489
+[OpenTiming] pdfid-resolve @ 256747ms sync-test.pdf-2489
+%c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +1ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+[OpenTiming] pdfid-resolve @ 256768ms sync-test.pdf-2489
+%c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +0ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+[OpenTiming] pdfid-resolve @ 256775ms sync-test.pdf-2489
+%c[LOAD-TRACE +11ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +11ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +11ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +11ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +26ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +26ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +26ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +26ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +194ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +194ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +198ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +204ms] Page sizes calculated (3 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +204ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +204ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +204ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 256976ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 256981ms pdfId=sync-test.pdf-2489
+console.error @ [useAnnotationDoc] open failed cannot add `postgres_changes` callbacks for realtime:anno-43c92ebc-8ae9-4aec-bd6d-5281fdfcfe5d after `subscribe()`.
+=== PAGE RELOAD (navigation) @ 2026-06-08T18:43:21.585Z ===
+[OpenTiming] doc-click @ 2075ms sync-test.pdf
+[OpenTiming] pdfid-resolve @ 3485ms sync-test.pdf-2489
+%c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +1ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+[OpenTiming] pdfid-resolve @ 3503ms sync-test.pdf-2489
+%c[LOAD-TRACE +19ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +19ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +19ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +19ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +355ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +356ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +367ms] Page sizes calculated (3 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +367ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +367ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +367ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 3868ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 3877ms pdfId=sync-test.pdf-2489
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[InteractionDiag] tool-changed @ 8260ms from=pan to=select
+[DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-changed @ 8293ms from=select to=survey-marker
+[DEBUG-toolrevert] survey-marker → pan caller:
+Error
+    at http://localhost:5173/src/PDFViewer.jsx?t=1780943982006:2533:74
+    at http://localhost:5173/src/PDFViewer.jsx?t=1780943982006:13697:5
+    at commitHookEffectListMount (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=a345567b:23793:34)
+    at commitPassiveMountOnFiber (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=a345567b:25034:19)
+    at commitPassiveMountEffects_complete (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=a345567b:25007:17)
+    at commitPassiveMountEffects_begin (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=a345567b:24997:15)
+    at commitPassiveMountEffects (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=a345567b:24987:11)
+    at flushPassiveEffectsImpl (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=a345567b:26368:11)
+    at flushPassiveEffects (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=a345567b:26325:22)
+    at commitRootImpl (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=a345567b:26294:13)
+[OpenTiming] pdfid-resolve @ 8294ms sync-test.pdf-2489
+[OpenTiming] first-marks-painted @ 8296ms pdfId=sync-test.pdf-2489
+[DEBUG-toolrevert] survey-marker → pan caller:
+Error
+    at http://localhost:5173/src/PDFViewer.jsx?t=1780943982006:2533:74
+    at http://localhost:5173/src/PDFViewer.jsx?t=1780943982006:13697:5
+    at commitHookEffectListMount (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=a345567b:23793:34)
+    at commitPassiveMountOnFiber (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=a345567b:25034:19)
+    at commitPassiveMountEffects_complete (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=a345567b:25007:17)
+    at commitPassiveMountEffects_begin (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=a345567b:24997:15)
+    at commitPassiveMountEffects (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=a345567b:24987:11)
+    at flushPassiveEffectsImpl (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=a345567b:26368:11)
+    at flushPassiveEffects (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=a345567b:26325:22)
+    at performSyncWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/chunk-DSUIPI7G.js?v=a345567b:25746:11)
+[OpenTiming] pdfid-resolve @ 8344ms sync-test.pdf-2489
+[OpenTiming] first-marks-painted @ 8348ms pdfId=sync-test.pdf-2489
+[InteractionDiag] tool-changed @ 8391ms from=survey-marker to=pan (pan-active → Syncfusion interactionMode=Pan)
+[InteractionDiag] viewer-pan-start @ 13809ms tool=pan button=0 target=div scrollTop=0 scrollLeft=0
+[InteractionDiag] pan-drag @ 13919ms pointerDelta=(0,0) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 14016ms pointerDelta=(-29,0) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-drag @ 14127ms pointerDelta=(-45,1) scrollDelta=(0,0) NO-SCROLL (pan gesture not moving container)
+[InteractionDiag] pan-end @ 14361ms totalScrollDelta=(0,0) [PAN DID NOTHING]
+[SaveLog] bulletproof local snapshot saved at /Users/isaiahcalvo/Documents/Projects/Active/Survey-BetaSafeS2/Logs/2026-06-08_18-43-37
+[SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"hasGhTokenEnv":true,"payloadLength":26216}
+[SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"hasGhTokenEnv":true,"payloadLength":26216}
+[SaveLogBanner] GitHub push OK {"url":"https://github.com/IsaiahCalvo/Survey/blob/logs/mac-isaiahs-macbook-pro-2026-06-08T18-43-42-529Z.log","filename":"mac-isaiahs-macbook-pro-2026-06-08T18-43-42-529Z.log"}
+[SaveLogBanner] GitHub push OK {"url":"https://github.com/IsaiahCalvo/Survey/blob/logs/mac-isaiahs-macbook-pro-2026-06-08T18-43-42-513Z-68962-mq5k7hsy-1.log","filename":"mac-isaiahs-macbook-pro-2026-06-08T18-43-42-513Z-68962-mq5k7hsy-1.log"}
+[OpenTiming] pdfid-resolve @ 329277ms sync-test.pdf-2489
+%c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +1ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+[OpenTiming] pdfid-resolve @ 329446ms sync-test.pdf-2489
+%c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +5ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +9ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +12ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +13ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +13ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +68ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +71ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +71ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +71ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +761ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +762ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +771ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +778ms] Page sizes calculated (3 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +778ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +779ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +779ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 330231ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 330240ms pdfId=sync-test.pdf-2489
+console.error @ [useAnnotationDoc] open failed cannot add `postgres_changes` callbacks for realtime:anno-43c92ebc-8ae9-4aec-bd6d-5281fdfcfe5d after `subscribe()`.
+[OpenTiming] pdfid-resolve @ 513100ms sync-test.pdf-2489
+%c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +0ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+[OpenTiming] pdfid-resolve @ 513117ms sync-test.pdf-2489
+%c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +0ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +7ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +7ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +7ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +7ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +21ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +21ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +21ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +21ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +260ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +261ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +261ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +271ms] Page sizes calculated (3 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +271ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +271ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +271ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 513392ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 513397ms pdfId=sync-test.pdf-2489
+=== PAGE RELOAD (navigation) @ 2026-06-08T19:00:43.099Z ===
+[OpenTiming] doc-click @ 2147ms sync-test.pdf
+[OpenTiming] pdfid-resolve @ 3553ms sync-test.pdf-2489
+%c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +0ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +23ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +23ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +23ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +23ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +409ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +410ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +437ms] Page sizes calculated (3 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +438ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +438ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +438ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 4009ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 4033ms pdfId=sync-test.pdf-2489
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[InteractionDiag] tool-changed @ 6887ms from=pan to=select
+[DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-changed @ 6918ms from=select to=survey-marker
+console.error @ File watcher error: EPERM: operation not permitted, watch '/Users/isaiahcalvo/Desktop/Security_export.xlsx'
+[InteractionDiag] viewer-pointer-down @ 9390ms tool=survey-marker button=0 target=canvas
+[DrawCanvas p1] shape mousedown at (141.6, 265.9), tool=survey-marker
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-1","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-1","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 9899ms tool=survey-marker
+[PreviewDiag] pointer release {"id":"gesture-1","frames":30,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] shape mouseup — tool=survey-marker, hasSize=true {"left":141.55102040816328,"top":265.92857142857144,"w":103.0408163265306,"h":75.9795918367347}
+[PreviewDiag] final commit {"id":"gesture-1","commits":1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create"}
+[PreviewDiag] summary survey-marker-draw started, 30 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-1","durationMs":1896.3,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create","reason":"settled"}
+console.error @ File watcher error: EPERM: operation not permitted, watch '/Users/isaiahcalvo/Desktop/Security_export.xlsx'
+console.error @ File watcher error: EPERM: operation not permitted, watch '/Users/isaiahcalvo/Desktop/Security_export.xlsx'
+[InteractionDiag] viewer-pointer-down @ 13027ms tool=survey-marker button=0 target=canvas
+[DrawCanvas p1] shape mousedown at (250.8, 395.0), tool=survey-marker
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-2","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-2","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 13409ms tool=survey-marker
+[PreviewDiag] pointer release {"id":"gesture-2","frames":33,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] shape mouseup — tool=survey-marker, hasSize=true {"left":250.83673469387756,"top":394.98979591836735,"w":123.85714285714286,"h":103.04081632653066}
+[PreviewDiag] final commit {"id":"gesture-2","commits":1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create"}
+[PreviewDiag] summary survey-marker-draw started, 33 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-2","durationMs":1779.6,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create","reason":"settled"}
+console.error @ File watcher error: EPERM: operation not permitted, watch '/Users/isaiahcalvo/Desktop/Security_export.xlsx'
+console.error @ File watcher error: EPERM: operation not permitted, watch '/Users/isaiahcalvo/Desktop/Security_export.xlsx'
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+[InteractionDiag] tool-intent @ 74671ms requested=survey-marker from=survey-marker
+[InteractionDiag] tool-intent @ 75967ms requested=survey-marker from=survey-marker
+[InteractionDiag] viewer-pointer-down @ 77159ms tool=survey-marker button=0 target=canvas
+[DrawCanvas p1] shape mousedown at (249.8, 304.4), tool=survey-marker
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-3","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-3","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 77644ms tool=survey-marker
+[PreviewDiag] pointer release {"id":"gesture-3","frames":34,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] shape mouseup — tool=survey-marker, hasSize=true {"left":249.79591836734696,"top":304.4387755102041,"w":148.83673469387756,"h":31.224489795918373}
+[PreviewDiag] final commit {"id":"gesture-3","commits":1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create"}
+[PreviewDiag] summary survey-marker-draw started, 34 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-3","durationMs":1883.1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create","reason":"settled"}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":3}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":3}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":3}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":4}
