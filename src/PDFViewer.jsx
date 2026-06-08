@@ -13393,6 +13393,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
     }
 
+    // Stage 2: tombstone import-removed markers so an import-driven deletion is
+    // also recoverable from the 30-day trash (best-effort).
+    try {
+      if (surveyMarkersToDelete.length > 0) {
+        const deletedAt = new Date().toISOString();
+        let trash = loadTrash(pdfId);
+        surveyMarkersToDelete.forEach(({ key, ann }) => {
+          trash = addTombstone(
+            trash,
+            key,
+            makeTombstone(ann, { deletedAt, deletedBy: user?.id || null, origin: 'excel-import' })
+          );
+        });
+        saveTrash(pdfId, trash);
+      }
+    } catch (tombErr) {
+      console.warn('Failed to tombstone import-removed Survey Marker(s):', tombErr);
+    }
+
     // Process deletions
     const itemsToDelete = [];
     surveyMarkersToDelete.forEach(({ key, ann }) => {
@@ -13839,6 +13858,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setTimeout(() => setLastSyncMessage(''), 5000);
         return;
       }
+    }
+
+    // Stage 2: tombstone import-removed markers so an import-driven deletion is
+    // also recoverable from the 30-day trash (best-effort).
+    try {
+      if (surveyMarkersToDelete.length > 0) {
+        const deletedAt = new Date().toISOString();
+        let trash = loadTrash(pdfId);
+        surveyMarkersToDelete.forEach(({ key, ann }) => {
+          trash = addTombstone(
+            trash,
+            key,
+            makeTombstone(ann, { deletedAt, deletedBy: user?.id || null, origin: 'excel-import' })
+          );
+        });
+        saveTrash(pdfId, trash);
+      }
+    } catch (tombErr) {
+      console.warn('Failed to tombstone import-removed Survey Marker(s):', tombErr);
     }
 
     // Process deletions
