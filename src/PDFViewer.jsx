@@ -75,6 +75,8 @@ import { isPlacedSurveyMarker } from './services/surveyMarkerSyncDiff';
 import { forceUnplacedImportedMarker, freezeGeometryFromOriginal } from './services/importFieldWhitelist';
 import { stampExportAck, wasReceivedByExcel } from './services/excelExportAck';
 import { loadBaseline, saveBaseline, clearBaseline } from './services/excelSyncBaselineStore';
+import { makeTombstone, addTombstone, removeTombstone, purgeExpired } from './services/surveyMarkerTrash';
+import { loadTrash, saveTrash } from './services/surveyMarkerTrashStore';
 import { getCounterSeriesList, pickNextSeriesColor, renumberCounters } from './utils/counterNumbering';
 import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug, summarizeHistoryDelta, summarizeHistorySnapshot } from './utils/historyHelpers';
 import { getHistoryOrder, shouldRedoLocalBeforeLegacy, shouldUndoLocalBeforeLegacy } from './utils/historyStacks';
@@ -9487,6 +9489,30 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setSurveyMarkers(stamped);
     return markExcelSyncCheckpoint(templateOverride, stamped);
   }, [markExcelSyncCheckpoint]);
+
+  // Stage 2: restore a deleted Survey Marker from the 30-day trash, reinstating
+  // it with its original geometry. (Wired to the Trash UI in a follow-up slice.)
+  const restoreSurveyMarkerFromTrash = useCallback((tombstoneKey) => {
+    let trash = loadTrash(pdfId);
+    const tombstone = trash?.[tombstoneKey];
+    if (!tombstone?.marker) return false;
+    setSurveyMarkers(prev => ({ ...prev, [tombstoneKey]: tombstone.marker }));
+    trash = removeTombstone(trash, tombstoneKey);
+    saveTrash(pdfId, trash);
+    return true;
+  }, [pdfId]);
+
+  // Drop tombstones past the 30-day retention window when a document opens.
+  useEffect(() => {
+    if (!pdfId) return;
+    try {
+      const trash = loadTrash(pdfId);
+      const { purgedKeys, tombstones } = purgeExpired(trash, { now: new Date().toISOString() });
+      if (purgedKeys.length > 0) saveTrash(pdfId, tombstones);
+    } catch {
+      // non-fatal
+    }
+  }, [pdfId]);
 
   useEffect(() => {
     // After a reload the in-memory baseline is null; rehydrate it from durable
@@ -22537,6 +22563,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return;
       }
       const permittedSurveyMarkerIds = surveyMarkersToDelete.map(({ id }) => id);
+
+      // Stage 2 recovery net: tombstone each marker BEFORE removing it, so the
+      // delete is recoverable from the 30-day trash. No marker is destroyed;
+      // restore reinstates it with its geometry. Best-effort — if the durable
+      // trash store is unavailable, the delete still proceeds (as it did before).
+      try {
+        const deletedAt = new Date().toISOString();
+        let trash = loadTrash(pdfId);
+        surveyMarkersToDelete.forEach(({ id, surveyMarker }) => {
+          trash = addTombstone(
+            trash,
+            id,
+            makeTombstone(surveyMarker, { deletedAt, deletedBy: user?.id || null, origin: 'app' })
+          );
+        });
+        saveTrash(pdfId, trash);
+      } catch (tombErr) {
+        console.warn('Failed to tombstone Survey Marker(s) before delete:', tombErr);
+      }
 
       // Delete from surveyMarkers
       setSurveyMarkers(prev => {
