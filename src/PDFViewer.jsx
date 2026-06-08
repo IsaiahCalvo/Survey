@@ -77,7 +77,8 @@ import { stampExportAck, wasReceivedByExcel } from './services/excelExportAck';
 import { buildMarkerIdentityRecords, applyMarkerIdentityRecords } from './services/excelIdentityRecord';
 import { loadBaseline, saveBaseline, clearBaseline } from './services/excelSyncBaselineStore';
 import { generateRowIdToken } from './services/rowIdToken';
-import { getOrCreateDocumentSecret } from './services/rowIdSecretStore';
+import { getOrCreateDocumentSecret, resolveDocumentSecret } from './services/rowIdSecretStore';
+import { buildScopeImportPlans } from './services/buildScopeImportPlans';
 import { makeTombstone, addTombstone, removeTombstone, purgeExpired } from './services/surveyMarkerTrash';
 import { loadTrash, saveTrash } from './services/surveyMarkerTrashStore';
 import { buildSurveyMarkerDeleteHistoryRow, applySurveyMarkerRestore } from './services/surveyMarkerHistory';
@@ -4010,6 +4011,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [excelLockedIsOneDrive, setExcelLockedIsOneDrive] = useState(false);
   const [pendingExcelSyncCallback, setPendingExcelSyncCallback] = useState(null);
   const [hasPendingExcelSyncChanges, setHasPendingExcelSyncChanges] = useState(false);
+  // Rows the Row ID matcher could not safely auto-apply on the last import
+  // (duplicate / unknown / foreign / wrong-scope / malformed Row IDs, ambiguous
+  // blank recovery, and review-only candidate-deletes). Surfaced as "Needs your
+  // choice" in the Survey panel (Stage 1 review UI). Never written automatically.
+  const [pendingImportReview, setPendingImportReview] = useState([]);
   const lastExcelSyncFingerprintRef = useRef(null);
 
   const [lastDrawTool, setLastDrawTool] = useState(() => {
@@ -13263,11 +13269,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [isMSAuthenticated, pendingOneDriveExport, exportPendingData, graphClient]);
 
   // Helper: Execute the actual Excel import after new columns are handled
-  const executeExcelImport = useCallback((worksheetDataList, templateToUse) => {
+  const executeExcelImport = useCallback(async (worksheetDataList, templateToUse) => {
     const newSurveyMarkers = { ...surveyMarkers };
     let updatesCount = 0;
     let deletionsCount = 0;
     const excelItemsByScope = {}; // Track items per category/module for deletion detection
+
+    // Row ID identity plan (STAGE1-IDENTITY-PLAN.md): for every scope that carries a
+    // visible Row ID column, decide per row whether it IS an existing marker, a new
+    // row, or "needs your choice" — identity, never name. Scopes without the column
+    // fall back to the legacy name-match below. Rows the matcher won't auto-apply,
+    // and review-only candidate-deletes, are collected here and surfaced, never written.
+    const importDocumentId = `${pdfFile?.id || 'local'}:${pdfId || pdfFile?.name || 'pdf'}`;
+    const importResolveSecret = (keyId) => resolveDocumentSecret(importDocumentId, keyId);
+    const scopePlans = await buildScopeImportPlans({
+      worksheetDataList, surveyMarkers: newSurveyMarkers, templateToUse,
+      documentId: importDocumentId, resolveSecret: importResolveSecret
+    });
+    const importReviewItems = [];
 
     worksheetDataList.forEach(({ jsonData, headerRow, matchedCategory, matchedModuleId }) => {
       // Rebuild colToChecklistId using the updated category from templateToUse
@@ -13321,18 +13340,38 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // Convert to string in case Excel returns an object (e.g., rich text)
         const itemName = typeof rawItemName === 'string' ? rawItemName : String(rawItemName);
 
-        // Find matching surveyMarker by name
+        // Identity matching: the Row ID plan governs this scope when present (binds a
+        // row to its marker by signed token / recovered fingerprint, regardless of
+        // rename); legacy name-match is the fallback for sheets with no Row ID column.
         let matchedSurveyMarkerKey = null;
-
-        Object.entries(newSurveyMarkers).forEach(([key, ann]) => {
-          const annModuleId = ann.moduleId || ann.spaceId;
-          const annName = typeof ann.name === 'string' ? ann.name : String(ann.name || '');
-          if (annModuleId === matchedModuleId &&
-            ann.categoryId === matchedCategory.id &&
-            annName === itemName) {
-            matchedSurveyMarkerKey = key;
+        const planScopeKey = `${matchedModuleId}-${matchedCategory.id}`;
+        const scopePlan = scopePlans.get(planScopeKey);
+        if (scopePlan) {
+          const decision = scopePlan.byRowIndex.get(i);
+          if (decision && decision.action === 'apply' && decision.markerId && newSurveyMarkers[decision.markerId]) {
+            matchedSurveyMarkerKey = decision.markerId; // match or recovered missing-rowid
+          } else if (decision && decision.action === 'review') {
+            // Needs your choice (duplicate / unknown / foreign / wrong-scope /
+            // malformed / ambiguous). Never write — surface it instead.
+            importReviewItems.push({
+              scopeKey: planScopeKey, rowIndex: i, itemName,
+              reason: decision.decision, markerId: decision.markerId || null
+            });
+            continue;
           }
-        });
+          // decision.action === 'create' (or none) → fall through to the create path.
+        } else {
+          // Legacy fallback: match by name within the scope.
+          Object.entries(newSurveyMarkers).forEach(([key, ann]) => {
+            const annModuleId = ann.moduleId || ann.spaceId;
+            const annName = typeof ann.name === 'string' ? ann.name : String(ann.name || '');
+            if (annModuleId === matchedModuleId &&
+              ann.categoryId === matchedCategory.id &&
+              annName === itemName) {
+              matchedSurveyMarkerKey = key;
+            }
+          });
+        }
 
         if (matchedSurveyMarkerKey) {
           // Update existing surveyMarker
@@ -13472,6 +13511,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     Object.entries(newSurveyMarkers).forEach(([key, ann]) => {
       const annModuleId = ann.moduleId || ann.spaceId;
       const scopeKey = `${annModuleId}-${ann.categoryId}`;
+
+      // When the Row ID plan governs this scope, identity (not name) decides deletes:
+      // a stored marker absent from the sheet is a review-only candidate-delete (guard
+      // ON this stage), never a name-based auto-delete. This is what stops an added
+      // marker from silently vanishing on the next import.
+      if (scopePlans.has(scopeKey)) return;
 
       // Only check surveyMarkers in scopes that were covered by the Excel import
       if (excelItemsByScope[scopeKey]) {
@@ -13703,23 +13748,47 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       });
     }
 
+    // Add review-only candidate-deletes (a stored marker the sheet no longer lists)
+    // to the review surface. Guard ON: never deleted here, only flagged.
+    scopePlans.forEach((plan, scopeKey) => {
+      (plan.candidateDeletes || []).forEach((markerId) => {
+        importReviewItems.push({ scopeKey, rowIndex: null, reason: 'candidate-delete', markerId });
+      });
+    });
+    setPendingImportReview(importReviewItems);
+
     if (updatesCount > 0 || deletionsCount > 0) {
       setSurveyMarkers(newSurveyMarkers);
       markExcelSyncCheckpoint(templateToUse, newSurveyMarkers);
-      alert(`Sync complete! Updated ${updatesCount} items, deleted ${deletionsCount} items.`);
+      const reviewNote = importReviewItems.length > 0 ? ` ${importReviewItems.length} row(s) need your choice.` : '';
+      alert(`Sync complete! Updated ${updatesCount} items, deleted ${deletionsCount} items.${reviewNote}`);
     } else {
       markExcelSyncCheckpoint(templateToUse, newSurveyMarkers);
-      alert('Sync complete! No changes found.');
+      const reviewNote = importReviewItems.length > 0
+        ? `Sync complete! ${importReviewItems.length} row(s) need your choice.`
+        : 'Sync complete! No changes found.';
+      alert(reviewNote);
     }
-  }, [surveyMarkers, items, setItems, setAnnotations, scale, setAnnotationsByPage, markExcelSyncCheckpoint]);
+  }, [surveyMarkers, items, setItems, setAnnotations, scale, setAnnotationsByPage, markExcelSyncCheckpoint, pdfFile, pdfId]);
 
   // Helper: Execute auto-sync import with canvas color tracking
-  const executeAutoExcelImport = useCallback((worksheetDataList, templateToUse) => {
+  const executeAutoExcelImport = useCallback(async (worksheetDataList, templateToUse) => {
     const newSurveyMarkers = { ...surveyMarkers };
     let updatesCount = 0;
     let deletionsCount = 0;
     const excelItemsByScope = {}; // Track items per category/module for deletion detection
     const surveyMarkersWithColorChanges = [];
+
+    // Row ID identity plan — see executeExcelImport. Identity governs matching when a
+    // Row ID column is present; legacy name-match is the fallback. Review-only rows and
+    // candidate-deletes are surfaced, never written automatically.
+    const importDocumentId = `${pdfFile?.id || 'local'}:${pdfId || pdfFile?.name || 'pdf'}`;
+    const importResolveSecret = (keyId) => resolveDocumentSecret(importDocumentId, keyId);
+    const scopePlans = await buildScopeImportPlans({
+      worksheetDataList, surveyMarkers: newSurveyMarkers, templateToUse,
+      documentId: importDocumentId, resolveSecret: importResolveSecret
+    });
+    const importReviewItems = [];
 
     worksheetDataList.forEach(({ jsonData, headerRow, matchedCategory, matchedModuleId }) => {
       // Rebuild colToChecklistId using the updated category from templateToUse
@@ -13773,18 +13842,38 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // Convert to string in case Excel returns an object (e.g., rich text)
         const itemName = typeof rawItemName === 'string' ? rawItemName : String(rawItemName);
 
-        // Find matching surveyMarker by name
+        // Identity matching: the Row ID plan governs this scope when present (binds a
+        // row to its marker by signed token / recovered fingerprint, regardless of
+        // rename); legacy name-match is the fallback for sheets with no Row ID column.
         let matchedSurveyMarkerKey = null;
-
-        Object.entries(newSurveyMarkers).forEach(([key, ann]) => {
-          const annModuleId = ann.moduleId || ann.spaceId;
-          const annName = typeof ann.name === 'string' ? ann.name : String(ann.name || '');
-          if (annModuleId === matchedModuleId &&
-            ann.categoryId === matchedCategory.id &&
-            annName === itemName) {
-            matchedSurveyMarkerKey = key;
+        const planScopeKey = `${matchedModuleId}-${matchedCategory.id}`;
+        const scopePlan = scopePlans.get(planScopeKey);
+        if (scopePlan) {
+          const decision = scopePlan.byRowIndex.get(i);
+          if (decision && decision.action === 'apply' && decision.markerId && newSurveyMarkers[decision.markerId]) {
+            matchedSurveyMarkerKey = decision.markerId; // match or recovered missing-rowid
+          } else if (decision && decision.action === 'review') {
+            // Needs your choice (duplicate / unknown / foreign / wrong-scope /
+            // malformed / ambiguous). Never write — surface it instead.
+            importReviewItems.push({
+              scopeKey: planScopeKey, rowIndex: i, itemName,
+              reason: decision.decision, markerId: decision.markerId || null
+            });
+            continue;
           }
-        });
+          // decision.action === 'create' (or none) → fall through to the create path.
+        } else {
+          // Legacy fallback: match by name within the scope.
+          Object.entries(newSurveyMarkers).forEach(([key, ann]) => {
+            const annModuleId = ann.moduleId || ann.spaceId;
+            const annName = typeof ann.name === 'string' ? ann.name : String(ann.name || '');
+            if (annModuleId === matchedModuleId &&
+              ann.categoryId === matchedCategory.id &&
+              annName === itemName) {
+              matchedSurveyMarkerKey = key;
+            }
+          });
+        }
 
         if (matchedSurveyMarkerKey) {
           // Update existing surveyMarker
@@ -13944,6 +14033,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     Object.entries(newSurveyMarkers).forEach(([key, ann]) => {
       const annModuleId = ann.moduleId || ann.spaceId;
       const scopeKey = `${annModuleId}-${ann.categoryId}`;
+
+      // When the Row ID plan governs this scope, identity (not name) decides deletes:
+      // a stored marker absent from the sheet is a review-only candidate-delete (guard
+      // ON this stage), never a name-based auto-delete. This is what stops an added
+      // marker from silently vanishing on the next import.
+      if (scopePlans.has(scopeKey)) return;
 
       // Only check surveyMarkers in scopes that were covered by the Excel import
       if (excelItemsByScope[scopeKey]) {
@@ -14176,12 +14271,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       });
     }
 
+    // Review-only candidate-deletes (a stored marker the sheet no longer lists).
+    // Guard ON: never deleted here, only surfaced as "needs your choice".
+    scopePlans.forEach((plan, scopeKey) => {
+      (plan.candidateDeletes || []).forEach((markerId) => {
+        importReviewItems.push({ scopeKey, rowIndex: null, reason: 'candidate-delete', markerId });
+      });
+    });
+    setPendingImportReview(importReviewItems);
+    const reviewSuffix = importReviewItems.length > 0 ? ` · ${importReviewItems.length} need your choice` : '';
+
     if (updatesCount > 0 || deletionsCount > 0) {
       setSurveyMarkers(newSurveyMarkers);
       markExcelSyncCheckpoint(templateToUse, newSurveyMarkers);
-      const message = deletionsCount > 0
+      const message = (deletionsCount > 0
         ? `Auto-synced ${updatesCount} items, deleted ${deletionsCount} items from Excel`
-        : `Auto-synced ${updatesCount} items from Excel`;
+        : `Auto-synced ${updatesCount} items from Excel`) + reviewSuffix;
       // Only show this message if we didn't already show a bulk deletion warning
       if (scopesWithBulkDeletion.length === 0) {
         setLastSyncMessage(message);
@@ -14217,10 +14322,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
     } else {
       markExcelSyncCheckpoint(templateToUse, newSurveyMarkers);
-      setLastSyncMessage('No changes found');
+      setLastSyncMessage((importReviewItems.length > 0 ? `${importReviewItems.length} need your choice` : 'No changes found'));
       setTimeout(() => setLastSyncMessage(''), 5000);
     }
-  }, [surveyMarkers, items, setItems, setAnnotations, scale, setAnnotationsByPage, markExcelSyncCheckpoint]);
+  }, [surveyMarkers, items, setItems, setAnnotations, scale, setAnnotationsByPage, markExcelSyncCheckpoint, pdfFile, pdfId]);
 
   // Helper: Create new template with added checklist items from new columns
   const handleCreateNewTemplateFromColumns = useCallback(async (newColumnsByCategory, templateName) => {
@@ -14431,9 +14536,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     // Continue with import using the appropriate function based on sync type
     if (isAutoSync) {
-      executeAutoExcelImport(worksheetDataList, templateToUse);
+      await executeAutoExcelImport(worksheetDataList, templateToUse);
     } else {
-      executeExcelImport(worksheetDataList, templateToUse);
+      await executeExcelImport(worksheetDataList, templateToUse);
     }
 
     // Clean up
@@ -14606,7 +14711,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
 
         // No new columns, proceed with normal import
-        executeExcelImport(worksheetDataList, selectedTemplate);
+        await executeExcelImport(worksheetDataList, selectedTemplate);
 
       } catch (error) {
         console.error('Failed to sync from Excel:', error);
@@ -14774,7 +14879,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
 
         // No new columns, proceed with auto-sync import
-        executeAutoExcelImport(worksheetDataList, selectedTemplate);
+        await executeAutoExcelImport(worksheetDataList, selectedTemplate);
 
       } catch (error) {
         console.error('Failed to auto-sync from Excel:', error);
