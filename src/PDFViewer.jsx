@@ -88,6 +88,7 @@ import { isBlankCalloutText, resolveCommittedCalloutText, shouldDeleteBlankCallo
 import { markCalloutRemovalIntent } from './utils/calloutRemovalIntent';
 import { materializeCalloutFromYMap } from './lib/collab/crdtAnnotationBridge.js';
 import { perfLoad, perfZoom, setDebugEnabled as setPerfDebugEnabled } from './utils/performanceLogger';
+import { loadTrace } from './utils/loadTrace';
 import { preserveExistingCountersOnPage, shouldRenumberCountersForSave, summarizeCounterRenumberEffect } from './utils/counterRenumberSavePolicy';
 import { recordAnnotationCommit, recordAnnotationSyncPush, recordAnnotationUndoRedo } from './utils/annotationPreviewDiag';
 import { regionContainsPoint } from './utils/regionMath';
@@ -17888,7 +17889,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
         let pdf;
         // Ensure the pdf.js worker is configured (no longer set globally at boot).
+        loadTrace('configuring pdf.js worker (loadPdfjs)');
         await loadPdfjs();
+        loadTrace('pdf.js worker ready');
         perfLoad.mark(docName, 'Starting PDF.js getDocument');
         try {
           // First attempt: standard loading
@@ -18246,6 +18249,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         perfLoad.mark(docName, 'PDF ready for rendering');
         perfLoad.end(docName);
         if (isCancelled) return;
+        loadTrace('✅ LOAD COMPLETE — lifting the Loading curtain');
         setIsLoadingPDF(false);
 
         // Pre-mount first 5 pages for faster initial scrolling
@@ -18258,6 +18262,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       } catch (error) {
         perfLoad.end(docName);
+        loadTrace('❌ LOAD ERROR', String(error?.message || error));
         if (isCancelled) return;
         // UX: 2026-04-19 — some Acrobat-saved PDFs use compressed object
         // streams that pdf.js trips on at parse or page-load time ("bad
@@ -18346,9 +18351,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // open.
     const HANG_TIMEOUT_MS = 20000;
     const MAX_AUTO_RETRIES = 2;
+    loadTrace('watchdog armed — will check in 20s');
     const timer = setTimeout(() => {
       if (loadWatchdogRetryCountRef.current < MAX_AUTO_RETRIES) {
         loadWatchdogRetryCountRef.current += 1;
+        loadTrace('⏰ watchdog FIRED — load still stuck after 20s; auto-retrying', { attempt: loadWatchdogRetryCountRef.current });
         try {
           console.warn('[PDFViewer] load watchdog — load still pending after ' +
             HANG_TIMEOUT_MS + 'ms; auto-retrying (' +
@@ -18364,6 +18371,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         } catch (_e) { /* swallow */ }
         // Never leave the gate stuck on a permanent spinner: flip to the
         // retryable error screen (its "Try again" bumps loadRetryToken).
+        loadTrace('⏰ watchdog gave up after auto-retries — showing the retryable error screen');
         setIsLoadingPDF(false);
         setPdfLoadError({
           kind: 'parse',

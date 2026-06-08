@@ -8,6 +8,11 @@
 // Controllable debug flag - can be toggled at runtime
 let DEBUG_ENABLED = false; // Default OFF - toggle via UI or console
 
+// Always-on lifecycle trace for document opens (the "stuck on Loading…" diagnostic).
+// Scoped to "Load PDF:" labels only, so render/zoom/scroll noise stays silent.
+import { loadTrace, loadTraceReset } from './loadTrace.js';
+const LOAD_LABEL = 'Load PDF: ';
+
 class PerformanceLogger {
   constructor() {
     this.timers = new Map();
@@ -22,6 +27,9 @@ class PerformanceLogger {
 
   // Start a timer
   start(label) {
+    if (typeof label === 'string' && label.startsWith(LOAD_LABEL)) {
+      loadTraceReset(label.slice(LOAD_LABEL.length));
+    }
     if (!DEBUG_ENABLED) return;
     this.timers.set(label, {
       start: performance.now(),
@@ -31,6 +39,9 @@ class PerformanceLogger {
 
   // Add an intermediate mark
   mark(label, markName) {
+    if (typeof label === 'string' && label.startsWith(LOAD_LABEL)) {
+      loadTrace(markName);
+    }
     if (!DEBUG_ENABLED) return;
     const timer = this.timers.get(label);
     if (timer) {
