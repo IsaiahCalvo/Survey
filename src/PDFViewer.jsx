@@ -75,6 +75,8 @@ import { isPlacedSurveyMarker } from './services/surveyMarkerSyncDiff';
 import { forceUnplacedImportedMarker, freezeGeometryFromOriginal } from './services/importFieldWhitelist';
 import { stampExportAck, wasReceivedByExcel } from './services/excelExportAck';
 import { loadBaseline, saveBaseline, clearBaseline } from './services/excelSyncBaselineStore';
+import { generateRowIdToken } from './services/rowIdToken';
+import { getOrCreateDocumentSecret } from './services/rowIdSecretStore';
 import { makeTombstone, addTombstone, removeTombstone, purgeExpired } from './services/surveyMarkerTrash';
 import { loadTrash, saveTrash } from './services/surveyMarkerTrashStore';
 import { buildSurveyMarkerDeleteHistoryRow, applySurveyMarkerRestore } from './services/surveyMarkerHistory';
@@ -11908,6 +11910,35 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return candidate;
       };
 
+      // Row ID identity tokens (PLAN.md Amendment #10): a signed, scoped, tamper-evident
+      // token per Survey Marker, written into the visible first "Row ID" column. The
+      // per-document signing secret lives in the app store, never in the workbook.
+      const rowIdScopeId = (moduleId, categoryId) => `${String(moduleId)}:${String(categoryId)}`;
+      const rowIdDocumentId = `${pdfFile?.id || 'local'}:${pdfId || pdfFile?.name || 'pdf'}`;
+      let rowIdSigning = null;
+      try {
+        rowIdSigning = getOrCreateDocumentSecret(rowIdDocumentId);
+      } catch {
+        rowIdSigning = null; // no secure RNG / storage — write blank Row IDs, import recovers by fingerprint
+      }
+      const rowIdTokensByMarkerId = new Map();
+      if (rowIdSigning) {
+        await Promise.all(Object.entries(surveyMarkers).map(async ([annotationId, marker]) => {
+          try {
+            const token = await generateRowIdToken({
+              keyId: rowIdSigning.keyId,
+              secret: rowIdSigning.secret,
+              documentId: rowIdDocumentId,
+              scopeId: rowIdScopeId(marker.moduleId, marker.categoryId),
+              markerId: annotationId
+            });
+            rowIdTokensByMarkerId.set(annotationId, token);
+          } catch {
+            // Leave unset → blank Row ID for this marker; import recovers it by fingerprint.
+          }
+        }));
+      }
+
       if (modulesList.length === 0) {
         workbook.addWorksheet('Survey');
       } else {
@@ -11955,8 +11986,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               return aIndex - bIndex;
             });
 
-            // Build header row: Changed By, Changed Date, Item, [checklist items], Entity, Notes
-            const headerRow = ['Changed By', 'Changed Date', 'Item'];
+            // Build header row: Row ID, Changed By, Changed Date, Item, [checklist items], Entity, Notes
+            const headerRow = ['Row ID', 'Changed By', 'Changed Date', 'Item'];
             checklistItems.forEach(checklistItem => {
               headerRow.push(checklistItem.text || '');
             });
@@ -11964,17 +11995,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             headerRow.push('Notes');
 
             // Build column mapping for Excel add-in sync
-            // Column mapping: A = changed_by, B = changed_date, C = name, D+ = checklist items, then entity, notes
+            // Column mapping: A = row_id, B = changed_by, C = changed_date, D = name, E+ = checklist items, then entity, notes
             const columnMapping = {
-              'A': 'changed_by',
-              'B': 'changed_date',
-              'C': 'name'
+              'A': 'row_id',
+              'B': 'changed_by',
+              'C': 'changed_date',
+              'D': 'name'
             };
             checklistItems.forEach((checklistItem, idx) => {
-              const colLetter = String.fromCharCode(68 + idx); // D, E, F, ...
+              const colLetter = String.fromCharCode(69 + idx); // E, F, G, ...
               columnMapping[colLetter] = `checklist_${checklistItem.id}`;
             });
-            const entityColIdx = 3 + checklistItems.length;
+            const entityColIdx = 4 + checklistItems.length;
             const notesColIdx = entityColIdx + 1;
             columnMapping[String.fromCharCode(65 + entityColIdx)] = 'entity_name';
             columnMapping[String.fromCharCode(65 + notesColIdx)] = 'notes';
@@ -12006,6 +12038,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
               // Ensure survey marker has metadata (add if missing)
               actualSurveyMarker = ensureSurveyMarkerMetadata(actualSurveyMarker);
+
+              // Row ID - signed scoped identity token (first column). Blank when signing was
+              // unavailable; import then recovers identity by fingerprint.
+              row.push(rowIdTokensByMarkerId.get(annotationId) || '');
 
               // Changed By - get user initials
               const changedBy = actualSurveyMarker?.changedBy || '';
@@ -12107,12 +12143,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                   };
 
                   // Center align specific columns:
-                  // Columns 1-3: Changed By, Changed Date, Item names
-                  // Columns 4 to lastChecklistCol: Checklist items (Y/N/N/A)
+                  // Column 1: Row ID; Columns 2-4: Changed By, Changed Date, Item names
+                  // Columns 5 to lastChecklistCol: Checklist items (Y/N/N/A)
                   // Column entityColIndex: Entities
-                  if (colNumber >= 1 && colNumber <= 3) {
+                  if (colNumber >= 1 && colNumber <= 4) {
                     cell.alignment = { horizontal: 'center', vertical: 'middle' };
-                  } else if ((colNumber >= 4 && colNumber <= lastChecklistCol) || colNumber === entityColIndex) {
+                  } else if ((colNumber >= 5 && colNumber <= lastChecklistCol) || colNumber === entityColIndex) {
                     cell.alignment = { horizontal: 'center', vertical: 'middle' };
                   }
                 });
@@ -12120,11 +12156,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             });
 
             // Calculate column indices
-            // Header structure: Changed By (1), Changed Date (2), Item (3), Checklist items (4...N), Entity (N+1), Notes (N+2)
-            const firstChecklistCol = 4; // Checklist items start at column 4
+            // Header structure: Row ID (1), Changed By (2), Changed Date (3), Item (4), Checklist items (5...N), Entity (N+1), Notes (N+2)
+            const firstChecklistCol = 5; // Checklist items start at column 5 (after Row ID)
             const lastChecklistCol = headerRow.length - 2; // -2 for Entity and Notes
             const entityColIndex = headerRow.length - 1; // Second to last column
-            const itemColIndex = 3; // Item column (1-indexed in ExcelJS)
+            const itemColIndex = 4; // Item column (1-indexed in ExcelJS)
 
             // Add Data Validation for Checklist Items
             if (lastChecklistCol >= firstChecklistCol) { // At least one checklist column exists
@@ -12270,8 +12306,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               }
             });
 
-            // Add Conditional Formatting for Duplicate Names (Column C = Item)
-            const itemColLetter = 'C';
+            // Add Conditional Formatting for Duplicate Names (Item column; D now that Row ID is A)
+            const itemColLetter = String.fromCharCode(64 + itemColIndex);
             const duplicateRange = `${itemColLetter}2:${itemColLetter}1000`;
 
             worksheet.addConditionalFormatting({
@@ -12296,16 +12332,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             });
 
             // Set column widths
-            // Column 1: Changed By (width 15)
-            worksheet.getColumn(1).width = 15;
+            // Column 1: Row ID (width 16, system identity column)
+            worksheet.getColumn(1).width = 16;
 
-            // Column 2: Changed Date (width 15)
+            // Column 2: Changed By (width 15)
             worksheet.getColumn(2).width = 15;
 
-            // Column 3: Item (width 15)
+            // Column 3: Changed Date (width 15)
             worksheet.getColumn(3).width = 15;
 
-            // Columns 4 to lastChecklistCol: Checklist items (width 15 each)
+            // Column 4: Item (width 15)
+            worksheet.getColumn(4).width = 15;
+
+            // Columns 5 to lastChecklistCol: Checklist items (width 15 each)
             for (let col = firstChecklistCol; col <= lastChecklistCol; col++) {
               worksheet.getColumn(col).width = 15;
             }
@@ -13175,7 +13214,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const checklistItems = updatedCategory.checklist || [];
 
       headerRow.forEach((colText, index) => {
-        if (['Changed By', 'Changed Date', 'Item', 'Entity', 'Notes'].includes(colText)) return;
+        if (['Row ID', 'Changed By', 'Changed Date', 'Item', 'Entity', 'Notes'].includes(colText)) return;
         if (!colText?.toString().trim()) return;
 
         const trimmedText = colText.toString().trim();
@@ -13627,7 +13666,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const checklistItems = updatedCategory.checklist || [];
 
       headerRow.forEach((colText, index) => {
-        if (['Changed By', 'Changed Date', 'Item', 'Entity', 'Notes'].includes(colText)) return;
+        if (['Row ID', 'Changed By', 'Changed Date', 'Item', 'Entity', 'Notes'].includes(colText)) return;
         if (!colText?.toString().trim()) return;
 
         const trimmedText = colText.toString().trim();
@@ -14419,7 +14458,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
           headerRow.forEach((colText, index) => {
             // Skip system columns
-            if (['Changed By', 'Changed Date', 'Item', 'Entity', 'Notes'].includes(colText)) return;
+            if (['Row ID', 'Changed By', 'Changed Date', 'Item', 'Entity', 'Notes'].includes(colText)) return;
             if (!colText?.toString().trim()) return;
 
             const trimmedText = colText.toString().trim();
@@ -14587,7 +14626,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           const foundItemIds = new Set(); // Track which template items are in Excel
 
           headerRow.forEach((colText, index) => {
-            if (['Changed By', 'Changed Date', 'Item', 'Entity', 'Notes'].includes(colText)) return;
+            if (['Row ID', 'Changed By', 'Changed Date', 'Item', 'Entity', 'Notes'].includes(colText)) return;
             if (!colText?.toString().trim()) return;
 
             const trimmedText = colText.toString().trim();
