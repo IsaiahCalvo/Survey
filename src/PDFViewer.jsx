@@ -2879,18 +2879,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const pasteAnnotationAtRef = useRef(null);
 
   // Annotation tools state
-  const [activeTool, setActiveToolRaw] = useState('pan');
-  // [DEBUG-toolrevert] temporary: trace every setter that lands on 'pan' so we can
-  // see who reverts survey-marker → pan. Synchronous → captures the real caller.
-  const setActiveTool = useCallback((next) => {
-    try {
-      const resolved = typeof next === 'function' ? '(updater-fn)' : String(next);
-      if (resolved === 'pan' && activeToolRef.current === 'survey-marker') {
-        console.log('[DEBUG-toolrevert] survey-marker → pan caller:\n' + new Error().stack);
-      }
-    } catch (_e) { /* swallow */ }
-    setActiveToolRaw(next);
-  }, []);
+  const [activeTool, setActiveTool] = useState('pan');
   const activeToolRef = useRef('pan');
   // [InteractionDiag] last observed active tool, used to log real transitions.
   const interactionDiagPrevToolRef = useRef('pan');
@@ -9470,11 +9459,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     surveyMarkersRef.current = surveyMarkers;
   }, [surveyMarkers]);
 
+  // Refs mirror pdfId / selectedTemplate so clearExcelSyncCheckpoint can stay
+  // IDENTITY-STABLE (see below).
+  const pdfIdRef = useRef(pdfId);
+  useEffect(() => { pdfIdRef.current = pdfId; }, [pdfId]);
+  const selectedTemplateRef = useRef(selectedTemplate);
+  useEffect(() => { selectedTemplateRef.current = selectedTemplate; }, [selectedTemplate]);
+
+  // MUST stay identity-stable. This callback is a dependency of the "reset
+  // everything when the PDF changes" effect. If it were rebuilt on every
+  // selectedTemplate change (its old deps), selecting a survey template would
+  // re-fire that whole reset — clearing the template, closing survey mode,
+  // reverting the tool to pan, and re-showing the loading screen (the exact
+  // "can't enter survey mode" regression). It reads current pdfId/template from
+  // refs so its identity never changes.
   const clearExcelSyncCheckpoint = useCallback(() => {
     lastExcelSyncFingerprintRef.current = null;
     setHasPendingExcelSyncChanges(false);
-    clearBaseline(pdfId, selectedTemplate?.supabaseId || selectedTemplate?.id);
-  }, [pdfId, selectedTemplate?.supabaseId, selectedTemplate?.id]);
+    const tmpl = selectedTemplateRef.current;
+    clearBaseline(pdfIdRef.current, tmpl?.supabaseId || tmpl?.id);
+  }, []);
 
   const markExcelSyncCheckpoint = useCallback((templateOverride = null, surveyMarkersOverride = null) => {
     const templateForSync = templateOverride || selectedTemplate;
