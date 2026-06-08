@@ -1,0 +1,72 @@
+# Plan: Stage 1 row-key — visible `Row ID` column as the primary Survey-Marker↔Excel identity
+_Round 0 (Row ID redesign) by Claude — supersedes the fingerprint-primary plan after the 2026-06-08 visible-Row-ID decision (PLAN.md Amendment #10)_
+
+> Scope of THIS review: the **identity / row-key sub-design only** — how import re-binds each visible Excel data row to the exact stored Survey Marker, now that a **visible `Row ID` column** is the chosen identity carrier (Amendment #10 replaces the old "no visible ID column" stance #5). Everything else in `PLAN.md` is settled. The placed-marker Excel-delete guard stays ON until this is built and tested.
+
+## What changed
+A visible first column **`Row ID`** now carries a stable, unique, opaque token per Survey Marker. The token moves with its row on sort/filter/move, so matching is a direct id lookup — no positional inference, no hidden-only metadata, no Hamming-distance edit inference. The elaborate fingerprint/identity-vector matcher from the prior (approved) plan is **demoted to a fallback** for workbooks with no usable `Row ID` column, plus the always-on change-detection layer.
+
+## Goal
+For every visible data row on import, return one of: "this row IS marker X" (its `Row ID` matches X) / "genuinely new" (blank `Row ID`) / "ambiguous — ask" (duplicate or unknown `Row ID`). No placed marker is matched, mutated, or flagged-for-delete by Item name. Excel-driven deletion of a placed marker stays OFF this stage.
+
+## The `Row ID` token (signed + scoped, `v1` grammar — rounds 6–7)
+- **Grammar (`v1`):** `v1.<keyId>.<b32url(documentId)>.<b32url(scopeId)>.<b32url(markerId)>.<b32url(hmac)>` — dot-separated, each part base32url-encoded (no separators inside parts, no escaping ambiguity), the whole written into an **Excel text-format cell** so Excel never coerces it to a number/date. `keyId` names which per-document secret signs it (enables rotation). `hmac` is over the exact canonical bytes of the preceding parts.
+- **Parse order — version/keyId/documentId BEFORE the HMAC check (round 7):** decode the grammar; unparseable/wrong-version → `malformed-rowid`. Then read `documentId`: if it ≠ this document → `foreign-rowid` (we neither can nor need to verify a foreign secret). Only for same-document tokens do we select the secret by `keyId` and verify the HMAC: bad HMAC → `malformed-rowid`; valid → candidate. This makes the foreign branch actually reachable (it was dead when HMAC ran first). **The pre-HMAC `documentId`/`scopeId` are unauthenticated** — use them ONLY for terminal no-bind classification (`foreign-rowid`/`wrong-scope-rowid`), never for a lookup or trusted document display unless re-verified after HMAC.
+- **Key lifecycle (round 8):** retain every signing key referenced by any still-accepted exported-token set; a `keyId` is only retired once a re-export has rewritten all tokens that used it.
+- **Stable + unique per marker, never a row number.** Visible, first column, header exactly `Row ID`, found by header text not position.
+- **App-owned, fail-safe.** Treated as editable/corruptible text; tamper → a no-auto-bind class, never a wrong marker.
+- **Auto-bind only against the accepted exported-token set.** A valid same-document token binds only if it is in the set of tokens this scope/export actually wrote (recorded in the app record / `_SurveyMetadata`); otherwise → `unknown-rowid`, surfaced, never mutated.
+- **Signing key unavailable (round 7):** if the secret for a token's `keyId` is missing/unhydrated/mis-restored, do NOT call its tokens malformed — that is a recoverable key problem. The scope is `rowid-key-unavailable`: auto-apply blocked, fallback usable in review mode only.
+
+## Export (what the builder writes)
+1. Insert `Row ID` as the first visible column on every survey sheet; write each marker's **`v1` signed scoped token** (`v1.<keyId>.<b32url(documentId)>.<b32url(scopeId)>.<b32url(markerId)>.<b32url(hmac)>`, into a text-format cell). Record the **exported-token set** per scope in the app record / `_SurveyMetadata` so import can gate auto-bind on it. The per-document HMAC secret(s) live in the durable app store (not in the workbook). (Updates the frozen visible-contract snapshot test to include this column — Amendment #8.)
+2. Continue to stamp the app sync record: per marker `lastExportId`, `lastExportedAt`, `lastFullRowFingerprint` (change-detection), `wasWrittenAsRow` (true only for markers actually written as a row — `exportedAt` stamped only on these, correcting today's over-stamp). Per scope, the durable `excelScopeSync` (schema version, exportId/clock, column schema, system columns, record count) is retained for the fallback path.
+3. `_SurveyMetadata` keeps the very-hidden block as the fallback identity store and stale-detection authority. Visible identity is now the `Row ID` column; the hidden block is redundant backup.
+4. Maintain the CRDT-correct causal **export clock** (`{clientId, counter}` + stored `exportClock` vector) for the stale-import gate.
+
+## Import matching (per scope)
+**Step 0 — stale / recency gate.** If the workbook's export clock is dominated by the document's accepted baseline (an older export) → review-only, `stale-workbook`. Concurrent/incomparable clocks → review-only, `incomparable-export`. **If the export clock is missing or unreadable while a `Row ID` column is present (round 6):** identity is still resolvable by token, but recency is untrusted, so **auto-apply is gated to review-only** with reason `missing-export-clock` (the user may still accept a manual import). **Accepting a missing-clock import forces an immediate re-export, or mints a fresh app-side baseline clock, before any future import is auto-trusted (round 7)** — otherwise recency would stay permanently unknowable. (Baseline otherwise advances at successful explicit export and at acceptance of a newer-or-equal import.)
+
+**Step 1 — source agreement + locate column.** The exported-token set / scope header may exist in both the app record and `_SurveyMetadata`; if they **disagree** on documentId, scopeId, export clock, or the exported-token set → scope review-only, reason `source-disagreement` (never union or silently prefer one). Then find the single visible column headed `Row ID`. If **absent** → fingerprint fallback matcher for this scope. If **two** claim the header → review-only, `ambiguous-rowid-column`.
+
+**Step 2 — duplicate pre-pass (before any binding — round 7).** Across the whole scope, count every non-blank, same-document, valid token. Mark every token whose count > 1 as `duplicate-rowid` ("Needs your choice"), and **exclude all its copies from binding**. Only tokens with count == 1 are eligible to bind in Step 3.
+
+**Step 3 — classify each row by its `Row ID` cell** (token already parsed/validated per the grammar above):
+- **Count-1 valid token, in this scope's exported-token set, matches exactly one live marker** → `match`: bind row→marker. Apply attribute edits (name/answers/notes/entity) to that same marker regardless of how much changed — a rename is just a name attribute change on the same id. (Duplicates were already removed in Step 2.)
+- **Parse fails / wrong version** → `malformed-rowid`; **`documentId` ≠ this document** (read before any HMAC) → `foreign-rowid`; **same document, HMAC valid, but `scopeId` ≠ this scope** → `wrong-scope-rowid`; **same document+scope, HMAC fails** → `malformed-rowid`; **same document+scope, HMAC valid, but no live marker / not in the exported-token set** → `unknown-rowid`. All surfaced, none bound or auto-created.
+- **Blank** → not auto-"new" by default. First run the fallback fingerprint against **leftover** (so-far-unmatched) exported markers in scope — **excluding any marker tied up in a `duplicate-rowid` (round 8)** until that duplicate is resolved: a confident unique hit → `missing-rowid` (surface for review / re-attach the token, **no silent duplicate**); only a blank with **no** leftover candidate becomes a genuinely **new** app-assigned unplaced item (Amendment #2 — honors the owner's blank→new rule for true new rows). The assigned token is written back on the next export.
+
+**Suspicious-mismatch guard (owner clarification 2026-06-08).** Even when a valid `Row ID` binds, if the row's fingerprint diverges from that marker's last-exported fingerprint in a way that *conflicts with metadata expectations* (e.g. the metadata's expected token for this content names a different marker, or the bound marker's expected fingerprint and the row are irreconcilably different) → do not silently apply; surface `ambiguous-identity` → "Needs your choice." A valid `Row ID` is primary truth for a normal edit, but a serious three-layer disagreement asks rather than guesses.
+
+**Step 4 — leftovers.** A marker whose token was exported but appears on **no** row (and wasn't claimed by a blank-row re-attach) → `candidate-delete`: surfaced for review only; the placed-marker delete guard stays ON, so never an actual delete this stage.
+
+**Column binding for answers** still resolves checklist columns by stored column identity (unique header hash first, ordinal only as a duplicate tiebreaker); an answer column that can't be resolved quarantines that column's writes only. This is unchanged and orthogonal to `Row ID`.
+
+## Fallback matcher (no usable `Row ID` column)
+When the `Row ID` column is absent (e.g. a legacy export, or a user deleted the column), fall back to the previously-approved conservative matcher: exact unique full-row identity-vector match (L1) and single-field-edit Hamming-≤1 mutually-unique match (L2), everything else quarantined; sourced from `_SurveyMetadata` or the app `excelScopeSync` (fail closed if the two disagree). This preserves safety for workbooks that predate or lose the column, and is the migration path: on a confident fallback match, re-attach the token in the app record and write the `Row ID` column on the next export.
+
+## Change-detection (unchanged, always on)
+The full-row fingerprint (canonical ExcelJS value serializer + versioned SHA-256, with the export→reload→recompute round-trip test) still runs for every matched row to tell *which* fields changed, drive the per-field conflict check (Amendment #6), and feed the journal. It is no longer the matching key — `Row ID` is — but it remains the confidence/observability layer.
+
+## Observability (match journal)
+Per import: export clock, baseline verdict, and per scope: counts of `match` / `new` / `missing-rowid` / `duplicate-rowid` / `foreign-rowid` / `unknown-rowid` / `malformed-rowid` / `candidate-delete` / `fallback-used` / `quarantined`, plus every prevented write. Reason vocabulary: `stale-workbook`, `incomparable-export`, `missing-export-clock`, `source-disagreement`, `ambiguous-rowid-column`, `rowid-key-unavailable`, `duplicate-rowid`, `foreign-rowid`, `wrong-scope-rowid`, `unknown-rowid`, `malformed-rowid`, `missing-rowid`, `ambiguous-identity`, `incomplete-vector` (fallback), `provisional-L1` (fallback).
+
+## Key decisions & tradeoffs (bite here)
+1. **`Row ID` is a signed scoped token over the marker's durable id, not a bare id.** Tradeoff: needs a per-document secret + HMAC and a slightly longer cell value; buys tamper-evidence, foreign-paste detection, and typo-detection for free. The exported-token-set gate means even a valid token can't bind unless it was actually written to this workbook.
+2. **A non-blank token never becomes "new"; a blank token only becomes "new" after a leftover-fingerprint check.** Tradeoff: a hand-typed token gets a review prompt, and a cleared token on an existing row is re-attached rather than duplicated. Correct: a non-blank value signals intent to reference an existing marker, and a blank on a content-matching orphan is a lost id, not a new item.
+3. **Duplicate token always asks, even if the rows are otherwise distinguishable.** Tradeoff: copying a row to make a near-duplicate forces a choice. Correct per Amendment #3 — a shared identity is exactly the broken-identity case.
+4. **Fingerprint matcher kept only as fallback.** Tradeoff: two matching paths to maintain. Justified: it is the safety net for column-deleted/legacy workbooks and the migration mechanism, and it is already reviewed/approved.
+5. **Delete stays OFF.** A `candidate-delete` is review-only this stage, regardless of how confident the `Row ID` absence is.
+
+## Risks / open questions
+- **User deletes the `Row ID` column, edits rows, re-imports.** Handled by the fallback matcher — but confirm the fallback's confidence is high enough that it re-attaches tokens correctly rather than spawning duplicates. This is the main new failure surface a visible editable column introduces.
+- **User copies a marker's row to make a new item** (duplicating the token, intending a new item). The design asks ("duplicate Row ID") rather than auto-splitting. Is "ask" the right UX, or should a duplicate token auto-resolve to "keep the first, treat the rest as new (blank-assign)"? Leaning ask, per Amendment #3.
+- **User pastes rows from another survey** (foreign tokens). They read as `foreign-rowid` → review. Correct, but could be noisy on a big paste — the journal should batch-report it.
+- **Token rendering vs. user trust.** A `v1.…` token in column A is visually noisy in a human-facing sheet. Open: width/format/locking so it reads as a system column without breaking the frozen-contract snapshot.
+- **Per-field conflict + Row ID:** a matched row can still have a genuine field conflict (both sides changed the same answer). Row ID resolves *identity*; the fingerprint/per-field revision still resolves *conflict* (Amendment #6). Confirm the two compose.
+
+## Out of scope (do not review)
+- Enabling Excel-driven deletion of placed markers (later, explicit, user-gated).
+- Live/polling writeback, workbook leases.
+- Visible workbook layout beyond adding the `Row ID` column (otherwise frozen).
+- Recovery/trash UI (Stage 2, shipped).

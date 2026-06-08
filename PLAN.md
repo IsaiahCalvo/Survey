@@ -39,13 +39,32 @@ behavior lands.
    Notes text**. Use the actual values, not mere presence/absence. This fingerprint is the
    always-on safety/confidence layer for matching, change-detection, and conflict checks.
 
-5. **No hidden IDs on the visible sheets.** Do **not** add hidden ID rows or hidden ID
-   columns to the visible survey sheets. If durable identity metadata is needed, store it
-   in the existing **very-hidden `_SurveyMetadata` sheet** plus the app's own sync record —
-   never as new visible-sheet columns. Row fingerprints (#4) still run for every row. This
-   **replaces** the original "Stage 1 may add hidden reserved ID/metadata columns to the
-   visible sheets," and the visible-contract snapshot test now also forbids new hidden
-   columns on visible sheets.
+5. **No hidden IDs on the visible sheets.** ~~Do not add hidden ID rows or hidden ID
+   columns to the visible survey sheets.~~ **SUPERSEDED by Amendment #10 (2026-06-08):** a
+   *visible* `Row ID` column is now the chosen identity carrier. The "no *hidden* ID
+   columns/rows on visible sheets" half still holds (identity is a visible column, not a
+   hidden one; the very-hidden `_SurveyMetadata` sheet + app record remain the secondary
+   store). Row fingerprints (#4) still run for every row as the change-detection/fallback
+   layer. See #10.
+
+10. **A visible `Row ID` column is the primary identity key (2026-06-08 — replaces the
+    no-visible-ID-column decision in #5).** Add a **visible first column named `Row ID`** to
+    each survey sheet, holding a **stable, unique, opaque per-Survey-Marker token** — never a
+    positional row number. The token **moves with its row** when the user sorts, filters, or
+    moves rows, so matching no longer depends on row position or hidden-only metadata.
+    Matching rules: (a) an existing synced row whose `Row ID` matches a marker → match by
+    `Row ID`; rename / edited answers / notes / entity on that row → **same `Row ID`, update
+    that same marker**. (b) A new row with a **blank** `Row ID` → the app assigns a fresh
+    `Row ID` and creates an **unplaced** Survey-panel item (Amendment #2). (c) A **duplicate**
+    `Row ID` across rows → **"Needs your choice"** (Amendment #3/#7), never a silent merge.
+    (d) An **unknown/edited** `Row ID` that matches no marker is treated as ambiguous and
+    surfaced (could be a corrupted token), never name-guessed. (e) A placed marker whose
+    `Row ID` is **missing** from the workbook → never deleted/guessed by name; surfaced for
+    review. The full-row fingerprint (#4) + `_SurveyMetadata`/app record (#5) remain as the
+    **fallback matcher** for when the `Row ID` column is absent/unusable, and as the
+    always-on change-detection layer. The frozen visible-contract snapshot test (#8) is
+    updated to include the new `Row ID` column. **Excel-driven deletion of a placed marker
+    stays OFF until this Row ID system is implemented and tested.**
 
 6. **Conflict = both sides changed the same row/field before syncing.** A real conflict
    exists *only* when the same field changed on both sides before a sync reconciled them
