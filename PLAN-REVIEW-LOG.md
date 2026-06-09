@@ -1,133 +1,117 @@
-# Plan Review Log: Excel ↔ Survey Marker sync redesign
-
-Act 1 (grill) complete — plan locked with the user 2026-06-07. MAX_ROUNDS=5.
-
-Decisions settled in the grill:
-- Goal order: data safety first, then renderer feel, then unification cleanup.
-- Excel file lives both local and OneDrive/SharePoint → build/test both lock strategies.
-- Excel is attribute-only; app owns marker existence + geometry. Excel may introduce an unplaced marker, never place/destroy a placed one.
-- Conflicts: pure last-writer-wins per field + value kept in history; no inline conflict prompt.
-- Anyone on the job can edit/remove; ownership is soft attribution only.
-- Deletes are quiet + Undo + recoverable trash (30d, per-project configurable); no broadcast popups; "while away" pill.
-
----
+# Plan Review Log: Excel↔Survey identity, copy/paste, dedup, safe writeback, Microsoft auth
+Act 1 (grill) complete — plan locked with the user, both research passes folded in. MAX_ROUNDS=5.
+PLAN_FILE=PLAN.md (active section: "Amendment 2026-06-08(b)").
 
 ## Round 1 — Codex
+No files modified.
 
-Findings (VERDICT: REVISE):
-- origin='excel-import' guard not actually plumbed: useAnnotationDoc passes no origin; annotationDocSync hardcodes origin:'local'. Add an explicit import transaction API; imports apply attribute patches only, never whole-map reconciliation.
-- Guard cannot know "app-created and not yet exported": records carry no durable export ack. Persist createdByApp, exportAckEtag/exportedAt, pending op ids.
-- Import deletion also mutates annotationsByPage (PDFViewer.jsx:13319), captured to Y.Doc via applyByPage. Import must never delete geometry/canvas objects regardless of origin.
-- syncSurveyMarkersToDoc deletes missing keys before setting changed ones (annotationDocStore.js:101) → partial durable deletion on crash. Make import reconciliation additive/patch-only.
-- Gating on hasPendingExcelSyncChanges too weak (baseline in memory; missing-after-reload = "dirty" for everything). Load durable baseline first; fail closed to "review required" when none.
-- Startup anchor still bad: selectedTemplate.updatedAt is not an Excel watermark. Use workbook eTag + content hash stored with baseline.
-- 500ms delayed import races with Y.Doc hydration/local state. Block auto-import until hydration + baseline + queue loaded; cancel on local edit.
-- Stage 1 name-match fallback reintroduces rename-destroys-geometry for legacy sheets. No auto name fallback for placed markers; quarantine.
-- Hidden ID robustness still open (users delete/paste/duplicate/sort/copy IDs). Owned ID column + very-hidden metadata sheet; detect missing/dup/moved; quarantine.
-- Hidden status/tombstone column wrong for Excel-side deletion (deleting the row deletes the status cell). Missing row = "absent upstream," not a tombstone; only app-origin deletes write tombstones.
-- Hidden ID/status columns will look like schema changes unless parser skips them (skips only Changed By/Changed Date/Item/Entity/Notes). Define reserved sync columns + metadata sheet in parser first.
-- Marker IDs don't solve checklist schema identity (columns matched by header text). Store checklist item IDs in column metadata; quarantine dup/unknown headers.
-- Entity sync name-based, can drop unknown entity edits. Import entity by stable id; surface unknown names as validation.
-- Per-field LWW defines no clock/revision/author; Excel Changed Date is a formatted date. Use per-field revisions from app store; treat Excel edits as observed-at-import.
-- "Pure LWW with no prompt even for unsaved edits" contradicts the playbook's interrupt-affected-author rule. LWW only for committed values; active drafts need keep/take/compare or draft preservation.
-- History recovery promised before append-only history exists. Ship field-level history before enabling silent overwrites.
-- Whole-workbook rebuild (PDFViewer.jsx:11777) is a major data-loss window (formatting, extra sheets, comments, filters, concurrent edits). Patch only owned tables/ranges with eTag guard.
-- Two clients can both export stale whole-workbook snapshots; last upload wins across the file. Per-workbook sync lease + read-latest, merge, If-Match upload.
-- excelGraphService.js:238 claims upload-by-id works while Excel is open, while plan assumes lock failure. Don't assume; test Drive upload, workbook API, OneDrive Business, SharePoint, local separately.
-- Graph error handling too narrow: also accessConflict, invalidSessionAccessConflict, Retry-After throttling — not just 423/412. Normalize all.
-- 412 only protects if If-Match actually sent; current paths don't. Every cloud write sends last-read eTag and re-merges on mismatch.
-- Excel REST API is for OneDrive Business/SharePoint/Group drive, not consumer OneDrive. Treat consumer OneDrive as content mirror only.
-- Local file locking hand-waved: Electron writeFile may overwrite an open file on POSIX. Add a main-process platform-specific lock/write contract + tests with Excel open.
-- Offline/reconnect underspecified: queue must survive quit, token expiry, network loss, rename, multi-device. Durable per-doc queue with idempotency keys, base eTag/hash, op order, retry state, visible depth.
-- Flushing queued writes without first importing latest Excel overwrites offline Excel edits. On reconnect: read latest → merge against queued op base → write If-Match.
-- Excel-created rows becoming markers pollutes canonical store with ghosts. Keep unmatched rows in an import inbox until accepted/placed.
-- "Anyone can remove any marker" conflicts with the ownership gate (PDFViewer.jsx:22443). Remove that gate in the same stage as trash/audit, or revise.
-- Recoverable trash conflicts with hard delete paths (deleteAnnotations). Replace marker deletes with tombstones first.
-- Migration too dismissive: ignores recovery from legacy Supabase rows, local caches, app PDF metadata, Excel rows. Add a migration preflight: snapshot all sources, restore unambiguous, quarantine rest.
-- Observability not a stage. Add a sync journal (attempt id, origin, workbook id/eTag, baseline hash, rows changed/missing/quarantined, prevented deletions, queue depth, retry cause, recovery action).
-- Over-engineered on live feel/presence before the safety contract is testable; under-engineered on ID recovery, first-run baseline, lock semantics, conflict clocks, migration, audit (promote to Stage 0/1 acceptance criteria).
-- Stage ordering: Stage 0 still allows data loss (no stable ids/baseline/pending-export/geometry protection); name fallback corruption survives to Stage 1; trash arrives after deletion behavior changes; queue arrives too late. Reorder so safety lands first.
+**Findings**
 
-Docs cited: Graph Excel resource scope/sessions, workbook-error-handling, throttling Retry-After, createUploadSession If-Match.
+- Duplicate-token auto-resolution can steal identity. If the user copies a row, edits the original, and leaves the copy unchanged, “best matching stored content” will keep the token on the copy and create the edited original as a new item. Fix: do not infer “original” by content; require an explicit continuation signal, otherwise review.
 
-### Claude's response
-Accepted nearly all of it — the critique is code-grounded and correct. Major revision of PLAN.md:
-- Added six **core safety invariants** that hold from the first commit (no Excel-origin delete of a placed marker; import is patch-only/additive and never touches geometry; deletes are app-origin tombstones only; no name-matching of placed markers; patch-only eTag-guarded owned-range writes; sync journal from day one).
-- Reordered stages so the **entire safety contract lands before any collaboration UX**: Stage 0 (import transaction + real origin plumbing + additive reconcile + disable all Excel-origin deletes/auto-create + durable per-marker export metadata + eTag/hash watermark + durable baseline fail-closed + hydration/queue gating + journal); Stage 1 (reserved columns + very-hidden metadata sheet + marker/checklist/entity ids + quarantine, no name fallback); Stage 2 (tombstones + trash + field history before any silent overwrite; ownership gate relaxed with audit); Stage 3 (patch-only If-Match writes, sync lease, durable per-doc outbound queue, read-latest→merge→write, full Graph error normalization, per-surface product gating incl. consumer-OneDrive-as-mirror and a main-process local lock contract); Stage 4 (per-field revision clock); Stage 5 (quiet UX); Stage 6 (cadence spike).
-- Added a **migration preflight** (snapshot all sources, restore unambiguous, quarantine rest).
-- Added per-stage acceptance criteria.
+- The current matcher treats all duplicate tokens as review (`rowImportMatcher.js:49-72`), so this is not a caller-only change. Fix: redesign the matcher decision model and tests around duplicate groups.
 
-Rejected / overruled (1, with reason):
-- Codex wants a keep/take/compare **prompt** on same-field conflicts. The product owner explicitly chose **no prompt** ("keep newest, save the old"). Resolution: keep last-writer-wins-no-prompt on *committed* values, but adopt Codex's underlying valid concern by **never clobbering an actively-open edit field mid-edit** (remote applies on commit/blur; both values in history). This fixes the real data-loss-while-typing risk without adding the prompt the owner declined.
+- “Remember imported rows immediately” is insufficient for rows edited before ID writeback. Blank recovery only matches current fingerprints; if the row changes, it becomes new again. Fix: persist a pending alias keyed by workbook/sheet/row plus assigned marker/token, and review if that alias becomes ambiguous.
 
-Scoped-down (1):
-- Migration: accepted the preflight snapshot + restore-unambiguous/quarantine, but not a heavy full reconciliation — owner has said residual data loss on already-corrupted docs is acceptable (re-upload).
+- Assigning a fresh token in app memory while Excel still contains blank/old duplicate IDs creates churn. A copied row still carrying the old token will re-enter as a duplicate group on the next save. Fix: duplicate-token resolution must recognize pending-writeback aliases before creating another marker.
 
----
+- The identity record does not currently store token, pending writeback, workbook, sheet, or row locator (`excelIdentityRecord.js`, `buildScopeImportPlans.js:107-117`). Fix: extend the identity record and matcher input with those fields.
+
+- Import metadata can be dropped when visible fields do not change. The import paths only call `setSurveyMarkers` on counted updates/deletes (`PDFViewer.jsx:13760`, `14286`), but identity stamping may be metadata-only. Fix: treat identity stamping as a persisted state change, without marking user-visible content dirty.
+
+- The writeback queue is underspecified. “Markers whose Row ID still needs to land” is not enough to patch the correct cell after row moves, sheet renames, workbook moves, or restart. Fix: define a durable queue schema with workbook id/path, sheet id/name, scope, row locator, expected old cell value, new token, retry state, and read-after-write confirmation.
+
+- Clearing `pendingRowIdWriteback` on “confirmed write” is too vague. Graph PATCH or local write success is not enough. Fix: clear only after reading the target cell back and verifying it equals the assigned token.
+
+- Local “Excel closed” detection via `~$file.xlsx` is not reliable enough as a write gate, especially with stale lock files, cloud-sync folders, and the existing watcher/allowlist EPERM problem. Fix: use sentinel only as one signal; require parent-dir watch/stat, file mtime stability, write/readback verification, and fail to manual export when uncertain.
+
+- The plan says business Graph live writeback is “already implemented,” but current code updates whole worksheet ranges from a rebuilt workbook (`PDFViewer.jsx:12458-12492`) or full-file uploads (`12498-12508`), gated off by `EXCEL_AUTOMATIC_WRITEBACK_ENABLED=false`. Fix: implement a new column-A single-cell patch writer; do not reuse the existing whole-range path.
+
+- The manual “Pull from Excel” diagnosis should not be logging-first only. A likely concrete root cause is visible: manual pull downloads by path (`PDFViewer.jsx:14574-14576`), while auto-sync prefers file id (`14742-14747`); SharePoint exports can store `/drives/{driveId}/items/{id}` as `oneDriveApiPath` (`13087`), which `downloadExcelFileByPath()` wraps incorrectly as `/me/drive/root:{path}`. Fix: make manual pull prefer `oneDriveFileId` and only path-fallback for real root paths, then add matcher logs.
+
+- Microsoft auth migration is under-scoped. `msal-node` is not in `package.json`, current code hand-rolls PKCE in the renderer (`MSGraphContext.jsx:627-684`), and MSAL generally owns refresh tokens in its cache rather than exposing them for the existing Supabase `refresh_token` model. Fix: choose one architecture: main-process MSAL cache with renderer getting only access-token status, or system-browser PKCE preserving explicit refresh-token storage.
+
+- Returning tokens to the renderer over IPC weakens the auth boundary. Fix: keep refresh tokens/MSAL cache in the main process and expose narrow IPC such as `msgraph:getAccessToken`, not raw refresh tokens.
+
+- Observability still needs privacy bounds. Per-row logs must not dump full Row IDs, notes, or token material. Fix: log row number, token class, short token hash, decision, reason, queue state, and workbook/sheet ids.
+
+VERDICT: REVISE
+### Claude's response (Round 1)
+Accepted and incorporated (most findings — they are correct):
+- Duplicate-token identity theft: DROP content-best-match as the discriminator. New rule: a token stays bound to the marker the app's record already maps it to; among rows carrying that token, the FIRST occurrence retains the binding, later duplicates become new items with freshly-minted tokens; "needs your choice" only when the bound marker can't be tied to any carrying row. Deterministic, no content-theft, and copy-below "just works".
+- Matcher (not just caller) changes: duplicate handling redesigned around duplicate GROUPS + fresh-ID assignment; new tests.
+- Edited-before-writeback + churn: add a durable PENDING-WRITEBACK ALIAS (workbook+sheet id, scope, assigned markerId, assigned token, row locator, expected-old-cell-value) consulted by the matcher BEFORE creating a marker, so a not-yet-written row is never re-created and a content edit before writeback still resolves. Best-effort; the durable fix is writing the token back ASAP.
+- Identity record/matcher input extended with token, pendingRowIdWriteback, workbook/sheet ids, row locator.
+- Metadata-only stamping must persist even when no visible change (don't gate identity persistence on updatesCount>0), without marking the survey dirty.
+- Writeback queue schema specified (workbook id/path, sheet id/name, scope, row locator, expected old value, new token, retry state, read-after-write).
+- Clear pendingRowIdWriteback only after READ-BACK verify the cell equals the token.
+- Local "Excel closed": lock-file is ONE signal; add mtime stability + write/readback + fail-to-manual-export when uncertain.
+- CORRECTION accepted: business-Graph live writeback is NOT already implemented as cell-PATCH — existing code does whole-range/full-file (gated off). Plan now calls for a NEW single-cell column-A patch writer.
+- Pull-from-Excel: ALSO fix the concrete bug Codex found (manual pull downloads by PATH, auto by file id; SharePoint oneDriveApiPath wrapped wrong by downloadExcelFileByPath) — prefer oneDriveFileId, path-fallback only for real root paths. Keep logging-first too: the user's failing case was a LOCAL file where that OneDrive-path bug does not apply, so the local mystery still needs the logs.
+- Microsoft auth: keep MSAL cache + refresh tokens in the MAIN process; expose only narrow IPC (msgraph:getAccessToken / status); do NOT hand raw refresh tokens to the renderer.
+- Observability privacy bounds: log row number, token class, short token HASH (not the token), decision, reason, queue state, workbook/sheet ids — never full Row IDs/notes/token material.
+
+Modified vs Codex's exact fix:
+- Codex wanted duplicate→review unless an explicit continuation signal. The user REQUIRES copy/paste to auto-work, so we use the deterministic first-occurrence-keeps-binding rule above instead of always-review, with review as the ambiguity escape hatch. This keeps the user's UX while removing the content-theft path Codex flagged.
 
 ## Round 2 — Codex
+Most Round 1 issues are addressed, but the amendment still has material gaps.
 
-Most prior blockers confirmed addressed (patch-only import, no geometry delete, no name fallback, durable baseline, journaling, stable IDs, trash-before-overwrite, eTag/lease/queue, broader Graph errors, local-file uncertainty, migration preflight). Remaining material issues (VERDICT: REVISE):
-- Stage 0/Stage 1 identity gap: invariants forbid name-matching from commit 1, but IDs arrive in Stage 1 — Stage 0 has no safe match key. Fix: Stage 0 fails closed / review-only for placed markers on any sheet without trusted IDs.
-- Consumer OneDrive contradicts "no whole-workbook rebuild": without the workbook API, content mirror = download/edit/upload full file, which can lose features. Fix: consumer OneDrive read/import-only or export-copy-only until a preserving OpenXML patch path is proven.
-- ID backfill underspecified: how existing sheets get first-stamped without unsafe name matching. Fix: one-time controlled ID-stamping migration — auto-map only unambiguous rows vs baseline, quarantine the rest.
-- Stripped-ID recovery too central to leave in Risks. Fix: move it into Stage 1 acceptance.
-- Stage 0 acceptance only covers reopen auto-import; destructive paths also exist in manual import, auto import, file-watch/live polling, workbook session sync. Fix: Stage 0 acceptance requires every inbound path through the patch-only API (executeExcelImport, executeAutoExcelImport, live/file-watch).
-- Import inbox durability unspecified. Fix: store proposals durably with source eTag/hash + row identity.
-- Local-file lock contract is a material feasibility risk Stage 3 depends on. Fix: add a spike gate — if reliable lock detection isn't achievable, local .xlsx = manual export/import only.
+- `PLAN.md:229` still says business Graph live writeback is “Already implemented,” while `PLAN.md:236` and `PLAN.md:247` correctly say it is new single-cell patch work. Fix: remove “Already implemented” from the capability matrix.
 
-### Claude's response
-Accepted all 7 (no rejections — each tightens a real gap). PLAN.md edits:
-- Invariant 4 + Stage 0 acceptance: inbound import is **review-only for placed markers until Stage 1 IDs exist** (closes the identity-ordering gap), and **every** inbound path (manual/auto/file-watch/session sync) must route through the patch-only import transaction API.
-- Stage 1: added the **one-time controlled ID-stamping migration** (auto-map unambiguous-vs-baseline only, else quarantine), a **durable import inbox** (persists across reload with source eTag/hash + row identity), and moved the **stripped/duplicated-ID recovery rule into Stage 1 acceptance**.
-- Stage 3: consumer OneDrive is now **read/import-only** (writeback only export-to-a-copy until a feature-preserving OpenXML patch path is proven); added a **local-file lock spike gate** (fall back to manual export/import if lock detection isn't achievable).
-- Risks trimmed accordingly (metadata-sheet durability → Stage 1 acceptance; local lock → Stage 3 spike gate).
+- The first-occurrence duplicate rule is still positional identity. If a copied row is pasted above the original, or sorting happens before writeback, the placed marker can bind to the wrong physical row. Fix: first occurrence may be an auto-rule only when row order is known unchanged since baseline; otherwise review.
 
----
+- The pending alias cannot reliably resolve “content edited before writeback” after sort/move because the sheet does not contain the assigned token yet, and `expectedOldCellValue` may be blank or the duplicated old token shared by multiple rows. Fix: if alias lookup does not identify exactly one row, review instead of creating or applying.
+
+- The plan says identity/alias stamping stays out of the dirty fingerprint so it “never marks the survey unsynced,” but pending ID writeback means Excel is not fully synced. Fix: keep it out of content-dirty state, but show a separate pending-writeback sync state and queue depth.
+
+- Queue and alias durability still lack a named storage/load barrier. The governing context says imports must wait for queue load, but the amendment does not say where aliases live or that manual/auto import blocks until aliases load. Fix: specify the durable store and require import to fail closed until queue + aliases are loaded.
+
+- “Local/personal → only when Excel is closed / on next app export” is ambiguous. A next export to the linked path while Excel is open is exactly the unsafe write path. Fix: next export clears queue only if it writes the linked workbook through a proven safe path or intentionally relinks to a clean copy.
+
+- Microsoft auth is improved, but still leaves a core architecture choice open while claiming existing sessions keep working. Fix: choose main-process MSAL cache as source of truth, add a dual-read or reconnect migration for old Supabase refresh-token rows, and remove the unresolved “OR” before implementation.
+
+VERDICT: REVISE
+### Claude's response (Round 2)
+All seven accepted (all are correct convergence-tightening):
+1. Removed "Already implemented" from the business-Graph capability-matrix cell (it contradicted the "new single-cell patch writer" decision).
+2. Positional first-occurrence duplicate rule now applies ONLY when sheet row order is provably unchanged since the export baseline (row-order fingerprint / export clock); otherwise the duplicate group goes to review. No positional identity guess on a sorted/moved sheet.
+3. Pending-alias lookup must identify EXACTLY ONE row; if zero or >1 candidate, review instead of create/apply.
+4. Distinguish content-dirty from IDs-pending-writeback: identity/alias stamping stays out of the content dirty fingerprint, but a SEPARATE "pending writeback (N)" sync state + queue depth is surfaced (Excel isn't fully synced until IDs land).
+5. Named durable store for queue+aliases (localStorage-backed, per-document, like the other sync stores); import FAILS CLOSED until queue + aliases are hydrated (no import races the load).
+6. "On next export" clarified: an export clears queued IDs only if that export wrote through a proven-safe path (Excel closed / business-Graph cell PATCH) or intentionally relinked to a clean copy — never merely because an export was attempted to a linked path open in Excel.
+7. Microsoft auth: COMMIT to main-process MSAL cache as the source of truth; old Supabase refresh-token rows get a one-time reconnect/dual-read migration; removed the unresolved "OR".
 
 ## Round 3 — Codex
+The seven Round 2 points are mostly addressed, but the revision introduced two material contradictions.
 
-All round-2 findings confirmed addressed. One new material flaw + one minor correction (VERDICT: REVISE):
-- NEW: plan assumed range/table PATCH writes can be guarded with `If-Match` eTags, but Graph's range-update endpoint documents only Authorization / Content-Type / optional Workbook-Session-Id — NOT If-Match (If-Match is for driveItem/upload-session file writes). Fix: spike-gate proving If-Match on the exact workbook PATCH endpoints, OR redesign concurrency to app-side lease + read/merge/write without claiming eTag-preconditioned range writes.
-- Minor: wording — Excel range update IS supported on delegated personal accounts; it's createSession (persistent sessions) that's unsupported on personal accounts. No data-loss risk (plan already degrades consumer OneDrive) but correct the wording.
+- The duplicate-token rule now says auto-positioning applies only when row order is “provably unchanged since export baseline,” and also says any insert since baseline sends the group to review. A normal copy/paste creates an inserted row, so the rule would review the exact copy case it is supposed to auto-resolve. Fix: define the guard as “baseline rows keep their relative order/locator, allowing inserted duplicate rows after the bound row”; review when the duplicate appears before or displaces the baseline row.
 
-### Claude's response
-Accepted both — Codex is right on the Graph API specifics.
-- Invariant 5 + Stage 3: concurrency for range/table writes is now an **app-side per-workbook sync lease + a persisted workbook session + read-latest→merge→write**, explicitly NOT `If-Match` on range PATCH (eTag/If-Match reserved for file-content-level ops). Added a Stage 3 **spike gate** to prove on the exact endpoints which of session-id / lease / eTag each honors before relying on it. Queue-flush wording updated to "write under the workbook session + lease."
-- Corrected the personal-account wording: consumer/personal OneDrive supports sessionless range ops but not persistent sessions (createSession), so it stays read/import-only until a session-safe patch path is proven; safe two-way sync with sessions needs OneDrive-for-Business/SharePoint or a local file.
+- The active section commits to a main-process MSAL cache, but the risks still say “Microsoft token-custody choice … must be settled before coding.” Fix: delete the stale risk and specify the persistent cache location/mechanism.
 
----
+- The active queue says localStorage-backed, but the governing Stage 3 queue says it must survive multiple devices. LocalStorage is per-device, so another device can miss pending aliases and recreate rows. Fix: scope localStorage to local/single-device workflows, or put cloud workbook queues/aliases in the shared app store.
+
+- The risks still say “copy pasted above keeps the binding,” which contradicts the new review-on-untrusted-order rule. Fix: update that risk to say pasted-above must review.
+
+VERDICT: REVISE
+### Claude's response (Round 3)
+All four accepted (internal-consistency fixes introduced by the R2 edits):
+1. Duplicate guard reworded: auto-resolve when the BOUND (original) row still holds its baseline relative order/locator and the duplicate is an INSERTED row AFTER it (the normal copy-below case); review only when the duplicate appears BEFORE or DISPLACES the baseline row. (My R2 wording wrongly reviewed the very copy case it should auto-resolve.)
+2. Deleted the stale "token-custody must be settled" risk (now decided) and named the persistent cache mechanism: main-process msal-node cache persisted via @azure/msal-node-extensions, or an encrypted file in Electron userData via safeStorage.
+3. Queue+alias store scoped by file type: LOCAL files use the per-device localStorage store; CLOUD workbooks (business/personal OneDrive) put the queue+aliases in the SHARED app store (Y.Doc/Supabase) so a second device doesn't recreate pending rows.
+4. Updated the stale "pasted above keeps the binding" risk to "pasted above / displacing the baseline row → review."
 
 ## Round 4 — Codex
+Round 3 blockers are resolved.
 
-Round-3 fixes confirmed in the detailed design. Two remaining consistency issues (VERDICT: REVISE):
-- The **Goal paragraph still carried the old wrong claims** (workbook API "not supported on consumer OneDrive"; "eTag-guarded writes to owned ranges"), contradicting corrected Stage 3. Fix: update the Goal sentence to match.
-- **"Persisted workbook session" is ambiguous**: Graph's persistChanges:true means changes are saved, not that the session ID is durable; invalid sessions shouldn't be reused. Fix: the QUEUE is the durable thing; sessions are created/refreshed per flush and discarded/recreated per Graph error codes.
+The active amendment now covers the key failure modes I flagged: duplicate-token auto-resolution is constrained to the normal copy-below case, pending aliases fail closed unless exactly one row is identified, queue/alias durability is scoped correctly for local versus cloud, unsafe exports do not clear writeback state, and Microsoft auth now has one token-custody direction with a persistent-cache path.
 
-### Claude's response
-Accepted both (pure consistency fixes). Rewrote the Goal sentence to match Stage 3 (per-flush session + lease + read/merge/write, not range eTag; personal OneDrive weaker). Clarified everywhere that the **outbound queue is the only durable artifact**; workbook sessions are per-flush, recreated when Graph reports them invalid. Updated the product-gate and key-decisions wording to "per-flush workbook session" / "workbook sessions."
+Remaining notes are implementation-level, not plan blockers:
 
----
+- Add explicit tests for copy-below, paste-above, sorted-before-writeback, stale alias, and multi-device cloud pending alias hydration.
+- Keep the Key Decisions duplicate-token summary aligned with the stricter rule in Approach so implementers do not accidentally use “first row wins” without the baseline-order guard.
+- Treat the MSAL persistent-cache choice as the first task in the auth slice, before changing IPC.
 
-## Round 5 — Codex — VERDICT: APPROVED
-
-All round-4 findings addressed. One non-blocking nit: Goal said sessions are available on "OneDrive-for-Business/SharePoint (and local files)" — local files don't have Graph workbook sessions. Applied: removed "(and local files)" and pointed local to the Stage 3 lock/write contract. No new material data-loss or concurrency flaw found.
-
-## Round 6 — Codex (fresh session: harness review + one more plan pass)
-
-Requested after installing the openai/codex-plugin-cc plugin; run via the same Codex engine. VERDICT: REVISE.
-
-JOB 1 — harness: confirmed `agent-cli/excel-corruption-e2e.mjs` is a VALID engine-layer proof (real engine + real Supabase, CONTROL genuinely exercises the old Y.Map deletion path) — but it OVER-CLAIMS at the app level: the live PDFViewer import still captures markers with the default local origin, so the result line "Excel imports can no longer destroy..." is false as an app claim. Smaller: `batchSize<=0` could stall the loop; import-origin can still overwrite geometry/`bounds` or same-ID protected markers (delete-protection only); no journal assertion; no app-level Stage-0 tests yet.
-JOB 2 — plan, 5 new flaws: (1) Preserve says builder "extracted unchanged" but Stage 1 must add hidden ID/metadata columns — contradiction; (2) builder snapshot gate is "before Stage 3" but Stage 1 already changes schema — too late; (3) Preserve's 3-min session refresh vs Stage 3 "per-flush, not durable" reads as a contradiction; (4) Stage 3 is "before re-enabling automatic writes" but Stage 0 never explicitly disables today's full-file/live writeback — a data-loss window; (5) invariant "tombstoned deletes from first commit" but tombstones aren't built until Stage 2.
-
-### Claude's response
-Accepted all (no rejections; all real). Fixes applied:
-- Harness: rewrote the result output to say PASS (ENGINE LAYER) with an explicit SCOPE note that the live app is NOT fixed until the Stage 0 viewer wiring lands. Store: clamped `batchSize` to a positive int so 0/NaN can't stall.
-- Plan: invariant 3 reworded (Excel can never delete; app-origin deletes become tombstones in Stage 2; gap meanwhile closed by invariant 1 + the kill-switch). Invariant 8 reworded to "visible workbook contract frozen; Stage 1 may add hidden metadata as snapshot-approved additive drift." Stage 0 gains a **writeback kill-switch** (disable automatic full-file/live writeback until Stage 3; manual export-copy only) and an **import field whitelist** (imports may write answers/name/note/entity only — never geometry/new placed markers; protectedIds are write-protected for imports). Builder-output snapshot gate moved to **before any Stage 1** builder/parser change. Session-refresh Preserve wording clarified (refresh only sustains an active long flush — no contradiction with per-flush sessions). Approach heading softened from "leaves no data-loss gap" to "never widens the data-loss risk."
-- Deferred (not gold-plated into the low-level reconcile now; captured as Stage 0 import-transaction work): the field whitelist, write-protected protectedIds, and the journal prevented-deletion assertion — these belong in the import transaction API + app-level Stage 0 tests, per the plan.
-
-### Round 6 follow-ups → APPROVED
-Two confirm passes on the same Codex thread closed two remaining wording leaks: (a) the harness file header still said "END-TO-END proof" → reworded to ENGINE-LAYER proof with the live-app scope warning; (b) a Stage 0 line still implied tombstone-only deletes → reworded so Excel imports never delete while app-origin hard deletes stay unchanged until Stage 2. Codex then returned **VERDICT: APPROVED** — harness honesty, the writeback kill-switch, visible-contract builder wording, the pre-Stage-1 snapshot gate, the import field whitelist, and the session-lifecycle wording are all internally consistent.
-
-## Resolution: CONVERGED — APPROVED (5 plan rounds + a round-6 harness/plan hardening pass via the openai/codex-plugin-cc engine)
-Plan grilled with the owner (Act 1) then survived 5 adversarial Codex rounds (Act 2). Codex hardened it from a "safety floor" that still lost data into a real safety contract: patch-only imports that never touch geometry, app-origin-only tombstoned deletes, stable-ID identity with quarantine (no name-guessing), a durable baseline + durable outbound queue, correct Graph concurrency (lease + per-flush session, not range eTag), per-surface product gating, and a migration preflight — with the collaboration UX deferred until the safety contract is testable. Awaiting owner sign-off before any code.
+VERDICT: APPROVED
+### Resolution
+APPROVED on Round 4. Incorporated the three implementation-level notes: aligned the Key Decisions duplicate summary with the baseline-order guard; added a 'Required tests' gate (copy-below, paste-above, sorted-before-writeback, stale alias, repeated-save idempotence, multi-device hydration, read-back-verify); and noted the MSAL persistent-cache choice is the first auth-slice task before touching IPC. Plan locked; awaiting user sign-off before any code.
