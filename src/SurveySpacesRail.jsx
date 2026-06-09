@@ -2907,10 +2907,7 @@ const SurveySpacesRail = ({
                             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                           >
                             <Icon name="upload" size={16} />
-                            {/* For a local file, pushing IS just writing/exporting the
-                                workbook — call it "Export to Excel". Live push/pull only
-                                make sense for a OneDrive/SharePoint workbook. */}
-                            {selectedTemplate?.isOneDrive ? 'Push to Excel' : 'Export to Excel'}
+                            Push to Excel
                           </div>
                           {/* "Pull from Excel" reads the last SAVED copy from disk, which on
                               a local file open in Excel is stale and overlaps the automatic

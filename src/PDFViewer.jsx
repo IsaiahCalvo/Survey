@@ -79,6 +79,7 @@ import { loadBaseline, saveBaseline, clearBaseline } from './services/excelSyncB
 import { generateRowIdToken } from './services/rowIdToken';
 import { getOrCreateDocumentSecret, resolveDocumentSecret } from './services/rowIdSecretStore';
 import { buildScopeImportPlans } from './services/buildScopeImportPlans';
+import { excelLockFilePath, isExcelOwnerFile, parentDir } from './services/excelLockFile';
 import { makeTombstone, addTombstone, removeTombstone, purgeExpired } from './services/surveyMarkerTrash';
 import { loadTrash, saveTrash } from './services/surveyMarkerTrashStore';
 import { buildSurveyMarkerDeleteHistoryRow, applySurveyMarkerRestore } from './services/surveyMarkerHistory';
@@ -12508,6 +12509,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                 }
               }
             } else {
+              // Local file: never overwrite a workbook the user has open in Excel.
+              // macOS lets the write succeed, but Excel's autosave then clobbers it —
+              // so detect Excel's owner/lock file and ask the user to close Excel first.
+              let excelIsOpen = false;
+              try {
+                const lockPath = excelLockFilePath(targetPath);
+                if (lockPath && await window.electronAPI.fileExists(lockPath)) {
+                  excelIsOpen = true;
+                } else {
+                  const dirEntries = await window.electronAPI.listDir(parentDir(targetPath));
+                  if (Array.isArray(dirEntries) && dirEntries.some(isExcelOwnerFile)) excelIsOpen = true;
+                }
+              } catch {
+                // If we cannot determine open-state, fall through and attempt the write.
+              }
+              if (excelIsOpen) {
+                setIsExporting(false);
+                alert('This Excel file is open. Please close it in Excel, then push again — the app can’t safely update the file while Excel has it open.');
+                return;
+              }
               // Use local filesystem
               await window.electronAPI.writeFile(targetPath, workbookBuffer);
             }
