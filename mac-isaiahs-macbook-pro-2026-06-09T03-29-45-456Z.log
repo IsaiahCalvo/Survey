@@ -1,0 +1,461 @@
+===== SurveyApp Save Log =====
+version:   0.1.46
+runtime:   dev-server
+platform:  desktop
+device:    Mac
+os:        macOS 10.15.7
+screen:    1512x982 @2x
+viewport:  1512x833
+locale:    en-US
+timestamp: 2026-06-09T03:29:45.455Z (6/8/2026, 11:29:45 PM)
+==============================
+%c[LOAD-TRACE +71ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +761ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +762ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +771ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +778ms] Page sizes calculated (3 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +778ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +779ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +779ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 330231ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 330240ms pdfId=sync-test.pdf-2489
+console.error @ [useAnnotationDoc] open failed cannot add `postgres_changes` callbacks for realtime:anno-43c92ebc-8ae9-4aec-bd6d-5281fdfcfe5d after `subscribe()`.
+[OpenTiming] pdfid-resolve @ 513100ms sync-test.pdf-2489
+%c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +0ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+[OpenTiming] pdfid-resolve @ 513117ms sync-test.pdf-2489
+%c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +0ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +7ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +7ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +7ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +7ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +21ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +21ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +21ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +21ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +260ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +261ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +261ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +271ms] Page sizes calculated (3 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +271ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +271ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +271ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 513392ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 513397ms pdfId=sync-test.pdf-2489
+=== PAGE RELOAD (navigation) @ 2026-06-08T19:00:43.099Z ===
+[OpenTiming] doc-click @ 2147ms sync-test.pdf
+[OpenTiming] pdfid-resolve @ 3553ms sync-test.pdf-2489
+%c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +0ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +23ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +23ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +23ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +23ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +409ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +410ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +437ms] Page sizes calculated (3 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +438ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +438ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +438ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 4009ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 4033ms pdfId=sync-test.pdf-2489
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[InteractionDiag] tool-changed @ 6887ms from=pan to=select
+[DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-changed @ 6918ms from=select to=survey-marker
+console.error @ File watcher error: EPERM: operation not permitted, watch '/Users/isaiahcalvo/Desktop/Security_export.xlsx'
+[InteractionDiag] viewer-pointer-down @ 9390ms tool=survey-marker button=0 target=canvas
+[DrawCanvas p1] shape mousedown at (141.6, 265.9), tool=survey-marker
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-1","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-1","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 9899ms tool=survey-marker
+[PreviewDiag] pointer release {"id":"gesture-1","frames":30,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] shape mouseup — tool=survey-marker, hasSize=true {"left":141.55102040816328,"top":265.92857142857144,"w":103.0408163265306,"h":75.9795918367347}
+[PreviewDiag] final commit {"id":"gesture-1","commits":1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create"}
+[PreviewDiag] summary survey-marker-draw started, 30 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-1","durationMs":1896.3,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create","reason":"settled"}
+console.error @ File watcher error: EPERM: operation not permitted, watch '/Users/isaiahcalvo/Desktop/Security_export.xlsx'
+console.error @ File watcher error: EPERM: operation not permitted, watch '/Users/isaiahcalvo/Desktop/Security_export.xlsx'
+[InteractionDiag] viewer-pointer-down @ 13027ms tool=survey-marker button=0 target=canvas
+[DrawCanvas p1] shape mousedown at (250.8, 395.0), tool=survey-marker
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-2","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-2","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 13409ms tool=survey-marker
+[PreviewDiag] pointer release {"id":"gesture-2","frames":33,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] shape mouseup — tool=survey-marker, hasSize=true {"left":250.83673469387756,"top":394.98979591836735,"w":123.85714285714286,"h":103.04081632653066}
+[PreviewDiag] final commit {"id":"gesture-2","commits":1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create"}
+[PreviewDiag] summary survey-marker-draw started, 33 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-2","durationMs":1779.6,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create","reason":"settled"}
+console.error @ File watcher error: EPERM: operation not permitted, watch '/Users/isaiahcalvo/Desktop/Security_export.xlsx'
+console.error @ File watcher error: EPERM: operation not permitted, watch '/Users/isaiahcalvo/Desktop/Security_export.xlsx'
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":2}
+[InteractionDiag] tool-intent @ 74671ms requested=survey-marker from=survey-marker
+[InteractionDiag] tool-intent @ 75967ms requested=survey-marker from=survey-marker
+[InteractionDiag] viewer-pointer-down @ 77159ms tool=survey-marker button=0 target=canvas
+[DrawCanvas p1] shape mousedown at (249.8, 304.4), tool=survey-marker
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-3","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-3","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 77644ms tool=survey-marker
+[PreviewDiag] pointer release {"id":"gesture-3","frames":34,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] shape mouseup — tool=survey-marker, hasSize=true {"left":249.79591836734696,"top":304.4387755102041,"w":148.83673469387756,"h":31.224489795918373}
+[PreviewDiag] final commit {"id":"gesture-3","commits":1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create"}
+[PreviewDiag] summary survey-marker-draw started, 34 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-3","durationMs":1883.1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create","reason":"settled"}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":3}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":3}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":3}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":4}
+[SaveLog] bulletproof local snapshot saved at /Users/isaiahcalvo/Documents/Projects/Active/Survey-BetaSafeS2/Logs/2026-06-08_19-02-46
+[SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"hasGhTokenEnv":true,"payloadLength":40117}
+[SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"hasGhTokenEnv":true,"payloadLength":40117}
+[SaveLogBanner] GitHub push OK {"url":"https://github.com/IsaiahCalvo/Survey/blob/logs/mac-isaiahs-macbook-pro-2026-06-08T19-02-51-012Z.log","filename":"mac-isaiahs-macbook-pro-2026-06-08T19-02-51-012Z.log"}
+[SaveLogBanner] GitHub push OK {"url":"https://github.com/IsaiahCalvo/Survey/blob/logs/mac-isaiahs-macbook-pro-2026-06-08T19-02-51-018Z-68962-mq5kw41y-1.log","filename":"mac-isaiahs-macbook-pro-2026-06-08T19-02-51-018Z-68962-mq5kw41y-1.log"}
+[OpenTiming] pdfid-resolve @ 965603ms sync-test.pdf-2489
+%c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+[InteractionDiag] tool-changed @ 965642ms from=survey-marker to=pan (pan-active → Syncfusion interactionMode=Pan)
+%c[LOAD-TRACE +39ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +83ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +83ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +83ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +83ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +324ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +324ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +338ms] Page sizes calculated (3 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +339ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +339ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +339ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 965950ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 965956ms pdfId=sync-test.pdf-2489
+=== PAGE RELOAD (navigation) @ 2026-06-08T19:36:47.564Z ===
+[OpenTiming] doc-click @ 4781ms sync-test.pdf
+[OpenTiming] pdfid-resolve @ 5959ms sync-test.pdf-2489
+%c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +0ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +22ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +22ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +22ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +22ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +291ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +291ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +306ms] Page sizes calculated (3 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +306ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +306ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +306ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 6276ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 6284ms pdfId=sync-test.pdf-2489
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[InteractionDiag] tool-changed @ 8199ms from=pan to=select
+[DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-changed @ 8235ms from=select to=survey-marker
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":4}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":4}
+[InteractionDiag] viewer-pointer-down @ 99213ms tool=survey-marker button=0 target=canvas
+[DrawCanvas p1] shape mousedown at (381.3, 247.5), tool=survey-marker
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-1","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-1","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 99557ms tool=survey-marker
+[PreviewDiag] pointer release {"id":"gesture-1","frames":37,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] shape mouseup — tool=survey-marker, hasSize=true {"left":381.31497418244413,"top":247.5387263339071,"w":88.48192771084337,"h":82.16179001721173}
+[PreviewDiag] final commit {"id":"gesture-1","commits":1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create"}
+[PreviewDiag] summary survey-marker-draw started, 37 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-1","durationMs":1741.9,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create","reason":"settled"}
+[InteractionDiag] viewer-pointer-down @ 102224ms tool=survey-marker button=0 target=canvas
+[DrawCanvas p1] shape mousedown at (142.2, 527.7), tool=survey-marker
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-2","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-2","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 102638ms tool=survey-marker
+[PreviewDiag] pointer release {"id":"gesture-2","frames":37,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] shape mouseup — tool=survey-marker, hasSize=true {"left":142.2030981067126,"top":527.7314974182445,"w":81.10843373493978,"h":130.6161790017211}
+[PreviewDiag] final commit {"id":"gesture-2","commits":1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create"}
+[PreviewDiag] summary survey-marker-draw started, 37 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-2","durationMs":1812.6,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create","reason":"settled"}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":6}
+[InteractionDiag] tool-changed @ 111197ms from=survey-marker to=select
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":6}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":6}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":6}
+[OpenTiming] pdfid-resolve @ 234734ms sync-test.pdf-2489
+%c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+[InteractionDiag] tool-changed @ 234775ms from=select to=pan (pan-active → Syncfusion interactionMode=Pan)
+%c[LOAD-TRACE +38ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +73ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +73ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +73ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +73ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +360ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +360ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +372ms] Page sizes calculated (3 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +372ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +372ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +372ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 235117ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 235124ms pdfId=sync-test.pdf-2489
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":6}
+[OpenTiming] pdfid-resolve @ 245073ms sync-test.pdf-2489
+%c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +23ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +29ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +29ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +29ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +29ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +226ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +226ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +238ms] Page sizes calculated (3 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +238ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +238ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +238ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 245316ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 245320ms pdfId=sync-test.pdf-2489
+=== PAGE RELOAD (navigation) @ 2026-06-08T20:09:04.112Z ===
+[OpenTiming] doc-click @ 2717ms sync-test.pdf
+[OpenTiming] pdfid-resolve @ 4192ms sync-test.pdf-2489
+%c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +0ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +24ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +24ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +24ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +24ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +504ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +505ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +526ms] Page sizes calculated (3 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +526ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +527ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +531ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 4739ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 4753ms pdfId=sync-test.pdf-2489
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-changed @ 7040ms from=pan to=survey-marker
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":6}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":6}
+[OpenTiming] pdfid-resolve @ 828014ms sync-test.pdf-2489
+%c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+[InteractionDiag] tool-changed @ 828067ms from=survey-marker to=pan (pan-active → Syncfusion interactionMode=Pan)
+%c[LOAD-TRACE +54ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +85ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +86ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +86ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +86ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +408ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +408ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +422ms] Page sizes calculated (3 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +423ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +423ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +423ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 828446ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 828453ms pdfId=sync-test.pdf-2489
+=== PAGE RELOAD (navigation) @ 2026-06-08T20:46:54.769Z ===
+[OpenTiming] doc-click @ 2544ms sync-test.pdf
+[OpenTiming] pdfid-resolve @ 3758ms sync-test.pdf-2489
+%c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +0ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +17ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +17ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +17ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +17ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +414ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +414ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +434ms] Page sizes calculated (3 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +434ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +434ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +434ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 4203ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 4226ms pdfId=sync-test.pdf-2489
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":6}
+[InteractionDiag] tool-changed @ 6778ms from=pan to=select
+[DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-changed @ 6848ms from=select to=survey-marker
+[InteractionDiag] tool-intent @ 8300ms requested=survey-marker from=survey-marker
+[InteractionDiag] viewer-pointer-down @ 9333ms tool=survey-marker button=0 target=canvas
+[DrawCanvas p1] shape mousedown at (423.6, 439.7), tool=survey-marker
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-1","frames":1,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[PreviewDiag] preview {"id":"gesture-1","frames":25,"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 9794ms tool=survey-marker
+[PreviewDiag] pointer release {"id":"gesture-1","frames":37,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] shape mouseup — tool=survey-marker, hasSize=true {"left":423.6122448979592,"top":439.7448979591837,"w":88.46938775510199,"h":94.71428571428572}
+[PreviewDiag] final commit {"id":"gesture-1","commits":1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create"}
+[PreviewDiag] summary survey-marker-draw started, 37 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 1 commit on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-1","durationMs":1859.1,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"source":"survey-marker:create","reason":"settled"}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":7}
+[InteractionDiag] tool-intent @ 68448ms requested=survey-marker from=survey-marker
+[InteractionDiag] tool-intent @ 69940ms requested=survey-marker from=survey-marker
+[InteractionDiag] tool-intent @ 73521ms requested=survey-marker from=survey-marker
+=== PAGE RELOAD (navigation) @ 2026-06-08T20:48:21.566Z ===
+[OpenTiming] doc-click @ 1858ms sync-test.pdf
+[OpenTiming] pdfid-resolve @ 2958ms sync-test.pdf-2489
+%c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +0ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +25ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +26ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +26ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +26ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +487ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +488ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +495ms] Page sizes calculated (3 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +496ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +496ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +496ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 3462ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 3468ms pdfId=sync-test.pdf-2489
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":7}
+[InteractionDiag] tool-changed @ 5672ms from=pan to=select
+[DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-changed @ 5701ms from=select to=survey-marker
+[DrawCanvas p2] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-intent @ 16963ms requested=survey-marker from=survey-marker
+[InteractionDiag] tool-intent @ 17435ms requested=survey-marker from=survey-marker
+[SaveLog] bulletproof local snapshot saved at /Users/isaiahcalvo/Documents/Projects/Active/Survey-BetaSafeS2/Logs/2026-06-08_20-49-07
+[SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"hasGhTokenEnv":true,"payloadLength":45233}
+[SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"hasGhTokenEnv":true,"payloadLength":45233}
+[SaveLogBanner] GitHub push OK {"url":"https://github.com/IsaiahCalvo/Survey/blob/logs/mac-isaiahs-macbook-pro-2026-06-08T20-49-12-421Z.log","filename":"mac-isaiahs-macbook-pro-2026-06-08T20-49-12-421Z.log"}
+[SaveLogBanner] GitHub push OK {"url":"https://github.com/IsaiahCalvo/Survey/blob/logs/mac-isaiahs-macbook-pro-2026-06-08T20-49-12-412Z-68962-mq5oovxi-1.log","filename":"mac-isaiahs-macbook-pro-2026-06-08T20-49-12-412Z-68962-mq5oovxi-1.log"}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":11}
+[InteractionDiag] tool-intent @ 130515ms requested=survey-marker from=survey-marker
+[InteractionDiag] tool-intent @ 153971ms requested=survey-marker from=survey-marker
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":13}
+[SaveLog] bulletproof local snapshot saved at /Users/isaiahcalvo/Documents/Projects/Active/Survey-BetaSafeS2/Logs/2026-06-08_20-54-47
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":15}
+[SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"hasGhTokenEnv":true,"payloadLength":45604}
+[SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"hasGhTokenEnv":true,"payloadLength":45604}
+[SaveLogBanner] GitHub push OK {"url":"https://github.com/IsaiahCalvo/Survey/blob/logs/mac-isaiahs-macbook-pro-2026-06-08T20-54-52-749Z.log","filename":"mac-isaiahs-macbook-pro-2026-06-08T20-54-52-749Z.log"}
+[SaveLogBanner] GitHub push OK {"url":"https://github.com/IsaiahCalvo/Survey/blob/logs/mac-isaiahs-macbook-pro-2026-06-08T20-54-52-745Z-68962-mq5ow71o-1.log","filename":"mac-isaiahs-macbook-pro-2026-06-08T20-54-52-745Z-68962-mq5ow71o-1.log"}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":17}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":17}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":17}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":12}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":12}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":11}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":10}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":9}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":7}
+[InteractionDiag] tool-intent @ 2591394ms requested=survey-marker from=survey-marker
+[InteractionDiag] tool-intent @ 2592604ms requested=survey-marker from=survey-marker
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":7}
+[InteractionDiag] tool-intent @ 2610130ms requested=survey-marker from=survey-marker
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":7}
+console.error @ Failed to get worksheets: {"name":"Error","message":"Failed to fetch","stack":"TypeError: Failed to fetch\n    at instrumentedFetch (http://localhost:5173/src/utils/networkLogger.js:45:32)\n    at HTTPMessageHandler.<anonymous> (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:888:32)\n    at Generator.next (<anonymous>)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:54:67\n    at new Promise (<anonymous>)\n    at __awaiter (http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:36:10)\n    at HTTPMessageHandler.execute (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:887:12)\n    at _TelemetryHandler.<anonymous> (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:1357:40)\n    at Generator.next (<anonymous>)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:54:67","cause":null}
+console.error @ Poll for Excel changes failed: {"name":"Error","message":"Failed to get worksheets: Failed to fetch","stack":"Error: Failed to get worksheets: Failed to fetch\n    at getWorksheets (http://localhost:5173/src/services/excelSessionService.js:205:11)\n    at async pollExcelChanges (http://localhost:5173/src/PDFViewer.jsx?t=1780950770710:12189:30)","cause":null}
+console.error @ Failed to get worksheets: {"name":"Error","message":"Failed to fetch","stack":"TypeError: Failed to fetch\n    at instrumentedFetch (http://localhost:5173/src/utils/networkLogger.js:45:32)\n    at HTTPMessageHandler.<anonymous> (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:888:32)\n    at Generator.next (<anonymous>)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:54:67\n    at new Promise (<anonymous>)\n    at __awaiter (http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:36:10)\n    at HTTPMessageHandler.execute (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:887:12)\n    at _TelemetryHandler.<anonymous> (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:1357:40)\n    at Generator.next (<anonymous>)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:54:67","cause":null}
+console.error @ Poll for Excel changes failed: {"name":"Error","message":"Failed to get worksheets: Failed to fetch","stack":"Error: Failed to get worksheets: Failed to fetch\n    at getWorksheets (http://localhost:5173/src/services/excelSessionService.js:205:11)\n    at async pollExcelChanges (http://localhost:5173/src/PDFViewer.jsx?t=1780950770710:12189:30)","cause":null}
+console.error @ Failed to get worksheets: {"name":"Error","message":"Failed to fetch","stack":"TypeError: Failed to fetch\n    at instrumentedFetch (http://localhost:5173/src/utils/networkLogger.js:45:32)\n    at HTTPMessageHandler.<anonymous> (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:888:32)\n    at Generator.next (<anonymous>)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:54:67\n    at new Promise (<anonymous>)\n    at __awaiter (http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:36:10)\n    at HTTPMessageHandler.execute (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:887:12)\n    at _TelemetryHandler.<anonymous> (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:1357:40)\n    at Generator.next (<anonymous>)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:54:67","cause":null}
+console.error @ Poll for Excel changes failed: {"name":"Error","message":"Failed to get worksheets: Failed to fetch","stack":"Error: Failed to get worksheets: Failed to fetch\n    at getWorksheets (http://localhost:5173/src/services/excelSessionService.js:205:11)\n    at async pollExcelChanges (http://localhost:5173/src/PDFViewer.jsx?t=1780950770710:12189:30)","cause":null}
+console.error @ Failed to get worksheets: {"name":"Error","message":"The target session is invalid.","stack":"Error: The target session is invalid.\n    at _GraphErrorHandler.constructErrorFromResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:2738:20)\n    at _GraphErrorHandler.<anonymous> (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:2763:37)\n    at Generator.next (<anonymous>)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:54:67\n    at new Promise (<anonymous>)\n    at __awaiter (http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:36:10)\n    at _GraphErrorHandler.getError (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:2760:12)\n    at GraphRequest.<anonymous> (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:3026:48)\n    at Generator.throw (<anonymous>)\n    at rejected (http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:46:32)","cause":null}
+console.error @ Poll for Excel changes failed: {"name":"Error","message":"Failed to get worksheets: The target session is invalid.","stack":"Error: Failed to get worksheets: The target session is invalid.\n    at getWorksheets (http://localhost:5173/src/services/excelSessionService.js:205:11)\n    at async pollExcelChanges (http://localhost:5173/src/PDFViewer.jsx?t=1780950770710:12189:30)","cause":null}
+console.error @ Failed to get worksheets: {"name":"Error","message":"The target session is invalid.","stack":"Error: The target session is invalid.\n    at _GraphErrorHandler.constructErrorFromResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:2738:20)\n    at _GraphErrorHandler.<anonymous> (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:2763:37)\n    at Generator.next (<anonymous>)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:54:67\n    at new Promise (<anonymous>)\n    at __awaiter (http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:36:10)\n    at _GraphErrorHandler.getError (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:2760:12)\n    at GraphRequest.<anonymous> (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:3026:48)\n    at Generator.throw (<anonymous>)\n    at rejected (http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:46:32)","cause":null}
+console.error @ Poll for Excel changes failed: {"name":"Error","message":"Failed to get worksheets: The target session is invalid.","stack":"Error: Failed to get worksheets: The target session is invalid.\n    at getWorksheets (http://localhost:5173/src/services/excelSessionService.js:205:11)\n    at async pollExcelChanges (http://localhost:5173/src/PDFViewer.jsx?t=1780950770710:12189:30)","cause":null}
+console.error @ Failed to get worksheets: {"name":"Error","message":"The target session is invalid.","stack":"Error: The target session is invalid.\n    at _GraphErrorHandler.constructErrorFromResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:2738:20)\n    at _GraphErrorHandler.<anonymous> (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:2763:37)\n    at Generator.next (<anonymous>)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:54:67\n    at new Promise (<anonymous>)\n    at __awaiter (http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:36:10)\n    at _GraphErrorHandler.getError (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:2760:12)\n    at GraphRequest.<anonymous> (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:3026:48)\n    at Generator.throw (<anonymous>)\n    at rejected (http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:46:32)","cause":null}
+console.error @ Poll for Excel changes failed: {"name":"Error","message":"Failed to get worksheets: The target session is invalid.","stack":"Error: Failed to get worksheets: The target session is invalid.\n    at getWorksheets (http://localhost:5173/src/services/excelSessionService.js:205:11)\n    at async pollExcelChanges (http://localhost:5173/src/PDFViewer.jsx?t=1780950770710:12189:30)","cause":null}
+console.error @ Failed to refresh session: {"name":"Error","message":"The target session is invalid.","stack":"Error: The target session is invalid.\n    at _GraphErrorHandler.constructErrorFromResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:2738:20)\n    at _GraphErrorHandler.<anonymous> (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:2763:37)\n    at Generator.next (<anonymous>)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:54:67\n    at new Promise (<anonymous>)\n    at __awaiter (http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:36:10)\n    at _GraphErrorHandler.getError (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:2760:12)\n    at GraphRequest.<anonymous> (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:3026:48)\n    at Generator.throw (<anonymous>)\n    at rejected (http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:46:32)","cause":null}
+console.error @ Session refresh failed, recreating... {"name":"Error","message":"Session refresh failed: The target session is invalid.","stack":"Error: Session refresh failed: The target session is invalid.\n    at refreshWorkbookSession (http://localhost:5173/src/services/excelSessionService.js:133:11)\n    at async http://localhost:5173/src/PDFViewer.jsx?t=1780950770710:12107:37","cause":null}
+console.error @ Failed to get worksheets: {"name":"Error","message":"The target session is invalid.","stack":"Error: The target session is invalid.\n    at _GraphErrorHandler.constructErrorFromResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:2738:20)\n    at _GraphErrorHandler.<anonymous> (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:2763:37)\n    at Generator.next (<anonymous>)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:54:67\n    at new Promise (<anonymous>)\n    at __awaiter (http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:36:10)\n    at _GraphErrorHandler.getError (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:2760:12)\n    at GraphRequest.<anonymous> (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:3026:48)\n    at Generator.throw (<anonymous>)\n    at rejected (http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:46:32)","cause":null}
+console.error @ Poll for Excel changes failed: {"name":"Error","message":"Failed to get worksheets: The target session is invalid.","stack":"Error: Failed to get worksheets: The target session is invalid.\n    at getWorksheets (http://localhost:5173/src/services/excelSessionService.js:205:11)\n    at async pollExcelChanges (http://localhost:5173/src/PDFViewer.jsx?t=1780950770710:12189:30)","cause":null}
+console.error @ Failed to get worksheets: {"name":"Error","message":"The target session is invalid.","stack":"Error: The target session is invalid.\n    at _GraphErrorHandler.constructErrorFromResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:2738:20)\n    at _GraphErrorHandler.<anonymous> (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:2763:37)\n    at Generator.next (<anonymous>)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:54:67\n    at new Promise (<anonymous>)\n    at __awaiter (http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:36:10)\n    at _GraphErrorHandler.getError (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:2760:12)\n    at GraphRequest.<anonymous> (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:3026:48)\n    at Generator.throw (<anonymous>)\n    at rejected (http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:46:32)","cause":null}
+console.error @ Poll for Excel changes failed: {"name":"Error","message":"Failed to get worksheets: The target session is invalid.","stack":"Error: Failed to get worksheets: The target session is invalid.\n    at getWorksheets (http://localhost:5173/src/services/excelSessionService.js:205:11)\n    at async pollExcelChanges (http://localhost:5173/src/PDFViewer.jsx?t=1780950770710:12189:30)","cause":null}
+console.error @ Failed to get worksheets: {"name":"Error","message":"The target session is invalid.","stack":"Error: The target session is invalid.\n    at _GraphErrorHandler.constructErrorFromResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:2738:20)\n    at _GraphErrorHandler.<anonymous> (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:2763:37)\n    at Generator.next (<anonymous>)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:54:67\n    at new Promise (<anonymous>)\n    at __awaiter (http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:36:10)\n    at _GraphErrorHandler.getError (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:2760:12)\n    at GraphRequest.<anonymous> (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:3026:48)\n    at Generator.throw (<anonymous>)\n    at rejected (http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:46:32)","cause":null}
+console.error @ Poll for Excel changes failed: {"name":"Error","message":"Failed to get worksheets: The target session is invalid.","stack":"Error: Failed to get worksheets: The target session is invalid.\n    at getWorksheets (http://localhost:5173/src/services/excelSessionService.js:205:11)\n    at async pollExcelChanges (http://localhost:5173/src/PDFViewer.jsx?t=1780950770710:12189:30)","cause":null}
+console.error @ Failed to refresh session: {"name":"Error","message":"The target session is invalid.","stack":"Error: The target session is invalid.\n    at _GraphErrorHandler.constructErrorFromResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:2738:20)\n    at _GraphErrorHandler.<anonymous> (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:2763:37)\n    at Generator.next (<anonymous>)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:54:67\n    at new Promise (<anonymous>)\n    at __awaiter (http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:36:10)\n    at _GraphErrorHandler.getError (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:2760:12)\n    at GraphRequest.<anonymous> (http://localhost:5173/node_modules/.vite/deps/@microsoft_microsoft-graph-client.js?v=a345567b:3026:48)\n    at Generator.throw (<anonymous>)\n    at rejected (http://localhost:5173/node_modules/.vite/deps/chunk-JPMHR7MG.js?v=a345567b:46:32)","cause":null}
+console.error @ Session refresh failed, recreating... {"name":"Error","message":"Session refresh failed: The target session is invalid.","stack":"Error: Session refresh failed: The target session is invalid.\n    at refreshWorkbookSession (http://localhost:5173/src/services/excelSessionService.js:133:11)\n    at async http://localhost:5173/src/PDFViewer.jsx?t=1780950770710:12107:37","cause":null}
+=== PAGE RELOAD (navigation) @ 2026-06-09T01:50:23.679Z ===
+[OpenTiming] doc-click @ 8402ms sync-test.pdf
+[OpenTiming] pdfid-resolve @ 9165ms sync-test.pdf-2489
+%c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +0ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +24ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +24ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +24ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +24ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +278ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +278ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +304ms] Page sizes calculated (3 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +304ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +304ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +305ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 9481ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 9494ms pdfId=sync-test.pdf-2489
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":7}
+[InteractionDiag] tool-changed @ 16003ms from=pan to=select
+[DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-changed @ 16046ms from=select to=survey-marker
+[OpenTiming] pdfid-resolve @ 29994ms sync-test.pdf-2489
+=== PAGE RELOAD (navigation) @ 2026-06-09T01:50:53.559Z ===
+[OpenTiming] doc-click @ 5013886ms sync-test.pdf
+[OpenTiming] pdfid-resolve @ 5015949ms sync-test.pdf-2489
+%c[LOAD-TRACE +0ms] ════ OPEN START — sync-test.pdf color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +0ms] watchdog armed — will check in 20s color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +30ms] Local file to ArrayBuffer color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +31ms] configuring pdf.js worker (loadPdfjs) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +31ms] pdf.js worker ready color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +31ms] Starting PDF.js getDocument color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +173ms] PDF.js document parsed color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +173ms] Calculating page sizes color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +182ms] Page sizes calculated (3 pages) color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +182ms] Importing PDF annotations color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +182ms] PDF ready for rendering color:#2196F3;font-weight:bold
+%c[LOAD-TRACE +182ms] ✅ LOAD COMPLETE — lifting the Loading curtain color:#2196F3;font-weight:bold
+[InteractionDiag] interactive-ready @ 5016140ms (isLoadingPDF→false; loading curtain lifted, toolbar+page now accept input)
+[OpenTiming] first-marks-painted @ 5016145ms pdfId=sync-test.pdf-2489
+console.warn @ [crdtBackfill] cutover sealed but Y.Map < legacy count — re-running import loop to recover {"yMapSize":0,"legacyCount":0}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":7}
+[InteractionDiag] tool-changed @ 5018808ms from=pan to=select
+[DrawCanvas p1] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p1] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p2] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] MOUNT — tool=survey-marker, isShape=true, isDrawingMode=false
+[DrawCanvas p3] shape effect — tool=survey-marker, isShape=true, isDrawingMode=false
+[InteractionDiag] tool-changed @ 5018848ms from=select to=survey-marker
+[InteractionDiag] viewer-pointer-down @ 5018925ms tool=survey-marker button=0 target=canvas
+[DrawCanvas p1] shape mousedown at (338.3, 378.3), tool=survey-marker
+[PreviewDiag] start {"pointerDown":true,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[InteractionDiag] pointer-end @ 5018930ms tool=survey-marker
+[PreviewDiag] pointer release {"id":"gesture-1","frames":0,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null}
+[DrawCanvas p1] shape mouseup — tool=survey-marker, hasSize=false {"left":338.265306122449,"top":378.3367346938776,"w":0,"h":0}
+[DrawCanvas p1] shape too small, discarded
+[PreviewDiag] summary survey-marker-draw started, 0 preview frames, 0 sync writes during drag, 0 sync deferrals during drag, 0 backup writes during drag, 0 commits on release, 0 sync pushes after release, 0 backup writes after release {"id":"gesture-1","durationMs":1404.3,"pointerDown":false,"surface":"FabricDrawingCanvas","tool":"survey-marker","type":"survey-marker","action":"survey-marker-draw","pageNumber":1,"annotationId":null,"reason":"settled"}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":7}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":7}
+[InteractionDiag] tool-intent @ 5059078ms requested=survey-marker from=survey-marker
+[InteractionDiag] tool-intent @ 5059878ms requested=survey-marker from=survey-marker
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":8}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":8}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":9}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":9}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":10}
+[PreviewDiag] sync push {"kind":"survey-marker","count":1,"surveyMarkerCount":11}
+[SaveLog] bulletproof local snapshot saved at /Users/isaiahcalvo/Documents/Projects/Active/Survey-BetaSafeS2/Logs/2026-06-09_03-17-32
+[SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"hasGhTokenEnv":true,"payloadLength":60589}
+[SaveLog] runPush start {"hasElectronApi":true,"hasPushLogFn":true,"hasGhTokenEnv":true,"payloadLength":60589}
+[SaveLogBanner] GitHub push OK {"url":"https://github.com/IsaiahCalvo/Survey/blob/logs/mac-isaiahs-macbook-pro-2026-06-09T03-17-37-536Z.log","filename":"mac-isaiahs-macbook-pro-2026-06-09T03-17-37-536Z.log"}
+[SaveLogBanner] GitHub push OK {"url":"https://github.com/IsaiahCalvo/Survey/blob/logs/mac-isaiahs-macbook-pro-2026-06-09T03-17-37-549Z-68962-mq62kebr-1.log","filename":"mac-isaiahs-macbook-pro-2026-06-09T03-17-37-549Z-68962-mq62kebr-1.log"}
